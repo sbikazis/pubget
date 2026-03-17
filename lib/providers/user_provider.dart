@@ -1,0 +1,131 @@
+import 'package:flutter/material.dart';
+
+import '../models/user_model.dart';
+import '../services/firebase/firestore_service.dart';
+import '../core/constants/firestore_paths.dart';
+
+class UserProvider extends ChangeNotifier {
+  final FirestoreService _firestoreService;
+
+  UserProvider({
+    required FirestoreService firestoreService,
+  }) : _firestoreService = firestoreService;
+
+  UserModel? _currentUser;
+
+  UserModel? get currentUser => _currentUser;
+
+  bool get isLoggedIn => _currentUser != null;
+
+  // =========================================================
+  // LOAD USER
+  // =========================================================
+
+  Future<void> loadUser(String userId) async {
+    final data = await _firestoreService.getDocument(
+      path: FirestorePaths.users,
+      docId: userId,
+    );
+
+    if (data == null) {
+      _currentUser = null;
+      notifyListeners();
+      return;
+    }
+
+    _currentUser = UserModel.fromMap(
+      data,
+      userId,
+    );
+
+    notifyListeners();
+  }
+
+  // =========================================================
+  // CREATE USER
+  // =========================================================
+
+  Future<void> createUser(UserModel user) async {
+    await _firestoreService.createDocument(
+      path: FirestorePaths.users,
+      docId: user.id,
+      data: user.toMap(),
+    );
+
+    _currentUser = user;
+    notifyListeners();
+  }
+
+  // =========================================================
+  // UPDATE USER
+  // =========================================================
+
+  Future<void> updateUser(UserModel user) async {
+    await _firestoreService.updateDocument(
+      path: FirestorePaths.users,
+      docId: user.id,
+      data: user.toMap(),
+    );
+
+    _currentUser = user;
+    notifyListeners();
+  }
+
+  // =========================================================
+  // UPDATE PROFILE
+  // =========================================================
+
+  Future<void> updateProfile({
+    String? username,
+    String? nickname,
+    String? avatarUrl,
+    String? bio,
+    List<String>? favoriteAnimes,
+    int? age,
+    String? country,
+  }) async {
+    if (_currentUser == null) return;
+
+    final updatedUser = _currentUser!.copyWith(
+      username: username,
+      nickname: nickname,
+      avatarUrl: avatarUrl,
+      bio: bio,
+      favoriteAnimes: favoriteAnimes,
+      age: age,
+      country: country,
+      updatedAt: DateTime.now(),
+    );
+
+    await updateUser(updatedUser);
+  }
+
+  // =========================================================
+  // STREAM USER
+  // =========================================================
+
+  Stream<UserModel> streamUser(String userId) {
+    return _firestoreService
+        .streamDocument(
+          path: FirestorePaths.users,
+          docId: userId,
+        )
+        .map((snapshot) {
+      final data = snapshot.data();
+
+      return UserModel.fromMap(
+        data!,
+        snapshot.id,
+      );
+    });
+  }
+
+  // =========================================================
+  // LOGOUT
+  // =========================================================
+
+  void clearUser() {
+    _currentUser = null;
+    notifyListeners();
+  }
+}
