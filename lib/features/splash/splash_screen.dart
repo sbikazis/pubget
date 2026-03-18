@@ -26,86 +26,68 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeApp() async {
+    try {
+      // تهيئة التخزين المحلي
+      await LocalStorageService.instance.init();
 
-    // تهيئة التخزين المحلي
-    await LocalStorageService.instance.init();
+      // تأخير بسيط
+      await Future.delayed(const Duration(seconds: 2));
 
-    // تأخير بسيط لعرض السلاش
-    await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
 
-    if (!mounted) return;
+      final authProvider = context.read<AuthProvider>();
+      final userProvider = context.read<UserProvider>();
 
-    final authProvider = context.read<AuthProvider>();
-    final userProvider = context.read<UserProvider>();
+      // إذا لم يكن مسجل دخول
+      if (!authProvider.isLoggedIn) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+        return;
+      }
 
-    // =====================================================
-    // إذا لم يكن المستخدم مسجل دخول
-    // =====================================================
+      // تحميل بيانات المستخدم
+      final userId = authProvider.user!.id;
 
-    if (!authProvider.isLoggedIn) {
+      await userProvider.loadUser(userId);
+
+      if (!mounted) return;
+
+      // إذا لا توجد بيانات
+      if (userProvider.currentUser == null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const UserInfoScreen()),
+        );
+        return;
+      }
+
+      // الدخول إلى التطبيق
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } catch (e) {
+      // 🔥 مهم جداً: منع الشاشة السوداء
+      debugPrint("Splash Error: $e");
+
+      if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
-
-      return;
     }
-
-    // =====================================================
-    // المستخدم مسجل دخول
-    // =====================================================
-
-    final userId = authProvider.user!.id;
-
-    await userProvider.loadUser(userId);
-
-    if (!mounted) return;
-
-    // =====================================================
-    // إذا لم توجد بيانات مستخدم
-    // =====================================================
-
-    if (userProvider.currentUser == null) {
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const UserInfoScreen(),
-        ),
-      );
-
-      return;
-    }
-
-    // =====================================================
-    // المستخدم جاهز
-    // =====================================================
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const HomeScreen(),
-      ),
-    );
   }
-
-  // =====================================================
-  // UI
-  // =====================================================
 
   @override
   Widget build(BuildContext context) {
-
     return const Scaffold(
       body: Center(
         child: Text(
           "⛩️",
-          style: TextStyle(
-            fontSize: 64,
-          ),
+          style: TextStyle(fontSize: 64),
         ),
       ),
     );
