@@ -9,16 +9,20 @@ class AdService {
   AdService(this._localStorage);
 
   // ===============================
-  // AdMob Unit IDs (استبدلها لاحقاً بالـ IDs الحقيقية)
+  // AdMob Unit IDs (Test IDs)
   // ===============================
-  final String appOpenAdUnitId = 'ca-app-pub-3940256099942544/3419835294'; // Test ID
-  final String interstitialAdUnitId = 'ca-app-pub-3940256099942544/1033173712'; // Test ID
+  final String appOpenAdUnitId =
+      'ca-app-pub-3940256099942544/3419835294';
+
+  final String interstitialAdUnitId =
+      'ca-app-pub-3940256099942544/1033173712';
 
   // ===============================
   // Google Ads Instances
   // ===============================
   AppOpenAd? _appOpenAd;
   InterstitialAd? _interstitialAd;
+
   bool _isAppOpenAdLoading = false;
   bool _isInterstitialAdLoading = false;
 
@@ -31,10 +35,8 @@ class AdService {
     await _localStorage.init();
     final lastAdTime = _localStorage.getLastAdTime();
 
-    // قرار الصباح
     var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
 
-    // منع للمشتركين
     decision = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
       decision: decision,
@@ -42,10 +44,8 @@ class AdService {
 
     if (!decision.shouldShow) return false;
 
-    // عرض الإعلان
     await _showAppOpenAd();
 
-    // حفظ وقت العرض
     await _localStorage.saveLastAdTime(DateTime.now());
 
     return true;
@@ -60,10 +60,8 @@ class AdService {
     await _localStorage.init();
     final lastAdTime = _localStorage.getLastAdTime();
 
-    // قرار الخمس دقائق
     var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
 
-    // منع للمشتركين
     decision = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
       decision: decision,
@@ -71,10 +69,8 @@ class AdService {
 
     if (!decision.shouldShow) return false;
 
-    // عرض الإعلان
     await _showInterstitialAd();
 
-    // حفظ وقت العرض
     await _localStorage.saveLastAdTime(DateTime.now());
 
     return true;
@@ -84,55 +80,85 @@ class AdService {
   // PRIVATE METHODS
   // ===============================
 
+  // -------------------------------
   // App Open Ad
+  // -------------------------------
   Future<void> _showAppOpenAd() async {
     if (_appOpenAd == null) {
       await _loadAppOpenAd();
+      return; // ❗ لا تعرض مباشرة بعد التحميل
     }
 
-    if (_appOpenAd != null) {
-      _appOpenAd!.show();
-      _appOpenAd = null; // تفريغ الإعلان بعد العرض
-      await _loadAppOpenAd(); // إعادة التحميل للمرات القادمة
-    }
+    _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) {},
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _appOpenAd = null;
+        _loadAppOpenAd(); // إعادة التحميل
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _appOpenAd = null;
+        _loadAppOpenAd();
+      },
+    );
+
+    _appOpenAd!.show();
+    _appOpenAd = null;
   }
 
   Future<void> _loadAppOpenAd() async {
-  if (_isAppOpenAdLoading) return;
+    if (_isAppOpenAdLoading) return;
 
-  _isAppOpenAdLoading = true;
+    _isAppOpenAdLoading = true;
 
-  AppOpenAd.load(
-    adUnitId: appOpenAdUnitId,
-    request: const AdRequest(),
-    adLoadCallback: AppOpenAdLoadCallback(
-      onAdLoaded: (ad) {
-        _appOpenAd = ad;
-        _isAppOpenAdLoading = false;
-      },
-      onAdFailedToLoad: (error) {
-        _isAppOpenAdLoading = false;
-        _appOpenAd = null;
-      },
-    ),
-  );
-}
+    AppOpenAd.load(
+      adUnitId: appOpenAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          _appOpenAd = ad;
+          _isAppOpenAdLoading = false;
+        },
+        onAdFailedToLoad: (error) {
+          _isAppOpenAdLoading = false;
+          _appOpenAd = null;
+        },
+      ),
+    );
+  }
 
+  // -------------------------------
   // Interstitial Ad
+  // -------------------------------
   Future<void> _showInterstitialAd() async {
     if (_interstitialAd == null) {
       await _loadInterstitialAd();
+      return; // ❗ لا تعرض مباشرة
     }
 
-    if (_interstitialAd != null) {
-      _interstitialAd!.show();
-      _interstitialAd = null; // تفريغ الإعلان بعد العرض
-      await _loadInterstitialAd(); // إعادة التحميل
-    }
+    _interstitialAd!.fullScreenContentCallback =
+        FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) {},
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd(); // إعادة التحميل
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd();
+      },
+    );
+
+    _interstitialAd!.show();
+    _interstitialAd = null;
   }
 
   Future<void> _loadInterstitialAd() async {
     if (_isInterstitialAdLoading) return;
+
     _isInterstitialAdLoading = true;
 
     InterstitialAd.load(
