@@ -30,59 +30,55 @@ class AdService {
   // Morning App Open Ad
   // ===============================
   Future<bool> tryShowMorningAd({
-    required bool isPremium,
-  }) async {
-    await _localStorage.init();
-    final lastAdTime = _localStorage.getLastAdTime();
+  required bool isPremium,
+}) async {
+  await _localStorage.init();
+  await MobileAds.instance.initialize(); // ✅ تأكد من التهيئة
+  final lastAdTime = _localStorage.getLastAdTime();
 
-    var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
+  var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
+  decision = AdDisplayLogic.checkIfPremium(
+    isPremium: isPremium,
+    decision: decision,
+  );
 
-    decision = AdDisplayLogic.checkIfPremium(
-      isPremium: isPremium,
-      decision: decision,
-    );
+  if (!decision.shouldShow) return false;
 
-    if (!decision.shouldShow) return false;
+  // الآن يمكن عرض الإعلان بأمان
+  await _showAppOpenAd();
+  await _localStorage.saveLastAdTime(DateTime.now());
 
-    await _showAppOpenAd();
-
-    await _localStorage.saveLastAdTime(DateTime.now());
-
-    return true;
-  }
+  return true;
+}
 
   // ===============================
   // Group Enter/Exit Ad
   // ===============================
   Future<bool> tryShowGroupAd({
-    required bool isPremium,
-  }) async {
-    await _localStorage.init();
-    final lastAdTime = _localStorage.getLastAdTime();
+  required bool isPremium,
+}) async {
+  await _localStorage.init();
+  await MobileAds.instance.initialize(); // ✅ تأكد من التهيئة
+  final lastAdTime = _localStorage.getLastAdTime();
 
-    var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
+  var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
+  decision = AdDisplayLogic.checkIfPremium(
+    isPremium: isPremium,
+    decision: decision,
+  );
 
-    decision = AdDisplayLogic.checkIfPremium(
-      isPremium: isPremium,
-      decision: decision,
-    );
+  if (!decision.shouldShow) return false;
 
-    if (!decision.shouldShow) return false;
+  await _showInterstitialAd();
+  await _localStorage.saveLastAdTime(DateTime.now());
 
-    await _showInterstitialAd();
-
-    await _localStorage.saveLastAdTime(DateTime.now());
-
-    return true;
-  }
+  return true;
+}
 
   // ===============================
   // PRIVATE METHODS
   // ===============================
 
-  // -------------------------------
-  // App Open Ad
-  // -------------------------------
   Future<void> _showAppOpenAd() async {
     if (_appOpenAd == null) {
       await _loadAppOpenAd();
@@ -94,7 +90,7 @@ class AdService {
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _appOpenAd = null;
-        _loadAppOpenAd(); // إعادة التحميل
+        _loadAppOpenAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
@@ -128,22 +124,18 @@ class AdService {
     );
   }
 
-  // -------------------------------
-  // Interstitial Ad
-  // -------------------------------
   Future<void> _showInterstitialAd() async {
     if (_interstitialAd == null) {
       await _loadInterstitialAd();
-      return; // ❗ لا تعرض مباشرة
+      return; // ❗ لا تعرض مباشرة بعد التحميل
     }
 
-    _interstitialAd!.fullScreenContentCallback =
-        FullScreenContentCallback(
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {},
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _interstitialAd = null;
-        _loadInterstitialAd(); // إعادة التحميل
+        _loadInterstitialAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();

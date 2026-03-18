@@ -30,7 +30,7 @@ class _SplashScreenState extends State<SplashScreen> {
       // تهيئة التخزين المحلي
       await LocalStorageService.instance.init();
 
-      // تأخير بسيط
+      // تأخير بسيط لإظهار الشعار
       await Future.delayed(const Duration(seconds: 2));
 
       if (!mounted) return;
@@ -40,6 +40,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // إذا لم يكن مسجل دخول
       if (!authProvider.isLoggedIn) {
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -47,14 +48,17 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // تحميل بيانات المستخدم
-      final userId = authProvider.user!.id;
-
-      await userProvider.loadUser(userId);
+      // تحميل بيانات المستخدم مع try/catch إضافي
+      try {
+        final userId = authProvider.user!.id;
+        await userProvider.loadUser(userId);
+      } catch (e) {
+        debugPrint("LoadUser Error: $e");
+      }
 
       if (!mounted) return;
 
-      // إذا لا توجد بيانات
+      // إذا لا توجد بيانات المستخدم
       if (userProvider.currentUser == null) {
         Navigator.pushReplacement(
           context,
@@ -63,11 +67,12 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // الدخول إلى التطبيق
+      // الانتقال إلى الصفحة الرئيسية
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
+
     } catch (e) {
       // 🔥 مهم جداً: منع الشاشة السوداء
       debugPrint("Splash Error: $e");
