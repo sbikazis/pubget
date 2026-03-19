@@ -9,8 +9,7 @@ class DarkTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
 
-
-    //  COLOR SCHEME
+    // COLOR SCHEME
 
     colorScheme: const ColorScheme(
       brightness: Brightness.dark,
@@ -30,8 +29,9 @@ class DarkTheme {
       surface: AppColors.darkSurface,
       onSurface: AppColors.darkTextPrimary,
 
-      background: AppColors.darkBackground,
-      onBackground: AppColors.darkTextPrimary,
+      // ✅ تم التصحيح هنا
+      surfaceContainer: AppColors.darkBackground,
+      onSurfaceVariant: AppColors.darkTextPrimary,
 
       error: AppColors.error,
       onError: Colors.white,
@@ -39,13 +39,11 @@ class DarkTheme {
 
     scaffoldBackgroundColor: AppColors.darkBackground,
 
-
-    //  TEXT THEME
+    // TEXT THEME
 
     textTheme: AppTextTheme.darkTextTheme,
 
-
-    //  APP BAR
+    // APP BAR
 
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.darkSurface,
@@ -59,8 +57,7 @@ class DarkTheme {
       ),
     ),
 
-
-    //  ELEVATED BUTTON
+    // ELEVATED BUTTON
 
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -79,8 +76,7 @@ class DarkTheme {
       ),
     ),
 
-
-    //  OUTLINED BUTTON
+    // OUTLINED BUTTON
 
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -93,8 +89,7 @@ class DarkTheme {
       ),
     ),
 
-
-    //  INPUT FIELDS
+    // INPUT FIELDS
 
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -128,8 +123,7 @@ class DarkTheme {
       ),
     ),
 
-
-    //  CARDS
+    // CARDS
 
     cardTheme: CardThemeData(
       color: AppColors.darkCard,
@@ -142,16 +136,14 @@ class DarkTheme {
       ),
     ),
 
-
-    //  DIVIDER
+    // DIVIDER
 
     dividerTheme: const DividerThemeData(
       color: AppColors.darkBorder,
       thickness: 0.6,
     ),
 
-
-    //  DIALOG
+    // DIALOG
 
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.darkSurface,
@@ -160,33 +152,30 @@ class DarkTheme {
       ),
     ),
 
-
-    //  BOTTOM SHEET
+    // BOTTOM SHEET
 
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: AppColors.darkSurface,
     ),
 
-
-    //  SWITCH
+    // SWITCH (✅ تم التحديث)
 
     switchTheme: SwitchThemeData(
-      thumbColor: MaterialStateProperty.resolveWith((states) {
-        if (states.contains(MaterialState.selected)) {
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
           return AppColors.primary;
         }
         return AppColors.darkBorder;
       }),
-      trackColor: MaterialStateProperty.resolveWith((states) {
-        if (states.contains(MaterialState.selected)) {
-          return AppColors.primary.withOpacity(0.4);
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return AppColors.primary.withValues(alpha: 0.4);
         }
         return AppColors.darkCard;
       }),
     ),
 
-
-    //  CHAT BUBBLE (GLOBAL)
+    // CHAT BUBBLE
 
     extensions: const <ThemeExtension<dynamic>>[
       ChatBubbleTheme(
@@ -197,9 +186,7 @@ class DarkTheme {
   );
 }
 
-
-//  CUSTOM EXTENSION
-
+// CUSTOM EXTENSION
 
 class ChatBubbleTheme extends ThemeExtension<ChatBubbleTheme> {
   final Color myBubbleColor;

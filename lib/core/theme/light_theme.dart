@@ -7,38 +7,37 @@ class LightTheme {
 
   static final ThemeData theme = ThemeData(
     useMaterial3: true,
-
     brightness: Brightness.light,
-
 
     // COLOR SCHEME (Material 3 Core)
 
-
     colorScheme: const ColorScheme(
       brightness: Brightness.light,
+
       primary: AppColors.primary,
       onPrimary: Colors.white,
+
       secondary: AppColors.primaryLight,
       onSecondary: Colors.white,
+
       error: AppColors.error,
       onError: Colors.white,
-      background: AppColors.lightBackground,
-      onBackground: AppColors.lightTextPrimary,
+
+      // ✅ تم التحديث هنا
       surface: AppColors.lightSurface,
       onSurface: AppColors.lightTextPrimary,
+
+      surfaceContainer: AppColors.lightBackground,
+      onSurfaceVariant: AppColors.lightTextPrimary,
     ),
 
     scaffoldBackgroundColor: AppColors.lightBackground,
 
-
     // TEXT THEME
-
 
     textTheme: AppTextTheme.lightTextTheme,
 
-
     // APP BAR
-
 
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.lightSurface,
@@ -55,9 +54,7 @@ class LightTheme {
       ),
     ),
 
-
     // CARD
-
 
     cardTheme: CardThemeData(
       color: AppColors.lightCard,
@@ -70,9 +67,7 @@ class LightTheme {
       ),
     ),
 
-
     // INPUT FIELD
-
 
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -105,9 +100,7 @@ class LightTheme {
       ),
     ),
 
-
     // BUTTONS
-
 
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -133,18 +126,14 @@ class LightTheme {
       ),
     ),
 
-
     // DIVIDER
-
 
     dividerTheme: const DividerThemeData(
       color: AppColors.lightBorder,
       thickness: 0.8,
     ),
 
-
     // DIALOG
-
 
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.lightSurface,
@@ -153,18 +142,14 @@ class LightTheme {
       ),
     ),
 
-
     // BOTTOM SHEET
-
 
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: AppColors.lightSurface,
       surfaceTintColor: Colors.transparent,
     ),
 
-
     // SNACKBAR
-
 
     snackBarTheme: SnackBarThemeData(
       backgroundColor: AppColors.lightCard,
