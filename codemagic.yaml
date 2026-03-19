@@ -5,9 +5,11 @@ workflows:
     environment:
       flutter: stable
     scripts:
+      - name: Clean Flutter
+        script: flutter clean
       - name: Get packages
         script: flutter pub get
       - name: Build APK
-        script: flutter build apk --release
+        script: flutter build apk --target-platform android-arm,android-arm64 --release
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
