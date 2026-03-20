@@ -2,19 +2,12 @@
 <resources>
 
     <style name="LaunchTheme" parent="Theme.SplashScreen">
-
-        <!-- 🔥 الخلفية -->
         <item name="windowSplashScreenBackground">@color/white</item>
-
-        <!-- 🔥 الأيقونة (مهم جدًا) -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash</item>
-
-        <!-- بعد انتهاء السبلش -->
         <item name="postSplashScreenTheme">@style/NormalTheme</item>
-
     </style>
 
-    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <style name="NormalTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
 
