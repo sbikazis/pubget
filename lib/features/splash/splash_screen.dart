@@ -27,7 +27,11 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeApp() async {
     try {
       debugPrint("🔹 Initializing LocalStorage...");
-      await LocalStorageService.instance.init();
+
+      await LocalStorageService.instance
+          .init()
+          .timeout(const Duration(seconds: 5));
+
       debugPrint("✅ LocalStorage initialized");
 
       // تأخير بسيط لإظهار الشعار
@@ -39,9 +43,12 @@ class _SplashScreenState extends State<SplashScreen> {
       final userProvider = context.read<UserProvider>();
 
       debugPrint("🔹 Checking login status...");
+
       if (!authProvider.isLoggedIn || authProvider.user == null) {
         debugPrint("❌ User not logged in, redirecting to LoginScreen");
+
         if (!mounted) return;
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -49,20 +56,27 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // تحميل بيانات المستخدم مع حماية من الأخطاء
+      // تحميل بيانات المستخدم مع حماية من الأخطاء + timeout
       try {
         final userId = authProvider.user!.id;
+
         debugPrint("🔹 Loading user with ID: $userId");
-        await userProvider.loadUser(userId);
+
+        await userProvider
+            .loadUser(userId)
+            .timeout(const Duration(seconds: 5));
+
         debugPrint("✅ User loaded successfully");
+
       } catch (e) {
-        debugPrint("⚠️ LoadUser Error: $e");
+        debugPrint("⚠️ LoadUser Error or Timeout: $e");
       }
 
       if (!mounted) return;
 
       if (userProvider.currentUser == null) {
         debugPrint("❌ User data missing, redirecting to UserInfoScreen");
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const UserInfoScreen()),
@@ -72,6 +86,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // الانتقال إلى الصفحة الرئيسية
       debugPrint("🏠 All set, redirecting to HomeScreen");
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -81,8 +96,9 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint("🔥 Splash Error: $e");
       debugPrint("$st");
 
-      // fallback: الانتقال إلى LoginScreen لضمان عدم ظهور الشاشة السوداء
+      // fallback: لا شاشة سوداء
       if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),

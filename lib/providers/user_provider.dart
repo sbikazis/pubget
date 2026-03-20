@@ -1,3 +1,4 @@
+// lib/providers/user_provider.dart
 import 'package:flutter/material.dart';
 
 import '../models/user_model.dart';
@@ -22,23 +23,27 @@ class UserProvider extends ChangeNotifier {
   // =========================================================
 
   Future<void> loadUser(String userId) async {
-    final data = await _firestoreService.getDocument(
-      path: FirestorePaths.users,
-      docId: userId,
-    );
+    try {
+      // ✅ حماية من تعليق التطبيق مع timeout
+      final data = await _firestoreService
+          .getDocument(
+            path: FirestorePaths.users,
+            docId: userId,
+          )
+          .timeout(const Duration(seconds: 5));
 
-    if (data == null) {
-      _currentUser = null;
+      if (data == null) {
+        _currentUser = null;
+      } else {
+        _currentUser = UserModel.fromMap(data, userId);
+      }
+
       notifyListeners();
-      return;
+    } catch (e) {
+      debugPrint("⚠️ loadUser error: $e");
+      _currentUser = null; // fallback لضمان عدم تعليق الشاشة
+      notifyListeners();
     }
-
-    _currentUser = UserModel.fromMap(
-      data,
-      userId,
-    );
-
-    notifyListeners();
   }
 
   // =========================================================
@@ -112,7 +117,6 @@ class UserProvider extends ChangeNotifier {
         )
         .map((snapshot) {
       final data = snapshot.data();
-
       return UserModel.fromMap(
         data!,
         snapshot.id,

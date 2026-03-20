@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/firebase/auth_service.dart';
 import '../models/user_model.dart';
+import '../core/constants/subscription_type.dart'; // 🔥 مهم
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
@@ -28,7 +29,6 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
 
   bool get isLoggedIn => _user != null;
-
 
   // =========================================================
   // REGISTER
@@ -112,13 +112,32 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // AUTH STATE LISTENER
+  // AUTH STATE LISTENER (🔥 الإصلاح الحقيقي هنا)
   // =========================================================
 
   void listenToAuthState() {
     FirebaseAuth.instance.authStateChanges().listen((firebaseUser) {
       if (firebaseUser == null) {
         _user = null;
+      } else {
+        _user = UserModel(
+          id: firebaseUser.uid,
+          email: firebaseUser.email ?? '',
+          username: '',
+          nickname: null,
+          avatarUrl: '',
+          bio: '',
+          favoriteAnimes: [],
+          age: null,
+          country: null,
+          subscriptionType: SubscriptionType.free,
+          totalRespect: 0,
+          fansCount: 0,
+          isProfileCompleted: false,
+          isBanned: false,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
       }
 
       notifyListeners();

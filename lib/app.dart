@@ -65,14 +65,14 @@ class PubgetApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) => AuthProvider(
             context.read<AuthService>(),
-          ),
+          )..listenToAuthState(), // 🔥 الإصلاح هنا
         ),
 
         ChangeNotifierProvider(
-  create: (context) => UserProvider(
-    firestoreService: context.read<FirestoreService>(),
-  ),
-),
+          create: (context) => UserProvider(
+            firestoreService: context.read<FirestoreService>(),
+          ),
+        ),
 
         ChangeNotifierProvider(
           create: (_) => SettingsProvider()..loadSettings(),
