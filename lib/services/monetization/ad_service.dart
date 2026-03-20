@@ -33,7 +33,7 @@ class AdService {
   required bool isPremium,
 }) async {
   await _localStorage.init();
-  await MobileAds.instance.initialize(); // ✅ تأكد من التهيئة
+
   final lastAdTime = _localStorage.getLastAdTime();
 
   var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
@@ -58,7 +58,7 @@ class AdService {
   required bool isPremium,
 }) async {
   await _localStorage.init();
-  await MobileAds.instance.initialize(); // ✅ تأكد من التهيئة
+
   final lastAdTime = _localStorage.getLastAdTime();
 
   var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);

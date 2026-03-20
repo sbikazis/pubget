@@ -14,7 +14,14 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // تهيئة Firebase
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+    apiKey: 'AIzaSyDPgjnaviwqxz8lGK_o9pjg4zuoB7RrVBw',
+    appId: '1:193460577475:android:2ddc9727c0ca84dbb86e76',
+    messagingSenderId: '193460577475',
+    projectId: 'pubget-817cf',
+       )
+  );
 
   // تهيئة Google Mobile Ads
   await MobileAds.instance.initialize();
