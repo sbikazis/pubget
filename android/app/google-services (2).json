@@ -33,35 +33,6 @@
           ]
         }
       }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:193460577475:android:0887855035c46fd5b86e76",
-        "android_client_info": {
-          "package_name": "com.pytrozis.pubget"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "193460577475-4t7p2srqk3145oaq8ka39tdhjm4a3mdo.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDPgjnaviwqxz8lGK_o9pjg4zuoB7RrVBw"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "193460577475-4t7p2srqk3145oaq8ka39tdhjm4a3mdo.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
     }
   ],
   "configuration_version": "1"
