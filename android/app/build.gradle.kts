@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.pubget"
+    namespace = "com.pytrozis.pubget"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
