@@ -21,7 +21,7 @@ dependencies:
 
   # UI and animations
   flutter_staggered_animations: ^1.1.1
-  font_awesome_flutter: ^10.12.0
+  font_awesome_flutter: ^11.0.0
   cached_network_image: ^3.4.1
 
   #images
