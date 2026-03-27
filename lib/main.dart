@@ -12,7 +12,7 @@ class TestApp extends StatelessWidget {
     return const MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Text("TEST SUCCESS"),
+          child: Text("app work"),
         ),
       ),
     );
