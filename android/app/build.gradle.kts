@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.pytrozis.pubget"
+    namespace = "com.example.pubget"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.pytrozis.pubget"
+        applicationId = "com.example.pubget"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
