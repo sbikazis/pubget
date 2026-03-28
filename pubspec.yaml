@@ -10,41 +10,40 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.9
 
-  #Firebase
-  firebase_auth: ^6.1.4
-  cloud_firestore: ^6.1.2
-  firebase_storage: ^13.0.6
+  # Firebase
+  firebase_core: ^4.6.0
+  firebase_auth: ^6.3.0
+  cloud_firestore: ^6.2.0
+  firebase_storage: ^13.2.0
+  google_sign_in: ^7.2.0
 
-  # State management
+  # State Management
   provider: ^6.1.5+1
 
-  # UI and animations
-  flutter_staggered_animations: ^1.1.1
-  font_awesome_flutter: ^11.0.0
+  # UI & Images
   cached_network_image: ^3.4.1
-
-  #images
   image_picker: ^1.2.1
+  flutter_svg: ^2.2.4
+  google_fonts: ^8.0.2
+  font_awesome_flutter: ^11.0.0
+  flutter_staggered_animations: ^1.1.1
 
-  # In-app purchases
-  in_app_purchase: ^3.2.3
-
-  # Utilities
-  intl: ^0.20.2
-  uuid: ^4.5.3
-  shared_preferences: ^2.5.4
-
-  # Optional (swipe actions)
-  flutter_slidable: ^4.0.3
-
-  # Cupertino icons
-  cupertino_icons: ^1.0.8
-
-  #Api
+  # Networking & API
   http: ^1.6.0
-  #ad
+
+  # Utils
+  intl: ^0.20.2
+  timeago: ^3.7.1
+  shared_preferences: ^2.5.5
+  uuid: ^4.5.3
+
+  # Monetization
   google_mobile_ads: ^7.0.0
+
+  in_app_purchase: ^3.2.3
+  flutter_slidable: ^4.0.3
 
 dev_dependencies:
   flutter_test:
