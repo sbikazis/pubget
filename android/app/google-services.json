@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "452313838148",
+    "project_id": "pubget-aaf27",
+    "storage_bucket": "pubget-aaf27.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452313838148:android:370ebe1944014061c4c211",
+        "android_client_info": {
+          "package_name": "com.example.pubget"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBG9qto-pkq64O3OYkhTtksRfRatLLRgZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452313838148:android:bbce8be0e3599b9ec4c211",
+        "android_client_info": {
+          "package_name": "com.example.pubget_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBG9qto-pkq64O3OYkhTtksRfRatLLRgZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
