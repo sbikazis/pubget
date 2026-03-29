@@ -1,12 +1,10 @@
 import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
-import '../../core/constants/storage_paths.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class StorageService {
-  final FirebaseStorage _storage;
-
-  StorageService({FirebaseStorage? storage})
-      : _storage = storage ?? FirebaseStorage.instance;
+  final String cloudName = "djk89pmj3";
+  final String uploadPreset = "pubgetanimecity";
 
   /// ==============================
   /// INTERNAL GENERIC UPLOAD METHOD
@@ -16,13 +14,29 @@ class StorageService {
     required File file,
     required String path,
   }) async {
-    final ref = _storage.ref().child(path);
+    final url = Uri.parse(
+      "https://api.cloudinary.com/v1_1/djk89pmj3/image/upload",
+    );
 
-    final uploadTask = await ref.putFile(file);
+    final request = http.MultipartRequest("POST", url);
 
-    final downloadUrl = await uploadTask.ref.getDownloadURL();
+    request.fields["upload_preset"] = uploadPreset;
+    request.fields["folder"] = path;
 
-    return downloadUrl;
+    request.files.add(
+      await http.MultipartFile.fromPath("file", file.path),
+    );
+
+    final response = await request.send();
+
+    if (response.statusCode != 200) {
+      throw Exception("Upload failed");
+    }
+
+    final responseData = await response.stream.bytesToString();
+    final jsonData = json.decode(responseData);
+
+    return jsonData["secure_url"];
   }
 
   /// ==============================
@@ -33,7 +47,7 @@ class StorageService {
     required String userId,
     required File file,
   }) async {
-    final path = StoragePaths.userAvatar(userId);
+    final path = "users/$userId/avatar";
 
     return _uploadFile(
       file: file,
@@ -49,7 +63,7 @@ class StorageService {
     required String groupId,
     required File file,
   }) async {
-    final path = StoragePaths.groupImage(groupId);
+    final path = "groups/$groupId/image";
 
     return _uploadFile(
       file: file,
@@ -66,10 +80,7 @@ class StorageService {
     required String userId,
     required File file,
   }) async {
-    final path = StoragePaths.roleplayCharacterImage(
-      groupId,
-      userId,
-    );
+    final path = "groups/$groupId/characters/$userId";
 
     return _uploadFile(
       file: file,
@@ -86,10 +97,7 @@ class StorageService {
     required String messageId,
     required File file,
   }) async {
-    final path = StoragePaths.groupChatMedia(
-      groupId,
-      messageId,
-    );
+    final path = "groups/$groupId/chat/$messageId";
 
     return _uploadFile(
       file: file,
@@ -106,10 +114,7 @@ class StorageService {
     required String messageId,
     required File file,
   }) async {
-    final path = StoragePaths.privateChatMedia(
-      chatId,
-      messageId,
-    );
+    final path = "private_chats/$chatId/$messageId";
 
     return _uploadFile(
       file: file,
@@ -118,11 +123,11 @@ class StorageService {
   }
 
   /// ==============================
-  /// DELETE FILE
+  /// DELETE FILE (اختياري)
   /// ==============================
 
-  Future<void> deleteFile(String path) async {
-    final ref = _storage.ref().child(path);
-    await ref.delete();
+  Future<void> deleteFile(String url) async {
+    // Cloudinary delete يحتاج API Secret (لا تضعه في التطبيق)
+    // لذلك نتركه فارغ أو تنفذه عبر backend مستقبلاً
   }
 }
