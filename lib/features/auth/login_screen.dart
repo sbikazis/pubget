@@ -60,6 +60,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     await authProvider.login(
       email: _emailController.text.trim(),
       password: _passwordController.text,
+      context: context,
     );
 
     if (!mounted) return;
@@ -81,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   void _loginWithGoogle(AuthProvider authProvider) async {
-    await authProvider.signInWithGoogle();
+    await authProvider.signInWithGoogle(context);
 
     if (!mounted) return;
 

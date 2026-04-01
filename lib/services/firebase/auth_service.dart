@@ -16,60 +16,60 @@ class AuthService {
         _firestore = firestore;
 
   // =========================================================
-  // REGISTER
+  // GOOGLE SIGN IN
   // =========================================================
+  Future<UserModel> signInWithGoogle() async {
+    try {
+      final googleProvider = GoogleAuthProvider();
+      final userCredential = await _auth.signInWithProvider(googleProvider);
+      final firebaseUser = userCredential.user;
 
-  Future<UserModel> register({
-    required String email,
-    required String password,
-  }) async {
-    final credential =
-        await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+      if (firebaseUser == null) {
+        throw Exception('فشل تسجيل الدخول عن طريق حساب جوجل / Google sign-in failed');
+      }
 
-    final firebaseUser = credential.user;
+      final existingDoc = await _firestore.getDocument(
+        path: FirestorePaths.users,
+        docId: firebaseUser.uid,
+      );
 
-    if (firebaseUser == null) {
-      throw Exception('فشل التسجيل/Registraction failed');
+      if (existingDoc != null) {
+        final user = UserModel.fromMap(existingDoc, firebaseUser.uid);
+        if (user.isBanned) {
+          await logout();
+          throw Exception('المستخدم محظور / User is banned');
+        }
+        return user;
+      }
+
+      return await _createInitialUserData(firebaseUser);
+    } catch (e) {
+      rethrow;
     }
-
-    return await _createInitialUserData(firebaseUser);
   }
 
   // =========================================================
-  // LOGIN
+  // LOGIN (Email & Password)
   // =========================================================
-
   Future<UserModel> login({
     required String email,
     required String password,
   }) async {
-    final credential =
-        await _auth.signInWithEmailAndPassword(
+    final credential = await _auth.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
 
     final firebaseUser = credential.user;
-
-    if (firebaseUser == null) {
-      throw Exception('فشل تسجيل الدخول / Login failed');
-    }
+    if (firebaseUser == null) throw Exception('فشل تسجيل الدخول / Login failed');
 
     final doc = await _firestore.getDocument(
       path: FirestorePaths.users,
       docId: firebaseUser.uid,
     );
+    if (doc == null) throw Exception('تعذر إيجاد بيانات المستخدم / User data not found');
 
-    if (doc == null) {
-      throw Exception('تعذر  إيجاد بيانات المستخدم / User data not found');
-    }
-
-    final user =
-        UserModel.fromMap(doc, firebaseUser.uid);
-
+    final user = UserModel.fromMap(doc, firebaseUser.uid);
     if (user.isBanned) {
       await logout();
       throw Exception('المستخدم محظور / User is banned');
@@ -79,39 +79,8 @@ class AuthService {
   }
 
   // =========================================================
-  // GOOGLE SIGN IN
-  // =========================================================
-
-  Future<UserModel> signInWithGoogle() async {
-    final googleProvider = GoogleAuthProvider();
-
-    final credential =
-        await _auth.signInWithProvider(googleProvider);
-
-    final firebaseUser = credential.user;
-
-    if (firebaseUser == null) {
-      throw Exception('فشل تسجيل الدخول عن طريق حساب جوجل / Google sign-in failed');
-    }
-
-    final existingDoc =
-        await _firestore.getDocument(
-      path: FirestorePaths.users,
-      docId: firebaseUser.uid,
-    );
-
-    if (existingDoc != null) {
-      return UserModel.fromMap(
-          existingDoc, firebaseUser.uid);
-    }
-
-    return await _createInitialUserData(firebaseUser);
-  }
-
-  // =========================================================
   // LOGOUT
   // =========================================================
-
   Future<void> logout() async {
     await _auth.signOut();
   }
@@ -119,34 +88,24 @@ class AuthService {
   // =========================================================
   // CREATE INITIAL USER DOCUMENT
   // =========================================================
-
-  Future<UserModel> _createInitialUserData(
-    User firebaseUser,
-  ) async {
+  Future<UserModel> _createInitialUserData(User firebaseUser) async {
     final now = DateTime.now();
 
     final user = UserModel(
       id: firebaseUser.uid,
       email: firebaseUser.email ?? '',
-
       username: '',
       nickname: null,
-
-      avatarUrl: '',
+      avatarUrl: firebaseUser.photoURL ?? '',
       bio: '',
       favoriteAnimes: [],
-
       age: null,
       country: null,
-
       subscriptionType: SubscriptionType.free,
-
       totalRespect: 0,
       fansCount: 0,
-
       isProfileCompleted: false,
       isBanned: false,
-
       createdAt: now,
       updatedAt: now,
     );
@@ -156,6 +115,28 @@ class AuthService {
       docId: firebaseUser.uid,
       data: user.toMap(),
     );
+
+    return user;
+  }
+
+  // =========================================================
+  // GET CURRENT USER (AUTO LOGIN)
+  // =========================================================
+  Future<UserModel?> getCurrentUser() async {
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) return null;
+
+    final doc = await _firestore.getDocument(
+      path: FirestorePaths.users,
+      docId: firebaseUser.uid,
+    );
+    if (doc == null) return null;
+
+    final user = UserModel.fromMap(doc, firebaseUser.uid);
+    if (user.isBanned) {
+      await logout();
+      return null;
+    }
 
     return user;
   }

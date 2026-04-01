@@ -103,9 +103,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundImage: user != null && user.avatarUrl.isNotEmpty
                     ? NetworkImage(user.avatarUrl)
                     : null,
-                child: (user == null || user.avatarUrl.isEmpty)
-                    ? const Icon(Icons.person)
-                    : null,
+                child: (user == null || (user.avatarUrl?.isEmpty ?? true))
+                  ? const Icon(Icons.person)
+                  : null,
                 backgroundColor:
                     Theme.of(context).brightness == Brightness.dark
                         ? AppColors.darkCard
@@ -168,7 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('تسجيل الخروج'),
               onTap: () {
                 Navigator.of(context).pop();
-                context.read<AuthProvider>().logout();
+                context.read<AuthProvider>().logout(context);
               },
             ),
           ],
@@ -333,10 +333,17 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Pubget'),
         centerTitle: true,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => Scaffold.of(context).openDrawer(),
-          tooltip: 'القائمة',
+        // التعديل هنا: استخدام Builder لفتح الـ Drawer بشكل صحيح
+        leading: Builder(
+          builder: (BuildContext context) {
+            return IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
+              tooltip: 'القائمة',
+            );
+          },
         ),
         actions: [
           IconButton(

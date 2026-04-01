@@ -8,7 +8,7 @@ import '../services/firebase/firestore_service.dart';
 import '../services/firebase/storage_service.dart';
 
 import '../core/constants/firestore_paths.dart';
-import '../core/constants/limits.dart';
+
 
 class ChatProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -61,18 +61,18 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required String text,
+    String? userAvatar, // ✅ أضفنا هذا ليكون احتياطياً
   }) async {
     if (text.trim().isEmpty) return;
-
-    if (text.length > Limits.maxMessageLength) {
-      throw Exception("Message exceeds max length");
-    }
 
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
       senderName: sender.displayName ?? '',
-      senderAvatar: sender.characterImageUrl ?? '',
+      // ✅ المنطق الجديد: إذا كانت صورة التقمص فارغة، استخدم صورة المستخدم الأساسية
+      senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
+          ? sender.characterImageUrl!
+          : (userAvatar ?? ''), 
       senderRole: sender.role,
       text: text.trim(),
       createdAt: DateTime.now(),
@@ -89,30 +89,41 @@ class ChatProvider extends ChangeNotifier {
   // SEND MEDIA MESSAGE
   // =========================================================
 
+  // =========================================================
+  // SEND MEDIA MESSAGE (UPDATED)
+  // =========================================================
+
   Future<void> sendMediaMessage({
     required String groupId,
     required String messageId,
     required MemberModel sender,
     required File file,
     required String mediaType, // image | video | audio
+    String? userAvatar, // ✅ إضافة هذا البارامتر لحل المشكلة
   }) async {
+    // 1. رفع الملف إلى Storage
     final mediaUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: file,
     );
 
+    // 2. إنشاء كائن الرسالة مع معالجة الصورة الشخصية
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
       senderName: sender.displayName ?? '',
-      senderAvatar: sender.characterImageUrl ?? '',
+      // ✅ إذا لم تكن هناك صورة تقمص، استخدم صورة المستخدم الأساسية
+      senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
+          ? sender.characterImageUrl!
+          : (userAvatar ?? ''),
       senderRole: sender.role,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
       createdAt: DateTime.now(),
     );
 
+    // 3. حفظ الرسالة في Firestore
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,

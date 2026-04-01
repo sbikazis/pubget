@@ -1,4 +1,5 @@
 // lib/features/splash/splash_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -42,12 +43,19 @@ class _SplashScreenState extends State<SplashScreen> {
       final authProvider = context.read<AuthProvider>();
       final userProvider = context.read<UserProvider>();
 
-      debugPrint("🔹 Checking login status...");
+      // ===============================
+      // 🔥 أهم خطوة: تحميل حالة تسجيل الدخول
+      // ===============================
+      debugPrint("🔹 Checking auth state...");
+      await authProvider.checkAuthState();
 
+      if (!mounted) return;
+
+      // ===============================
+      // ❌ المستخدم غير مسجل
+      // ===============================
       if (!authProvider.isLoggedIn || authProvider.user == null) {
-        debugPrint("❌ User not logged in, redirecting to LoginScreen");
-
-        if (!mounted) return;
+        debugPrint("❌ User not logged in → LoginScreen");
 
         Navigator.pushReplacement(
           context,
@@ -56,7 +64,9 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // تحميل بيانات المستخدم مع حماية من الأخطاء + timeout
+      // ===============================
+      // 🔄 تحميل بيانات المستخدم
+      // ===============================
       try {
         final userId = authProvider.user!.id;
 
@@ -69,13 +79,17 @@ class _SplashScreenState extends State<SplashScreen> {
         debugPrint("✅ User loaded successfully");
 
       } catch (e) {
-        debugPrint("⚠️ LoadUser Error or Timeout: $e");
+        debugPrint("⚠️ LoadUser Error: $e");
       }
 
       if (!mounted) return;
 
-      if (userProvider.currentUser == null) {
-        debugPrint("❌ User data missing, redirecting to UserInfoScreen");
+      // ===============================
+      // ❌ الملف غير مكتمل
+      // ===============================
+      if (userProvider.currentUser == null ||
+          !(userProvider.currentUser!.isProfileCompleted)) {
+        debugPrint("❌ Profile incomplete → UserInfoScreen");
 
         Navigator.pushReplacement(
           context,
@@ -84,8 +98,10 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // الانتقال إلى الصفحة الرئيسية
-      debugPrint("🏠 All set, redirecting to HomeScreen");
+      // ===============================
+      // ✅ كل شيء جاهز → Home
+      // ===============================
+      debugPrint("🏠 Redirecting to HomeScreen");
 
       Navigator.pushReplacement(
         context,
@@ -96,7 +112,6 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint("🔥 Splash Error: $e");
       debugPrint("$st");
 
-      // fallback: لا شاشة سوداء
       if (!mounted) return;
 
       Navigator.pushReplacement(

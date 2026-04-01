@@ -132,4 +132,18 @@ class UserProvider extends ChangeNotifier {
     _currentUser = null;
     notifyListeners();
   }
+  // ✅ دالة جديدة لجلب بيانات أي مستخدم بالـ ID
+  Future<UserModel?> getUserById(String userId) async {
+    try {
+      final data = await _firestoreService.getDocument(
+        path: FirestorePaths.users,
+        docId: userId,
+      );
+      if (data == null) return null;
+      return UserModel.fromMap(data, userId);
+    } catch (e) {
+      debugPrint("Error fetching user: $e");
+      return null;
+    }
+  }
 }

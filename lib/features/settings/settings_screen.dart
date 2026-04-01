@@ -100,7 +100,7 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.logout,
               isLoading: auth.isLoading,
               onPressed: () async {
-                await auth.logout();
+                await auth.logout(context);
               },
             ),
           ],

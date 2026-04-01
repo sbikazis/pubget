@@ -43,7 +43,6 @@ class PubgetApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
 
-    // ✅ إنشاء الخدمات مرة واحدة
     final firestore = FirestoreService();
     final storage = StorageService();
     final localStorage = LocalStorageService.instance;
@@ -63,9 +62,16 @@ class PubgetApp extends StatelessWidget {
         // ================= PROVIDERS =================
 
         ChangeNotifierProvider(
-          create: (context) => AuthProvider(
-            context.read<AuthService>(),
-          )..listenToAuthState(), // 🔥 الإصلاح هنا
+          create: (context) {
+            final authProvider = AuthProvider(
+              context.read<AuthService>(),
+            );
+
+            // 🔥 هنا الإصلاح الحقيقي
+            authProvider.listenToAuthState(context);
+
+            return authProvider;
+          },
         ),
 
         ChangeNotifierProvider(

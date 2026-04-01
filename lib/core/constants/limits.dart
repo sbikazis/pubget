@@ -36,7 +36,7 @@ class Limits {
 
   static const int maxGroupNameLength = 30;
   static const int maxGroupDescriptionLength = 300;
-  static const int maxGroupSloganLength = 4; // 3–4 words
+  static const int maxGroupSloganLength = 16; // 3–4 words
 
 
   //  User Profile Limits

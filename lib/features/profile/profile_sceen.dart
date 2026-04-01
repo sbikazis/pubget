@@ -119,7 +119,7 @@ class ProfileScreen extends StatelessWidget {
                             child: Text(
                               user.nickname!,
                               style: const TextStyle(
-                                  fontSize: 14, color: Colors.grey),
+                                  fontSize: 14, color: Colors.black),
                             ),
                           ),
                         const SizedBox(height: 8),

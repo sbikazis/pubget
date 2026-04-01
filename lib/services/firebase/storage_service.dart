@@ -10,10 +10,11 @@ class StorageService {
   /// INTERNAL GENERIC UPLOAD METHOD
   /// ==============================
 
-  Future<String> _uploadFile({
-    required File file,
-    required String path,
-  }) async {
+Future<String> _uploadFile({
+  required File file,
+  required String path,
+}) async {
+  try {
     final url = Uri.parse(
       "https://api.cloudinary.com/v1_1/djk89pmj3/image/upload",
     );
@@ -29,15 +30,23 @@ class StorageService {
 
     final response = await request.send();
 
+    final responseData = await response.stream.bytesToString();
+
+    print("STATUS: ${response.statusCode}");
+    print("RESPONSE: $responseData");
+
     if (response.statusCode != 200) {
-      throw Exception("Upload failed");
+      throw Exception("Upload failed: $responseData");
     }
 
-    final responseData = await response.stream.bytesToString();
     final jsonData = json.decode(responseData);
 
     return jsonData["secure_url"];
+  } catch (e) {
+    print("ERROR: $e");
+    rethrow;
   }
+}
 
   /// ==============================
   /// USER AVATAR
