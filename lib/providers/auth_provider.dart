@@ -1,18 +1,23 @@
+// lib/providers/auth_provider.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';
 
 import '../services/firebase/auth_service.dart';
 import '../models/user_model.dart';
-import 'user_provider.dart';
+import '../providers/user_provider.dart'; // 🔥 مضاف لربط الحالة
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
+  final UserProvider _userProvider; // 🔥 إضافة مرجع للـ UserProvider
 
-  AuthProvider(this._authService);
+  // 🔥 التعديل: استقبال UserProvider وتشغيل المستمع فور الإنشاء
+  AuthProvider(this._authService, this._userProvider) {
+    listenToAuthState();
+  }
 
   UserModel? _user;
-  bool _isLoading = false;
+  // 🔥 التعديل: جعل الحالة الابتدائية true لمنع القفز لصفحة تسجيل الدخول قبل الفحص
+  bool _isLoading = true; 
   String? _error;
 
   UserModel? get user => _user;
@@ -21,30 +26,29 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
 
   // =========================================================
-  // LOGIN
+  // LOGIN 
   // =========================================================
 
   Future<void> login({
     required String email,
     required String password,
-    required BuildContext context,
   }) async {
     try {
       _setLoading(true);
       _error = null;
 
-      final user = await _authService.login(
-        email: email,
-        password: password,
-      );
-
+      final user = await _authService.login(email: email, password: password);
       _user = user;
-
-      // 🔥 تحميل بيانات المستخدم مباشرة
-      await context.read<UserProvider>().loadUser(user.id);
-
+      
+      // 🔥 مزامنة البيانات فور تسجيل الدخول الناجح
+      if (user != null) {
+        await _userProvider.loadUser(user.id);
+      }
+      
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -54,7 +58,7 @@ class AuthProvider extends ChangeNotifier {
   // GOOGLE LOGIN
   // =========================================================
 
-  Future<void> signInWithGoogle(BuildContext context) async {
+  Future<void> signInWithGoogle() async {
     try {
       _setLoading(true);
       _error = null;
@@ -62,11 +66,15 @@ class AuthProvider extends ChangeNotifier {
       final user = await _authService.signInWithGoogle();
       _user = user;
 
-      // 🔥 نفس الفكرة هنا
-      await context.read<UserProvider>().loadUser(user.id);
+      // 🔥 مزامنة البيانات فور تسجيل الدخول الناجح عبر جوجل
+      if (user != null) {
+        await _userProvider.loadUser(user.id);
+      }
 
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -76,56 +84,54 @@ class AuthProvider extends ChangeNotifier {
   // LOGOUT
   // =========================================================
 
-  Future<void> logout(BuildContext context) async {
+  Future<void> logout() async {
     try {
       _setLoading(true);
+      _error = null;
 
       await _authService.logout();
-
       _user = null;
+      
+      // 🔥 تنظيف بيانات المستخدم من الـ UserProvider عند الخروج
+      _userProvider.clearUser();
 
-      // 🔥 تنظيف بيانات المستخدم
-      context.read<UserProvider>().clearUser();
-
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
   }
 
   // =========================================================
-  // AUTH STATE LISTENER (🔥 الإصلاح الحقيقي)
+  // AUTH STATE LISTENER (🔥 التعديل: إضافة المزامنة التلقائية مع UserProvider)
   // =========================================================
 
-  void listenToAuthState(BuildContext context) {
+  void listenToAuthState() {
     FirebaseAuth.instance.authStateChanges().listen((firebaseUser) async {
-
+      _setLoading(true); // ابدأ الفحص عند تغير حالة Firebase
+      
       if (firebaseUser == null) {
         _user = null;
-
-        // 🔥 تنظيف
-        context.read<UserProvider>().clearUser();
-
+        _userProvider.clearUser(); // تنظيف البيانات في حال عدم وجود جلسة
       } else {
         final user = await _authService.getCurrentUser();
         _user = user;
-
+        
+        // 🔥 النقطة الجوهرية: تحميل بيانات المستخدم في الـ UserProvider تلقائياً
         if (user != null) {
-          await context.read<UserProvider>().loadUser(user.id);
+          await _userProvider.loadUser(user.id);
         }
       }
-
-      notifyListeners();
+      
+      _setLoading(false); // انتهى الفحص والمزامنة
     });
   }
 
   // =========================================================
-
-  void _setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
-  }
+  // CHECK AUTH STATE
+  // =========================================================
 
   Future<void> checkAuthState() async {
     try {
@@ -135,10 +141,27 @@ class AuthProvider extends ChangeNotifier {
       final user = await _authService.getCurrentUser();
       _user = user;
 
+      if (user != null) {
+        await _userProvider.loadUser(user.id);
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
       _setLoading(false);
     }
+  }
+
+  // =========================================================
+  // HELPER METHODS
+  // =========================================================
+
+  void _setLoading(bool value) {
+    _isLoading = value;
+    notifyListeners();
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
   }
 }

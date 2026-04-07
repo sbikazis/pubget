@@ -20,19 +20,14 @@ class SettingsScreen extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("الإعدادات"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("الإعدادات"), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-
             // =========================
             //  THEME
             // =========================
-
             _sectionTitle("المظهر"),
 
             const SizedBox(height: 12),
@@ -44,7 +39,6 @@ class SettingsScreen extends StatelessWidget {
             // =========================
             //  PERMISSIONS
             // =========================
-
             _sectionTitle("تمكينات الوصول"),
 
             const SizedBox(height: 12),
@@ -57,9 +51,7 @@ class SettingsScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const PermissionsScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const PermissionsScreen()),
                 );
               },
             ),
@@ -69,7 +61,6 @@ class SettingsScreen extends StatelessWidget {
             // =========================
             //  GUIDE
             // =========================
-
             _sectionTitle("المساعدة"),
 
             const SizedBox(height: 12),
@@ -82,9 +73,7 @@ class SettingsScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const GuideScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const GuideScreen()),
                 );
               },
             ),
@@ -94,13 +83,17 @@ class SettingsScreen extends StatelessWidget {
             // =========================
             //  LOGOUT
             // =========================
-
             AppButton(
               text: "تسجيل الخروج",
               icon: Icons.logout,
               isLoading: auth.isLoading,
               onPressed: () async {
-                await auth.logout(context);
+                await auth.logout();
+                if (context.mounted) {
+                  Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/login', (route) => false);
+                }
               },
             ),
           ],
@@ -141,16 +134,11 @@ class SettingsScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Theme.of(context).dividerColor,
-          ),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.settings,
-              color: AppColors.primary,
-            ),
+            const Icon(Icons.settings, color: AppColors.primary),
 
             const SizedBox(width: 12),
 
@@ -158,23 +146,14 @@ class SettingsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: AppTextTheme.lightTextTheme.bodyLarge,
-                  ),
+                  Text(title, style: AppTextTheme.lightTextTheme.bodyLarge),
                   const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: AppTextTheme.lightTextTheme.bodyMedium,
-                  ),
+                  Text(subtitle, style: AppTextTheme.lightTextTheme.bodyMedium),
                 ],
               ),
             ),
 
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-            ),
+            const Icon(Icons.arrow_forward_ios, size: 16),
           ],
         ),
       ),

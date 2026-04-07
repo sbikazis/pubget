@@ -5,19 +5,23 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/user_provider.dart'; // 🔥 مضاف للمزامنة
+import '../../providers/notifications_provider.dart'; 
+import '../../models/notification_model.dart'; 
 import '../../widgets/loading_widget.dart';
 import '../home/promoted_groups_section.dart';
 import 'package:pubget/features/home/my_group_section.dart';
-import '../../widgets/empty_state_widget.dart';
+
 
 // added imports for direct navigation
 import '../home/search_screen.dart';
 import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+import 'package:pubget/features/profile/profile_sceen.dart'; // تأكد من صحة الإملاء profile_screen
 import '../private_chat/private_chats_list_screen.dart';
-import '../groups/group_details_screen.dart';
+
 import '../settings/settings_screen.dart';
+import 'package:pubget/models/user_model.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -31,6 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late AuthProvider _authProvider;
   bool _initialized = false;
   bool _isRefreshing = false;
+  
+  // التعديل: متغير لمتابعة التبويب المختار
+  int _selectedIndex = 0;
 
   @override
   void didChangeDependencies() {
@@ -38,10 +45,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_initialized) {
       _homeProvider = context.read<HomeProvider>();
       _authProvider = context.read<AuthProvider>();
+      final userProvider = context.read<UserProvider>(); // 🔥 مضاف
 
       final currentUser = _authProvider.user;
       if (currentUser != null) {
         _homeProvider.initialize(currentUser: currentUser);
+        // 🔥 ضمان مزامنة بيانات المستخدم الحالي عند فتح التطبيق
+        userProvider.syncUser(currentUser); 
       }
 
       _initialized = true;
@@ -75,10 +85,16 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
       );
 
-  void _openProfile() => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ProfileScreen()),
-      );
+  // 🔥 التعديل: تمرير userId كاحتياط لضمان تحميل البيانات في ProfileScreen
+  void _openProfile() {
+    final currentUser = context.read<AuthProvider>().user;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProfileScreen(userId: currentUser?.id),
+      ),
+    );
+  }
 
   void _openPrivateChats() => Navigator.push(
         context,
@@ -103,15 +119,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundImage: user != null && user.avatarUrl.isNotEmpty
                     ? NetworkImage(user.avatarUrl)
                     : null,
-                child: (user == null || (user.avatarUrl?.isEmpty ?? true))
-                  ? const Icon(Icons.person)
-                  : null,
                 backgroundColor:
                     Theme.of(context).brightness == Brightness.dark
                         ? AppColors.darkCard
                         : AppColors.lightCard,
+                child: (user == null || user.avatarUrl.isEmpty)
+                  ? const Icon(Icons.person)
+                  : null,
               ),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.primary,
               ),
             ),
@@ -136,10 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('مجموعاتي'),
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SearchScreen()),
-                );
+                setState(() => _selectedIndex = 1); // الانتقال لتبويب مجموعاتي
               },
             ),
             ListTile(
@@ -168,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('تسجيل الخروج'),
               onTap: () {
                 Navigator.of(context).pop();
-                context.read<AuthProvider>().logout(context);
+                context.read<AuthProvider>().logout();
               },
             ),
           ],
@@ -177,145 +190,100 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSuggestedGroupsSection() {
-    final suggested = _homeProvider.promotedGroups;
-    if (suggested.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: EmptyStateWidget(
-          title: 'لا توجد اقتراحات حالياً',
-          subtitle: 'سنقترح مجموعات بناءً على نشاطك لاحقاً.',
-          icon: Icons.lightbulb_outline,
-          onActionPressed: _openSuggested,
-          actionLabel: 'استعرض الاقتراحات',
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text('مقترحات لك',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 140,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            scrollDirection: Axis.horizontal,
-            itemCount: suggested.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final g = suggested[index];
-              return GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => GroupDetailsScreen(groupId: g.id),
-                  ),
-                ),
-                child: Container(
-                  width: 220,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: g.isPromoted
-                            ? AppColors.promotedBorder
-                            : Colors.transparent,
-                        width: g.isPromoted ? 1.4 : 0),
-                  ),
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: g.imageUrl.isNotEmpty
-                              ? Image.network(g.imageUrl,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      Container(color: AppColors.lightCard))
-                              : Container(
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? AppColors.darkCard
-                                      : AppColors.lightCard),
+  // التعديل: واجهة الصفحة الرئيسية الموحدة (التبويب الأول)
+  Widget _buildHomeDiscoveryContent(UserModel? user) {
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user != null && user.username.isNotEmpty
+                              ? 'مرحباً، ${user.username}'
+                              : 'مرحباً بك في Pubget',
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                              child: Text(g.name,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700),
-                                  overflow: TextOverflow.ellipsis)),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(g.type.label,
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Text('اكتشف مجموعات جديدة الآن',
+                            style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                  IconButton(
+                    onPressed: () => _homeProvider.tryShowMorningAd(
+                        isPremium: user?.subscriptionType.name == 'premium'),
+                    icon: const Icon(Icons.campaign_outlined),
+                    tooltip: 'عرض إعلان صباحي',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            // هنا المحرك الأساسي: القائمة المدمجة (مروجة + مقترحة) بالهوية الجديدة
+            const PromotedGroupsSection(),
+            const SizedBox(height: 24),
+          ],
         ),
-        const SizedBox(height: 12),
-      ],
+      ),
     );
   }
 
-  Widget _buildPrivateChatsPreview() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                  child: Text('الدردشات الخاصة',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-              TextButton(
-                onPressed: _openPrivateChats,
-                child: const Text('عرض الكل'),
-              ),
-            ],
-          ),
-          Card(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: const Text('لا توجد محادثات بعد'),
-              subtitle: const Text('ابدأ محادثة خاصة مع أحد الأصدقاء'),
-              trailing: IconButton(
-                icon: const Icon(Icons.chat),
-                onPressed: _openPrivateChats,
-              ),
+  // 🔥 التعديل: Widget مخصص لأيقونة الإشعارات مع التنبيه البصري
+  Widget _buildNotificationIcon(String userId) {
+    final notificationProvider = context.read<NotificationsProvider>();
+    return StreamBuilder<List<NotificationModel>>(
+      stream: notificationProvider.streamNotifications(userId),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data?.where((n) => !n.isRead).length ?? 0;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_none),
+              onPressed: _openNotifications,
+              tooltip: 'الإشعارات',
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
+            if (unreadCount > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    unreadCount > 9 ? '9+' : '$unreadCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -333,14 +301,11 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Pubget'),
         centerTitle: true,
         elevation: 0,
-        // التعديل هنا: استخدام Builder لفتح الـ Drawer بشكل صحيح
         leading: Builder(
           builder: (BuildContext context) {
             return IconButton(
               icon: const Icon(Icons.menu),
-              onPressed: () {
-                Scaffold.of(context).openDrawer();
-              },
+              onPressed: () => Scaffold.of(context).openDrawer(),
               tooltip: 'القائمة',
             );
           },
@@ -351,25 +316,27 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openSearch,
             tooltip: 'بحث',
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: _openNotifications,
-            tooltip: 'الإشعارات',
-          ),
+          // 🔥 التعديل: استبدال الأيقونة الثابتة بالـ Widget التفاعلي الجديد
+          if (user != null)
+            _buildNotificationIcon(user.id)
+          else
+            IconButton(
+              icon: const Icon(Icons.notifications_none),
+              onPressed: _openNotifications,
+              tooltip: 'الإشعارات',
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: GestureDetector(
               onTap: _openProfile,
               child: CircleAvatar(
                 radius: 18,
-                backgroundImage:
-                    user != null && user.avatarUrl.isNotEmpty
-                        ? NetworkImage(user.avatarUrl)
-                        : null,
-                backgroundColor:
-                    Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.darkCard
-                        : AppColors.lightCard,
+                backgroundImage: user != null && user.avatarUrl.isNotEmpty
+                    ? NetworkImage(user.avatarUrl)
+                    : null,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkCard
+                    : AppColors.lightCard,
                 child: (user == null || user.avatarUrl.isEmpty)
                     ? const Icon(Icons.person, size: 18)
                     : null,
@@ -380,78 +347,35 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
-          RefreshIndicator(
-            onRefresh: _refresh,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user != null &&
-                                        user.username.isNotEmpty
-                                    ? 'مرحباً، ${user.username}'
-                                    : 'مرحباً بك في Pubget',
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                  'اكتشف مجموعات جديدة أو ادخل لمجموعاتك',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: () => _homeProvider
-                              .tryShowMorningAd(
-                                  isPremium: user
-                                          ?.subscriptionType.name ==
-                                      'premium'),
-                          icon:
-                              const Icon(Icons.campaign_outlined),
-                          tooltip: 'عرض إعلان صباحي',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const PromotedGroupsSection(),
-                  const SizedBox(height: 12),
-                  _buildSuggestedGroupsSection(),
-                  const SizedBox(height: 8),
-                  _buildPrivateChatsPreview(),
-                  const SizedBox(height: 8),
-                  const MyGroupsSection(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+          IndexedStack(
+            index: _selectedIndex,
+            children: [
+              _buildHomeDiscoveryContent(user), // تبويب 1: اكتشاف (النسخة المحدثة)
+              const MyGroupsSection(showCreatedOnly: true), // تبويب 2: مجموعاتي
+              const MyGroupsSection(showJoinedOnly: true),  // تبويب 3: منضم إليها
+              const PrivateChatsListScreen(),              // تبويب 4: خاص
+            ],
           ),
           if (isLoading || _isRefreshing)
             const Positioned.fill(
               child: ColoredBox(
                 color: Colors.black26,
-                child: Center(
-                    child: LoadingWidget(
-                        message: 'جاري التحميل...')),
+                child: Center(child: LoadingWidget(message: 'جاري التحميل...')),
               ),
             ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'اكتشف'),
+          BottomNavigationBarItem(icon: Icon(Icons.admin_panel_settings), label: 'مجموعاتي'),
+          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'منضم لها'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: 'الخاص'),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(

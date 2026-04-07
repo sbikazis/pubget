@@ -7,10 +7,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/local/local_storage_service.dart';
 
-import '../auth/login_screen.dart';
-import '../auth/user_info_screen.dart';
-import '../home/home_screen.dart';
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -27,109 +23,87 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeApp() async {
     try {
-      debugPrint("🔹 Initializing LocalStorage...");
+      debugPrint("🔹 Splash: Starting Initialization...");
 
+      // 1. تهيئة التخزين المحلي
       await LocalStorageService.instance
           .init()
           .timeout(const Duration(seconds: 5));
-
       debugPrint("✅ LocalStorage initialized");
 
-      // تأخير بسيط لإظهار الشعار
-      await Future.delayed(const Duration(seconds: 1));
+      // تأخير بسيط لإعطاء هيبة لشعار البوابة اليابانية ⛩️
+      await Future.delayed(const Duration(seconds: 2));
 
       if (!mounted) return;
 
       final authProvider = context.read<AuthProvider>();
       final userProvider = context.read<UserProvider>();
 
-      // ===============================
-      // 🔥 أهم خطوة: تحميل حالة تسجيل الدخول
-      // ===============================
-      debugPrint("🔹 Checking auth state...");
+      // 2. التحقق من حالة المستخدم (جلسة العمل)
+      debugPrint("🔹 Splash: Checking auth state...");
       await authProvider.checkAuthState();
 
       if (!mounted) return;
 
-      // ===============================
-      // ❌ المستخدم غير مسجل
-      // ===============================
-      if (!authProvider.isLoggedIn || authProvider.user == null) {
-        debugPrint("❌ User not logged in → LoginScreen");
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-        return;
+      // 3. إذا كان المستخدم مسجلاً، نقوم بتحميل بياناته كاملة قبل الدخول
+      if (authProvider.isLoggedIn && authProvider.user != null) {
+        try {
+          final userId = authProvider.user!.id;
+          debugPrint("🔹 Splash: Pre-loading user data for: $userId");
+          
+          await userProvider
+              .loadUser(userId)
+              .timeout(const Duration(seconds: 5));
+          
+          debugPrint("✅ User data loaded");
+        } catch (e) {
+          debugPrint("⚠️ Splash: LoadUser Error (Non-critical): $e");
+        }
       }
 
-      // ===============================
-      // 🔄 تحميل بيانات المستخدم
-      // ===============================
-      try {
-        final userId = authProvider.user!.id;
-
-        debugPrint("🔹 Loading user with ID: $userId");
-
-        await userProvider
-            .loadUser(userId)
-            .timeout(const Duration(seconds: 5));
-
-        debugPrint("✅ User loaded successfully");
-
-      } catch (e) {
-        debugPrint("⚠️ LoadUser Error: $e");
-      }
-
-      if (!mounted) return;
-
-      // ===============================
-      // ❌ الملف غير مكتمل
-      // ===============================
-      if (userProvider.currentUser == null ||
-          !(userProvider.currentUser!.isProfileCompleted)) {
-        debugPrint("❌ Profile incomplete → UserInfoScreen");
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const UserInfoScreen()),
-        );
-        return;
-      }
-
-      // ===============================
-      // ✅ كل شيء جاهز → Home
-      // ===============================
-      debugPrint("🏠 Redirecting to HomeScreen");
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      // =========================================================
+      // 🔥 ملاحظة هامة: لا يوجد Navigator.push هنا!
+      // بمجرد انتهاء التحميل، الـ AuthProvider سيغير isLoading إلى false.
+      // الـ Consumer في ملف app.dart سيشعر بهذا التغيير ويقوم بتبديل
+      // شاشة الـ Splash بالصفحة المناسبة (Home أو Login) تلقائياً.
+      // =========================================================
+      debugPrint("✅ Splash: Initialization complete.");
 
     } catch (e, st) {
-      debugPrint("🔥 Splash Error: $e");
+      debugPrint("🔥 Splash Critical Error: $e");
       debugPrint("$st");
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      
+      // في حالة الخطأ الكارثي، نجعل التطبيق يتوقف عن التحميل ليقرر app.dart الوجهة
+      if (mounted) {
+        context.read<AuthProvider>().clearError();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // تصميم الواجهة كما وصفته: البوابة اليابانية في المنتصف مع طابع الفخامة
     return Scaffold(
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
         alignment: Alignment.center,
-        child: const Text(
-          "⛩️",
-          style: TextStyle(fontSize: 64),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "⛩️",
+              style: TextStyle(fontSize: 80),
+            ),
+            const SizedBox(height: 20),
+            // مؤشر تحميل هادئ يتماشى مع ألوان التطبيق
+            SizedBox(
+              width: 40,
+              child: LinearProgressIndicator(
+                backgroundColor: Colors.grey.withOpacity(0.2),
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+          ],
         ),
       ),
     );

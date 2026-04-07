@@ -16,7 +16,6 @@ class FirestoreService {
     required Map<String, dynamic> data,
   }) async {
     final docRef = _firestore.collection(path).doc(docId);
-
     await docRef.set(data);
   }
 
@@ -30,7 +29,6 @@ class FirestoreService {
     required Map<String, dynamic> data,
   }) async {
     final docRef = _firestore.collection(path).doc(docId);
-
     await docRef.update(data);
   }
 
@@ -43,7 +41,6 @@ class FirestoreService {
     required String docId,
   }) async {
     final docRef = _firestore.collection(path).doc(docId);
-
     await docRef.delete();
   }
 
@@ -85,7 +82,6 @@ class FirestoreService {
     if (query != null) {
       return query.snapshots();
     }
-
     return _firestore.collection(path).snapshots();
   }
 
@@ -100,7 +96,6 @@ class FirestoreService {
     if (query != null) {
       return query.get();
     }
-
     return _firestore.collection(path).get();
   }
 
@@ -115,8 +110,7 @@ class FirestoreService {
     bool descending = false,
     int? limit,
   }) {
-    Query<Map<String, dynamic>> query =
-        _firestore.collection(path);
+    Query<Map<String, dynamic>> query = _firestore.collection(path);
 
     if (conditions != null) {
       for (final condition in conditions) {
@@ -125,7 +119,9 @@ class FirestoreService {
           isEqualTo: condition.isEqualTo,
           isNotEqualTo: condition.isNotEqualTo,
           isLessThan: condition.isLessThan,
+          isLessThanOrEqualTo: condition.isLessThanOrEqualTo, // 🔥 تم الإضافة
           isGreaterThan: condition.isGreaterThan,
+          isGreaterThanOrEqualTo: condition.isGreaterThanOrEqualTo, // 🔥 تم الإضافة
           arrayContains: condition.arrayContains,
         );
       }
@@ -174,7 +170,9 @@ class QueryCondition {
   final dynamic isEqualTo;
   final dynamic isNotEqualTo;
   final dynamic isLessThan;
+  final dynamic isLessThanOrEqualTo; // 🔥 تم الإضافة
   final dynamic isGreaterThan;
+  final dynamic isGreaterThanOrEqualTo; // 🔥 تم الإضافة
   final dynamic arrayContains;
 
   QueryCondition({
@@ -182,7 +180,9 @@ class QueryCondition {
     this.isEqualTo,
     this.isNotEqualTo,
     this.isLessThan,
+    this.isLessThanOrEqualTo, // 🔥 تم الإضافة
     this.isGreaterThan,
+    this.isGreaterThanOrEqualTo, // 🔥 تم الإضافة
     this.arrayContains,
   });
 }

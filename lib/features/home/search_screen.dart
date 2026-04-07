@@ -36,6 +36,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onSearchChanged(String value) {
     final homeProvider = context.read<HomeProvider>();
+    // 🔥 التعديل: استدعاء setSearchQuery الذي يطلق الآن بحث السيرفر
     homeProvider.setSearchQuery(value);
   }
 
@@ -172,16 +173,25 @@ class _SearchScreenState extends State<SearchScreen> {
     final authProvider = context.watch<AuthProvider>();
 
     final isLoading = homeProvider.isLoading;
+    
+    // 🔥 التعديل: جلب النتائج من القائمة العالمية الجديدة في الـ Provider
     final promoted = homeProvider.filteredPromotedGroups;
     final myGroups = homeProvider.filteredMyGroups;
     final joined = homeProvider.filteredJoinedGroups;
+    final globalResults = homeProvider.globalSearchResults;
 
     final List<GroupModel> results = [];
 
     if (!_showOnlyPromoted) {
-      results.addAll(promoted);
-      results.addAll(myGroups.where((g) => !results.any((r) => r.id == g.id)));
-      results.addAll(joined.where((g) => !results.any((r) => r.id == g.id)));
+      // إذا كان هناك نص بحث، نعطي الأولوية لنتائج السيرفر العالمية
+      if (_searchController.text.isNotEmpty) {
+        results.addAll(globalResults);
+      } else {
+        // الحالة الافتراضية عند عدم وجود بحث (عرض المجموعات المحلية)
+        results.addAll(promoted);
+        results.addAll(myGroups.where((g) => !results.any((r) => r.id == g.id)));
+        results.addAll(joined.where((g) => !results.any((r) => r.id == g.id)));
+      }
     } else {
       results.addAll(promoted);
     }
@@ -258,9 +268,10 @@ class _SearchScreenState extends State<SearchScreen> {
               onChanged: _onSearchChanged,
             ),
             const SizedBox(height: 12),
+            // 🔥 التعديل: isLoading سيظهر الآن بوضوح لأن setSearchQuery أصبحت Async
             if (isLoading)
               const Expanded(
-                child: Center(child: LoadingWidget(message: 'جاري البحث...')),
+                child: Center(child: LoadingWidget(message: 'جاري البحث في السيرفر...')),
               ),
             if (!isLoading)
               Expanded(
@@ -269,7 +280,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         title: 'لم يتم العثور على نتائج',
                         subtitle: _searchController.text.isEmpty
                             ? 'ابحث عن مجموعات حسب الاسم أو المسار أو استعرض المجموعات المروّجة.'
-                            : 'لا توجد مجموعات تطابق بحثك حالياً.',
+                            : 'لا توجد مجموعات تطابق بحثك حالياً في السيرفر.',
                         icon: Icons.search_off,
                         onActionPressed: () {
                           Navigator.push(

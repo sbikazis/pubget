@@ -19,6 +19,19 @@ class UserProvider extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null;
 
   // =========================================================
+  // SYNC USER (🔥 التعديل الجديد للمزامنة السريعة مع Auth)
+  // =========================================================
+  
+  /// تستخدم لتحديث البيانات مباشرة في الـ Provider دون إعادة الطلب من قاعدة البيانات 
+  /// إذا كانت البيانات متوفرة مسبقاً في الـ AuthProvider
+  void syncUser(UserModel? user) {
+    if (user != null) {
+      _currentUser = user;
+      notifyListeners();
+    }
+  }
+
+  // =========================================================
   // LOAD USER
   // =========================================================
 
@@ -132,6 +145,7 @@ class UserProvider extends ChangeNotifier {
     _currentUser = null;
     notifyListeners();
   }
+
   // ✅ دالة جديدة لجلب بيانات أي مستخدم بالـ ID
   Future<UserModel?> getUserById(String userId) async {
     try {

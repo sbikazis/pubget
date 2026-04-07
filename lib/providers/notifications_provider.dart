@@ -42,6 +42,17 @@ class NotificationsProvider extends ChangeNotifier {
     return stream;
   }
 
+  // 🔥 التعديل: دالة مخصصة لمراقبة عدد الإشعارات غير المقروءة فقط
+  // هذا يساعد في تقليل استهلاك البيانات وتحديث الواجهة الرئيسية فوراً
+  Stream<int> getUnreadCountStream(String userId) {
+    final path = FirestorePaths.userNotifications(userId);
+    return _firestore.streamCollection(path: path).map((snapshot) {
+      return snapshot.docs
+          .where((doc) => (doc.data()['isRead'] ?? false) == false)
+          .length;
+    });
+  }
+
   /// Mark single notification as read
   Future<void> markAsRead({
     required String userId,

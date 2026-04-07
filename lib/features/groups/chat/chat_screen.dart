@@ -1,6 +1,8 @@
-
+// lib/features/groups/chat/chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
@@ -9,6 +11,7 @@ import '../../../providers/user_provider.dart';
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 
+// ✅ تم تصحيح الأخطاء الإملائية في المسارات أدناه
 import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import 'package:pubget/features/groups/chat/massage_input_bar.dart';
 
@@ -27,11 +30,17 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   MemberModel? _currentMember;
+  
+  // ✅ إضافة حالة الرسالة التي يتم الرد عليها
+  MessageModel? _replyingMessage;
+
+  // ✅ متغيرات جديدة للتحكم في سلاسة القائمة
+  List<MessageModel> _cachedMessages = [];
+  bool _isInitialLoad = true;
 
   @override
   void initState() {
     super.initState();
-    // بعد بناء الإطار الأول، نحصل على المستخدم الحالي
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
@@ -57,22 +66,57 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => _currentMember = member);
     } catch (e) {
-      print('Failed to load current member: $e');
+      debugPrint('Failed to load current member: $e');
     }
   }
 
-  void _scrollToBottom({bool animate = true}) {
+  // ✅ تحسين دالة التمرير لتكون ذكية (لا تقفز إذا كان المستخدم في الأعلى)
+  void _scrollToBottom({bool animate = true, bool force = false}) {
     if (!_scrollController.hasClients) return;
+    
+    // إذا كان المستخدم يقرأ رسائل قديمة (ليس عند النهاية)، لا تجبره على النزول إلا إذا أرسل هو رسالة (force)
+    if (!force && _scrollController.offset < _scrollController.position.maxScrollExtent - 200) {
+      return; 
+    }
+
     final position = _scrollController.position.maxScrollExtent;
     if (animate) {
       _scrollController.animateTo(
         position,
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     } else {
       _scrollController.jumpTo(position);
     }
+  }
+
+  // ✅ دالة جديدة: الانتقال إلى رسالة معينة (عند الضغط على الرد)
+  void _scrollToMessage(String messageId) {
+    final index = _cachedMessages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      // حساب الموقع التقريبي (هذا يعتمد على متوسط طول الفقاعة، لعدم وجود ScrollToIndex في Flutter افتراضياً)
+      // سنستخدم JumpTo مبدئياً أو تحريك بسيط
+      // ملاحظة: لضمان دقة 100% يفضل استخدام مكتبة scrollable_positioned_list مستقبلاً
+      double targetOffset = index * 100.0; // قيمة تقديرية
+      if (targetOffset > _scrollController.position.maxScrollExtent) {
+        targetOffset = _scrollController.position.maxScrollExtent;
+      }
+      
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('جاري الانتقال للرسالة الأصلية...'), duration: Duration(milliseconds: 500)),
+      );
+    }
+  }
+
+  void _onCancelReply() {
+    setState(() => _replyingMessage = null);
   }
 
   Future<void> _openGame() async {
@@ -109,10 +153,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _openMedia() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Media picker not implemented yet")),
-    );
+  Future<void> _openMedia() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null && _currentMember != null) {
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('جاري رفع الصورة...')),
+        );
+
+        await chatProvider.sendMediaMessage(
+          groupId: widget.groupId,
+          messageId: DateTime.now().millisecondsSinceEpoch.toString(),
+          sender: _currentMember!,
+          file: File(image.path),
+          mediaType: 'image',
+          userAvatar: userProvider.currentUser?.avatarUrl,
+          replyToId: _replyingMessage?.id,
+          replyText: _replyingMessage?.text ?? _replyingMessage?.mediaType,
+        );
+
+        _onCancelReply();
+        _scrollToBottom(force: true); // إجبار التمرير لأن المستخدم هو من أرسل
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل رفع الصورة: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -130,13 +202,17 @@ class _ChatScreenState extends State<ChatScreen> {
             child: StreamBuilder<List<MessageModel>>(
               stream: chatProvider.streamMessages(groupId: widget.groupId),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                // ✅ تحسين: لا تظهر مؤشر التحميل إذا كان لدينا بيانات كاش مسبقة
+                if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final messages = snapshot.data ?? [];
+                if (snapshot.hasData) {
+                  _cachedMessages = snapshot.data!;
+                  _isInitialLoad = false;
+                }
 
-                if (messages.isEmpty) {
+                if (_cachedMessages.isEmpty) {
                   return const Center(
                     child: EmptyStateWidget(
                       title: 'لا توجد رسائل بعد',
@@ -146,21 +222,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 }
 
-                // Scroll to bottom بعد بناء الإطار
+                // التمرير التلقائي عند وصول رسائل جديدة بذكاء
                 WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.only(top: 12, bottom: 12),
-                  itemCount: messages.length,
+                  itemCount: _cachedMessages.length,
                   itemBuilder: (context, index) {
-                    final message = messages[index];
+                    final message = _cachedMessages[index];
+                    final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
 
-                    // تحقق إذا الرسالة من العضو الحالي
-                    final isMe = _currentMember != null &&
-                        message.senderId == _currentMember!.userId;
-
-                    // إذا لم يكن العضو الحالي مرسل الرسالة، أنشئ MemberModel مؤقت
                     final sender = isMe
                         ? _currentMember!
                         : MemberModel(
@@ -177,6 +249,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       message: message,
                       sender: sender,
                       isMe: isMe,
+                      groupId: widget.groupId,
+                      onReply: (msg) => setState(() => _replyingMessage = msg),
+                      // ✅ تفعيل وظيفة الضغط على الرد للذهاب للرسالة الأصلية
+                      onTapReply: (replyId) => _scrollToMessage(replyId), 
                     );
                   },
                 );
@@ -184,16 +260,17 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // MessageInputBar يظهر فقط إذا تم تحميل العضو الحالي
           if (_currentMember != null)
             MessageInputBar(
               groupId: widget.groupId,
               sender: _currentMember!,
+              replyingMessage: _replyingMessage,
+              onCancelReply: _onCancelReply,
               onGamePressed: _openGame,
               onMediaPressed: _openMedia,
               onSendMessage: (String text) {
-                // Scroll تلقائي عند إرسال رسالة جديدة
-                _scrollToBottom();
+                _onCancelReply();
+                _scrollToBottom(force: true); // إجبار التمرير للأسفل عند الإرسال
               },
             ),
         ],

@@ -1,3 +1,5 @@
+// lib/core/logic/respect_logic.dart
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ مضاف للتعامل مع الـ Batch
 import '../../models/respect_model.dart';
 import '../../models/fan_model.dart';
 import '../../services/firebase/firestore_service.dart';
@@ -16,20 +18,21 @@ class RespectLogic {
   Future<bool> rateUser({
     required String fromUserId,
     required String toUserId,
-    required int respectValue,
+    required int respectValue, // ✅ التأكد من استخدام int بشكل صارم
   }) async {
-    //  Prevent self rating
+    // Prevent self rating
     if (fromUserId == toUserId) {
-      throw Exception('لا يمكن أن تمنح نفسك نقاط إحترام .');
+      throw Exception('لا يمكن أن تمنح نفسك نقاط إحترام.');
     }
 
-    //  Validate range
-    if (respectValue < Limits.respectMin ||
-        respectValue > Limits.respectMax) {
-      throw Exception('نقاط الإحترام يجب أن تكون بين 0 و 7 .');
+    // Validate range
+    // ✅ التأكد من تحويل القيم إلى int عند المقارنة لضمان الدقة
+    if (respectValue < Limits.respectMin.toInt() ||
+        respectValue > Limits.respectMax.toInt()) {
+      throw Exception('نقاط الإحترام يجب أن تكون بين ${Limits.respectMin} و ${Limits.respectMax}.');
     }
 
-    //  Check if already rated
+    // Check if already rated
     final existing = await _firestore.getDocument(
       path: FirestorePaths.respects,
       docId: _respectDocId(fromUserId, toUserId),
@@ -39,28 +42,56 @@ class RespectLogic {
       return false; // Already rated
     }
 
-    //  Create RespectModel
+    // ✅ التعديل الجوهري: استخدام Batch لضمان تحديث العدادات في ملف المستخدم
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+
+    // 1. إنشاء سجل الاحترام
+    final respectId = _respectDocId(fromUserId, toUserId);
     final respect = RespectModel(
-      id: _respectDocId(fromUserId, toUserId),
+      id: respectId,
       fromUserId: fromUserId,
       toUserId: toUserId,
       value: respectValue,
       createdAt: DateTime.now(),
     );
+    
+    final respectRef = firestore.collection(FirestorePaths.respects).doc(respectId);
+    batch.set(respectRef, respect.toMap());
 
-    await _firestore.createDocument(
-      path: FirestorePaths.respects,
-      docId: respect.id,
-      data: respect.toMap(),
-    );
+    // 2. تحديث إجمالي نقاط الاحترام في وثيقة المستخدم المستهدف
+    final userRef = firestore.collection(FirestorePaths.users).doc(toUserId);
+    batch.update(userRef, {
+      'totalRespect': FieldValue.increment(respectValue),
+    });
 
-    //  Create Fan if threshold passed
-    if (respectValue > Limits.fanThreshold) {
-      await _createFanIfNeeded(
-        fanUserId: fromUserId,
-        targetUserId: toUserId,
-      );
+    // 3. التحقق من عتبة المعجبين (Fan Threshold)
+    if (respectValue > Limits.fanThreshold.toInt()) {
+      final fanDocId = '${fromUserId}_$toUserId';
+      
+      // ملاحظة: نتحقق من وجود الفان قبل الإضافة لتجنب التكرار في العداد
+      final fanDoc = await _firestore.getDocument(path: FirestorePaths.fans, docId: fanDocId);
+      
+      if (fanDoc == null) {
+        final fan = FanModel(
+          id: fanDocId,
+          fanUserId: fromUserId,
+          targetUserId: toUserId,
+          createdAt: DateTime.now(),
+        );
+        
+        final fanRef = firestore.collection(FirestorePaths.fans).doc(fanDocId);
+        batch.set(fanRef, fan.toMap());
+
+        // زيادة عداد المعجبين في وثيقة المستخدم
+        batch.update(userRef, {
+          'fansCount': FieldValue.increment(1),
+        });
+      }
     }
+
+    // تنفيذ جميع العمليات معاً
+    await batch.commit();
 
     return true;
   }
@@ -70,6 +101,8 @@ class RespectLogic {
     return '${from}_$to';
   }
 
+  // ✅ تم دمج منطق إنشاء الفان داخل الـ Batch في الدالة الأساسية لضمان التزامن الذري (Atomicity)
+  // وبقاء هذه الدالة هنا للرجوع إليها أو لاستخدامات أخرى مستقبلاً إذا لزم الأمر
   Future<void> _createFanIfNeeded({
     required String fanUserId,
     required String targetUserId,

@@ -68,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     await authProvider.login(
       email: _emailController.text.trim(),
       password: _passwordController.text,
-      context: context
+      
     );
 
     if (!mounted) return;
@@ -90,7 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   }
 
   void _registerWithGoogle(AuthProvider authProvider) async {
-    await authProvider.signInWithGoogle(context);
+    await authProvider.signInWithGoogle();
 
     if (!mounted) return;
 

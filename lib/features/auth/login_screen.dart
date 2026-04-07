@@ -56,48 +56,46 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     });
   }
 
+  // =========================================================
+  // LOGIN LOGIC (تمت إزالة context من البارامترات)
+  // =========================================================
   void _login(AuthProvider authProvider) async {
     await authProvider.login(
       email: _emailController.text.trim(),
       password: _passwordController.text,
-      context: context,
     );
 
-    if (!mounted) return;
+    if (!mounted) return; // صمام الأمان لمنع الخطأ الأحمر
 
     if (authProvider.user != null) {
-      // إذا بيانات المستخدم غير مكتملة
-      if (authProvider.user!.nickname == null || authProvider.user!.nickname!.isEmpty) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const UserInfoScreen()),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
+      final nextScreen = (authProvider.user!.nickname == null || authProvider.user!.nickname!.isEmpty)
+          ? const UserInfoScreen()
+          : const HomeScreen();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => nextScreen),
+      );
     }
   }
 
+  // =========================================================
+  // GOOGLE LOGIN LOGIC (الإصلاح الجذري للكارثة)
+  // =========================================================
   void _loginWithGoogle(AuthProvider authProvider) async {
-    await authProvider.signInWithGoogle(context);
+    await authProvider.signInWithGoogle();
 
-    if (!mounted) return;
+    if (!mounted) return; // صمام الأمان: التأكد أن الشاشة لا تزال نشطة
 
     if (authProvider.user != null) {
-      if (authProvider.user!.nickname == null || authProvider.user!.nickname!.isEmpty) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const UserInfoScreen()),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
+      final nextScreen = (authProvider.user!.nickname == null || authProvider.user!.nickname!.isEmpty)
+          ? const UserInfoScreen()
+          : const HomeScreen();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => nextScreen),
+      );
     }
   }
 
@@ -107,8 +105,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        // 🔥 الإصلاح: إضافة SingleChildScrollView لمنع الـ Overflow عند ظهور الكيبورد
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -123,13 +122,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               const SizedBox(height: 24),
 
               // العبارات التحفيزية
-              FadeTransition(
-                opacity: _fadeAnim,
-                child: Text(
-                  slogans[_currentSloganIndex],
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
+              SizedBox(
+                height: 30, // تثبيت الارتفاع لمنع القفز عند تغيير النص
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Text(
+                    slogans[_currentSloganIndex],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
@@ -197,11 +200,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
               // رسالة خطأ
               if (authProvider.error != null)
-                Text(
-                  authProvider.error!,
-                  style: const TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    authProvider.error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
 

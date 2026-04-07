@@ -1,3 +1,4 @@
+// lib/models/member_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/roles.dart';
 
@@ -14,6 +15,7 @@ class MemberModel {
   final String? characterReason;
 
   final String? invitedByUserId;
+  final String? inviterDisplayName; // ✅ مضاف: لتسهيل عرض اسم الداعي للشوغو
 
   final DateTime joinedAt;
 
@@ -27,6 +29,7 @@ class MemberModel {
     this.characterImageUrl,
     this.characterReason,
     this.invitedByUserId,
+    this.inviterDisplayName, // ✅ مضاف للـ Constructor
   });
 
   // -------------------------
@@ -45,6 +48,7 @@ class MemberModel {
       characterImageUrl: map['characterImageUrl'] as String?,
       characterReason: map['characterReason'] as String?,
       invitedByUserId: map['invitedByUserId'] as String?,
+      inviterDisplayName: map['inviterDisplayName'] as String?, // ✅ مضاف من الخريطة
       joinedAt: (map['joinedAt'] as Timestamp).toDate(),
     );
   }
@@ -63,6 +67,7 @@ class MemberModel {
       'characterImageUrl': characterImageUrl,
       'characterReason': characterReason,
       'invitedByUserId': invitedByUserId,
+      'inviterDisplayName': inviterDisplayName, // ✅ مضاف لل Firestore
       'joinedAt': Timestamp.fromDate(joinedAt),
     };
   }
@@ -78,6 +83,7 @@ class MemberModel {
     String? characterImageUrl,
     String? characterReason,
     String? invitedByUserId,
+    String? inviterDisplayName, // ✅ مضاف للنسخ
     DateTime? joinedAt,
   }) {
     return MemberModel(
@@ -92,6 +98,8 @@ class MemberModel {
           characterReason ?? this.characterReason,
       invitedByUserId:
           invitedByUserId ?? this.invitedByUserId,
+      inviterDisplayName:
+          inviterDisplayName ?? this.inviterDisplayName, // ✅ مضاف للنسخ
       joinedAt: joinedAt ?? this.joinedAt,
     );
   }

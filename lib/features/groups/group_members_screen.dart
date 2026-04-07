@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
+import '../../providers/user_provider.dart'; // مضاف لجلب المستخدم الحالي
 import '../../core/constants/roles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
@@ -11,69 +12,72 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
 import '../../core/logic/role_assignment_logic.dart';
+import '../../widgets/role_selector_sheet.dart'; // ✅ استيراد الملف الجديد
 
 class GroupMembersScreen extends StatelessWidget {
   final String groupId;
 
   const GroupMembersScreen({Key? key, required this.groupId}) : super(key: key);
 
-  void _showMemberActions(BuildContext context, MemberModel member) {
+  // ✅ الدالة الجديدة التي تستخدم الـ Sheet الفخم للترقية
+  void _showPromotionSheet(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
+    final groupProvider = context.read<GroupProvider>();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => RoleSelectorSheet(
+        allMembers: allMembers,
+        targetMember: target,
+        onRoleSelected: (newRole) async {
+          Navigator.pop(context); // إغلاق الـ Sheet
+          
+          final result = RoleAssignmentLogic.promote(
+            actor: actor,
+            target: target,
+            newRole: newRole,
+            allMembers: allMembers,
+          );
+
+          if (result.isAllowed && result.updatedMember != null) {
+            await groupProvider.addMember(
+              member: result.updatedMember!,
+              adminId: actor.userId, 
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('تمت ترقية ${target.displayName} إلى ${newRole.label}')),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(result.message ?? 'فشل التعديل')),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  void _showMemberActions(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
     final groupProvider = context.read<GroupProvider>();
 
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => SafeArea(
         child: Wrap(
           children: [
-            ListTile(
-              leading: const Icon(Icons.upgrade),
-              title: const Text('ترقية العضو'),
-              onTap: () async {
-                Navigator.pop(context);
-                final members = await groupProvider.getMembers(groupId: groupId);
-
-                // مثال: ترقية إلى Sensei إذا متاح
-                final result = RoleAssignmentLogic.promote(
-                  actor: members.firstWhere((m) => m.role == Roles.founder),
-                  target: member,
-                  newRole: Roles.sensei,
-                  allMembers: members,
-                );
-
-                if (result.isAllowed && result.updatedMember != null) {
-                  await groupProvider.addMember(member: result.updatedMember!);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تمت الترقية بنجاح')),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(result.message ?? 'فشل الترقية')),
-                  );
-                }
-              },
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text('إدارة العضو: ${target.displayName}', 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             ListTile(
-              leading: const Icon(Icons.arrow_downward),
-              title: const Text('إرجاع إلى عضو'),
-              onTap: () async {
+              leading: const Icon(Icons.manage_accounts, color: AppColors.primary),
+              title: const Text('تعديل الرتبة (ترقية/تخفيض)'),
+              onTap: () {
                 Navigator.pop(context);
-                final members = await groupProvider.getMembers(groupId: groupId);
-
-                final result = RoleAssignmentLogic.demote(
-                  actor: members.firstWhere((m) => m.role == Roles.founder),
-                  target: member,
-                );
-
-                if (result.isAllowed && result.updatedMember != null) {
-                  await groupProvider.addMember(member: result.updatedMember!);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تمت الإرجاع بنجاح')),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(result.message ?? 'فشل الإرجاع')),
-                  );
-                }
+                _showPromotionSheet(context, actor, target, allMembers);
               },
             ),
             ListTile(
@@ -85,7 +89,7 @@ class GroupMembersScreen extends StatelessWidget {
                   context: context,
                   builder: (_) => AppDialog(
                     title: 'تأكيد الإزالة',
-                    content: 'هل تريد إزالة هذا العضو من المجموعة؟',
+                    content: 'هل تريد إزالة ${target.displayName} من المجموعة؟',
                     confirmText: 'إزالة',
                     onConfirm: () => Navigator.pop(context, true),
                     cancelText: 'إلغاء',
@@ -96,10 +100,11 @@ class GroupMembersScreen extends StatelessWidget {
                 if (confirmed == true) {
                   await groupProvider.removeMember(
                     groupId: groupId,
-                    userId: member.userId,
+                    userId: target.userId,
+                    adminId: actor.userId,
                   );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تمت الإزالة')),
+                    const SnackBar(content: Text('تمت الإزالة بنجاح')),
                   );
                 }
               },
@@ -113,6 +118,7 @@ class GroupMembersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groupProvider = context.read<GroupProvider>();
+    final currentUserId = context.read<UserProvider>().currentUser?.id;
 
     return Scaffold(
       appBar: AppBar(
@@ -134,7 +140,14 @@ class GroupMembersScreen extends StatelessWidget {
             );
           }
 
-          final members = snapshot.data!;
+          // ترتيب الأعضاء حسب الهرمية
+          final members = RoleAssignmentLogic.sortByHierarchy(snapshot.data!);
+          
+          // تحديد عضوية المستخدم الحالي للتحقق من صلاحياته
+          final currentUserMember = members.firstWhere(
+            (m) => m.userId == currentUserId,
+            orElse: () => MemberModel(userId: '', groupId: '', role: Roles.member, joinedAt: DateTime.now()),
+          );
 
           return ListView.separated(
             padding: const EdgeInsets.all(12),
@@ -145,8 +158,15 @@ class GroupMembersScreen extends StatelessWidget {
               final isDark = Theme.of(context).brightness == Brightness.dark;
 
               final roleColor = RoleColors.getColor(member.role, isDark: isDark);
-              final badgeBg =
-                  RoleColors.getBadgeBackground(member.role, isDark: isDark);
+              final badgeBg = RoleColors.getBadgeBackground(member.role, isDark: isDark);
+
+              // التحقق من إمكانية الإدارة
+              final canManage = RoleAssignmentLogic.canModify(
+                actorRole: currentUserMember.role, 
+                targetRole: member.role,
+                actorId: currentUserMember.userId,
+                targetId: member.userId,
+              );
 
               return ListTile(
                 leading: CircleAvatar(
@@ -169,29 +189,34 @@ class GroupMembersScreen extends StatelessWidget {
                     ? Text(
                         member.characterName!,
                         style: TextStyle(
-                          color: isDark
-                              ? AppColors.textSecondaryDark
-                              : AppColors.textSecondaryLight,
+                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
                         ),
                       )
                     : null,
-                trailing: Text(
-                  member.role.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: roleColor,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      member.role.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: roleColor,
+                      ),
+                    ),
+                    if (canManage) 
+                      const Icon(Icons.chevron_left, size: 16, color: Colors.grey),
+                  ],
                 ),
                 onTap: () {
+                  if (member.userId == currentUserId) return;
 
-                  // فقط المؤسس لا يمكن تعديله
-                  if (member.role == Roles.founder) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('لا يمكن تعديل المؤسس')),
-                  );
+                  if (canManage) {
+                    _showMemberActions(context, currentUserMember, member, members);
                   } else {
-                      _showMemberActions(context, member);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('لا تملك صلاحية تعديل هذا العضو')),
+                    );
                   }
                 },
               );

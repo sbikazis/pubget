@@ -42,14 +42,12 @@ class PubgetApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     final firestore = FirestoreService();
     final storage = StorageService();
     final localStorage = LocalStorageService.instance;
 
     return MultiProvider(
       providers: [
-
         // ================= SERVICES =================
         Provider(create: (_) => firestore),
         Provider(create: (_) => storage),
@@ -60,24 +58,24 @@ class PubgetApp extends StatelessWidget {
         Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
 
         // ================= PROVIDERS =================
-
-        ChangeNotifierProvider(
-          create: (context) {
-            final authProvider = AuthProvider(
-              context.read<AuthService>(),
-            );
-
-            // 🔥 هنا الإصلاح الحقيقي
-            authProvider.listenToAuthState(context);
-
-            return authProvider;
-          },
-        ),
-
+        
+        // ⚠️ التعديل: تم نقل UserProvider للأعلى لأن AuthProvider يحتاجه الآن
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             firestoreService: context.read<FirestoreService>(),
           ),
+        ),
+
+        ChangeNotifierProvider(
+          create: (context) {
+            // ✅ الإصلاح: تمرير المعامل الثاني (UserProvider) المطلوب
+            final authProvider = AuthProvider(
+              context.read<AuthService>(),
+              context.read<UserProvider>(), 
+            );
+            // ملاحظة: listenToAuthState يتم استدعاؤه تلقائياً داخل الـ Constructor الآن
+            return authProvider;
+          },
         ),
 
         ChangeNotifierProvider(
@@ -133,18 +131,19 @@ class PubgetApp extends StatelessWidget {
         ),
       ],
 
-      child: Consumer<SettingsProvider>(
-        builder: (context, settings, child) {
+      child: Consumer2<SettingsProvider, AuthProvider>(
+        builder: (context, settings, auth, child) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode:
-                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            initialRoute: '/',
+            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+
+            // 🔥 الإصلاح الجوهري للموجه الذكي (Home Logic)
+            home: _getHome(auth),
+
             routes: {
-              '/': (_) => const SplashScreen(),
               '/login': (_) => const LoginScreen(),
               '/register': (_) => const RegisterScreen(),
               '/user_info': (_) => const UserInfoScreen(),
@@ -155,5 +154,26 @@ class PubgetApp extends StatelessWidget {
         },
       ),
     );
+  }
+
+  /// دالة الموجه لتبسيط كود MaterialApp
+  Widget _getHome(AuthProvider auth) {
+    // 1. إذا كان التطبيق لا يزال يتحقق من حالة Firebase
+    if (auth.isLoading) {
+      return const SplashScreen();
+    }
+
+    // 2. إذا وجد مستخدم مسجل الدخول
+    if (auth.isLoggedIn) {
+      // نتحقق هل أكمل بيانات الملف الشخصي أم لا
+      if (auth.user?.isProfileCompleted == true) {
+        return const HomeScreen();
+      } else {
+        return const UserInfoScreen();
+      }
+    }
+
+    // 3. إذا لم يوجد تسجيل دخول، نذهب لصفحة الدخول
+    return const LoginScreen();
   }
 }

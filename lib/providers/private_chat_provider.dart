@@ -1,5 +1,7 @@
+// lib/providers/private_chat_provider.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/message_model.dart';
 import '../models/user_model.dart';
@@ -163,13 +165,13 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GET USER PRIVATE CHATS
+  // GET USER PRIVATE CHATS (تم التعديل ليشمل الطرفين A و B)
   // =========================================================
 
   Future<List<Map<String, dynamic>>> getUserChats({
     required String userId,
   }) async {
-    final query = _firestore.buildQuery(
+    final queryA = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
       conditions: [
         QueryCondition(
@@ -179,17 +181,88 @@ class PrivateChatProvider extends ChangeNotifier {
       ],
     );
 
-    final snapshot = await _firestore.getCollection(
+    final queryB = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
-      query: query,
+      conditions: [
+        QueryCondition(
+          field: "userB",
+          isEqualTo: userId,
+        ),
+      ],
     );
 
-    return snapshot.docs.map((doc) {
+    final results = await Future.wait([
+      _firestore.getCollection(path: FirestorePaths.privateChats, query: queryA),
+      _firestore.getCollection(path: FirestorePaths.privateChats, query: queryB),
+    ]);
+
+    final allDocs = [...results[0].docs, ...results[1].docs];
+
+    return allDocs.map((doc) {
       return {
         "chatId": doc.id,
         ...doc.data(),
       };
     }).toList();
+  }
+
+  // =========================================================
+  // ✅ الدالة المضافة: GET AVAILABLE PRIVATE CHATS (المعجبين + المحادثات)
+  // =========================================================
+
+  Future<List<Map<String, dynamic>>> getAvailablePrivateChats({
+    required String userId,
+  }) async {
+    // 1. جلب قائمة الأشخاص الذين أنا "معجب" بهم (أعطيتهم > 5 نقاط)
+    final fanOfQuery = _firestore.buildQuery(
+      path: FirestorePaths.fans,
+      conditions: [
+        QueryCondition(field: "fanUserId", isEqualTo: userId),
+      ],
+    );
+
+    // 2. جلب قائمة الأشخاص "المعجبين" بي (أعطوني > 5 نقاط)
+    final myFansQuery = _firestore.buildQuery(
+      path: FirestorePaths.fans,
+      conditions: [
+        QueryCondition(field: "targetUserId", isEqualTo: userId),
+      ],
+    );
+
+    final results = await Future.wait([
+      _firestore.getCollection(path: FirestorePaths.fans, query: fanOfQuery),
+      _firestore.getCollection(path: FirestorePaths.fans, query: myFansQuery),
+      getUserChats(userId: userId), // جلب المحادثات الموجودة فعلياً
+    ]);
+
+    final fanOfDocs = (results[0] as QuerySnapshot).docs; 
+  final myFansDocs = (results[1] as QuerySnapshot).docs;
+    final existingChats = results[2] as List<Map<String, dynamic>>;
+
+    // استخراج معرفات المستخدمين (الأطراف الأخرى)
+    final Set<String> eligibleUserIds = {};
+    for (var doc in fanOfDocs) {
+  // نقوم بتحويل البيانات إلى Map أولاً ثم نصل للحقل
+  final data = doc.data() as Map<String, dynamic>;
+  eligibleUserIds.add(data['targetUserId']);
+}
+
+    for (var doc in myFansDocs) {
+  final data = doc.data() as Map<String, dynamic>;
+  eligibleUserIds.add(data['fanUserId']);
+}
+
+    // دمج البيانات: نعرض فقط المحادثات مع الأشخاص المؤهلين (شرط الـ 5 نقاط)
+    final List<Map<String, dynamic>> availableChats = [];
+    
+    for (var chat in existingChats) {
+      final otherUserId = chat['userA'] == userId ? chat['userB'] : chat['userA'];
+      if (eligibleUserIds.contains(otherUserId)) {
+        availableChats.add(chat);
+      }
+    }
+
+    return availableChats;
   }
 
   // =========================================================
@@ -223,21 +296,22 @@ class PrivateChatProvider extends ChangeNotifier {
         )
         .toList();
   }
+
   // =========================================================
-// GET USER BY ID
-// =========================================================
+  // GET USER BY ID
+  // =========================================================
 
-Future<UserModel?> getUserById(String userId) async {
-  final data = await _firestore.getDocument(
-    path: FirestorePaths.users,
-    docId: userId,
-  );
+  Future<UserModel?> getUserById(String userId) async {
+    final data = await _firestore.getDocument(
+      path: FirestorePaths.users,
+      docId: userId,
+    );
 
-  if (data == null) return null;
+    if (data == null) return null;
 
-  return UserModel.fromMap(
-    data,
-    userId,
-  );
-}
+    return UserModel.fromMap(
+      data,
+      userId,
+    );
+  }
 }

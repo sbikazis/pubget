@@ -39,6 +39,11 @@ class _CreateRoleplayGroupScreenState
 
   File? _pickedImage;
   bool _isLoading = false;
+  
+  // متغيرات للتحقق من الأنمي
+  bool _isVerifyingAnime = false;
+  String? _confirmedAnimeName;
+  String? _confirmedAnimeImage;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -47,6 +52,40 @@ class _CreateRoleplayGroupScreenState
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
     setState(() => _pickedImage = File(file.path));
+  }
+
+  // دالة التحقق من الأنمي قبل الإنشاء
+  Future<void> _verifyAnime() async {
+    final name = _animeCtrl.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء كتابة اسم الأنمي للبحث')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isVerifyingAnime = true;
+      _confirmedAnimeName = null;
+    });
+
+    try {
+      final result = await AnimeApiService.searchAnime(name);
+      if (result != null) {
+        setState(() {
+          _confirmedAnimeName = result['title'];
+          _confirmedAnimeImage = result['image_url'];
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم العثور على هذا الأنمي، تأكد من الاسم بالإنجليزية')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Anime verification error: $e");
+    } finally {
+      setState(() => _isVerifyingAnime = false);
+    }
   }
 
   String? _validateName(String? v) {
@@ -61,7 +100,6 @@ class _CreateRoleplayGroupScreenState
   String? _validateSlogan(String? v) {
     final s = v?.trim() ?? '';
     if (s.isEmpty) return 'الرجاء إدخال شعار قصير للمجموعة';
-    // شعار محدود بكلمات، لكن هنا نتحقق من الطول فقط
     if (s.split(' ').length > Limits.maxGroupSloganLength) {
       return 'الشعار يجب أن يكون ${Limits.maxGroupSloganLength} كلمات أو أقل';
     }
@@ -80,6 +118,7 @@ class _CreateRoleplayGroupScreenState
   String? _validateAnime(String? v) {
     final s = v?.trim() ?? '';
     if (s.isEmpty) return 'الرجاء إدخال اسم الأنمي المرتبط بالمجموعة';
+    if (_confirmedAnimeName == null) return 'يجب التحقق من اسم الأنمي أولاً';
     return null;
   }
 
@@ -97,25 +136,19 @@ class _CreateRoleplayGroupScreenState
 
     if (!_formKey.currentState!.validate()) return;
 
+    if (_confirmedAnimeName == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء الضغط على زر التحقق للتأكد من اسم الأنمي')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // 1) تحقق من وجود الأنمي عبر API
-      final animeName = _animeCtrl.text.trim();
-      final animeExists = await AnimeApiService.validateAnimeExists(animeName);
-      if (!animeExists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الأنمي غير موجود في قاعدة البيانات')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // 2) جهز بيانات المجموعة
       final groupId = DateTime.now().millisecondsSinceEpoch.toString();
       String imageUrl = '';
 
-      // 3) ارفع الصورة إن وجدت
       if (_pickedImage != null) {
         final storage = StorageService();
         imageUrl = await storage.uploadGroupImage(
@@ -131,16 +164,16 @@ class _CreateRoleplayGroupScreenState
         slogan: _sloganCtrl.text.trim(),
         imageUrl: imageUrl,
         type: GroupType.roleplay,
-        animeName: animeName,
+        // نستخدم الاسم الرسمي الذي أكده الـ API لضمان دقة البحث عن الشخصيات لاحقاً
+        animeName: _confirmedAnimeName!, 
         founderId: currentUser.id,
         membersCount: 1,
-        maxMembers: Limits.maxMembersFree, // يمكن تعديل حسب الاشتراك لاحقاً
+        maxMembers: Limits.maxMembersFree,
         isPromoted: false,
         promotionExpiresAt: null,
         createdAt: DateTime.now(),
       );
 
-      // 4) أنشئ عضو المؤسس
       final founderMember = MemberModel(
         userId: currentUser.id,
         groupId: groupId,
@@ -149,15 +182,11 @@ class _CreateRoleplayGroupScreenState
         displayName: currentUser.username,
       );
 
-      // 5) أنشئ المجموعة عبر Provider
       await groupProvider.createGroup(
         group: group,
         founderMember: founderMember,
       );
 
-      // 6) احتياطي: احجز شخصية افتراضياً إن أردت (لا نفعل هنا لأن الحجز يتم عند انضمام الأعضاء)
-
-      // 7) إرجاع المستخدم مع رسالة نجاح
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم إنشاء المجموعة بنجاح')),
@@ -200,7 +229,6 @@ class _CreateRoleplayGroupScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // صورة المجموعة
                   GestureDetector(
                     onTap: _pickImage,
                     child: Center(
@@ -215,10 +243,7 @@ class _CreateRoleplayGroupScreenState
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: AppColors.lightBorder),
                               ),
-                              child: const Icon(
-                                Icons.camera_alt_outlined,
-                                size: 40,
-                              ),
+                              child: const Icon(Icons.camera_alt_outlined, size: 40),
                             )
                           : ClipRRect(
                               borderRadius: BorderRadius.circular(12),
@@ -259,23 +284,87 @@ class _CreateRoleplayGroupScreenState
                     validator: _validateDescription,
                   ),
                   const SizedBox(height: 12),
-                  AppTextField(
-                    controller: _animeCtrl,
-                    label: 'اسم الأنمي (مطلوب)',
-                    placeholder: 'مثال: Naruto',
-                    prefixIcon: Icons.movie,
-                    validator: _validateAnime,
+                  
+                  // حقل الأنمي مع زر التحقق
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: AppTextField(
+                          controller: _animeCtrl,
+                          label: 'اسم الأنمي (بالإنجليزية)',
+                          placeholder: 'مثال: Naruto',
+                          prefixIcon: Icons.movie,
+                          validator: _validateAnime,
+                          onChanged: (_) {
+                            if (_confirmedAnimeName != null) {
+                              setState(() => _confirmedAnimeName = null);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: SizedBox(
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: _isVerifyingAnime ? null : _verifyAnime,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: _isVerifyingAnime 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('تحقق'),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
+
+                  // عرض نتيجة التحقق
+                  if (_confirmedAnimeName != null)
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.green.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (_confirmedAnimeImage != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(_confirmedAnimeImage!, width: 50, height: 70, fit: BoxFit.cover),
+                            ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('تم تأكيد الأنمي:', style: TextStyle(fontSize: 12, color: Colors.green)),
+                                Text(_confirmedAnimeName!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.check_circle, color: Colors.green),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 24),
                   AppButton(
                     text: 'إنشاء المجموعة',
                     onPressed: _isLoading ? null : _createGroup,
                     isLoading: _isLoading,
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    'ملاحظة: سيتم التحقق من وجود الأنمي عبر قاعدة بيانات عامة. تأكد من كتابة الاسم بشكل صحيح.',
-                    style: theme.textTheme.bodyMedium,
+                  const Text(
+                    'ملاحظة: يجب كتابة اسم الأنمي بالإنجليزية والتحقق منه لضمان قبول الشخصيات لاحقاً.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 40),

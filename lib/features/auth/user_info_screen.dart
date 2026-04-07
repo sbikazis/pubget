@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/limits.dart';
-
 import '../../core/utils/validators.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/app_textfield.dart';
@@ -16,6 +15,8 @@ import '../../widgets/loading_widget.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 
+// استيراد صفحة الشروط للتوجيه إليها
+import 'terms_screen.dart'; 
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({Key? key}) : super(key: key);
@@ -72,8 +73,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
     });
   }
 
-
-
   Future<void> _submit() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final profileProvider = Provider.of<ProfileProvider>(context, listen: false);
@@ -91,7 +90,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // 1) Upload avatar if picked
+      // 1) رفع الصورة إذا تم اختيارها
       if (_pickedImage != null) {
         await profileProvider.updateAvatar(
           userId: currentUser.id,
@@ -99,7 +98,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
         );
       }
 
-      // 2) Update profile fields
+      // 2) تحديث بيانات الملف الشخصي
       final username = _usernameController.text.trim();
       final nickname = _nicknameController.text.trim().isEmpty ? null : _nicknameController.text.trim();
       final bio = _bioController.text.trim();
@@ -116,15 +115,20 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
         country: country,
       );
 
-      // Mark profile completed flag (update directly)
+      // تحديد أن الملف الشخصي قد اكتمل
       await profileProvider.markProfileCompleted(userId: currentUser.id);
+      
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم حفظ الملف الشخصي بنجاح')),
       );
 
-      Navigator.of(context).pop(); // or navigate to home
+      // 🔥 التعديل: الانتقال لصفحة الشروط بدلاً من pop
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const TermsScreen()),
+      );
+
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -144,7 +148,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
     final currentUser = authProvider.user;
 
-    // Pre-fill if user exists and fields empty
     if (currentUser != null && _usernameController.text.isEmpty) {
       _usernameController.text = currentUser.username;
       _nicknameController.text = currentUser.nickname ?? '';
@@ -169,7 +172,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Avatar
                   Center(
                     child: Column(
                       children: [
@@ -197,8 +199,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Username
                   AppTextField(
                     label: 'الإسم',
                     placeholder: 'أدخل اسم المستخدم',
@@ -208,8 +208,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     maxLength: Limits.maxUsernameLength,
                   ),
                   const SizedBox(height: 12),
-
-                  // Nickname
                   AppTextField(
                     label: 'اللقب (اختياري)',
                     placeholder: 'لقبك داخل المجتمع',
@@ -219,8 +217,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     maxLength: Limits.maxNicknameLength,
                   ),
                   const SizedBox(height: 12),
-
-                  // Bio
                   AppTextField(
                     label: 'نبذة عنك (بايو)',
                     placeholder: 'اكتب شيئاً عن نفسك',
@@ -231,8 +227,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     prefixIcon: Icons.info_outline,
                   ),
                   const SizedBox(height: 12),
-
-                  // Favorite Animes
                   Text(
                     'الأنميات المفضلة',
                     style: TextStyle(
@@ -260,8 +254,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Age & Country Row
                   Row(
                     children: [
                       Expanded(
@@ -274,33 +266,21 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildCountryDropdown(),
-                      ),
+                      Expanded(child: _buildCountryDropdown()),
                     ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // Continue Button
+                  const SizedBox(height: 30),
                   AppButton(
                     text: 'متابعة',
                     onPressed: _isSaving ? null : _submit,
                     isLoading: _isSaving || profileProvider.isLoading,
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Skip / Later
-                  TextButton(
-                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('ليس الآن'),
-                  ),
+                  // 🔥 تم إزالة زر "ليس الآن" لضمان التزام المستخدم
                 ],
               ),
             ),
           ),
-
-          // Global loading overlay when profileProvider.isLoading or saving
           if (_isSaving || profileProvider.isLoading)
             const Positioned.fill(
               child: ColoredBox(
@@ -317,19 +297,8 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
 
   Widget _buildCountryDropdown() {
     final countries = <String>[
-      'المغرب',
-      'الجزائر',
-      'تونس',
-      'مصر',
-      'السعودية',
-      'الإمارات',
-      'لبنان',
-      'سوريا',
-      'الأردن',
-      'تركيا',
-      'اليابان',
-      'الولايات المتحدة',
-      'أخرى',
+      'المغرب', 'الجزائر', 'تونس', 'مصر', 'السعودية', 'الإمارات',
+      'لبنان', 'سوريا', 'الأردن', 'تركيا', 'اليابان', 'الولايات المتحدة', 'أخرى',
     ];
 
     return Column(
@@ -345,10 +314,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
         DropdownButtonFormField<String>(
           value: _selectedCountry,
           items: countries
-              .map((c) => DropdownMenuItem(
-                    value: c,
-                    child: Text(c),
-                  ))
+              .map((c) => DropdownMenuItem(value: c, child: Text(c)))
               .toList(),
           onChanged: (v) => setState(() => _selectedCountry = v),
           decoration: const InputDecoration(
@@ -361,7 +327,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
 
   Future<void> _showAddAnimeDialog() async {
     _animeController.clear();
-
     await showDialog(
       context: context,
       builder: (context) {
@@ -379,9 +344,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text('إلغاء'),
             ),
             TextButton(

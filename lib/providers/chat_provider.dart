@@ -9,7 +9,6 @@ import '../services/firebase/storage_service.dart';
 
 import '../core/constants/firestore_paths.dart';
 
-
 class ChatProvider extends ChangeNotifier {
   final FirestoreService _firestore;
   final StorageService _storage;
@@ -29,10 +28,11 @@ class ChatProvider extends ChangeNotifier {
   }) {
     final path = FirestorePaths.groupMessages(groupId);
 
+    // ✅ ضمان الترتيب التصاعدي (القديم فوق والجديد تحت) بشكل مستقر
     final query = _firestore.buildQuery(
       path: path,
       orderBy: 'createdAt',
-      descending: false,
+      descending: false, 
     );
 
     return _firestore
@@ -53,7 +53,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE
+  // SEND TEXT MESSAGE (UPDATED WITH REPLY)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -61,7 +61,9 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required String text,
-    String? userAvatar, // ✅ أضفنا هذا ليكون احتياطياً
+    String? userAvatar,
+    String? replyToId,    // ✅ إضافة بارامتر الرد
+    String? replyText,    // ✅ إضافة نص الرد
   }) async {
     if (text.trim().isEmpty) return;
 
@@ -69,12 +71,13 @@ class ChatProvider extends ChangeNotifier {
       id: messageId,
       senderId: sender.userId,
       senderName: sender.displayName ?? '',
-      // ✅ المنطق الجديد: إذا كانت صورة التقمص فارغة، استخدم صورة المستخدم الأساسية
       senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
           ? sender.characterImageUrl!
           : (userAvatar ?? ''), 
       senderRole: sender.role,
       text: text.trim(),
+      replyToId: replyToId, // ✅ إسناد الرد
+      replyText: replyText, // ✅ إسناد نص الرد
       createdAt: DateTime.now(),
     );
 
@@ -86,11 +89,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE
-  // =========================================================
-
-  // =========================================================
-  // SEND MEDIA MESSAGE (UPDATED)
+  // SEND MEDIA MESSAGE (UPDATED WITH REPLY)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -98,8 +97,10 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required File file,
-    required String mediaType, // image | video | audio
-    String? userAvatar, // ✅ إضافة هذا البارامتر لحل المشكلة
+    required String mediaType, 
+    String? userAvatar,
+    String? replyToId,    // ✅ إضافة بارامتر الرد للميديا
+    String? replyText,    // ✅ إضافة نص الرد للميديا
   }) async {
     // 1. رفع الملف إلى Storage
     final mediaUrl = await _storage.uploadGroupChatMedia(
@@ -108,18 +109,19 @@ class ChatProvider extends ChangeNotifier {
       file: file,
     );
 
-    // 2. إنشاء كائن الرسالة مع معالجة الصورة الشخصية
+    // 2. إنشاء كائن الرسالة
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
       senderName: sender.displayName ?? '',
-      // ✅ إذا لم تكن هناك صورة تقمص، استخدم صورة المستخدم الأساسية
       senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
+      replyToId: replyToId, // ✅ إسناد الرد
+      replyText: replyText, // ✅ إسناد نص الرد
       createdAt: DateTime.now(),
     );
 
@@ -128,6 +130,39 @@ class ChatProvider extends ChangeNotifier {
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
+    );
+  }
+
+  // =========================================================
+  // TOGGLE REACTION (NEW)
+  // =========================================================
+
+  Future<void> toggleReaction({
+    required String groupId,
+    required String messageId,
+    required String userId,
+    required String emoji,
+  }) async {
+    final path = FirestorePaths.groupMessages(groupId);
+    
+    // الحصول على بيانات الرسالة الحالية
+    final doc = await _firestore.getDocument(path: path, docId: messageId);
+    if (doc == null) return;
+
+    final message = MessageModel.fromMap(messageId, doc);
+    Map<String, String> updatedReactions = Map.from(message.reactions ?? {});
+
+    // إذا كان المستخدم قد وضع نفس الإيموجي سابقاً، نقوم بإزالته (Toggle)
+    if (updatedReactions[userId] == emoji) {
+      updatedReactions.remove(userId);
+    } else {
+      updatedReactions[userId] = emoji;
+    }
+
+    await _firestore.updateDocument(
+      path: path,
+      docId: messageId,
+      data: {'reactions': updatedReactions},
     );
   }
 

@@ -8,7 +8,6 @@ import '../../models/user_model.dart';
 import '../../providers/private_chat_provider.dart';
 import '../../providers/user_provider.dart';
 
-import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 
@@ -52,19 +51,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
     if (text.isEmpty) return;
 
-    final userProvider =
-        Provider.of<UserProvider>(context, listen: false);
-
-    final privateChatProvider =
-        Provider.of<PrivateChatProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final privateChatProvider = Provider.of<PrivateChatProvider>(
+      context,
+      listen: false,
+    );
 
     final currentUser = userProvider.currentUser;
-
     if (currentUser == null) return;
 
-    setState(() {
-      _sending = true;
-    });
+    setState(() => _sending = true);
 
     try {
       await privateChatProvider.sendTextMessage(
@@ -75,31 +71,22 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       );
 
       _controller.clear();
-
       _scrollToBottom();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Failed to send message"),
-        ),
+        const SnackBar(content: Text("Failed to send message")),
       );
     }
 
-    setState(() {
-      _sending = false;
-    });
+    setState(() => _sending = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
-
-    final currentUser = userProvider.currentUser;
+    final currentUser = context.watch<UserProvider>().currentUser;
 
     if (currentUser == null) {
-      return const Scaffold(
-        body: LoadingWidget(),
-      );
+      return const Scaffold(body: LoadingWidget());
     }
 
     return Scaffold(
@@ -109,8 +96,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundImage:
-                  NetworkImage(widget.otherUser.avatarUrl),
+              backgroundImage: NetworkImage(widget.otherUser.avatarUrl),
             ),
             const SizedBox(width: 10),
             Text(widget.otherUser.username),
@@ -126,46 +112,37 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             child: Consumer<PrivateChatProvider>(
               builder: (context, provider, _) {
                 return StreamBuilder<List<MessageModel>>(
-                  stream: provider.streamMessages(
-                    chatId: widget.chatId,
-                  ),
+                  stream: provider.streamMessages(chatId: widget.chatId),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState ==
-                        ConnectionState.waiting) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
                       return const LoadingWidget();
                     }
 
-                    if (!snapshot.hasData ||
-                        snapshot.data!.isEmpty) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return const EmptyStateWidget(
                         title: "No messages yet",
-                        subtitle:
-                            "Start the conversation now",
+                        subtitle: "Start the conversation now",
                         icon: Icons.chat_bubble_outline,
                       );
                     }
 
                     final messages = snapshot.data!;
 
-                    WidgetsBinding.instance
-                        .addPostFrameCallback(
-                            (_) => _scrollToBottom());
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _scrollToBottom(),
+                    );
 
                     return ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 10),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final message = messages[index];
 
-                        final isMe =
-                            message.senderId ==
-                                currentUser.id;
+                        final isMe = message.senderId == currentUser.id;
 
-                        return MessageBubble(
+                        return _buildSimpleBubble(
                           message: message,
-                          sender: null as dynamic,
                           isMe: isMe,
                         );
                       },
@@ -180,17 +157,14 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           /// INPUT BAR
           /// ===============================
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: Theme.of(context).brightness ==
-                      Brightness.dark
+              color: Theme.of(context).brightness == Brightness.dark
                   ? AppColors.darkSurface
                   : AppColors.lightSurface,
               border: Border(
                 top: BorderSide(
-                  color: Theme.of(context).brightness ==
-                          Brightness.dark
+                  color: Theme.of(context).brightness == Brightness.dark
                       ? AppColors.darkBorder
                       : AppColors.lightBorder,
                 ),
@@ -204,27 +178,21 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     decoration: InputDecoration(
                       hintText: "Write a message...",
                       filled: true,
-                      fillColor: Theme.of(context)
-                                  .brightness ==
-                              Brightness.dark
+                      fillColor: Theme.of(context).brightness == Brightness.dark
                           ? AppColors.darkCard
                           : AppColors.lightCard,
-                      contentPadding:
-                          const EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(22),
+                        borderRadius: BorderRadius.circular(22),
                         borderSide: BorderSide.none,
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(width: 8),
-
                 Container(
                   decoration: const BoxDecoration(
                     color: AppColors.primary,
@@ -235,19 +203,57 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child:
-                                CircularProgressIndicator(
+                            child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.send,
-                            color: Colors.white),
-                    onPressed:
-                        _sending ? null : _sendMessage,
+                        : const Icon(Icons.send, color: Colors.white),
+                    onPressed: _sending ? null : _sendMessage,
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ✅ Bubble بسيط خاص بالـ private chat
+  Widget _buildSimpleBubble({
+    required MessageModel message,
+    required bool isMe,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final bubbleColor = isMe
+        ? AppColors.primary
+        : (isDark ? AppColors.darkCard : AppColors.lightCard);
+
+    final textColor = isMe
+        ? Colors.white
+        : (isDark ? Colors.white : Colors.black);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
+            constraints: const BoxConstraints(maxWidth: 250),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              message.text ?? "",
+              style: TextStyle(color: textColor),
             ),
           ),
         ],

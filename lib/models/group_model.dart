@@ -42,7 +42,7 @@ class GroupModel {
   factory GroupModel.fromMap(String id, Map<String, dynamic> map) {
     return GroupModel(
       id: id,
-      name: map['name'] ?? '',
+      name: map['name'] ?? 'بدون اسم',
       description: map['description'] ?? '',
       slogan: map['slogan'] ?? '',
       imageUrl: map['imageUrl'] ?? '',
@@ -55,7 +55,10 @@ class GroupModel {
       promotionExpiresAt: map['promotionExpiresAt'] != null
           ? (map['promotionExpiresAt'] as Timestamp).toDate()
           : null,
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
+      // ✅ تعديل أمان: التحقق من وجود التاريخ لتجنب الشاشة البيضاء
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 

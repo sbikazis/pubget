@@ -1,8 +1,6 @@
 class FirestorePaths {
 
-  //  ROOT COLLECTIONS
-
-
+  // ROOT COLLECTIONS
   static const String users = 'users';
   static const String groups = 'groups';
   static const String privateChats = 'privateChats';
@@ -10,12 +8,17 @@ class FirestorePaths {
   static const String fans = 'fans';
   static const String promotions = 'promotions';
 
-
-  //  GROUP SUBCOLLECTIONS
-
-
+  // GROUP SUBCOLLECTIONS
   static String groupMembers(String groupId) =>
       '$groups/$groupId/members';
+
+  // 🔥 التعديل: مسار طلبات الانضمام للمجموعة (يراه الشوغو)
+  static String groupJoinRequests(String groupId) =>
+      '$groups/$groupId/requests';
+
+  // 🔥 التعديل: مسار طلب محدد لمستخدم معين داخل مجموعة (للتحقق السريع)
+  static String groupJoinRequestDoc(String groupId, String userId) =>
+      '$groups/$groupId/requests/$userId';
 
   static String groupInvites(String groupId) =>
       '$groups/$groupId/invites';
@@ -30,23 +33,19 @@ class FirestorePaths {
       '$groups/$groupId/characters';
 
 
-  //  USER SUBCOLLECTIONS
-
-
+  // USER SUBCOLLECTIONS
+  
+  // ✅ مسار الإشعارات موجود بالفعل لديك، سنستخدمه لإرسال "تم قبولك" أو "لديك طلب جديد"
   static String userNotifications(String userId) =>
       '$users/$userId/notifications';
 
 
-  //  PRIVATE CHAT SUBCOLLECTIONS
-
-
+  // PRIVATE CHAT SUBCOLLECTIONS
   static String privateMessages(String chatId) =>
       '$privateChats/$chatId/messages';
 
 
-  //  DOCUMENT PATH HELPERS
-
-
+  // DOCUMENT PATH HELPERS
   static String userDoc(String userId) =>
       '$users/$userId';
 

@@ -1,3 +1,4 @@
+// lib/core/logic/role_assignment_logic.dart
 import '../../models/member_model.dart';
 import '../constants/roles.dart';
 
@@ -30,70 +31,84 @@ class RoleAssignmentResult {
 class RoleAssignmentLogic {
   RoleAssignmentLogic._();
 
-
+  // =========================================================
   // Assign Founder (on group creation)
-
+  // =========================================================
   static MemberModel createFounder({
     required MemberModel member,
   }) {
     return member.copyWith(role: Roles.founder);
   }
 
-
-  // Check if actor can modify target
-
+  // =========================================================
+  // Check if actor can modify target (UI & Logic Helper)
+  // =========================================================
   static bool canModify({
     required Roles actorRole,
     required Roles targetRole,
+    String? actorId,
+    String? targetId,
   }) {
-    // Founder can modify anyone except another founder
-    if (actorRole == Roles.founder &&
-        targetRole != Roles.founder) {
+    // 1. لا يمكن لأي شخص تعديل رتبته بنفسه (حتى المؤسس)
+    if (actorId != null && targetId != null && actorId == targetId) {
+      return false;
+    }
+
+    // 2. المؤسس (الشوغون) يمكنه تعديل الجميع ما عدا مؤسس آخر (إن وجد)
+    if (actorRole == Roles.founder && targetRole != Roles.founder) {
       return true;
     }
 
-    // Cannot modify someone equal or higher
-    if (!actorRole.isHigherThan(targetRole)) {
+    // 3. الرتب الأخرى: لا يمكن تعديل شخص يمتلك رتبة مساوية أو أعلى
+    // يجب أن يكون المستوى (rankLevel) للـ actor أعلى من الـ target
+    if (actorRole.rankLevel <= targetRole.rankLevel) {
+      return false;
+    }
+
+    // 4. قاعدة إضافية: الرتب العادية (Member) لا تملك صلاحية التعديل أبداً
+    if (actorRole == Roles.member) {
       return false;
     }
 
     return true;
   }
 
-
+  // =========================================================
   // Promote Member
-
+  // =========================================================
   static RoleAssignmentResult promote({
     required MemberModel actor,
     required MemberModel target,
     required Roles newRole,
     required List<MemberModel> allMembers,
   }) {
-    //  Cannot change founder
+    // منع تعديل المؤسس
     if (target.role == Roles.founder) {
       return RoleAssignmentResult.denied(
-        "لا يمكن تعديل رتبة المؤسس.",
+        "لا يمكن تعديل رتبة الشوغون (المؤسس).",
       );
     }
 
-    //  Permission check
+    // التحقق من صلاحية القائم بالفعل (Actor)
     if (!canModify(
       actorRole: actor.role,
       targetRole: target.role,
+      actorId: actor.userId,
+      targetId: target.userId,
     )) {
       return RoleAssignmentResult.denied(
-        "لا تملك صلاحية تعديل هذه الرتبة.",
+        "لا تملك الصلاحية الكافية لتعديل هذا العضو.",
       );
     }
 
-    //  Cannot assign founder manually
+    // لا يمكن تعيين مؤسس جديد يدوياً
     if (newRole == Roles.founder) {
       return RoleAssignmentResult.denied(
-        "لا يمكن تعيين مؤسس جديد.",
+        "لا يمكن تعيين شوغون إضافي للمجموعة.",
       );
     }
 
-    //  Check limited role capacity
+    // التحقق من السعة القصوى للرتبة الجديدة (Limited Roles)
     if (newRole.isLimited) {
       final currentCount = allMembers
           .where((m) => m.role == newRole)
@@ -101,38 +116,40 @@ class RoleAssignmentLogic {
 
       if (currentCount >= (newRole.maxCount ?? 0)) {
         return RoleAssignmentResult.denied(
-          "تم الوصول إلى الحد الأقصى لهذه الرتبة.",
+          "تم الوصول للحد الأقصى لعدد أعضاء رتبة ${newRole.label}.",
         );
       }
     }
 
     final updated = target.copyWith(role: newRole);
-
     return RoleAssignmentResult.allowed(updated);
   }
 
-
+  // =========================================================
   // Demote Member
-
+  // =========================================================
   static RoleAssignmentResult demote({
     required MemberModel actor,
     required MemberModel target,
   }) {
     if (target.role == Roles.founder) {
       return RoleAssignmentResult.denied(
-        "لا يمكن تخفيض رتبة المؤسس.",
+        "لا يمكن تخفيض رتبة الشوغون.",
       );
     }
 
     if (!canModify(
       actorRole: actor.role,
       targetRole: target.role,
+      actorId: actor.userId,
+      targetId: target.userId,
     )) {
       return RoleAssignmentResult.denied(
-        "لا تملك صلاحية تخفيض هذه الرتبة.",
+        "لا تملك صلاحية تخفيض رتبة هذا العضو.",
       );
     }
 
+    // إرجاع الرتبة إلى عضو عادي
     final updated = target.copyWith(
       role: Roles.member,
     );
@@ -140,16 +157,15 @@ class RoleAssignmentLogic {
     return RoleAssignmentResult.allowed(updated);
   }
 
-
-  // Get Members by Hierarchy
-
-  static List<MemberModel> sortByHierarchy(
-      List<MemberModel> members) {
+  // =========================================================
+  // Get Members by Hierarchy (Sorting)
+  // =========================================================
+  static List<MemberModel> sortByHierarchy(List<MemberModel> members) {
     final sorted = [...members];
 
     sorted.sort((a, b) {
-      return b.role.rankLevel
-          .compareTo(a.role.rankLevel);
+      // ترتيب تنازلي بناءً على قوة الرتبة
+      return b.role.rankLevel.compareTo(a.role.rankLevel);
     });
 
     return sorted;

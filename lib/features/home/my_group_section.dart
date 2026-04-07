@@ -12,12 +12,19 @@ import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../groups/group_details_screen.dart';
-import '../home/search_screen.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+
 import '../groups/create_group_screen.dart';
 
 class MyGroupsSection extends StatefulWidget {
-  const MyGroupsSection({Key? key}) : super(key: key);
+  // التعديل: إضافة متحكمات لعرض نوع محدد من المجموعات
+  final bool showCreatedOnly;
+  final bool showJoinedOnly;
+
+  const MyGroupsSection({
+    Key? key,
+    this.showCreatedOnly = false,
+    this.showJoinedOnly = false,
+  }) : super(key: key);
 
   @override
   State<MyGroupsSection> createState() => _MyGroupsSectionState();
@@ -195,112 +202,65 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
   @override
   Widget build(BuildContext context) {
     final homeProvider = context.watch<HomeProvider>();
-    final authProvider = context.watch<AuthProvider>();
+    // تم الإبقاء على استدعاء authProvider للحفاظ على منطق الكود الأصلي
+    context.watch<AuthProvider>(); 
 
     final isLoading = homeProvider.isLoading;
     final myGroups = homeProvider.filteredMyGroups;
     final joinedGroups = homeProvider.filteredJoinedGroups;
 
-    return Padding(
+    // تم إزالة الـ Row العلوي (البحث والبروفايل) لأنه مدمج الآن في HomeScreen
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'مجموعاتي',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SearchScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.search),
-                tooltip: 'بحث',
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ProfileScreen(),
-                    ),
-                  );
-                },
-                icon: CircleAvatar(
-                  radius: 16,
-                  backgroundImage: authProvider.user != null && authProvider.user!.avatarUrl.isNotEmpty
-                      ? NetworkImage(authProvider.user!.avatarUrl)
-                      : null,
-                  child: authProvider.user == null || authProvider.user!.avatarUrl.isEmpty
-                      ? const Icon(Icons.person, size: 18)
-                      : null,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
           if (isLoading)
             const SizedBox(height: 220, child: Center(child: LoadingWidget(message: 'جاري تحميل المجموعات...'))),
 
           if (!isLoading) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: AppButton(
-                    text: 'إنشاء مجموعة جديدة',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CreateGroupScreen(),
-                        ),
-                      );
-                    },
-                  ),
+            // عرض زر الإنشاء فقط في تبويب "مجموعاتي" أو الوضع الافتراضي
+            if (!widget.showJoinedOnly)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14.0),
+                child: AppButton(
+                  text: 'إنشاء مجموعة جديدة',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+                    );
+                  },
                 ),
-              ],
-            ),
+              ),
 
-            const SizedBox(height: 14),
+            // منطق العرض بناءً على التبويب المختار
+            if (!widget.showJoinedOnly)
+              _buildSectionList(
+                title: 'المجموعات التي أنشأتها',
+                groups: myGroups,
+                onCreatePressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+                  );
+                },
+              ),
 
-            _buildSectionList(
-              title: 'المجموعات التي أنشأتها',
-              groups: myGroups,
-              onCreatePressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CreateGroupScreen(),
-                  ),
-                );
-              },
-            ),
+            if (!widget.showCreatedOnly && !widget.showJoinedOnly)
+              const SizedBox(height: 18),
 
-            const SizedBox(height: 18),
-
-            _buildSectionList(
-              title: 'المجموعات التي انضممت إليها',
-              groups: joinedGroups,
-              onCreatePressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CreateGroupScreen(),
-                  ),
-                );
-              },
-            ),
+            if (!widget.showCreatedOnly)
+              _buildSectionList(
+                title: 'المجموعات التي انضممت إليها',
+                groups: joinedGroups,
+                onCreatePressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+                  );
+                },
+              ),
           ],
         ],
       ),

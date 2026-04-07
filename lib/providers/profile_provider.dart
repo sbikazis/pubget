@@ -33,8 +33,9 @@ class ProfileProvider extends ChangeNotifier {
     _isLoading = value;
     notifyListeners();
   }
+
   // داخل class ProfileProvider
-/// Marks the user's profile as completed
+  /// Marks the user's profile as completed
   Future<void> markProfileCompleted({
     required String userId,
   }) async {
@@ -133,6 +134,7 @@ class ProfileProvider extends ChangeNotifier {
       docId: userId,
       data: updateData,
     );
+    notifyListeners(); // إشعار المستمعين بتحديث البيانات
   }
 
   // =========================================================
@@ -159,6 +161,7 @@ class ProfileProvider extends ChangeNotifier {
           'updatedAt': DateTime.now(),
         },
       );
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -180,6 +183,7 @@ class ProfileProvider extends ChangeNotifier {
         'updatedAt': DateTime.now(),
       },
     );
+    notifyListeners();
   }
 
   // =========================================================
@@ -198,10 +202,11 @@ class ProfileProvider extends ChangeNotifier {
         'updatedAt': DateTime.now(),
       },
     );
+    notifyListeners();
   }
 
   // =========================================================
-  // GIVE RESPECT
+  // GIVE RESPECT (تحديث الحالة لضمان التزامن)
   // =========================================================
 
   Future<bool> giveRespect({
@@ -209,11 +214,22 @@ class ProfileProvider extends ChangeNotifier {
     required String toUserId,
     required int value,
   }) async {
-    return _respectLogic.rateUser(
+    final result = await _respectLogic.rateUser(
       fromUserId: fromUserId,
       toUserId: toUserId,
       respectValue: value,
     );
+
+    if (result) {
+      // ✅ التعديل المطلوب: تحديث البيانات يدوياً لضمان الانعكاس الفوري في الواجهة
+      // نقوم بجلب بيانات المستخدم المستهدف مرة أخرى للتأكد من تحديث العدادات (Respect/Fans)
+      await getUserProfile(toUserId); 
+      
+      // إشعار التطبيق بأن البيانات تغيرت لإعادة بناء صفحة البروفايل
+      notifyListeners();
+    }
+
+    return result;
   }
 
   // =========================================================

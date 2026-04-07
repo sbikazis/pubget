@@ -1,5 +1,5 @@
+// lib/models/message_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../core/constants/roles.dart';
 
 class MessageModel {
@@ -17,6 +17,11 @@ class MessageModel {
 
   final String? gameId;
 
+  // الحقول الجديدة للرد والتفاعلات
+  final String? replyToId;     // معرف الرسالة التي يتم الرد عليها
+  final String? replyText;     // نص الرسالة المردود عليها (للعرض السريع)
+  final Map<String, String>? reactions; // خريطة: {userId: emoji}
+
   final DateTime createdAt;
 
   const MessageModel({
@@ -29,6 +34,9 @@ class MessageModel {
     this.mediaUrl,
     this.mediaType,
     this.gameId,
+    this.replyToId,
+    this.replyText,
+    this.reactions,
     required this.createdAt,
   });
 
@@ -44,7 +52,16 @@ class MessageModel {
       mediaUrl: map['mediaUrl'],
       mediaType: map['mediaType'],
       gameId: map['gameId'],
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
+      replyToId: map['replyToId'],
+      replyText: map['replyText'],
+      // تحويل خريطة التفاعلات من Firestore بأمان
+      reactions: map['reactions'] != null 
+          ? Map<String, String>.from(map['reactions'] as Map) 
+          : null,
+      // تأمين تحويل التاريخ لتجنب الأخطاء البرمجية
+      createdAt: map['createdAt'] != null 
+          ? (map['createdAt'] as Timestamp).toDate() 
+          : DateTime.now(),
     );
   }
 
@@ -59,7 +76,10 @@ class MessageModel {
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
       'gameId': gameId,
-      'createdAt': createdAt,
+      'replyToId': replyToId,
+      'replyText': replyText,
+      'reactions': reactions,
+      'createdAt': Timestamp.fromDate(createdAt), // التأكد من إرسالها كـ Timestamp
     };
   }
 }
