@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // مضاف لدعم Timestamp
+import 'package:rxdart/rxdart.dart';
 
 import '../models/message_model.dart';
 import '../models/member_model.dart';
+import '../models/group_model.dart'; // مضاف لدعم التعامل مع المجموعات
 
 import '../services/firebase/firestore_service.dart';
 import '../services/firebase/storage_service.dart';
@@ -16,8 +19,93 @@ class ChatProvider extends ChangeNotifier {
   ChatProvider({
     required FirestoreService firestoreService,
     required StorageService storageService,
-  })  : _firestore = firestoreService,
+  }) : _firestore = firestoreService,
         _storage = storageService;
+
+  // =========================================================
+  // ✅ التعديل الجديد: تحديث وقت القراءة (تصفير العداد)
+  // =========================================================
+ 
+  Future<void> updateLastRead({
+    required String groupId,
+    required String userId,
+  }) async {
+    final path = FirestorePaths.groupMembers(groupId);
+   
+    await _firestore.updateDocument(
+      path: path,
+      docId: userId,
+      data: {
+        'lastReadAt': FieldValue.serverTimestamp(), // استخدام توقيت السيرفر للدقة
+      },
+    );
+  }
+
+  // =========================================================
+  // ✅ التعديل المطلوب: توحيد المقارنة باستخدام Timestamp لضمان الدقة
+  // =========================================================
+
+  Stream<int> streamUnreadCount({
+    required String groupId,
+    required dynamic lastReadAt, // تم تغيير النوع ليكون مرناً (DateTime أو Timestamp)
+  }) {
+    final path = FirestorePaths.groupMessages(groupId);
+   
+    // ✅ تحويل القيمة القادمة إلى Timestamp أياً كان نوعها لضمان التوافق مع Firestore
+    Timestamp compareTimestamp;
+    
+    if (lastReadAt is Timestamp) {
+      compareTimestamp = lastReadAt;
+    } else if (lastReadAt is DateTime) {
+      compareTimestamp = Timestamp.fromDate(lastReadAt);
+    } else {
+      // إذا كانت القيمة null أو غير معروفة، نستخدم تاريخ قديم جداً
+      compareTimestamp = Timestamp.fromDate(DateTime(2000));
+    }
+
+    final query = _firestore.buildQuery(
+      path: path,
+      conditions: [
+        QueryCondition(
+          field: 'createdAt',
+          isGreaterThan: compareTimestamp, // المقارنة الآن بين Timestamp و Timestamp
+        ),
+      ],
+    );
+
+    return _firestore.streamCollection(path: path, query: query).map((snap) => snap.size);
+  }
+
+  // =========================================================
+  // ✅ التعديل الجوهري الجديد: مراقب إجمالي للمجموعات (للشريط السفلي)
+  // =========================================================
+
+  Stream<int> streamTotalGroupsUnreadCount({
+    required String userId,
+    required List<GroupModel> groups,
+  }) {
+    if (groups.isEmpty) return Stream.value(0);
+
+    // نقوم بإنشاء قائمة من الـ Streams، كل Stream يراقب عداد مجموعة واحدة
+    final streams = groups.map((group) {
+      return _firestore
+          .streamDocument(
+            path: FirestorePaths.groupMembers(group.id),
+            docId: userId,
+          )
+          .asyncExpand((memberDoc) {
+        if (!memberDoc.exists) return Stream.value(0);
+        final lastReadAt = memberDoc.data()?['lastReadAt'];
+        return streamUnreadCount(groupId: group.id, lastReadAt: lastReadAt);
+      });
+    }).toList();
+
+    // ندمج جميع الـ Streams ونجمع نتائجها
+    return Rx.combineLatestList(streams).map((counts) {
+      return counts.fold<int>(0, (sum, count) => sum + count);
+    });
+  }
+  // ملاحظة: إذا كنت لا تستخدم RxDart، سأقوم بتبديل المنطق في ملف الواجهة لجمع الـ Streams يدوياً.
 
   // =========================================================
   // STREAM MESSAGES (REALTIME)
@@ -32,7 +120,7 @@ class ChatProvider extends ChangeNotifier {
     final query = _firestore.buildQuery(
       path: path,
       orderBy: 'createdAt',
-      descending: false, 
+      descending: false,
     );
 
     return _firestore
@@ -62,8 +150,8 @@ class ChatProvider extends ChangeNotifier {
     required MemberModel sender,
     required String text,
     String? userAvatar,
-    String? replyToId,    // ✅ إضافة بارامتر الرد
-    String? replyText,    // ✅ إضافة نص الرد
+    String? replyToId, // ✅ إضافة بارامتر الرد
+    String? replyText, // ✅ إضافة نص الرد
   }) async {
     if (text.trim().isEmpty) return;
 
@@ -73,7 +161,7 @@ class ChatProvider extends ChangeNotifier {
       senderName: sender.displayName ?? '',
       senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
           ? sender.characterImageUrl!
-          : (userAvatar ?? ''), 
+          : (userAvatar ?? ''),
       senderRole: sender.role,
       text: text.trim(),
       replyToId: replyToId, // ✅ إسناد الرد
@@ -97,10 +185,10 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required File file,
-    required String mediaType, 
+    required String mediaType,
     String? userAvatar,
-    String? replyToId,    // ✅ إضافة بارامتر الرد للميديا
-    String? replyText,    // ✅ إضافة نص الرد للميديا
+    String? replyToId, // ✅ إضافة بارامتر الرد للميديا
+    String? replyText, // ✅ إضافة نص الرد للميديا
   }) async {
     // 1. رفع الملف إلى Storage
     final mediaUrl = await _storage.uploadGroupChatMedia(
@@ -144,7 +232,7 @@ class ChatProvider extends ChangeNotifier {
     required String emoji,
   }) async {
     final path = FirestorePaths.groupMessages(groupId);
-    
+   
     // الحصول على بيانات الرسالة الحالية
     final doc = await _firestore.getDocument(path: path, docId: messageId);
     if (doc == null) return;

@@ -39,17 +39,25 @@ class _AppTextFieldState extends State<AppTextField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final textColor = theme.brightness == Brightness.dark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimaryLight;
+    final colorScheme = theme.colorScheme; // ✅ استخدام ColorScheme لضمان التوافق مع الثيم
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // ✅ التعديل: الاعتماد على ألوان النظام لضمان التباين العالي
+    final textColor = colorScheme.onSurface; 
 
-    final hintColor = theme.brightness == Brightness.dark
+    final hintColor = isDark
         ? AppColors.textHintDark
         : AppColors.textHintLight;
 
-    final borderColor = theme.brightness == Brightness.dark
-        ? AppColors.darkBorder
+    // ✅ التعديل: جعل الحدود تبرز بشكل أفضل في الوضع الداكن
+    final borderColor = isDark
+        ? colorScheme.outline.withOpacity(0.5)
         : AppColors.lightBorder;
+
+    // ✅ التعديل: اختيار لون خلفية للحقل يختلف عن خلفية الـ Scaffold
+    final fieldFillColor = isDark
+        ? colorScheme.surfaceContainerHighest // لون نظام داكن يبرز فوق الخلفية السوداء
+        : AppColors.lightCard;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +67,7 @@ class _AppTextFieldState extends State<AppTextField> {
             padding: const EdgeInsets.only(bottom: 6.0),
             child: Text(
               widget.label!,
-              style: TextStyle(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: textColor,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
@@ -73,7 +81,7 @@ class _AppTextFieldState extends State<AppTextField> {
           maxLength: widget.maxLength,
           validator: widget.validator,
           onChanged: widget.onChanged,
-          style: TextStyle(color: textColor),
+          style: theme.textTheme.bodyLarge?.copyWith(color: textColor),
           decoration: InputDecoration(
             prefixIcon:
                 widget.prefixIcon != null ? Icon(widget.prefixIcon, color: hintColor) : null,
@@ -86,11 +94,9 @@ class _AppTextFieldState extends State<AppTextField> {
                   )
                 : (widget.suffixIcon != null ? Icon(widget.suffixIcon, color: hintColor) : null),
             hintText: widget.placeholder,
-            hintStyle: TextStyle(color: hintColor),
+            hintStyle: theme.textTheme.bodyLarge?.copyWith(color: hintColor),
             filled: true,
-            fillColor: theme.brightness == Brightness.dark
-                ? AppColors.darkCard
-                : AppColors.lightCard,
+            fillColor: fieldFillColor,
             contentPadding:
                 const EdgeInsets.symmetric(vertical: 14.0, horizontal: 16.0),
             enabledBorder: OutlineInputBorder(
@@ -99,15 +105,15 @@ class _AppTextFieldState extends State<AppTextField> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.error),
+              borderSide: const BorderSide(color: AppColors.error),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.error),
+              borderSide: const BorderSide(color: AppColors.error, width: 1.5),
             ),
             counterText: '',
           ),

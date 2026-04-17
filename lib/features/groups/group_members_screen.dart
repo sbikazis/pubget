@@ -22,7 +22,7 @@ class GroupMembersScreen extends StatelessWidget {
   // ✅ الدالة الجديدة التي تستخدم الـ Sheet الفخم للترقية
   void _showPromotionSheet(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
     final groupProvider = context.read<GroupProvider>();
-    
+   
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -32,7 +32,7 @@ class GroupMembersScreen extends StatelessWidget {
         targetMember: target,
         onRoleSelected: (newRole) async {
           Navigator.pop(context); // إغلاق الـ Sheet
-          
+         
           final result = RoleAssignmentLogic.promote(
             actor: actor,
             target: target,
@@ -43,10 +43,12 @@ class GroupMembersScreen extends StatelessWidget {
           if (result.isAllowed && result.updatedMember != null) {
             await groupProvider.addMember(
               member: result.updatedMember!,
-              adminId: actor.userId, 
+              adminId: actor.userId,
             );
+            
+            // ✅ التعديل المطلوب: تغيير النص ليكون "تحديث" بدلاً من "ترقية" لشمولية التخفيض أيضاً
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('تمت ترقية ${target.displayName} إلى ${newRole.label}')),
+              SnackBar(content: Text('تم تحديث رتبة ${target.displayName} إلى ${newRole.label}')),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -69,7 +71,7 @@ class GroupMembersScreen extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text('إدارة العضو: ${target.displayName}', 
+              child: Text('إدارة العضو: ${target.displayName}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             ListTile(
@@ -142,7 +144,7 @@ class GroupMembersScreen extends StatelessWidget {
 
           // ترتيب الأعضاء حسب الهرمية
           final members = RoleAssignmentLogic.sortByHierarchy(snapshot.data!);
-          
+         
           // تحديد عضوية المستخدم الحالي للتحقق من صلاحياته
           final currentUserMember = members.firstWhere(
             (m) => m.userId == currentUserId,
@@ -162,7 +164,7 @@ class GroupMembersScreen extends StatelessWidget {
 
               // التحقق من إمكانية الإدارة
               final canManage = RoleAssignmentLogic.canModify(
-                actorRole: currentUserMember.role, 
+                actorRole: currentUserMember.role,
                 targetRole: member.role,
                 actorId: currentUserMember.userId,
                 targetId: member.userId,
@@ -204,7 +206,7 @@ class GroupMembersScreen extends StatelessWidget {
                         color: roleColor,
                       ),
                     ),
-                    if (canManage) 
+                    if (canManage)
                       const Icon(Icons.chevron_left, size: 16, color: Colors.grey),
                   ],
                 ),

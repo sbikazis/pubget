@@ -13,7 +13,7 @@ class RespectLogic {
 
   /// Rate a user (one-time only)
   /// Returns:
-  /// - true  => rating successful
+  /// - true => rating successful
   /// - false => already rated
   Future<bool> rateUser({
     required String fromUserId,
@@ -87,10 +87,27 @@ class RespectLogic {
         batch.update(userRef, {
           'fansCount': FieldValue.increment(1),
         });
+
+        // 🔥 التعديل المطلوب: إنشاء وثيقة الدردشة الخاصة تلقائياً لفتح القناة فوراً
+        // نستخدم chatId ثابت يعتمد على المعجب والمستهدف لضمان عدم التكرار
+        final String chatId = fromUserId.hashCode <= toUserId.hashCode 
+            ? '${fromUserId}_$toUserId' 
+            : '${toUserId}_$fromUserId';
+
+        final chatRef = firestore.collection(FirestorePaths.privateChats).doc(chatId);
+        
+        // نقوم بإنشاء الغرفة فقط إذا لم تكن موجودة (استخدام set مع merge)
+        batch.set(chatRef, {
+          'userA': fromUserId,
+          'userB': toUserId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastMessage': 'لقد أصبحتما معجبين ببعضكما، يمكنكما البدء بالدردشة الآن!',
+          'lastMessageTime': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
     }
 
-    // تنفيذ جميع العمليات معاً
+    // تنفيذ جميع العمليات معاً ككتلة واحدة (Atomic)
     await batch.commit();
 
     return true;

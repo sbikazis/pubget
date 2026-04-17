@@ -8,7 +8,8 @@ class MessageModel {
   final String senderId;
   final String senderName;
   final String senderAvatar;
-  final Roles senderRole;
+  // ✅ جعل الرتبة اختيارية لدعم الدردشة الخاصة
+  final Roles? senderRole;
 
   final String? text;
 
@@ -18,18 +19,21 @@ class MessageModel {
   final String? gameId;
 
   // الحقول الجديدة للرد والتفاعلات
-  final String? replyToId;     // معرف الرسالة التي يتم الرد عليها
-  final String? replyText;     // نص الرسالة المردود عليها (للعرض السريع)
+  final String? replyToId; // معرف الرسالة التي يتم الرد عليها
+  final String? replyText; // نص الرسالة المردود عليها (للعرض السريع)
   final Map<String, String>? reactions; // خريطة: {userId: emoji}
 
   final DateTime createdAt;
+  
+  // ✅ الحقل الجديد لضمان دقة العداد بنسبة 100%
+  final bool isRead;
 
   const MessageModel({
     required this.id,
     required this.senderId,
     required this.senderName,
     required this.senderAvatar,
-    required this.senderRole,
+    this.senderRole, // ✅ إزالة required هنا
     this.text,
     this.mediaUrl,
     this.mediaType,
@@ -38,6 +42,7 @@ class MessageModel {
     this.replyText,
     this.reactions,
     required this.createdAt,
+    this.isRead = false, // القيمة الافتراضية غير مقروءة
   });
 
   /// Firestore → Model
@@ -47,7 +52,10 @@ class MessageModel {
       senderId: map['senderId'] ?? '',
       senderName: map['senderName'] ?? '',
       senderAvatar: map['senderAvatar'] ?? '',
-      senderRole: Roles.fromString(map['senderRole'] ?? 'member'),
+      // ✅ التعامل مع الرتبة بحذر: إذا كانت موجودة نأخذها، وإلا نتركها null للخاص
+      senderRole: map['senderRole'] != null 
+          ? Roles.fromString(map['senderRole']) 
+          : null,
       text: map['text'],
       mediaUrl: map['mediaUrl'],
       mediaType: map['mediaType'],
@@ -62,6 +70,8 @@ class MessageModel {
       createdAt: map['createdAt'] != null 
           ? (map['createdAt'] as Timestamp).toDate() 
           : DateTime.now(),
+      // جلب حالة القراءة من Firestore
+      isRead: map['isRead'] ?? false,
     );
   }
 
@@ -71,7 +81,8 @@ class MessageModel {
       'senderId': senderId,
       'senderName': senderName,
       'senderAvatar': senderAvatar,
-      'senderRole': senderRole.name,
+      // ✅ إرسال اسم الرتبة فقط في حال وجودها
+      'senderRole': senderRole?.name, 
       'text': text,
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
@@ -80,6 +91,7 @@ class MessageModel {
       'replyText': replyText,
       'reactions': reactions,
       'createdAt': Timestamp.fromDate(createdAt), // التأكد من إرسالها كـ Timestamp
+      'isRead': isRead,
     };
   }
 }

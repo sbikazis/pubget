@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/group_model.dart';
 import '../models/user_model.dart';
-import '../models/member_model.dart'; 
+import '../models/member_model.dart';
 import '../models/notification_model.dart'; // 🔥 تم الإضافة لدعم الإشعارات
 
 import '../services/firebase/firestore_service.dart';
@@ -12,7 +12,7 @@ import '../services/monetization/promotion_service.dart';
 import '../services/monetization/ad_service.dart';
 
 import '../core/constants/firestore_paths.dart';
-import '../core/constants/roles.dart'; 
+import '../core/constants/roles.dart';
 import '../core/logic/group_join_validator.dart';
 import '../core/logic/subscription_limits_logic.dart';
 
@@ -45,7 +45,7 @@ class HomeProvider extends ChangeNotifier {
   List<GroupModel> _promotedGroups = [];
   List<GroupModel> get promotedGroups => _promotedGroups;
 
-  List<GroupModel> _suggestedGroups = []; 
+  List<GroupModel> _suggestedGroups = [];
   List<GroupModel> get suggestedGroups => _suggestedGroups;
 
   List<GroupModel> _myGroups = [];
@@ -110,8 +110,8 @@ class HomeProvider extends ChangeNotifier {
 
       final fetchedGroups = snapshot.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
-          .where((group) => 
-              group.founderId != userId && 
+          .where((group) =>
+              group.founderId != userId &&
               !_joinedGroups.any((jg) => jg.id == group.id)
           ).toList();
 
@@ -142,20 +142,20 @@ class HomeProvider extends ChangeNotifier {
 
       final List<GroupModel> joined = [];
       final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
-      
+     
       for (var doc in allGroupsSnapshot.docs) {
         if (doc.data()['founderId'] != userId) {
           final memberDoc = await _firestore.getDocument(
             path: FirestorePaths.groupMembers(doc.id),
             docId: userId,
           );
-          
+         
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
           }
         }
       }
-      
+     
       _joinedGroups = joined;
       notifyListeners();
     } catch (e) {
@@ -164,7 +164,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // JOIN GROUP (التعديل لإرسال إشعار للمؤسس)
+  // JOIN GROUP (تم التعديل ليتوافق مع النسخة الجديدة من Validator)
   // =====================================================
 
   Future<String?> joinGroup({
@@ -184,12 +184,14 @@ class HomeProvider extends ChangeNotifier {
       return limitResult.message;
     }
 
+    // ✅ التعديل الجوهري: إضافة animeId المطلوب لعملية التحقق
     final validation = await _joinValidator.validateJoin(
       groupId: group.id,
       groupType: group.type,
       characterName: characterName,
       characterImageUrl: characterImage,
       animeName: group.animeName,
+      animeId: group.animeId, // 🔥 استخدام الـ ID الموثق في المجموعة
     );
 
     if (!validation.isValid) {
@@ -233,7 +235,7 @@ class HomeProvider extends ChangeNotifier {
         data: notification.toMap(),
       );
 
-      return null; 
+      return null;
     } catch (e) {
       return "حدث خطأ أثناء إرسال الطلب: ${e.toString()}";
     }
@@ -245,7 +247,7 @@ class HomeProvider extends ChangeNotifier {
 
   void setSearchQuery(String query) async {
     _searchQuery = query;
-    
+   
     if (_searchQuery.isEmpty) {
       _globalSearchResults = [];
       notifyListeners();
@@ -290,16 +292,16 @@ class HomeProvider extends ChangeNotifier {
     return list.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
   }
 
-  List<GroupModel> get filteredPromotedGroups => _searchQuery.isEmpty 
-      ? _promotedGroups 
+  List<GroupModel> get filteredPromotedGroups => _searchQuery.isEmpty
+      ? _promotedGroups
       : _globalSearchResults.where((g) => g.isPromoted).toList();
 
-  List<GroupModel> get filteredMyGroups => _searchQuery.isEmpty 
-      ? _myGroups 
+  List<GroupModel> get filteredMyGroups => _searchQuery.isEmpty
+      ? _myGroups
       : _myGroups.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
-  List<GroupModel> get filteredJoinedGroups => _searchQuery.isEmpty 
-      ? _joinedGroups 
+  List<GroupModel> get filteredJoinedGroups => _searchQuery.isEmpty
+      ? _joinedGroups
       : _joinedGroups.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
   // =====================================================

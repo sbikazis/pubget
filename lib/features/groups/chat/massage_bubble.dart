@@ -10,8 +10,9 @@ import '../../../core/utils/time_utils.dart';
 import 'package:pubget/models/user_model.dart';
 import 'package:pubget/providers/user_provider.dart';
 import 'package:pubget/providers/chat_provider.dart';
+import 'package:pubget/providers/private_chat_provider.dart'; // ✅ إضافة المستورد للخاص
 import 'package:pubget/features/profile/profile_sceen.dart';
-import 'package:pubget/features/profile/respect_modal.dart'; 
+import 'package:pubget/features/profile/respect_modal.dart';
 
 import 'role_badge.dart';
 
@@ -21,7 +22,6 @@ class MessageBubble extends StatelessWidget {
   final bool isMe;
   final String groupId;
   final Function(MessageModel)? onReply;
-  // ✅ إضافة دالة الـ Callback لاستقبال طلب الانتقال للرسالة الأصلية
   final Function(String)? onTapReply;
 
   const MessageBubble({
@@ -31,7 +31,7 @@ class MessageBubble extends StatelessWidget {
     required this.isMe,
     required this.groupId,
     this.onReply,
-    this.onTapReply, // ✅ إضافة البارامتر الجديد هنا
+    this.onTapReply,
   });
 
   @override
@@ -64,7 +64,7 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   if (!isMe) _buildNameRow(roleColor),
-                  
+                 
                   if (message.reactions != null && message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
 
@@ -78,7 +78,6 @@ class MessageBubble extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ✅ تمرير خاصية الضغط لمعاينة الرد
                         if (message.replyText != null) _buildReplyPreview(isDark),
                         _buildMessageContent(textColor),
                       ],
@@ -108,6 +107,9 @@ class MessageBubble extends StatelessWidget {
   // ==============================
 
   void _showOptionsSheet(BuildContext context) {
+    // ✅ تحديد ما إذا كانت الدردشة خاصة
+    final bool isPrivate = sender.groupId == 'private';
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -127,13 +129,25 @@ class MessageBubble extends StatelessWidget {
                 children: ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
                   return TextButton(
                     onPressed: () {
-                      final chatProv = Provider.of<ChatProvider>(context, listen: false);
-                      chatProv.toggleReaction(
-                        groupId: groupId,
-                        messageId: message.id,
-                        userId: Provider.of<UserProvider>(context, listen: false).currentUser!.id,
-                        emoji: emoji,
-                      );
+                      final userId = Provider.of<UserProvider>(context, listen: false).currentUser!.id;
+                      
+                      if (isPrivate) {
+                        // ✅ استدعاء بروفايدر الدردشة الخاصة
+                        Provider.of<PrivateChatProvider>(context, listen: false).toggleReaction(
+                          chatId: groupId,
+                          messageId: message.id,
+                          userId: userId,
+                          emoji: emoji,
+                        );
+                      } else {
+                        // ✅ استدعاء بروفايدر المجموعات
+                        Provider.of<ChatProvider>(context, listen: false).toggleReaction(
+                          groupId: groupId,
+                          messageId: message.id,
+                          userId: userId,
+                          emoji: emoji,
+                        );
+                      }
                       Navigator.pop(context);
                     },
                     child: Text(emoji, style: const TextStyle(fontSize: 28)),
@@ -155,8 +169,13 @@ class MessageBubble extends StatelessWidget {
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('حذف الرسالة', style: TextStyle(color: Colors.red)),
                 onTap: () {
-                  Provider.of<ChatProvider>(context, listen: false)
-                      .deleteMessage(groupId: groupId, messageId: message.id);
+                  if (isPrivate) {
+                    Provider.of<PrivateChatProvider>(context, listen: false)
+                        .deleteMessage(chatId: groupId, messageId: message.id);
+                  } else {
+                    Provider.of<ChatProvider>(context, listen: false)
+                        .deleteMessage(groupId: groupId, messageId: message.id);
+                  }
                   Navigator.pop(context);
                 },
               )
@@ -167,7 +186,7 @@ class MessageBubble extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
-                    context, 
+                    context,
                     MaterialPageRoute(
                       builder: (_) => ProfileScreen(userId: message.senderId),
                     ),
@@ -185,7 +204,6 @@ class MessageBubble extends StatelessWidget {
   // ==============================
 
   Widget _buildReplyPreview(bool isDark) {
-    // ✅ جعل معاينة الرد قابلة للضغط للانتقال للرسالة الأصلية
     return GestureDetector(
       onTap: () {
         if (onTapReply != null && message.replyToId != null) {
@@ -194,23 +212,43 @@ class MessageBubble extends StatelessWidget {
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(8),
-        width: double.infinity, // لضمان قابلية الضغط على كامل العرض
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.08), // تغميق اللون قليلاً ليعطي إيحاء التفاعل
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
-          border: const Border(
-            right: BorderSide(color: AppColors.primary, width: 4),
+          border: Border(
+            left: isMe ? BorderSide.none : const BorderSide(color: AppColors.primary, width: 4),
+            right: isMe ? const BorderSide(color: AppColors.primary, width: 4) : BorderSide.none,
           ),
         ),
-        child: Text(
-          message.replyText!,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            fontStyle: FontStyle.italic,
-            color: isDark ? Colors.white70 : Colors.black54,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                if (onTapReply != null && message.replyToId != null) {
+                  onTapReply!(message.replyToId!);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message.replyText!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -234,14 +272,15 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildAvatar(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final myId = userProvider.currentUser?.id;
+    final String? avatarUrl = sender.displayImageUrl;
 
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        final myId = userProvider.currentUser?.id;
         final targetUser = await userProvider.getUserById(message.senderId);
+        
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
@@ -254,26 +293,15 @@ class MessageBubble extends StatelessWidget {
           );
         }
       },
-      child: message.senderAvatar.isNotEmpty
+      child: avatarUrl != null && avatarUrl.isNotEmpty
           ? CircleAvatar(
               radius: 18,
-              backgroundImage: NetworkImage(message.senderAvatar),
+              backgroundImage: NetworkImage(avatarUrl),
             )
-          : FutureBuilder<UserModel?>(
-              future: userProvider.getUserById(message.senderId),
-              builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data?.avatarUrl.isNotEmpty == true) {
-                  return CircleAvatar(
-                    radius: 18,
-                    backgroundImage: NetworkImage(snapshot.data!.avatarUrl),
-                  );
-                }
-                return CircleAvatar(
-                  radius: 18,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                  child: const Icon(Icons.person, size: 20, color: AppColors.primary),
-                );
-              },
+          : CircleAvatar(
+              radius: 18,
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+              child: const Icon(Icons.person, size: 20, color: AppColors.primary),
             ),
     );
   }
@@ -283,7 +311,7 @@ class MessageBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          message.senderName,
+          sender.effectiveName,
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: roleColor),
         ),
         const SizedBox(width: 6),
@@ -311,6 +339,12 @@ class MessageBubble extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               );
             },
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: 220,
+              height: 150,
+              color: Colors.grey[300],
+              child: const Icon(Icons.broken_image, color: Colors.grey),
+            ),
           ),
         );
       }

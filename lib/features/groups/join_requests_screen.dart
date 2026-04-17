@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
+import 'package:pubget/features/profile/profile_sceen.dart'; 
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
@@ -44,74 +45,88 @@ class JoinRequestsScreen extends StatelessWidget {
     );
   }
 
+  // ✅ التعديل الرئيسي: إدارة السياق (Context) بشكل احترافي لمنع السواد
   Future<void> _handleAccept(BuildContext context, MemberModel request) async {
+    final String displayConfirmName = request.realUserName ?? request.displayName ?? "هذا العضو";
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AppDialog(
+      barrierDismissible: false, 
+      builder: (dialogContext) => AppDialog(
         title: 'قبول الطلب',
-        content: 'هل تريد قبول انضمام ${request.displayName}؟',
+        content: 'هل تريد قبول انضمام $displayConfirmName؟',
         confirmText: 'قبول',
-        onConfirm: () => Navigator.pop(context, true),
+        onConfirm: () => Navigator.of(dialogContext).pop(true), 
         cancelText: 'إلغاء',
-        onCancel: () => Navigator.pop(context, false),
+        onCancel: () => Navigator.of(dialogContext).pop(false),
       ),
     );
 
     if (confirmed != true) return;
 
     try {
-      // جلب اسم المجموعة للإشعار
-      final group = await context.read<GroupProvider>().getGroup(groupId: groupId);
+      final groupProvider = context.read<GroupProvider>();
+      final group = await groupProvider.getGroup(groupId: groupId);
       final groupName = group?.name ?? "المجموعة";
 
-      await context.read<GroupProvider>().acceptJoinRequest(
+      await groupProvider.acceptJoinRequest(
         groupId: groupId,
         groupName: groupName,
         requestMember: request,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم قبول العضو بنجاح')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم قبول العضو بنجاح')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في القبول: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ في القبول: $e')),
+        );
+      }
     }
   }
 
   Future<void> _handleReject(BuildContext context, String userId) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AppDialog(
+      barrierDismissible: false,
+      builder: (dialogContext) => AppDialog(
         title: 'رفض الطلب',
         content: 'هل تريد رفض وحذف هذا الطلب نهائياً؟',
         confirmText: 'رفض',
-        onConfirm: () => Navigator.pop(context, true),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
         cancelText: 'إلغاء',
-        onCancel: () => Navigator.pop(context, false),
+        onCancel: () => Navigator.of(dialogContext).pop(false),
       ),
     );
 
     if (confirmed != true) return;
 
     try {
-      final group = await context.read<GroupProvider>().getGroup(groupId: groupId);
+      final groupProvider = context.read<GroupProvider>();
+      final group = await groupProvider.getGroup(groupId: groupId);
       final groupName = group?.name ?? "المجموعة";
 
-      await context.read<GroupProvider>().rejectJoinRequest(
+      await groupProvider.rejectJoinRequest(
         groupId: groupId,
         groupName: groupName,
         userId: userId,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم رفض الطلب')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم رفض الطلب')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في الرفض: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ في الرفض: $e')),
+        );
+      }
     }
   }
 
@@ -121,12 +136,14 @@ class JoinRequestsScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: const Text('طلبات الانضمام'),
         centerTitle: true,
         backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        foregroundColor: AppColors.primary,
+        foregroundColor: isDark ? Colors.white : AppColors.primary,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
       body: StreamBuilder<List<MemberModel>>(
         stream: groupProvider.streamJoinRequests(groupId: groupId),
@@ -151,24 +168,35 @@ class JoinRequestsScreen extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final req = requests[index];
+              final displayImage = req.characterImageUrl ?? req.realUserImageUrl;
+              final String displayName = (req.characterName != null && req.characterName!.isNotEmpty)
+                  ? req.characterName!
+                  : (req.realUserName ?? req.displayName ?? 'عضو جديد');
 
               return Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: isDark
+                      ? const BorderSide(color: AppColors.darkBorder, width: 0.5)
+                      : BorderSide.none,
+                ),
                 elevation: 0,
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           CircleAvatar(
                             radius: 28,
-                            backgroundImage: req.characterImageUrl != null 
-                                ? NetworkImage(req.characterImageUrl!) 
+                            backgroundColor: isDark ? AppColors.darkSurface : Colors.grey[300],
+                            backgroundImage: displayImage != null
+                                ? NetworkImage(displayImage)
                                 : null,
-                            child: req.characterImageUrl == null 
-                                ? const Icon(Icons.person) 
+                            child: displayImage == null
+                                ? Icon(Icons.person, color: isDark ? Colors.white54 : Colors.grey)
                                 : null,
                           ),
                           const SizedBox(width: 12),
@@ -180,24 +208,45 @@ class JoinRequestsScreen extends StatelessWidget {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        req.displayName?? 'مستخدم مجهول',
-                                        style: const TextStyle(
+                                        displayName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
+                                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                                         ),
                                       ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.visibility_outlined, color: AppColors.primary, size: 20),
+                                      tooltip: 'عرض الملف الشخصي',
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ProfileScreen(userId: req.userId),
+                                          ),
+                                        );
+                                      },
                                     ),
                                     _buildRoleBadge('طالب انضمام', RoleColors.senpai, RoleColors.senpaiBadgeBg),
                                   ],
                                 ),
-                                if (req.characterName != null)
+                                if (req.realUserName != null && req.realUserName != displayName)
                                   Text(
-                                    'الشخصية: ${req.characterName}',
-                                    style: TextStyle(color: AppColors.primary, fontSize: 13),
+                                    '@${req.realUserName}',
+                                    style: TextStyle(
+                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 Text(
                                   'تاريخ الطلب: ${_formatDate(req.joinedAt)}',
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? AppColors.darkTextHint : Colors.grey[600],
+                                  ),
                                 ),
                               ],
                             ),
@@ -205,31 +254,36 @@ class JoinRequestsScreen extends StatelessWidget {
                         ],
                       ),
                       if (req.characterReason != null && req.characterReason!.isNotEmpty) ...[
-                        const Divider(),
+                        const Divider(height: 20),
                         Text(
                           'السبب: ${req.characterReason}',
-                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13),
+                          style: TextStyle(
+                            fontStyle: FontStyle.italic,
+                            fontSize: 13,
+                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          ),
                         ),
                       ],
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          OutlinedButton(
+                          TextButton(
                             onPressed: () => _handleReject(context, req.userId),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.error,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
                             ),
-                            child: const Text('رفض'),
+                            child: const Text('رفض', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () => _handleAccept(context, req),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
+                              backgroundColor: AppColors.success,
                               foregroundColor: Colors.white,
+                              elevation: 0,
+                              minimumSize: const Size(120, 40),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                             child: const Text('قبول الانضمام'),

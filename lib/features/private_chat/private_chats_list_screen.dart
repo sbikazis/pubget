@@ -2,9 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+
 import '../../providers/private_chat_provider.dart';
-import '../../providers/user_provider.dart';
-import '../../providers/auth_provider.dart'; // ✅ مضاف للتحقق الاحتياطي من حالة المستخدم
+
+import '../../providers/auth_provider.dart'; 
 import '../../models/user_model.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
@@ -21,52 +22,12 @@ class PrivateChatsListScreen extends StatefulWidget {
 
 class _PrivateChatsListScreenState
     extends State<PrivateChatsListScreen> {
-  bool _loading = true;
-  List<Map<String, dynamic>> _chats = [];
-
-  @override
-  void initState() {
-    super.initState();
-    // ✅ استخدام Future.microtask لضمان استقرار سياق الـ Provider عند بدء التحميل
-    Future.microtask(() => _loadChats());
-  }
-
-  Future<void> _loadChats() async {
-    if (!mounted) return;
-
-    final userProvider =
-        Provider.of<UserProvider>(context, listen: false);
-    final authProvider = 
-        Provider.of<AuthProvider>(context, listen: false);
-    final chatProvider =
+  
+  // ✅ دالة جلب بيانات المستخدم الآخر (تم الحفاظ عليها كما هي)
+  Future<UserModel?> _loadOtherUser(String userId) async {
+    final provider =
         Provider.of<PrivateChatProvider>(context, listen: false);
-
-    // ✅ منطق مرن: جلب المستخدم الحالي من UserProvider أو AuthProvider كخيار ثانٍ
-    final currentUser = userProvider.currentUser ?? authProvider.user;
-
-    if (currentUser == null) {
-      if (mounted) setState(() => _loading = false);
-      return;
-    }
-
-    try {
-      final chats = await chatProvider.getUserChats(
-        userId: currentUser.id,
-      );
-
-      if (mounted) {
-        setState(() {
-          _chats = chats;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error loading private chats: $e");
-      // ✅ ضمان تحويل حالة التحميل إلى false حتى في حال وقوع خطأ لمنع الدائرة اللانهائية
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-    }
+    return await provider.getUserById(userId);
   }
 
   void _openChat({
@@ -86,8 +47,8 @@ class _PrivateChatsListScreenState
 
   @override
   Widget build(BuildContext context) {
-    // ✅ مراقبة AuthProvider لضمان تحديث الواجهة عند تغير حالة المستخدم
     final authProvider = Provider.of<AuthProvider>(context);
+    final chatProvider = Provider.of<PrivateChatProvider>(context);
     final currentUser = authProvider.user;
 
     if (currentUser == null) {
@@ -105,87 +66,132 @@ class _PrivateChatsListScreenState
         title: const Text("الدردشات الخاصة"),
         centerTitle: true,
       ),
-      body: _loading
-          ? const LoadingWidget(
+      // ✅ التعديل الجوهري: استخدام FutureBuilder أو Stream لجلب القائمة
+      // لضمان تحديث "آخر رسالة" والترتيب تلقائياً
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: chatProvider.getUserChats(userId: currentUser.id),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const LoadingWidget(
               message: "جاري تحميل الدردشات...",
-            )
-          : _chats.isEmpty
-              ? const EmptyStateWidget(
-                  title: "لا توجد دردشات بعد",
-                  subtitle: "ابدأ محادثة مع معجبيك الآن",
-                  icon: Icons.chat_bubble_outline,
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadChats,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _chats.length,
-                    itemBuilder: (context, index) {
-                      final chat = _chats[index];
-                      final chatId = chat["chatId"];
+            );
+          }
 
-                      final userA = chat["userA"];
-                      final userB = chat["userB"];
+          final chats = snapshot.data ?? [];
 
-                      final otherUserId =
-                          userA == currentUser.id
-                              ? userB
-                              : userA;
+          if (chats.isEmpty) {
+            return const EmptyStateWidget(
+              title: "لا توجد دردشات بعد",
+              subtitle: "ابدأ محادثة مع معجبيك الآن",
+              icon: Icons.chat_bubble_outline,
+            );
+          }
 
-                      return FutureBuilder<UserModel?>(
-                        future: _loadOtherUser(otherUserId),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const ListTile(
-                              title: Text("جاري التحميل..."),
-                            );
-                          }
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() {}); // إعادة بناء الواجهة لجلب البيانات مجدداً
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                final chatId = chat["chatId"];
+                
+                // ✅ عرض آخر رسالة بدلاً من النص الثابت
+                final lastMessage = chat["lastMessageText"] ?? "اضغط لفتح المحادثة";
 
-                          final otherUser = snapshot.data;
-                          
-                          // في حال تعذر تحميل بيانات الطرف الآخر
-                          if (otherUser == null) return const SizedBox.shrink();
+                final otherUserId =
+                    chat["userA"] == currentUser.id
+                        ? chat["userB"]
+                        : chat["userA"];
 
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.grey[200],
-                              backgroundImage: otherUser.avatarUrl.isNotEmpty
-                                  ? NetworkImage(otherUser.avatarUrl)
-                                  : null,
-                              child: otherUser.avatarUrl.isEmpty
-                                  ? const Icon(Icons.person, color: Colors.grey)
-                                  : null,
+                return FutureBuilder<UserModel?>(
+                  future: _loadOtherUser(otherUserId),
+                  builder: (context, userSnapshot) {
+                    if (userSnapshot.connectionState == ConnectionState.waiting) {
+                      return const ListTile(
+                        title: Text("جاري التحميل..."),
+                      );
+                    }
+
+                    final otherUser = userSnapshot.data;
+                    if (otherUser == null) return const SizedBox.shrink();
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.grey[200],
+                        backgroundImage: otherUser.avatarUrl.isNotEmpty
+                            ? NetworkImage(otherUser.avatarUrl)
+                            : null,
+                        child: otherUser.avatarUrl.isEmpty
+                            ? const Icon(Icons.person, color: Colors.grey)
+                            : null,
+                      ),
+                      title: Text(
+                        otherUser.username,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        lastMessage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ✅ عداد الرسائل غير المقروءة (مراقب حي)
+                          StreamBuilder<int>(
+                            stream: chatProvider.streamPrivateUnreadCount(
+                              chatId: chatId,
+                              userId: currentUser.id,
                             ),
-                            title: Text(
-                              otherUser.username,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: const Text(
-                              "اضغط لفتح المحادثة",
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            trailing: const Icon(
-                              Icons.arrow_forward_ios,
-                              size: 14,
-                            ),
-                            onTap: () {
-                              _openChat(
-                                chatId: chatId,
-                                otherUser: otherUser,
+                            initialData: 0,
+                            builder: (context, countSnap) {
+                              final count = countSnap.data ?? 0;
+                             
+                              if (count == 0) return const SizedBox.shrink();
+
+                              return Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                                ),
+                                child: Text(
+                                  count > 9 ? '+9' : '$count',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               );
                             },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        _openChat(
+                          chatId: chatId,
+                          otherUser: otherUser,
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
-  }
-
-  Future<UserModel?> _loadOtherUser(String userId) async {
-    final provider =
-        Provider.of<PrivateChatProvider>(context, listen: false);
-    return await provider.getUserById(userId);
   }
 }

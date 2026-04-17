@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../core/constants/group_type.dart';
 
 class GroupModel {
@@ -10,7 +9,8 @@ class GroupModel {
   final String imageUrl;
 
   final GroupType type;
-  final String? animeName; // Only for roleplay groups
+  final String? animeName; // اسم الأنمي للعرض
+  final dynamic animeId; // ✅ التعديل: إضافة الـ ID لضمان دقة عمل الـ API الجديد
 
   final String founderId;
 
@@ -30,6 +30,7 @@ class GroupModel {
     required this.imageUrl,
     required this.type,
     this.animeName,
+    this.animeId, // ✅ إضافته هنا
     required this.founderId,
     required this.membersCount,
     required this.maxMembers,
@@ -48,6 +49,7 @@ class GroupModel {
       imageUrl: map['imageUrl'] ?? '',
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
+      animeId: map['animeId'], // ✅ استخراجه من قاعدة البيانات
       founderId: map['founderId'] ?? '',
       membersCount: map['membersCount'] ?? 0,
       maxMembers: map['maxMembers'] ?? 100,
@@ -55,7 +57,6 @@ class GroupModel {
       promotionExpiresAt: map['promotionExpiresAt'] != null
           ? (map['promotionExpiresAt'] as Timestamp).toDate()
           : null,
-      // ✅ تعديل أمان: التحقق من وجود التاريخ لتجنب الشاشة البيضاء
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -71,6 +72,7 @@ class GroupModel {
       'imageUrl': imageUrl,
       'type': type.name,
       'animeName': animeName,
+      'animeId': animeId, // ✅ حفظه في قاعدة البيانات
       'founderId': founderId,
       'membersCount': membersCount,
       'maxMembers': maxMembers,
@@ -88,6 +90,7 @@ class GroupModel {
     String? imageUrl,
     GroupType? type,
     String? animeName,
+    dynamic animeId, // ✅ إضافته للـ CopyWith
     int? membersCount,
     int? maxMembers,
     bool? isPromoted,
@@ -101,6 +104,7 @@ class GroupModel {
       imageUrl: imageUrl ?? this.imageUrl,
       type: type ?? this.type,
       animeName: animeName ?? this.animeName,
+      animeId: animeId ?? this.animeId, // ✅ تحديث القيمة
       founderId: founderId,
       membersCount: membersCount ?? this.membersCount,
       maxMembers: maxMembers ?? this.maxMembers,

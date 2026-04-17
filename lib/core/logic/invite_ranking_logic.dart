@@ -37,8 +37,11 @@ class InviteRankingLogic {
     int availableHakusho = 1;
     int availableSenpai = 2;
 
-    // 4. تصفية الأعضاء "العاديين"
-    final candidates = allMembers.where((m) => m.role == Roles.member).toList();
+    // ✅ التعديل الذهبي: تصفية الأعضاء "العاديين" الذين لا يملكون رتبة يدوية فقط
+    // هؤلاء هم من يحق للنظام ترقيتهم تلقائياً بناءً على الدعوات
+    final candidates = allMembers.where((m) => 
+      m.role == Roles.member && m.isManualRole == false
+    ).toList();
 
     candidates.sort((a, b) {
       final aCount = inviteCounts[a.userId] ?? 0;
@@ -52,7 +55,6 @@ class InviteRankingLogic {
 
     // 5. توزيع الرتب الآلية
     for (var i = 0; i < candidates.length; i++) {
-      // ✅ تم تغيير النوع هنا من String إلى Roles لحل الأخطاء الأربعة
       Roles newRole = Roles.member; 
       final member = candidates[i];
 
@@ -72,7 +74,6 @@ class InviteRankingLogic {
         final ref = firestore
             .collection(FirestorePaths.groupMembers(groupId))
             .doc(member.userId);
-        // ✅ نرسل name الخاص بالرتبة للـ Firestore (String)
         batch.update(ref, {'role': newRole.name}); 
         changed = true;
       }
@@ -94,7 +95,10 @@ class InviteRankingLogic {
       }
     }
 
-    final eligibleMembers = members.where((m) => m.role == Roles.member).toList();
+    // ✅ التعديل هنا أيضاً: نأخذ فقط من ليس لديه رتبة يدوية
+    final eligibleMembers = members.where((m) => 
+      m.role == Roles.member && m.isManualRole == false
+    ).toList();
 
     eligibleMembers.sort((a, b) {
       final aInvites = inviteCount[a.userId] ?? 0;
@@ -111,6 +115,9 @@ class InviteRankingLogic {
         .toSet();
 
     return members.map((member) {
+      // إذا كان العضو يدوياً، لا تلمسه أبداً
+      if (member.isManualRole) return member;
+
       if (member.role == Roles.founder || 
           member.role == Roles.sensei || 
           member.role == Roles.hakusho) {

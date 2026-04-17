@@ -110,7 +110,7 @@ class NotificationsScreen extends StatelessWidget {
   }
 
   /// ===============================
-  /// NAVIGATION LOGIC (تم تحديث المنطق ليدعم القبول والطلبات)
+  /// NAVIGATION LOGIC
   /// ===============================
   void _handleNotificationTap(
     BuildContext context, {
@@ -139,6 +139,11 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
+      // حالة تفكيك المجموعة: لا نقوم بالتوجه لمكان لأن المجموعة حُذفت
+      case NotificationTypes.groupDisbanded:
+        // يمكننا عرض رسالة تنبيه بسيطة أو البقاء في شاشة الإشعارات
+        break;
+
       case "private_message":
         if (notification.refId != null) {
           Navigator.push(
@@ -165,7 +170,7 @@ class NotificationsScreen extends StatelessWidget {
   }
 
   /// ===============================
-  /// ICONS (تم تحديث الأيقونات لتناسب الأنواع الجديدة)
+  /// ICONS
   /// ===============================
   IconData _iconForType(String type) {
     switch (type) {
@@ -175,6 +180,8 @@ class NotificationsScreen extends StatelessWidget {
         return Icons.error_outline;
       case NotificationTypes.joinRequest:
         return Icons.person_add_outlined;
+      case NotificationTypes.groupDisbanded: // أيقونة خاصة لتفكيك المجموعة
+        return Icons.group_off_outlined;
       case "group":
         return Icons.group;
       case "private_message":

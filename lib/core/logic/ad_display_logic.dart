@@ -1,3 +1,5 @@
+// lib/core/logic/ad_display_logic.dart
+import 'package:flutter/foundation.dart'; // مضاف لاستخدام debugPrint
 import '../utils/time_utils.dart';
 
 class AdDisplayDecision {
@@ -13,76 +15,80 @@ class AdDisplayDecision {
 class AdDisplayLogic {
   AdDisplayLogic._();
 
-
   // First open in the morning rule
-
   static AdDisplayDecision checkMorningAd(
     DateTime? lastAdTime,
   ) {
+    AdDisplayDecision decision;
+
     // Never shown before
     if (lastAdTime == null) {
-      return const AdDisplayDecision(
+      decision = const AdDisplayDecision(
         shouldShow: true,
         reason: "first_time_open",
       );
     }
-
     // New day
-    if (TimeUtils.isNewDay(lastAdTime)) {
-      return const AdDisplayDecision(
+    else if (TimeUtils.isNewDay(lastAdTime)) {
+      decision = const AdDisplayDecision(
         shouldShow: true,
         reason: "new_day",
       );
+    } else {
+      decision = const AdDisplayDecision(
+        shouldShow: false,
+        reason: "already_shown_today",
+      );
     }
 
-    return const AdDisplayDecision(
-      shouldShow: false,
-      reason: "already_shown_today",
-    );
+    debugPrint('📢 Ad Logic (Morning): ${decision.reason} -> Should Show: ${decision.shouldShow}');
+    return decision;
   }
 
-
   // 5 minutes rule (group enter/exit)
-
   static AdDisplayDecision checkFiveMinutesRule(
     DateTime? lastAdTime,
   ) {
+    AdDisplayDecision decision;
+
     // Never shown before
     if (lastAdTime == null) {
-      return const AdDisplayDecision(
+      decision = const AdDisplayDecision(
         shouldShow: true,
         reason: "first_time",
       );
+    } else {
+      final passed = TimeUtils.hasMinutesPassed(lastAdTime, 5);
+
+      if (passed) {
+        decision = const AdDisplayDecision(
+          shouldShow: true,
+          reason: "five_minutes_passed",
+        );
+      } else {
+        decision = const AdDisplayDecision(
+          shouldShow: false,
+          reason: "cooldown_active",
+        );
+      }
     }
 
-    final passed =
-        TimeUtils.hasMinutesPassed(lastAdTime, 5);
-
-    if (passed) {
-      return const AdDisplayDecision(
-        shouldShow: true,
-        reason: "five_minutes_passed",
-      );
-    }
-
-    return const AdDisplayDecision(
-      shouldShow: false,
-      reason: "cooldown_active",
-    );
+    debugPrint('📢 Ad Logic (Cooldown): ${decision.reason} -> Should Show: ${decision.shouldShow}');
+    return decision;
   }
 
-
   // Global guard (Premium users)
-
   static AdDisplayDecision checkIfPremium({
     required bool isPremium,
     required AdDisplayDecision decision,
   }) {
     if (isPremium) {
-      return const AdDisplayDecision(
+      const premiumDecision = AdDisplayDecision(
         shouldShow: false,
         reason: "premium_user",
       );
+      debugPrint('📢 Ad Logic (Premium Check): User is Premium, blocking ad.');
+      return premiumDecision;
     }
 
     return decision;

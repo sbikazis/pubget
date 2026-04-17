@@ -108,11 +108,12 @@ class GameProvider extends ChangeNotifier {
     required String groupId,
     required String gameId,
     required String userId,
-    required String animeName,
+    required dynamic animeId, // ✅ التعديل: تغيير animeName إلى animeId ليتوافق مع الـ API الجديد
     required String characterName,
   }) async {
+    // ✅ استدعاء الـ API باستخدام animeId الموثوق
     final valid = await AnimeApiService.validateCharacterExists(
-      animeName: animeName,
+      animeId: animeId,
       characterName: characterName,
     );
 

@@ -74,7 +74,7 @@ class RoleAssignmentLogic {
   }
 
   // =========================================================
-  // Promote Member
+  // Promote/Assign Member (Updated to support Demotion to Member)
   // =========================================================
   static RoleAssignmentResult promote({
     required MemberModel actor,
@@ -90,6 +90,7 @@ class RoleAssignmentLogic {
     }
 
     // التحقق من صلاحية القائم بالفعل (Actor)
+    // نمرر الـ IDs لضمان عدم قيام الشخص بتعديل نفسه
     if (!canModify(
       actorRole: actor.role,
       targetRole: target.role,
@@ -109,9 +110,12 @@ class RoleAssignmentLogic {
     }
 
     // التحقق من السعة القصوى للرتبة الجديدة (Limited Roles)
+    // ✅ التعديل: نتحقق من السعة فقط إذا كانت الرتبة الجديدة محدودة (ليست Member)
     if (newRole.isLimited) {
+      // ✅ التعديل: عند حساب العدد الحالي، نستثني العضو المستهدف (target) 
+      // لأنه إذا كان يمتلك الرتبة بالفعل أو سينتقل منها، فلا يجب أن يحسب كعائق
       final currentCount = allMembers
-          .where((m) => m.role == newRole)
+          .where((m) => m.role == newRole && m.userId != target.userId)
           .length;
 
       if (currentCount >= (newRole.maxCount ?? 0)) {
@@ -121,6 +125,7 @@ class RoleAssignmentLogic {
       }
     }
 
+    // ✅ التعديل: الآن الدالة ستسمح بتعيين Roles.member دون قيود
     final updated = target.copyWith(role: newRole);
     return RoleAssignmentResult.allowed(updated);
   }

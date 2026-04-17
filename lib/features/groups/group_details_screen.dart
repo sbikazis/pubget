@@ -1,13 +1,13 @@
 // lib/features/groups/group_details_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/constants/firestore_paths.dart'; 
+import '../../core/constants/firestore_paths.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
-import '../../widgets/app_textfield.dart'; // ✅ مضاف لاستخدامه في ديالوج الداعي
+import '../../widgets/app_textfield.dart';
 import '../../widgets/app_dialog.dart';
 
 import '../../models/group_model.dart';
@@ -20,7 +20,7 @@ import 'package:pubget/models/user_model.dart';
 import '../groups/group_members_screen.dart';
 import '../groups/roleplay_join_screen.dart';
 import '../groups/chat/chat_screen.dart';
-import '../groups/edit_group_screen.dart'; 
+import '../groups/edit_group_screen.dart';
 import '../../services/firebase/firestore_service.dart';
 import '../../core/logic/group_join_validator.dart';
 import 'package:pubget/services/monetization/promotion_dayalog.dart';
@@ -49,7 +49,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _homeProvider = context.read<HomeProvider>();
   }
 
-  // ✅ دالة جديدة لإظهار ديالوج السؤال عن الداعي للمجموعات العامة
+  // ✅ دالة لإظهار ديالوج السؤال عن الداعي للمجموعات العامة
   Future<void> _showInviterDialog(GroupModel group, UserModel user) async {
     final controller = TextEditingController();
     bool hasInviter = false;
@@ -99,14 +99,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     try {
       final firestore = context.read<FirestoreService>();
       final validator = GroupJoinValidator(firestoreService: firestore);
-      
-      // التحقق من الداعي (إن وجد)
+     
       final validation = await validator.validateJoin(
         groupId: group.id,
         groupType: group.type,
         characterName: null,
         characterImageUrl: null,
-        animeName: null,
+        animeName: group.animeName,
+        animeId: group.animeId,
         inviterName: inviterName,
       );
 
@@ -116,8 +116,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       }
 
       final error = await _homeProvider.joinGroup(
-        user: user, 
-        group: group, 
+        user: user,
+        group: group,
         invitedByUserId: validation.foundInviterId
       );
 
@@ -141,7 +141,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         MaterialPageRoute(builder: (_) => RoleplayJoinScreen(group: group)),
       );
     } else {
-      // للمجموعات العامة، نسأل عن الداعي أولاً
       _showInviterDialog(group, user);
     }
   }
@@ -180,12 +179,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  Widget _buildActions(GroupModel group, List<String> memberIds) {
+  // ✅ تعديل: إضافة زر الخيارات للأعضاء العاديين
+  Widget _buildActions(GroupModel group, List<MemberModel> members) {
     final user = _authProvider.user;
     if (user == null) return const SizedBox();
 
+    final memberIds = members.map((e) => e.userId).toList();
     final isFounder = user.id == group.founderId;
     final isMember = memberIds.contains(user.id);
+    final currentMember = isMember ? members.firstWhere((m) => m.userId == user.id) : null;
 
     if (isMember || isFounder) {
       return Row(
@@ -193,7 +195,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           _buildChatButton(group.id),
           const SizedBox(width: 8),
           _buildMembersIconButton(group.id),
-          if (isFounder) _buildAdminButton(group),
+          // تم تعديل هذا الجزء ليشمل الأعضاء العاديين أيضاً
+          _buildGroupOptionsButton(group, isFounder, currentMember),
         ],
       );
     }
@@ -215,8 +218,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     icon: Icon(hasRequest ? Icons.hourglass_top : Icons.group_add),
                     label: _isProcessing
                         ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(hasRequest 
-                            ? 'بانتظار الموافقة' 
+                        : Text(hasRequest
+                            ? 'بانتظار الموافقة'
                             : (group.type.isRoleplay ? 'انضم كتقمص دور' : 'انضم للمجموعة')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: hasRequest ? Colors.grey : AppColors.primary,
@@ -229,7 +232,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 _buildMembersIconButton(group.id),
               ],
             ),
-            if (!hasRequest) _buildRankingInfo(), // إظهار تلميح الميزة لغير الأعضاء
+            if (!hasRequest) _buildRankingInfo(),
           ],
         );
       },
@@ -257,91 +260,171 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     tooltip: 'الأعضاء',
   );
 
-  Widget _buildAdminButton(GroupModel group) => IconButton(
+  // ✅ تم تغيير الاسم من buildAdminButton إلى buildGroupOptionsButton ليشمل الجميع
+  Widget _buildGroupOptionsButton(GroupModel group, bool isFounder, MemberModel? currentMember) => IconButton(
     onPressed: () {
       showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        builder: (_) => _buildFounderSheet(group),
+        builder: (_) => _buildOptionsSheet(group, isFounder, currentMember),
       );
     },
-    icon: const Icon(Icons.admin_panel_settings),
-    tooltip: 'أدوات المؤسس',
+    icon: Icon(isFounder ? Icons.admin_panel_settings : Icons.more_vert),
+    tooltip: isFounder ? 'أدوات المؤسس' : 'خيارات المجموعة',
   );
 
-  Widget _buildFounderSheet(GroupModel group) {
+  // ✅ تم تعديل الـ Sheet ليدعم خيار الخروج للمنتسبين وخيار التفكيك للمؤسس
+  Widget _buildOptionsSheet(GroupModel group, bool isFounder, MemberModel? currentMember) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Wrap(
           runSpacing: 8,
           children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('تعديل المجموعة'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.push(context, MaterialPageRoute(builder: (_) => EditGroupScreen(group: group)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.campaign, color: Colors.amber),
-              title: const Text('ترويج المجموعة'),
-              onTap: () {
-                Navigator.of(context).pop();
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => PromotionDialog(
-                    groupName: group.name,
-                    onConfirm: () async {
-                      Navigator.pop(context);
-                      try {
-                        await _groupProvider.promoteGroup(groupId: group.id, userId: _authProvider.user!.id);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم ترويج مجموعتك بنجاح!')));
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في الترويج: $e')));
-                      }
-                    },
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text('حذف المجموعة', style: TextStyle(color: Colors.red)),
-              onTap: () => _confirmDelete(group),
-            ),
+            if (isFounder) ...[
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('تعديل المجموعة'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => EditGroupScreen(group: group)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.campaign, color: Colors.amber),
+                title: const Text('ترويج المجموعة'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showPromotionDialog(group);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text('تفكيك المجموعة (حذف نهائي)', style: TextStyle(color: Colors.red)),
+                onTap: () => _handleDisbandGroup(group),
+              ),
+            ] else if (currentMember != null) ...[
+              // خيار الخروج للعضو العادي
+              ListTile(
+                leading: const Icon(Icons.exit_to_app, color: Colors.red),
+                title: const Text('خروج من المجموعة', style: TextStyle(color: Colors.red)),
+                onTap: () => _handleLeaveGroup(group, currentMember),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Future<void> _confirmDelete(GroupModel group) async {
+  // ✅ ميزة الخروج من المجموعة
+  Future<void> _handleLeaveGroup(GroupModel group, MemberModel member) async {
     Navigator.of(context).pop();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل أنت متأكد من حذف هذه المجموعة نهائياً؟'),
+        title: const Text('مغادرة المجموعة'),
+        content: Text('هل أنت متأكد من مغادرة "${group.name}"؟'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('مغادرة', style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      await _groupProvider.deleteGroup(groupId: group.id);
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف المجموعة')));
+      setState(() => _isProcessing = true);
+      try {
+        await _groupProvider.leaveGroup(
+          groupId: group.id,
+          userId: member.userId,
+          characterName: member.characterName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد غادرت المجموعة')));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      } finally {
+        if (mounted) setState(() => _isProcessing = false);
       }
     }
+  }
+
+  // ✅ ميزة تفكيك المجموعة مع رسالة وداع
+  Future<void> _handleDisbandGroup(GroupModel group) async {
+    Navigator.of(context).pop();
+    final messageController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تفكيك المجموعة 🚩'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('سيتم حذف المجموعة نهائياً وإشعار جميع الأعضاء. يمكنك كتابة رسالة وداع لهم:'),
+            const SizedBox(height: 12),
+            AppTextField(
+              controller: messageController,
+              label: 'رسالة الوداع (اختياري)',
+              placeholder: 'شكراً لكم جميعاً...',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('تفكيك نهائي', style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isProcessing = true);
+      try {
+        await _groupProvider.disbandGroup(
+          groupId: group.id,
+          groupName: group.name,
+          farewellMessage: messageController.text.trim(),
+        );
+        if (mounted) {
+          Navigator.of(context).pop(); // العودة للخلف لأن المجموعة لم تعد موجودة
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تفكيك المجموعة وإرسال رسائل الوداع')));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء الحذف: $e')));
+      } finally {
+        if (mounted) setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  void _showPromotionDialog(GroupModel group) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PromotionDialog(
+        groupName: group.name,
+        onConfirm: () async {
+          Navigator.pop(context);
+          try {
+            await _groupProvider.promoteGroup(groupId: group.id, userId: _authProvider.user!.id);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم ترويج مجموعتك بنجاح!')));
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في الترويج: $e')));
+          }
+        },
+      ),
+    );
   }
 
   void _openMembers(String groupId) => Navigator.push(context, MaterialPageRoute(builder: (_) => GroupMembersScreen(groupId: groupId)));
@@ -363,7 +446,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         final group = snapshot.data;
         if (group == null) {
           return Scaffold(
-            appBar: AppBar(), 
+            appBar: AppBar(),
             body: Center(child: EmptyStateWidget(title: 'المجموعة غير موجودة', icon: Icons.error, onActionPressed: () => Navigator.pop(context)))
           );
         }
@@ -371,31 +454,40 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         return StreamBuilder<List<MemberModel>>(
           stream: groupProvider.streamMembers(groupId: group.id),
           builder: (context, memberSnapshot) {
-            final memberIds = memberSnapshot.data?.map((e) => e.userId).toList() ?? [];
-            
+            final members = memberSnapshot.data ?? [];
+           
             return Scaffold(
               appBar: AppBar(
-                title: const Text('تفاصيل المجموعة'), 
+                title: const Text('تفاصيل المجموعة'),
                 centerTitle: true
               ),
-              body: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(group),
-                    const SizedBox(height: 20),
-                    _buildActions(group, memberIds), 
-                    const SizedBox(height: 24),
-                    const Text('الوصف', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                    const Divider(color: AppColors.primary),
-                    const SizedBox(height: 8),
-                    Text(
-                      group.description.isNotEmpty ? group.description : 'لا يوجد وصف متاح لهذه المجموعة.',
-                      style: const TextStyle(fontSize: 15, height: 1.5),
+              body: Stack(
+                children: [
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(group),
+                        const SizedBox(height: 20),
+                        _buildActions(group, members),
+                        const SizedBox(height: 24),
+                        const Text('الوصف', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                        const Divider(color: AppColors.primary),
+                        const SizedBox(height: 8),
+                        Text(
+                          group.description.isNotEmpty ? group.description : 'لا يوجد وصف متاح لهذه المجموعة.',
+                          style: const TextStyle(fontSize: 15, height: 1.5),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  if (_isProcessing)
+                    Container( // ✅ تم حذف const من هنا
+                      color: Colors.black26,
+                      child: const Center(child: LoadingWidget()),
+                    ),
+                ],
               ),
             );
           },
@@ -412,7 +504,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           aspectRatio: 16 / 9,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: group.imageUrl.isNotEmpty 
+            child: group.imageUrl.isNotEmpty
                 ? Image.network(group.imageUrl, fit: BoxFit.cover)
                 : Container(color: Colors.grey[300], child: const Icon(Icons.image, size: 50)),
           ),

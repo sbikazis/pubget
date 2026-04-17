@@ -50,7 +50,10 @@ class _TermsScreenState extends State<TermsScreen> {
         const SnackBar(content: Text('تم قبول الشروط وحفظ الإعدادات')),
       );
 
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+      '/home',
+      (route) => false,
+);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

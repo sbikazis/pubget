@@ -1,22 +1,24 @@
-// lib/features/home/my_groups_section.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ تم إضافة الاستيراد لحل مشكلة DocumentSnapshot
 
 import '../../core/theme/app_colors.dart';
 import '../../models/group_model.dart';
+import '../../models/member_model.dart'; 
 import 'package:pubget/providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/group_provider.dart';
+import '../../providers/chat_provider.dart'; 
 import '../../widgets/app_button.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../groups/group_details_screen.dart';
-
 import '../groups/create_group_screen.dart';
+import '../../core/constants/firestore_paths.dart'; 
+import '../../services/firebase/firestore_service.dart'; // ✅ تم إضافة استيراد الخدمة
 
 class MyGroupsSection extends StatefulWidget {
-  // التعديل: إضافة متحكمات لعرض نوع محدد من المجموعات
   final bool showCreatedOnly;
   final bool showJoinedOnly;
 
@@ -58,6 +60,69 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
     }
   }
 
+  // ✅ التعديل الجوهري: تحسين استجابة العداد وتفادي الرعشة باستخدام Stream متداخل مستقر
+  Widget _buildUnreadBadge(String groupId) {
+    final authProvider = context.read<AuthProvider>();
+    final chatProvider = context.read<ChatProvider>();
+    final firestoreService = context.read<FirestoreService>();
+    final userId = authProvider.user?.id;
+
+    if (userId == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: firestoreService.streamDocument(
+        path: FirestorePaths.groupMembers(groupId),
+        docId: userId,
+      ),
+      builder: (context, memberSnap) {
+        // نتحقق من وجود البيانات وحالة العضو
+        if (!memberSnap.hasData || !memberSnap.data!.exists) return const SizedBox.shrink();
+       
+        final memberData = memberSnap.data!.data();
+        final lastReadAt = memberData?['lastReadAt']; 
+       
+        return StreamBuilder<int>(
+          // نمرر lastReadAt مباشرة للـ Stream المخصص في ChatProvider
+          stream: chatProvider.streamUnreadCount(
+            groupId: groupId,
+            lastReadAt: lastReadAt,
+          ),
+          builder: (context, countSnap) {
+            final count = countSnap.data ?? 0;
+            
+            // إذا كان العداد صفر، لا نعرض شيئاً
+            if (count <= 0) return const SizedBox.shrink();
+
+            return Container(
+              margin: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  )
+                ],
+              ),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildGroupCard(BuildContext context, GroupModel group) {
     final bool isPromoted = group.isPromoted;
     final borderColor = isPromoted ? AppColors.promotedBorder : Colors.transparent;
@@ -74,22 +139,26 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: SizedBox(
-                width: 64,
-                height: 64,
-                child: group.imageUrl.isNotEmpty
-                    ? Image.network(group.imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) {
-                        return Container(color: AppColors.lightCard);
-                      })
-                    : Container(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? AppColors.darkCard
-                            : AppColors.lightCard,
-                        child: const Icon(Icons.group, size: 36, color: Colors.white70),
-                      ),
-              ),
+            Stack( 
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: group.imageUrl.isNotEmpty
+                        ? Image.network(group.imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) {
+                            return Container(color: AppColors.lightCard);
+                          })
+                        : Container(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? AppColors.darkCard
+                                : AppColors.lightCard,
+                            child: const Icon(Icons.group, size: 36, color: Colors.white70),
+                          ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -108,6 +177,9 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      // استدعاء العداد المحدث
+                      _buildUnreadBadge(group.id),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -202,14 +274,12 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
   @override
   Widget build(BuildContext context) {
     final homeProvider = context.watch<HomeProvider>();
-    // تم الإبقاء على استدعاء authProvider للحفاظ على منطق الكود الأصلي
-    context.watch<AuthProvider>(); 
+    context.watch<AuthProvider>();
 
     final isLoading = homeProvider.isLoading;
     final myGroups = homeProvider.filteredMyGroups;
     final joinedGroups = homeProvider.filteredJoinedGroups;
 
-    // تم إزالة الـ Row العلوي (البحث والبروفايل) لأنه مدمج الآن في HomeScreen
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -219,7 +289,6 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
             const SizedBox(height: 220, child: Center(child: LoadingWidget(message: 'جاري تحميل المجموعات...'))),
 
           if (!isLoading) ...[
-            // عرض زر الإنشاء فقط في تبويب "مجموعاتي" أو الوضع الافتراضي
             if (!widget.showJoinedOnly)
               Padding(
                 padding: const EdgeInsets.only(bottom: 14.0),
@@ -234,7 +303,6 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                 ),
               ),
 
-            // منطق العرض بناءً على التبويب المختار
             if (!widget.showJoinedOnly)
               _buildSectionList(
                 title: 'المجموعات التي أنشأتها',

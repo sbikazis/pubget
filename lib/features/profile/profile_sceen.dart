@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/profile_provider.dart'; // ✅ إضافة المستورد الموحد
+import '../../providers/profile_provider.dart'; 
 import '../../models/user_model.dart';
 import '../../models/group_model.dart';
 
@@ -14,9 +14,8 @@ import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../../core/theme/app_colors.dart';
-// تم حذف RespectLogic و FirestoreService من هنا لعدم الحاجة لهما في الواجهة بعد التوحيد
 import 'package:pubget/features/profile/edit_profile_screen.dart';
-import 'package:pubget/features/profile/respect_modal.dart'; // استيراد المودال الموحد
+import 'package:pubget/features/profile/respect_modal.dart'; 
 
 class ProfileScreen extends StatefulWidget { 
   final String? userId;
@@ -28,21 +27,29 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // تم حذف متغيرات الـ Slider والـ Loading القديمة لتوحيد المنطق
 
-  Widget _buildInfoRow(String label, String value) {
+  // ✅ تعديل: استخدام ألوان السمة لضمان الوضوح في الـ Dark Mode
+  Widget _buildInfoRow(BuildContext context, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
           Text(
             '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            style: TextStyle(
+              fontWeight: FontWeight.w600, 
+              fontSize: 14,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 14),
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+              ),
             ),
           ),
         ],
@@ -50,9 +57,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ✅ تعديل: ويدجت مخصص للإحصائيات يحل محل الـ Chip التقليدي لضمان التباين
+  Widget _buildStatCard(BuildContext context, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ استخدام ProfileProvider بدلاً من التشتت بين المزودات
     final profileProvider = Provider.of<ProfileProvider>(context);
     final userProvider = Provider.of<UserProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -74,7 +104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    // ✅ التعديل الجوهري: استخدام Stream لضمان تحديث البيانات فوراً عند تغييرها في الـ Modal
     return StreamBuilder<UserModel>(
       stream: profileProvider.streamUserProfile(targetId),
       builder: (context, snapshot) {
@@ -95,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return _buildProfileContent(
           context, 
           user, 
-          profileProvider, // تمرير الـ profileProvider الموحد
+          profileProvider, 
           groupProvider, 
           isMe: isMe
         );
@@ -112,11 +141,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUserId = authProvider.user?.id;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: const Text('الملف الشخصي'),
         centerTitle: true,
+        backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        foregroundColor: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
         actions: [
           if (isMe)
             IconButton(
@@ -131,7 +164,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          // جلب البيانات مرة أخرى يدوياً عند السحب للأسفل
           await profileProvider.getUserProfile(user.id);
         },
         child: SingleChildScrollView(
@@ -145,14 +177,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   CircleAvatar(
                     radius: 44,
-                    backgroundColor: AppColors.lightBorder,
+                    backgroundColor: isDark ? AppColors.darkBorder : AppColors.lightBorder,
                     backgroundImage: user.avatarUrl.isNotEmpty
                         ? NetworkImage(user.avatarUrl)
                         : null,
                     child: user.avatarUrl.isEmpty
                         ? Text(
                             user.username.isNotEmpty ? user.username[0].toUpperCase() : '',
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 28, 
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                            ),
                           )
                         : null,
                   ),
@@ -163,32 +199,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Text(
                           user.username,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                          ),
                         ),
                         if (user.nickname != null && user.nickname!.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 4.0),
                             child: Text(
                               user.nickname!,
-                              style: const TextStyle(fontSize: 14, color: Colors.black),
+                              style: TextStyle(
+                                fontSize: 14, 
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
                             ),
                           ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         Wrap(
-                          spacing: 8, runSpacing: 4,
+                          spacing: 8, runSpacing: 8,
                           children: [
-                            Chip(
-                              label: Text('نقاط الاحترام: ${user.totalRespect}', style: const TextStyle(fontSize: 12)),
-                              backgroundColor: AppColors.lightCard,
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            Chip(
-                              label: Text('المعجبون: ${user.fansCount}', style: const TextStyle(fontSize: 12)),
-                              backgroundColor: AppColors.lightCard,
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            ),
+                            _buildStatCard(context, 'نقاط الاحترام', '${user.totalRespect}'),
+                            _buildStatCard(context, 'المعجبون', '${user.fansCount}'),
                           ],
                         ),
                       ],
@@ -205,15 +238,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.lightCard,
+                    color: isDark ? AppColors.darkCard : AppColors.lightCard,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      width: 0.5,
+                    ),
                   ),
-                  child: Text(user.bio, style: const TextStyle(fontSize: 14)),
+                  child: Text(
+                    user.bio, 
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                    ),
+                  ),
                 ),
 
               const SizedBox(height: 16),
 
-              // ✅ التعديل الجوهري: استبدال الـ Slider اليدوي بزر ملكي يفتح الـ Modal
               if (!isMe && currentUserId != null) ...[
                 const Divider(),
                 AppButton(
@@ -228,7 +270,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         currentUserId: currentUserId,
                       ),
                     ); 
-                    // لم نعد بحاجة لـ .then هنا لأن الـ StreamBuilder سيتكفل بالتحديث التلقائي
                   },
                 ),
                 const SizedBox(height: 10),
@@ -238,22 +279,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 8),
 
               // ================= Personal Details =================
-              _buildInfoRow('الانضمام منذ', user.createdAt.toLocal().toString().split(' ').first),
-              if (user.age != null) _buildInfoRow('العمر', '${user.age}'),
-              if (user.country != null && user.country!.isNotEmpty) _buildInfoRow('البلد', user.country!),
+              _buildInfoRow(context, 'الانضمام منذ', user.createdAt.toLocal().toString().split(' ').first),
+              if (user.age != null) _buildInfoRow(context, 'العمر', '${user.age}'),
+              if (user.country != null && user.country!.isNotEmpty) _buildInfoRow(context, 'البلد', user.country!),
 
               const SizedBox(height: 16),
 
               // ================= Favorite Animes =================
-              const Text('الأنميات المفضلة', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              Text(
+                'الأنميات المفضلة', 
+                style: TextStyle(
+                  fontWeight: FontWeight.w700, 
+                  fontSize: 16,
+                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                ),
+              ),
               const SizedBox(height: 8),
               if (user.favoriteAnimes.isNotEmpty)
                 Wrap(
                   spacing: 8, runSpacing: 8,
-                  children: user.favoriteAnimes.map((anime) => Chip(label: Text(anime))).toList(),
+                  children: user.favoriteAnimes.map((anime) => Chip(
+                    label: Text(anime, style: const TextStyle(fontSize: 12)),
+                    backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+                    side: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                    labelStyle: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
+                  )).toList(),
                 )
               else
-                const Text('لم يتم إضافة أنميات مفضلة بعد', style: TextStyle(color: Colors.grey)),
+                Text(
+                  'لم يتم إضافة أنميات مفضلة بعد', 
+                  style: TextStyle(color: isDark ? AppColors.darkTextHint : Colors.grey),
+                ),
 
               const SizedBox(height: 24),
 
@@ -275,9 +331,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => Scaffold(
+                        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
                         appBar: AppBar(
                           title: Text(isMe ? 'مجموعاتي' : 'مجموعات ${user.username}'),
                           centerTitle: true,
+                          backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                         ),
                         body: FutureBuilder<List<GroupModel>>(
                           future: groupProvider.getUserGroups(userId: user.id),
@@ -297,15 +355,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               itemBuilder: (context, index) {
                                 final group = groups[index];
                                 return Card(
+                                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
                                   margin: const EdgeInsets.symmetric(vertical: 6),
                                   child: ListTile(
                                     leading: CircleAvatar(
                                       backgroundImage: group.imageUrl.isNotEmpty ? NetworkImage(group.imageUrl) : null,
                                       child: group.imageUrl.isEmpty ? const Icon(Icons.groups) : null,
                                     ),
-                                    title: Text(group.name),
-                                    subtitle: Text(group.description),
-                                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                                    title: Text(
+                                      group.name,
+                                      style: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
+                                    ),
+                                    subtitle: Text(
+                                      group.description,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                    ),
+                                    trailing: Icon(
+                                      Icons.arrow_forward_ios, 
+                                      size: 16,
+                                      color: isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
+                                    ),
                                     onTap: () {},
                                   ),
                                 );

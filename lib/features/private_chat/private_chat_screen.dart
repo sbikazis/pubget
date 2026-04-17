@@ -1,9 +1,12 @@
+// lib/features/private_chat/private_chat_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/message_model.dart';
 import '../../models/user_model.dart';
+import '../../models/member_model.dart'; 
 
 import '../../providers/private_chat_provider.dart';
 import '../../providers/user_provider.dart';
@@ -11,7 +14,11 @@ import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 
-import '../../core/theme/app_colors.dart';
+import '../groups/chat/massage_bubble.dart'; // تصحيح بسيط في اسم الملف (Message بدل Massage)
+import '../groups/chat/massage_input_bar.dart'; // تصحيح بسيط في اسم الملف
+
+
+import '../../core/constants/roles.dart';
 
 class PrivateChatScreen extends StatefulWidget {
   final String chatId;
@@ -29,38 +36,87 @@ class PrivateChatScreen extends StatefulWidget {
 
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _controller = TextEditingController();
   final Uuid _uuid = const Uuid();
+ 
+  MessageModel? _replyingMessage;
+  
+  // ✅ تخزين الـ Stream لمنع الرعشة وإعادة البناء
+  late Stream<List<MessageModel>> _messageStream;
+  List<MessageModel> _currentMessages = [];
 
-  bool _sending = false;
+  @override
+  void initState() {
+    super.initState();
+    // ✅ تثبيت الـ Stream هنا لضمان استقرار الاتصال
+    _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
+        .streamMessages(chatId: widget.chatId);
 
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (!_scrollController.hasClients) return;
-
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+    // ✅ التعديل الأول: تصفير العداد فور دخول المحادثة الخاصة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updatePrivateReadStatus();
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
+  @override
+  void dispose() {
+    // ✅ التعديل الثالث: تصفير العداد عند مغادرة المحادثة لضمان دقة آخر ظهور
+    _updatePrivateReadStatus();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-    if (text.isEmpty) return;
+  // ✅ دالة مساعدة لتحديث حالة القراءة في الدردشة الخاصة
+  void _updatePrivateReadStatus() {
+    // نستخدم try-catch للتأكد من عدم تعطل التطبيق إذا أغلق المستخدم الشاشة بسرعة
+    try {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final privateChatProvider = Provider.of<PrivateChatProvider>(context, listen: false);
+      final currentUserId = userProvider.currentUser?.id;
 
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final privateChatProvider = Provider.of<PrivateChatProvider>(
-      context,
-      listen: false,
+      if (currentUserId != null) {
+        privateChatProvider.updatePrivateLastRead(
+          chatId: widget.chatId,
+          userId: currentUserId,
+        );
+      }
+    } catch (e) {
+      debugPrint("Status update failed: $e");
+    }
+  }
+
+  // ✅ دالة التمرير للأسفل (تحسين السلاسة)
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
     );
+  }
 
+  // ✅ دالة الانتقال لرسالة محددة (عند الضغط على الرد)
+  void _scrollToMessage(String messageId) {
+    final index = _currentMessages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      // حساب تقريبي للموقع
+      double targetOffset = index * 80.0; 
+      if (targetOffset > _scrollController.position.maxScrollExtent) {
+        targetOffset = _scrollController.position.maxScrollExtent;
+      }
+      
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  Future<void> _handleSendText(String text, MessageModel? replyTo) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final privateChatProvider = Provider.of<PrivateChatProvider>(context, listen: false);
     final currentUser = userProvider.currentUser;
     if (currentUser == null) return;
-
-    setState(() => _sending = true);
 
     try {
       await privateChatProvider.sendTextMessage(
@@ -68,17 +124,53 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         messageId: _uuid.v4(),
         sender: currentUser,
         text: text,
+        replyToId: replyTo?.id,
+        replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
       );
-
-      _controller.clear();
+      
+      // تحديث حالة القراءة فور الإرسال لضمان تصفير العداد محلياً أيضاً
+      _updatePrivateReadStatus();
+      
+      _onCancelReply();
       _scrollToBottom();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to send message")),
+        const SnackBar(content: Text("فشل إرسال الرسالة")),
       );
     }
+  }
 
-    setState(() => _sending = false);
+  Future<void> _handleSendImage(File file, MessageModel? replyTo) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final privateChatProvider = Provider.of<PrivateChatProvider>(context, listen: false);
+    final currentUser = userProvider.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      await privateChatProvider.sendMediaMessage(
+        chatId: widget.chatId,
+        messageId: _uuid.v4(),
+        sender: currentUser,
+        file: file,
+        mediaType: 'image',
+        replyToId: replyTo?.id,
+        replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+      );
+
+      // تحديث حالة القراءة فور إرسال الصورة
+      _updatePrivateReadStatus();
+
+      _onCancelReply();
+      _scrollToBottom();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("فشل إرسال الصورة")),
+      );
+    }
+  }
+
+  void _onCancelReply() {
+    if (mounted) setState(() => _replyingMessage = null);
   }
 
   @override
@@ -105,47 +197,62 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       ),
       body: Column(
         children: [
-          /// ===============================
-          /// MESSAGES
-          /// ===============================
           Expanded(
-            child: Consumer<PrivateChatProvider>(
-              builder: (context, provider, _) {
-                return StreamBuilder<List<MessageModel>>(
-                  stream: provider.streamMessages(chatId: widget.chatId),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const LoadingWidget();
-                    }
+            child: StreamBuilder<List<MessageModel>>(
+              stream: _messageStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && _currentMessages.isEmpty) {
+                  return const LoadingWidget();
+                }
 
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const EmptyStateWidget(
-                        title: "No messages yet",
-                        subtitle: "Start the conversation now",
-                        icon: Icons.chat_bubble_outline,
-                      );
-                    }
+                if (snapshot.hasData) {
+                  final newMessages = snapshot.data!;
+                  
+                  // ✅ تحديث حالة القراءة عند استقبال رسائل جديدة
+                  if (_currentMessages.length < newMessages.length) {
+                    Future.microtask(() => _updatePrivateReadStatus());
+                    
+                    // ✅ التعديل الجوهري: التمرير للأسفل فقط في حال وجود رسائل جديدة
+                    // لمنع الاهتزاز عند مجرد إضافة إيموجي (تفاعل)
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                  }
+                  
+                  _currentMessages = newMessages;
+                }
 
-                    final messages = snapshot.data!;
+                if (_currentMessages.isEmpty) {
+                  return const EmptyStateWidget(
+                    title: "لا توجد رسائل",
+                    subtitle: "ابدأ المحادثة الآن",
+                    icon: Icons.chat_bubble_outline,
+                  );
+                }
 
-                    WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => _scrollToBottom(),
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  itemCount: _currentMessages.length,
+                  itemBuilder: (context, index) {
+                    final message = _currentMessages[index];
+                    final isMe = message.senderId == currentUser.id;
+
+                    final sender = MemberModel(
+                      userId: message.senderId,
+                      groupId: 'private', 
+                      role: message.senderRole ?? Roles.member,
+                      joinedAt: DateTime.now(),
+                      displayName: message.senderName,
+                      characterImageUrl: message.senderAvatar,
                     );
 
-                    return ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
-
-                        final isMe = message.senderId == currentUser.id;
-
-                        return _buildSimpleBubble(
-                          message: message,
-                          isMe: isMe,
-                        );
-                      },
+                    return MessageBubble(
+                      key: ValueKey(message.id),
+                      message: message,
+                      sender: sender,
+                      isMe: isMe,
+                      groupId: widget.chatId, 
+                      onReply: (msg) => setState(() => _replyingMessage = msg),
+                      onTapReply: (replyId) => _scrollToMessage(replyId),
                     );
                   },
                 );
@@ -153,108 +260,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             ),
           ),
 
-          /// ===============================
-          /// INPUT BAR
-          /// ===============================
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? AppColors.darkSurface
-                  : AppColors.lightSurface,
-              border: Border(
-                top: BorderSide(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? AppColors.darkBorder
-                      : AppColors.lightBorder,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: "Write a message...",
-                      filled: true,
-                      fillColor: Theme.of(context).brightness == Brightness.dark
-                          ? AppColors.darkCard
-                          : AppColors.lightCard,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sending ? null : _sendMessage,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// ✅ Bubble بسيط خاص بالـ private chat
-  Widget _buildSimpleBubble({
-    required MessageModel message,
-    required bool isMe,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final bubbleColor = isMe
-        ? AppColors.primary
-        : (isDark ? AppColors.darkCard : AppColors.lightCard);
-
-    final textColor = isMe
-        ? Colors.white
-        : (isDark ? Colors.white : Colors.black);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 10,
-            ),
-            constraints: const BoxConstraints(maxWidth: 250),
-            decoration: BoxDecoration(
-              color: bubbleColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              message.text ?? "",
-              style: TextStyle(color: textColor),
-            ),
+          MessageInputBar(
+            onSendText: _handleSendText,
+            onSendImage: _handleSendImage,
+            replyingMessage: _replyingMessage,
+            onCancelReply: _onCancelReply,
+            isPrivate: true, 
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+// lib/core/theme/role_colors.dart
 import 'package:flutter/material.dart';
 import '../constants/roles.dart';
 import 'app_colors.dart';
@@ -6,7 +7,7 @@ class RoleColors {
   RoleColors._();
 
 
-  //  FOUNDER – Royal Gold Authority
+  // FOUNDER – Royal Gold Authority
 
 
   static const Color founder = Color(0xFFFFC857);
@@ -16,41 +17,41 @@ class RoleColors {
   static const Color founderBadgeBg = Color(0x26FFC857);
 
 
-  //  SENSEI – Deep Royal Purple
+  // SENSEI – Deep Royal Purple
 
 
-  static const Color sensei = Color(0xFF5B2EFF);
-  static const Color senseiDark = Color(0xFF4A25CC);
+  static const Color sensei = Color.fromARGB(255, 125, 7, 204);
+  static const Color senseiDark = Color.fromARGB(255, 101, 4, 165);
 
   static const Color senseiBadgeBg = Color(0x265B2EFF);
 
 
-  //  HAKUSHO – Controlled Violet
+  // HAKUSHO – War Red (Updated)
 
 
-  static const Color hakusho = Color(0xFF6D4CFF);
-  static const Color hakushoDark = Color(0xFF5936D6);
+  static const Color hakusho = Color(0xFFEF4444);
+  static const Color hakushoDark = Color(0xFFDC2626);
 
-  static const Color hakushoBadgeBg = Color(0x266D4CFF);
-
-
-  //  SENPAI – Soft Tech Purple
+  static const Color hakushoBadgeBg = Color(0x26EF4444);
 
 
-  static const Color senpai = Color(0xFF8C75FF);
-  static const Color senpaiDark = Color(0xFF715BE0);
-
-  static const Color senpaiBadgeBg = Color(0x268C75FF);
+  // SENPAI – Nature Green (Updated)
 
 
-  //  MEMBER – Neutral Authority
+  static const Color senpai = Color(0xFF10B981);
+  static const Color senpaiDark = Color(0xFF059669);
+
+  static const Color senpaiBadgeBg = Color(0x2610B981);
+
+
+  // MEMBER – Neutral Authority
 
 
   static const Color memberLight = Color(0xFF9CA3AF);
   static const Color memberDark = Color(0xFFB3B3C2);
 
 
-  //  ROLE COLOR RESOLVER
+  // ROLE COLOR RESOLVER
 
 
   static Color getColor(Roles role, {required bool isDark}) {
@@ -74,7 +75,7 @@ class RoleColors {
   
 
 
-  //  BADGE BACKGROUND
+  // BADGE BACKGROUND
 
 
   static Color getBadgeBackground(Roles role, {required bool isDark}) {

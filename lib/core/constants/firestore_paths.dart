@@ -1,3 +1,5 @@
+// lib/core/constants/firestore_paths.dart
+
 class FirestorePaths {
 
   // ROOT COLLECTIONS
@@ -12,11 +14,11 @@ class FirestorePaths {
   static String groupMembers(String groupId) =>
       '$groups/$groupId/members';
 
-  // 🔥 التعديل: مسار طلبات الانضمام للمجموعة (يراه الشوغو)
+  // مسار طلبات الانضمام للمجموعة (يراه الشوغو)
   static String groupJoinRequests(String groupId) =>
       '$groups/$groupId/requests';
 
-  // 🔥 التعديل: مسار طلب محدد لمستخدم معين داخل مجموعة (للتحقق السريع)
+  // مسار طلب محدد لمستخدم معين داخل مجموعة (للتحقق السريع)
   static String groupJoinRequestDoc(String groupId, String userId) =>
       '$groups/$groupId/requests/$userId';
 
@@ -26,18 +28,28 @@ class FirestorePaths {
   static String groupMessages(String groupId) =>
       '$groups/$groupId/messages';
 
+  static String groupMessagesDoc(String groupId, String messageId) =>
+      '$groups/$groupId/messages/$messageId';
+
   static String groupGames(String groupId) =>
       '$groups/$groupId/games';
 
+  // مسار حجز الشخصيات (يستخدم للحجز وللتنظيف عند الخروج أو التفكيك)
   static String groupCharacters(String groupId) =>
       '$groups/$groupId/characters';
+
+  static String groupCharacterDoc(String groupId, String charId) =>
+      '$groups/$groupId/characters/$charId';
 
 
   // USER SUBCOLLECTIONS
   
-  // ✅ مسار الإشعارات موجود بالفعل لديك، سنستخدمه لإرسال "تم قبولك" أو "لديك طلب جديد"
+  // مسار الإشعارات لإرسال التنبيهات (مثل القبول، الرفض، أو تفكيك المجموعة)
   static String userNotifications(String userId) =>
       '$users/$userId/notifications';
+
+  static String userNotificationDoc(String userId, String notifId) =>
+      '$users/$userId/notifications/$notifId';
 
 
   // PRIVATE CHAT SUBCOLLECTIONS

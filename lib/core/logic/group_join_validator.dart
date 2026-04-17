@@ -1,6 +1,6 @@
 // lib/core/logic/group_join_validator.dart
-import 'dart:async'; // ✅ مضاف للتحكم في مهلة الانتظار
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pubget/core/constants/group_type.dart';
 import 'package:pubget/core/constants/firestore_paths.dart';
 import 'package:pubget/core/utils/validators.dart';
@@ -10,7 +10,7 @@ import '../../../services/firebase/firestore_service.dart';
 class JoinValidationResult {
   final bool isValid;
   final String? errorMessage;
-  final String? foundInviterId; 
+  final String? foundInviterId;
 
   const JoinValidationResult({
     required this.isValid,
@@ -40,18 +40,9 @@ class GroupJoinValidator {
     required FirestoreService firestoreService,
   }) : _firestoreService = firestoreService;
 
-  // ✅ دالة ذكية لتنظيف وتنسيق اسم الشخصية (تعالج مشكلة الفواصل والعكس)
+  // ✅ التعديل: تبسيط التنظيف ليكون متوافقاً مع الـ API دون تغيير ترتيب الكلمات
   String _formatCharacterName(String name) {
-    String clean = name.trim();
-    
-    if (clean.contains(',')) {
-      final parts = clean.split(',');
-      if (parts.length == 2) {
-        clean = '${parts[1].trim()} ${parts[0].trim()}';
-      }
-    }
-    
-    return clean.replaceAll(RegExp(r'[^\w\s]'), '').trim();
+    return name.trim(); // نكتفي بحذف المسافات الجانبية لإرسال الاسم كما هو في MAL
   }
 
   /// ✅ وظيفة البحث عن الداعي للتأكد من وجوده في المجموعة
@@ -67,7 +58,7 @@ class GroupJoinValidator {
     final characterQuery = await membersRef.where('characterName', isEqualTo: name).limit(1).get();
     if (characterQuery.docs.isNotEmpty) return characterQuery.docs.first.id;
 
-    return null; 
+    return null;
   }
 
   /// Main Entry Point
@@ -77,13 +68,14 @@ class GroupJoinValidator {
     required String? characterName,
     required String? characterImageUrl,
     required String? animeName,
-    String? inviterName, 
+    required dynamic animeId, // ✅ التعديل: إضافة animeId المطلوب للنسخة الجديدة من الـ API
+    String? inviterName,
   }) async {
-    
+   
     String? inviterId;
 
     try {
-      // ✅ أولاً: التحقق من "اسم الداعي"
+      // 1. التحقق من "اسم الداعي" أولاً (محلي سريع)
       if (inviterName != null && inviterName.trim().isNotEmpty) {
         inviterId = await _verifyInviter(groupId, inviterName);
         if (inviterId == null) {
@@ -91,17 +83,18 @@ class GroupJoinValidator {
         }
       }
 
-      // Public group
+      // إذا كانت المجموعة عامة ولا تتطلب شخصية، نكتفي بالنجاح هنا
       if (!groupType.requiresCharacter) {
         return JoinValidationResult.success(inviterId: inviterId);
       }
 
+      // التحقق من المدخلات الأساسية
       if (characterName == null || characterName.trim().isEmpty) {
         return JoinValidationResult.failure('الرجاء إدخال اسم الشخصية');
       }
 
+      // التعديل: استخدام الاسم كما أدخله المستخدم لضمان مطابقة الـ API
       final formattedCharacterName = _formatCharacterName(characterName);
-      final cleanAnimeName = animeName?.trim();
 
       final nameError = Validators.validateCharacterName(formattedCharacterName);
       if (nameError != null) {
@@ -112,46 +105,46 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      if (cleanAnimeName == null || cleanAnimeName.isEmpty) {
-        return JoinValidationResult.failure('اسم الأنمي غير محدد');
+      // ✅ التعديل الجوهري: إزالة التحقق الإجباري من animeName النصي والاعتماد على animeId
+      if (animeId == null) {
+        return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة، يرجى التواصل مع الشوغو.');
       }
 
-      // ✅ تحسين: إضافة مهلة انتظار (Timeout) للتحقق من الأنمي
-      final animeExists = await AnimeApiService.validateAnimeExists(cleanAnimeName)
-          .timeout(const Duration(seconds: 10), onTimeout: () => throw TimeoutException('استغرقت العملية وقتاً طويلاً'));
+      // ✅ التعديل الجوهري: توحيد الاسم لـ lowercase وحذف المسافات تماماً عند فحص Firestore
+      // هذا هو "المفتاح" الذي نستخدمه في الـ Provider لضمان عدم التكرار (مثلاً: leviackerman)
+      final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
-      if (!animeExists) {
-        return JoinValidationResult.failure('الأنمي غير موجود في قاعدة البيانات');
-      }
-
-      // ✅ تحسين: إضافة مهلة انتظار (Timeout) للتحقق من الشخصية
-      final characterExists = await AnimeApiService.validateCharacterExists(
-        animeName: cleanAnimeName,
-        characterName: formattedCharacterName,
-      ).timeout(const Duration(seconds: 10), onTimeout: () => throw TimeoutException('استغرقت العملية وقتاً طويلاً'));
-
-      if (!characterExists) {
-        return JoinValidationResult.failure(
-          'لم نتمكن من العثور على "$formattedCharacterName" في أنمي "$cleanAnimeName".',
-        );
-      }
-
-      // Check if character reserved
       final reservedDoc = await _firestoreService.getDocument(
         path: FirestorePaths.groupCharacters(groupId),
-        docId: formattedCharacterName.toLowerCase(), 
+        docId: characterKey,
       );
 
       if (reservedDoc != null) {
-        return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة');
+        return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة من قبل عضو آخر.');
+      }
+
+      // ✅ التعديل الجوهري: استدعاء الـ API باستخدام animeId لضمان دقة البحث
+      // تم رفع مهلة الانتظار إلى 15 ثانية لضمان استقرار الرد من خادم الأنمي
+      final characterExists = await AnimeApiService.validateCharacterExists(
+        animeId: animeId, 
+        characterName: formattedCharacterName,
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException('استغرقت عملية التحقق وقتاً طويلاً، خادم الأنمي بطيء حالياً.')
+      );
+
+      if (!characterExists) {
+        return JoinValidationResult.failure(
+          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة شخصيات هذا الأنمي المعتمدة. تأكد من كتابة الاسم بدقة بالإنجليزية كما هو في MyAnimeList.',
+        );
       }
 
       return JoinValidationResult.success(inviterId: inviterId);
 
-    } on TimeoutException catch (_) {
-      return JoinValidationResult.failure('فشل الاتصال: خادم الأنمي لا يستجيب حالياً، حاول مجدداً.');
+    } on TimeoutException catch (e) {
+      return JoinValidationResult.failure(e.message ?? 'فشل الاتصال بخادم الأنمي، حاول مجدداً.');
     } catch (e) {
-      return JoinValidationResult.failure('حدث خطأ أثناء التحقق: ${e.toString()}');
+      return JoinValidationResult.failure('حدث خطأ غير متوقع أثناء التحقق: ${e.toString()}');
     }
   }
 }

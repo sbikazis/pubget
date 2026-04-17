@@ -10,7 +10,6 @@ class DarkTheme {
     brightness: Brightness.dark,
 
     // COLOR SCHEME
-
     colorScheme: const ColorScheme(
       brightness: Brightness.dark,
 
@@ -29,7 +28,7 @@ class DarkTheme {
       surface: AppColors.darkSurface,
       onSurface: AppColors.darkTextPrimary,
 
-      // ✅ تم التصحيح هنا
+      // ✅ تم التصحيح هنا لضمان السواد الملكي
       surfaceContainer: AppColors.darkBackground,
       onSurfaceVariant: AppColors.darkTextPrimary,
 
@@ -37,19 +36,23 @@ class DarkTheme {
       onError: Colors.white,
     ),
 
+    // ✅ التعديل: ضمان خلفية التطبيق الرسمية لكل الشاشات
     scaffoldBackgroundColor: AppColors.darkBackground,
+   
+    // ✅ التعديل: إلغاء تأثير اللون الرمادي المضاف من Material 3 على الأسطح
+    canvasColor: AppColors.darkBackground,
 
     // TEXT THEME
-
     textTheme: AppTextTheme.darkTextTheme,
 
     // APP BAR
-
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.darkSurface,
       foregroundColor: AppColors.darkTextPrimary,
       elevation: 0,
       centerTitle: true,
+      // ✅ التعديل: منع الـ AppBar من تغيير لونه عند التمرير وإلغاء Tint
+      surfaceTintColor: Colors.transparent,
       titleTextStyle: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
@@ -58,7 +61,6 @@ class DarkTheme {
     ),
 
     // ELEVATED BUTTON
-
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
@@ -77,7 +79,6 @@ class DarkTheme {
     ),
 
     // OUTLINED BUTTON
-
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.primary,
@@ -90,7 +91,6 @@ class DarkTheme {
     ),
 
     // INPUT FIELDS
-
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.darkCard,
@@ -124,10 +124,11 @@ class DarkTheme {
     ),
 
     // CARDS
-
     cardTheme: CardThemeData(
       color: AppColors.darkCard,
       elevation: 0,
+      // ✅ التعديل: إلغاء Tint لضمان ظهور لون darkCard الحقيقي
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: const BorderSide(
@@ -137,29 +138,41 @@ class DarkTheme {
     ),
 
     // DIVIDER
-
     dividerTheme: const DividerThemeData(
       color: AppColors.darkBorder,
       thickness: 0.6,
     ),
 
     // DIALOG
-
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.darkSurface,
+      // ✅ التعديل المعماري: تم تثبيت surfaceTintColor كشفاف لمنع تداخل الألوان الرمادية
+      // ورفع الـ elevation ضمنياً لضمان استقلال طبقة الـ Dialog عن الـ Barrier
+      surfaceTintColor: Colors.transparent,
+      elevation: 10, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: AppColors.primary.withOpacity(0.1), width: 0.5),
+      ),
+      titleTextStyle: const TextStyle(
+        color: AppColors.darkTextPrimary,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+      contentTextStyle: const TextStyle(
+        color: AppColors.darkTextSecondary,
+        fontSize: 16,
       ),
     ),
 
     // BOTTOM SHEET
-
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: AppColors.darkSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 10,
     ),
 
-    // SWITCH (✅ تم التحديث)
-
+    // SWITCH
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
@@ -169,14 +182,14 @@ class DarkTheme {
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return AppColors.primary.withValues(alpha: 0.4);
+          // ✅ تم التصحيح هنا: استبدال withValues بـ withOpacity لضمان التوافق ومنع السواد المفاجئ
+          return AppColors.primary.withOpacity(0.4);
         }
         return AppColors.darkCard;
       }),
     ),
 
     // CHAT BUBBLE
-
     extensions: const <ThemeExtension<dynamic>>[
       ChatBubbleTheme(
         myBubbleColor: AppColors.myMessageBubble,
@@ -187,7 +200,6 @@ class DarkTheme {
 }
 
 // CUSTOM EXTENSION
-
 class ChatBubbleTheme extends ThemeExtension<ChatBubbleTheme> {
   final Color myBubbleColor;
   final Color otherBubbleColor;

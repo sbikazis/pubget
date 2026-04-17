@@ -41,9 +41,12 @@ class AppButton extends StatelessWidget {
       child: _buildContent(),
     );
 
+    // ✅ التعديل المعتمد: استخدام ConstrainedBox بدلاً من SizedBox العادي
+    // هذا يسمح للزر بالتمدد فقط في حدود ما يسمح به الأب (Parent Constraints)
+    // ويمنع حدوث خطأ Infinite Width داخل الـ Rows
     if (expand) {
-      return SizedBox(
-        width: double.infinity,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: double.infinity),
         child: button,
       );
     }
@@ -65,6 +68,7 @@ class AppButton extends StatelessWidget {
 
     if (icon != null) {
       return Row(
+        mainAxisSize: MainAxisSize.min, // أضفنا هذا لضمان عدم تمدد الـ Row داخلياً للمالانهاية
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 20),

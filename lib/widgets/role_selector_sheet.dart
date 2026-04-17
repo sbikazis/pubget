@@ -80,7 +80,8 @@ class RoleSelectorSheet extends StatelessWidget {
               final color = RoleColors.getColor(role, isDark: isDark);
               final bg = RoleColors.getBadgeBackground(role, isDark: isDark);
               
-              int currentCount = allMembers.where((m) => m.role == role).length;
+              // ✅ التعديل المطلوب: استثناء العضو المستهدف من العد لحساب الأماكن الشاغرة بدقة
+              int currentCount = allMembers.where((m) => m.role == role && m.userId != targetMember.userId).length;
               bool isFull = role.isLimited && currentCount >= (role.maxCount ?? 0);
 
               return InkWell(

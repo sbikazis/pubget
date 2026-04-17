@@ -1,4 +1,3 @@
-// lib/features/home/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,18 +5,19 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/user_provider.dart'; // 🔥 مضاف للمزامنة
-import '../../providers/notifications_provider.dart'; 
-import '../../models/notification_model.dart'; 
+import '../../providers/chat_provider.dart'; // 🔥 مضاف للعدادات
+import '../../providers/private_chat_provider.dart'; // 🔥 مضاف للعدادات
+import '../../providers/notifications_provider.dart';
+import '../../models/notification_model.dart';
 import '../../widgets/loading_widget.dart';
 import '../home/promoted_groups_section.dart';
 import 'package:pubget/features/home/my_group_section.dart';
-
 
 // added imports for direct navigation
 import '../home/search_screen.dart';
 import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
-import 'package:pubget/features/profile/profile_sceen.dart'; // تأكد من صحة الإملاء profile_screen
+import 'package:pubget/features/profile/profile_sceen.dart'; 
 import '../private_chat/private_chats_list_screen.dart';
 
 import '../settings/settings_screen.dart';
@@ -35,9 +35,13 @@ class _HomeScreenState extends State<HomeScreen> {
   late AuthProvider _authProvider;
   bool _initialized = false;
   bool _isRefreshing = false;
-  
+ 
   // التعديل: متغير لمتابعة التبويب المختار
   int _selectedIndex = 0;
+
+  // ✅ متغيرات محلية للتحكم الفوري في العدادات (Optimistic UI)
+  bool _hidePrivateBadge = false;
+  bool _hideGroupsBadge = false;
 
   @override
   void didChangeDependencies() {
@@ -45,13 +49,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_initialized) {
       _homeProvider = context.read<HomeProvider>();
       _authProvider = context.read<AuthProvider>();
-      final userProvider = context.read<UserProvider>(); // 🔥 مضاف
+      final userProvider = context.read<UserProvider>(); 
 
       final currentUser = _authProvider.user;
       if (currentUser != null) {
         _homeProvider.initialize(currentUser: currentUser);
         // 🔥 ضمان مزامنة بيانات المستخدم الحالي عند فتح التطبيق
-        userProvider.syncUser(currentUser); 
+        userProvider.syncUser(currentUser);
       }
 
       _initialized = true;
@@ -62,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
 
-    setState(() => _isRefreshing = true);
+    setState(() => _isRefreshing = false); // إعادة التعيين عند التحديث اليدوي
     try {
       await _homeProvider.refresh(user);
     } finally {
@@ -85,7 +89,6 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
       );
 
-  // 🔥 التعديل: تمرير userId كاحتياط لضمان تحميل البيانات في ProfileScreen
   void _openProfile() {
     final currentUser = context.read<AuthProvider>().user;
     Navigator.push(
@@ -105,6 +108,37 @@ class _HomeScreenState extends State<HomeScreen> {
         context,
         MaterialPageRoute(builder: (_) => const SearchScreen()),
       );
+
+  // =========================================================
+  // ✅ بناء أيقونة مع عداد (Badge) للـ Bottom Bar
+  // =========================================================
+  Widget _buildTabIcon(IconData icon, int count, bool forceHide) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        if (count > 0 && !forceHide) // يتم الإخفاء إذا تحقق شرط التصفير الفوري
+          Positioned(
+            right: -6,
+            top: -3,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 1),
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _buildDrawer(BuildContext context) {
     final user = context.read<AuthProvider>().user;
@@ -144,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('الدردشات الخاصة'),
               onTap: () {
                 Navigator.of(context).pop();
-                _openPrivateChats();
+                _onTabTapped(3); // تفعيل تصفير العداد عند الانتقال من القائمة
               },
             ),
             ListTile(
@@ -152,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('مجموعاتي'),
               onTap: () {
                 Navigator.of(context).pop();
-                setState(() => _selectedIndex = 1); // الانتقال لتبويب مجموعاتي
+                _onTabTapped(1); 
               },
             ),
             ListTile(
@@ -190,7 +224,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // التعديل: واجهة الصفحة الرئيسية الموحدة (التبويب الأول)
   Widget _buildHomeDiscoveryContent(UserModel? user) {
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -231,7 +264,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            // هنا المحرك الأساسي: القائمة المدمجة (مروجة + مقترحة) بالهوية الجديدة
             const PromotedGroupsSection(),
             const SizedBox(height: 24),
           ],
@@ -240,11 +272,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🔥 التعديل: Widget مخصص لأيقونة الإشعارات مع التنبيه البصري
   Widget _buildNotificationIcon(String userId) {
     final notificationProvider = context.read<NotificationsProvider>();
     return StreamBuilder<List<NotificationModel>>(
       stream: notificationProvider.streamNotifications(userId),
+      initialData: const [], // منع الوميض عند التحميل
       builder: (context, snapshot) {
         final unreadCount = snapshot.data?.where((n) => !n.isRead).length ?? 0;
 
@@ -287,10 +319,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ✅ دالة معالجة الضغط على التبويب لتصفير العداد فورياً
+  void _onTabTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+      if (index == 3) _hidePrivateBadge = true; // تصفير الخاص فوراً
+      if (index == 1 || index == 2) _hideGroupsBadge = true; // تصفير المجموعات فوراً
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final homeProvider = context.watch<HomeProvider>();
+    final chatProvider = context.read<ChatProvider>(); 
+    final privateChatProvider = context.read<PrivateChatProvider>(); 
 
     final user = authProvider.user;
     final isLoading = homeProvider.isLoading || authProvider.isLoading;
@@ -316,7 +359,6 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openSearch,
             tooltip: 'بحث',
           ),
-          // 🔥 التعديل: استبدال الأيقونة الثابتة بالـ Widget التفاعلي الجديد
           if (user != null)
             _buildNotificationIcon(user.id)
           else
@@ -350,10 +392,10 @@ class _HomeScreenState extends State<HomeScreen> {
           IndexedStack(
             index: _selectedIndex,
             children: [
-              _buildHomeDiscoveryContent(user), // تبويب 1: اكتشاف (النسخة المحدثة)
-              const MyGroupsSection(showCreatedOnly: true), // تبويب 2: مجموعاتي
-              const MyGroupsSection(showJoinedOnly: true),  // تبويب 3: منضم إليها
-              const PrivateChatsListScreen(),              // تبويب 4: خاص
+              _buildHomeDiscoveryContent(user), 
+              const MyGroupsSection(showCreatedOnly: true), 
+              const MyGroupsSection(showJoinedOnly: true), 
+              const PrivateChatsListScreen(), 
             ],
           ),
           if (isLoading || _isRefreshing)
@@ -367,15 +409,51 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
+        onTap: _onTabTapped,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'اكتشف'),
-          BottomNavigationBarItem(icon: Icon(Icons.admin_panel_settings), label: 'مجموعاتي'),
-          BottomNavigationBarItem(icon: Icon(Icons.group), label: 'منضم لها'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: 'الخاص'),
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'اكتشف'),
+         
+          BottomNavigationBarItem(
+            icon: (user == null)
+                ? const Icon(Icons.admin_panel_settings)
+                : StreamBuilder<int>(
+                    stream: chatProvider.streamTotalGroupsUnreadCount(
+                      userId: user.id,
+                      groups: homeProvider.myGroups,
+                    ),
+                    initialData: 0,
+                    builder: (context, snapshot) => _buildTabIcon(Icons.admin_panel_settings, snapshot.data ?? 0, _hideGroupsBadge),
+                  ), 
+            label: 'مجموعاتي'
+          ),
+
+          BottomNavigationBarItem(
+            icon: (user == null)
+                ? const Icon(Icons.group)
+                : StreamBuilder<int>(
+                    stream: chatProvider.streamTotalGroupsUnreadCount(
+                      userId: user.id,
+                      groups: homeProvider.joinedGroups,
+                    ),
+                    initialData: 0,
+                    builder: (context, snapshot) => _buildTabIcon(Icons.group, snapshot.data ?? 0, _hideGroupsBadge),
+                  ),
+            label: 'منضم لها',
+          ),
+
+          BottomNavigationBarItem(
+            icon: (user == null)
+                ? const Icon(Icons.chat_bubble)
+                : StreamBuilder<int>(
+                    stream: privateChatProvider.streamAllPrivateUnreadCount(user.id),
+                    initialData: 0,
+                    builder: (context, snapshot) => _buildTabIcon(Icons.chat_bubble, snapshot.data ?? 0, _hidePrivateBadge),
+                  ),
+            label: 'الخاص',
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(

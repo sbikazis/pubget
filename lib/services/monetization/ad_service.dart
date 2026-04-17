@@ -1,3 +1,5 @@
+// lib/services/monetization/ad_service.dart
+import 'dart:async'; // تم استدعاء هذا للتحكم في انتظار التحميل
 import '../../core/logic/ad_display_logic.dart';
 import '../local/local_storage_service.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -30,67 +32,69 @@ class AdService {
   // Morning App Open Ad
   // ===============================
   Future<bool> tryShowMorningAd({
-  required bool isPremium,
-}) async {
-  await _localStorage.init();
+    required bool isPremium,
+  }) async {
+    await _localStorage.init();
 
-  final lastAdTime = _localStorage.getLastAdTime();
+    final lastAdTime = _localStorage.getLastAdTime();
 
-  var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
-  decision = AdDisplayLogic.checkIfPremium(
-    isPremium: isPremium,
-    decision: decision,
-  );
+    var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
+    decision = AdDisplayLogic.checkIfPremium(
+      isPremium: isPremium,
+      decision: decision,
+    );
 
-  if (!decision.shouldShow) return false;
+    if (!decision.shouldShow) return false;
 
-  // الآن يمكن عرض الإعلان بأمان
-  await _showAppOpenAd();
-  await _localStorage.saveLastAdTime(DateTime.now());
+    // الآن يمكن عرض الإعلان بأمان
+    await _showAppOpenAd();
+    await _localStorage.saveLastAdTime(DateTime.now());
 
-  return true;
-}
+    return true;
+  }
 
   // ===============================
   // Group Enter/Exit Ad
   // ===============================
   Future<bool> tryShowGroupAd({
-  required bool isPremium,
-}) async {
-  await _localStorage.init();
+    required bool isPremium,
+  }) async {
+    await _localStorage.init();
 
-  final lastAdTime = _localStorage.getLastAdTime();
+    final lastAdTime = _localStorage.getLastAdTime();
 
-  var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
-  decision = AdDisplayLogic.checkIfPremium(
-    isPremium: isPremium,
-    decision: decision,
-  );
+    var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
+    decision = AdDisplayLogic.checkIfPremium(
+      isPremium: isPremium,
+      decision: decision,
+    );
 
-  if (!decision.shouldShow) return false;
+    if (!decision.shouldShow) return false;
 
-  await _showInterstitialAd();
-  await _localStorage.saveLastAdTime(DateTime.now());
+    await _showInterstitialAd();
+    await _localStorage.saveLastAdTime(DateTime.now());
 
-  return true;
-}
+    return true;
+  }
 
   // ===============================
   // PRIVATE METHODS
   // ===============================
 
   Future<void> _showAppOpenAd() async {
+    // التعديل: إذا لم يكن محملاً، انتظر تحميله ثم اعرضه فوراً
     if (_appOpenAd == null) {
       await _loadAppOpenAd();
-      return; // ❗ لا تعرض مباشرة بعد التحميل
     }
+
+    if (_appOpenAd == null) return; // فشل التحميل حتى بعد الانتظار
 
     _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {},
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _appOpenAd = null;
-        _loadAppOpenAd();
+        _loadAppOpenAd(); // تحميل الإعلان القادم في الخلفية
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
@@ -107,6 +111,7 @@ class AdService {
     if (_isAppOpenAdLoading) return;
 
     _isAppOpenAdLoading = true;
+    final completer = Completer<void>(); // لإيقاف الدالة حتى يكتمل التحميل
 
     AppOpenAd.load(
       adUnitId: appOpenAdUnitId,
@@ -115,20 +120,26 @@ class AdService {
         onAdLoaded: (ad) {
           _appOpenAd = ad;
           _isAppOpenAdLoading = false;
+          completer.complete();
         },
         onAdFailedToLoad: (error) {
           _isAppOpenAdLoading = false;
           _appOpenAd = null;
+          completer.complete();
         },
       ),
     );
+
+    return completer.future;
   }
 
   Future<void> _showInterstitialAd() async {
+    // التعديل: إذا لم يكن محملاً، انتظر تحميله ثم اعرضه فوراً
     if (_interstitialAd == null) {
       await _loadInterstitialAd();
-      return; // ❗ لا تعرض مباشرة بعد التحميل
     }
+
+    if (_interstitialAd == null) return;
 
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {},
@@ -152,6 +163,7 @@ class AdService {
     if (_isInterstitialAdLoading) return;
 
     _isInterstitialAdLoading = true;
+    final completer = Completer<void>();
 
     InterstitialAd.load(
       adUnitId: interstitialAdUnitId,
@@ -160,12 +172,16 @@ class AdService {
         onAdLoaded: (ad) {
           _interstitialAd = ad;
           _isInterstitialAdLoading = false;
+          completer.complete();
         },
         onAdFailedToLoad: (error) {
           _isInterstitialAdLoading = false;
           _interstitialAd = null;
+          completer.complete();
         },
       ),
     );
+
+    return completer.future;
   }
 }

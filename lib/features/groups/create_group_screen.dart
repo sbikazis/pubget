@@ -135,7 +135,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _sloganController = TextEditingController();
-  
+ 
   File? _selectedImage;
   bool _isLoading = false;
 

@@ -1,37 +1,31 @@
-import 'dart:io'; 
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../providers/chat_provider.dart';
-import '../../../models/member_model.dart';
 import '../../../models/message_model.dart';
-
 import '../../../core/constants/limits.dart';
 import '../../../core/theme/app_colors.dart';
 
 class MessageInputBar extends StatefulWidget {
-  final String groupId;
-  final MemberModel sender;
-
-  final VoidCallback? onMediaPressed;
-  final VoidCallback? onGamePressed;
-  final void Function(String text)? onSendMessage;
+  // ✅ التعديل الأساسي: استخدام Callbacks بدلاً من المنطق الداخلي
+  final Function(String text, MessageModel? replyTo) onSendText;
+  final Function(File file, MessageModel? replyTo) onSendImage;
   
-  // ✅ الحقول الجديدة لدعم الرد
+  final VoidCallback? onGamePressed;
   final MessageModel? replyingMessage;
   final VoidCallback? onCancelReply;
+  
+  // خاصية إضافية للتحكم في ظهور الأزرار (مثل إخفاء الألعاب في الخاص)
+  final bool isPrivate;
 
   const MessageInputBar({
     super.key,
-    required this.groupId,
-    required this.sender,
-    this.onMediaPressed,
+    required this.onSendText,
+    required this.onSendImage,
     this.onGamePressed,
-    this.onSendMessage,
     this.replyingMessage,
     this.onCancelReply,
+    this.isPrivate = false,
   });
 
   @override
@@ -40,13 +34,12 @@ class MessageInputBar extends StatefulWidget {
 
 class _MessageInputBarState extends State<MessageInputBar> {
   final TextEditingController _controller = TextEditingController();
-  final Uuid _uuid = const Uuid();
   final ImagePicker _picker = ImagePicker();
 
   bool _isSending = false;
 
   // =========================================================
-  // دالة اختيار وإرسال الصور (مع دعم الرد)
+  // دالة اختيار وإرسال الصور (عبر Callback)
   // =========================================================
   Future<void> _pickAndSendImage() async {
     try {
@@ -61,35 +54,27 @@ class _MessageInputBarState extends State<MessageInputBar> {
         _isSending = true;
       });
 
-      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      // ✅ تمرير الملف والرسالة المردود عليها للشاشة الأب
+      await widget.onSendImage(File(image.path), widget.replyingMessage);
 
-      await chatProvider.sendMediaMessage(
-        groupId: widget.groupId,
-        messageId: _uuid.v4(),
-        sender: widget.sender,
-        file: File(image.path),
-        mediaType: 'image',
-        // ✅ تمرير بيانات الرد إذا وجدت
-        replyToId: widget.replyingMessage?.id,
-        replyText: widget.replyingMessage?.text ?? (widget.replyingMessage?.mediaType == 'image' ? "صورة 🖼️" : null),
-      );
-
-      // إلغاء وضع الرد بعد الإرسال الناجح
+      // إلغاء وضع الرد بعد النجاح
       if (widget.onCancelReply != null) widget.onCancelReply!();
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("فشل رفع الصورة. تأكد من الاتصال.")),
+        const SnackBar(content: Text("فشل معالجة الصورة.")),
       );
     } finally {
-      setState(() {
-        _isSending = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 
   // =========================================================
-  // إرسال الرسائل النصية (مع دعم الرد)
+  // إرسال الرسائل النصية (عبر Callback)
   // =========================================================
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
@@ -98,7 +83,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
     if (text.length > Limits.maxMessageLength) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Message is too long")),
+        const SnackBar(content: Text("الرسالة طويلة جداً")),
       );
       return;
     }
@@ -108,36 +93,25 @@ class _MessageInputBarState extends State<MessageInputBar> {
     });
 
     try {
-      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-
-      await chatProvider.sendTextMessage(
-        groupId: widget.groupId,
-        messageId: _uuid.v4(),
-        sender: widget.sender,
-        text: text,
-        // ✅ تمرير بيانات الرد لربط الرسالة الجديدة بالقديمة
-        replyToId: widget.replyingMessage?.id,
-        replyText: widget.replyingMessage?.text ?? (widget.replyingMessage?.mediaType == 'image' ? "صورة 🖼️" : null),
-      );
+      // ✅ تمرير النص والرسالة المردود عليها للشاشة الأب
+      await widget.onSendText(text, widget.replyingMessage);
 
       _controller.clear();
-
-      if (widget.onSendMessage != null) {
-        widget.onSendMessage!(text);
-      }
-      
+     
       // ✅ إلغاء وضع الرد بعد الإرسال
       if (widget.onCancelReply != null) widget.onCancelReply!();
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("فشل إرسال الرسالة. حاول مرة أخرى.")),
+        const SnackBar(content: Text("فشل إرسال الرسالة.")),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
-
-    setState(() {
-      _isSending = false;
-    });
   }
 
   @override
@@ -151,7 +125,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ✅ واجهة الرد (تظهر فقط عند وجود رسالة للرد عليها)
+        // ✅ واجهة الرد
         if (widget.replyingMessage != null) _buildReplyPreview(isDark),
 
         Container(
@@ -167,17 +141,19 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 color: AppColors.primary,
                 onPressed: _isSending ? null : _pickAndSendImage,
               ),
-              IconButton(
-                icon: const Icon(Icons.videogame_asset),
-                color: AppColors.goldAccent,
-                onPressed: widget.onGamePressed,
-              ),
+              // إخفاء زر الألعاب إذا كانت الدردشة خاصة
+              if (!widget.isPrivate)
+                IconButton(
+                  icon: const Icon(Icons.videogame_asset),
+                  color: AppColors.goldAccent,
+                  onPressed: widget.onGamePressed,
+                ),
               Expanded(
                 child: TextField(
                   controller: _controller,
                   maxLength: Limits.maxMessageLength,
                   decoration: InputDecoration(
-                    hintText: "Write a message...",
+                    hintText: "اكتب رسالة...",
                     counterText: "",
                     filled: true,
                     fillColor: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -227,7 +203,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ✅ بناء شريط الرد المعلق فوق صندوق الإدخال
+  // ✅ بناء شريط الرد المعلق
   Widget _buildReplyPreview(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -254,7 +230,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                   ),
                 ),
                 Text(
-                  widget.replyingMessage!.text ?? 
+                  widget.replyingMessage!.text ??
                   (widget.replyingMessage!.mediaType == 'image' ? "صورة 🖼️" : "رسالة وسائط"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

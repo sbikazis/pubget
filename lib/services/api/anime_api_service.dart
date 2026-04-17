@@ -1,47 +1,60 @@
-// lib/services/api/anime_api_service.dart
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class AnimeApiService {
   AnimeApiService._();
 
   static const String _baseUrl = 'https://api.jikan.moe/v4';
 
-  // ✅ دالة داخلية لتنظيف النصوص والمقارنة بمرونة (Fuzzy Match)
+  // ✅ Headers لضمان استقرار الطلب
+  static const Map<String, String> _headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+
+  // ✅ تحسين دالة التنظيف لتكون أكثر مرونة في المقارنة
   static String _sanitize(String text) {
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '') // إزالة الفواصل والرموز مثل (,)
+        .replaceAll(RegExp(r'[^\w\s]'), ' ') // استبدال الرموز بمسافة وليس حذفها تماماً لمنع دمج الكلمات
+        .replaceAll(RegExp(r'\s+'), ' ') // تقليص المسافات الزائدة
         .trim();
   }
 
   // =========================================================
-  // SEARCH ANIME (للحصول على الاسم الرسمي والصورة)
+  // SEARCH ANIME
   // =========================================================
 
   static Future<Map<String, dynamic>?> searchAnime(String animeName) async {
-    final url =
-        Uri.parse('$_baseUrl/anime?q=$animeName&limit=1');
+    try {
+      // ✅ التعديل: استخدام Uri.https لضمان عمل الـ Encoding بشكل آلي ومنع أخطاء الـ Socket
+      final url = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
+        'q': animeName,
+        'limit': '1',
+      });
 
-    final response = await http.get(url);
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
 
-    if (response.statusCode != 200) {
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body);
+      if (data['data'] == null || data['data'].isEmpty) return null;
+
+      final animeData = data['data'][0];
+      return {
+        'id': animeData['mal_id'], 
+        'title': animeData['title'],
+        'image_url': animeData['images']?['jpg']?['large_image_url'] ??
+                     animeData['images']?['jpg']?['image_url'],
+      };
+    } catch (e) {
+      debugPrint("❌ API Error (SearchAnime): $e"); // ✅ إضافة سجل للأخطاء للمتابعة
       return null;
     }
-
-    final data = jsonDecode(response.body);
-
-    if (data['data'] == null || data['data'].isEmpty) {
-      return null;
-    }
-
-    // نُعيد الاسم الرسمي والصورة لاعتمادهما في المجموعة
-    final animeData = data['data'][0];
-    return {
-      'title': animeData['title'],
-      'image_url': animeData['images']?['jpg']?['large_image_url'] ?? 
-                   animeData['images']?['jpg']?['image_url'],
-    };
   }
 
   // =========================================================
@@ -49,97 +62,92 @@ class AnimeApiService {
   // =========================================================
 
   static Future<bool> validateAnimeExists(String animeName) async {
-    final url =
-        Uri.parse('$_baseUrl/anime?q=$animeName&limit=1');
+    try {
+      final url = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
+        'q': animeName,
+        'limit': '1',
+      });
+      
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
 
-    final response = await http.get(url);
-
-    if (response.statusCode != 200) {
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      return data['data'] != null && data['data'].isNotEmpty;
+    } catch (e) {
       return false;
     }
-
-    final data = jsonDecode(response.body);
-
-    return data['data'] != null &&
-        data['data'].isNotEmpty;
   }
 
   // =========================================================
-  // VALIDATE CHARACTER EXISTS INSIDE ANIME (تم تحسين المنطق)
+  // VALIDATE CHARACTER EXISTS (يعتمد على ID الأنمي)
   // =========================================================
 
   static Future<bool> validateCharacterExists({
-    required String animeName,
+    required dynamic animeId, 
     required String characterName,
   }) async {
-    final url =
-        Uri.parse('$_baseUrl/characters?q=$characterName&limit=10');
+    try {
+      final url = Uri.parse('$_baseUrl/anime/$animeId/characters');
 
-    final response = await http.get(url);
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 15),
+      );
 
-    if (response.statusCode != 200) {
-      return false;
-    }
+      if (response.statusCode != 200) return false;
 
-    final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
+      if (data['data'] == null || data['data'].isEmpty) return false;
 
-    if (data['data'] == null || data['data'].isEmpty) {
-      return false;
-    }
+      final cleanInput = _sanitize(characterName);
+      final List<String> inputWords = cleanInput.split(' ').where((w) => w.length > 1).toList();
 
-    final cleanAnime = _sanitize(animeName);
-    final cleanCharacter = _sanitize(characterName);
+      for (final item in data['data']) {
+        final character = item['character'];
+        final apiName = _sanitize(character['name'] ?? '');
+       
+        if (apiName.contains(cleanInput) || cleanInput.contains(apiName)) {
+          return true;
+        }
 
-    for (final character in data['data']) {
-      final apiName = _sanitize(character['name'] ?? '');
-
-      // ✅ تحقق أولاً من اسم الشخصية
-      if (!apiName.contains(cleanCharacter) &&
-          !cleanCharacter.contains(apiName)) {
-        continue;
-      }
-
-      final animeList = character['anime'] as List?;
-      if (animeList == null) continue;
-
-      for (final animeItem in animeList) {
-        final apiAnimeTitle =
-            _sanitize(animeItem['anime']['title'].toString());
-
-        // ✅ مقارنة مرنة للأنمي
-        if (apiAnimeTitle.contains(cleanAnime) ||
-            cleanAnime.contains(apiAnimeTitle)) {
+        if (inputWords.isNotEmpty && inputWords.every((word) => apiName.contains(word))) {
           return true;
         }
       }
+     
+      return false;
+    } catch (e) {
+      return false;
     }
-
-    return false;
   }
 
   // =========================================================
-  // GET CHARACTER IMAGE
+  // GET CHARACTER IMAGE (SEARCH-BASED)
   // =========================================================
 
   static Future<String?> getCharacterImage(String characterName) async {
-    // نطلب أكثر من نتيجة لضمان الحصول على أدق صورة إذا كان الاسم شائعاً
-    final url =
-        Uri.parse('$_baseUrl/characters?q=$characterName&limit=5');
+    try {
+      // ✅ التعديل: استخدام replace لضمان تشفير اسم الشخصية بشكل سليم في الرابط
+      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+        'q': characterName,
+        'limit': '1',
+      });
 
-    final response = await http.get(url);
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
 
-    if (response.statusCode != 200) {
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body);
+      if (data['data'] == null || data['data'].isEmpty) return null;
+
+      return data['data'][0]['images']?['jpg']?['large_image_url'] ??
+             data['data'][0]['images']?['jpg']?['image_url'];
+    } catch (e) {
+      debugPrint("❌ API Error (GetCharacterImage): $e");
       return null;
     }
-
-    final data = jsonDecode(response.body);
-
-    if (data['data'] == null || data['data'].isEmpty) {
-      return null;
-    }
-
-    // نأخذ صورة أول نتيجة مطابقة
-    return data['data'][0]['images']?['jpg']['large_image_url'] ?? 
-           data['data'][0]['images']?['jpg']['image_url'];
   }
 }

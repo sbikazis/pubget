@@ -44,6 +44,8 @@ dependencies:
 
   in_app_purchase: ^3.2.3
   flutter_slidable: ^4.0.3
+  async: ^2.13.1
+  rxdart: ^0.28.0
 
 dev_dependencies:
   flutter_test:

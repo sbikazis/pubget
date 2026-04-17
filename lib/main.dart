@@ -13,6 +13,7 @@ import 'package:pubget/app.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Firebase Initialization
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -26,15 +27,25 @@ Future<void> main() async {
     debugPrint("🔥 Firebase init error: $e");
   }
 
+  // 2. Google Mobile Ads Initialization (تعديل لضمان الجاهزية)
   try {
+    final RequestConfiguration configuration = RequestConfiguration(
+      testDeviceIds: [], // يمكنك إضافة ID جهازك هنا لاحقاً إذا احتجت
+    );
+    await MobileAds.instance.updateRequestConfiguration(configuration);
+    
+    // الانتظار الفعلي حتى تكتمل التهيئة قبل المتابعة
     await MobileAds.instance.initialize();
+    debugPrint("✅ Ads initialized successfully");
   } catch (e) {
     debugPrint("🔥 Ads init error: $e");
   }
 
+  // 3. Orientation Settings
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
 
+  // 4. Run App
   runApp(const PubgetApp());
 }
