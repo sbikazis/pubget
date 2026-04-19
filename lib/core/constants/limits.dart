@@ -1,19 +1,27 @@
 class Limits {
 
-  //  Subscription Limits
+  // Subscription Limits
 
 
   static const int maxGroupsFree = 1;
-  static const int maxGroupsPremium = 2;
+  static const int maxGroupsPremium = 3; // ✅ تم التعديل من 2 إلى 3
 
   static const int maxJoinedFree = 2;
-  static const int maxJoinedPremium = 5;
+  static const int maxJoinedPremium = 7; // ✅ تم التعديل من 5 إلى 7
 
   static const int maxMembersFree = 100;
-  static const int maxMembersPremium = 200;
+  static const int maxMembersPremium = 350; // ✅ تم التعديل من 200 إلى 350
 
 
-  //  Respect System
+  // Premium System Features (New)
+
+
+  static const String premiumBadge = "💎";
+  static const String premiumPrice = "10\$";
+  static const double premiumPriceNumeric = 10.0;
+
+
+  // Respect System
 
 
   static const int respectMin = 0;
@@ -23,7 +31,7 @@ class Limits {
   static const int fanThreshold = 5;
 
 
-  //  Role System (Fixed Globally)
+  // Role System (Fixed Globally)
 
 
   static const int maxSensei = 2;
@@ -31,7 +39,7 @@ class Limits {
   static const int maxSenpai = 4;
 
 
-  //  Group Creation Limits
+  // Group Creation Limits
 
 
   static const int maxGroupNameLength = 30;
@@ -39,7 +47,7 @@ class Limits {
   static const int maxGroupSloganLength = 16; // 3–4 words
 
 
-  //  User Profile Limits
+  // User Profile Limits
 
 
   static const int maxUsernameLength = 20;
@@ -48,21 +56,21 @@ class Limits {
   static const int maxFavoriteAnime = 10;
 
 
-  //  Roleplay Limits
+  // Roleplay Limits
 
 
   static const int maxCharacterNameLength = 25;
   static const int maxCharacterReasonLength = 150;
 
 
-  //  Chat Limits
+  // Chat Limits
 
 
   static const int maxMessageLength = 1000;
   static const int maxMediaSizeMB = 20;
 
 
-  //  Game Limits
+  // Game Limits
 
 
   static const int maxGameNameLength = 30;
@@ -70,7 +78,7 @@ class Limits {
       Duration(minutes: 20);
 
 
-  //  Ads System
+  // Ads System
 
 
   /// Minimum duration between ads
@@ -78,7 +86,7 @@ class Limits {
       Duration(minutes: 5);
 
 
-  //  Promotion
+  // Promotion
 
 
   static const Duration promotionDuration =

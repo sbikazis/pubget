@@ -13,6 +13,7 @@ import '../../models/invite_model.dart';
 
 import '../../providers/group_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../providers/home_provider.dart'; // إضافة HomeProvider لجلب عدد المجموعات
 
 import '../../services/firebase/firestore_service.dart';
 import '../../services/firebase/storage_service.dart';
@@ -94,7 +95,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
-      // ✅ يستخدم الآن الـ API المحدث الذي قمنا بتأمينه بـ URI Encoding
       final imageUrl = await AnimeApiService.getCharacterImage(name);
 
       if (imageUrl != null) {
@@ -121,6 +121,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       setState(() => _isProcessing = true);
 
       final groupProvider = context.read<GroupProvider>();
+      final homeProvider = context.read<HomeProvider>(); // جلب الـ HomeProvider
       final firestore = context.read<FirestoreService>();
       final storage = context.read<StorageService>();
 
@@ -131,7 +132,11 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       final hasImage = _pickedImage != null || (_autoFetchedImageUrl != null && _autoFetchedImageUrl!.isNotEmpty);
 
       final validator = GroupJoinValidator(firestoreService: firestore);
+      
+      // ✅ تم الإصلاح: تمرير المعاملات المطلوبة (user و عدد المجموعات الحالية)
       final validation = await validator.validateJoin(
+        user: currentUser,
+        currentJoinedGroupsCount: homeProvider.joinedGroups.length,
         groupId: widget.group.id,
         groupType: widget.group.type,
         characterName: characterName,
@@ -147,10 +152,15 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
        
         await AppDialog.show(
           context,
-          title: 'تنبيه',
+          title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه',
           content: validation.errorMessage ?? 'فشل التحقق من البيانات.',
-          confirmText: 'حسناً',
-          onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
+          confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          onConfirm: () {
+            Navigator.of(context, rootNavigator: true).pop();
+            if (validation.shouldShowUpgrade) {
+              // Navigator.pushNamed(context, '/premium');
+            }
+          },
         );
         return;
       }
@@ -344,7 +354,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                                             height: 100,
                                             child: ClipRRect(
                                               borderRadius: BorderRadius.circular(12),
-                                              // ✅ التعديل الجوهري: إضافة Error Builder وصيانة الأبعاد لمنع الـ X العملاقة
                                               child: Image.network(
                                                 _autoFetchedImageUrl!, 
                                                 fit: BoxFit.cover,

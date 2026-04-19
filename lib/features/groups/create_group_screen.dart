@@ -7,8 +7,10 @@ import 'package:provider/provider.dart';
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/app_dialog.dart'; // تم إضافة استيراد الديالوج
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/home_provider.dart'; // تم إضافة الهوم بروفايدر لفحص العدد الفعلي
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
 import '../../core/constants/group_type.dart';
@@ -16,6 +18,10 @@ import '../../core/constants/limits.dart';
 import '../../core/theme/app_colors.dart';
 import 'package:pubget/core/constants/roles.dart';
 import '../../services/firebase/storage_service.dart';
+import '../../core/logic/subscription_limits_logic.dart'; // تم إضافة منطق الحدود
+
+// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح
+import '../../services/monetization/ad_service.dart';
 
 // استيراد شاشة تقمص الأدوار التي كانت معزولة
 import 'create_roleplay_group_screen.dart';
@@ -30,6 +36,42 @@ class CreateGroupScreen extends StatefulWidget {
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   // متغير للتحكم في ما إذا كان المستخدم اختار نوع المجموعة أم لا
   GroupType? _selectedType;
+
+  // دالة موحدة للتحقق من الصلاحية قبل الانتقال للخطوة التالية
+  void _checkLimitAndProceed(VoidCallback onAllowed) {
+    final authProvider = context.read<AuthProvider>();
+    final homeProvider = context.read<HomeProvider>();
+    final user = authProvider.user;
+
+    if (user == null) return;
+
+    // فحص المنطق: هل يسمح للمستخدم بإنشاء مجموعة أخرى؟
+    final result = SubscriptionLimitsLogic.canCreateGroup(
+      user,
+      homeProvider.myGroups.length,
+    );
+
+    if (result.isAllowed) {
+      onAllowed();
+    } else {
+      // إظهار صفحة "لقد وصلت لحدود النسخة المجانية" أو التنبيه
+      showDialog(
+        context: context,
+        builder: (context) => AppDialog(
+          title: 'وصلت للحد الأقصى',
+          content: result.message ?? '',
+          confirmText: result.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          onConfirm: () {
+            Navigator.pop(context);
+            if (result.shouldShowUpgrade) {
+              // هنا نتوجه لصفحة البريميوم التي سنبنيها لاحقاً
+              // Navigator.pushNamed(context, '/premium_details');
+            }
+          },
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +92,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 description: GroupType.public.description,
                 icon: Icons.public,
                 color: AppColors.primary,
-                onTap: () => setState(() => _selectedType = GroupType.public),
+                onTap: () {
+                  _checkLimitAndProceed(() {
+                    setState(() => _selectedType = GroupType.public);
+                  });
+                },
               ),
               const SizedBox(height: 20),
               _buildTypeSelectionCard(
@@ -59,13 +105,15 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 icon: Icons.theater_comedy,
                 color: Colors.amber[700]!, // لون ذهبي للفخامة
                 onTap: () {
-                  // نتوجه مباشرة للشاشة الجاهزة التي لديك
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const CreateRoleplayGroupScreen()),
-                  ).then((value) {
-                    // إذا عاد المستخدم ولم ينشئ، نصفر الاختيار
-                    if (value == null) setState(() => _selectedType = null);
+                  _checkLimitAndProceed(() {
+                    // نتوجه مباشرة للشاشة الجاهزة التي لديك
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const CreateRoleplayGroupScreen()),
+                    ).then((value) {
+                      // إذا عاد المستخدم ولم ينشئ، نصفر الاختيار
+                      if (value == null) setState(() => _selectedType = null);
+                    });
                   });
                 },
               ),
@@ -150,6 +198,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     final authProvider = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
+    final adService = context.read<AdService>(); // ✅ استدعاء خدمة الإعلانات
     final storageService = StorageService();
 
     final user = authProvider.user;
@@ -182,7 +231,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         animeName: null,
         founderId: user.id,
         membersCount: 1,
-        maxMembers: user.subscriptionType.name == 'premium'
+        maxMembers: user.isPremium
             ? Limits.maxMembersPremium
             : Limits.maxMembersFree,
         isPromoted: false,
@@ -201,6 +250,10 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
       await groupProvider.createGroup(group: group, founderMember: founderMember);
 
       if (mounted) {
+        // 🚀 تفعيل إعلان "إنشاء مجموعة" (منطق الأشباح) قبل إغلاق الشاشة
+        // يتم التحقق داخلياً من شروط (الـ 5 دقائق، 3 إعلانات يومياً، البريميوم)
+        await adService.tryShowGroupAd(isPremium: user.isPremium);
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم إنشاء المجموعة بنجاح')),
         );

@@ -17,6 +17,8 @@ class UserModel {
   final String? country;
 
   final SubscriptionType subscriptionType;
+  final DateTime? premiumSince; // ✅ مضاف: تاريخ الترقية
+  final String? nameColor; // ✅ مضاف: لون الاسم المميز
 
   final int totalRespect;
   final int fansCount;
@@ -38,6 +40,8 @@ class UserModel {
     this.age,
     this.country,
     required this.subscriptionType,
+    this.premiumSince,
+    this.nameColor,
     required this.totalRespect,
     required this.fansCount,
     required this.isProfileCompleted,
@@ -45,6 +49,9 @@ class UserModel {
     required this.createdAt,
     required this.updatedAt,
   });
+
+  // ✅ Getter ذكي للتحقق من حالة البريميوم بسهولة
+  bool get isPremium => subscriptionType == SubscriptionType.premium;
 
   // =========================================================
   // From Firestore
@@ -71,6 +78,8 @@ class UserModel {
       subscriptionType: SubscriptionType.fromString(
         map['subscriptionType'] ?? 'free',
       ),
+      premiumSince: map['premiumSince'] != null ? _toDateTime(map['premiumSince']) : null,
+      nameColor: map['nameColor'],
 
       totalRespect: map['totalRespect'] ?? 0,
       fansCount: map['fansCount'] ?? 0,
@@ -98,6 +107,8 @@ class UserModel {
       'age': age,
       'country': country,
       'subscriptionType': subscriptionType.name,
+      'premiumSince': premiumSince,
+      'nameColor': nameColor,
       'totalRespect': totalRespect,
       'fansCount': fansCount,
       'isProfileCompleted': isProfileCompleted,
@@ -119,6 +130,8 @@ class UserModel {
     int? age,
     String? country,
     SubscriptionType? subscriptionType,
+    DateTime? premiumSince,
+    String? nameColor,
     int? totalRespect,
     int? fansCount,
     bool? isProfileCompleted,
@@ -138,6 +151,8 @@ class UserModel {
       country: country ?? this.country,
       subscriptionType:
           subscriptionType ?? this.subscriptionType,
+      premiumSince: premiumSince ?? this.premiumSince,
+      nameColor: nameColor ?? this.nameColor,
       totalRespect:
           totalRespect ?? this.totalRespect,
       fansCount: fansCount ?? this.fansCount,

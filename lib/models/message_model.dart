@@ -8,6 +8,10 @@ class MessageModel {
   final String senderId;
   final String senderName;
   final String senderAvatar;
+  
+  // ✅ الحقل الجديد لتمييز مستخدمي البريميوم بصرياً في الدردشة
+  final bool senderIsPremium;
+
   // ✅ جعل الرتبة اختيارية لدعم الدردشة الخاصة
   final Roles? senderRole;
 
@@ -33,6 +37,7 @@ class MessageModel {
     required this.senderId,
     required this.senderName,
     required this.senderAvatar,
+    this.senderIsPremium = false, // القيمة الافتراضية عادي
     this.senderRole, // ✅ إزالة required هنا
     this.text,
     this.mediaUrl,
@@ -52,6 +57,8 @@ class MessageModel {
       senderId: map['senderId'] ?? '',
       senderName: map['senderName'] ?? '',
       senderAvatar: map['senderAvatar'] ?? '',
+      // جلب حالة البريميوم من Firestore
+      senderIsPremium: map['senderIsPremium'] ?? false,
       // ✅ التعامل مع الرتبة بحذر: إذا كانت موجودة نأخذها، وإلا نتركها null للخاص
       senderRole: map['senderRole'] != null 
           ? Roles.fromString(map['senderRole']) 
@@ -81,6 +88,7 @@ class MessageModel {
       'senderId': senderId,
       'senderName': senderName,
       'senderAvatar': senderAvatar,
+      'senderIsPremium': senderIsPremium, // إرسال حالة البريميوم
       // ✅ إرسال اسم الرتبة فقط في حال وجودها
       'senderRole': senderRole?.name, 
       'text': text,

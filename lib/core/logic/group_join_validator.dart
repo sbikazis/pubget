@@ -6,16 +6,20 @@ import 'package:pubget/core/constants/firestore_paths.dart';
 import 'package:pubget/core/utils/validators.dart';
 import 'package:pubget/services/api/anime_api_service.dart';
 import '../../../services/firebase/firestore_service.dart';
+import '../../models/user_model.dart'; // إضافة استيراد الموديل
+import 'subscription_limits_logic.dart'; // إضافة منطق الحدود
 
 class JoinValidationResult {
   final bool isValid;
   final String? errorMessage;
   final String? foundInviterId;
+  final bool shouldShowUpgrade; // إضافة حقل لدعم واجهة الترقية
 
   const JoinValidationResult({
     required this.isValid,
     this.errorMessage,
     this.foundInviterId,
+    this.shouldShowUpgrade = false,
   });
 
   factory JoinValidationResult.success({String? inviterId}) {
@@ -25,10 +29,11 @@ class JoinValidationResult {
     );
   }
 
-  factory JoinValidationResult.failure(String message) {
+  factory JoinValidationResult.failure(String message, {bool shouldUpgrade = false}) {
     return JoinValidationResult(
       isValid: false,
       errorMessage: message,
+      shouldShowUpgrade: shouldUpgrade,
     );
   }
 }
@@ -42,7 +47,7 @@ class GroupJoinValidator {
 
   // ✅ التعديل: تبسيط التنظيف ليكون متوافقاً مع الـ API دون تغيير ترتيب الكلمات
   String _formatCharacterName(String name) {
-    return name.trim(); // نكتفي بحذف المسافات الجانبية لإرسال الاسم كما هو في MAL
+    return name.trim(); 
   }
 
   /// ✅ وظيفة البحث عن الداعي للتأكد من وجوده في المجموعة
@@ -63,18 +68,33 @@ class GroupJoinValidator {
 
   /// Main Entry Point
   Future<JoinValidationResult> validateJoin({
+    required UserModel user, // ✅ التعديل: تمرير المستخدم للفحص الأولي
+    required int currentJoinedGroupsCount, // ✅ التعديل: تمرير عدد المجموعات الحالية
     required String groupId,
     required GroupType groupType,
     required String? characterName,
     required String? characterImageUrl,
     required String? animeName,
-    required dynamic animeId, // ✅ التعديل: إضافة animeId المطلوب للنسخة الجديدة من الـ API
+    required dynamic animeId, 
     String? inviterName,
   }) async {
    
     String? inviterId;
 
     try {
+      // 🟢 الخطوة 0: التحقق من حدود الاشتراك (قبل أي عملية مكلفة)
+      final limitResult = SubscriptionLimitsLogic.canJoinGroup(
+        user,
+        currentJoinedGroupsCount,
+      );
+
+      if (!limitResult.isAllowed) {
+        return JoinValidationResult.failure(
+          limitResult.message ?? 'لقد وصلت للحد الأقصى للمجموعات.',
+          shouldUpgrade: limitResult.shouldShowUpgrade,
+        );
+      }
+
       // 1. التحقق من "اسم الداعي" أولاً (محلي سريع)
       if (inviterName != null && inviterName.trim().isNotEmpty) {
         inviterId = await _verifyInviter(groupId, inviterName);
@@ -88,12 +108,11 @@ class GroupJoinValidator {
         return JoinValidationResult.success(inviterId: inviterId);
       }
 
-      // التحقق من المدخلات الأساسية
+      // التحقق من المدخلات الأساسية للشخصية
       if (characterName == null || characterName.trim().isEmpty) {
         return JoinValidationResult.failure('الرجاء إدخال اسم الشخصية');
       }
 
-      // التعديل: استخدام الاسم كما أدخله المستخدم لضمان مطابقة الـ API
       final formattedCharacterName = _formatCharacterName(characterName);
 
       final nameError = Validators.validateCharacterName(formattedCharacterName);
@@ -105,13 +124,12 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      // ✅ التعديل الجوهري: إزالة التحقق الإجباري من animeName النصي والاعتماد على animeId
+      // التحقق من وجود AnimeId
       if (animeId == null) {
         return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة، يرجى التواصل مع الشوغو.');
       }
 
-      // ✅ التعديل الجوهري: توحيد الاسم لـ lowercase وحذف المسافات تماماً عند فحص Firestore
-      // هذا هو "المفتاح" الذي نستخدمه في الـ Provider لضمان عدم التكرار (مثلاً: leviackerman)
+      // فحص حجز الشخصية في Firestore (مفتاح فريد)
       final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
       final reservedDoc = await _firestoreService.getDocument(
@@ -123,8 +141,7 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة من قبل عضو آخر.');
       }
 
-      // ✅ التعديل الجوهري: استدعاء الـ API باستخدام animeId لضمان دقة البحث
-      // تم رفع مهلة الانتظار إلى 15 ثانية لضمان استقرار الرد من خادم الأنمي
+      // استدعاء الـ API الخارجي (آخر خطوة لأنها الأكثر استهلاكاً للوقت والموارد)
       final characterExists = await AnimeApiService.validateCharacterExists(
         animeId: animeId, 
         characterName: formattedCharacterName,

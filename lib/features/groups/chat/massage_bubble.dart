@@ -15,6 +15,7 @@ import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 
 import 'role_badge.dart';
+import '../../../widgets/premium_badge.dart'; // ✅ استيراد شارة البريميوم الجديدة
 
 class MessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -310,6 +311,11 @@ class MessageBubble extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // ✅ إضافة شارة البريميوم قبل الاسم إذا كان المرسل مشتركاً
+        if (message.senderIsPremium) ...[
+          const PremiumBadge(size: 14),
+          const SizedBox(width: 4),
+        ],
         Text(
           sender.effectiveName,
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: roleColor),

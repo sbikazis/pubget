@@ -24,6 +24,7 @@ import '../groups/edit_group_screen.dart';
 import '../../services/firebase/firestore_service.dart';
 import '../../core/logic/group_join_validator.dart';
 import 'package:pubget/services/monetization/promotion_dayalog.dart';
+import '../../core/logic/subscription_limits_logic.dart'; // إضافة استيراد المنطق
 
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -49,7 +50,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _homeProvider = context.read<HomeProvider>();
   }
 
-  // ✅ دالة لإظهار ديالوج السؤال عن الداعي للمجموعات العامة
   Future<void> _showInviterDialog(GroupModel group, UserModel user) async {
     final controller = TextEditingController();
     bool hasInviter = false;
@@ -93,14 +93,17 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  // ✅ دالة المعالجة الفعلية للانضمام
+  // ✅ تم الإصلاح: تمرير المعاملات الجديدة للـ Validator
   Future<void> _processJoin(GroupModel group, UserModel user, String? inviterName) async {
     setState(() => _isProcessing = true);
     try {
       final firestore = context.read<FirestoreService>();
       final validator = GroupJoinValidator(firestoreService: firestore);
      
+      // تمرير الـ user وعدد المجموعات الحالية لحل خطأ الـ Missing Argument
       final validation = await validator.validateJoin(
+        user: user,
+        currentJoinedGroupsCount: _homeProvider.joinedGroups.length,
         groupId: group.id,
         groupType: group.type,
         characterName: null,
@@ -111,20 +114,40 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       );
 
       if (!validation.isValid) {
-        AppDialog.show(context, title: 'خطأ', content: validation.errorMessage!, confirmText: "حسنا ✅");
+        if (mounted) {
+          AppDialog.show(
+            context, 
+            title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه', 
+            content: validation.errorMessage!, 
+            confirmText: validation.shouldShowUpgrade ? "ترقية الآن" : "حسنا ✅",
+            onConfirm: () {
+              if (validation.shouldShowUpgrade) {
+                // Navigator.pushNamed(context, '/premium');
+              }
+            }
+          );
+        }
         return;
       }
 
       final error = await _homeProvider.joinGroup(
         user: user,
         group: group,
-        invitedByUserId: validation.foundInviterId
+        invitedByUserId: validation.foundInviterId,
+        onLimitReached: (limitResult) {
+          AppDialog.show(
+            context,
+            title: 'سعة الانضمام',
+            content: limitResult.message ?? '',
+            confirmText: limitResult.shouldShowUpgrade ? 'ترقية' : 'حسناً',
+          );
+        }
       );
 
       if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال طلب الانضمام بنجاح')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال طلب الانضمام بنجاح')));
       }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -145,7 +168,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
-  // 🔥 إضافة بطاقة تعريفية بميزة الرتب الجديدة
   Widget _buildRankingInfo() {
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -179,7 +201,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  // ✅ تعديل: إضافة زر الخيارات للأعضاء العاديين
   Widget _buildActions(GroupModel group, List<MemberModel> members) {
     final user = _authProvider.user;
     if (user == null) return const SizedBox();
@@ -195,7 +216,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           _buildChatButton(group.id),
           const SizedBox(width: 8),
           _buildMembersIconButton(group.id),
-          // تم تعديل هذا الجزء ليشمل الأعضاء العاديين أيضاً
           _buildGroupOptionsButton(group, isFounder, currentMember),
         ],
       );
@@ -260,7 +280,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     tooltip: 'الأعضاء',
   );
 
-  // ✅ تم تغيير الاسم من buildAdminButton إلى buildGroupOptionsButton ليشمل الجميع
   Widget _buildGroupOptionsButton(GroupModel group, bool isFounder, MemberModel? currentMember) => IconButton(
     onPressed: () {
       showModalBottomSheet(
@@ -275,7 +294,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     tooltip: isFounder ? 'أدوات المؤسس' : 'خيارات المجموعة',
   );
 
-  // ✅ تم تعديل الـ Sheet ليدعم خيار الخروج للمنتسبين وخيار التفكيك للمؤسس
   Widget _buildOptionsSheet(GroupModel group, bool isFounder, MemberModel? currentMember) {
     return SafeArea(
       child: Padding(
@@ -306,7 +324,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 onTap: () => _handleDisbandGroup(group),
               ),
             ] else if (currentMember != null) ...[
-              // خيار الخروج للعضو العادي
               ListTile(
                 leading: const Icon(Icons.exit_to_app, color: Colors.red),
                 title: const Text('خروج من المجموعة', style: TextStyle(color: Colors.red)),
@@ -319,7 +336,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  // ✅ ميزة الخروج من المجموعة
   Future<void> _handleLeaveGroup(GroupModel group, MemberModel member) async {
     Navigator.of(context).pop();
     final confirmed = await showDialog<bool>(
@@ -356,7 +372,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
-  // ✅ ميزة تفكيك المجموعة مع رسالة وداع
   Future<void> _handleDisbandGroup(GroupModel group) async {
     Navigator.of(context).pop();
     final messageController = TextEditingController();
@@ -396,7 +411,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           farewellMessage: messageController.text.trim(),
         );
         if (mounted) {
-          Navigator.of(context).pop(); // العودة للخلف لأن المجموعة لم تعد موجودة
+          Navigator.of(context).pop(); 
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تفكيك المجموعة وإرسال رسائل الوداع')));
         }
       } catch (e) {
@@ -483,7 +498,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     ),
                   ),
                   if (_isProcessing)
-                    Container( // ✅ تم حذف const من هنا
+                    Container( 
                       color: Colors.black26,
                       child: const Center(child: LoadingWidget()),
                     ),

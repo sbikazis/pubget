@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
 import '../models/member_model.dart';
-import '../models/notification_model.dart'; // 🔥 تم الإضافة لدعم الإشعارات
+import '../models/notification_model.dart'; 
 
 import '../services/firebase/firestore_service.dart';
 import '../services/monetization/promotion_service.dart';
@@ -164,7 +164,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // JOIN GROUP (تم التعديل ليتوافق مع النسخة الجديدة من Validator)
+  // JOIN GROUP (تم الإصلاح ليتوافق مع الـ Validator الجديد)
   // =====================================================
 
   Future<String?> joinGroup({
@@ -174,27 +174,41 @@ class HomeProvider extends ChangeNotifier {
     String? characterImage,
     String? characterReason,
     String? invitedByUserId,
+    void Function(SubscriptionLimitsResult)? onLimitReached,
   }) async {
+    // 1. الفحص الأولي للحدود (سريع)
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
-      subscriptionType: user.subscriptionType,
-      currentJoinedGroups: _joinedGroups.length,
+      user, 
+      _joinedGroups.length,
     );
 
     if (!limitResult.isAllowed) {
+      if (onLimitReached != null) {
+        onLimitReached(limitResult);
+      }
       return limitResult.message;
     }
 
-    // ✅ التعديل الجوهري: إضافة animeId المطلوب لعملية التحقق
+    // 2. التحقق العميق (تم تمرير المعاملات الجديدة المفقودة هنا ✅)
     final validation = await _joinValidator.validateJoin(
+      user: user, // المعامل المفقود 1
+      currentJoinedGroupsCount: _joinedGroups.length, // المعامل المفقود 2
       groupId: group.id,
       groupType: group.type,
       characterName: characterName,
       characterImageUrl: characterImage,
       animeName: group.animeName,
-      animeId: group.animeId, // 🔥 استخدام الـ ID الموثق في المجموعة
+      animeId: group.animeId,
     );
 
     if (!validation.isValid) {
+      // في حال فشل الفحص وكان السبب هو تخطي الحدود (مثلاً تغيرت الحالة أثناء التحقق)
+      if (validation.shouldShowUpgrade && onLimitReached != null) {
+        onLimitReached(SubscriptionLimitsResult.denied(
+          validation.errorMessage ?? '',
+          showUpgrade: true,
+        ));
+      }
       return validation.errorMessage;
     }
 
@@ -210,20 +224,18 @@ class HomeProvider extends ChangeNotifier {
         characterReason: characterReason,
       );
 
-      // 1. إنشاء وثيقة طلب الانضمام
       await _firestore.createDocument(
         path: FirestorePaths.groupJoinRequests(group.id),
         docId: user.id,
         data: requestMember.toMap(),
       );
 
-      // 🔥 2. إنشاء إشعار للمؤسس (الشوكُن)
       final notification = NotificationModel(
-        id: '', // سيتم توليده تلقائياً أو استبداله بـ Firestore
+        id: '', 
         title: 'طلب انضمام جديد',
         body: 'يريد ${user.username} الانضمام إلى مجموعتك "${group.name}"',
         type: NotificationTypes.joinRequest,
-        refId: group.id, // groupId للتوجه لصفحة الطلبات
+        refId: group.id, 
         senderId: user.id,
         createdAt: DateTime.now(),
         isRead: false,
@@ -231,7 +243,7 @@ class HomeProvider extends ChangeNotifier {
 
       await _firestore.createDocument(
         path: FirestorePaths.userNotifications(group.founderId),
-        docId: DateTime.now().millisecondsSinceEpoch.toString(), // ID فريد للإشعار
+        docId: DateTime.now().millisecondsSinceEpoch.toString(),
         data: notification.toMap(),
       );
 

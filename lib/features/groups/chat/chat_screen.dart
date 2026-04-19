@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'package:uuid/uuid.dart'; // ✅ أضفنا uuid لتوليد معرفات الرسائل
+import 'package:uuid/uuid.dart'; 
 
 import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
@@ -13,7 +13,10 @@ import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 import '../../../core/constants/roles.dart';
 
-// ✅ تصحيح المسارات (تأكد من مطابقتها لأسماء ملفاتك الفعليه)
+// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح عند الدخول
+import '../../../services/monetization/ad_service.dart';
+
+// ✅ تصحيح المسارات
 import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import 'package:pubget/features/groups/chat/massage_input_bar.dart';
 
@@ -31,7 +34,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
-  final Uuid _uuid = const Uuid(); // ✅ كائن لتوليد المعرفات
+  final Uuid _uuid = const Uuid(); 
   MemberModel? _currentMember;
  
   MessageModel? _replyingMessage;
@@ -44,10 +47,17 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
+      final isPremium = userProvider.currentUser?.isPremium ?? false;
+
       if (currentUserId != null) {
         _loadCurrentMember(currentUserId);
         // ✅ التعديل الأول: تصفير العداد فور دخول الشاشة
         _updateReadStatus(currentUserId);
+
+        // 🚀 تفعيل إعلان الدخول للمجموعة (منطق الأشباح)
+        // سيتحقق الـ AdService تلقائياً من شرط الـ 5 دقائق والحد اليومي والبريميوم
+        final adService = Provider.of<AdService>(context, listen: false);
+        adService.tryShowGroupAd(isPremium: isPremium);
       }
     });
   }
@@ -119,7 +129,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _handleSendText(String text, MessageModel? replyTo) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    
+   
     await chatProvider.sendTextMessage(
       groupId: widget.groupId,
       messageId: _uuid.v4(),
@@ -128,7 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
       replyToId: replyTo?.id,
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
-    
+   
     // بعد الإرسال، نحدث وقت القراءة مباشرة
     _updateReadStatus(_currentMember!.userId);
     _onCancelReply();

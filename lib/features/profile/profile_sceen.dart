@@ -12,6 +12,7 @@ import '../../models/group_model.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/premium_badge.dart'; // ✅ استيراد الشارة
 
 import '../../core/theme/app_colors.dart';
 import 'package:pubget/features/profile/edit_profile_screen.dart';
@@ -57,8 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ تعديل: ويدجت مخصص للإحصائيات يحل محل الـ Chip التقليدي لضمان التباين
-  Widget _buildStatCard(BuildContext context, String label, String value) {
+  // ✅ تعديل: ويدجت مخصص للإحصائيات مع إضافة تمييز ذهبي لمستخدمي البريميوم
+  Widget _buildStatCard(BuildContext context, String label, String value, {bool isPremium = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -66,9 +67,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: isDark ? AppColors.darkSurface : AppColors.lightCard,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          width: 0.5,
+          // ✅ إطار ذهبي نحيف إذا كان المستخدم بريميوم
+          color: isPremium 
+              ? const Color(0xFFD4AF37) 
+              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          width: isPremium ? 1.2 : 0.5,
         ),
+        // ✅ ظل خفيف جداً لإبراز التميز
+        boxShadow: isPremium ? [
+          BoxShadow(
+            color: const Color(0xFFD4AF37).withOpacity(0.2),
+            blurRadius: 4,
+            spreadRadius: 1,
+          )
+        ] : null,
       ),
       child: Text(
         '$label: $value',
@@ -197,13 +209,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          user.username,
-                          style: TextStyle(
-                            fontSize: 20, 
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                user.username,
+                                style: TextStyle(
+                                  fontSize: 20, 
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // ✅ إضافة شارة البريميوم بجانب الاسم إذا كان مشتركاً
+                            if (user.isPremium) ...[
+                              const SizedBox(width: 8),
+                              const PremiumBadge(size: 18, showText: false),
+                            ],
+                          ],
                         ),
                         if (user.nickname != null && user.nickname!.isNotEmpty)
                           Padding(
@@ -220,8 +244,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Wrap(
                           spacing: 8, runSpacing: 8,
                           children: [
-                            _buildStatCard(context, 'نقاط الاحترام', '${user.totalRespect}'),
-                            _buildStatCard(context, 'المعجبون', '${user.fansCount}'),
+                            _buildStatCard(context, 'نقاط الاحترام', '${user.totalRespect}', isPremium: user.isPremium),
+                            _buildStatCard(context, 'المعجبون', '${user.fansCount}', isPremium: user.isPremium),
                           ],
                         ),
                       ],
@@ -241,7 +265,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: isDark ? AppColors.darkCard : AppColors.lightCard,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color: user.isPremium 
+                          ? const Color(0xFFD4AF37).withOpacity(0.5) 
+                          : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       width: 0.5,
                     ),
                   ),
@@ -301,7 +327,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: user.favoriteAnimes.map((anime) => Chip(
                     label: Text(anime, style: const TextStyle(fontSize: 12)),
                     backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                    side: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                    side: BorderSide(
+                      color: user.isPremium ? const Color(0xFFD4AF37).withOpacity(0.5) : (isDark ? AppColors.darkBorder : AppColors.lightBorder)
+                    ),
                     labelStyle: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
                   )).toList(),
                 )

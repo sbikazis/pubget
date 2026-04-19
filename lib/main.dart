@@ -1,3 +1,4 @@
+
 // Flutter
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,8 +6,10 @@ import 'package:flutter/services.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 
-// Google Mobile Ads
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+// ✅ تم حذف استيراد Google Mobile Ads لأنه لم يعد مستخدماً
+// ✅ استيراد Provider و AdService لتهيئة العدادات
+import 'package:provider/provider.dart';
+import 'package:pubget/services/monetization/ad_service.dart';
 
 import 'package:pubget/app.dart';
 
@@ -27,19 +30,11 @@ Future<void> main() async {
     debugPrint("🔥 Firebase init error: $e");
   }
 
-  // 2. Google Mobile Ads Initialization (تعديل لضمان الجاهزية)
-  try {
-    final RequestConfiguration configuration = RequestConfiguration(
-      testDeviceIds: [], // يمكنك إضافة ID جهازك هنا لاحقاً إذا احتجت
-    );
-    await MobileAds.instance.updateRequestConfiguration(configuration);
-    
-    // الانتظار الفعلي حتى تكتمل التهيئة قبل المتابعة
-    await MobileAds.instance.initialize();
-    debugPrint("✅ Ads initialized successfully");
-  } catch (e) {
-    debugPrint("🔥 Ads init error: $e");
-  }
+  // 2. AdService Ghost Initialization
+  // تم استبدال تهيئة AdMob بتهيئة منطق الأشباح (Ghost Logic)
+  // ملاحظة: التهيئة الفعلية للعدادات ستتم داخل الـ App لضمان وجود الـ Provider
+  // أو يمكن استدعاؤها هنا إذا كان الـ Service متوفراً بشكل يدوي
+  debugPrint("✅ AdService (Ghost) logic ready");
 
   // 3. Orientation Settings
   await SystemChrome.setPreferredOrientations([

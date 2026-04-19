@@ -27,6 +27,9 @@ class MemberModel {
   // ✅ التعديل المطلوب: حقل تحديد الرتبة اليدوية لمنع التغيير التلقائي
   final bool isManualRole;
 
+  // ✅ إضافة حقل البريميوم لضمان ظهوره في طلبات الانضمام والدردشة
+  final bool isPremium;
+
   const MemberModel({
     required this.userId,
     required this.groupId,
@@ -42,6 +45,7 @@ class MemberModel {
     this.inviterDisplayName, 
     this.lastReadAt,
     this.isManualRole = false, // القيمة الافتراضية false
+    this.isPremium = false, // القيمة الافتراضية false
   });
 
   // =========================================================
@@ -94,6 +98,7 @@ class MemberModel {
           ? (map['lastReadAt'] as Timestamp).toDate() 
           : null,
       isManualRole: map['isManualRole'] ?? false, // جلب الحقل من Firestore
+      isPremium: map['isPremium'] ?? false, // جلب حقل البريميوم
     );
   }
 
@@ -117,6 +122,7 @@ class MemberModel {
       'joinedAt': Timestamp.fromDate(joinedAt),
       'lastReadAt': lastReadAt != null ? Timestamp.fromDate(lastReadAt!) : null,
       'isManualRole': isManualRole, // حفظ الحقل في Firestore
+      'isPremium': isPremium, // حفظ حقل البريميوم
     };
   }
 
@@ -137,6 +143,7 @@ class MemberModel {
     DateTime? joinedAt,
     DateTime? lastReadAt,
     bool? isManualRole,
+    bool? isPremium,
   }) {
     return MemberModel(
       userId: userId,
@@ -157,6 +164,7 @@ class MemberModel {
       joinedAt: joinedAt ?? this.joinedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       isManualRole: isManualRole ?? this.isManualRole,
+      isPremium: isPremium ?? this.isPremium,
     );
   }
 }

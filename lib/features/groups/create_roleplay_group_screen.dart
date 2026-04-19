@@ -13,12 +13,15 @@ import '../../core/theme/app_colors.dart';
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/loading_widget.dart';
+import '../../widgets/app_dialog.dart'; // إضافة استيراد الديالوج للفحص النهائي
 import '../../services/api/anime_api_service.dart';
 import '../../services/firebase/storage_service.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/home_provider.dart'; // إضافة الهوم بروفايدر للتحقق من العدد
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
+import '../../core/logic/subscription_limits_logic.dart'; // إضافة منطق الحدود
 
 class CreateRoleplayGroupScreen extends StatefulWidget {
   const CreateRoleplayGroupScreen({Key? key}) : super(key: key);
@@ -181,10 +184,31 @@ class _CreateRoleplayGroupScreenState
   Future<void> _createGroup() async {
     final auth = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
+    final homeProvider = context.read<HomeProvider>(); // للتحقق من العدد الحالي
     final currentUser = auth.user;
 
     if (currentUser == null) return;
     if (!_formKey.currentState!.validate()) return;
+
+    // --- صمام الأمان البرمجي (التحقق الأخير قبل الرفع للسيرفر) ---
+    final limitCheck = SubscriptionLimitsLogic.canCreateGroup(
+      currentUser, 
+      homeProvider.myGroups.length,
+    );
+
+    if (!limitCheck.isAllowed) {
+      showDialog(
+        context: context,
+        builder: (context) => AppDialog(
+          title: 'تنبيه الحدود',
+          content: limitCheck.message ?? '',
+          confirmText: limitCheck.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          onConfirm: () => Navigator.pop(context),
+        ),
+      );
+      return;
+    }
+    // ---------------------------------------------------------
 
     setState(() => _isLoading = true);
 
@@ -211,7 +235,9 @@ class _CreateRoleplayGroupScreenState
         animeId: _confirmedAnimeId, 
         founderId: currentUser.id,
         membersCount: 1,
-        maxMembers: Limits.maxMembersFree,
+        maxMembers: currentUser.isPremium 
+            ? Limits.maxMembersPremium 
+            : Limits.maxMembersFree,
         isPromoted: false,
         promotionExpiresAt: null,
         createdAt: DateTime.now(),
@@ -504,7 +530,6 @@ class _CreateRoleplayGroupScreenState
       ),
       child: Row(
         children: [
-          // ✅ التعديل: حماية الأبعاد ووضع صمام الأمان للصور
           SizedBox(
             width: 45,
             height: 60,

@@ -3,6 +3,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_theme.dart';
 import 'app_button.dart';
 import 'app_textfield.dart'; // تأكد من استيراد حقل النص الخاص بك
+import 'package:pubget/features/settings/premium_details_screen.dart'; // ✅ استيراد صفحة البريميوم الجديدة
 
 /// A reusable dialog widget for Pubget
 class AppDialog extends StatelessWidget {
@@ -85,6 +86,28 @@ class AppDialog extends StatelessWidget {
             placeholder: placeholder ?? '',
           ),
         ),
+      ),
+    );
+  }
+
+  /// ✅ التعديل الجديد: إظهار ديالوج الوصول للحدود (Limit Reached)
+  static Future<void> showLimitReachedDialog(BuildContext context) {
+    return showDialog(
+      context: context,
+      builder: (_) => AppDialog(
+        title: "💎 وصلت للحد الأقصى",
+        content: "لقد وصلت للحد المسموح به في النسخة المجانية. هل ترغب في الترقية لزيادة حدودك والتمتع بميزات حصرية؟",
+        confirmText: "ترقية الآن",
+        onConfirm: () {
+          Navigator.pop(context); // إغلاق الديالوج أولاً
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => const PremiumDetailsScreen(),
+          );
+        },
+        cancelText: "ربما لاحقاً",
       ),
     );
   }

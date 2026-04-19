@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../services/firebase/firestore_service.dart';
 import '../core/constants/firestore_paths.dart';
+import '../core/constants/subscription_type.dart'; // ✅ إضافة المستورد
+import '../core/constants/limits.dart'; // ✅ إضافة المستورد للقيود
 
 class UserProvider extends ChangeNotifier {
   final FirestoreService _firestoreService;
@@ -22,8 +24,6 @@ class UserProvider extends ChangeNotifier {
   // SYNC USER (🔥 التعديل الجديد للمزامنة السريعة مع Auth)
   // =========================================================
   
-  /// تستخدم لتحديث البيانات مباشرة في الـ Provider دون إعادة الطلب من قاعدة البيانات 
-  /// إذا كانت البيانات متوفرة مسبقاً في الـ AuthProvider
   void syncUser(UserModel? user) {
     if (user != null) {
       _currentUser = user;
@@ -37,7 +37,6 @@ class UserProvider extends ChangeNotifier {
 
   Future<void> loadUser(String userId) async {
     try {
-      // ✅ حماية من تعليق التطبيق مع timeout
       final data = await _firestoreService
           .getDocument(
             path: FirestorePaths.users,
@@ -54,9 +53,45 @@ class UserProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint("⚠️ loadUser error: $e");
-      _currentUser = null; // fallback لضمان عدم تعليق الشاشة
+      _currentUser = null;
       notifyListeners();
     }
+  }
+
+  // =========================================================
+  // PREMIUM SUBSCRIPTION LOGIC (🔥 التعديل الجديد)
+  // =========================================================
+
+  /// تفعيل اشتراك البريميوم وتحديث قاعدة البيانات والمحلي فوراً
+  Future<void> activatePremiumSubscription() async {
+    if (_currentUser == null) return;
+
+    final updatedUser = _currentUser!.copyWith(
+      subscriptionType: SubscriptionType.premium,
+      premiumSince: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await updateUser(updatedUser);
+    // بمجرد استدعاء updateUser يتم تحديث _currentUser محلياً وإخطار الواجهات
+  }
+
+  // =========================================================
+  // LIMITS CHECKERS (🔥 دوال فحص القيود الذكية)
+  // =========================================================
+
+  bool get canCreateMoreGroups {
+    if (_currentUser == null) return false;
+    // هنا نفترض وجود حقل أو طريقة لجلب عدد مجموعات المستخدم، سأضع المنطق العام:
+    // int currentCount = ...; 
+    // int maxAllowed = _currentUser!.isPremium ? Limits.maxGroupsPremium : Limits.maxGroupsFree;
+    // return currentCount < maxAllowed;
+    return true; // سيتم ربطها لاحقاً بعدد المجموعات الفعلي
+  }
+
+  int get maxAllowedMembers {
+    if (_currentUser == null) return Limits.maxMembersFree;
+    return _currentUser!.isPremium ? Limits.maxMembersPremium : Limits.maxMembersFree;
   }
 
   // =========================================================
@@ -101,6 +136,7 @@ class UserProvider extends ChangeNotifier {
     List<String>? favoriteAnimes,
     int? age,
     String? country,
+    String? nameColor, // ✅ إضافة دعم لون الاسم الجديد
   }) async {
     if (_currentUser == null) return;
 
@@ -112,6 +148,7 @@ class UserProvider extends ChangeNotifier {
       favoriteAnimes: favoriteAnimes,
       age: age,
       country: country,
+      nameColor: nameColor, // ✅ تحديث اللون
       updatedAt: DateTime.now(),
     );
 
@@ -146,7 +183,7 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ دالة جديدة لجلب بيانات أي مستخدم بالـ ID
+  // ✅ جلب بيانات أي مستخدم بالـ ID
   Future<UserModel?> getUserById(String userId) async {
     try {
       final data = await _firestoreService.getDocument(

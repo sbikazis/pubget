@@ -5,14 +5,17 @@ import 'package:intl/intl.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
+import '../../providers/auth_provider.dart'; // إضافة AuthProvider لفحص سعة الشوغو
 import 'package:pubget/features/profile/profile_sceen.dart'; 
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
+import '../../core/logic/subscription_limits_logic.dart'; // إضافة منطق الحدود
 
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/premium_badge.dart'; // ✅ إضافة مستورد الشارة
 
 class JoinRequestsScreen extends StatelessWidget {
   final String groupId;
@@ -45,29 +48,65 @@ class JoinRequestsScreen extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الرئيسي: إدارة السياق (Context) بشكل احترافي لمنع السواد
+  // ✅ التعديل الرئيسي: إضافة فحص سعة المجموعة (منطق الشوغو) قبل القبول
   Future<void> _handleAccept(BuildContext context, MemberModel request) async {
-    final String displayConfirmName = request.realUserName ?? request.displayName ?? "هذا العضو";
+    final groupProvider = context.read<GroupProvider>();
+    final authProvider = context.read<AuthProvider>();
+    final adminUser = authProvider.user;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false, 
-      builder: (dialogContext) => AppDialog(
-        title: 'قبول الطلب',
-        content: 'هل تريد قبول انضمام $displayConfirmName؟',
-        confirmText: 'قبول',
-        onConfirm: () => Navigator.of(dialogContext).pop(true), 
-        cancelText: 'إلغاء',
-        onCancel: () => Navigator.of(dialogContext).pop(false),
-      ),
-    );
-
-    if (confirmed != true) return;
+    if (adminUser == null) return;
 
     try {
-      final groupProvider = context.read<GroupProvider>();
+      // 1. جلب بيانات المجموعة الحالية للتأكد من عدد الأعضاء
       final group = await groupProvider.getGroup(groupId: groupId);
-      final groupName = group?.name ?? "المجموعة";
+      if (group == null) return;
+
+      // 2. فحص الحدود: هل يسمح لصاحب المجموعة (الشوغو) بإضافة عضو جديد؟
+      final limitResult = SubscriptionLimitsLogic.canAcceptNewMember(
+        adminUser,
+        group.membersCount,
+      );
+
+      if (!limitResult.isAllowed) {
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (dialogContext) => AppDialog(
+              title: 'سعة المجموعة ممتلئة',
+              content: limitResult.message ?? '',
+              confirmText: limitResult.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+              onConfirm: () {
+                Navigator.pop(dialogContext);
+                if (limitResult.shouldShowUpgrade) {
+                  // Navigator.pushNamed(context, '/premium_details');
+                }
+              },
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3. إذا كانت السعة تسمح، ننتقل لتأكيد القبول
+      final String displayConfirmName = request.realUserName ?? request.displayName ?? "هذا العضو";
+
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false, 
+        builder: (dialogContext) => AppDialog(
+          title: 'قبول الطلب',
+          content: 'هل تريد قبول انضمام $displayConfirmName؟',
+          confirmText: 'قبول',
+          onConfirm: () => Navigator.of(dialogContext).pop(true), 
+          cancelText: 'إلغاء',
+          onCancel: () => Navigator.of(dialogContext).pop(false),
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      final groupName = group.name;
 
       await groupProvider.acceptJoinRequest(
         groupId: groupId,
@@ -160,7 +199,13 @@ class JoinRequestsScreen extends StatelessWidget {
             );
           }
 
+          // ✅ منطق الترتيب: وضع البريميوم في الأعلى
           final requests = snapshot.data!;
+          requests.sort((a, b) {
+            if (a.isPremium && !b.isPremium) return -1;
+            if (!a.isPremium && b.isPremium) return 1;
+            return 0;
+          });
 
           return ListView.separated(
             padding: const EdgeInsets.all(12),
@@ -176,11 +221,11 @@ class JoinRequestsScreen extends StatelessWidget {
               return Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: isDark
-                      ? const BorderSide(color: AppColors.darkBorder, width: 0.5)
-                      : BorderSide.none,
+                  side: req.isPremium 
+                      ? const BorderSide(color: Color(0xFFD4AF37), width: 1.5) // ✅ تمييز ذهبي
+                      : (isDark ? const BorderSide(color: AppColors.darkBorder, width: 0.5) : BorderSide.none),
                 ),
-                elevation: 0,
+                elevation: req.isPremium ? 4 : 0,
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -207,15 +252,25 @@ class JoinRequestsScreen extends StatelessWidget {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        displayName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                        ),
+                                      child: Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              displayName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          if (req.isPremium) ...[
+                                            const SizedBox(width: 6),
+                                            const PremiumBadge(size: 16), // ✅ شارة البريميوم
+                                          ],
+                                        ],
                                       ),
                                     ),
                                     IconButton(
@@ -230,6 +285,10 @@ class JoinRequestsScreen extends StatelessWidget {
                                         );
                                       },
                                     ),
+                                    if (req.isPremium) ...[
+                                       _buildRoleBadge('أولوية ✨', const Color(0xFFD4AF37), const Color(0xFFD4AF37).withOpacity(0.1)),
+                                       const SizedBox(width: 4),
+                                    ],
                                     _buildRoleBadge('طالب انضمام', RoleColors.senpai, RoleColors.senpaiBadgeBg),
                                   ],
                                 ),
@@ -280,7 +339,7 @@ class JoinRequestsScreen extends StatelessWidget {
                           ElevatedButton(
                             onPressed: () => _handleAccept(context, req),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.success,
+                              backgroundColor: req.isPremium ? const Color(0xFFD4AF37) : AppColors.success,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               minimumSize: const Size(120, 40),

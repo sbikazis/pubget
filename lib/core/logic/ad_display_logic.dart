@@ -15,6 +15,20 @@ class AdDisplayDecision {
 class AdDisplayLogic {
   AdDisplayLogic._();
 
+  // ✅ إضافة دالة فحص الحد اليومي (3 إعلانات كحد أقصى)
+  static AdDisplayDecision checkDailyLimit(int adsShownToday) {
+    if (adsShownToday >= 3) {
+      return const AdDisplayDecision(
+        shouldShow: false,
+        reason: "daily_limit_reached",
+      );
+    }
+    return const AdDisplayDecision(
+      shouldShow: true,
+      reason: "within_limit",
+    );
+  }
+
   // First open in the morning rule
   static AdDisplayDecision checkMorningAd(
     DateTime? lastAdTime,
@@ -45,7 +59,7 @@ class AdDisplayLogic {
     return decision;
   }
 
-  // 5 minutes rule (group enter/exit)
+  // ✅ تعديل دالة الـ 5 دقائق (300 ثانية) للتأكد من الفاصل الزمني
   static AdDisplayDecision checkFiveMinutesRule(
     DateTime? lastAdTime,
   ) {
@@ -58,6 +72,7 @@ class AdDisplayLogic {
         reason: "first_time",
       );
     } else {
+      // التحقق من مرور 5 دقائق (300 ثانية)
       final passed = TimeUtils.hasMinutesPassed(lastAdTime, 5);
 
       if (passed) {
@@ -82,6 +97,7 @@ class AdDisplayLogic {
     required bool isPremium,
     required AdDisplayDecision decision,
   }) {
+    // إذا كان بريميوم، نرفض العرض بغض النظر عن القرار السابق
     if (isPremium) {
       const premiumDecision = AdDisplayDecision(
         shouldShow: false,
