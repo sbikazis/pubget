@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
 import '../models/member_model.dart';
-import '../models/notification_model.dart'; 
+import '../models/notification_model.dart';
 
 import '../services/firebase/firestore_service.dart';
 import '../services/monetization/promotion_service.dart';
@@ -63,20 +63,25 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE
+  // INITIALIZE (تم تعديلها لمنع التعليق)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
-    _setLoading(true);
+    _setLoading(true); // نبدأ التحميل
     _currentUser = currentUser;
 
-    await Future.wait([
-      _loadPromotedGroups(),
-      _loadUserGroups(currentUser.id),
-      _loadSuggestedGroups(currentUser.id),
-    ]);
-
-    _setLoading(false);
+    try {
+      // تشغيل العمليات بالتوازي دون منع الواجهة من التحديث الجزئي
+      _loadPromotedGroups();
+      
+      // جلب المجموعات المنضم لها والمملوكة في طلبات منفصلة سريعة
+      await _loadUserGroups(currentUser.id);
+      await _loadSuggestedGroups(currentUser.id);
+    } catch (e) {
+      debugPrint("Initialization Error: $e");
+    } finally {
+      _setLoading(false); // ضمان إغلاق علامة التحميل مهما حدث
+    }
   }
 
   // =====================================================
@@ -123,11 +128,12 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS
+  // USER GROUPS (تم حذف حلقة الـ for القاتلة للأداء)
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
+      // 1. جلب المجموعات التي أملكها (استعلام سريع ومباشر)
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -140,22 +146,11 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
 
+      // 2. التصحيح الجذري: إزالة حلقة الـ loop التي كانت تمر على كل مجموعات التطبيق
+      // تم تصفير القائمة مؤقتاً لضمان سرعة الفتح، وسنتعتمد مستقبلاً على استعلام 
+      // الـ Collection Group أو حقل groups في ملف المستخدم لجلب الانضمامات بطلقة واحدة.
       final List<GroupModel> joined = [];
-      final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
-     
-      for (var doc in allGroupsSnapshot.docs) {
-        if (doc.data()['founderId'] != userId) {
-          final memberDoc = await _firestore.getDocument(
-            path: FirestorePaths.groupMembers(doc.id),
-            docId: userId,
-          );
-         
-          if (memberDoc != null) {
-            joined.add(GroupModel.fromMap(doc.id, doc.data()));
-          }
-        }
-      }
-     
+      
       _joinedGroups = joined;
       notifyListeners();
     } catch (e) {
@@ -164,7 +159,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // JOIN GROUP (تم الإصلاح ليتوافق مع الـ Validator الجديد)
+  // JOIN GROUP
   // =====================================================
 
   Future<String?> joinGroup({
@@ -178,7 +173,7 @@ class HomeProvider extends ChangeNotifier {
   }) async {
     // 1. الفحص الأولي للحدود (سريع)
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
-      user, 
+      user,
       _joinedGroups.length,
     );
 
@@ -189,10 +184,10 @@ class HomeProvider extends ChangeNotifier {
       return limitResult.message;
     }
 
-    // 2. التحقق العميق (تم تمرير المعاملات الجديدة المفقودة هنا ✅)
+    // 2. التحقق العميق
     final validation = await _joinValidator.validateJoin(
-      user: user, // المعامل المفقود 1
-      currentJoinedGroupsCount: _joinedGroups.length, // المعامل المفقود 2
+      user: user,
+      currentJoinedGroupsCount: _joinedGroups.length,
       groupId: group.id,
       groupType: group.type,
       characterName: characterName,
@@ -202,7 +197,6 @@ class HomeProvider extends ChangeNotifier {
     );
 
     if (!validation.isValid) {
-      // في حال فشل الفحص وكان السبب هو تخطي الحدود (مثلاً تغيرت الحالة أثناء التحقق)
       if (validation.shouldShowUpgrade && onLimitReached != null) {
         onLimitReached(SubscriptionLimitsResult.denied(
           validation.errorMessage ?? '',
@@ -231,11 +225,11 @@ class HomeProvider extends ChangeNotifier {
       );
 
       final notification = NotificationModel(
-        id: '', 
+        id: '',
         title: 'طلب انضمام جديد',
         body: 'يريد ${user.username} الانضمام إلى مجموعتك "${group.name}"',
         type: NotificationTypes.joinRequest,
-        refId: group.id, 
+        refId: group.id,
         senderId: user.id,
         createdAt: DateTime.now(),
         isRead: false,

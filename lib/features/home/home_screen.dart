@@ -4,16 +4,15 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
-import '../../providers/user_provider.dart'; // 🔥 مضاف للمزامنة
-import '../../providers/chat_provider.dart'; // 🔥 مضاف للعدادات
-import '../../providers/private_chat_provider.dart'; // 🔥 مضاف للعدادات
+import '../../providers/user_provider.dart'; 
+import '../../providers/chat_provider.dart'; 
+import '../../providers/private_chat_provider.dart'; 
 import '../../providers/notifications_provider.dart';
 import '../../models/notification_model.dart';
 import '../../widgets/loading_widget.dart';
 import '../home/promoted_groups_section.dart';
 import 'package:pubget/features/home/my_group_section.dart';
 
-// added imports for direct navigation
 import '../home/search_screen.dart';
 import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
@@ -22,10 +21,9 @@ import '../private_chat/private_chats_list_screen.dart';
 
 import '../settings/settings_screen.dart';
 import 'package:pubget/models/user_model.dart';
-import '../../core/constants/limits.dart'; // ✅ مضاف للوصول للشارة
-import 'package:pubget/features/settings/premium_details_screen.dart'; // ✅ مضاف لفتح صفحة الترقية
+import '../../core/constants/limits.dart'; 
+import 'package:pubget/features/settings/premium_details_screen.dart'; 
 
-// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح
 import '../../services/monetization/ad_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -41,10 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _initialized = false;
   bool _isRefreshing = false;
  
-  // التعديل: متغير لمتابعة التبويب المختار
   int _selectedIndex = 0;
 
-  // ✅ متغيرات محلية للتحكم الفوري في العدادات (Optimistic UI)
   bool _hidePrivateBadge = false;
   bool _hideGroupsBadge = false;
 
@@ -59,11 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final currentUser = _authProvider.user;
       if (currentUser != null) {
         _homeProvider.initialize(currentUser: currentUser);
-        // 🔥 ضمان مزامنة بيانات المستخدم الحالي عند فتح التطبيق
         userProvider.syncUser(currentUser);
 
-        // 🚀 تفعيل إعلان الصباح (منطق الأشباح) عند فتح التطبيق لأول مرة في اليوم
-        // يتم تنفيذه بعد رسم الواجهة لضمان عدم تعليق التطبيق
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final adService = context.read<AdService>();
           adService.tryShowMorningAd(isPremium: currentUser.isPremium);
@@ -74,13 +67,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ✅ التعديل: إصلاح دالة التحديث لتعمل بوضع True لضمان ظهور المؤشر
   Future<void> _refresh() async {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
 
-    setState(() => _isRefreshing = false); // إعادة التعيين عند التحديث اليدوي
+    setState(() => _isRefreshing = true); 
     try {
-      await _homeProvider.refresh(user);
+      // استخدام initialize مباشرة لأنها أصبحت الآن "ذكية" ولا تسبب تعليقاً
+      await _homeProvider.initialize(currentUser: user);
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
@@ -121,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (_) => const SearchScreen()),
       );
 
-  // ✅ دالة لفتح صفحة البريميوم
   void _openPremiumDetails() {
     showModalBottomSheet(
       context: context,
@@ -131,15 +125,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // =========================================================
-  // ✅ بناء أيقونة مع عداد (Badge) للـ Bottom Bar
-  // =========================================================
   Widget _buildTabIcon(IconData icon, int count, bool forceHide) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Icon(icon),
-        if (count > 0 && !forceHide) // يتم الإخفاء إذا تحقق شرط التصفير الفوري
+        if (count > 0 && !forceHide) 
           Positioned(
             right: -6,
             top: -3,
@@ -163,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDrawer(BuildContext context) {
-    final user = context.watch<UserProvider>().currentUser; // استخدام UserProvider للمزامنة الفورية
+    final user = context.watch<UserProvider>().currentUser; 
     final bool isPremium = user?.isPremium ?? false;
 
     return Drawer(
@@ -210,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('الدردشات الخاصة'),
               onTap: () {
                 Navigator.of(context).pop();
-                _onTabTapped(3); // تفعيل تصفير العداد عند الانتقال من القائمة
+                _onTabTapped(3); 
               },
             ),
             ListTile(
@@ -231,7 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(),
 
-            // ✅ إضافة زر الترقية الفاخر في القائمة
             ListTile(
               leading: Icon(
                 isPremium ? Icons.verified : Icons.workspace_premium,
@@ -278,7 +268,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeDiscoveryContent(UserModel? user) {
-    // نستخدم النسخة من UserProvider لضمان ظهور الشارة فوراً
     final currentUser = context.watch<UserProvider>().currentUser;
     final bool isPremium = currentUser?.isPremium ?? false;
 
@@ -319,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  // ✅ زر عرض إعلان يدوي (للاختبار فقط)
                   IconButton(
                     onPressed: () {
                       final adService = context.read<AdService>();
@@ -344,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final notificationProvider = context.read<NotificationsProvider>();
     return StreamBuilder<List<NotificationModel>>(
       stream: notificationProvider.streamNotifications(userId),
-      initialData: const [], // منع الوميض عند التحميل
+      initialData: const [], 
       builder: (context, snapshot) {
         final unreadCount = snapshot.data?.where((n) => !n.isRead).length ?? 0;
 
@@ -387,12 +375,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ✅ دالة معالجة الضغط على التبويب لتصفير العداد فورياً
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      if (index == 3) _hidePrivateBadge = true; // تصفير الخاص فوراً
-      if (index == 1 || index == 2) _hideGroupsBadge = true; // تصفير المجموعات فوراً
+      if (index == 3) _hidePrivateBadge = true; 
+      if (index == 1 || index == 2) _hideGroupsBadge = true; 
     });
   }
 
@@ -402,9 +389,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final homeProvider = context.watch<HomeProvider>();
     final chatProvider = context.read<ChatProvider>();
     final privateChatProvider = context.read<PrivateChatProvider>();
-    final user = context.watch<UserProvider>().currentUser; // المزامنة مع UserProvider
+    final user = context.watch<UserProvider>().currentUser; 
 
-    final isLoading = homeProvider.isLoading || authProvider.isLoading;
+    // ✅ التعديل: شرط تحميل أكثر ذكاءً يعتمد على وجود البيانات الفعلية لضمان عدم تعليق الشاشة
+    final isLoading = (homeProvider.isLoading && homeProvider.myGroups.isEmpty) || 
+                      _isRefreshing || 
+                      authProvider.isLoading;
+                      
     final bool isPremium = user?.isPremium ?? false;
 
     return Scaffold(
@@ -478,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const PrivateChatsListScreen(),
             ],
           ),
-          if (isLoading || _isRefreshing)
+          if (isLoading)
             const Positioned.fill(
               child: ColoredBox(
                 color: Colors.black26,
