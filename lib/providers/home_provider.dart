@@ -63,29 +63,30 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (تم التعديل لفك التعليق)
+  // INITIALIZE (تم الإصلاح لمنع تعليق دائرة التحميل)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
-    _setLoading(true);
+    _setLoading(true); // نبدأ التحميل
     _currentUser = currentUser;
 
-    // جلب البيانات السريعة والمقترحات أولاً
-    await Future.wait([
-      _loadPromotedGroups(),
-      _loadSuggestedGroups(currentUser.id),
-    ]);
+    try {
+      // 1. جلب البيانات الأساسية التي تظهر في الواجهة فوراً (المروجة والمقترحة)
+      await Future.wait([
+        _loadPromotedGroups(),
+        _loadSuggestedGroups(currentUser.id),
+      ]);
 
-    // البدء بجلب مجموعات المستخدم (منشأة ومنضم لها)
-    // لا نستخدم await هنا لكي لا نحبس الواجهة في دائرة تحميل لا نهائية
-    _loadUserGroups(currentUser.id).then((_) {
-      // بعد انتهاء كل العمليات نضمن إغلاق التحميل تماماً
+      // 2. بمجرد انتهاء البيانات الأساسية، نوقف التحميل فوراً لكي تظهر الشاشة للمستخدم
+      // هذا هو "مفتاح الحل" لإنهاء الدائرة اللانهائية
       _setLoading(false);
-    });
 
-    // نغلق التحميل المبدئي فور ظهور البيانات الأساسية
-    if (_isLoading) {
-      _setLoading(false);
+      // 3. الآن نبدأ جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية بدون حجب الواجهة
+      _loadUserGroups(currentUser.id);
+      
+    } catch (e) {
+      debugPrint("Initialization error: $e");
+      _setLoading(false); // نوقف التحميل حتى لو حدث خطأ لضمان استجابة التطبيق
     }
   }
 
@@ -133,11 +134,12 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS (تم الإصلاح لضمان ظهور المجموعات المنضم لها فوراً)
+  // USER GROUPS (تعديل لضمان التحديث التدريجي)
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
+      // جلب المجموعات التي أنشأها المستخدم (سريعة نسبياً)
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -150,9 +152,9 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
       
-      // تحديث فوري لعرض "مجموعاتي المنشأة" أولاً
-      notifyListeners();
+      notifyListeners(); // تحديث فوري لعرض "مجموعاتي"
 
+      // جلب المجموعات المنضم لها (هذه هي العملية الثقيلة لأنها تتطلب التحقق من كل مجموعة)
       final List<GroupModel> joined = [];
       final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
      
@@ -165,22 +167,18 @@ class HomeProvider extends ChangeNotifier {
          
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
-            // تحديث الواجهة تدريجياً فور العثور على مجموعة منضم إليها
             _joinedGroups = List.from(joined);
-            notifyListeners();
+            notifyListeners(); // تحديث الواجهة تدريجياً فور العثور على أي مجموعة منضم لها
           }
         }
       }
-     
-      _joinedGroups = joined;
-      notifyListeners();
     } catch (e) {
       debugPrint("Error loading user groups: $e");
     }
   }
 
   // =====================================================
-  // JOIN GROUP (تم الإصلاح ليتوافق مع الـ Validator الجديد)
+  // JOIN GROUP (يتوافق مع الـ Validator والحدود)
   // =====================================================
 
   Future<String?> joinGroup({
@@ -192,7 +190,7 @@ class HomeProvider extends ChangeNotifier {
     String? invitedByUserId,
     void Function(SubscriptionLimitsResult)? onLimitReached,
   }) async {
-    // 1. الفحص الأولي للحدود (سريع)
+    // 1. الفحص الأولي للحدود
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
       user,
       _joinedGroups.length,
@@ -205,10 +203,10 @@ class HomeProvider extends ChangeNotifier {
       return limitResult.message;
     }
 
-    // 2. التحقق العميق (تم تمرير المعاملات الجديدة المفقودة هنا ✅)
+    // 2. التحقق العميق من صلاحية الانضمام (Character, Anime, etc.)
     final validation = await _joinValidator.validateJoin(
-      user: user, // المعامل المفقود 1
-      currentJoinedGroupsCount: _joinedGroups.length, // المعامل المفقود 2
+      user: user,
+      currentJoinedGroupsCount: _joinedGroups.length,
       groupId: group.id,
       groupType: group.type,
       characterName: characterName,
@@ -218,7 +216,6 @@ class HomeProvider extends ChangeNotifier {
     );
 
     if (!validation.isValid) {
-      // في حال فشل الفحص وكان السبب هو تخطي الحدود (مثلاً تغيرت الحالة أثناء التحقق)
       if (validation.shouldShowUpgrade && onLimitReached != null) {
         onLimitReached(SubscriptionLimitsResult.denied(
           validation.errorMessage ?? '',
@@ -270,7 +267,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // SEARCH & SMART FILTERING
+  // SEARCH & FILTERS
   // =====================================================
 
   void setSearchQuery(String query) async {
