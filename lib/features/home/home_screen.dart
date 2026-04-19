@@ -67,14 +67,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ✅ التعديل: إصلاح دالة التحديث لتعمل بوضع True لضمان ظهور المؤشر
   Future<void> _refresh() async {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
 
     setState(() => _isRefreshing = true); 
     try {
-      // استخدام initialize مباشرة لأنها أصبحت الآن "ذكية" ولا تسبب تعليقاً
       await _homeProvider.initialize(currentUser: user);
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
@@ -314,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       adService.tryShowMorningAd(isPremium: isPremium);
                     },
                     icon: const Icon(Icons.campaign_outlined),
-                    tooltip: 'عرض إعلان تجريبي',
+                    tooltip: 'عرض إعلان يدوي',
                   ),
                 ],
               ),
@@ -391,10 +389,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final privateChatProvider = context.read<PrivateChatProvider>();
     final user = context.watch<UserProvider>().currentUser; 
 
-    // ✅ التعديل: شرط تحميل أكثر ذكاءً يعتمد على وجود البيانات الفعلية لضمان عدم تعليق الشاشة
-    final isLoading = (homeProvider.isLoading && homeProvider.myGroups.isEmpty) || 
-                      _isRefreshing || 
-                      authProvider.isLoading;
+    // ✅ التعديل الجذري: الشاشة لن تعرض "جاري التحميل" المحجبة إلا إذا كانت القوائم فارغة تماماً
+    final bool isReallyEmpty = homeProvider.myGroups.isEmpty && 
+                               homeProvider.promotedGroups.isEmpty && 
+                               homeProvider.joinedGroups.isEmpty;
+
+    final bool showOverlayLoading = (homeProvider.isLoading && isReallyEmpty) || authProvider.isLoading;
                       
     final bool isPremium = user?.isPremium ?? false;
 
@@ -469,7 +469,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const PrivateChatsListScreen(),
             ],
           ),
-          if (isLoading)
+          // ✅ تعديل شرط ظهور شاشة التحميل لمنع حجب البيانات المتاحة
+          if (showOverlayLoading || _isRefreshing)
             const Positioned.fill(
               child: ColoredBox(
                 color: Colors.black26,

@@ -63,25 +63,18 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (تم تعديلها لمنع التعليق)
+  // INITIALIZE (التعديل لكسر التعليق واعتماد التحميل الجزئي)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
-    _setLoading(true); // نبدأ التحميل
     _currentUser = currentUser;
-
-    try {
-      // تشغيل العمليات بالتوازي دون منع الواجهة من التحديث الجزئي
-      _loadPromotedGroups();
-      
-      // جلب المجموعات المنضم لها والمملوكة في طلبات منفصلة سريعة
-      await _loadUserGroups(currentUser.id);
-      await _loadSuggestedGroups(currentUser.id);
-    } catch (e) {
-      debugPrint("Initialization Error: $e");
-    } finally {
-      _setLoading(false); // ضمان إغلاق علامة التحميل مهما حدث
-    }
+    
+    // لا نضع _setLoading(true) هنا لمنع حجب الشاشة بالكامل
+    // بل نعتمد على التحميل الجزئي وتحديث الواجهة فور توفر البيانات
+    
+    _loadPromotedGroups();
+    _loadUserGroups(currentUser.id);
+    _loadSuggestedGroups(currentUser.id);
   }
 
   // =====================================================
@@ -128,12 +121,12 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS (تم حذف حلقة الـ for القاتلة للأداء)
+  // USER GROUPS (التعديل الجذري لضمان سرعة الاستجابة)
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
-      // 1. جلب المجموعات التي أملكها (استعلام سريع ومباشر)
+      // جلب المجموعات التي أملكها (استعلام سريع ومباشر)
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -146,15 +139,20 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
 
-      // 2. التصحيح الجذري: إزالة حلقة الـ loop التي كانت تمر على كل مجموعات التطبيق
-      // تم تصفير القائمة مؤقتاً لضمان سرعة الفتح، وسنتعتمد مستقبلاً على استعلام 
-      // الـ Collection Group أو حقل groups في ملف المستخدم لجلب الانضمامات بطلقة واحدة.
+      // نحدث الواجهة فور جلب مجموعات المستخدم لإنهاء حالة التحميل في الواجهة
+      _isLoading = false; 
+      notifyListeners();
+
+      // التصحيح الجذري: تصفير مؤقت لضمان فك التعليق ومنع الحلقات اللانهائية
+      // سيتم تعويضها لاحقاً باستعلام Collection Group أو منطق أكثر كفاءة
       final List<GroupModel> joined = [];
       
       _joinedGroups = joined;
       notifyListeners();
     } catch (e) {
+      _isLoading = false;
       debugPrint("Error loading user groups: $e");
+      notifyListeners();
     }
   }
 
@@ -171,7 +169,6 @@ class HomeProvider extends ChangeNotifier {
     String? invitedByUserId,
     void Function(SubscriptionLimitsResult)? onLimitReached,
   }) async {
-    // 1. الفحص الأولي للحدود (سريع)
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
       user,
       _joinedGroups.length,
@@ -184,7 +181,6 @@ class HomeProvider extends ChangeNotifier {
       return limitResult.message;
     }
 
-    // 2. التحقق العميق
     final validation = await _joinValidator.validateJoin(
       user: user,
       currentJoinedGroupsCount: _joinedGroups.length,
