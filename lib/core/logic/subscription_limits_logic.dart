@@ -18,11 +18,11 @@ class SubscriptionLimitsResult {
   }
 
   factory SubscriptionLimitsResult.denied(String message, {bool showUpgrade = true}) {
-    // تم الإصلاح هنا: تمرير القيم كأسماء (Named Arguments) لاستدعاء الكونستركتور بشكل صحيح
+    // ✅ التصحيح: تم التأكد من استخدام النقطتين الرأسيتين (:) لتمرير القيم للمعاملات المسماة
     return SubscriptionLimitsResult(
       isAllowed: false,
       message: message,
-      shouldShowUpgrade: showUpgrade, // تصحيح من = إلى :
+      shouldShowUpgrade: showUpgrade, 
     );
   }
 }

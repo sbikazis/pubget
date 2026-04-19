@@ -21,13 +21,17 @@ class UserProvider extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null;
 
   // =========================================================
-  // SYNC USER (🔥 التعديل الجديد للمزامنة السريعة مع Auth)
+  // SYNC USER (🔥 التعديل الجديد لمنع الـ Rebuild اللانهائي)
   // =========================================================
-  
+ 
   void syncUser(UserModel? user) {
     if (user != null) {
-      _currentUser = user;
-      notifyListeners();
+      // ✅ تصحيح: لا نحدث الحالة إلا إذا كان المستخدم المسجل مختلفاً عن الحالي
+      // هذا يمنع HomeScreen من الدخول في حلقة إعادة بناء لانهائية
+      if (_currentUser?.id != user.id || _currentUser?.updatedAt != user.updatedAt) {
+        _currentUser = user;
+        notifyListeners();
+      }
     }
   }
 
@@ -83,7 +87,7 @@ class UserProvider extends ChangeNotifier {
   bool get canCreateMoreGroups {
     if (_currentUser == null) return false;
     // هنا نفترض وجود حقل أو طريقة لجلب عدد مجموعات المستخدم، سأضع المنطق العام:
-    // int currentCount = ...; 
+    // int currentCount = ...;
     // int maxAllowed = _currentUser!.isPremium ? Limits.maxGroupsPremium : Limits.maxGroupsFree;
     // return currentCount < maxAllowed;
     return true; // سيتم ربطها لاحقاً بعدد المجموعات الفعلي
