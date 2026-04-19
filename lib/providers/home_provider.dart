@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/group_model.dart';
 import '../models/user_model.dart';
 import '../models/member_model.dart';
-import '../models/notification_model.dart';
+import '../models/notification_model.dart'; 
 
 import '../services/firebase/firestore_service.dart';
 import '../services/monetization/promotion_service.dart';
@@ -63,18 +63,32 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (التعديل لكسر التعليق واعتماد التحميل الجزئي)
+  // INITIALIZE (تم الإصلاح لضمان عدم التعليق)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
     _currentUser = currentUser;
     
-    // لا نضع _setLoading(true) هنا لمنع حجب الشاشة بالكامل
-    // بل نعتمد على التحميل الجزئي وتحديث الواجهة فور توفر البيانات
-    
-    _loadPromotedGroups();
-    _loadUserGroups(currentUser.id);
-    _loadSuggestedGroups(currentUser.id);
+    // نبدأ التحميل ولكن لا ننتظر الحلقة الطويلة حتى تنتهي لفتح الواجهة
+    _isLoading = true; 
+    notifyListeners();
+
+    try {
+      // تنفيذ العمليات السريعة أولاً
+      await Future.wait([
+        _loadPromotedGroups(),
+        _loadSuggestedGroups(currentUser.id),
+      ]);
+      
+      // جلب المجموعات (بما فيها المنضم لها) في الخلفية
+      await _loadUserGroups(currentUser.id);
+      
+    } catch (e) {
+      debugPrint("Init error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   // =====================================================
@@ -121,12 +135,12 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS (التعديل الجذري لضمان سرعة الاستجابة)
+  // USER GROUPS (المنطق الأصلي مع تحسين سرعة التحديث)
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
-      // جلب المجموعات التي أملكها (استعلام سريع ومباشر)
+      // 1. جلب مجموعاتي التي أنشأتها (سريع جداً)
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -138,21 +152,34 @@ class HomeProvider extends ChangeNotifier {
       _myGroups = myGroupsQuery.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
-
-      // نحدث الواجهة فور جلب مجموعات المستخدم لإنهاء حالة التحميل في الواجهة
-      _isLoading = false; 
+      
+      // تحديث فوري للواجهة لعرض مجموعاتي المنشأة أولاً
       notifyListeners();
 
-      // التصحيح الجذري: تصفير مؤقت لضمان فك التعليق ومنع الحلقات اللانهائية
-      // سيتم تعويضها لاحقاً باستعلام Collection Group أو منطق أكثر كفاءة
+      // 2. جلب المجموعات المنضم إليها (المنطق الأصلي)
       final List<GroupModel> joined = [];
-      
+      final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
+     
+      for (var doc in allGroupsSnapshot.docs) {
+        if (doc.data()['founderId'] != userId) {
+          final memberDoc = await _firestore.getDocument(
+            path: FirestorePaths.groupMembers(doc.id),
+            docId: userId,
+          );
+         
+          if (memberDoc != null) {
+            joined.add(GroupModel.fromMap(doc.id, doc.data()));
+            // تحديث الواجهة "تدريجياً" كلما وجدت مجموعة منضم إليها لزيادة التفاعل
+            _joinedGroups = List.from(joined);
+            notifyListeners();
+          }
+        }
+      }
+     
       _joinedGroups = joined;
       notifyListeners();
     } catch (e) {
-      _isLoading = false;
       debugPrint("Error loading user groups: $e");
-      notifyListeners();
     }
   }
 
@@ -170,7 +197,7 @@ class HomeProvider extends ChangeNotifier {
     void Function(SubscriptionLimitsResult)? onLimitReached,
   }) async {
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
-      user,
+      user, 
       _joinedGroups.length,
     );
 
@@ -221,11 +248,11 @@ class HomeProvider extends ChangeNotifier {
       );
 
       final notification = NotificationModel(
-        id: '',
+        id: '', 
         title: 'طلب انضمام جديد',
         body: 'يريد ${user.username} الانضمام إلى مجموعتك "${group.name}"',
         type: NotificationTypes.joinRequest,
-        refId: group.id,
+        refId: group.id, 
         senderId: user.id,
         createdAt: DateTime.now(),
         isRead: false,
