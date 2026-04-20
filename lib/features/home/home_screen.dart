@@ -147,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDrawer(BuildContext context) {
-    final user = context.watch<UserProvider>().currentUser; 
+    final user = context.watch<UserProvider>().currentUser;
     final bool isPremium = user?.isPremium ?? false;
 
     return Drawer(
@@ -155,15 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             UserAccountsDrawerHeader(
-              accountName: Row(
-                children: [
-                  Text(user?.username ?? 'مستخدم'),
-                  if (isPremium) ...[
-                    const SizedBox(width: 5),
-                    Text(Limits.premiumBadge, style: const TextStyle(fontSize: 14)),
-                  ],
-                ],
-              ),
+              accountName: Text(user?.username ?? 'مستخدم'),
               accountEmail: Text(user?.email ?? ''),
               currentAccountPicture: CircleAvatar(
                 backgroundImage: user != null && user.avatarUrl.isNotEmpty
@@ -381,7 +373,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final privateChatProvider = context.read<PrivateChatProvider>();
     final user = context.watch<UserProvider>().currentUser; 
 
-    // 🔥 المنطق الجديد: الدائرة الكبيرة تظهر فقط إذا كنا في تبويب "اكتشف" ولم تصل بيانات بعد
+    // ✅ التعديل الجوهري: الغطاء يظهر فقط في التبويب الأول "اكتشف" وفقط إذا لم تحمل أي بيانات بعد.
+    // بمجرد الانتقال لتبويب آخر أو وصول أي بيانات، يختفي الغطاء فوراً.
     final bool showFullLoading = homeProvider.isLoading && 
                                _selectedIndex == 0 && 
                                homeProvider.promotedGroups.isEmpty && 
@@ -438,6 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
+          // المحتوى دائماً موجود في الخلفية وجاهز للعرض
           IndexedStack(
             index: _selectedIndex,
             children: [
@@ -448,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           
-          // 🔥 التعديل الجوهري: القناع يظهر فقط عند الضرورة القصوى
+          // غطاء التحميل يظهر "فوق" المحتوى ويختفي بذكاء بناءً على الحالة أو التنقل
           if (showFullLoading)
             const Positioned.fill(
               child: ColoredBox(
@@ -457,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             ),
           
-          // شريط تحميل علوي نحيف أثناء التحديثات الخلفية
+          // شريط تحميل علوي نحيف يظهر في حالات التحديث الخلفي ليبقى المستخدم على علم
           if (_isRefreshing || (homeProvider.isLoading && !showFullLoading))
             const Positioned(
               top: 0, 

@@ -63,7 +63,7 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (تعديل لضمان إغلاق التحميل باستخدام finally)
+  // INITIALIZE (تم التعديل لفصل البيانات الخفيفة عن الثقيلة)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
@@ -71,7 +71,7 @@ class HomeProvider extends ChangeNotifier {
     _currentUser = currentUser;
 
     try {
-      // 1. جلب البيانات الأساسية التي تظهر في الواجهة فوراً (المروجة والمقترحة)
+      // 1. جلب البيانات الأساسية (الخفيفة) التي تظهر في الواجهة فوراً
       await Future.wait([
         _loadPromotedGroups(),
         _loadSuggestedGroups(currentUser.id),
@@ -79,11 +79,11 @@ class HomeProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Init error: $e");
     } finally {
-      // ✅ نضمن إيقاف التحميل هنا مهما حدث (نجاح أو فشل) لكسر الدائرة اللانهائية
+      // ✅ نوقف التحميل هنا فور انتهاء البيانات الأساسية لكي تفتح الشاشة للمستخدم
       _setLoading(false); 
     }
 
-    // 2. جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية لكي لا تعطل الواجهة
+    // 2. نبدأ جلب البيانات الثقيلة (المنشأة والمنضم لها) في الخلفية دون حجب التطبيق
     _loadUserGroups(currentUser.id);
   }
 
@@ -131,7 +131,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS (تعديل لضمان التحديث التدريجي)
+  // USER GROUPS (تعديل لضمان التحديث التدريجي وعدم التعليق)
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
@@ -149,9 +149,9 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
       
-      notifyListeners(); // تحديث فوري لعرض "مجموعاتي"
+      notifyListeners(); // تحديث فوري لعرض "مجموعاتي" حال توفرها
 
-      // جلب المجموعات المنضم لها (هذه هي العملية الثقيلة لأنها تتطلب التحقق من كل مجموعة)
+      // جلب المجموعات المنضم لها (العملية الثقيلة)
       final List<GroupModel> joined = [];
       final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
      
@@ -165,7 +165,7 @@ class HomeProvider extends ChangeNotifier {
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
             _joinedGroups = List.from(joined);
-            notifyListeners(); // تحديث الواجهة تدريجياً فور العثور على أي مجموعة منضم لها
+            notifyListeners(); // تحديث تدريجي: تظهر المجموعة فور العثور عليها
           }
         }
       }
