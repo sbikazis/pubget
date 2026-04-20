@@ -63,7 +63,7 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (تم الإصلاح لمنع تعليق دائرة التحميل)
+  // INITIALIZE (تم الإصلاح الجذري لمنع تعليق دائرة التحميل)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
@@ -71,19 +71,18 @@ class HomeProvider extends ChangeNotifier {
     _currentUser = currentUser;
 
     try {
-      // 1. جلب البيانات الأساسية التي تظهر في الواجهة فوراً (المروجة والمقترحة)
-      await Future.wait([
-        _loadPromotedGroups(),
-        _loadSuggestedGroups(currentUser.id),
-      ]);
+      // 1. جلب البيانات المقترحة كـ Future (ننتظرها)
+      await _loadSuggestedGroups(currentUser.id);
 
-      // 2. بمجرد انتهاء البيانات الأساسية، نوقف التحميل فوراً لكي تظهر الشاشة للمستخدم
-      // هذا هو "مفتاح الحل" لإنهاء الدائرة اللانهائية
+      // 2. تشغيل الـ Stream الخاص بالمجموعات المروجة (لا ننتظره لأنه لا ينتهي)
+      _loadPromotedGroups();
+
+      // 3. بمجرد انتهاء البيانات الأساسية (المقترحة)، نوقف التحميل فوراً لكي تظهر الشاشة للمستخدم
       _setLoading(false);
 
-      // 3. الآن نبدأ جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية بدون حجب الواجهة
+      // 4. الآن نبدأ جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية بدون حجب الواجهة
       _loadUserGroups(currentUser.id);
-      
+     
     } catch (e) {
       debugPrint("Initialization error: $e");
       _setLoading(false); // نوقف التحميل حتى لو حدث خطأ لضمان استجابة التطبيق
@@ -91,10 +90,10 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // PROMOTED GROUPS
+  // PROMOTED GROUPS (تعديل: إزالة async وتحويلها لـ void)
   // =====================================================
 
-  Future<void> _loadPromotedGroups() async {
+  void _loadPromotedGroups() {
     _promotedSub?.cancel();
     _promotedSub = _promotionService.getPromotedGroups().listen((groups) {
       _promotedGroups = groups;
@@ -151,7 +150,7 @@ class HomeProvider extends ChangeNotifier {
       _myGroups = myGroupsQuery.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
-      
+     
       notifyListeners(); // تحديث فوري لعرض "مجموعاتي"
 
       // جلب المجموعات المنضم لها (هذه هي العملية الثقيلة لأنها تتطلب التحقق من كل مجموعة)
