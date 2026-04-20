@@ -373,8 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final privateChatProvider = context.read<PrivateChatProvider>();
     final user = context.watch<UserProvider>().currentUser; 
 
-    // ✅ التعديل الجوهري: الغطاء يظهر فقط في التبويب الأول "اكتشف" وفقط إذا لم تحمل أي بيانات بعد.
-    // بمجرد الانتقال لتبويب آخر أو وصول أي بيانات، يختفي الغطاء فوراً.
+    // ✅ تم ضبط المنطق هنا: الدائرة تظهر فقط إذا كنا في تبويب "اكتشف" ولم تصل البيانات المقترحة أو المروجة بعد
     final bool showFullLoading = homeProvider.isLoading && 
                                _selectedIndex == 0 && 
                                homeProvider.promotedGroups.isEmpty && 
@@ -431,7 +430,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
-          // المحتوى دائماً موجود في الخلفية وجاهز للعرض
           IndexedStack(
             index: _selectedIndex,
             children: [
@@ -442,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           
-          // غطاء التحميل يظهر "فوق" المحتوى ويختفي بذكاء بناءً على الحالة أو التنقل
+          // غطاء التحميل يظهر فقط عند الضرورة القصوى في التبويب الأول
           if (showFullLoading)
             const Positioned.fill(
               child: ColoredBox(
@@ -451,7 +449,7 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             ),
           
-          // شريط تحميل علوي نحيف يظهر في حالات التحديث الخلفي ليبقى المستخدم على علم
+          // شريط تحميل علوي نحيف يظهر أثناء التحديثات في الخلفية أو عند تفعيل الـ refresh
           if (_isRefreshing || (homeProvider.isLoading && !showFullLoading))
             const Positioned(
               top: 0, 
