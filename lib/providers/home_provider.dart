@@ -63,7 +63,7 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (التعديل لكسر دائرة التحميل اللانهائية)
+  // INITIALIZE (تم الإصلاح لمنع تعليق دائرة التحميل)
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
@@ -71,21 +71,23 @@ class HomeProvider extends ChangeNotifier {
     _currentUser = currentUser;
 
     try {
-      // 1. تشغيل جلب المجموعات المروجة (Stream) بدون await لأنه لا ينتهي
-      _loadPromotedGroups(); 
+      // 1. جلب البيانات الأساسية التي تظهر في الواجهة فوراً (المروجة والمقترحة)
+      await Future.wait([
+        _loadPromotedGroups(),
+        _loadSuggestedGroups(currentUser.id),
+      ]);
 
-      // 2. جلب المجموعات المقترحة (Future) وانتظاره لأنه ينتهي بجلب البيانات
-      await _loadSuggestedGroups(currentUser.id);
+      // 2. بمجرد انتهاء البيانات الأساسية، نوقف التحميل فوراً لكي تظهر الشاشة للمستخدم
+      // هذا هو "مفتاح الحل" لإنهاء الدائرة اللانهائية
+      _setLoading(false);
+
+      // 3. الآن نبدأ جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية بدون حجب الواجهة
+      _loadUserGroups(currentUser.id);
       
     } catch (e) {
-      debugPrint("Init error: $e");
-    } finally {
-      // ✅ نضمن إيقاف التحميل هنا مهما حدث (نجاح أو فشل) لكسر الدائرة اللانهائية
-      _setLoading(false); 
+      debugPrint("Initialization error: $e");
+      _setLoading(false); // نوقف التحميل حتى لو حدث خطأ لضمان استجابة التطبيق
     }
-
-    // 3. جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية لكي لا تعطل الواجهة
-    _loadUserGroups(currentUser.id);
   }
 
   // =====================================================
