@@ -38,7 +38,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late HomeProvider _homeProvider;
   late AuthProvider _authProvider;
-  bool _initialized = false;
   bool _isRefreshing = false;
  
   // التعديل: متغير لمتابعة التبويب المختار
@@ -49,28 +48,41 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hideGroupsBadge = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_initialized) {
-      _homeProvider = context.read<HomeProvider>();
-      _authProvider = context.read<AuthProvider>();
-      final userProvider = context.read<UserProvider>();
+  void initState() {
+    super.initState();
 
-      final currentUser = _authProvider.user;
-      if (currentUser != null) {
-        _homeProvider.initialize(currentUser: currentUser);
-        // 🔥 ضمان مزامنة بيانات المستخدم الحالي عند فتح التطبيق
-        userProvider.syncUser(currentUser);
+    // ✅ التعديل الاحترافي: التهيئة داخل initState مع ضمان استقرار السياق
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tryInitialize();
+    });
+  }
 
-        // 🚀 تفعيل إعلان الصباح (منطق الأشباح) عند فتح التطبيق لأول مرة في اليوم
-        // يتم تنفيذه بعد رسم الواجهة لضمان عدم تعليق التطبيق
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final adService = context.read<AdService>();
-          adService.tryShowMorningAd(isPremium: currentUser.isPremium);
-        });
-      }
+  // 🔥 دالة ذكية لضمان البدء حتى لو تأخر الـ Auth
+  void _tryInitialize() {
+    if (!mounted) return;
 
-      _initialized = true;
+    final authProvider = context.read<AuthProvider>();
+    final userProvider = context.read<UserProvider>();
+    _homeProvider = context.read<HomeProvider>();
+    _authProvider = authProvider;
+    final adService = context.read<AdService>();
+
+    final currentUser = authProvider.user;
+
+    if (currentUser != null) {
+      // البدء في جلب البيانات فوراً عند توفر المستخدم
+      _homeProvider.initialize(currentUser: currentUser);
+      
+      // 🔥 ضمان مزامنة بيانات المستخدم الحالي
+      userProvider.syncUser(currentUser);
+
+      // 🚀 تفعيل إعلان الصباح (منطق الأشباح)
+      adService.tryShowMorningAd(isPremium: currentUser.isPremium);
+    } else {
+      // إعادة المحاولة بعد وقت قصير جداً في حال كان الـ user لا يزال null
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _tryInitialize();
+      });
     }
   }
 

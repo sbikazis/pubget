@@ -1,3 +1,4 @@
+//promoted_groups_section
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,9 +17,8 @@ class PromotedGroupsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
 
-    if (homeProvider.isLoading) {
-      return const LoadingWidget(message: "جاري تحميل الاكتشافات...");
-    }
+    // تم إزالة شرط الـ isLoading من هنا لأن الصفحة الرئيسية (HomeScreen) 
+    // تدير حالة التحميل بشكل مركزي، ووجوده هنا يسبب تعليق الواجهة.
 
     // نستخدم القائمة المدمجة (مروجة + مقترحة) التي أنشأناها في الـ Provider
     final discoveryGroups = homeProvider.allDiscoveryGroups;
