@@ -1,3 +1,4 @@
+// lib/features/groups/create_group_screen.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -37,7 +38,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   // متغير للتحكم في ما إذا كان المستخدم اختار نوع المجموعة أم لا
   GroupType? _selectedType;
 
-  // دالة موحدة للتحقق من الصلاحية قبل الانتقال للخطوة التالية
+  // ✅ التعديل المركزي: استخدام الدالة الموحدة لضمان عمل زر الترقية
   void _checkLimitAndProceed(VoidCallback onAllowed) {
     final authProvider = context.read<AuthProvider>();
     final homeProvider = context.read<HomeProvider>();
@@ -54,22 +55,21 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     if (result.isAllowed) {
       onAllowed();
     } else {
-      // إظهار صفحة "لقد وصلت لحدود النسخة المجانية" أو التنبيه
-      showDialog(
-        context: context,
-        builder: (context) => AppDialog(
-          title: 'وصلت للحد الأقصى',
+      // ✅ استدعاء الدالة الموحدة التي أصلحناها في AppDialog
+      if (result.shouldShowUpgrade) {
+        AppDialog.showLimitReachedDialog(
+          context,
+          customContent: result.message,
+        );
+      } else {
+        // في حال كان هناك سبب منع آخر لا يتطلب ترقية
+        AppDialog.show(
+          context,
+          title: 'تنبيه',
           content: result.message ?? '',
-          confirmText: result.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
-          onConfirm: () {
-            Navigator.pop(context);
-            if (result.shouldShowUpgrade) {
-              // هنا نتوجه لصفحة البريميوم التي سنبنيها لاحقاً
-              // Navigator.pushNamed(context, '/premium_details');
-            }
-          },
-        ),
-      );
+          confirmText: 'حسناً',
+        );
+      }
     }
   }
 
@@ -123,7 +123,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       );
     }
 
-    // إذا اختار "عامة"، نعرض له النموذج الأصلي الخاص بك (الموجود بالأسفل)
+    // إذا اختار "عامة"، نعرض له النموذج الأصلي (الموجود بالأسفل)
     return GeneralGroupForm(onBack: () => setState(() => _selectedType = null));
   }
 
@@ -168,8 +168,6 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   }
 }
 
-// --- هذا هو الكود الأصلي الخاص بك وضعته في Widget منفصل للحفاظ على الترتيب ---
-
 class GeneralGroupForm extends StatefulWidget {
   final VoidCallback onBack;
   const GeneralGroupForm({Key? key, required this.onBack}) : super(key: key);
@@ -198,7 +196,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     final authProvider = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
-    final adService = context.read<AdService>(); // ✅ استدعاء خدمة الإعلانات
+    final adService = context.read<AdService>();
     final storageService = StorageService();
 
     final user = authProvider.user;
@@ -250,8 +248,6 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
       await groupProvider.createGroup(group: group, founderMember: founderMember);
 
       if (mounted) {
-        // 🚀 تفعيل إعلان "إنشاء مجموعة" (منطق الأشباح) قبل إغلاق الشاشة
-        // يتم التحقق داخلياً من شروط (الـ 5 دقائق، 3 إعلانات يومياً، البريميوم)
         await adService.tryShowGroupAd(isPremium: user.isPremium);
 
         ScaffoldMessenger.of(context).showSnackBar(

@@ -48,7 +48,7 @@ class JoinRequestsScreen extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الرئيسي: إضافة فحص سعة المجموعة (منطق الشوغو) قبل القبول
+  // ✅ التعديل الرئيسي: استخدام showLimitReachedDialog الموحدة لضمان عمل زر الترقية
   Future<void> _handleAccept(BuildContext context, MemberModel request) async {
     final groupProvider = context.read<GroupProvider>();
     final authProvider = context.read<AuthProvider>();
@@ -69,20 +69,21 @@ class JoinRequestsScreen extends StatelessWidget {
 
       if (!limitResult.isAllowed) {
         if (context.mounted) {
-          showDialog(
-            context: context,
-            builder: (dialogContext) => AppDialog(
+          if (limitResult.shouldShowUpgrade) {
+            // ✅ استخدام الدالة المركزية لضمان انتقال المستخدم لصفحة الترقية
+            AppDialog.showLimitReachedDialog(
+              context, 
+              customContent: limitResult.message,
+            );
+          } else {
+            // تنبيه عادي إذا كان الحد لا يدعم الترقية (حالة نادرة)
+            AppDialog.show(
+              context,
               title: 'سعة المجموعة ممتلئة',
               content: limitResult.message ?? '',
-              confirmText: limitResult.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
-              onConfirm: () {
-                Navigator.pop(dialogContext);
-                if (limitResult.shouldShowUpgrade) {
-                  // Navigator.pushNamed(context, '/premium_details');
-                }
-              },
-            ),
-          );
+              confirmText: 'حسناً',
+            );
+          }
         }
         return;
       }

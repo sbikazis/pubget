@@ -93,14 +93,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  // ✅ تم الإصلاح: تمرير المعاملات الجديدة للـ Validator
+  // ✅ التعديل الرئيسي: استخدام showLimitReachedDialog لضمان تفعيل زر الترقية
   Future<void> _processJoin(GroupModel group, UserModel user, String? inviterName) async {
     setState(() => _isProcessing = true);
     try {
       final firestore = context.read<FirestoreService>();
       final validator = GroupJoinValidator(firestoreService: firestore);
      
-      // تمرير الـ user وعدد المجموعات الحالية لحل خطأ الـ Missing Argument
       final validation = await validator.validateJoin(
         user: user,
         currentJoinedGroupsCount: _homeProvider.joinedGroups.length,
@@ -115,17 +114,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
       if (!validation.isValid) {
         if (mounted) {
-          AppDialog.show(
-            context, 
-            title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه', 
-            content: validation.errorMessage!, 
-            confirmText: validation.shouldShowUpgrade ? "ترقية الآن" : "حسنا ✅",
-            onConfirm: () {
-              if (validation.shouldShowUpgrade) {
-                // Navigator.pushNamed(context, '/premium');
-              }
-            }
-          );
+          if (validation.shouldShowUpgrade) {
+            // استخدام المحرك المركزي لفتح صفحة البريميوم
+            AppDialog.showLimitReachedDialog(
+              context,
+              customContent: validation.errorMessage,
+            );
+          } else {
+            AppDialog.show(
+              context, 
+              title: 'تنبيه', 
+              content: validation.errorMessage!, 
+              confirmText: "حسنا ✅",
+            );
+          }
         }
         return;
       }
@@ -135,12 +137,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         group: group,
         invitedByUserId: validation.foundInviterId,
         onLimitReached: (limitResult) {
-          AppDialog.show(
-            context,
-            title: 'سعة الانضمام',
-            content: limitResult.message ?? '',
-            confirmText: limitResult.shouldShowUpgrade ? 'ترقية' : 'حسناً',
-          );
+          if (limitResult.shouldShowUpgrade) {
+            AppDialog.showLimitReachedDialog(
+              context,
+              customContent: limitResult.message,
+            );
+          } else {
+            AppDialog.show(
+              context,
+              title: 'سعة الانضمام',
+              content: limitResult.message ?? '',
+              confirmText: 'حسناً',
+            );
+          }
         }
       );
 

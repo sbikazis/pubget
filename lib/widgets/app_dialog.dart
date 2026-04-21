@@ -1,4 +1,4 @@
-//app_dialog.dart
+// lib/widgets/app_dialog.dart
 import 'package:flutter/material.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_theme.dart';
@@ -91,19 +91,20 @@ class AppDialog extends StatelessWidget {
     );
   }
 
-  /// ✅ الإصلاح الجذري: إظهار ديالوج الوصول للحدود مع تفعيل الزر
-  static Future<void> showLimitReachedDialog(BuildContext context) {
+  /// ✅ الإصلاح الجذري: إظهار ديالوج الوصول للحدود مع تفعيل الزر المركزي
+  /// أضفت [customContent] لكي يعرض الرسالة القادمة من الـ Logic (مثل رسالة الـ 101 عضو)
+  static Future<void> showLimitReachedDialog(BuildContext context, {String? customContent}) {
     return showDialog(
       context: context,
       builder: (dialogContext) => AppDialog(
         title: "💎 وصلت للحد الأقصى",
-        content: "لقد وصلت للحد المسموح به في النسخة المجانية. هل ترغب في الترقية لزيادة حدودك والتمتع بميزات حصرية؟",
+        content: customContent ?? "لقد وصلت للحد المسموح به في النسخة المجانية. هل ترغب في الترقية لزيادة حدودك والتمتع بميزات حصرية؟",
         confirmText: "ترقية الآن",
         onConfirm: () {
-          // 1. نغلق الديالوج باستخدام الـ context الخاص به
+          // 1. إغلاق الديالوج أولاً
           Navigator.pop(dialogContext); 
           
-          // 2. نفتح صفحة الترقية باستخدام الـ context الأصلي للتطبيق لضمان الاستمرارية
+          // 2. فتح صفحة الترقية فوراً
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
