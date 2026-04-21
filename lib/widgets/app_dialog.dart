@@ -1,9 +1,10 @@
+//app_dialog.dart
 import 'package:flutter/material.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_theme.dart';
 import 'app_button.dart';
-import 'app_textfield.dart'; // تأكد من استيراد حقل النص الخاص بك
-import 'package:pubget/features/settings/premium_details_screen.dart'; // ✅ استيراد صفحة البريميوم الجديدة
+import 'app_textfield.dart'; 
+import 'package:pubget/features/settings/premium_details_screen.dart'; 
 
 /// A reusable dialog widget for Pubget
 class AppDialog extends StatelessWidget {
@@ -15,7 +16,7 @@ class AppDialog extends StatelessWidget {
   final VoidCallback? onCancel;
   final bool isLoading;
   final bool barrierDismissible;
-  final Widget? extraContent; // حقل إضافي للمحتوى المخصص مثل TextField
+  final Widget? extraContent; 
 
   const AppDialog({
     super.key,
@@ -57,7 +58,7 @@ class AppDialog extends StatelessWidget {
     );
   }
 
-  /// ✅ ميزة مضافة: إظهار ديالوج مع حقل نصي (TextField) لرسائل الوداع أو غيرها
+  /// ✅ إظهار ديالوج مع حقل نصي
   static Future<void> showWithTextField(
     BuildContext context, {
     String? title,
@@ -90,16 +91,19 @@ class AppDialog extends StatelessWidget {
     );
   }
 
-  /// ✅ التعديل الجديد: إظهار ديالوج الوصول للحدود (Limit Reached)
+  /// ✅ الإصلاح الجذري: إظهار ديالوج الوصول للحدود مع تفعيل الزر
   static Future<void> showLimitReachedDialog(BuildContext context) {
     return showDialog(
       context: context,
-      builder: (_) => AppDialog(
+      builder: (dialogContext) => AppDialog(
         title: "💎 وصلت للحد الأقصى",
         content: "لقد وصلت للحد المسموح به في النسخة المجانية. هل ترغب في الترقية لزيادة حدودك والتمتع بميزات حصرية؟",
         confirmText: "ترقية الآن",
         onConfirm: () {
-          Navigator.pop(context); // إغلاق الديالوج أولاً
+          // 1. نغلق الديالوج باستخدام الـ context الخاص به
+          Navigator.pop(dialogContext); 
+          
+          // 2. نفتح صفحة الترقية باستخدام الـ context الأصلي للتطبيق لضمان الاستمرارية
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
@@ -164,7 +168,6 @@ class AppDialog extends StatelessWidget {
                 ),
               ],
               
-              // ✅ عرض المحتوى الإضافي (مثل TextField) إن وجد
               if (extraContent != null) extraContent!,
 
               const SizedBox(height: 24),

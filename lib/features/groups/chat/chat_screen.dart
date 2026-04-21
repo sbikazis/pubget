@@ -222,6 +222,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (context, index) {
                     final message = _cachedMessages[index];
                     final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
+                    
+                    // ✅ التعديل المطلوب: تم تمرير message.senderIsPremium إلى MemberModel لضمان ظهور الجوهرة
                     final sender = isMe ? _currentMember! : MemberModel(
                             userId: message.senderId,
                             groupId: widget.groupId,
@@ -229,6 +231,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             joinedAt: DateTime.now(),
                             displayName: message.senderName,
                             characterImageUrl: message.senderAvatar,
+                            isPremium: message.senderIsPremium, 
                           );
 
                     return MessageBubble(

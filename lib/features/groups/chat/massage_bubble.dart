@@ -1,3 +1,4 @@
+// lib/features/groups/chat/massage_bubble.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,12 +11,12 @@ import '../../../core/utils/time_utils.dart';
 import 'package:pubget/models/user_model.dart';
 import 'package:pubget/providers/user_provider.dart';
 import 'package:pubget/providers/chat_provider.dart';
-import 'package:pubget/providers/private_chat_provider.dart'; // ✅ إضافة المستورد للخاص
+import 'package:pubget/providers/private_chat_provider.dart'; 
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 
 import 'role_badge.dart';
-import '../../../widgets/premium_badge.dart'; // ✅ استيراد شارة البريميوم الجديدة
+import '../../../widgets/premium_badge.dart'; 
 
 class MessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -64,7 +65,8 @@ class MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  if (!isMe) _buildNameRow(roleColor),
+                  // تم تعديل هذا السطر ليشمل إظهار شارة البريميوم للطرفين (أنا أو الآخرين)
+                  _buildNameRow(roleColor),
                  
                   if (message.reactions != null && message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
@@ -108,7 +110,6 @@ class MessageBubble extends StatelessWidget {
   // ==============================
 
   void _showOptionsSheet(BuildContext context) {
-    // ✅ تحديد ما إذا كانت الدردشة خاصة
     final bool isPrivate = sender.groupId == 'private';
 
     showModalBottomSheet(
@@ -133,7 +134,6 @@ class MessageBubble extends StatelessWidget {
                       final userId = Provider.of<UserProvider>(context, listen: false).currentUser!.id;
                       
                       if (isPrivate) {
-                        // ✅ استدعاء بروفايدر الدردشة الخاصة
                         Provider.of<PrivateChatProvider>(context, listen: false).toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
@@ -141,7 +141,6 @@ class MessageBubble extends StatelessWidget {
                           emoji: emoji,
                         );
                       } else {
-                        // ✅ استدعاء بروفايدر المجموعات
                         Provider.of<ChatProvider>(context, listen: false).toggleReaction(
                           groupId: groupId,
                           messageId: message.id,
@@ -307,19 +306,24 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ✅ التعديل الاحترافي لصف الاسم: الجوهرة تظهر بعد الاسم وقبل الرتبة لمنع التداخل
   Widget _buildNameRow(Color roleColor) {
     return Row(
       mainAxisSize: MainAxisSize.min,
+      // إذا كنت أنا (isMe)، اجعل الترتيب من اليمين لليسار لتناسب جهة الفقاعة
+      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
-        // ✅ إضافة شارة البريميوم قبل الاسم إذا كان المرسل مشتركاً
-        if (message.senderIsPremium) ...[
-          const PremiumBadge(size: 14),
-          const SizedBox(width: 4),
-        ],
         Text(
           sender.effectiveName,
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: roleColor),
         ),
+        
+        // إذا كان الشخص بريميوم، تظهر الجوهرة (PremiumBadge) هنا كفاصل أنيق
+        if (sender.isPremium) ...[
+          const SizedBox(width: 4),
+          const PremiumBadge(size: 14),
+        ],
+
         const SizedBox(width: 6),
         RoleBadge(role: sender.role),
       ],

@@ -109,6 +109,18 @@ class PremiumDetailsScreen extends StatelessWidget {
             "أولوية اجتماعية",
             " وأولوية في طلبات الانضمام",
           ),
+          _buildFeatureItem(
+            Icons.group_add,
+            "مجال أوسع",
+            "إنظم ل${Limits.maxJoinedPremium} بدل ${Limits.maxJoinedFree}",
+          ),
+          _buildFeatureItem(
+            Icons.group_add,
+            "أسس إمبراطوريات جديدة",
+            "أنشئ ${Limits.maxGroupsPremium} بدل ${Limits.maxGroupsFree}",
+          ),
+          
+
 
           const SizedBox(height: 30),
 
