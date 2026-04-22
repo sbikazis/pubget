@@ -122,20 +122,20 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ التعديل: التحقق من الشخصية في السلسلة الكاملة (Cross-Matching)
-  // تم إضافة فحص الـ mal_id لضمان الربط الصحيح حتى مع اختلاف أسماء المواسم
+  // ✅ التعديل الذهبي: التحقق من الشخصية في السلسلة الكاملة (Ultra-Smart Franchise Check)
+  // تم رفع الـ limit إلى 15 وإضافة مطابقة كلمات مفتاحية صارمة (Kimetsu / Demon Slayer)
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
-    required dynamic animeId, // تم إضافة المعرف لضمان المطابقة المتقاطعة
+    required dynamic animeId,
     required String animeName,
     required String characterName,
   }) async {
     try {
-      // 1. البحث عن الشخصية بشكل عام
+      // 1. البحث عن الشخصية بنطاق أوسع (15 نتيجة) لضمان عدم تفويتها
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '10', // زيادة النطاق لضمان عدم تفويت الشخصية
+        'limit': '15', 
       });
 
       final response = await http.get(url, headers: _headers).timeout(
@@ -146,13 +146,18 @@ class AnimeApiService {
       final data = jsonDecode(response.body);
       if (data['data'] == null || data['data'].isEmpty) return false;
 
-      final cleanAnimeName = _sanitize(animeName);
-      final int targetAnimeId = int.tryParse(animeId.toString()) ?? -1;
+      final String cleanTargetAnime = _sanitize(animeName);
+      final int targetId = int.tryParse(animeId.toString()) ?? -1;
+      final String inputCharName = _sanitize(characterName);
 
-      // 2. التحقق المتقاطع (ID + الاسم)
+      // 2. فحص النتائج بعمق (ID + الاسم + الكلمات المفتاحية)
       for (final charData in data['data']) {
-        final List animeList = charData['anime'] ?? [];
+        final String apiCharName = _sanitize(charData['name'] ?? '');
         
+        // التحقق من أن النتيجة تخص الشخصية المطلوبة فعلاً
+        if (!apiCharName.contains(inputCharName) && !inputCharName.contains(apiCharName)) continue;
+
+        final List animeList = charData['anime'] ?? [];
         for (final animeEntry in animeList) {
           final animeInfo = animeEntry['anime'];
           if (animeInfo == null) continue;
@@ -160,12 +165,18 @@ class AnimeApiService {
           final int entryMalId = animeInfo['mal_id'] ?? 0;
           final String entryTitle = _sanitize(animeInfo['title'] ?? '');
 
-          // مطابقة بالـ ID (الأكثر دقة) أو بالاسم (للحماية الإضافية)
-          if (entryMalId == targetAnimeId || 
-              entryTitle.contains(cleanAnimeName) || 
-              cleanAnimeName.contains(entryTitle)) {
-            return true;
-          }
+          // أ) المطابقة بالـ ID (الأكثر دقة)
+          if (entryMalId == targetId) return true;
+
+          // ب) المطابقة بالاسم الكامل
+          if (entryTitle.contains(cleanTargetAnime) || cleanTargetAnime.contains(entryTitle)) return true;
+
+          // ج) المطابقة بالكلمات المفتاحية الصارمة (لحل مشكلة اختلاف أسماء المواسم)
+          bool hasKeywordMatch = false;
+          if (cleanTargetAnime.contains("kimetsu") && entryTitle.contains("kimetsu")) hasKeywordMatch = true;
+          if (cleanTargetAnime.contains("demon slayer") && entryTitle.contains("demon slayer")) hasKeywordMatch = true;
+          
+          if (hasKeywordMatch) return true;
         }
       }
       return false;
