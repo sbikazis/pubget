@@ -141,7 +141,7 @@ class GroupJoinValidator {
       }
 
       // =========================================================
-      // ✅ التعديل الذهبي النهائي: التحقق الثنائي المتوافق مع المنطق المرن
+      // ✅ التعديل الذهبي: منطق التحقق الثنائي (Double Verification)
       // =========================================================
       
       // المرحلة أ: البحث في الموسم المحدد (السريع والمعتاد)
@@ -153,11 +153,10 @@ class GroupJoinValidator {
         onTimeout: () => throw TimeoutException('استغرقت عملية التحقق وقتاً طويلاً، خادم الأنمي بطيء حالياً.')
       );
 
-      // المرحلة ب: المنقذ "المرن" - البحث في السلسلة الكاملة إذا فشل التحقق من الموسم
+      // المرحلة ب: إذا لم نجدها في الموسم، نبحث في السلسلة الكاملة (المنقذ)
       if (!characterExists && animeName != null) {
         characterExists = await AnimeApiService.isCharacterInFranchise(
-          animeId: animeId, 
-          animeName: animeName, // سيقوم الـ API هنا بالتعامل المرن مع الأسماء (مثل Kimetsu/Demon Slayer)
+          animeName: animeName,
           characterName: formattedCharacterName,
         );
       }

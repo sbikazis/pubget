@@ -12,7 +12,7 @@ import '../../models/invite_model.dart';
 
 import '../../providers/group_provider.dart';
 import '../../providers/user_provider.dart';
-import '../../providers/home_provider.dart'; 
+import '../../providers/home_provider.dart'; // إضافة HomeProvider لجلب عدد المجموعات
 
 import '../../services/firebase/firestore_service.dart';
 import '../../services/firebase/storage_service.dart';
@@ -83,7 +83,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   }
 
   // =========================================================
-  // ✅ التعديل الذهبي: جلب صورة الشخصية المرتبطة حصراً بسلسلة المجموعة
+  // ✅ التعديل: تحسين جلب معاينة الشخصية لدعم كافة المواسم
   // =========================================================
   Future<void> _fetchCharacterPreview() async {
     final name = _characterController.text.trim();
@@ -97,38 +97,24 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
-      // 🟢 الإصلاح هنا: إضافة '?? ""' لضمان عدم تمرير Null إلى الدالة
-      final bool existsInFranchise = await AnimeApiService.isCharacterInFranchise(
-        animeId: widget.group.animeId,
-        animeName: widget.group.animeName ?? "", // تحويل String? إلى String
-        characterName: name,
-      );
+      // البحث عن الصورة بشكل عام (التي تجلب أفضل نتيجة مطابقة للاسم من أي موسم)
+      final imageUrl = await AnimeApiService.getCharacterImage(name);
 
-      if (existsInFranchise) {
-        final imageUrl = await AnimeApiService.getCharacterImage(name);
-
-        if (imageUrl != null) {
-          setState(() {
-            _autoFetchedImageUrl = imageUrl;
-            _pickedImage = null;
-          });
-        } else {
-          _showErrorSnackBar('لم نجد صورة لهذه الشخصية رغم وجودها في السلسلة.');
-        }
+      if (imageUrl != null) {
+        setState(() {
+          _autoFetchedImageUrl = imageUrl;
+          _pickedImage = null;
+        });
       } else {
-        _showErrorSnackBar('هذه الشخصية لا تنتمي لـ ${widget.group.animeName}. تأكد من الاسم.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم نجد صورة لهذه الشخصية، تأكد من كتابة الاسم بالإنجليزية بدقة')),
+        );
       }
     } catch (e) {
-      debugPrint("Error fetching character preview: $e");
+      debugPrint("Error fetching character image: $e");
     } finally {
       if (mounted) setState(() => _isFetchingPreview = false);
     }
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 
   Future<void> _submitJoinRequest(UserModel currentUser) async {
@@ -138,7 +124,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       setState(() => _isProcessing = true);
 
       final groupProvider = context.read<GroupProvider>();
-      final homeProvider = context.read<HomeProvider>(); 
+      final homeProvider = context.read<HomeProvider>(); // جلب الـ HomeProvider
       final firestore = context.read<FirestoreService>();
       final storage = context.read<StorageService>();
 
@@ -150,6 +136,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
       final validator = GroupJoinValidator(firestoreService: firestore);
       
+      // ✅ تم الإصلاح: تمرير المعاملات المطلوبة (user و عدد المجموعات الحالية)
       final validation = await validator.validateJoin(
         user: currentUser,
         currentJoinedGroupsCount: homeProvider.joinedGroups.length,
@@ -173,6 +160,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
           onConfirm: () {
             Navigator.of(context, rootNavigator: true).pop();
+            if (validation.shouldShowUpgrade) {
+              // Navigator.pushNamed(context, '/premium');
+            }
           },
         );
         return;

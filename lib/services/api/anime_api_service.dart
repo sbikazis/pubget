@@ -14,12 +14,12 @@ class AnimeApiService {
     'Accept': 'application/json',
   };
 
-  // ✅ تحسين دالة التنظيف لتكون أكثر ذكاءً (تتعامل مع الأسماء اليابانية والإنجليزية والرموز)
+  // ✅ تحسين دالة التنظيف لتكون أكثر مرونة في المقارنة
   static String _sanitize(String text) {
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), ' ') // استبدال الرموز بمسافات
-        .replaceAll(RegExp(r'\s+'), ' ') // إزالة المسافات المزدوجة
+        .replaceAll(RegExp(r'[^\w\s]'), ' ') // استبدال الرموز بمسافة وليس حذفها تماماً لمنع دمج الكلمات
+        .replaceAll(RegExp(r'\s+'), ' ') // تقليص المسافات الزائدة
         .trim();
   }
 
@@ -29,6 +29,7 @@ class AnimeApiService {
 
   static Future<Map<String, dynamic>?> searchAnime(String animeName) async {
     try {
+      // ✅ التعديل: استخدام Uri.https لضمان عمل الـ Encoding بشكل آلي ومنع أخطاء الـ Socket
       final url = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
         'q': animeName,
         'limit': '1',
@@ -51,7 +52,7 @@ class AnimeApiService {
                      animeData['images']?['jpg']?['image_url'],
       };
     } catch (e) {
-      debugPrint("❌ API Error (SearchAnime): $e");
+      debugPrint("❌ API Error (SearchAnime): $e"); // ✅ إضافة سجل للأخطاء للمتابعة
       return null;
     }
   }
@@ -122,20 +123,19 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ التعديل الذهبي: التحقق من الشخصية في السلسلة الكاملة (Ultra-Smart Franchise Check)
-  // تم رفع الـ limit إلى 15 وإضافة مطابقة كلمات مفتاحية صارمة (Kimetsu / Demon Slayer)
+  // ✅ الدالة الجديدة: التحقق من الشخصية في السلسلة الكاملة (Franchise)
+  // لحل مشكلة الشخصيات التي تظهر في مواسم غير الموسم المختار للمجموعة
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
-    required dynamic animeId,
     required String animeName,
     required String characterName,
   }) async {
     try {
-      // 1. البحث عن الشخصية بنطاق أوسع (15 نتيجة) لضمان عدم تفويتها
+      // 1. البحث عن الشخصية بشكل عام في قاعدة البيانات
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '15', 
+        'limit': '5', // فحص أول 5 نتائج لزيادة الدقة
       });
 
       final response = await http.get(url, headers: _headers).timeout(
@@ -146,37 +146,19 @@ class AnimeApiService {
       final data = jsonDecode(response.body);
       if (data['data'] == null || data['data'].isEmpty) return false;
 
-      final String cleanTargetAnime = _sanitize(animeName);
-      final int targetId = int.tryParse(animeId.toString()) ?? -1;
-      final String inputCharName = _sanitize(characterName);
+      final cleanAnimeName = _sanitize(animeName);
 
-      // 2. فحص النتائج بعمق (ID + الاسم + الكلمات المفتاحية)
+      // 2. التحقق من كل نتيجة: هل تنتمي للأنمي المطلوب؟
       for (final charData in data['data']) {
-        final String apiCharName = _sanitize(charData['name'] ?? '');
-        
-        // التحقق من أن النتيجة تخص الشخصية المطلوبة فعلاً
-        if (!apiCharName.contains(inputCharName) && !inputCharName.contains(apiCharName)) continue;
-
         final List animeList = charData['anime'] ?? [];
+        
         for (final animeEntry in animeList) {
-          final animeInfo = animeEntry['anime'];
-          if (animeInfo == null) continue;
-
-          final int entryMalId = animeInfo['mal_id'] ?? 0;
-          final String entryTitle = _sanitize(animeInfo['title'] ?? '');
-
-          // أ) المطابقة بالـ ID (الأكثر دقة)
-          if (entryMalId == targetId) return true;
-
-          // ب) المطابقة بالاسم الكامل
-          if (entryTitle.contains(cleanTargetAnime) || cleanTargetAnime.contains(entryTitle)) return true;
-
-          // ج) المطابقة بالكلمات المفتاحية الصارمة (لحل مشكلة اختلاف أسماء المواسم)
-          bool hasKeywordMatch = false;
-          if (cleanTargetAnime.contains("kimetsu") && entryTitle.contains("kimetsu")) hasKeywordMatch = true;
-          if (cleanTargetAnime.contains("demon slayer") && entryTitle.contains("demon slayer")) hasKeywordMatch = true;
+          final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
           
-          if (hasKeywordMatch) return true;
+          // إذا كان اسم الأنمي المرتبط بالشخصية يحتوي على اسم الأنمي الأساسي للمجموعة
+          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
+            return true;
+          }
         }
       }
       return false;
@@ -192,6 +174,7 @@ class AnimeApiService {
 
   static Future<String?> getCharacterImage(String characterName) async {
     try {
+      // ✅ التعديل: استخدام replace لضمان تشفير اسم الشخصية بشكل سليم في الرابط
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
         'limit': '1',
