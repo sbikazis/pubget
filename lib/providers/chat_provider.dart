@@ -1,11 +1,12 @@
+// lib/providers/chat_provider.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // مضاف لدعم Timestamp
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:rxdart/rxdart.dart';
 
 import '../models/message_model.dart';
 import '../models/member_model.dart';
-import '../models/group_model.dart'; // مضاف لدعم التعامل مع المجموعات
+import '../models/group_model.dart'; 
 
 import '../services/firebase/firestore_service.dart';
 import '../services/firebase/storage_service.dart';
@@ -23,7 +24,7 @@ class ChatProvider extends ChangeNotifier {
         _storage = storageService;
 
   // =========================================================
-  // ✅ التعديل الجديد: تحديث وقت القراءة (تصفير العداد)
+  // ✅ تحديث وقت القراءة (تصفير العداد)
   // =========================================================
  
   Future<void> updateLastRead({
@@ -36,22 +37,21 @@ class ChatProvider extends ChangeNotifier {
       path: path,
       docId: userId,
       data: {
-        'lastReadAt': FieldValue.serverTimestamp(), // استخدام توقيت السيرفر للدقة
+        'lastReadAt': FieldValue.serverTimestamp(),
       },
     );
   }
 
   // =========================================================
-  // ✅ التعديل المطلوب: توحيد المقارنة باستخدام Timestamp لضمان الدقة
+  // ✅ توحيد المقارنة باستخدام Timestamp لضمان الدقة
   // =========================================================
 
   Stream<int> streamUnreadCount({
     required String groupId,
-    required dynamic lastReadAt, // تم تغيير النوع ليكون مرناً (DateTime أو Timestamp)
+    required dynamic lastReadAt, 
   }) {
     final path = FirestorePaths.groupMessages(groupId);
    
-    // ✅ تحويل القيمة القادمة إلى Timestamp أياً كان نوعها لضمان التوافق مع Firestore
     Timestamp compareTimestamp;
     
     if (lastReadAt is Timestamp) {
@@ -59,7 +59,6 @@ class ChatProvider extends ChangeNotifier {
     } else if (lastReadAt is DateTime) {
       compareTimestamp = Timestamp.fromDate(lastReadAt);
     } else {
-      // إذا كانت القيمة null أو غير معروفة، نستخدم تاريخ قديم جداً
       compareTimestamp = Timestamp.fromDate(DateTime(2000));
     }
 
@@ -68,7 +67,7 @@ class ChatProvider extends ChangeNotifier {
       conditions: [
         QueryCondition(
           field: 'createdAt',
-          isGreaterThan: compareTimestamp, // المقارنة الآن بين Timestamp و Timestamp
+          isGreaterThan: compareTimestamp,
         ),
       ],
     );
@@ -77,7 +76,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ التعديل الجوهري الجديد: مراقب إجمالي للمجموعات (للشريط السفلي)
+  // ✅ مراقب إجمالي للمجموعات (للشريط السفلي)
   // =========================================================
 
   Stream<int> streamTotalGroupsUnreadCount({
@@ -86,7 +85,6 @@ class ChatProvider extends ChangeNotifier {
   }) {
     if (groups.isEmpty) return Stream.value(0);
 
-    // نقوم بإنشاء قائمة من الـ Streams، كل Stream يراقب عداد مجموعة واحدة
     final streams = groups.map((group) {
       return _firestore
           .streamDocument(
@@ -100,12 +98,10 @@ class ChatProvider extends ChangeNotifier {
       });
     }).toList();
 
-    // ندمج جميع الـ Streams ونجمع نتائجها
     return Rx.combineLatestList(streams).map((counts) {
       return counts.fold<int>(0, (sum, count) => sum + count);
     });
   }
-  // ملاحظة: إذا كنت لا تستخدم RxDart، سأقوم بتبديل المنطق في ملف الواجهة لجمع الـ Streams يدوياً.
 
   // =========================================================
   // STREAM MESSAGES (REALTIME)
@@ -116,7 +112,6 @@ class ChatProvider extends ChangeNotifier {
   }) {
     final path = FirestorePaths.groupMessages(groupId);
 
-    // ✅ ضمان الترتيب التصاعدي (القديم فوق والجديد تحت) بشكل مستقر
     final query = _firestore.buildQuery(
       path: path,
       orderBy: 'createdAt',
@@ -141,7 +136,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE (UPDATED WITH REPLY)
+  // SEND TEXT MESSAGE (UPDATED WITH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -150,8 +145,8 @@ class ChatProvider extends ChangeNotifier {
     required MemberModel sender,
     required String text,
     String? userAvatar,
-    String? replyToId, // ✅ إضافة بارامتر الرد
-    String? replyText, // ✅ إضافة نص الرد
+    String? replyToId, 
+    String? replyText, 
   }) async {
     if (text.trim().isEmpty) return;
 
@@ -163,9 +158,10 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
+      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم من كائن العضو
       text: text.trim(),
-      replyToId: replyToId, // ✅ إسناد الرد
-      replyText: replyText, // ✅ إسناد نص الرد
+      replyToId: replyToId, 
+      replyText: replyText, 
       createdAt: DateTime.now(),
     );
 
@@ -177,7 +173,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE (UPDATED WITH REPLY)
+  // SEND MEDIA MESSAGE (UPDATED WITH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -187,17 +183,15 @@ class ChatProvider extends ChangeNotifier {
     required File file,
     required String mediaType,
     String? userAvatar,
-    String? replyToId, // ✅ إضافة بارامتر الرد للميديا
-    String? replyText, // ✅ إضافة نص الرد للميديا
+    String? replyToId, 
+    String? replyText, 
   }) async {
-    // 1. رفع الملف إلى Storage
     final mediaUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: file,
     );
 
-    // 2. إنشاء كائن الرسالة
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -206,14 +200,14 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
+      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم للميديا
       mediaUrl: mediaUrl,
       mediaType: mediaType,
-      replyToId: replyToId, // ✅ إسناد الرد
-      replyText: replyText, // ✅ إسناد نص الرد
+      replyToId: replyToId, 
+      replyText: replyText, 
       createdAt: DateTime.now(),
     );
 
-    // 3. حفظ الرسالة في Firestore
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
@@ -222,7 +216,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // TOGGLE REACTION (NEW)
+  // TOGGLE REACTION
   // =========================================================
 
   Future<void> toggleReaction({
@@ -233,14 +227,12 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     final path = FirestorePaths.groupMessages(groupId);
    
-    // الحصول على بيانات الرسالة الحالية
     final doc = await _firestore.getDocument(path: path, docId: messageId);
     if (doc == null) return;
 
     final message = MessageModel.fromMap(messageId, doc);
     Map<String, String> updatedReactions = Map.from(message.reactions ?? {});
 
-    // إذا كان المستخدم قد وضع نفس الإيموجي سابقاً، نقوم بإزالته (Toggle)
     if (updatedReactions[userId] == emoji) {
       updatedReactions.remove(userId);
     } else {
@@ -255,7 +247,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND GAME MESSAGE
+  // SEND GAME MESSAGE (UPDATED WITH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendGameMessage({
@@ -270,6 +262,7 @@ class ChatProvider extends ChangeNotifier {
       senderName: sender.displayName ?? '',
       senderAvatar: sender.characterImageUrl ?? '',
       senderRole: sender.role,
+      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم لرسائل الألعاب
       gameId: gameId,
       createdAt: DateTime.now(),
     );
@@ -296,7 +289,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GET MEMBER ROLE
+  // GET MEMBER
   // =========================================================
 
   Future<MemberModel?> getMember({

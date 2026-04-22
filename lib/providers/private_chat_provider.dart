@@ -1,3 +1,4 @@
+// lib/providers/private_chat_provider.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -53,7 +54,6 @@ class PrivateChatProvider extends ChangeNotifier {
 
   // =========================================================
   // ✅ مراقبة الرسائل غير المقروءة بشكل حي (Real-time Stream)
-  // التعديل: تبسيط الاستعلام لضمان استجابة Firestore الفورية
   // =========================================================
   Stream<int> streamPrivateUnreadCount({
     required String chatId,
@@ -71,13 +71,11 @@ class PrivateChatProvider extends ChangeNotifier {
       final Timestamp? lastRead =
           isUserA ? data['lastReadUserA'] : data['lastReadUserB'];
 
-      // إذا لم يقرأ أبداً نستخدم تاريخاً قديماً جداً
       final compareDate = lastRead ?? Timestamp.fromDate(DateTime(2000));
 
       final query = _firestore.buildQuery(
         path: path,
         conditions: [
-          // تم تبسيط الاستعلام هنا لضمان عمل الـ Index بشكل صحيح مع createdAt
           QueryCondition(field: 'createdAt', isGreaterThan: compareDate),
         ],
       );
@@ -85,7 +83,6 @@ class PrivateChatProvider extends ChangeNotifier {
       return _firestore
           .streamCollection(path: path, query: query)
           .map((snap) {
-            // نقوم بفلترة رسائل المستخدم نفسه برمجياً لضمان عدم تعطل الـ Query
             return snap.docs.where((doc) => doc.data()['senderId'] != userId).length;
           });
     }).distinct();
@@ -142,7 +139,7 @@ class PrivateChatProvider extends ChangeNotifier {
         "userA": userA,
         "userB": userB,
         "createdAt": FieldValue.serverTimestamp(),
-        "lastMessageAt": FieldValue.serverTimestamp(), // مضاف للفرز والتنبيه
+        "lastMessageAt": FieldValue.serverTimestamp(),
         "lastReadUserA": null,
         "lastReadUserB": null,
       },
@@ -182,7 +179,7 @@ class PrivateChatProvider extends ChangeNotifier {
 
   // =========================================================
   // SEND TEXT MESSAGE
-  // ✅ التعديل: تحديث وثيقة الدردشة الأساسية لإطلاق الـ Stream
+  // ✅ التعديل: إسناد حالة البريميوم من UserModel للرسالة الخاصة
   // =========================================================
   Future<void> sendTextMessage({
     required String chatId,
@@ -203,6 +200,7 @@ class PrivateChatProvider extends ChangeNotifier {
       senderId: sender.id,
       senderName: sender.username,
       senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium, // ✅ التعديل: إرسال حالة البريميوم
       senderRole: null,
       text: text.trim(),
       replyToId: replyToId,
@@ -210,27 +208,25 @@ class PrivateChatProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
-    // 1. إنشاء رسالة جديدة
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
 
-    // 2. تحديث الوثيقة الأم (الشرارة) لتنبيه الطرف الآخر فوراً
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
       data: {
         "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": text.trim(), // مفيد للمعاينة في القائمة
+        "lastMessageText": text.trim(),
       },
     );
   }
 
   // =========================================================
   // SEND MEDIA MESSAGE
-  // ✅ التعديل: تحديث وثيقة الدردشة الأساسية لإطلاق الـ Stream
+  // ✅ التعديل: إسناد حالة البريميوم من UserModel لرسالة الميديا الخاصة
   // =========================================================
   Future<void> sendMediaMessage({
     required String chatId,
@@ -252,6 +248,7 @@ class PrivateChatProvider extends ChangeNotifier {
       senderId: sender.id,
       senderName: sender.username,
       senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium, // ✅ التعديل: إرسال حالة البريميوم
       senderRole: null,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
@@ -260,14 +257,12 @@ class PrivateChatProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
-    // 1. إنشاء رسالة الميديا
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
 
-    // 2. تحديث الوثيقة الأم لتنبيه الطرف الآخر
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
@@ -279,7 +274,7 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ إضافة: معالجة التفاعلات (Reactions) في الدردشة الخاصة
+  // TOGGLE REACTION
   // =========================================================
   Future<void> toggleReaction({
     required String chatId,
@@ -300,7 +295,6 @@ class PrivateChatProvider extends ChangeNotifier {
         ? Map<String, String>.from(messageData['reactions']) 
         : {};
 
-    // إذا كان المستخدم قد تفاعل بنفس الإيموجي سابقاً، نقوم بإزالته (Toggle)
     if (currentReactions[userId] == emoji) {
       currentReactions.remove(userId);
     } else {
@@ -360,7 +354,6 @@ class PrivateChatProvider extends ChangeNotifier {
 
     final allDocs = [...results[0].docs, ...results[1].docs];
 
-    // ترتيب المحادثات حسب آخر رسالة
     allDocs.sort((a, b) {
       final aTime = (a.data()['lastMessageAt'] as Timestamp?) ?? Timestamp.now();
       final bTime = (b.data()['lastMessageAt'] as Timestamp?) ?? Timestamp.now();
