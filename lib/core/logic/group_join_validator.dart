@@ -1,4 +1,3 @@
-// lib/core/logic/group_join_validator.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pubget/core/constants/group_type.dart';
@@ -141,14 +140,26 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة من قبل عضو آخر.');
       }
 
-      // استدعاء الـ API الخارجي (آخر خطوة لأنها الأكثر استهلاكاً للوقت والموارد)
-      final characterExists = await AnimeApiService.validateCharacterExists(
+      // =========================================================
+      // ✅ التعديل الذهبي: منطق التحقق الثنائي (Double Verification)
+      // =========================================================
+      
+      // المرحلة أ: البحث في الموسم المحدد (السريع والمعتاد)
+      bool characterExists = await AnimeApiService.validateCharacterExists(
         animeId: animeId, 
         characterName: formattedCharacterName,
       ).timeout(
         const Duration(seconds: 15),
         onTimeout: () => throw TimeoutException('استغرقت عملية التحقق وقتاً طويلاً، خادم الأنمي بطيء حالياً.')
       );
+
+      // المرحلة ب: إذا لم نجدها في الموسم، نبحث في السلسلة الكاملة (المنقذ)
+      if (!characterExists && animeName != null) {
+        characterExists = await AnimeApiService.isCharacterInFranchise(
+          animeName: animeName,
+          characterName: formattedCharacterName,
+        );
+      }
 
       if (!characterExists) {
         return JoinValidationResult.failure(

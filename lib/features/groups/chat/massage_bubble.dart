@@ -1,4 +1,3 @@
-// lib/features/groups/chat/massage_bubble.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -65,7 +64,7 @@ class MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  // تم استخدام التعديل الجديد هنا
+                  // تم استخدام التعديل الجديد هنا للربط الذكي
                   _buildNameRow(roleColor),
                  
                   if (message.reactions != null && message.reactions!.isNotEmpty)
@@ -271,6 +270,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // 🔥 التعديل: استخدام sender.displayImageUrl لضمان جلب الصورة الصحيحة (تقمص أو حقيقية)
   Widget _buildAvatar(BuildContext context) {
     final String? avatarUrl = sender.displayImageUrl;
 
@@ -306,18 +306,16 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الاحترافي: ضمان ظهور الجوهرة بربط مصدرين للبيانات وتحسين المسافات
+  // 🔥 التعديل: استخدام sender.effectiveName لضمان تناسق الاسم مع الصورة المختارة
   Widget _buildNameRow(Color roleColor) {
-    // منطق التحقق "مليون في المئة": 
-    // نتحقق من حالة البريميوم في الرسالة المخزنة أولاً (لأنها تعبر عن وقت الإرسال)
-    // أو من حالة العضو الحالية (للتحديثات اللحظية)
+    // التحقق من حالة البريميوم (المخزنة في الرسالة أو الحالية للعضو)
     final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
-        // الاسم
+        // الاسم الذكي
         Flexible(
           child: Text(
             sender.effectiveName,
@@ -330,13 +328,12 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
         
-        // شارة البريميوم (الجوهرة) - تظهر فقط إذا كان المستخدم بريميوم
+        // شارة البريميوم (الجوهرة)
         if (isPremiumUser) ...[
           const SizedBox(width: 4),
-          const PremiumBadge(size: 14), // نستخدم الحجم 14 ليناسب سطر الدردشة
+          const PremiumBadge(size: 14), 
         ],
 
-        // مسافة ثابتة ومدروسة قبل الرتبة
         const SizedBox(width: 6),
 
         // الرتبة

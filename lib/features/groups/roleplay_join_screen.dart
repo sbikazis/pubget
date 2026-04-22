@@ -1,4 +1,3 @@
-// lib/features/groups/roleplay_join_screen.dart
 import 'dart:io';
 import 'dart:async'; 
 
@@ -83,6 +82,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     }
   }
 
+  // =========================================================
+  // ✅ التعديل: تحسين جلب معاينة الشخصية لدعم كافة المواسم
+  // =========================================================
   Future<void> _fetchCharacterPreview() async {
     final name = _characterController.text.trim();
     if (name.isEmpty) {
@@ -95,6 +97,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
+      // البحث عن الصورة بشكل عام (التي تجلب أفضل نتيجة مطابقة للاسم من أي موسم)
       final imageUrl = await AnimeApiService.getCharacterImage(name);
 
       if (imageUrl != null) {

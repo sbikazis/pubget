@@ -200,12 +200,13 @@ class JoinRequestsScreen extends StatelessWidget {
             );
           }
 
-          // ✅ منطق الترتيب: وضع البريميوم في الأعلى
+          // ✅ التعديل الأول (المنطق): ترتيب صارم يضع البريميوم أولاً ثم الأحدث تاريخاً
           final requests = snapshot.data!;
           requests.sort((a, b) {
             if (a.isPremium && !b.isPremium) return -1;
             if (!a.isPremium && b.isPremium) return 1;
-            return 0;
+            // إذا تساووا في حالة البريميوم، نرتب حسب التاريخ (الأحدث أولاً)
+            return b.joinedAt.compareTo(a.joinedAt);
           });
 
           return ListView.separated(
@@ -219,138 +220,170 @@ class JoinRequestsScreen extends StatelessWidget {
                   ? req.characterName!
                   : (req.realUserName ?? req.displayName ?? 'عضو جديد');
 
-              return Card(
-                shape: RoundedRectangleBorder(
+              return Container(
+                // ✅ التعديل الثاني (التصميم): تمييز بصري قوي للبريميوم
+                decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  side: req.isPremium 
-                      ? const BorderSide(color: Color(0xFFD4AF37), width: 1.5) // ✅ تمييز ذهبي
-                      : (isDark ? const BorderSide(color: AppColors.darkBorder, width: 0.5) : BorderSide.none),
+                  gradient: req.isPremium 
+                    ? LinearGradient(
+                        colors: isDark 
+                          ? [const Color(0xFFD4AF37).withOpacity(0.15), AppColors.darkCard]
+                          : [const Color(0xFFD4AF37).withOpacity(0.1), AppColors.lightCard],
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                      )
+                    : null,
                 ),
-                elevation: req.isPremium ? 4 : 0,
-                color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: isDark ? AppColors.darkSurface : Colors.grey[300],
-                            backgroundImage: displayImage != null
-                                ? NetworkImage(displayImage)
-                                : null,
-                            child: displayImage == null
-                                ? Icon(Icons.person, color: isDark ? Colors.white54 : Colors.grey)
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: req.isPremium 
+                        ? const BorderSide(color: Color(0xFFD4AF37), width: 2.0) // إطار ذهبي أوضح
+                        : (isDark ? const BorderSide(color: AppColors.darkBorder, width: 0.5) : BorderSide.none),
+                  ),
+                  elevation: req.isPremium ? 6 : 0,
+                  color: req.isPremium ? Colors.transparent : (isDark ? AppColors.darkCard : AppColors.lightCard),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Stack(
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              displayName,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                              ),
-                                            ),
-                                          ),
-                                          if (req.isPremium) ...[
-                                            const SizedBox(width: 6),
-                                            const PremiumBadge(size: 16), // ✅ شارة البريميوم
-                                          ],
-                                        ],
+                                CircleAvatar(
+                                  radius: 28,
+                                  backgroundColor: isDark ? AppColors.darkSurface : Colors.grey[300],
+                                  backgroundImage: displayImage != null
+                                      ? NetworkImage(displayImage)
+                                      : null,
+                                  child: displayImage == null
+                                      ? Icon(Icons.person, color: isDark ? Colors.white54 : Colors.grey)
+                                      : null,
+                                ),
+                                if (req.isPremium)
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.visibility_outlined, color: AppColors.primary, size: 20),
-                                      tooltip: 'عرض الملف الشخصي',
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => ProfileScreen(userId: req.userId),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                    if (req.isPremium) ...[
-                                       _buildRoleBadge('أولوية ✨', const Color(0xFFD4AF37), const Color(0xFFD4AF37).withOpacity(0.1)),
-                                       const SizedBox(width: 4),
-                                    ],
-                                    _buildRoleBadge('طالب انضمام', RoleColors.senpai, RoleColors.senpaiBadgeBg),
-                                  ],
-                                ),
-                                if (req.realUserName != null && req.realUserName != displayName)
-                                  Text(
-                                    '@${req.realUserName}',
-                                    style: TextStyle(
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                      fontSize: 12,
+                                      child: const PremiumBadge(size: 18),
                                     ),
                                   ),
-                                Text(
-                                  'تاريخ الطلب: ${_formatDate(req.joinedAt)}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isDark ? AppColors.darkTextHint : Colors.grey[600],
-                                  ),
-                                ),
                               ],
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                displayName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                            if (req.isPremium) ...[
+                                              const SizedBox(width: 6),
+                                              const PremiumBadge(size: 16),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: Icon(Icons.visibility_outlined, color: AppColors.primary, size: 20),
+                                        tooltip: 'عرض الملف الشخصي',
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => ProfileScreen(userId: req.userId),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      if (req.isPremium) ...[
+                                         _buildRoleBadge('أولوية ✨', const Color(0xFFD4AF37), const Color(0xFFD4AF37).withOpacity(0.15)),
+                                         const SizedBox(width: 4),
+                                      ],
+                                      _buildRoleBadge('طالب انضمام', RoleColors.senpai, RoleColors.senpaiBadgeBg),
+                                    ],
+                                  ),
+                                  if (req.realUserName != null && req.realUserName != displayName)
+                                    Text(
+                                      '@${req.realUserName}',
+                                      style: TextStyle(
+                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  Text(
+                                    'تاريخ الطلب: ${_formatDate(req.joinedAt)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? AppColors.darkTextHint : Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (req.characterReason != null && req.characterReason!.isNotEmpty) ...[
+                          const Divider(height: 20),
+                          Text(
+                            'السبب: ${req.characterReason}',
+                            style: TextStyle(
+                              fontStyle: FontStyle.italic,
+                              fontSize: 13,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
                           ),
                         ],
-                      ),
-                      if (req.characterReason != null && req.characterReason!.isNotEmpty) ...[
-                        const Divider(height: 20),
-                        Text(
-                          'السبب: ${req.characterReason}',
-                          style: TextStyle(
-                            fontStyle: FontStyle.italic,
-                            fontSize: 13,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                          ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => _handleReject(context, req.userId),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.error,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                              ),
+                              child: const Text('رفض', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () => _handleAccept(context, req),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: req.isPremium ? const Color(0xFFD4AF37) : AppColors.success,
+                                foregroundColor: Colors.white,
+                                elevation: req.isPremium ? 4 : 0,
+                                minimumSize: const Size(120, 40),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              child: Text(req.isPremium ? 'قبول الأولويّة' : 'قبول الانضمام'),
+                            ),
+                          ],
                         ),
                       ],
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => _handleReject(context, req.userId),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.error,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                            ),
-                            child: const Text('رفض', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () => _handleAccept(context, req),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: req.isPremium ? const Color(0xFFD4AF37) : AppColors.success,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              minimumSize: const Size(120, 40),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            child: const Text('قبول الانضمام'),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );

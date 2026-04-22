@@ -1,4 +1,3 @@
-// lib/features/groups/group_members_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -170,18 +169,21 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
+              // 🔥 التعديل المطلوب: استخدام الـ Getter الذكي displayImageUrl
+              final String? profileImage = member.displayImageUrl;
+
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: badgeBg,
-                  backgroundImage: member.characterImageUrl != null
-                      ? NetworkImage(member.characterImageUrl!)
+                  backgroundImage: profileImage != null && profileImage.isNotEmpty
+                      ? NetworkImage(profileImage)
                       : null,
-                  child: member.characterImageUrl == null
+                  child: (profileImage == null || profileImage.isEmpty)
                       ? Icon(Icons.person, color: roleColor)
                       : null,
                 ),
                 title: Text(
-                  member.displayName ?? 'مجهول',
+                  member.effectiveName, // ✅ تعديل إضافي لضمان تناسق الاسم أيضاً
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: roleColor,

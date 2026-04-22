@@ -123,6 +123,52 @@ class AnimeApiService {
   }
 
   // =========================================================
+  // ✅ الدالة الجديدة: التحقق من الشخصية في السلسلة الكاملة (Franchise)
+  // لحل مشكلة الشخصيات التي تظهر في مواسم غير الموسم المختار للمجموعة
+  // =========================================================
+
+  static Future<bool> isCharacterInFranchise({
+    required String animeName,
+    required String characterName,
+  }) async {
+    try {
+      // 1. البحث عن الشخصية بشكل عام في قاعدة البيانات
+      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+        'q': characterName,
+        'limit': '5', // فحص أول 5 نتائج لزيادة الدقة
+      });
+
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
+
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      if (data['data'] == null || data['data'].isEmpty) return false;
+
+      final cleanAnimeName = _sanitize(animeName);
+
+      // 2. التحقق من كل نتيجة: هل تنتمي للأنمي المطلوب؟
+      for (final charData in data['data']) {
+        final List animeList = charData['anime'] ?? [];
+        
+        for (final animeEntry in animeList) {
+          final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
+          
+          // إذا كان اسم الأنمي المرتبط بالشخصية يحتوي على اسم الأنمي الأساسي للمجموعة
+          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint("❌ API Error (isCharacterInFranchise): $e");
+      return false;
+    }
+  }
+
+  // =========================================================
   // GET CHARACTER IMAGE (SEARCH-BASED)
   // =========================================================
 

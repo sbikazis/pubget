@@ -136,7 +136,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE (UPDATED WITH PREMIUM STATUS)
+  // SEND TEXT MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -150,6 +150,20 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     if (text.trim().isEmpty) return;
 
+    // 🔥 التعديل الذهبي: جلب حالة البريميوم "الآن" من وثيقة العضو لضمان وصولها للجميع
+    bool freshPremiumStatus = sender.isPremium;
+    try {
+      final memberDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(sender.userId)
+          .get();
+      if (memberDoc.exists) {
+        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      }
+    } catch (e) {
+      debugPrint("⚠️ Warning: Could not fetch fresh premium status, using local: $e");
+    }
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -158,7 +172,7 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
-      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم من كائن العضو
+      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة للسيرفر
       text: text.trim(),
       replyToId: replyToId, 
       replyText: replyText, 
@@ -173,7 +187,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE (UPDATED WITH PREMIUM STATUS)
+  // SEND MEDIA MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -192,6 +206,20 @@ class ChatProvider extends ChangeNotifier {
       file: file,
     );
 
+    // 🔥 جلب حالة البريميوم الطازجة للميديا أيضاً
+    bool freshPremiumStatus = sender.isPremium;
+    try {
+      final memberDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(sender.userId)
+          .get();
+      if (memberDoc.exists) {
+        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error fetching premium status for media: $e");
+    }
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -200,7 +228,7 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
-      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم للميديا
+      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة
       mediaUrl: mediaUrl,
       mediaType: mediaType,
       replyToId: replyToId, 
@@ -247,7 +275,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND GAME MESSAGE (UPDATED WITH PREMIUM STATUS)
+  // SEND GAME MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
   // =========================================================
 
   Future<void> sendGameMessage({
@@ -256,13 +284,27 @@ class ChatProvider extends ChangeNotifier {
     required MemberModel sender,
     required String gameId,
   }) async {
+    // جلب حالة البريميوم للألعاب
+    bool freshPremiumStatus = sender.isPremium;
+    try {
+      final memberDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(sender.userId)
+          .get();
+      if (memberDoc.exists) {
+        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error fetching premium status for game: $e");
+    }
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
       senderName: sender.displayName ?? '',
       senderAvatar: sender.characterImageUrl ?? '',
       senderRole: sender.role,
-      senderIsPremium: sender.isPremium, // ✅ التعديل: إسناد حالة البريميوم لرسائل الألعاب
+      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة
       gameId: gameId,
       createdAt: DateTime.now(),
     );

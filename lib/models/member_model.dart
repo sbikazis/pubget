@@ -1,4 +1,3 @@
-//member_model
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/roles.dart';
 
@@ -50,7 +49,8 @@ class MemberModel {
   });
 
   // =========================================================
-  // ✅ التعديل الذهبي: الـ Getters الذكية (الجوكر)
+  // ✅ التعديل الذهبي المحسن: الـ Getters الذكية (الجوكر)
+  // تم التحسين لمعالجة الـ null والـ empty string "" معاً
   // =========================================================
 
   // يختار الصورة الصحيحة: التقمص أولاً، ثم الحقيقية
@@ -58,9 +58,10 @@ class MemberModel {
     if (characterImageUrl != null && characterImageUrl!.trim().isNotEmpty) {
       return characterImageUrl;
     }
-    return (realUserImageUrl != null && realUserImageUrl!.trim().isNotEmpty) 
-        ? realUserImageUrl 
-        : null;
+    if (realUserImageUrl != null && realUserImageUrl!.trim().isNotEmpty) {
+      return realUserImageUrl;
+    }
+    return null;
   }
 
   // يختار الاسم الصحيح: اسم الشخصية أولاً، ثم الحقيقي
@@ -68,9 +69,14 @@ class MemberModel {
     if (characterName != null && characterName!.trim().isNotEmpty) {
       return characterName!;
     }
-    return (realUserName != null && realUserName!.trim().isNotEmpty)
-        ? realUserName!
-        : (displayName ?? 'عضو');
+    if (realUserName != null && realUserName!.trim().isNotEmpty) {
+      return realUserName!;
+    }
+    // العودة للاسم المستعار أو كلمة "عضو" كحل أخير
+    if (displayName != null && displayName!.trim().isNotEmpty) {
+      return displayName!;
+    }
+    return 'عضو';
   }
 
   // -------------------------
@@ -98,8 +104,8 @@ class MemberModel {
       lastReadAt: map['lastReadAt'] != null 
           ? (map['lastReadAt'] as Timestamp).toDate() 
           : null,
-      isManualRole: map['isManualRole'] ?? false, // جلب الحقل من Firestore
-      isPremium: map['isPremium'] ?? false, // جلب حقل البريميوم
+      isManualRole: map['isManualRole'] ?? false, 
+      isPremium: map['isPremium'] ?? false, 
     );
   }
 
@@ -122,8 +128,8 @@ class MemberModel {
       'inviterDisplayName': inviterDisplayName, 
       'joinedAt': Timestamp.fromDate(joinedAt),
       'lastReadAt': lastReadAt != null ? Timestamp.fromDate(lastReadAt!) : null,
-      'isManualRole': isManualRole, // حفظ الحقل في Firestore
-      'isPremium': isPremium, // حفظ حقل البريميوم
+      'isManualRole': isManualRole, 
+      'isPremium': isPremium, 
     };
   }
 

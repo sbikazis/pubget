@@ -1,4 +1,4 @@
-// lib/providers/group_provider.dart
+//GroupProvider
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -100,7 +100,6 @@ class GroupProvider extends ChangeNotifier {
       bool currentPremiumStatus = false;
       if (userDoc.exists) {
         final userData = userDoc.data();
-        // نتحقق من نوع الاشتراك إذا كان premium
         currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
       }
 
@@ -119,7 +118,7 @@ class GroupProvider extends ChangeNotifier {
       // ✅ ندمج حالة البريميوم الفعلية داخل كائن العضو الجديد
       final newMember = requestMember.copyWith(
         isManualRole: false,
-        isPremium: currentPremiumStatus, // الحقن المباشر للحالة
+        isPremium: currentPremiumStatus, 
       );
 
       final memberRef = firestore
@@ -227,11 +226,6 @@ class GroupProvider extends ChangeNotifier {
       for (var doc in snapshot.docs) {
         var member = MemberModel.fromMap(doc.data());
        
-        if (member.realUserName != null && member.realUserImageUrl != null) {
-          members.add(member);
-          continue;
-        }
-
         try {
           final userData = await FirebaseFirestore.instance
               .collection('Users')
@@ -240,10 +234,11 @@ class GroupProvider extends ChangeNotifier {
          
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
-           
+            
             member = member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
+              isPremium: user.subscriptionType == 'premium',
             );
           }
         } catch (e) {
@@ -352,7 +347,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ الميزة الأولى: الخروج من المجموعة للمنتسبين
   Future<void> leaveGroup({
     required String groupId,
     required String userId,
@@ -362,17 +356,14 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
-      // 1. حذف العضو من القائمة
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId);
       batch.delete(memberRef);
 
-      // 2. تقليل عدد الأعضاء
       final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
-      // 3. حذف حجز الشخصية إن وجد
       if (characterName != null) {
         final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
         final charRef = firestore
@@ -383,7 +374,6 @@ class GroupProvider extends ChangeNotifier {
 
       await batch.commit();
       
-      // تحديث الرتب للبقية
       await InviteRankingLogic.refreshRanks(groupId: groupId);
       notifyListeners();
     } catch (e) {
@@ -452,7 +442,6 @@ class GroupProvider extends ChangeNotifier {
     );
   }
 
-  // ✅ الميزة الثانية والثالثة: تفكيك المجموعة مع رسالة وداع
   Future<void> disbandGroup({
     required String groupId,
     required String groupName,
@@ -461,14 +450,12 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
       
-      // 1. جلب جميع الأعضاء لإرسال الإشعارات لهم
       final membersSnapshot = await firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .get();
       
       final batch = firestore.batch();
 
-      // 2. إرسال إشعار تفكيك لكل عضو
       for (var doc in membersSnapshot.docs) {
         final memberId = doc.id;
         final notifId = firestore.collection(FirestorePaths.userNotifications(memberId)).doc().id;
@@ -480,7 +467,7 @@ class GroupProvider extends ChangeNotifier {
               ? 'رسالة المؤسس: $farewellMessage'
               : 'قام المؤسس بحذف المجموعة نهائياً.',
           type: NotificationTypes.groupDisbanded,
-          refId: null, // لا يوجد مرجع لأن المجموعة حذفت
+          refId: null, 
           createdAt: DateTime.now(),
           isRead: false,
         );
@@ -490,15 +477,12 @@ class GroupProvider extends ChangeNotifier {
             .doc(notifId);
         batch.set(notifRef, notification.toMap());
         
-        // حذف وثيقة العضو
         batch.delete(doc.reference);
       }
 
-      // 3. حذف وثيقة المجموعة نفسها
       final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.delete(groupRef);
 
-      // 4. تنفيذ العمليات
       await batch.commit();
       notifyListeners();
     } catch (e) {
@@ -507,7 +491,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // تم استبدال deleteGroup بـ disbandGroup لإدارة الحذف النظيف
   Future<void> deleteGroup({required String groupId}) async {
     final group = await getGroup(groupId: groupId);
     if (group != null) {
@@ -542,11 +525,42 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
+  // =========================================================
+  // 🔥 التعديل الجوهري لحل مشكلة الصور (Stream Members)
+  // =========================================================
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
-        .map((snapshot) {
-      return snapshot.docs.map((doc) => MemberModel.fromMap(doc.data())).toList();
+        .asyncMap((snapshot) async {
+      List<MemberModel> members = [];
+      
+      for (var doc in snapshot.docs) {
+        var member = MemberModel.fromMap(doc.data());
+        
+        try {
+          // جلب بيانات المستخدم الحقيقية من كولكشن Users لضمان تحديث الصورة الشخصية
+          final userData = await FirebaseFirestore.instance
+              .collection('Users')
+              .doc(member.userId.trim())
+              .get();
+          
+          if (userData.exists && userData.data() != null) {
+            final user = UserModel.fromMap(userData.data()!, userData.id);
+            
+            // دمج الصورة والاسم وحالة البريميوم الحقيقية في كائن العضو
+            member = member.copyWith(
+              realUserName: user.username,
+              realUserImageUrl: user.avatarUrl,
+              isPremium: user.subscriptionType == 'premium',
+            );
+          }
+        } catch (e) {
+          debugPrint("⚠️ Error syncing member ${member.userId} image: $e");
+        }
+        
+        members.add(member);
+      }
+      return members;
     });
   }
 
