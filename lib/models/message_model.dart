@@ -38,7 +38,7 @@ class MessageModel {
     required this.senderName,
     required this.senderAvatar,
     this.senderIsPremium = false, // القيمة الافتراضية عادي
-    this.senderRole, // ✅ إزالة required هنا
+    this.senderRole, 
     this.text,
     this.mediaUrl,
     this.mediaType,
@@ -89,7 +89,7 @@ class MessageModel {
       'senderName': senderName,
       'senderAvatar': senderAvatar,
       'senderIsPremium': senderIsPremium, // إرسال حالة البريميوم
-      // ✅ إرسال اسم الرتبة فقط في حال وجودها
+      // ✅ إرسال اسم الرتبة فقط في حال وجودها لضمان عدم وجود قيم فارغة تؤثر على الواجهة
       'senderRole': senderRole?.name, 
       'text': text,
       'mediaUrl': mediaUrl,
@@ -101,5 +101,34 @@ class MessageModel {
       'createdAt': Timestamp.fromDate(createdAt), // التأكد من إرسالها كـ Timestamp
       'isRead': isRead,
     };
+  }
+
+  // ✅ إضافة copyWith للحفاظ على مرونة التعديل في المستقبل دون فقدان البيانات
+  MessageModel copyWith({
+    String? senderName,
+    String? senderAvatar,
+    bool? senderIsPremium,
+    Roles? senderRole,
+    String? text,
+    Map<String, String>? reactions,
+    bool? isRead,
+  }) {
+    return MessageModel(
+      id: id,
+      senderId: senderId,
+      senderName: senderName ?? this.senderName,
+      senderAvatar: senderAvatar ?? this.senderAvatar,
+      senderIsPremium: senderIsPremium ?? this.senderIsPremium,
+      senderRole: senderRole ?? this.senderRole,
+      text: text ?? this.text,
+      mediaUrl: mediaUrl,
+      mediaType: mediaType,
+      gameId: gameId,
+      replyToId: replyToId,
+      replyText: replyText,
+      reactions: reactions ?? this.reactions,
+      createdAt: createdAt,
+      isRead: isRead ?? this.isRead,
+    );
   }
 }

@@ -65,7 +65,7 @@ class MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  // تم تعديل هذا السطر ليشمل إظهار شارة البريميوم للطرفين (أنا أو الآخرين)
+                  // تم استخدام التعديل الجديد هنا
                   _buildNameRow(roleColor),
                  
                   if (message.reactions != null && message.reactions!.isNotEmpty)
@@ -306,25 +306,40 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الاحترافي لصف الاسم: الجوهرة تظهر بعد الاسم وقبل الرتبة لمنع التداخل
+  // ✅ التعديل الاحترافي: ضمان ظهور الجوهرة بربط مصدرين للبيانات وتحسين المسافات
   Widget _buildNameRow(Color roleColor) {
+    // منطق التحقق "مليون في المئة": 
+    // نتحقق من حالة البريميوم في الرسالة المخزنة أولاً (لأنها تعبر عن وقت الإرسال)
+    // أو من حالة العضو الحالية (للتحديثات اللحظية)
+    final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
-      // إذا كنت أنا (isMe)، اجعل الترتيب من اليمين لليسار لتناسب جهة الفقاعة
       textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
-        Text(
-          sender.effectiveName,
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: roleColor),
+        // الاسم
+        Flexible(
+          child: Text(
+            sender.effectiveName,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13, 
+              fontWeight: FontWeight.w600, 
+              color: roleColor
+            ),
+          ),
         ),
         
-        // إذا كان الشخص بريميوم، تظهر الجوهرة (PremiumBadge) هنا كفاصل أنيق
-        if (sender.isPremium) ...[
+        // شارة البريميوم (الجوهرة) - تظهر فقط إذا كان المستخدم بريميوم
+        if (isPremiumUser) ...[
           const SizedBox(width: 4),
-          const PremiumBadge(size: 14),
+          const PremiumBadge(size: 14), // نستخدم الحجم 14 ليناسب سطر الدردشة
         ],
 
+        // مسافة ثابتة ومدروسة قبل الرتبة
         const SizedBox(width: 6),
+
+        // الرتبة
         RoleBadge(role: sender.role),
       ],
     );

@@ -1,4 +1,4 @@
-//role_badge
+// lib/features/groups/chat/role_badge.dart
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/roles.dart';
@@ -7,10 +7,13 @@ import '../../../../core/theme/app_text_theme.dart';
 
 class RoleBadge extends StatelessWidget {
   final Roles role;
+  // ✅ التعديل: إضافة عرض محدود اختياري للرتبة لضمان استقرار التصميم في الدردشة
+  final double? maxWidth;
 
   const RoleBadge({
     super.key,
     required this.role,
+    this.maxWidth, // يمرر عند الرغبة في تقليص الرتبة ذكياً
   });
 
   @override
@@ -21,6 +24,8 @@ class RoleBadge extends StatelessWidget {
     final Color badgeBg = RoleColors.getBadgeBackground(role, isDark: isDark);
 
     return Container(
+      // ✅ استخدام constraints لمنع التمدد الزائد في حال كانت الأسماء والجوهرة تشغل مساحة كبيرة
+      constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
       padding: const EdgeInsets.symmetric(
         horizontal: 8,
         vertical: 4,
@@ -40,14 +45,20 @@ class RoleBadge extends StatelessWidget {
 
           const SizedBox(width: 4),
 
-          Text(
-            role.label,
-            style: (isDark
-                    ? AppTextTheme.darkTextTheme.labelMedium
-                    : AppTextTheme.lightTextTheme.labelMedium)!
-                .copyWith(
-              color: roleColor,
-              fontWeight: FontWeight.w600,
+          // ✅ استخدام Flexible مع نص متقلص لضمان عدم حدوث خطأ Overflow
+          Flexible(
+            child: Text(
+              role.label,
+              overflow: TextOverflow.ellipsis, // يضع نقاط عند ضيق المساحة
+              maxLines: 1,
+              style: (isDark
+                      ? AppTextTheme.darkTextTheme.labelMedium
+                      : AppTextTheme.lightTextTheme.labelMedium)!
+                  .copyWith(
+                color: roleColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 11, // تصغير طفيف جداً للتناسب مع الجوهرة
+              ),
             ),
           ),
         ],
