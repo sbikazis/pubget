@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:uuid/uuid.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ إضافة مستورد الفايرستور للمزامنة
 
 import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
@@ -11,7 +12,9 @@ import '../../../providers/user_provider.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
+import '../../../models/user_model.dart'; // ✅ استيراد موديل المستخدم
 import '../../../core/constants/roles.dart';
+import '../../../core/constants/firestore_paths.dart'; // ✅ استيراد المسارات
 
 // ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح عند الدخول
 import '../../../services/monetization/ad_service.dart';
@@ -46,16 +49,18 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final currentUserId = userProvider.currentUser?.id;
-      final isPremium = userProvider.currentUser?.isPremium ?? false;
+      final currentUser = userProvider.currentUser;
+      final isPremium = currentUser?.isPremium ?? false;
 
-      if (currentUserId != null) {
-        _loadCurrentMember(currentUserId);
+      if (currentUser != null) {
+        // 🔥 التعديل القاطع: مزامنة حالة البريميوم فور الدخول
+        _syncPremiumStatus(currentUser);
+
+        _loadCurrentMember(currentUser.id);
         // ✅ التعديل الأول: تصفير العداد فور دخول الشاشة
-        _updateReadStatus(currentUserId);
+        _updateReadStatus(currentUser.id);
 
         // 🚀 تفعيل إعلان الدخول للمجموعة (منطق الأشباح)
-        // سيتحقق الـ AdService تلقائياً من شرط الـ 5 دقائق والحد اليومي والبريميوم
         final adService = Provider.of<AdService>(context, listen: false);
         adService.tryShowGroupAd(isPremium: isPremium);
       }
@@ -72,6 +77,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // ✅ الدالة السحرية: تضمن تحديث بيانات العضو لتطابق بروفايله الحالي
+  Future<void> _syncPremiumStatus(UserModel currentUser) async {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    try {
+      final member = await chatProvider.getMember(
+        groupId: widget.groupId,
+        userId: currentUser.id,
+      );
+
+      // إذا كان هناك اختلاف بين حالة البريميوم في "المجموعة" وحالته في "البروفايل"
+      if (member != null && member.isPremium != currentUser.isPremium) {
+        debugPrint("🔄 Syncing premium status for member in Firestore...");
+        
+        await FirebaseFirestore.instance
+            .collection(FirestorePaths.groupMembers(widget.groupId))
+            .doc(currentUser.id)
+            .update({
+          'isPremium': currentUser.isPremium,
+        });
+
+        // إعادة تحميل العضو بعد التحديث لضمان ظهور الجوهرة فوراً في الـ UI
+        _loadCurrentMember(currentUser.id);
+      }
+    } catch (e) {
+      debugPrint('Failed to sync premium status: $e');
+    }
   }
 
   // دالة مساعدة لتحديث حالة القراءة

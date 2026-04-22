@@ -93,6 +93,17 @@ class GroupProvider extends ChangeNotifier {
     required MemberModel requestMember,
   }) async {
     try {
+      final firestore = FirebaseFirestore.instance;
+
+      // 🔥 التعديل الحاسم: جلب حالة البريميوم الحقيقية للمستخدم من وثيقة Users
+      final userDoc = await firestore.collection('Users').doc(requestMember.userId).get();
+      bool currentPremiumStatus = false;
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        // نتحقق من نوع الاشتراك إذا كان premium
+        currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
+      }
+
       if (requestMember.characterName != null) {
         final isTaken = await isCharacterReserved(
           groupId: groupId,
@@ -103,10 +114,13 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
-      final newMember = requestMember.copyWith(isManualRole: false);
+      // ✅ ندمج حالة البريميوم الفعلية داخل كائن العضو الجديد
+      final newMember = requestMember.copyWith(
+        isManualRole: false,
+        isPremium: currentPremiumStatus, // الحقن المباشر للحالة
+      );
 
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
