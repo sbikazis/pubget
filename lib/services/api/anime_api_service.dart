@@ -14,12 +14,12 @@ class AnimeApiService {
     'Accept': 'application/json',
   };
 
-  // ✅ تحسين دالة التنظيف لتكون أكثر مرونة في المقارنة
+  // ✅ تحسين دالة التنظيف لتكون أكثر ذكاءً (تتعامل مع الأسماء اليابانية والإنجليزية والرموز)
   static String _sanitize(String text) {
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), ' ') // استبدال الرموز بمسافة وليس حذفها تماماً لمنع دمج الكلمات
-        .replaceAll(RegExp(r'\s+'), ' ') // تقليص المسافات الزائدة
+        .replaceAll(RegExp(r'[^\w\s]'), ' ') // استبدال الرموز بمسافات
+        .replaceAll(RegExp(r'\s+'), ' ') // إزالة المسافات المزدوجة
         .trim();
   }
 
@@ -29,7 +29,6 @@ class AnimeApiService {
 
   static Future<Map<String, dynamic>?> searchAnime(String animeName) async {
     try {
-      // ✅ التعديل: استخدام Uri.https لضمان عمل الـ Encoding بشكل آلي ومنع أخطاء الـ Socket
       final url = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
         'q': animeName,
         'limit': '1',
@@ -52,7 +51,7 @@ class AnimeApiService {
                      animeData['images']?['jpg']?['image_url'],
       };
     } catch (e) {
-      debugPrint("❌ API Error (SearchAnime): $e"); // ✅ إضافة سجل للأخطاء للمتابعة
+      debugPrint("❌ API Error (SearchAnime): $e");
       return null;
     }
   }
@@ -123,19 +122,20 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ الدالة الجديدة: التحقق من الشخصية في السلسلة الكاملة (Franchise)
-  // لحل مشكلة الشخصيات التي تظهر في مواسم غير الموسم المختار للمجموعة
+  // ✅ التعديل: التحقق من الشخصية في السلسلة الكاملة (Cross-Matching)
+  // تم إضافة فحص الـ mal_id لضمان الربط الصحيح حتى مع اختلاف أسماء المواسم
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
+    required dynamic animeId, // تم إضافة المعرف لضمان المطابقة المتقاطعة
     required String animeName,
     required String characterName,
   }) async {
     try {
-      // 1. البحث عن الشخصية بشكل عام في قاعدة البيانات
+      // 1. البحث عن الشخصية بشكل عام
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '5', // فحص أول 5 نتائج لزيادة الدقة
+        'limit': '10', // زيادة النطاق لضمان عدم تفويت الشخصية
       });
 
       final response = await http.get(url, headers: _headers).timeout(
@@ -147,16 +147,23 @@ class AnimeApiService {
       if (data['data'] == null || data['data'].isEmpty) return false;
 
       final cleanAnimeName = _sanitize(animeName);
+      final int targetAnimeId = int.tryParse(animeId.toString()) ?? -1;
 
-      // 2. التحقق من كل نتيجة: هل تنتمي للأنمي المطلوب؟
+      // 2. التحقق المتقاطع (ID + الاسم)
       for (final charData in data['data']) {
         final List animeList = charData['anime'] ?? [];
         
         for (final animeEntry in animeList) {
-          final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
-          
-          // إذا كان اسم الأنمي المرتبط بالشخصية يحتوي على اسم الأنمي الأساسي للمجموعة
-          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
+          final animeInfo = animeEntry['anime'];
+          if (animeInfo == null) continue;
+
+          final int entryMalId = animeInfo['mal_id'] ?? 0;
+          final String entryTitle = _sanitize(animeInfo['title'] ?? '');
+
+          // مطابقة بالـ ID (الأكثر دقة) أو بالاسم (للحماية الإضافية)
+          if (entryMalId == targetAnimeId || 
+              entryTitle.contains(cleanAnimeName) || 
+              cleanAnimeName.contains(entryTitle)) {
             return true;
           }
         }
@@ -174,7 +181,6 @@ class AnimeApiService {
 
   static Future<String?> getCharacterImage(String characterName) async {
     try {
-      // ✅ التعديل: استخدام replace لضمان تشفير اسم الشخصية بشكل سليم في الرابط
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
         'limit': '1',

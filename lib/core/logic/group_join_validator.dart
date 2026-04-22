@@ -142,6 +142,7 @@ class GroupJoinValidator {
 
       // =========================================================
       // ✅ التعديل الذهبي: منطق التحقق الثنائي (Double Verification)
+      // فك الارتباط الصارم بالموسم عند الحاجة
       // =========================================================
       
       // المرحلة أ: البحث في الموسم المحدد (السريع والمعتاد)
@@ -153,9 +154,10 @@ class GroupJoinValidator {
         onTimeout: () => throw TimeoutException('استغرقت عملية التحقق وقتاً طويلاً، خادم الأنمي بطيء حالياً.')
       );
 
-      // المرحلة ب: إذا لم نجدها في الموسم، نبحث في السلسلة الكاملة (المنقذ)
+      // المرحلة ب: المنقذ - إذا فشل الموسم، نبحث في السلسلة الكاملة باستخدام المطابقة المتقاطعة
       if (!characterExists && animeName != null) {
         characterExists = await AnimeApiService.isCharacterInFranchise(
+          animeId: animeId, // تم إضافة المعرف لدقة المليار بالمئة
           animeName: animeName,
           characterName: formattedCharacterName,
         );
