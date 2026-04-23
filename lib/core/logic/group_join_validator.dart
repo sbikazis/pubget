@@ -117,10 +117,7 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      if (animeId == null) {
-        return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.');
-      }
-
+      // ✅ بقوة: فحص حجز الشخصية يظل فعالاً لكل أنواع التقمص (محدد أو مفتوح) لمنع التكرار
       final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
       final reservedDoc = await _firestoreService.getDocument(
@@ -133,34 +130,47 @@ class GroupJoinValidator {
       }
 
       // =========================================================
-      // ✅ الإصلاح: إرسال قائمة الـ IDs كاملة للدالة الجديدة في الـ API
+      // ✅ التعديل الجوهري: منطق التحقق حسب نوع التقمص
       // =========================================================
       
-      // 1. تجميع كل الـ IDs في قائمة واحدة من نوع List<int>
-      Set<int> idsToSearch = {};
-      
-      final int? mainId = int.tryParse(animeId.toString());
-      if (mainId != null) idsToSearch.add(mainId);
+      bool characterExists = false;
 
-      if (franchiseIds != null) {
-        for (var id in franchiseIds) {
-          final int? parsedId = int.tryParse(id.toString());
-          if (parsedId != null) idsToSearch.add(parsedId);
+      // أ. في حالة التقمص المفتوح: تخطي قيود السلسلة والبحث عالمياً
+      if (groupType == GroupType.openRoleplay) {
+        // نستخدم جلب الصورة كدليل على وجود الشخصية عالمياً
+        final globalImage = await AnimeApiService.getCharacterImage(formattedCharacterName)
+            .timeout(const Duration(seconds: 15));
+        characterExists = globalImage != null;
+      } 
+      // ب. في حالة التقمص المحدد: الالتزام بالسلسلة (Franchise)
+      else {
+        if (animeId == null) {
+          return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.');
         }
-      }
 
-      // 2. استدعاء الدالة المحدثة (لاحظ تغيير اسم البارامتر لـ animeIds وإرسال القائمة كاملة)
-      bool characterExists = await AnimeApiService.validateCharacterExists(
-        animeIds: idsToSearch.toList(), // القائمة كاملة هنا
-        characterName: formattedCharacterName,
-      ).timeout(const Duration(seconds: 15));
+        Set<int> idsToSearch = {};
+        final int? mainId = int.tryParse(animeId.toString());
+        if (mainId != null) idsToSearch.add(mainId);
 
-      // 3. المرحلة الاحتياطية (البحث العام) في حال فشل الفحص بالـ IDs
-      if (!characterExists && animeName != null) {
-        characterExists = await AnimeApiService.isCharacterInFranchise(
-          animeName: animeName,
+        if (franchiseIds != null) {
+          for (var id in franchiseIds) {
+            final int? parsedId = int.tryParse(id.toString());
+            if (parsedId != null) idsToSearch.add(parsedId);
+          }
+        }
+
+        characterExists = await AnimeApiService.validateCharacterExists(
+          animeIds: idsToSearch.toList(),
           characterName: formattedCharacterName,
-        );
+        ).timeout(const Duration(seconds: 15));
+
+        // المرحلة الاحتياطية للتقمص المحدد فقط
+        if (!characterExists && animeName != null) {
+          characterExists = await AnimeApiService.isCharacterInFranchise(
+            animeName: animeName,
+            characterName: formattedCharacterName,
+          );
+        }
       }
 
       if (!characterExists) {

@@ -12,16 +12,15 @@ import '../../core/constants/roles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
-import '../../widgets/loading_widget.dart';
-import '../../widgets/app_dialog.dart'; // إضافة استيراد الديالوج للفحص النهائي
+import '../../widgets/app_dialog.dart'; 
 import '../../services/api/anime_api_service.dart';
 import '../../services/firebase/storage_service.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/home_provider.dart'; // إضافة الهوم بروفايدر للتحقق من العدد
+import '../../providers/home_provider.dart'; 
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
-import '../../core/logic/subscription_limits_logic.dart'; // إضافة منطق الحدود
+import '../../core/logic/subscription_limits_logic.dart'; 
 
 class CreateRoleplayGroupScreen extends StatefulWidget {
   const CreateRoleplayGroupScreen({Key? key}) : super(key: key);
@@ -43,6 +42,9 @@ class _CreateRoleplayGroupScreenState
   final TextEditingController _charNameCtrl = TextEditingController();
   final TextEditingController _charReasonCtrl = TextEditingController();
 
+  // ✅ الإضافة: التحكم بنوع المجموعة (محدد أو مفتوح)
+  GroupType _selectedGroupType = GroupType.roleplay;
+
   File? _pickedImage;
   bool _isLoading = false;
  
@@ -51,7 +53,6 @@ class _CreateRoleplayGroupScreenState
   String? _confirmedAnimeImage;
   dynamic _confirmedAnimeId; 
   
-  // ✅ التعديل: قائمة لتخزين بيانات السلسلة بالكامل (Id, Title, Image) للعرض
   List<Map<String, dynamic>> _confirmedFranchiseData = [];
 
   bool _isVerifyingChar = false;
@@ -80,7 +81,7 @@ class _CreateRoleplayGroupScreenState
       _isVerifyingAnime = true;
       _confirmedAnimeName = null;
       _confirmedAnimeId = null;
-      _confirmedFranchiseData = []; // ✅ تصفير بيانات السلسلة
+      _confirmedFranchiseData = []; 
       _confirmedCharName = null;
     });
 
@@ -88,16 +89,13 @@ class _CreateRoleplayGroupScreenState
       final result = await AnimeApiService.searchAnime(name);
       if (result != null) {
         final int malId = result['id'];
-        
-        // ✅ التعديل الذهبي: جلب بيانات السلسلة كاملة (تفاصيل وليس فقط IDs)
-        // ملاحظة: تم تعديل الدالة في الـ Service لتستقبل الاسم أيضاً لضمان البحث الشامل
         final franchiseFullData = await AnimeApiService.getAnimeFranchiseFullDetails(malId, result['title']);
 
         setState(() {
           _confirmedAnimeName = result['title'];
           _confirmedAnimeImage = result['image_url'];
           _confirmedAnimeId = malId;
-          _confirmedFranchiseData = franchiseFullData; // ✅ تخزين القائمة الكاملة
+          _confirmedFranchiseData = franchiseFullData; 
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -111,15 +109,19 @@ class _CreateRoleplayGroupScreenState
     }
   }
 
-  // ✅ التعديل الجذري: فحص الشخصية للمؤسس عبر السلسلة كاملة + بحث عام
   Future<void> _verifyCharacter() async {
     final charName = _charNameCtrl.text.trim();
-    if (_confirmedAnimeId == null || _confirmedAnimeName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء التحقق من اسم الأنمي أولاً')),
-      );
-      return;
+
+    // ✅ التعديل: فحص الشرط بناءً على نوع المجموعة
+    if (_selectedGroupType == GroupType.roleplay) {
+      if (_confirmedAnimeId == null || _confirmedAnimeName == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('الرجاء التحقق من اسم الأنمي أولاً')),
+        );
+        return;
+      }
     }
+    
     if (charName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال اسم شخصيتك')),
@@ -133,36 +135,48 @@ class _CreateRoleplayGroupScreenState
     });
 
     try {
-      // 1. تحضير قائمة المعرفات (Franchise IDs)
-      final List<int> franchiseIds = _confirmedFranchiseData
-          .map((item) => item['id'] as int)
-          .toList();
-      
-      if (franchiseIds.isEmpty) franchiseIds.add(_confirmedAnimeId);
+      bool exists = false;
 
-      // 2. الفحص الأول: البحث داخل معرفات السلسلة المكتشفة
-      bool exists = await AnimeApiService.validateCharacterExists(
-        animeIds: franchiseIds, // نمرر القائمة كاملة كما في الخدمة المحدثة
-        characterName: charName,
-      );
+      if (_selectedGroupType == GroupType.openRoleplay) {
+        // ✅ التعديل: في التقمص المفتوح، نتأكد من وجود الشخصية عالمياً فقط
+        final charImageUrl = await AnimeApiService.getCharacterImage(charName);
+        if (charImageUrl != null) {
+          exists = true;
+          setState(() => _confirmedCharImage = charImageUrl);
+        }
+      } else {
+        // التقمص المحدد: البحث داخل السلسلة
+        final List<int> franchiseIds = _confirmedFranchiseData
+            .map((item) => item['id'] as int)
+            .toList();
+        
+        if (franchiseIds.isEmpty) franchiseIds.add(_confirmedAnimeId);
 
-      // 3. الفحص الثاني: إذا فشل الأول، نقوم بالبحث العام (لجلب أمثال أكزا)
-      if (!exists) {
-        exists = await AnimeApiService.isCharacterInFranchise(
-          animeName: _confirmedAnimeName!,
+        exists = await AnimeApiService.validateCharacterExists(
+          animeIds: franchiseIds,
           characterName: charName,
         );
+
+        if (!exists) {
+          exists = await AnimeApiService.isCharacterInFranchise(
+            animeName: _confirmedAnimeName!,
+            characterName: charName,
+          );
+        }
+
+        if (exists) {
+          final charImageUrl = await AnimeApiService.getCharacterImage(charName);
+          setState(() => _confirmedCharImage = charImageUrl);
+        }
       }
 
       if (exists) {
-        final charImageUrl = await AnimeApiService.getCharacterImage(charName);
-        setState(() {
-          _confirmedCharName = charName;
-          _confirmedCharImage = charImageUrl;
-        });
+        setState(() => _confirmedCharName = charName);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('هذه الشخصية غير موجودة في السلسلة المحددة')),
+          SnackBar(content: Text(_selectedGroupType == GroupType.openRoleplay 
+            ? 'لم نجد هذه الشخصية في قاعدة البيانات' 
+            : 'هذه الشخصية غير موجودة في السلسلة المحددة')),
         );
       }
     } catch (e) {
@@ -200,7 +214,9 @@ class _CreateRoleplayGroupScreenState
   }
 
   String? _validateAnime(String? v) {
-    if (_confirmedAnimeName == null) return 'يجب التحقق من اسم الأنمي أولاً';
+    if (_selectedGroupType == GroupType.roleplay && _confirmedAnimeName == null) {
+      return 'يجب التحقق من اسم الأنمي أولاً';
+    }
     return null;
   }
 
@@ -250,7 +266,6 @@ class _CreateRoleplayGroupScreenState
         );
       }
 
-      // ✅ استخراج الـ IDs فقط من القائمة المخزنة لرفعها للـ Firestore
       final List<int> franchiseIds = _confirmedFranchiseData
           .map((item) => item['id'] as int)
           .toList();
@@ -261,10 +276,10 @@ class _CreateRoleplayGroupScreenState
         description: _descriptionCtrl.text.trim(),
         slogan: _sloganCtrl.text.trim(),
         imageUrl: groupImageUrl,
-        type: GroupType.roleplay,
-        animeName: _confirmedAnimeName!,
-        animeId: _confirmedAnimeId, 
-        franchiseIds: franchiseIds, // ✅ حفظ السلسلة المكتشفة
+        type: _selectedGroupType, // ✅ إرسال النوع المختار
+        animeName: _selectedGroupType == GroupType.roleplay ? _confirmedAnimeName : null,
+        animeId: _selectedGroupType == GroupType.roleplay ? _confirmedAnimeId : null, 
+        franchiseIds: _selectedGroupType == GroupType.roleplay ? franchiseIds : [],
         founderId: currentUser.id,
         membersCount: 1,
         maxMembers: currentUser.isPremium 
@@ -318,6 +333,50 @@ class _CreateRoleplayGroupScreenState
     super.dispose();
   }
 
+  // ✅ ويدجت مساعدة لعرض البطاقات
+  Widget _buildSimpleTile(String title, String? imageUrl, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          if (imageUrl != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(imageUrl, width: 40, height: 40, fit: BoxFit.cover),
+            ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+          const Icon(Icons.check_circle, color: Colors.green, size: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFranchiseTile(String title, String? imageUrl, bool isDark) {
+    return Container(
+      width: 70,
+      margin: const EdgeInsets.only(right: 10),
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: imageUrl != null 
+              ? Image.network(imageUrl, height: 60, width: 60, fit: BoxFit.cover)
+              : Container(color: Colors.grey, height: 60, width: 60),
+          ),
+          const SizedBox(height: 4),
+          Text(title, style: const TextStyle(fontSize: 9), maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -341,6 +400,38 @@ class _CreateRoleplayGroupScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // ✅ 1. اختيار نوع المجموعة (محدد أو مفتوح)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Center(child: Text('أنمي محدد')),
+                            selected: _selectedGroupType == GroupType.roleplay,
+                            onSelected: (val) {
+                              if (val) setState(() {
+                                _selectedGroupType = GroupType.roleplay;
+                                _confirmedCharName = null;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Center(child: Text('تقمص مفتوح')),
+                            selected: _selectedGroupType == GroupType.openRoleplay,
+                            onSelected: (val) {
+                              if (val) setState(() {
+                                _selectedGroupType = GroupType.openRoleplay;
+                                _confirmedCharName = null;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
                     GestureDetector(
                       onTap: _pickImage,
                       child: Center(
@@ -409,81 +500,85 @@ class _CreateRoleplayGroupScreenState
                       maxLength: Limits.maxGroupDescriptionLength,
                       validator: _validateDescription,
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: AppTextField(
-                            controller: _animeCtrl,
-                            label: 'اسم الأنمي (بالإنجليزية)',
-                            placeholder: 'مثال: Attack on Titan',
-                            prefixIcon: Icons.movie,
-                            validator: _validateAnime,
-                            onChanged: (_) {
-                              if (_confirmedAnimeName != null) {
-                                setState(() {
-                                  _confirmedAnimeName = null;
-                                  _confirmedAnimeId = null; 
-                                  _confirmedFranchiseData = [];
-                                  _confirmedCharName = null;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: SizedBox(
-                            height: 54,
-                            width: 80,
-                            child: ElevatedButton(
-                              onPressed: _isVerifyingAnime ? null : _verifyAnime,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                padding: EdgeInsets.zero,
-                              ),
-                              child: _isVerifyingAnime
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Text('تحقق', style: TextStyle(fontSize: 13)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    if (_confirmedAnimeName != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    
+                    // ✅ 2. إخفاء/إظهار قسم الأنمي بناءً على النوع
+                    if (_selectedGroupType == GroupType.roleplay) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 8),
-                            child: Text(
-                              "السلسلة المكتشفة (${_confirmedFranchiseData.length}):",
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                          Expanded(
+                            child: AppTextField(
+                              controller: _animeCtrl,
+                              label: 'اسم الأنمي (بالإنجليزية)',
+                              placeholder: 'مثال: Attack on Titan',
+                              prefixIcon: Icons.movie,
+                              validator: _validateAnime,
+                              onChanged: (_) {
+                                if (_confirmedAnimeName != null) {
+                                  setState(() {
+                                    _confirmedAnimeName = null;
+                                    _confirmedAnimeId = null; 
+                                    _confirmedFranchiseData = [];
+                                    _confirmedCharName = null;
+                                  });
+                                }
+                              },
                             ),
                           ),
-                          SizedBox(
-                            height: 90,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _confirmedFranchiseData.length,
-                              itemBuilder: (context, index) {
-                                final item = _confirmedFranchiseData[index];
-                                return _buildFranchiseTile(
-                                  item['title'], 
-                                  item['image_url'], 
-                                  isDark
-                                );
-                              },
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: SizedBox(
+                              height: 54,
+                              width: 80,
+                              child: ElevatedButton(
+                                onPressed: _isVerifyingAnime ? null : _verifyAnime,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                child: _isVerifyingAnime
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('تحقق', style: TextStyle(fontSize: 13)),
+                              ),
                             ),
                           ),
                         ],
                       ),
+
+                      if (_confirmedAnimeName != null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12, bottom: 8),
+                              child: Text(
+                                "السلسلة المكتشفة (${_confirmedFranchiseData.length}):",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              ),
+                            ),
+                            SizedBox(
+                              height: 90,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _confirmedFranchiseData.length,
+                                itemBuilder: (context, index) {
+                                  final item = _confirmedFranchiseData[index];
+                                  return _buildFranchiseTile(
+                                    item['title'], 
+                                    item['image_url'], 
+                                    isDark
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
 
                     const Divider(height: 40),
 
@@ -542,7 +637,7 @@ class _CreateRoleplayGroupScreenState
                     ),
 
                     if (_confirmedCharName != null)
-                      _buildConfirmationTile(_confirmedCharName!, _confirmedCharImage, isDark, isChar: true),
+                      _buildSimpleTile(_confirmedCharName!, _confirmedCharImage, isDark),
 
                     const SizedBox(height: 32),
                     AppButton(
@@ -552,7 +647,7 @@ class _CreateRoleplayGroupScreenState
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'بصفتك الشوغو, سيتم حجز هذه الشخصية لك تلقائياً ولا يمكن لأحد تغييرها.',
+                      'بصفتك الشوغو، سيتم حجز هذه الشخصية لك تلقائياً ولا يمكن لأحد تغييرها.',
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
@@ -565,102 +660,14 @@ class _CreateRoleplayGroupScreenState
               ),
             ),
           ),
-         
           if (_isLoading)
-            Container(
-              color: isDark ? const Color(0xFF121212).withOpacity(0.9) : Colors.white.withOpacity(0.8),
-              child: const Center(
-                child: LoadingWidget(message: 'جاري تأسيس الإمبراطورية...'),
+            // ✅ تم إزالة const من هنا لحل مشكلة 'The constructor being called isn't a const constructor'
+            Positioned.fill(
+              child: Container(
+                color: Colors.black26,
+                child: const Center(child: CircularProgressIndicator()),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFranchiseTile(String name, String? imageUrl, bool isDark) {
-    return Container(
-      width: 180,
-      margin: const EdgeInsets.only(left: 10),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.green.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: imageUrl != null 
-              ? Image.network(imageUrl, width: 35, height: 50, fit: BoxFit.cover)
-              : Container(color: Colors.grey, width: 35, height: 50),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              name,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : Colors.black87),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConfirmationTile(String name, String? imageUrl, bool isDark, {bool isChar = false}) {
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: (isChar ? Colors.orange : Colors.green).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: (isChar ? Colors.orange : Colors.green).withOpacity(0.5)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 45,
-            height: 60,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: imageUrl != null
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.broken_image, color: Colors.grey, size: 20),
-                      ),
-                      loadingBuilder: (context, child, progress) => progress == null
-                          ? child
-                          : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : Container(
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 20),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(isChar ? 'تم تأكيد الشخصية:' : 'تم تأكيد الأنمي الرئيسي:',
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[700])),
-                Text(
-                  name,
-                  style: TextStyle(fontWeight: FontWeight.bold, color: isDark ?
-                Colors.white : Colors.black87),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

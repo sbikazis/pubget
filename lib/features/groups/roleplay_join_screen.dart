@@ -12,7 +12,7 @@ import '../../models/invite_model.dart';
 
 import '../../providers/group_provider.dart';
 import '../../providers/user_provider.dart';
-import '../../providers/home_provider.dart'; // إضافة HomeProvider لجلب عدد المجموعات
+import '../../providers/home_provider.dart'; 
 
 import '../../services/firebase/firestore_service.dart';
 import '../../services/firebase/storage_service.dart';
@@ -23,6 +23,7 @@ import '../../core/theme/app_colors.dart';
 
 import '../../core/constants/roles.dart';
 import '../../core/constants/firestore_paths.dart';
+import '../../core/constants/group_type.dart';
 
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
@@ -83,7 +84,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   }
 
   // =========================================================
-  // ✅ التعديل: تحسين جلب معاينة الشخصية لدعم كافة المواسم
+  // ✅ التعديل المصلح: استخدام الدوال الموجودة فعلياً في AnimeApiService
   // =========================================================
   Future<void> _fetchCharacterPreview() async {
     final name = _characterController.text.trim();
@@ -97,8 +98,35 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
-      // البحث عن الصورة بشكل عام (التي تجلب أفضل نتيجة مطابقة للاسم من أي موسم)
-      final imageUrl = await AnimeApiService.getCharacterImage(name);
+      String? imageUrl;
+
+      // 1. إذا كانت المجموعة "تقمص مفتوح" -> نجلب الصورة مباشرة من أي مكان
+      if (widget.group.type == GroupType.openRoleplay) {
+        imageUrl = await AnimeApiService.getCharacterImage(name);
+      } 
+      // 2. إذا كانت المجموعة "محددة" -> نتحقق أولاً من وجودها في السلسلة
+      else {
+        final List<int> franchiseIds = widget.group.franchiseIds?.cast<int>() ?? [];
+        
+        // استخدام الدالة الموجودة لديك في الـ Service
+        final bool exists = await AnimeApiService.validateCharacterExists(
+          animeIds: franchiseIds.isNotEmpty ? franchiseIds : [widget.group.animeId!],
+          characterName: name,
+        );
+
+        if (exists) {
+          imageUrl = await AnimeApiService.getCharacterImage(name);
+        } else {
+          // محاولة أخيرة عبر البحث العام في السلسلة إذا كان الاسم معقداً
+          final bool existsInFranchise = await AnimeApiService.isCharacterInFranchise(
+            animeName: widget.group.animeName ?? '',
+            characterName: name,
+          );
+          if (existsInFranchise) {
+            imageUrl = await AnimeApiService.getCharacterImage(name);
+          }
+        }
+      }
 
       if (imageUrl != null) {
         setState(() {
@@ -107,7 +135,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم نجد صورة لهذه الشخصية، تأكد من كتابة الاسم بالإنجليزية بدقة')),
+          SnackBar(content: Text(widget.group.type == GroupType.openRoleplay 
+            ? 'لم نجد صورة لهذه الشخصية' 
+            : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
         );
       }
     } catch (e) {
@@ -124,7 +154,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       setState(() => _isProcessing = true);
 
       final groupProvider = context.read<GroupProvider>();
-      final homeProvider = context.read<HomeProvider>(); // جلب الـ HomeProvider
+      final homeProvider = context.read<HomeProvider>(); 
       final firestore = context.read<FirestoreService>();
       final storage = context.read<StorageService>();
 
@@ -136,7 +166,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
       final validator = GroupJoinValidator(firestoreService: firestore);
       
-      // ✅ تم التعديل: تمرير franchiseIds لدعم التحقق من السلسلة بالكامل
       final validation = await validator.validateJoin(
         user: currentUser,
         currentJoinedGroupsCount: homeProvider.joinedGroups.length,
@@ -146,7 +175,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         characterImageUrl: hasImage ? 'valid' : null,
         animeName: widget.group.animeName,
         animeId: widget.group.animeId,
-        franchiseIds: widget.group.franchiseIds?.cast<int>(), // ✅ إضافة الحقل الجديد هنا
+        franchiseIds: widget.group.franchiseIds?.cast<int>(), 
         inviterName: inviterName,
       );
 
@@ -161,9 +190,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
           onConfirm: () {
             Navigator.of(context, rootNavigator: true).pop();
-            if (validation.shouldShowUpgrade) {
-              // Navigator.pushNamed(context, '/premium');
-            }
           },
         );
         return;
@@ -182,7 +208,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           ? currentUser.username
           : "مستخدم جديد";
 
-      // 🔥 التعديل الجوهري: إضافة حالة البريميوم من كائن المستخدم الحالي للطلب
       final memberRequest = MemberModel(
         userId: currentUser.id,
         groupId: widget.group.id,
@@ -195,7 +220,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         realUserName: finalRealName,
         realUserImageUrl: currentUser.avatarUrl,
         invitedByUserId: validation.foundInviterId,
-        isPremium: currentUser.isPremium, // ✅ حقن حالة البريميوم هنا
+        isPremium: currentUser.isPremium, 
       );
 
       await groupProvider.sendJoinRequest(
@@ -269,6 +294,31 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (widget.group.type == GroupType.roleplay && widget.group.animeName != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.movie_filter, color: AppColors.primary, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'هذه المجموعة تتبع أنمي: ${widget.group.animeName}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [

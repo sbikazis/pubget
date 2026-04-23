@@ -10,9 +10,10 @@ class GroupModel {
   final String imageUrl;
 
   final GroupType type;
-  final String? animeName; // اسم الأنمي للعرض
-  final dynamic animeId; // ✅ الـ ID لضمان دقة عمل الـ API الجديد
-  final List<dynamic>? franchiseIds; // ✅ التعديل الجديد: قائمة تحتوي على كافة معرفات أجزاء السلسلة
+  // ✅ الملاحظة: هذه الحقول تبقى nullable لدعم نوع التقمص المفتوح (Open Roleplay)
+  final String? animeName; 
+  final dynamic animeId; 
+  final List<dynamic>? franchiseIds; 
 
   final String founderId;
 
@@ -32,8 +33,8 @@ class GroupModel {
     required this.imageUrl,
     required this.type,
     this.animeName,
-    this.animeId, // ✅ إضافته هنا
-    this.franchiseIds, // ✅ إضافته هنا لتخزين أجزاء السلسلة
+    this.animeId, 
+    this.franchiseIds, 
     required this.founderId,
     required this.membersCount,
     required this.maxMembers,
@@ -50,10 +51,11 @@ class GroupModel {
       description: map['description'] ?? '',
       slogan: map['slogan'] ?? '',
       imageUrl: map['imageUrl'] ?? '',
+      // استخدام GroupType المحدث الذي يحتوي على openRoleplay
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
-      animeId: map['animeId'], // ✅ استخراجه من قاعدة البيانات
-      franchiseIds: map['franchiseIds'] ?? [], // ✅ استخراج قائمة الأجزاء
+      animeId: map['animeId'], 
+      franchiseIds: map['franchiseIds'] ?? [], 
       founderId: map['founderId'] ?? '',
       membersCount: map['membersCount'] ?? 0,
       maxMembers: map['maxMembers'] ?? 100,
@@ -75,9 +77,9 @@ class GroupModel {
       'slogan': slogan,
       'imageUrl': imageUrl,
       'type': type.name,
-      'animeName': animeName,
-      'animeId': animeId, // ✅ حفظه في قاعدة البيانات
-      'franchiseIds': franchiseIds, // ✅ حفظ قائمة الأجزاء في قاعدة البيانات
+      'animeName': animeName, // سيتم حفظه كـ null في حال التقمص المفتوح
+      'animeId': animeId, // سيتم حفظه كـ null في حال التقمص المفتوح
+      'franchiseIds': franchiseIds, 
       'founderId': founderId,
       'membersCount': membersCount,
       'maxMembers': maxMembers,
@@ -95,8 +97,8 @@ class GroupModel {
     String? imageUrl,
     GroupType? type,
     String? animeName,
-    dynamic animeId, // ✅ إضافته للـ CopyWith
-    List<dynamic>? franchiseIds, // ✅ إضافته للـ CopyWith
+    dynamic animeId, 
+    List<dynamic>? franchiseIds, 
     int? membersCount,
     int? maxMembers,
     bool? isPromoted,
@@ -110,8 +112,8 @@ class GroupModel {
       imageUrl: imageUrl ?? this.imageUrl,
       type: type ?? this.type,
       animeName: animeName ?? this.animeName,
-      animeId: animeId ?? this.animeId, // ✅ تحديث القيمة
-      franchiseIds: franchiseIds ?? this.franchiseIds, // ✅ تحديث القائمة
+      animeId: animeId ?? this.animeId, 
+      franchiseIds: franchiseIds ?? this.franchiseIds, 
       founderId: founderId,
       membersCount: membersCount ?? this.membersCount,
       maxMembers: maxMembers ?? this.maxMembers,

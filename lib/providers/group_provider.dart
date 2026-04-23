@@ -102,6 +102,7 @@ class GroupProvider extends ChangeNotifier {
         currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
       }
 
+      // التحقق من حجز الشخصية يظل فعالاً لمنع التكرار في كل الحالات
       if (requestMember.characterName != null) {
         final isTaken = await isCharacterReserved(
           groupId: groupId,
@@ -216,7 +217,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ الإصلاح النهائي: العودة لاستخدام _firestore الموثوق به مع ترتيب يدوي داخلي
   Stream<List<MemberModel>> streamJoinRequests({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupJoinRequests(groupId))
@@ -246,7 +246,7 @@ class GroupProvider extends ChangeNotifier {
         members.add(member);
       }
 
-      // ✅ ترتيب يدوي (البريميوم أولاً ثم التاريخ التنازلي) لضمان العمل مع أي Stream
+      // ترتيب المشتركين (Premium أولاً ثم الأحدث)
       members.sort((a, b) {
         if (a.isPremium && !b.isPremium) return -1;
         if (!a.isPremium && b.isPremium) return 1;
