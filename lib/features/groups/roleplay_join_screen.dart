@@ -1,4 +1,3 @@
-//RoleplayJoinScreen
 import 'dart:io';
 import 'dart:async'; 
 
@@ -183,6 +182,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           ? currentUser.username
           : "مستخدم جديد";
 
+      // 🔥 التعديل الجوهري: إضافة حالة البريميوم من كائن المستخدم الحالي للطلب
       final memberRequest = MemberModel(
         userId: currentUser.id,
         groupId: widget.group.id,
@@ -195,6 +195,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         realUserName: finalRealName,
         realUserImageUrl: currentUser.avatarUrl,
         invitedByUserId: validation.foundInviterId,
+        isPremium: currentUser.isPremium, // ✅ حقن حالة البريميوم هنا
       );
 
       await groupProvider.sendJoinRequest(

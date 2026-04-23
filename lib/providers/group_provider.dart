@@ -57,6 +57,7 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
+      // ✅ التعديل: التأكد من إرسال الكائن بكامل بياناته (بما فيها isPremium المحقونة من الشاشة)
       final requestRef = firestore
           .collection(FirestorePaths.groupJoinRequests(groupId))
           .doc(memberRequest.userId);
@@ -218,9 +219,13 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // ✅ التعديل: إضافة الترتيب المباشر (orderBy) داخل الاستعلام لضمان أولوية البريميوم برمجياً
   Stream<List<MemberModel>> streamJoinRequests({required String groupId}) {
-    return _firestore
-        .streamCollection(path: FirestorePaths.groupJoinRequests(groupId))
+    return FirebaseFirestore.instance
+        .collection(FirestorePaths.groupJoinRequests(groupId))
+        .orderBy('isPremium', descending: true) // البريميوم أولاً
+        .orderBy('joinedAt', descending: true)  // ثم الأحدث تاريخاً
+        .snapshots()
         .asyncMap((snapshot) async {
       List<MemberModel> members = [];
       for (var doc in snapshot.docs) {

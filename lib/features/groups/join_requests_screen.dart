@@ -200,12 +200,12 @@ class JoinRequestsScreen extends StatelessWidget {
             );
           }
 
-          // ✅ التعديل الأول (المنطق): ترتيب صارم يضع البريميوم أولاً ثم الأحدث تاريخاً
+          // ✅ التعديل الأول (المنطق): ترتيب يضع البريميوم أولاً ثم الأحدث تاريخاً
+          // ملاحظة: الـ Provider الآن يقوم بالترتيب من Firestore ولكن نؤكده هنا احتياطاً
           final requests = snapshot.data!;
           requests.sort((a, b) {
             if (a.isPremium && !b.isPremium) return -1;
             if (!a.isPremium && b.isPremium) return 1;
-            // إذا تساووا في حالة البريميوم، نرتب حسب التاريخ (الأحدث أولاً)
             return b.joinedAt.compareTo(a.joinedAt);
           });
 
@@ -221,7 +221,7 @@ class JoinRequestsScreen extends StatelessWidget {
                   : (req.realUserName ?? req.displayName ?? 'عضو جديد');
 
               return Container(
-                // ✅ التعديل الثاني (التصميم): تمييز بصري قوي للبريميوم
+                // ✅ التعديل الثاني (التصميم): التمييز البصري الذهبي يعتمد على الحقل المخزن
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   gradient: req.isPremium 
@@ -239,7 +239,7 @@ class JoinRequestsScreen extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: req.isPremium 
-                        ? const BorderSide(color: Color(0xFFD4AF37), width: 2.0) // إطار ذهبي أوضح
+                        ? const BorderSide(color: Color(0xFFD4AF37), width: 2.0) 
                         : (isDark ? const BorderSide(color: AppColors.darkBorder, width: 0.5) : BorderSide.none),
                   ),
                   elevation: req.isPremium ? 6 : 0,
