@@ -1,3 +1,4 @@
+// lib/services/api/anime_api_service.dart
 import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
@@ -58,14 +59,13 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ الدالة الجديدة: جلب كافة معرفات السلسلة (Franchise IDs)
-  // تقوم بجلب الـ Relations (الأجزاء، الأفلام، الأوفا) لتخزينها عند الإنشاء
+  // ✅ الدالة الجديدة: جلب معرفات السلسلة الكاملة (Franchise IDs)
   // =========================================================
   static Future<List<int>> getAnimeFranchiseIds(int malId) async {
     try {
       final url = Uri.parse('$_baseUrl/anime/$malId/relations');
       final response = await http.get(url, headers: _headers).timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 10),
       );
 
       if (response.statusCode != 200) return [malId];
@@ -73,21 +73,83 @@ class AnimeApiService {
       final data = jsonDecode(response.body);
       final List relations = data['data'] ?? [];
       
-      // نستخدم Set لتجنب التكرار ثم نحوله لـ List
-      Set<int> allIds = {malId};
+      Set<int> ids = {malId}; // نبدأ بالمعرف الأساسي
 
       for (var relation in relations) {
+        // نركز على العلاقات المباشرة (Sequel, Prequel, Full Story, Side Story, Spin-off)
         final List entries = relation['entry'] ?? [];
         for (var entry in entries) {
           if (entry['type'] == 'anime') {
-            allIds.add(entry['mal_id']);
+            ids.add(entry['mal_id']);
           }
         }
       }
-      return allIds.toList();
+      return ids.toList();
     } catch (e) {
       debugPrint("❌ API Error (getAnimeFranchiseIds): $e");
-      return [malId]; // في حال الفشل نكتفي بالـ ID الأساسي
+      return [malId];
+    }
+  }
+
+  // =========================================================
+  // ✅ الدالة الجديدة: جلب تفاصيل السلسلة كاملة (للعرض في الواجهة)
+  // =========================================================
+  static Future<List<Map<String, dynamic>>> getAnimeFranchiseFullDetails(int malId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/anime/$malId/relations');
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
+
+      List<Map<String, dynamic>> franchiseParts = [];
+
+      // جلب بيانات الأنمي الأساسي أولاً
+      final mainAnime = await searchAnimeById(malId);
+      if (mainAnime != null) franchiseParts.add(mainAnime);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List relations = data['data'] ?? [];
+
+        for (var relation in relations) {
+          final List entries = relation['entry'] ?? [];
+          for (var entry in entries) {
+            if (entry['type'] == 'anime') {
+              // جلب صورة واسم كل جزء مرتبط
+              final partDetails = await searchAnimeById(entry['mal_id']);
+              if (partDetails != null) {
+                franchiseParts.add(partDetails);
+              }
+            }
+          }
+        }
+      }
+      return franchiseParts;
+    } catch (e) {
+      debugPrint("❌ API Error (getAnimeFranchiseFullDetails): $e");
+      return [];
+    }
+  }
+
+  // دالة مساعدة لجلب أنمي معين بواسطة معرفه
+  static Future<Map<String, dynamic>?> searchAnimeById(int malId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/anime/$malId');
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 5),
+      );
+
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body)['data'];
+      return {
+        'id': data['mal_id'],
+        'title': data['title'],
+        'image_url': data['images']?['jpg']?['small_image_url'] ?? 
+                     data['images']?['jpg']?['image_url'],
+      };
+    } catch (e) {
+      return null;
     }
   }
 
@@ -157,7 +219,7 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ الدالة السابقة: التحقق من الشخصية في السلسلة الكاملة (B-Plan)
+  // ✅ التحقق من الشخصية في السلسلة الكاملة (Franchise)
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
@@ -167,7 +229,7 @@ class AnimeApiService {
     try {
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '5', 
+        'limit': '5',
       });
 
       final response = await http.get(url, headers: _headers).timeout(

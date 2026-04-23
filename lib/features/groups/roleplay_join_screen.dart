@@ -137,7 +137,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
       final validator = GroupJoinValidator(firestoreService: firestore);
       
-      // ✅ تم الإصلاح: تمرير المعاملات المطلوبة (user و عدد المجموعات الحالية)
+      // ✅ تم التعديل: تمرير franchiseIds لدعم التحقق من السلسلة بالكامل
       final validation = await validator.validateJoin(
         user: currentUser,
         currentJoinedGroupsCount: homeProvider.joinedGroups.length,
@@ -147,6 +147,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         characterImageUrl: hasImage ? 'valid' : null,
         animeName: widget.group.animeName,
         animeId: widget.group.animeId,
+        franchiseIds: widget.group.franchiseIds?.cast<int>(), // ✅ إضافة الحقل الجديد هنا
         inviterName: inviterName,
       );
 

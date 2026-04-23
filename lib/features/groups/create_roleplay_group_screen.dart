@@ -50,7 +50,9 @@ class _CreateRoleplayGroupScreenState
   String? _confirmedAnimeName;
   String? _confirmedAnimeImage;
   dynamic _confirmedAnimeId; 
-  List<int>? _confirmedFranchiseIds; // ✅ التعديل: متغير لتخزين قائمة معرفات السلسلة
+  
+  // ✅ التعديل: قائمة لتخزين بيانات السلسلة بالكامل (Id, Title, Image) للعرض
+  List<Map<String, dynamic>> _confirmedFranchiseData = [];
 
   bool _isVerifyingChar = false;
   String? _confirmedCharName;
@@ -78,22 +80,23 @@ class _CreateRoleplayGroupScreenState
       _isVerifyingAnime = true;
       _confirmedAnimeName = null;
       _confirmedAnimeId = null;
-      _confirmedFranchiseIds = null; // ✅ تصفير القائمة عند البحث الجديد
+      _confirmedFranchiseData = []; // ✅ تصفير بيانات السلسلة
       _confirmedCharName = null;
     });
 
     try {
       final result = await AnimeApiService.searchAnime(name);
       if (result != null) {
-        // ✅ التعديل: جلب شجرة المعرفات بالكامل بعد العثور على الأنمي
         final int malId = result['id'];
-        final franchiseIds = await AnimeApiService.getAnimeFranchiseIds(malId);
+        
+        // ✅ التعديل الذهبي: جلب بيانات السلسلة كاملة (تفاصيل وليس فقط IDs)
+        final franchiseFullData = await AnimeApiService.getAnimeFranchiseFullDetails(malId);
 
         setState(() {
           _confirmedAnimeName = result['title'];
           _confirmedAnimeImage = result['image_url'];
           _confirmedAnimeId = malId;
-          _confirmedFranchiseIds = franchiseIds; // ✅ تخزين القائمة كاملة
+          _confirmedFranchiseData = franchiseFullData; // ✅ تخزين القائمة الكاملة
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -191,13 +194,12 @@ class _CreateRoleplayGroupScreenState
   Future<void> _createGroup() async {
     final auth = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
-    final homeProvider = context.read<HomeProvider>(); // للتحقق من العدد الحالي
+    final homeProvider = context.read<HomeProvider>(); 
     final currentUser = auth.user;
 
     if (currentUser == null) return;
     if (!_formKey.currentState!.validate()) return;
 
-    // --- صمام الأمان البرمجي (التحقق الأخير قبل الرفع للسيرفر) ---
     final limitCheck = SubscriptionLimitsLogic.canCreateGroup(
       currentUser, 
       homeProvider.myGroups.length,
@@ -215,7 +217,6 @@ class _CreateRoleplayGroupScreenState
       );
       return;
     }
-    // ---------------------------------------------------------
 
     setState(() => _isLoading = true);
 
@@ -231,6 +232,11 @@ class _CreateRoleplayGroupScreenState
         );
       }
 
+      // ✅ استخراج الـ IDs فقط من القائمة المخزنة لرفعها للـ Firestore
+      final List<int> franchiseIds = _confirmedFranchiseData
+          .map((item) => item['id'] as int)
+          .toList();
+
       final group = GroupModel(
         id: groupId,
         name: _nameCtrl.text.trim(),
@@ -240,7 +246,7 @@ class _CreateRoleplayGroupScreenState
         type: GroupType.roleplay,
         animeName: _confirmedAnimeName!,
         animeId: _confirmedAnimeId, 
-        franchiseIds: _confirmedFranchiseIds, // ✅ حفظ المعرفات الكاملة في قاعدة البيانات
+        franchiseIds: franchiseIds, // ✅ حفظ السلسلة المكتشفة
         founderId: currentUser.id,
         membersCount: 1,
         maxMembers: currentUser.isPremium 
@@ -401,7 +407,7 @@ class _CreateRoleplayGroupScreenState
                                 setState(() {
                                   _confirmedAnimeName = null;
                                   _confirmedAnimeId = null; 
-                                  _confirmedFranchiseIds = null;
+                                  _confirmedFranchiseData = [];
                                   _confirmedCharName = null;
                                 });
                               }
@@ -432,8 +438,35 @@ class _CreateRoleplayGroupScreenState
                       ],
                     ),
 
+                    // ✅ التعديل: عرض قائمة الأجزاء بالكامل عند التحقق
                     if (_confirmedAnimeName != null)
-                      _buildConfirmationTile(_confirmedAnimeName!, _confirmedAnimeImage, isDark),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12, bottom: 8),
+                            child: Text(
+                              "السلسلة المكتشفة (${_confirmedFranchiseData.length}):",
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 90,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _confirmedFranchiseData.length,
+                              itemBuilder: (context, index) {
+                                final item = _confirmedFranchiseData[index];
+                                return _buildFranchiseTile(
+                                  item['title'], 
+                                  item['image_url'], 
+                                  isDark
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
 
                     const Divider(height: 40),
 
@@ -486,7 +519,7 @@ class _CreateRoleplayGroupScreenState
                     AppTextField(
                       controller: _charReasonCtrl,
                       label: 'لماذا اخترت هذه الشخصية؟',
-                      placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
+     placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
                       isMultiline: true,
                       maxLength: 150,
                     ),
@@ -523,6 +556,39 @@ class _CreateRoleplayGroupScreenState
                 child: LoadingWidget(message: 'جاري تأسيس الإمبراطورية...'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ الودجت الخاص بعرض عناصر السلسلة (Franchise) في قائمة أفقية
+  Widget _buildFranchiseTile(String name, String? imageUrl, bool isDark) {
+    return Container(
+      width: 180,
+      margin: const EdgeInsets.only(left: 10),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.green.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: imageUrl != null 
+              ? Image.network(imageUrl, width: 35, height: 50, fit: BoxFit.cover)
+              : Container(color: Colors.grey, width: 35, height: 50),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : Colors.black87),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -567,7 +633,7 @@ class _CreateRoleplayGroupScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(isChar ? 'تم تأكيد الشخصية:' : 'تم تأكيد الأنمي:',
+                Text(isChar ? 'تم تأكيد الشخصية:' : 'تم تأكيد الأنمي الرئيسي:',
                   style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[700])),
                 Text(
                   name,

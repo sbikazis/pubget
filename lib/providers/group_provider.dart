@@ -1,4 +1,4 @@
-//GroupProvider
+// lib/providers/group_provider.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -402,6 +402,8 @@ class GroupProvider extends ChangeNotifier {
       final founder = RoleAssignmentLogic.createFounder(member: founderMember).copyWith(isManualRole: true);
 
       final groupRef = firestore.collection(FirestorePaths.groups).doc(group.id);
+      
+      // ✅ الحقل franchiseIds يتم تخزينه الآن بشكل آلي ضمن toMap() للموديل
       batch.set(groupRef, group.toMap());
 
       final memberRef = firestore

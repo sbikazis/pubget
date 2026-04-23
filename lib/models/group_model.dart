@@ -1,3 +1,4 @@
+// lib/models/group_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/group_type.dart';
 
@@ -10,8 +11,8 @@ class GroupModel {
 
   final GroupType type;
   final String? animeName; // اسم الأنمي للعرض
-  final dynamic animeId; // الـ ID الأساسي
-  final List<int>? franchiseIds; // ✅ التعديل: إضافة قائمة المعرفات للسلسلة بالكامل
+  final dynamic animeId; // ✅ الـ ID لضمان دقة عمل الـ API الجديد
+  final List<dynamic>? franchiseIds; // ✅ التعديل الجديد: قائمة تحتوي على كافة معرفات أجزاء السلسلة
 
   final String founderId;
 
@@ -31,8 +32,8 @@ class GroupModel {
     required this.imageUrl,
     required this.type,
     this.animeName,
-    this.animeId,
-    this.franchiseIds, // ✅ إضافته هنا
+    this.animeId, // ✅ إضافته هنا
+    this.franchiseIds, // ✅ إضافته هنا لتخزين أجزاء السلسلة
     required this.founderId,
     required this.membersCount,
     required this.maxMembers,
@@ -51,11 +52,8 @@ class GroupModel {
       imageUrl: map['imageUrl'] ?? '',
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
-      animeId: map['animeId'],
-      // ✅ استخراج قائمة المعرفات وتحويلها لـ List<int>
-      franchiseIds: map['franchiseIds'] != null 
-          ? List<int>.from(map['franchiseIds']) 
-          : null,
+      animeId: map['animeId'], // ✅ استخراجه من قاعدة البيانات
+      franchiseIds: map['franchiseIds'] ?? [], // ✅ استخراج قائمة الأجزاء
       founderId: map['founderId'] ?? '',
       membersCount: map['membersCount'] ?? 0,
       maxMembers: map['maxMembers'] ?? 100,
@@ -78,8 +76,8 @@ class GroupModel {
       'imageUrl': imageUrl,
       'type': type.name,
       'animeName': animeName,
-      'animeId': animeId,
-      'franchiseIds': franchiseIds, // ✅ حفظ القائمة في قاعدة البيانات
+      'animeId': animeId, // ✅ حفظه في قاعدة البيانات
+      'franchiseIds': franchiseIds, // ✅ حفظ قائمة الأجزاء في قاعدة البيانات
       'founderId': founderId,
       'membersCount': membersCount,
       'maxMembers': maxMembers,
@@ -97,8 +95,8 @@ class GroupModel {
     String? imageUrl,
     GroupType? type,
     String? animeName,
-    dynamic animeId,
-    List<int>? franchiseIds, // ✅ إضافته للـ CopyWith
+    dynamic animeId, // ✅ إضافته للـ CopyWith
+    List<dynamic>? franchiseIds, // ✅ إضافته للـ CopyWith
     int? membersCount,
     int? maxMembers,
     bool? isPromoted,
@@ -112,7 +110,7 @@ class GroupModel {
       imageUrl: imageUrl ?? this.imageUrl,
       type: type ?? this.type,
       animeName: animeName ?? this.animeName,
-      animeId: animeId ?? this.animeId,
+      animeId: animeId ?? this.animeId, // ✅ تحديث القيمة
       franchiseIds: franchiseIds ?? this.franchiseIds, // ✅ تحديث القائمة
       founderId: founderId,
       membersCount: membersCount ?? this.membersCount,

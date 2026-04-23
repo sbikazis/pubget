@@ -75,7 +75,7 @@ class GroupJoinValidator {
     required String? characterImageUrl,
     required String? animeName,
     required dynamic animeId, 
-    List<int>? franchiseIds, // ✅ التعديل: تمرير قائمة معرفات السلسلة بالكامل
+    List<dynamic>? franchiseIds, // ✅ التعديل: استلام القائمة كـ dynamic لتجنب أخطاء النوع
     String? inviterName,
   }) async {
    
@@ -145,10 +145,21 @@ class GroupJoinValidator {
       
       bool characterExists = false;
       
-      // 1. إعداد قائمة المعرفات التي سنفحصها (المعرف الأساسي + قائمة السلسلة)
-      Set<int> idsToSearch = {if (animeId is int) animeId else int.parse(animeId.toString())};
+      // 1. إعداد قائمة المعرفات التي سنفحصها بشكل آمن (المعرف الأساسي + قائمة السلسلة)
+      Set<int> idsToSearch = {};
+      
+      // تحويل animeId الأساسي إلى int بأمان
+      if (animeId != null) {
+        final int? parsedId = int.tryParse(animeId.toString());
+        if (parsedId != null) idsToSearch.add(parsedId);
+      }
+
+      // إضافة بقية معرفات السلسلة
       if (franchiseIds != null) {
-        idsToSearch.addAll(franchiseIds);
+        for (var id in franchiseIds) {
+          final int? parsedId = int.tryParse(id.toString());
+          if (parsedId != null) idsToSearch.add(parsedId);
+        }
       }
 
       // 2. الحلقة التكرارية للفحص في كل أجزاء الأنمي
