@@ -10,7 +10,8 @@ class GroupModel {
 
   final GroupType type;
   final String? animeName; // اسم الأنمي للعرض
-  final dynamic animeId; // ✅ التعديل: إضافة الـ ID لضمان دقة عمل الـ API الجديد
+  final dynamic animeId; // الـ ID الأساسي
+  final List<int>? franchiseIds; // ✅ التعديل: إضافة قائمة المعرفات للسلسلة بالكامل
 
   final String founderId;
 
@@ -30,7 +31,8 @@ class GroupModel {
     required this.imageUrl,
     required this.type,
     this.animeName,
-    this.animeId, // ✅ إضافته هنا
+    this.animeId,
+    this.franchiseIds, // ✅ إضافته هنا
     required this.founderId,
     required this.membersCount,
     required this.maxMembers,
@@ -49,7 +51,11 @@ class GroupModel {
       imageUrl: map['imageUrl'] ?? '',
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
-      animeId: map['animeId'], // ✅ استخراجه من قاعدة البيانات
+      animeId: map['animeId'],
+      // ✅ استخراج قائمة المعرفات وتحويلها لـ List<int>
+      franchiseIds: map['franchiseIds'] != null 
+          ? List<int>.from(map['franchiseIds']) 
+          : null,
       founderId: map['founderId'] ?? '',
       membersCount: map['membersCount'] ?? 0,
       maxMembers: map['maxMembers'] ?? 100,
@@ -72,7 +78,8 @@ class GroupModel {
       'imageUrl': imageUrl,
       'type': type.name,
       'animeName': animeName,
-      'animeId': animeId, // ✅ حفظه في قاعدة البيانات
+      'animeId': animeId,
+      'franchiseIds': franchiseIds, // ✅ حفظ القائمة في قاعدة البيانات
       'founderId': founderId,
       'membersCount': membersCount,
       'maxMembers': maxMembers,
@@ -90,7 +97,8 @@ class GroupModel {
     String? imageUrl,
     GroupType? type,
     String? animeName,
-    dynamic animeId, // ✅ إضافته للـ CopyWith
+    dynamic animeId,
+    List<int>? franchiseIds, // ✅ إضافته للـ CopyWith
     int? membersCount,
     int? maxMembers,
     bool? isPromoted,
@@ -104,7 +112,8 @@ class GroupModel {
       imageUrl: imageUrl ?? this.imageUrl,
       type: type ?? this.type,
       animeName: animeName ?? this.animeName,
-      animeId: animeId ?? this.animeId, // ✅ تحديث القيمة
+      animeId: animeId ?? this.animeId,
+      franchiseIds: franchiseIds ?? this.franchiseIds, // ✅ تحديث القائمة
       founderId: founderId,
       membersCount: membersCount ?? this.membersCount,
       maxMembers: maxMembers ?? this.maxMembers,

@@ -50,6 +50,7 @@ class _CreateRoleplayGroupScreenState
   String? _confirmedAnimeName;
   String? _confirmedAnimeImage;
   dynamic _confirmedAnimeId; 
+  List<int>? _confirmedFranchiseIds; // ✅ التعديل: متغير لتخزين قائمة معرفات السلسلة
 
   bool _isVerifyingChar = false;
   String? _confirmedCharName;
@@ -77,16 +78,22 @@ class _CreateRoleplayGroupScreenState
       _isVerifyingAnime = true;
       _confirmedAnimeName = null;
       _confirmedAnimeId = null;
+      _confirmedFranchiseIds = null; // ✅ تصفير القائمة عند البحث الجديد
       _confirmedCharName = null;
     });
 
     try {
       final result = await AnimeApiService.searchAnime(name);
       if (result != null) {
+        // ✅ التعديل: جلب شجرة المعرفات بالكامل بعد العثور على الأنمي
+        final int malId = result['id'];
+        final franchiseIds = await AnimeApiService.getAnimeFranchiseIds(malId);
+
         setState(() {
           _confirmedAnimeName = result['title'];
           _confirmedAnimeImage = result['image_url'];
-          _confirmedAnimeId = result['id'];
+          _confirmedAnimeId = malId;
+          _confirmedFranchiseIds = franchiseIds; // ✅ تخزين القائمة كاملة
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -233,6 +240,7 @@ class _CreateRoleplayGroupScreenState
         type: GroupType.roleplay,
         animeName: _confirmedAnimeName!,
         animeId: _confirmedAnimeId, 
+        franchiseIds: _confirmedFranchiseIds, // ✅ حفظ المعرفات الكاملة في قاعدة البيانات
         founderId: currentUser.id,
         membersCount: 1,
         maxMembers: currentUser.isPremium 
@@ -393,6 +401,7 @@ class _CreateRoleplayGroupScreenState
                                 setState(() {
                                   _confirmedAnimeName = null;
                                   _confirmedAnimeId = null; 
+                                  _confirmedFranchiseIds = null;
                                   _confirmedCharName = null;
                                 });
                               }

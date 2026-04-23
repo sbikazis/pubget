@@ -58,6 +58,40 @@ class AnimeApiService {
   }
 
   // =========================================================
+  // ✅ الدالة الجديدة: جلب كافة معرفات السلسلة (Franchise IDs)
+  // تقوم بجلب الـ Relations (الأجزاء، الأفلام، الأوفا) لتخزينها عند الإنشاء
+  // =========================================================
+  static Future<List<int>> getAnimeFranchiseIds(int malId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/anime/$malId/relations');
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 15),
+      );
+
+      if (response.statusCode != 200) return [malId];
+
+      final data = jsonDecode(response.body);
+      final List relations = data['data'] ?? [];
+      
+      // نستخدم Set لتجنب التكرار ثم نحوله لـ List
+      Set<int> allIds = {malId};
+
+      for (var relation in relations) {
+        final List entries = relation['entry'] ?? [];
+        for (var entry in entries) {
+          if (entry['type'] == 'anime') {
+            allIds.add(entry['mal_id']);
+          }
+        }
+      }
+      return allIds.toList();
+    } catch (e) {
+      debugPrint("❌ API Error (getAnimeFranchiseIds): $e");
+      return [malId]; // في حال الفشل نكتفي بالـ ID الأساسي
+    }
+  }
+
+  // =========================================================
   // VALIDATE ANIME EXISTS
   // =========================================================
 
@@ -123,8 +157,7 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ الدالة الجديدة: التحقق من الشخصية في السلسلة الكاملة (Franchise)
-  // لحل مشكلة الشخصيات التي تظهر في مواسم غير الموسم المختار للمجموعة
+  // ✅ الدالة السابقة: التحقق من الشخصية في السلسلة الكاملة (B-Plan)
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
@@ -132,10 +165,9 @@ class AnimeApiService {
     required String characterName,
   }) async {
     try {
-      // 1. البحث عن الشخصية بشكل عام في قاعدة البيانات
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '5', // فحص أول 5 نتائج لزيادة الدقة
+        'limit': '5', 
       });
 
       final response = await http.get(url, headers: _headers).timeout(
@@ -148,14 +180,12 @@ class AnimeApiService {
 
       final cleanAnimeName = _sanitize(animeName);
 
-      // 2. التحقق من كل نتيجة: هل تنتمي للأنمي المطلوب؟
       for (final charData in data['data']) {
         final List animeList = charData['anime'] ?? [];
         
         for (final animeEntry in animeList) {
           final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
           
-          // إذا كان اسم الأنمي المرتبط بالشخصية يحتوي على اسم الأنمي الأساسي للمجموعة
           if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
             return true;
           }
@@ -174,7 +204,6 @@ class AnimeApiService {
 
   static Future<String?> getCharacterImage(String characterName) async {
     try {
-      // ✅ التعديل: استخدام replace لضمان تشفير اسم الشخصية بشكل سليم في الرابط
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
         'limit': '1',

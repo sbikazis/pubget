@@ -67,21 +67,22 @@ class GroupJoinValidator {
 
   /// Main Entry Point
   Future<JoinValidationResult> validateJoin({
-    required UserModel user, // ✅ التعديل: تمرير المستخدم للفحص الأولي
-    required int currentJoinedGroupsCount, // ✅ التعديل: تمرير عدد المجموعات الحالية
+    required UserModel user, 
+    required int currentJoinedGroupsCount, 
     required String groupId,
     required GroupType groupType,
     required String? characterName,
     required String? characterImageUrl,
     required String? animeName,
     required dynamic animeId, 
+    List<int>? franchiseIds, // ✅ التعديل: تمرير قائمة معرفات السلسلة بالكامل
     String? inviterName,
   }) async {
    
     String? inviterId;
 
     try {
-      // 🟢 الخطوة 0: التحقق من حدود الاشتراك (قبل أي عملية مكلفة)
+      // 🟢 الخطوة 0: التحقق من حدود الاشتراك
       final limitResult = SubscriptionLimitsLogic.canJoinGroup(
         user,
         currentJoinedGroupsCount,
@@ -94,7 +95,7 @@ class GroupJoinValidator {
         );
       }
 
-      // 1. التحقق من "اسم الداعي" أولاً (محلي سريع)
+      // 1. التحقق من "اسم الداعي"
       if (inviterName != null && inviterName.trim().isNotEmpty) {
         inviterId = await _verifyInviter(groupId, inviterName);
         if (inviterId == null) {
@@ -102,12 +103,10 @@ class GroupJoinValidator {
         }
       }
 
-      // إذا كانت المجموعة عامة ولا تتطلب شخصية، نكتفي بالنجاح هنا
       if (!groupType.requiresCharacter) {
         return JoinValidationResult.success(inviterId: inviterId);
       }
 
-      // التحقق من المدخلات الأساسية للشخصية
       if (characterName == null || characterName.trim().isEmpty) {
         return JoinValidationResult.failure('الرجاء إدخال اسم الشخصية');
       }
@@ -128,7 +127,7 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة، يرجى التواصل مع الشوغو.');
       }
 
-      // فحص حجز الشخصية في Firestore (مفتاح فريد)
+      // فحص حجز الشخصية في Firestore
       final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
       final reservedDoc = await _firestoreService.getDocument(
@@ -141,19 +140,32 @@ class GroupJoinValidator {
       }
 
       // =========================================================
-      // ✅ التعديل الذهبي: منطق التحقق الثنائي (Double Verification)
+      // ✅ التعديل الجوهري: فحص السلسلة بالكامل (Franchise Loop)
       // =========================================================
       
-      // المرحلة أ: البحث في الموسم المحدد (السريع والمعتاد)
-      bool characterExists = await AnimeApiService.validateCharacterExists(
-        animeId: animeId, 
-        characterName: formattedCharacterName,
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () => throw TimeoutException('استغرقت عملية التحقق وقتاً طويلاً، خادم الأنمي بطيء حالياً.')
-      );
+      bool characterExists = false;
+      
+      // 1. إعداد قائمة المعرفات التي سنفحصها (المعرف الأساسي + قائمة السلسلة)
+      Set<int> idsToSearch = {if (animeId is int) animeId else int.parse(animeId.toString())};
+      if (franchiseIds != null) {
+        idsToSearch.addAll(franchiseIds);
+      }
 
-      // المرحلة ب: إذا لم نجدها في الموسم، نبحث في السلسلة الكاملة (المنقذ)
+      // 2. الحلقة التكرارية للفحص في كل أجزاء الأنمي
+      for (int id in idsToSearch) {
+        try {
+          characterExists = await AnimeApiService.validateCharacterExists(
+            animeId: id, 
+            characterName: formattedCharacterName,
+          ).timeout(const Duration(seconds: 10));
+
+          if (characterExists) break; // إذا وجدناها في أي جزء، نتوقف ونعتمد النجاح
+        } catch (_) {
+          continue; // إذا فشل طلب واحد ننتقل للتالي
+        }
+      }
+
+      // 3. المرحلة الاحتياطية: البحث العام في السلسلة (المنقذ الأخير)
       if (!characterExists && animeName != null) {
         characterExists = await AnimeApiService.isCharacterInFranchise(
           animeName: animeName,
@@ -163,7 +175,7 @@ class GroupJoinValidator {
 
       if (!characterExists) {
         return JoinValidationResult.failure(
-          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة شخصيات هذا الأنمي المعتمدة. تأكد من كتابة الاسم بدقة بالإنجليزية كما هو في MyAnimeList.',
+          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة شخصيات هذا الأنمي أو أجزائه المعتمدة. تأكد من كتابة الاسم بدقة بالإنجليزية.',
         );
       }
 
