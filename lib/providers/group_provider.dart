@@ -57,7 +57,6 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
-      // ✅ التعديل: التأكد من إرسال الكائن بكامل بياناته (بما فيها isPremium المحقونة من الشاشة)
       final requestRef = firestore
           .collection(FirestorePaths.groupJoinRequests(groupId))
           .doc(memberRequest.userId);
@@ -96,7 +95,6 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      // 🔥 التعديل الحاسم: جلب حالة البريميوم الحقيقية للمستخدم من وثيقة Users
       final userDoc = await firestore.collection('Users').doc(requestMember.userId).get();
       bool currentPremiumStatus = false;
       if (userDoc.exists) {
@@ -116,7 +114,6 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // ✅ ندمج حالة البريميوم الفعلية داخل كائن العضو الجديد
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
@@ -219,13 +216,10 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ التعديل: إضافة الترتيب المباشر (orderBy) داخل الاستعلام لضمان أولوية البريميوم برمجياً
+  // ✅ الإصلاح النهائي: العودة لاستخدام _firestore الموثوق به مع ترتيب يدوي داخلي
   Stream<List<MemberModel>> streamJoinRequests({required String groupId}) {
-    return FirebaseFirestore.instance
-        .collection(FirestorePaths.groupJoinRequests(groupId))
-        .orderBy('isPremium', descending: true) // البريميوم أولاً
-        .orderBy('joinedAt', descending: true)  // ثم الأحدث تاريخاً
-        .snapshots()
+    return _firestore
+        .streamCollection(path: FirestorePaths.groupJoinRequests(groupId))
         .asyncMap((snapshot) async {
       List<MemberModel> members = [];
       for (var doc in snapshot.docs) {
@@ -251,6 +245,14 @@ class GroupProvider extends ChangeNotifier {
         }
         members.add(member);
       }
+
+      // ✅ ترتيب يدوي (البريميوم أولاً ثم التاريخ التنازلي) لضمان العمل مع أي Stream
+      members.sort((a, b) {
+        if (a.isPremium && !b.isPremium) return -1;
+        if (!a.isPremium && b.isPremium) return 1;
+        return b.joinedAt.compareTo(a.joinedAt);
+      });
+
       return members;
     });
   }
@@ -408,7 +410,6 @@ class GroupProvider extends ChangeNotifier {
 
       final groupRef = firestore.collection(FirestorePaths.groups).doc(group.id);
       
-      // ✅ الحقل franchiseIds يتم تخزينه الآن بشكل آلي ضمن toMap() للموديل
       batch.set(groupRef, group.toMap());
 
       final memberRef = firestore
@@ -532,9 +533,6 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
-  // =========================================================
-  // 🔥 التعديل الجوهري لحل مشكلة الصور (Stream Members)
-  // =========================================================
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
@@ -545,7 +543,6 @@ class GroupProvider extends ChangeNotifier {
         var member = MemberModel.fromMap(doc.data());
         
         try {
-          // جلب بيانات المستخدم الحقيقية من كولكشن Users لضمان تحديث الصورة الشخصية
           final userData = await FirebaseFirestore.instance
               .collection('Users')
               .doc(member.userId.trim())
@@ -554,7 +551,6 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
-            // دمج الصورة والاسم وحالة البريميوم الحقيقية في كائن العضو
             member = member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
