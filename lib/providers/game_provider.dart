@@ -1,3 +1,4 @@
+// lib/providers/game_provider.dart
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/game_model.dart';
@@ -108,17 +109,34 @@ class GameProvider extends ChangeNotifier {
     required String groupId,
     required String gameId,
     required String userId,
-    required dynamic animeId, // ✅ التعديل: تغيير animeName إلى animeId ليتوافق مع الـ API الجديد
+    required dynamic animeId, 
     required String characterName,
+    List<dynamic>? franchiseIds, // ✅ أضفنا هذا الاختياري لزيادة دقة الفحص إذا توفرت السلسلة
   }) async {
-    // ✅ استدعاء الـ API باستخدام animeId الموثوق
+    
+    // ✅ تحضير قائمة المعرفات للفحص الشامل
+    List<int> idsToSearch = [];
+    final int? mainId = int.tryParse(animeId.toString());
+    if (mainId != null) idsToSearch.add(mainId);
+
+    // إذا كانت المجموعة تملك قائمة أجزاء مخزنة، نضيفها
+    if (franchiseIds != null) {
+      for (var id in franchiseIds) {
+        final int? parsedId = int.tryParse(id.toString());
+        if (parsedId != null && !idsToSearch.contains(parsedId)) {
+          idsToSearch.add(parsedId);
+        }
+      }
+    }
+
+    // ✅ الإصلاح: استدعاء الـ API بالبارامتر الصحيح animeIds
     final valid = await AnimeApiService.validateCharacterExists(
-      animeId: animeId,
+      animeIds: idsToSearch,
       characterName: characterName,
     );
 
     if (!valid) {
-      throw Exception("Character not valid for this anime");
+      throw Exception("هذه الشخصية غير موجودة في هذا الأنمي أو أجزائه");
     }
 
     final data = await _firestore.getDocument(

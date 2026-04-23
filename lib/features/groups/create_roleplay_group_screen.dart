@@ -90,7 +90,8 @@ class _CreateRoleplayGroupScreenState
         final int malId = result['id'];
         
         // ✅ التعديل الذهبي: جلب بيانات السلسلة كاملة (تفاصيل وليس فقط IDs)
-        final franchiseFullData = await AnimeApiService.getAnimeFranchiseFullDetails(malId);
+        // ملاحظة: تم تعديل الدالة في الـ Service لتستقبل الاسم أيضاً لضمان البحث الشامل
+        final franchiseFullData = await AnimeApiService.getAnimeFranchiseFullDetails(malId, result['title']);
 
         setState(() {
           _confirmedAnimeName = result['title'];
@@ -110,9 +111,10 @@ class _CreateRoleplayGroupScreenState
     }
   }
 
+  // ✅ التعديل الجذري: فحص الشخصية للمؤسس عبر السلسلة كاملة + بحث عام
   Future<void> _verifyCharacter() async {
     final charName = _charNameCtrl.text.trim();
-    if (_confirmedAnimeId == null) {
+    if (_confirmedAnimeId == null || _confirmedAnimeName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء التحقق من اسم الأنمي أولاً')),
       );
@@ -131,10 +133,26 @@ class _CreateRoleplayGroupScreenState
     });
 
     try {
-      final exists = await AnimeApiService.validateCharacterExists(
-        animeId: _confirmedAnimeId!,
+      // 1. تحضير قائمة المعرفات (Franchise IDs)
+      final List<int> franchiseIds = _confirmedFranchiseData
+          .map((item) => item['id'] as int)
+          .toList();
+      
+      if (franchiseIds.isEmpty) franchiseIds.add(_confirmedAnimeId);
+
+      // 2. الفحص الأول: البحث داخل معرفات السلسلة المكتشفة
+      bool exists = await AnimeApiService.validateCharacterExists(
+        animeIds: franchiseIds, // نمرر القائمة كاملة كما في الخدمة المحدثة
         characterName: charName,
       );
+
+      // 3. الفحص الثاني: إذا فشل الأول، نقوم بالبحث العام (لجلب أمثال أكزا)
+      if (!exists) {
+        exists = await AnimeApiService.isCharacterInFranchise(
+          animeName: _confirmedAnimeName!,
+          characterName: charName,
+        );
+      }
 
       if (exists) {
         final charImageUrl = await AnimeApiService.getCharacterImage(charName);
@@ -144,7 +162,7 @@ class _CreateRoleplayGroupScreenState
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('هذه الشخصية غير موجودة في الأنمي المحدد')),
+          const SnackBar(content: Text('هذه الشخصية غير موجودة في السلسلة المحددة')),
         );
       }
     } catch (e) {
@@ -438,7 +456,6 @@ class _CreateRoleplayGroupScreenState
                       ],
                     ),
 
-                    // ✅ التعديل: عرض قائمة الأجزاء بالكامل عند التحقق
                     if (_confirmedAnimeName != null)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,7 +536,7 @@ class _CreateRoleplayGroupScreenState
                     AppTextField(
                       controller: _charReasonCtrl,
                       label: 'لماذا اخترت هذه الشخصية؟',
-     placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
+                      placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
                       isMultiline: true,
                       maxLength: 150,
                     ),
@@ -561,7 +578,6 @@ class _CreateRoleplayGroupScreenState
     );
   }
 
-  // ✅ الودجت الخاص بعرض عناصر السلسلة (Franchise) في قائمة أفقية
   Widget _buildFranchiseTile(String name, String? imageUrl, bool isDark) {
     return Container(
       width: 180,

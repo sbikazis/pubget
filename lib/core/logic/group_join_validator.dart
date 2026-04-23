@@ -5,14 +5,14 @@ import 'package:pubget/core/constants/firestore_paths.dart';
 import 'package:pubget/core/utils/validators.dart';
 import 'package:pubget/services/api/anime_api_service.dart';
 import '../../../services/firebase/firestore_service.dart';
-import '../../models/user_model.dart'; // إضافة استيراد الموديل
-import 'subscription_limits_logic.dart'; // إضافة منطق الحدود
+import '../../models/user_model.dart';
+import 'subscription_limits_logic.dart';
 
 class JoinValidationResult {
   final bool isValid;
   final String? errorMessage;
   final String? foundInviterId;
-  final bool shouldShowUpgrade; // إضافة حقل لدعم واجهة الترقية
+  final bool shouldShowUpgrade;
 
   const JoinValidationResult({
     required this.isValid,
@@ -44,12 +44,10 @@ class GroupJoinValidator {
     required FirestoreService firestoreService,
   }) : _firestoreService = firestoreService;
 
-  // ✅ التعديل: تبسيط التنظيف ليكون متوافقاً مع الـ API دون تغيير ترتيب الكلمات
   String _formatCharacterName(String name) {
     return name.trim(); 
   }
 
-  /// ✅ وظيفة البحث عن الداعي للتأكد من وجوده في المجموعة
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
     final name = inviterName.trim();
     if (name.isEmpty) return null;
@@ -65,7 +63,6 @@ class GroupJoinValidator {
     return null;
   }
 
-  /// Main Entry Point
   Future<JoinValidationResult> validateJoin({
     required UserModel user, 
     required int currentJoinedGroupsCount, 
@@ -75,14 +72,13 @@ class GroupJoinValidator {
     required String? characterImageUrl,
     required String? animeName,
     required dynamic animeId, 
-    List<dynamic>? franchiseIds, // ✅ التعديل: استلام القائمة كـ dynamic لتجنب أخطاء النوع
+    List<dynamic>? franchiseIds, 
     String? inviterName,
   }) async {
    
     String? inviterId;
 
     try {
-      // 🟢 الخطوة 0: التحقق من حدود الاشتراك
       final limitResult = SubscriptionLimitsLogic.canJoinGroup(
         user,
         currentJoinedGroupsCount,
@@ -95,7 +91,6 @@ class GroupJoinValidator {
         );
       }
 
-      // 1. التحقق من "اسم الداعي"
       if (inviterName != null && inviterName.trim().isNotEmpty) {
         inviterId = await _verifyInviter(groupId, inviterName);
         if (inviterId == null) {
@@ -122,12 +117,10 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      // التحقق من وجود AnimeId
       if (animeId == null) {
-        return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة، يرجى التواصل مع الشوغو.');
+        return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.');
       }
 
-      // فحص حجز الشخصية في Firestore
       final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
       final reservedDoc = await _firestoreService.getDocument(
@@ -136,25 +129,19 @@ class GroupJoinValidator {
       );
 
       if (reservedDoc != null) {
-        return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة من قبل عضو آخر.');
+        return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة.');
       }
 
       // =========================================================
-      // ✅ التعديل الجوهري: فحص السلسلة بالكامل (Franchise Loop)
+      // ✅ الإصلاح: إرسال قائمة الـ IDs كاملة للدالة الجديدة في الـ API
       // =========================================================
       
-      bool characterExists = false;
-      
-      // 1. إعداد قائمة المعرفات التي سنفحصها بشكل آمن (المعرف الأساسي + قائمة السلسلة)
+      // 1. تجميع كل الـ IDs في قائمة واحدة من نوع List<int>
       Set<int> idsToSearch = {};
       
-      // تحويل animeId الأساسي إلى int بأمان
-      if (animeId != null) {
-        final int? parsedId = int.tryParse(animeId.toString());
-        if (parsedId != null) idsToSearch.add(parsedId);
-      }
+      final int? mainId = int.tryParse(animeId.toString());
+      if (mainId != null) idsToSearch.add(mainId);
 
-      // إضافة بقية معرفات السلسلة
       if (franchiseIds != null) {
         for (var id in franchiseIds) {
           final int? parsedId = int.tryParse(id.toString());
@@ -162,21 +149,13 @@ class GroupJoinValidator {
         }
       }
 
-      // 2. الحلقة التكرارية للفحص في كل أجزاء الأنمي
-      for (int id in idsToSearch) {
-        try {
-          characterExists = await AnimeApiService.validateCharacterExists(
-            animeId: id, 
-            characterName: formattedCharacterName,
-          ).timeout(const Duration(seconds: 10));
+      // 2. استدعاء الدالة المحدثة (لاحظ تغيير اسم البارامتر لـ animeIds وإرسال القائمة كاملة)
+      bool characterExists = await AnimeApiService.validateCharacterExists(
+        animeIds: idsToSearch.toList(), // القائمة كاملة هنا
+        characterName: formattedCharacterName,
+      ).timeout(const Duration(seconds: 15));
 
-          if (characterExists) break; // إذا وجدناها في أي جزء، نتوقف ونعتمد النجاح
-        } catch (_) {
-          continue; // إذا فشل طلب واحد ننتقل للتالي
-        }
-      }
-
-      // 3. المرحلة الاحتياطية: البحث العام في السلسلة (المنقذ الأخير)
+      // 3. المرحلة الاحتياطية (البحث العام) في حال فشل الفحص بالـ IDs
       if (!characterExists && animeName != null) {
         characterExists = await AnimeApiService.isCharacterInFranchise(
           animeName: animeName,
@@ -186,16 +165,16 @@ class GroupJoinValidator {
 
       if (!characterExists) {
         return JoinValidationResult.failure(
-          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة شخصيات هذا الأنمي أو أجزائه المعتمدة. تأكد من كتابة الاسم بدقة بالإنجليزية.',
+          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة الشخصيات. تأكد من كتابة الاسم بدقة بالإنجليزية.',
         );
       }
 
       return JoinValidationResult.success(inviterId: inviterId);
 
-    } on TimeoutException catch (e) {
-      return JoinValidationResult.failure(e.message ?? 'فشل الاتصال بخادم الأنمي، حاول مجدداً.');
+    } on TimeoutException {
+      return JoinValidationResult.failure('فشل الاتصال بخادم الأنمي (انتهت المهلة)، حاول مجدداً.');
     } catch (e) {
-      return JoinValidationResult.failure('حدث خطأ غير متوقع أثناء التحقق: ${e.toString()}');
+      return JoinValidationResult.failure('حدث خطأ غير متوقع: ${e.toString()}');
     }
   }
 }

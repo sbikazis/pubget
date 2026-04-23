@@ -53,13 +53,13 @@ class AnimeApiService {
                      animeData['images']?['jpg']?['image_url'],
       };
     } catch (e) {
-      debugPrint("❌ API Error (SearchAnime): $e"); // ✅ إضافة سجل للأخطاء للمتابعة
+      debugPrint("❌ API Error (SearchAnime): $e"); 
       return null;
     }
   }
 
   // =========================================================
-  // ✅ الدالة الجديدة: جلب معرفات السلسلة الكاملة (Franchise IDs)
+  // ✅ الدالة المطورة: جلب معرفات السلسلة الكاملة (Franchise IDs)
   // =========================================================
   static Future<List<int>> getAnimeFranchiseIds(int malId) async {
     try {
@@ -68,19 +68,18 @@ class AnimeApiService {
         const Duration(seconds: 10),
       );
 
-      if (response.statusCode != 200) return [malId];
-
-      final data = jsonDecode(response.body);
-      final List relations = data['data'] ?? [];
-      
       Set<int> ids = {malId}; // نبدأ بالمعرف الأساسي
 
-      for (var relation in relations) {
-        // نركز على العلاقات المباشرة (Sequel, Prequel, Full Story, Side Story, Spin-off)
-        final List entries = relation['entry'] ?? [];
-        for (var entry in entries) {
-          if (entry['type'] == 'anime') {
-            ids.add(entry['mal_id']);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List relations = data['data'] ?? [];
+        
+        for (var relation in relations) {
+          final List entries = relation['entry'] ?? [];
+          for (var entry in entries) {
+            if (entry['type'] == 'anime') {
+              ids.add(entry['mal_id']);
+            }
           }
         }
       }
@@ -92,38 +91,68 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // ✅ الدالة الجديدة: جلب تفاصيل السلسلة كاملة (للعرض في الواجهة)
+  // ✅ التعديل الجوهري: جلب تفاصيل السلسلة كاملة (Relations + Search)
   // =========================================================
-  static Future<List<Map<String, dynamic>>> getAnimeFranchiseFullDetails(int malId) async {
+  static Future<List<Map<String, dynamic>>> getAnimeFranchiseFullDetails(int malId, String animeName) async {
     try {
-      final url = Uri.parse('$_baseUrl/anime/$malId/relations');
-      final response = await http.get(url, headers: _headers).timeout(
-        const Duration(seconds: 10),
-      );
-
+      Set<int> processedIds = {malId};
       List<Map<String, dynamic>> franchiseParts = [];
 
-      // جلب بيانات الأنمي الأساسي أولاً
+      // 1. جلب بيانات الأنمي الأساسي أولاً
       final mainAnime = await searchAnimeById(malId);
       if (mainAnime != null) franchiseParts.add(mainAnime);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      // 2. جلب العلاقات المباشرة (Relations)
+      final relUrl = Uri.parse('$_baseUrl/anime/$malId/relations');
+      final relResponse = await http.get(relUrl, headers: _headers).timeout(const Duration(seconds: 10));
+
+      if (relResponse.statusCode == 200) {
+        final data = jsonDecode(relResponse.body);
         final List relations = data['data'] ?? [];
 
         for (var relation in relations) {
           final List entries = relation['entry'] ?? [];
           for (var entry in entries) {
-            if (entry['type'] == 'anime') {
-              // جلب صورة واسم كل جزء مرتبط
+            if (entry['type'] == 'anime' && !processedIds.contains(entry['mal_id'])) {
+              processedIds.add(entry['mal_id']);
               final partDetails = await searchAnimeById(entry['mal_id']);
-              if (partDetails != null) {
-                franchiseParts.add(partDetails);
-              }
+              if (partDetails != null) franchiseParts.add(partDetails);
             }
           }
         }
       }
+
+      // 3. ✅ البحث الذكي لجلب الأجزاء المفقودة (مثل المواسم البعيدة أو الأفلام)
+      // نستخدم أول كلمتين من الاسم للبحث (لضمان الدقة وتجنب التداخل)
+      final String searchKey = animeName.split(' ').take(2).join(' ');
+      final searchUrl = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
+        'q': searchKey,
+        'limit': '15', 
+      });
+
+      final searchResponse = await http.get(searchUrl, headers: _headers).timeout(const Duration(seconds: 10));
+      if (searchResponse.statusCode == 200) {
+        final searchData = jsonDecode(searchResponse.body);
+        final List results = searchData['data'] ?? [];
+        final String sanitizedBaseName = _sanitize(searchKey);
+
+        for (var res in results) {
+          int resId = res['mal_id'];
+          String resTitle = _sanitize(res['title'] ?? '');
+
+          // التحقق من أن النتيجة تنتمي فعلاً لنفس السلسلة وليس أنمي بأسماء مشابهة
+          if (!processedIds.contains(resId) && resTitle.contains(sanitizedBaseName)) {
+            processedIds.add(resId);
+            franchiseParts.add({
+              'id': resId,
+              'title': res['title'],
+              'image_url': res['images']?['jpg']?['small_image_url'] ?? 
+                           res['images']?['jpg']?['image_url'],
+            });
+          }
+        }
+      }
+
       return franchiseParts;
     } catch (e) {
       debugPrint("❌ API Error (getAnimeFranchiseFullDetails): $e");
@@ -177,49 +206,50 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // VALIDATE CHARACTER EXISTS (يعتمد على ID الأنمي)
+  // ✅ التعديل: فحص الشخصية في قائمة معرفات (List<int>) بدلاً من معرف واحد
   // =========================================================
 
   static Future<bool> validateCharacterExists({
-    required dynamic animeId, 
+    required List<int> animeIds, // تم التعديل لدعم القائمة كاملة
     required String characterName,
   }) async {
-    try {
-      final url = Uri.parse('$_baseUrl/anime/$animeId/characters');
+    final cleanInput = _sanitize(characterName);
+    final List<String> inputWords = cleanInput.split(' ').where((w) => w.length > 1).toList();
 
-      final response = await http.get(url, headers: _headers).timeout(
-        const Duration(seconds: 15),
-      );
+    for (int id in animeIds) {
+      try {
+        final url = Uri.parse('$_baseUrl/anime/$id/characters');
+        final response = await http.get(url, headers: _headers).timeout(
+          const Duration(seconds: 10),
+        );
 
-      if (response.statusCode != 200) return false;
+        if (response.statusCode != 200) continue;
 
-      final data = jsonDecode(response.body);
-      if (data['data'] == null || data['data'].isEmpty) return false;
+        final data = jsonDecode(response.body);
+        if (data['data'] == null || data['data'].isEmpty) continue;
 
-      final cleanInput = _sanitize(characterName);
-      final List<String> inputWords = cleanInput.split(' ').where((w) => w.length > 1).toList();
+        for (final item in data['data']) {
+          final character = item['character'];
+          final apiName = _sanitize(character['name'] ?? '');
+         
+          if (apiName.contains(cleanInput) || cleanInput.contains(apiName)) {
+            return true;
+          }
 
-      for (final item in data['data']) {
-        final character = item['character'];
-        final apiName = _sanitize(character['name'] ?? '');
-       
-        if (apiName.contains(cleanInput) || cleanInput.contains(apiName)) {
-          return true;
+          if (inputWords.isNotEmpty && inputWords.every((word) => apiName.contains(word))) {
+            return true;
+          }
         }
-
-        if (inputWords.isNotEmpty && inputWords.every((word) => apiName.contains(word))) {
-          return true;
-        }
+      } catch (e) {
+        debugPrint("⚠️ Character Check failed for ID $id: $e");
+        continue;
       }
-     
-      return false;
-    } catch (e) {
-      return false;
     }
+    return false;
   }
 
   // =========================================================
-  // ✅ التحقق من الشخصية في السلسلة الكاملة (Franchise)
+  // ✅ التحقق من الشخصية في السلسلة الكاملة (Franchise) - بحث عام
   // =========================================================
 
   static Future<bool> isCharacterInFranchise({
@@ -229,7 +259,7 @@ class AnimeApiService {
     try {
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
         'q': characterName,
-        'limit': '5',
+        'limit': '8',
       });
 
       final response = await http.get(url, headers: _headers).timeout(
@@ -241,6 +271,7 @@ class AnimeApiService {
       if (data['data'] == null || data['data'].isEmpty) return false;
 
       final cleanAnimeName = _sanitize(animeName);
+      final String firstKeyword = cleanAnimeName.split(' ').first;
 
       for (final charData in data['data']) {
         final List animeList = charData['anime'] ?? [];
@@ -248,7 +279,7 @@ class AnimeApiService {
         for (final animeEntry in animeList) {
           final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
           
-          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
+          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title) || title.contains(firstKeyword)) {
             return true;
           }
         }
