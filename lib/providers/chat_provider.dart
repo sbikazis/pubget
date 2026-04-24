@@ -43,12 +43,12 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تم التعديل: استبعاد رسائل المستخدم الحالي من العداد
+  // ✅ استبعاد رسائل المستخدم الحالي من العداد
   // =========================================================
 
   Stream<int> streamUnreadCount({
     required String groupId,
-    required String userId, // 🔥 أضفنا userId كمعامل أساسي للفلترة
+    required String userId, 
     required dynamic lastReadAt, 
   }) {
     final path = FirestorePaths.groupMessages(groupId);
@@ -73,14 +73,13 @@ class ChatProvider extends ChangeNotifier {
       ],
     );
 
-    // 🔥 التعديل الجوهري: نفلتر النتائج لاستبعاد الرسائل التي أرسلتها أنت
     return _firestore.streamCollection(path: path, query: query).map((snap) {
       return snap.docs.where((doc) => doc.data()['senderId'] != userId).length;
     });
   }
 
   // =========================================================
-  // ✅ تم التعديل: تمرير userId لضمان دقة مراقب المجموعات
+  // ✅ تمرير userId لضمان دقة مراقب المجموعات
   // =========================================================
 
   Stream<int> streamTotalGroupsUnreadCount({
@@ -99,7 +98,6 @@ class ChatProvider extends ChangeNotifier {
         if (!memberDoc.exists) return Stream.value(0);
         final lastReadAt = memberDoc.data()?['lastReadAt'];
         
-        // 🔥 تمرير userId هنا لفلترة "أنا المرسل"
         return streamUnreadCount(
           groupId: group.id, 
           userId: userId, 
@@ -146,7 +144,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
+  // SEND TEXT MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -173,13 +171,14 @@ class ChatProvider extends ChangeNotifier {
       debugPrint("⚠️ Warning: Could not fetch fresh premium status, using local: $e");
     }
 
+    // ✅ التعديل المطلوب: استخدام الـ Getter الذكي لضمان جلب صورة التقمص أو الحقيقية
+    final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
-      senderName: sender.displayName ?? '',
-      senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
-          ? sender.characterImageUrl!
-          : (userAvatar ?? ''),
+      senderName: sender.effectiveName, // استخدام الاسم الفعال (تقمص أو حقيقي)
+      senderAvatar: finalAvatar,
       senderRole: sender.role,
       senderIsPremium: freshPremiumStatus,
       text: text.trim(),
@@ -196,7 +195,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
+  // SEND MEDIA MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -228,13 +227,14 @@ class ChatProvider extends ChangeNotifier {
       debugPrint("⚠️ Error fetching premium status for media: $e");
     }
 
+    // ✅ التعديل المطلوب: استخدام الـ Getter الذكي لضمان جلب الصورة الصحيحة في الميديا
+    final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
-      senderName: sender.displayName ?? '',
-      senderAvatar: (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty)
-          ? sender.characterImageUrl!
-          : (userAvatar ?? ''),
+      senderName: sender.effectiveName, 
+      senderAvatar: finalAvatar,
       senderRole: sender.role,
       senderIsPremium: freshPremiumStatus,
       mediaUrl: mediaUrl,
@@ -283,7 +283,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND GAME MESSAGE (FIXED: FETCH FRESH PREMIUM STATUS)
+  // SEND GAME MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
   // =========================================================
 
   Future<void> sendGameMessage({
@@ -305,11 +305,14 @@ class ChatProvider extends ChangeNotifier {
       debugPrint("⚠️ Error fetching premium status for game: $e");
     }
 
+    // ✅ التعديل المطلوب: ضمان جلب الصورة في رسائل الألعاب أيضاً
+    final finalAvatar = sender.displayImageUrl ?? '';
+
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
-      senderName: sender.displayName ?? '',
-      senderAvatar: sender.characterImageUrl ?? '',
+      senderName: sender.effectiveName,
+      senderAvatar: finalAvatar,
       senderRole: sender.role,
       senderIsPremium: freshPremiumStatus,
       gameId: gameId,

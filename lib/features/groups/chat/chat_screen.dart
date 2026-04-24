@@ -165,12 +165,14 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _handleSendText(String text, MessageModel? replyTo) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
    
     await chatProvider.sendTextMessage(
       groupId: widget.groupId,
       messageId: _uuid.v4(),
       sender: _currentMember!,
       text: text,
+      userAvatar: userProvider.currentUser?.avatarUrl, // تمرير رابط الصورة الحقيقية كاحتياط
       replyToId: replyTo?.id,
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
@@ -239,7 +241,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     final userProvider = Provider.of<UserProvider>(context, listen: false);
                     final currentUserId = userProvider.currentUser?.id;
                     if (currentUserId != null) {
-                      // استخدام microtask لتجنب استدعاء الوظيفة أثناء بناء الشاشة
                       Future.microtask(() => _updateReadStatus(currentUserId));
                     }
                   }
@@ -259,13 +260,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     final message = _cachedMessages[index];
                     final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
                     
+                    // 🔥 التعديل الذهبي: بناء كائن العضو مع مراعاة منطق التقمص والصورة الحقيقية
                     final sender = isMe ? _currentMember! : MemberModel(
                             userId: message.senderId,
                             groupId: widget.groupId,
                             role: message.senderRole ?? Roles.member,
                             joinedAt: DateTime.now(),
                             displayName: message.senderName,
-                            characterImageUrl: message.senderAvatar,
+                            characterImageUrl: message.senderAvatar, // نضع الصورة المخزنة في الرسالة هنا
+                            realUserImageUrl: message.senderAvatar, // ونضعها هنا أيضاً لضمان ظهورها في الـ Bubble
                             isPremium: message.senderIsPremium, 
                           );
 

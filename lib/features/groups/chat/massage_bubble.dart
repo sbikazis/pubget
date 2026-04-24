@@ -64,7 +64,6 @@ class MessageBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  // تم استخدام التعديل الجديد هنا للربط الذكي
                   _buildNameRow(roleColor),
                  
                   if (message.reactions != null && message.reactions!.isNotEmpty)
@@ -270,9 +269,14 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // 🔥 التعديل: استخدام sender.displayImageUrl لضمان جلب الصورة الصحيحة (تقمص أو حقيقية)
+  // 🔥 التعديل الذهبي: جلب الصورة مع معالجة الخطأ
   Widget _buildAvatar(BuildContext context) {
-    final String? avatarUrl = sender.displayImageUrl;
+    // نستخدم الترتيب: صورة التقمص -> صورة المستخدم الحقيقية -> صورة احتياطية (فارغة)
+    final String? avatarUrl = (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty) 
+        ? sender.characterImageUrl 
+        : (sender.realUserImageUrl != null && sender.realUserImageUrl!.isNotEmpty 
+            ? sender.realUserImageUrl 
+            : null);
 
     return GestureDetector(
       onTap: () async {
@@ -293,29 +297,47 @@ class MessageBubble extends StatelessWidget {
           );
         }
       },
-      child: avatarUrl != null && avatarUrl.isNotEmpty
-          ? CircleAvatar(
-              radius: 18,
-              backgroundImage: NetworkImage(avatarUrl),
-            )
-          : CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
-              child: const Icon(Icons.person, size: 20, color: AppColors.primary),
-            ),
+      child: CircleAvatar(
+        radius: 18,
+        backgroundColor: AppColors.primary.withOpacity(0.1),
+        child: ClipOval(
+          child: avatarUrl != null && avatarUrl.isNotEmpty
+              ? Image.network(
+                  avatarUrl,
+                  width: 36,
+                  height: 36,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => 
+                      const Icon(Icons.person, size: 20, color: AppColors.primary),
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : const Icon(Icons.person, size: 20, color: AppColors.primary),
+        ),
+      ),
     );
   }
 
-  // 🔥 التعديل: استخدام sender.effectiveName لضمان تناسق الاسم مع الصورة المختارة
   Widget _buildNameRow(Color roleColor) {
-    // التحقق من حالة البريميوم (المخزنة في الرسالة أو الحالية للعضو)
     final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
-        // الاسم الذكي
         Flexible(
           child: Text(
             sender.effectiveName,
@@ -328,7 +350,6 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
         
-        // شارة البريميوم (الجوهرة)
         if (isPremiumUser) ...[
           const SizedBox(width: 4),
           const PremiumBadge(size: 14), 
@@ -336,7 +357,6 @@ class MessageBubble extends StatelessWidget {
 
         const SizedBox(width: 6),
 
-        // الرتبة
         RoleBadge(role: sender.role),
       ],
     );
