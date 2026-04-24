@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:uuid/uuid.dart'; 
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ إضافة مستورد الفايرستور للمزامنة
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
@@ -12,9 +12,9 @@ import '../../../providers/user_provider.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
-import '../../../models/user_model.dart'; // ✅ استيراد موديل المستخدم
+import '../../../models/user_model.dart'; 
 import '../../../core/constants/roles.dart';
-import '../../../core/constants/firestore_paths.dart'; // ✅ استيراد المسارات
+import '../../../core/constants/firestore_paths.dart'; 
 
 // ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح عند الدخول
 import '../../../services/monetization/ad_service.dart';
@@ -53,11 +53,12 @@ class _ChatScreenState extends State<ChatScreen> {
       final isPremium = currentUser?.isPremium ?? false;
 
       if (currentUser != null) {
-        // 🔥 التعديل القاطع: مزامنة حالة البريميوم فور الدخول
+        // 🔥 مزامنة حالة البريميوم فور الدخول لضمان ظهور الجوهرة
         _syncPremiumStatus(currentUser);
 
         _loadCurrentMember(currentUser.id);
-        // ✅ التعديل الأول: تصفير العداد فور دخول الشاشة
+
+        // ✅ تصفير العداد فور دخول الشاشة
         _updateReadStatus(currentUser.id);
 
         // 🚀 تفعيل إعلان الدخول للمجموعة (منطق الأشباح)
@@ -69,7 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    // ✅ التعديل الثالث: تصفير العداد عند مغادرة الشاشة لضمان تسجيل آخر تواجد
+    // ✅ تصفير العداد عند مغادرة الشاشة لضمان دقة آخر تواجد
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final currentUserId = userProvider.currentUser?.id;
     if (currentUserId != null) {
@@ -79,7 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ✅ الدالة السحرية: تضمن تحديث بيانات العضو لتطابق بروفايله الحالي
+  // ✅ دالة مزامنة حالة البريميوم في وثيقة العضو
   Future<void> _syncPremiumStatus(UserModel currentUser) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
@@ -88,7 +89,6 @@ class _ChatScreenState extends State<ChatScreen> {
         userId: currentUser.id,
       );
 
-      // إذا كان هناك اختلاف بين حالة البريميوم في "المجموعة" وحالته في "البروفايل"
       if (member != null && member.isPremium != currentUser.isPremium) {
         debugPrint("🔄 Syncing premium status for member in Firestore...");
         
@@ -99,7 +99,6 @@ class _ChatScreenState extends State<ChatScreen> {
           'isPremium': currentUser.isPremium,
         });
 
-        // إعادة تحميل العضو بعد التحديث لضمان ظهور الجوهرة فوراً في الـ UI
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -107,13 +106,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // دالة مساعدة لتحديث حالة القراءة
+  // ✅ دالة تحديث حالة القراءة (تصفير عداد المجموعة)
   void _updateReadStatus(String userId) {
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    chatProvider.updateLastRead(
-      groupId: widget.groupId,
-      userId: userId,
-    );
+    try {
+      if (!mounted) return;
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      chatProvider.updateLastRead(
+        groupId: widget.groupId,
+        userId: userId,
+      );
+    } catch (e) {
+      debugPrint("Update status failed: $e");
+    }
   }
 
   Future<void> _loadCurrentMember(String userId) async {
@@ -158,7 +162,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _replyingMessage = null);
   }
 
-  // ✅ دالة إرسال النص الجديدة المتوافقة مع الـ Generic Bar
   Future<void> _handleSendText(String text, MessageModel? replyTo) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
@@ -172,13 +175,12 @@ class _ChatScreenState extends State<ChatScreen> {
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
    
-    // بعد الإرسال، نحدث وقت القراءة مباشرة
+    // ✅ تحديث وقت القراءة فور الإرسال
     _updateReadStatus(_currentMember!.userId);
     _onCancelReply();
     _scrollToBottom(force: true);
   }
 
-  // ✅ دالة إرسال الصور الجديدة المتوافقة مع الـ Generic Bar
   Future<void> _handleSendImage(File file, MessageModel? replyTo) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
@@ -195,7 +197,7 @@ class _ChatScreenState extends State<ChatScreen> {
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
-    // بعد الإرسال، نحدث وقت القراءة مباشرة
+    // ✅ تحديث وقت القراءة فور إرسال الصورة
     _updateReadStatus(_currentMember!.userId);
     _onCancelReply();
     _scrollToBottom(force: true);
@@ -232,12 +234,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasData) {
-                  // ✅ التعديل الثاني: عند وصول رسائل جديدة وأنت فاتح الشاشة، صفر العداد
-                  if (_cachedMessages.length < snapshot.data!.length) {
+                  // ✅ التعديل الاحترافي: عند وصول رسائل جديدة وأنت تشاهد المحادثة، صفر العداد فوراً
+                  if (snapshot.data!.length > _cachedMessages.length) {
                     final userProvider = Provider.of<UserProvider>(context, listen: false);
                     final currentUserId = userProvider.currentUser?.id;
                     if (currentUserId != null) {
-                      _updateReadStatus(currentUserId);
+                      // استخدام microtask لتجنب استدعاء الوظيفة أثناء بناء الشاشة
+                      Future.microtask(() => _updateReadStatus(currentUserId));
                     }
                   }
                   _cachedMessages = snapshot.data!;
@@ -256,7 +259,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     final message = _cachedMessages[index];
                     final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
                     
-                    // ✅ التعديل المطلوب: تم تمرير message.senderIsPremium إلى MemberModel لضمان ظهور الجوهرة
                     final sender = isMe ? _currentMember! : MemberModel(
                             userId: message.senderId,
                             groupId: widget.groupId,
@@ -289,7 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
               replyingMessage: _replyingMessage,
               onCancelReply: _onCancelReply,
               onGamePressed: _openGame,
-              isPrivate: false, // نحن في المجموعات، لذا الألعاب تظهر
+              isPrivate: false, 
             ),
         ],
       ),

@@ -43,11 +43,12 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ توحيد المقارنة باستخدام Timestamp لضمان الدقة
+  // ✅ تم التعديل: استبعاد رسائل المستخدم الحالي من العداد
   // =========================================================
 
   Stream<int> streamUnreadCount({
     required String groupId,
+    required String userId, // 🔥 أضفنا userId كمعامل أساسي للفلترة
     required dynamic lastReadAt, 
   }) {
     final path = FirestorePaths.groupMessages(groupId);
@@ -72,11 +73,14 @@ class ChatProvider extends ChangeNotifier {
       ],
     );
 
-    return _firestore.streamCollection(path: path, query: query).map((snap) => snap.size);
+    // 🔥 التعديل الجوهري: نفلتر النتائج لاستبعاد الرسائل التي أرسلتها أنت
+    return _firestore.streamCollection(path: path, query: query).map((snap) {
+      return snap.docs.where((doc) => doc.data()['senderId'] != userId).length;
+    });
   }
 
   // =========================================================
-  // ✅ مراقب إجمالي للمجموعات (للشريط السفلي)
+  // ✅ تم التعديل: تمرير userId لضمان دقة مراقب المجموعات
   // =========================================================
 
   Stream<int> streamTotalGroupsUnreadCount({
@@ -94,7 +98,13 @@ class ChatProvider extends ChangeNotifier {
           .asyncExpand((memberDoc) {
         if (!memberDoc.exists) return Stream.value(0);
         final lastReadAt = memberDoc.data()?['lastReadAt'];
-        return streamUnreadCount(groupId: group.id, lastReadAt: lastReadAt);
+        
+        // 🔥 تمرير userId هنا لفلترة "أنا المرسل"
+        return streamUnreadCount(
+          groupId: group.id, 
+          userId: userId, 
+          lastReadAt: lastReadAt,
+        );
       });
     }).toList();
 
@@ -150,7 +160,6 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     if (text.trim().isEmpty) return;
 
-    // 🔥 التعديل الذهبي: جلب حالة البريميوم "الآن" من وثيقة العضو لضمان وصولها للجميع
     bool freshPremiumStatus = sender.isPremium;
     try {
       final memberDoc = await FirebaseFirestore.instance
@@ -172,7 +181,7 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة للسيرفر
+      senderIsPremium: freshPremiumStatus,
       text: text.trim(),
       replyToId: replyToId, 
       replyText: replyText, 
@@ -206,7 +215,6 @@ class ChatProvider extends ChangeNotifier {
       file: file,
     );
 
-    // 🔥 جلب حالة البريميوم الطازجة للميديا أيضاً
     bool freshPremiumStatus = sender.isPremium;
     try {
       final memberDoc = await FirebaseFirestore.instance
@@ -228,7 +236,7 @@ class ChatProvider extends ChangeNotifier {
           ? sender.characterImageUrl!
           : (userAvatar ?? ''),
       senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة
+      senderIsPremium: freshPremiumStatus,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
       replyToId: replyToId, 
@@ -284,7 +292,6 @@ class ChatProvider extends ChangeNotifier {
     required MemberModel sender,
     required String gameId,
   }) async {
-    // جلب حالة البريميوم للألعاب
     bool freshPremiumStatus = sender.isPremium;
     try {
       final memberDoc = await FirebaseFirestore.instance
@@ -304,7 +311,7 @@ class ChatProvider extends ChangeNotifier {
       senderName: sender.displayName ?? '',
       senderAvatar: sender.characterImageUrl ?? '',
       senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus, // ✅ إرسال الحالة الطازجة
+      senderIsPremium: freshPremiumStatus,
       gameId: gameId,
       createdAt: DateTime.now(),
     );

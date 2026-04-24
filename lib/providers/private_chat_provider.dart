@@ -53,7 +53,7 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ مراقبة الرسائل غير المقروءة بشكل حي (Real-time Stream)
+  // ✅ تم التعديل: مراقبة الرسائل غير المقروءة مع استبعاد "أنا المرسل"
   // =========================================================
   Stream<int> streamPrivateUnreadCount({
     required String chatId,
@@ -71,6 +71,7 @@ class PrivateChatProvider extends ChangeNotifier {
       final Timestamp? lastRead =
           isUserA ? data['lastReadUserA'] : data['lastReadUserB'];
 
+      // إذا لم يكن هناك تاريخ قراءة، نستخدم تاريخاً قديماً جداً
       final compareDate = lastRead ?? Timestamp.fromDate(DateTime(2000));
 
       final query = _firestore.buildQuery(
@@ -83,7 +84,11 @@ class PrivateChatProvider extends ChangeNotifier {
       return _firestore
           .streamCollection(path: path, query: query)
           .map((snap) {
-            return snap.docs.where((doc) => doc.data()['senderId'] != userId).length;
+            // 🔥 التعديل الجوهري: استبعاد الرسائل التي يكون فيها المستخدم الحالي هو المرسل
+            return snap.docs.where((doc) {
+              final msgData = doc.data() as Map<String, dynamic>;
+              return msgData['senderId'] != userId;
+            }).length;
           });
     }).distinct();
   }
@@ -200,7 +205,7 @@ class PrivateChatProvider extends ChangeNotifier {
       senderId: sender.id,
       senderName: sender.username,
       senderAvatar: sender.avatarUrl,
-      senderIsPremium: sender.isPremium, // ✅ التعديل: إرسال حالة البريميوم
+      senderIsPremium: sender.isPremium,
       senderRole: null,
       text: text.trim(),
       replyToId: replyToId,
@@ -248,7 +253,7 @@ class PrivateChatProvider extends ChangeNotifier {
       senderId: sender.id,
       senderName: sender.username,
       senderAvatar: sender.avatarUrl,
-      senderIsPremium: sender.isPremium, // ✅ التعديل: إرسال حالة البريميوم
+      senderIsPremium: sender.isPremium,
       senderRole: null,
       mediaUrl: mediaUrl,
       mediaType: mediaType,

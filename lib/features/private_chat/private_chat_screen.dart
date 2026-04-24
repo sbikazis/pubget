@@ -14,9 +14,8 @@ import '../../providers/user_provider.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 
-import '../groups/chat/massage_bubble.dart'; // تصحيح بسيط في اسم الملف (Message بدل Massage)
-import '../groups/chat/massage_input_bar.dart'; // تصحيح بسيط في اسم الملف
-
+import '../groups/chat/massage_bubble.dart'; 
+import '../groups/chat/massage_input_bar.dart'; 
 
 import '../../core/constants/roles.dart';
 
@@ -51,7 +50,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
         .streamMessages(chatId: widget.chatId);
 
-    // ✅ التعديل الأول: تصفير العداد فور دخول المحادثة الخاصة
+    // ✅ تصفير العداد فور دخول المحادثة الخاصة
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updatePrivateReadStatus();
     });
@@ -59,16 +58,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
-    // ✅ التعديل الثالث: تصفير العداد عند مغادرة المحادثة لضمان دقة آخر ظهور
+    // ✅ تصفير العداد عند مغادرة المحادثة لضمان دقة الحالة
     _updatePrivateReadStatus();
     _scrollController.dispose();
     super.dispose();
   }
 
-  // ✅ دالة مساعدة لتحديث حالة القراءة في الدردشة الخاصة
+  // ✅ دالة تحديث حالة القراءة في الدردشة الخاصة (تصفير العداد)
   void _updatePrivateReadStatus() {
-    // نستخدم try-catch للتأكد من عدم تعطل التطبيق إذا أغلق المستخدم الشاشة بسرعة
     try {
+      if (!mounted) return;
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final privateChatProvider = Provider.of<PrivateChatProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
@@ -84,7 +83,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // ✅ دالة التمرير للأسفل (تحسين السلاسة)
+  // ✅ دالة التمرير للأسفل
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
     _scrollController.animateTo(
@@ -94,11 +93,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 
-  // ✅ دالة الانتقال لرسالة محددة (عند الضغط على الرد)
+  // ✅ دالة الانتقال لرسالة محددة
   void _scrollToMessage(String messageId) {
     final index = _currentMessages.indexWhere((m) => m.id == messageId);
     if (index != -1) {
-      // حساب تقريبي للموقع
       double targetOffset = index * 80.0; 
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
@@ -128,7 +126,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
       );
       
-      // تحديث حالة القراءة فور الإرسال لضمان تصفير العداد محلياً أيضاً
+      // ✅ تصفير العداد محلياً فور الإرسال
       _updatePrivateReadStatus();
       
       _onCancelReply();
@@ -157,7 +155,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
       );
 
-      // تحديث حالة القراءة فور إرسال الصورة
+      // ✅ تصفير العداد فور إرسال الصورة
       _updatePrivateReadStatus();
 
       _onCancelReply();
@@ -208,12 +206,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (snapshot.hasData) {
                   final newMessages = snapshot.data!;
                   
-                  // ✅ تحديث حالة القراءة عند استقبال رسائل جديدة
-                  if (_currentMessages.length < newMessages.length) {
+                  // ✅ التعديل الاحترافي: إذا زاد عدد الرسائل وأنا داخل الشاشة، نحدث حالة القراءة فوراً
+                  if (newMessages.length > _currentMessages.length) {
+                    // نستخدم microtask لتجنب استدعاء setState أثناء البناء
                     Future.microtask(() => _updatePrivateReadStatus());
                     
-                    // ✅ التعديل الجوهري: التمرير للأسفل فقط في حال وجود رسائل جديدة
-                    // لمنع الاهتزاز عند مجرد إضافة إيموجي (تفاعل)
+                    // التمرير للأسفل عند وصول رسالة جديدة
                     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
                   }
                   

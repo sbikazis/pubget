@@ -60,7 +60,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
     }
   }
 
-  // ✅ التعديل الجوهري: تحسين استجابة العداد وتفادي الرعشة باستخدام Stream متداخل مستقر
+  // ✅ التعديل الجوهري: تمرير الـ userId للدالة ليتوافق مع التحديث الجديد في ChatProvider
   Widget _buildUnreadBadge(String groupId) {
     final authProvider = context.read<AuthProvider>();
     final chatProvider = context.read<ChatProvider>();
@@ -82,9 +82,10 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
         final lastReadAt = memberData?['lastReadAt']; 
        
         return StreamBuilder<int>(
-          // نمرر lastReadAt مباشرة للـ Stream المخصص في ChatProvider
+          // 🔥 تم حقن الـ userId هنا لإصلاح الخطأ ومنع احتساب رسائل المستخدم نفسه
           stream: chatProvider.streamUnreadCount(
             groupId: groupId,
+            userId: userId, 
             lastReadAt: lastReadAt,
           ),
           builder: (context, countSnap) {

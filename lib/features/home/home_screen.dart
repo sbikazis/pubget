@@ -4,16 +4,15 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
-import '../../providers/user_provider.dart'; // 🔥 مضاف للمزامنة
-import '../../providers/chat_provider.dart'; // 🔥 مضاف للعدادات
-import '../../providers/private_chat_provider.dart'; // 🔥 مضاف للعدادات
+import '../../providers/user_provider.dart'; 
+import '../../providers/chat_provider.dart'; 
+import '../../providers/private_chat_provider.dart'; 
 import '../../providers/notifications_provider.dart';
 import '../../models/notification_model.dart';
 import '../../widgets/loading_widget.dart';
 import '../home/promoted_groups_section.dart';
 import 'package:pubget/features/home/my_group_section.dart';
 
-// added imports for direct navigation
 import '../home/search_screen.dart';
 import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
@@ -22,10 +21,9 @@ import '../private_chat/private_chats_list_screen.dart';
 
 import '../settings/settings_screen.dart';
 import 'package:pubget/models/user_model.dart';
-import '../../core/constants/limits.dart'; // ✅ مضاف للوصول للشارة
-import 'package:pubget/features/settings/premium_details_screen.dart'; // ✅ مضاف لفتح صفحة الترقية
+import '../../core/constants/limits.dart'; 
+import 'package:pubget/features/settings/premium_details_screen.dart'; 
 
-// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح
 import '../../services/monetization/ad_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -40,24 +38,20 @@ class _HomeScreenState extends State<HomeScreen> {
   late AuthProvider _authProvider;
   bool _isRefreshing = false;
  
-  // التعديل: متغير لمتابعة التبويب المختار
   int _selectedIndex = 0;
 
-  // ✅ متغيرات محلية للتحكم الفوري في العدادات (Optimistic UI)
-  bool _hidePrivateBadge = false;
-  bool _hideGroupsBadge = false;
+  // ✅ تم إزالة متغيرات _hidePrivateBadge و _hideGroupsBadge 
+  // للاعتماد كلياً على الـ Stream المحدث في الـ Providers
 
   @override
   void initState() {
     super.initState();
 
-    // ✅ التعديل الاحترافي: التهيئة داخل initState مع ضمان استقرار السياق
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _tryInitialize();
     });
   }
 
-  // 🔥 دالة ذكية لضمان البدء حتى لو تأخر الـ Auth
   void _tryInitialize() {
     if (!mounted) return;
 
@@ -70,16 +64,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final currentUser = authProvider.user;
 
     if (currentUser != null) {
-      // البدء في جلب البيانات فوراً عند توفر المستخدم
       _homeProvider.initialize(currentUser: currentUser);
-      
-      // 🔥 ضمان مزامنة بيانات المستخدم الحالي
       userProvider.syncUser(currentUser);
-
-      // 🚀 تفعيل إعلان الصباح (منطق الأشباح)
       adService.tryShowMorningAd(isPremium: currentUser.isPremium);
     } else {
-      // إعادة المحاولة بعد وقت قصير جداً في حال كان الـ user لا يزال null
       Future.delayed(const Duration(milliseconds: 100), () {
         _tryInitialize();
       });
@@ -90,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
 
-    setState(() => _isRefreshing = true); // تصحيح: يجب أن تكون true لبدء التحميل
+    setState(() => _isRefreshing = true);
     try {
       await _homeProvider.refresh(user);
     } finally {
@@ -133,7 +121,6 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (_) => const SearchScreen()),
       );
 
-  // ✅ دالة لفتح صفحة البريميوم
   void _openPremiumDetails() {
     showModalBottomSheet(
       context: context,
@@ -143,15 +130,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // =========================================================
-  // ✅ بناء أيقونة مع عداد (Badge) للـ Bottom Bar
-  // =========================================================
-  Widget _buildTabIcon(IconData icon, int count, bool forceHide) {
+  // ✅ بناء أيقونة مع عداد (Badge) يعتمد كلياً على القيمة القادمة من الـ Stream
+  Widget _buildTabIcon(IconData icon, int count) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Icon(icon),
-        if (count > 0 && !forceHide) // يتم الإخفاء إذا تحقق شرط التصفير الفوري
+        if (count > 0) 
           Positioned(
             right: -6,
             top: -3,
@@ -175,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDrawer(BuildContext context) {
-    final user = context.watch<UserProvider>().currentUser; // استخدام UserProvider للمزامنة الفورية
+    final user = context.watch<UserProvider>().currentUser; 
     final bool isPremium = user?.isPremium ?? false;
 
     return Drawer(
@@ -222,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('الدردشات الخاصة'),
               onTap: () {
                 Navigator.of(context).pop();
-                _onTabTapped(3); // تفعيل تصفير العداد عند الانتقال من القائمة
+                _onTabTapped(3); 
               },
             ),
             ListTile(
@@ -243,7 +228,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(),
 
-            // ✅ إضافة زر الترقية الفاخر في القائمة
             ListTile(
               leading: Icon(
                 isPremium ? Icons.verified : Icons.workspace_premium,
@@ -290,7 +274,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeDiscoveryContent(UserModel? user) {
-    // نستخدم النسخة من UserProvider لضمان ظهور الشارة فوراً
     final currentUser = context.watch<UserProvider>().currentUser;
     final bool isPremium = currentUser?.isPremium ?? false;
 
@@ -331,7 +314,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  // ✅ زر عرض إعلان يدوي (للاختبار فقط)
                   IconButton(
                     onPressed: () {
                       final adService = context.read<AdService>();
@@ -356,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final notificationProvider = context.read<NotificationsProvider>();
     return StreamBuilder<List<NotificationModel>>(
       stream: notificationProvider.streamNotifications(userId),
-      initialData: const [], // منع الوميض عند التحميل
+      initialData: const [],
       builder: (context, snapshot) {
         final unreadCount = snapshot.data?.where((n) => !n.isRead).length ?? 0;
 
@@ -399,12 +381,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ✅ دالة معالجة الضغط على التبويب لتصفير العداد فورياً
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      if (index == 3) _hidePrivateBadge = true; // تصفير الخاص فوراً
-      if (index == 1 || index == 2) _hideGroupsBadge = true; // تصفير المجموعات فوراً
     });
   }
 
@@ -414,9 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final homeProvider = context.watch<HomeProvider>();
     final chatProvider = context.read<ChatProvider>();
     final privateChatProvider = context.read<PrivateChatProvider>();
-    final user = context.watch<UserProvider>().currentUser; // المزامنة مع UserProvider
+    final user = context.watch<UserProvider>().currentUser; 
 
-    // التعديل: isLoading الآن تؤثر فقط على المحتوى الداخلي وليس الشاشة كاملة
     final bool contentLoading = homeProvider.isLoading || authProvider.isLoading || _isRefreshing;
     final bool isPremium = user?.isPremium ?? false;
 
@@ -509,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       groups: homeProvider.myGroups,
                     ),
                     initialData: 0,
-                    builder: (context, snapshot) => _buildTabIcon(Icons.admin_panel_settings, snapshot.data ?? 0, _hideGroupsBadge),
+                    builder: (context, snapshot) => _buildTabIcon(Icons.admin_panel_settings, snapshot.data ?? 0),
                   ),
             label: 'مجموعاتي'
           ),
@@ -523,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       groups: homeProvider.joinedGroups,
                     ),
                     initialData: 0,
-                    builder: (context, snapshot) => _buildTabIcon(Icons.group, snapshot.data ?? 0, _hideGroupsBadge),
+                    builder: (context, snapshot) => _buildTabIcon(Icons.group, snapshot.data ?? 0),
                   ),
             label: 'منضم لها',
           ),
@@ -534,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 : StreamBuilder<int>(
                     stream: privateChatProvider.streamAllPrivateUnreadCount(user.id),
                     initialData: 0,
-                    builder: (context, snapshot) => _buildTabIcon(Icons.chat_bubble, snapshot.data ?? 0, _hidePrivateBadge),
+                    builder: (context, snapshot) => _buildTabIcon(Icons.chat_bubble, snapshot.data ?? 0),
                   ),
             label: 'الخاص',
           ),
