@@ -14,6 +14,7 @@ import '../core/constants/firestore_paths.dart';
 import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
 import 'package:pubget/services/monetization/promotion_service.dart';
+import 'package:pubget/core/constants/subscription_type.dart';
 
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -97,9 +98,14 @@ class GroupProvider extends ChangeNotifier {
 
       final userDoc = await firestore.collection('Users').doc(requestMember.userId).get();
       bool currentPremiumStatus = false;
+      String? freshAvatar;
+      String? freshUsername;
+
       if (userDoc.exists) {
         final userData = userDoc.data();
         currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
+        freshAvatar = userData?['avatarUrl'];
+        freshUsername = userData?['username'];
       }
 
       // التحقق من حجز الشخصية يظل فعالاً لمنع التكرار في كل الحالات
@@ -115,9 +121,12 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
+      // ✅ تحديث العضو ببيانات الهوية الحقيقية الطازجة قبل الحفظ
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
+        realUserName: freshUsername,
+        realUserImageUrl: freshAvatar,
       );
 
       final memberRef = firestore
@@ -234,10 +243,11 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
+            // ✅ Mapping: ربط avatarUrl بـ realUserImageUrl لضمان عمل الـ Getter
             member = member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
-              isPremium: user.subscriptionType == 'premium',
+              isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
         } catch (e) {
@@ -551,10 +561,11 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
+            // ✅ Mapping: ربط avatarUrl بـ realUserImageUrl لضمان عمل الـ Getter
             member = member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
-              isPremium: user.subscriptionType == 'premium',
+              isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
         } catch (e) {

@@ -1,4 +1,3 @@
-// lib/services/api/anime_api_service.dart
 import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
@@ -123,7 +122,6 @@ class AnimeApiService {
       }
 
       // 3. ✅ البحث الذكي لجلب الأجزاء المفقودة (مثل المواسم البعيدة أو الأفلام)
-      // نستخدم أول كلمتين من الاسم للبحث (لضمان الدقة وتجنب التداخل)
       final String searchKey = animeName.split(' ').take(2).join(' ');
       final searchUrl = Uri.parse('$_baseUrl/anime').replace(queryParameters: {
         'q': searchKey,
@@ -146,7 +144,8 @@ class AnimeApiService {
             franchiseParts.add({
               'id': resId,
               'title': res['title'],
-              'image_url': res['images']?['jpg']?['small_image_url'] ?? 
+              // ✅ التعديل: تم تغيير small_image_url إلى large_image_url لمنع الضبابية في عرض السلسلة
+              'image_url': res['images']?['jpg']?['large_image_url'] ?? 
                            res['images']?['jpg']?['image_url'],
             });
           }
@@ -174,7 +173,8 @@ class AnimeApiService {
       return {
         'id': data['mal_id'],
         'title': data['title'],
-        'image_url': data['images']?['jpg']?['small_image_url'] ?? 
+        // ✅ التعديل: تم تغيير small_image_url إلى large_image_url لضمان أعلى جودة ممكنة
+        'image_url': data['images']?['jpg']?['large_image_url'] ?? 
                      data['images']?['jpg']?['image_url'],
       };
     } catch (e) {
@@ -210,7 +210,7 @@ class AnimeApiService {
   // =========================================================
 
   static Future<bool> validateCharacterExists({
-    required List<int> animeIds, // تم التعديل لدعم القائمة كاملة
+    required List<int> animeIds, 
     required String characterName,
   }) async {
     final cleanInput = _sanitize(characterName);

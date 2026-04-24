@@ -1,4 +1,3 @@
-//MemberModel
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/roles.dart';
 
@@ -50,17 +49,17 @@ class MemberModel {
   });
 
   // =========================================================
-  // ✅ التعديل الذهبي المحسن: الـ Getters الذكية (الجوكر)
-  // تم التحسين لمعالجة الـ null والـ empty string "" معاً
+  // ✅ التعديل الذهبي المحسن (صارم جداً تجاه النصوص الفارغة)
   // =========================================================
 
   // يختار الصورة الصحيحة: التقمص أولاً، ثم الحقيقية
   String? get displayImageUrl {
+    // نستخدم trim للتأكد أن النص ليس مجرد مسافات، و isNotEmpty للتأكد أنه ليس فارغاً
     if (characterImageUrl != null && characterImageUrl!.trim().isNotEmpty) {
-      return characterImageUrl;
+      return characterImageUrl!.trim();
     }
     if (realUserImageUrl != null && realUserImageUrl!.trim().isNotEmpty) {
-      return realUserImageUrl;
+      return realUserImageUrl!.trim();
     }
     return null;
   }
@@ -68,14 +67,14 @@ class MemberModel {
   // يختار الاسم الصحيح: اسم الشخصية أولاً، ثم الحقيقي
   String get effectiveName {
     if (characterName != null && characterName!.trim().isNotEmpty) {
-      return characterName!;
+      return characterName!.trim();
     }
     if (realUserName != null && realUserName!.trim().isNotEmpty) {
-      return realUserName!;
+      return realUserName!.trim();
     }
     // العودة للاسم المستعار أو كلمة "عضو" كحل أخير
     if (displayName != null && displayName!.trim().isNotEmpty) {
-      return displayName!;
+      return displayName!.trim();
     }
     return 'عضو';
   }
@@ -87,18 +86,26 @@ class MemberModel {
   factory MemberModel.fromMap(
     Map<String, dynamic> map,
   ) {
+    // وظيفة مساعدة داخلية لتنظيف النصوص القادمة من Firestore
+    String? clean(dynamic value) {
+      if (value == null) return null;
+      final s = value.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
     return MemberModel(
       userId: map['userId'] as String,
       groupId: map['groupId'] as String,
       role: Roles.fromString(map['role'] as String),
-      displayName: map['displayName'] as String?,
-      characterName: map['characterName'] as String?,
-      characterImageUrl: map['characterImageUrl'] as String?,
-      characterReason: map['characterReason'] as String?,
-      realUserName: map['realUserName'] as String?, 
-      realUserImageUrl: map['realUserImageUrl'] as String?, 
-      invitedByUserId: map['invitedByUserId'] as String?,
-      inviterDisplayName: map['inviterDisplayName'] as String?, 
+      // نطبق التنظيف على الحقول الحساسة لضمان استقرار الـ Getters
+      displayName: clean(map['displayName']),
+      characterName: clean(map['characterName']),
+      characterImageUrl: clean(map['characterImageUrl']),
+      characterReason: clean(map['characterReason']),
+      realUserName: clean(map['realUserName']), 
+      realUserImageUrl: clean(map['realUserImageUrl']), 
+      invitedByUserId: clean(map['invitedByUserId']),
+      inviterDisplayName: clean(map['inviterDisplayName']), 
       joinedAt: map['joinedAt'] is Timestamp 
           ? (map['joinedAt'] as Timestamp).toDate() 
           : DateTime.now(),

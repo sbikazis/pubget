@@ -1,4 +1,3 @@
-// lib/features/groups/create_roleplay_group_screen.dart
 import 'dart:io';
 import 'dart:async';
 
@@ -46,6 +45,7 @@ class _CreateRoleplayGroupScreenState
   GroupType _selectedGroupType = GroupType.roleplay;
 
   File? _pickedImage;
+  File? _charPickedImage; // ✅ الإضافة: لحفظ صورة الشخصية المختارة يدوياً
   bool _isLoading = false;
  
   bool _isVerifyingAnime = false;
@@ -68,6 +68,14 @@ class _CreateRoleplayGroupScreenState
     setState(() => _pickedImage = File(file.path));
   }
 
+  // ✅ الإضافة: دالة لاختيار صورة الشخصية يدوياً
+  Future<void> _pickCharImage() async {
+    final XFile? file =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (file == null) return;
+    setState(() => _charPickedImage = File(file.path));
+  }
+
   Future<void> _verifyAnime() async {
     final name = _animeCtrl.text.trim();
     if (name.isEmpty) {
@@ -83,6 +91,7 @@ class _CreateRoleplayGroupScreenState
       _confirmedAnimeId = null;
       _confirmedFranchiseData = []; 
       _confirmedCharName = null;
+      _charPickedImage = null; // تصفير الصورة اليدوية عند تغيير الأنمي
     });
 
     try {
@@ -132,6 +141,7 @@ class _CreateRoleplayGroupScreenState
     setState(() {
       _isVerifyingChar = true;
       _confirmedCharName = null;
+      _charPickedImage = null; // ✅ التعديل: تصفير الصورة اليدوية عند البحث عن شخصية جديدة لضمان التزامن
     });
 
     try {
@@ -255,14 +265,24 @@ class _CreateRoleplayGroupScreenState
     setState(() => _isLoading = true);
 
     try {
+      final storage = StorageService();
       final groupId = DateTime.now().millisecondsSinceEpoch.toString();
       String groupImageUrl = '';
 
       if (_pickedImage != null) {
-        final storage = StorageService();
         groupImageUrl = await storage.uploadGroupImage(
           groupId: groupId,
           file: _pickedImage!,
+        );
+      }
+
+      // ✅ التعديل: التعامل مع صورة الشخصية (سواء كانت من MAL أو مرفوعة يدوياً)
+      String finalCharImageUrl = _confirmedCharImage ?? '';
+      if (_charPickedImage != null) {
+        finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
+          groupId: groupId,
+          userId: currentUser.id,
+          file: _charPickedImage!,
         );
       }
 
@@ -297,7 +317,7 @@ class _CreateRoleplayGroupScreenState
         joinedAt: DateTime.now(),
         displayName: _confirmedCharName,
         characterName: _confirmedCharName,
-        characterImageUrl: _confirmedCharImage,
+        characterImageUrl: finalCharImageUrl, // ✅ استخدام الرابط النهائي
         characterReason: _charReasonCtrl.text.trim(),
         realUserName: currentUser.username,
         realUserImageUrl: currentUser.avatarUrl,
@@ -333,27 +353,54 @@ class _CreateRoleplayGroupScreenState
     super.dispose();
   }
 
-  // ✅ ويدجت مساعدة لعرض البطاقات
+  // ✅ التعديل: تطوير الويدجت لدعم اختيار صورة يدوية وعرضها
   Widget _buildSimpleTile(String title, String? imageUrl, bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          if (imageUrl != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.network(imageUrl, width: 40, height: 40, fit: BoxFit.cover),
+    return GestureDetector(
+      onTap: _pickCharImage, // ✅ السماح بتغيير الصورة عند النقر
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkCard : AppColors.lightCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: _charPickedImage != null 
+                    ? Image.file(_charPickedImage!, width: 45, height: 45, fit: BoxFit.cover)
+                    : (imageUrl != null
+                        ? Image.network(imageUrl, width: 45, height: 45, fit: BoxFit.cover)
+                        : Container(color: Colors.grey, width: 45, height: 45)),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                    child: const Icon(Icons.edit, size: 10, color: Colors.white),
+                  ),
+                ),
+              ],
             ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
-          const Icon(Icons.check_circle, color: Colors.green, size: 20),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('اضغط على الصورة لتغييرها اختيارياً', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            ),
+            const Icon(Icons.check_circle, color: Colors.green, size: 20),
+          ],
+        ),
       ),
     );
   }
@@ -521,6 +568,7 @@ class _CreateRoleplayGroupScreenState
                                     _confirmedAnimeId = null; 
                                     _confirmedFranchiseData = [];
                                     _confirmedCharName = null;
+                                    _charPickedImage = null;
                                   });
                                 }
                               },
@@ -548,6 +596,14 @@ class _CreateRoleplayGroupScreenState
                             ),
                           ),
                         ],
+                      ),
+                      // ✅ الإضافة: تنويه نصي للمستخدم
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4, right: 4),
+                        child: Text(
+                          '* يرجى كتابة اسم الأنمي بدقة للبحث في السلسلة كاملة',
+                          style: TextStyle(fontSize: 10, color: Colors.grey, fontStyle: FontStyle.italic),
+                        ),
                       ),
 
                       if (_confirmedAnimeName != null)
@@ -599,7 +655,10 @@ class _CreateRoleplayGroupScreenState
                             validator: _validateCharacter,
                             onChanged: (_) {
                               if (_confirmedCharName != null) {
-                                setState(() => _confirmedCharName = null);
+                                setState(() {
+                                  _confirmedCharName = null;
+                                  _charPickedImage = null;
+                                });
                               }
                             },
                           ),
@@ -661,7 +720,6 @@ class _CreateRoleplayGroupScreenState
             ),
           ),
           if (_isLoading)
-            // ✅ تم إزالة const من هنا لحل مشكلة 'The constructor being called isn't a const constructor'
             Positioned.fill(
               child: Container(
                 color: Colors.black26,

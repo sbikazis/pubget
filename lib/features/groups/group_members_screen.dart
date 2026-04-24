@@ -30,6 +30,7 @@ class GroupMembersScreen extends StatelessWidget {
         allMembers: allMembers,
         targetMember: target,
         onRoleSelected: (newRole) async {
+          if (!context.mounted) return;
           Navigator.pop(context); // إغلاق الـ Sheet
          
           final result = RoleAssignmentLogic.promote(
@@ -46,13 +47,17 @@ class GroupMembersScreen extends StatelessWidget {
             );
             
             // ✅ التعديل المطلوب: تغيير النص ليكون "تحديث" بدلاً من "ترقية" لشمولية التخفيض أيضاً
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('تم تحديث رتبة ${target.displayName} إلى ${newRole.label}')),
-            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('تم تحديث رتبة ${target.effectiveName} إلى ${newRole.label}')),
+              );
+            }
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(result.message ?? 'فشل التعديل')),
-            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(result.message ?? 'فشل التعديل')),
+              );
+            }
           }
         },
       ),
@@ -70,7 +75,7 @@ class GroupMembersScreen extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text('إدارة العضو: ${target.displayName}',
+              child: Text('إدارة العضو: ${target.effectiveName}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             ListTile(
@@ -90,7 +95,7 @@ class GroupMembersScreen extends StatelessWidget {
                   context: context,
                   builder: (_) => AppDialog(
                     title: 'تأكيد الإزالة',
-                    content: 'هل تريد إزالة ${target.displayName} من المجموعة؟',
+                    content: 'هل تريد إزالة ${target.effectiveName} من المجموعة؟',
                     confirmText: 'إزالة',
                     onConfirm: () => Navigator.pop(context, true),
                     cancelText: 'إلغاء',
@@ -104,9 +109,11 @@ class GroupMembersScreen extends StatelessWidget {
                     userId: target.userId,
                     adminId: actor.userId,
                   );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تمت الإزالة بنجاح')),
-                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تمت الإزالة بنجاح')),
+                    );
+                  }
                 }
               },
             ),
@@ -169,27 +176,27 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
-              // 🔥 التعديل المطلوب: استخدام الـ Getter الذكي displayImageUrl
+              // ✅ التعديل المطلوب: استخدام الـ Getter الذكي displayImageUrl (الذي تم تدعيمه بـ trim)
               final String? profileImage = member.displayImageUrl;
 
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: badgeBg,
-                  backgroundImage: profileImage != null && profileImage.isNotEmpty
+                  backgroundImage: profileImage != null 
                       ? NetworkImage(profileImage)
                       : null,
-                  child: (profileImage == null || profileImage.isEmpty)
+                  child: profileImage == null
                       ? Icon(Icons.person, color: roleColor)
                       : null,
                 ),
                 title: Text(
-                  member.effectiveName, // ✅ تعديل إضافي لضمان تناسق الاسم أيضاً
+                  member.effectiveName, // ✅ استخدام الـ Getter الموحد للاسم
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: roleColor,
                   ),
                 ),
-                subtitle: member.characterName != null
+                subtitle: member.characterName != null && member.characterName!.trim().isNotEmpty
                     ? Text(
                         member.characterName!,
                         style: TextStyle(
@@ -208,7 +215,7 @@ class GroupMembersScreen extends StatelessWidget {
                         color: roleColor,
                       ),
                     ),
-                    if (canManage)
+                    if (canManage && member.userId != currentUserId)
                       const Icon(Icons.chevron_left, size: 16, color: Colors.grey),
                   ],
                 ),
