@@ -304,7 +304,20 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      final updatedMember = member.copyWith(isManualRole: true);
+      // ✅ التعديل الحاسم: جلب بيانات المستخدم قبل الحفظ لضمان الصورة والاسم
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
+          .doc(member.userId)
+          .get();
+
+      if (!userDoc.exists) throw "فشل إضافة العضو: المستخدم غير موجود في النظام.";
+      final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
+
+      final updatedMember = member.copyWith(
+        realUserName: user.username,
+        realUserImageUrl: user.avatarUrl,
+        isManualRole: true,
+      );
 
       await _firestore.createDocument(
         path: FirestorePaths.groupMembers(updatedMember.groupId),
@@ -414,9 +427,24 @@ class GroupProvider extends ChangeNotifier {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
+      
+      // ✅ التعديل الحاسم: جلب بيانات المستخدم المؤسس لضمان مزامنة الصورة والاسم
+      final userDoc = await firestore
+          .collection('Users')
+          .doc(founderMember.userId)
+          .get();
+
+      if (!userDoc.exists) throw "فشل إنشاء المجموعة: بيانات المستخدم غير متوفرة.";
+      final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
+
       final batch = firestore.batch();
      
-      final founder = RoleAssignmentLogic.createFounder(member: founderMember).copyWith(isManualRole: true);
+      final founder = RoleAssignmentLogic.createFounder(
+        member: founderMember.copyWith(
+          realUserName: user.username,
+          realUserImageUrl: user.avatarUrl,
+        ),
+      ).copyWith(isManualRole: true);
 
       final groupRef = firestore.collection(FirestorePaths.groups).doc(group.id);
       
