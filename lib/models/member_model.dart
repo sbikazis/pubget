@@ -49,20 +49,19 @@ class MemberModel {
   });
 
   // =========================================================
-  // ✅ التعديل الذهبي: التحقق من الرابط لضمان العرض
+  // ✅ التعديل الذهبي: السماح بمرور أي رابط غير فارغ
   // =========================================================
   String? get displayImageUrl {
-    // تم تحسين الفحص ليكون أكثر دقة وحساسية للروابط الحقيقية
     final charImg = (characterImageUrl ?? '').trim();
-    if (charImg.startsWith('http')) {
+    if (charImg.isNotEmpty) {
       return charImg;
     }
-    
+
     final realImg = (realUserImageUrl ?? '').trim();
-    if (realImg.startsWith('http')) {
+    if (realImg.isNotEmpty) {
       return realImg;
     }
-    
+
     return null;
   }
 
@@ -137,10 +136,8 @@ class MemberModel {
   }
 
   // -------------------------
-  // ✅ التعديل الحاسم: Copy With المحسن
+  // Copy With
   // -------------------------
-  // تم تعديل المنطق هنا ليقبل تمرير قيم null بشكل صريح إذا أردنا تحديثها
-  // بدلاً من الاعتماد فقط على عامل التشغيل ?? الذي كان يمنع التحديث بـ null
   MemberModel copyWith({
     Roles? role,
     String? displayName,
@@ -164,7 +161,6 @@ class MemberModel {
       characterName: characterName ?? this.characterName,
       characterImageUrl: characterImageUrl ?? this.characterImageUrl,
       characterReason: characterReason ?? this.characterReason,
-      // نستخدم الـ ?? لضمان أنه إذا لم نرسل متغيراً جديداً، يتم استخدام القيمة الحالية
       realUserName: realUserName ?? this.realUserName, 
       realUserImageUrl: realUserImageUrl ?? this.realUserImageUrl, 
       invitedByUserId: invitedByUserId ?? this.invitedByUserId,
