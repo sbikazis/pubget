@@ -144,7 +144,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
+  // SEND TEXT MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -158,29 +158,44 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     if (text.trim().isEmpty) return;
 
+    // 🔥 خطوة المزامنة الحية: جلب أحدث البيانات من كولكشن Users قبل الإرسال
+    String? freshRealAvatar = sender.realUserImageUrl;
+    String freshRealName = sender.realUserName ?? '';
     bool freshPremiumStatus = sender.isPremium;
+
     try {
-      final memberDoc = await FirebaseFirestore.instance
-          .collection(FirestorePaths.groupMembers(groupId))
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
           .doc(sender.userId)
           .get();
-      if (memberDoc.exists) {
-        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        freshRealAvatar = userData?['avatarUrl'];
+        freshRealName = userData?['username'] ?? freshRealName;
+        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
-      debugPrint("⚠️ Warning: Could not fetch fresh premium status, using local: $e");
+      debugPrint("⚠️ Warning: Live sync failed, using fallback: $e");
     }
 
-    // ✅ التعديل المطلوب: استخدام الـ Getter الذكي لضمان جلب صورة التقمص أو الحقيقية
-    final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+    // تحديث كائن العضو مؤقتاً بالبيانات الجديدة لضمان عمل الـ Getters بدقة
+    final updatedSender = sender.copyWith(
+      realUserImageUrl: freshRealAvatar,
+      realUserName: freshRealName,
+      isPremium: freshPremiumStatus,
+    );
+
+    // اختيار الصورة: التقمص أولاً، ثم الحقيقية المحدثة، ثم الافتراضية
+    final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
 
     final message = MessageModel(
       id: messageId,
-      senderId: sender.userId,
-      senderName: sender.effectiveName, // استخدام الاسم الفعال (تقمص أو حقيقي)
+      senderId: updatedSender.userId,
+      senderName: updatedSender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus,
+      senderRole: updatedSender.role,
+      senderIsPremium: updatedSender.isPremium,
       text: text.trim(),
       replyToId: replyToId, 
       replyText: replyText, 
@@ -195,7 +210,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
+  // SEND MEDIA MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -208,35 +223,49 @@ class ChatProvider extends ChangeNotifier {
     String? replyToId, 
     String? replyText, 
   }) async {
+    // رفع الميديا أولاً
     final mediaUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: file,
     );
 
+    // 🔥 جلب أحدث البيانات الحقيقية من كولكشن Users
+    String? freshRealAvatar = sender.realUserImageUrl;
+    String freshRealName = sender.realUserName ?? '';
     bool freshPremiumStatus = sender.isPremium;
+
     try {
-      final memberDoc = await FirebaseFirestore.instance
-          .collection(FirestorePaths.groupMembers(groupId))
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
           .doc(sender.userId)
           .get();
-      if (memberDoc.exists) {
-        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        freshRealAvatar = userData?['avatarUrl'];
+        freshRealName = userData?['username'] ?? freshRealName;
+        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
-      debugPrint("⚠️ Error fetching premium status for media: $e");
+      debugPrint("⚠️ Error fetching live user data for media: $e");
     }
 
-    // ✅ التعديل المطلوب: استخدام الـ Getter الذكي لضمان جلب الصورة الصحيحة في الميديا
-    final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+    final updatedSender = sender.copyWith(
+      realUserImageUrl: freshRealAvatar,
+      realUserName: freshRealName,
+      isPremium: freshPremiumStatus,
+    );
+
+    final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
 
     final message = MessageModel(
       id: messageId,
-      senderId: sender.userId,
-      senderName: sender.effectiveName, 
+      senderId: updatedSender.userId,
+      senderName: updatedSender.effectiveName, 
       senderAvatar: finalAvatar,
-      senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus,
+      senderRole: updatedSender.role,
+      senderIsPremium: updatedSender.isPremium,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
       replyToId: replyToId, 
@@ -283,7 +312,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND GAME MESSAGE (FIXED: PHOTO LOGIC BY DISPLAY_IMAGE_URL)
+  // SEND GAME MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
   // =========================================================
 
   Future<void> sendGameMessage({
@@ -292,29 +321,39 @@ class ChatProvider extends ChangeNotifier {
     required MemberModel sender,
     required String gameId,
   }) async {
+    // 🔥 جلب أحدث البيانات من كولكشن Users
+    String? freshRealAvatar = sender.realUserImageUrl;
     bool freshPremiumStatus = sender.isPremium;
+
     try {
-      final memberDoc = await FirebaseFirestore.instance
-          .collection(FirestorePaths.groupMembers(groupId))
+      final userDoc = await FirebaseFirestore.instance
+          .collection('Users')
           .doc(sender.userId)
           .get();
-      if (memberDoc.exists) {
-        freshPremiumStatus = memberDoc.data()?['isPremium'] ?? sender.isPremium;
+      
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        freshRealAvatar = userData?['avatarUrl'];
+        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
-      debugPrint("⚠️ Error fetching premium status for game: $e");
+      debugPrint("⚠️ Error fetching live user data for game: $e");
     }
 
-    // ✅ التعديل المطلوب: ضمان جلب الصورة في رسائل الألعاب أيضاً
-    final finalAvatar = sender.displayImageUrl ?? '';
+    final updatedSender = sender.copyWith(
+      realUserImageUrl: freshRealAvatar,
+      isPremium: freshPremiumStatus,
+    );
+
+    final finalAvatar = updatedSender.displayImageUrl ?? '';
 
     final message = MessageModel(
       id: messageId,
-      senderId: sender.userId,
-      senderName: sender.effectiveName,
+      senderId: updatedSender.userId,
+      senderName: updatedSender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: sender.role,
-      senderIsPremium: freshPremiumStatus,
+      senderRole: updatedSender.role,
+      senderIsPremium: updatedSender.isPremium,
       gameId: gameId,
       createdAt: DateTime.now(),
     );

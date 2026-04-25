@@ -269,14 +269,11 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // 🔥 التعديل الذهبي: استهلاك منطق الصور المفرزة
+  // ✅ التعديل الذهبي: توحيد المنطق باستخدام displayImageUrl المدعوم بالمزامنة الحية
   Widget _buildAvatar(BuildContext context) {
-    // الترتيب: صورة التقمص المفرزة -> أو الصورة الحقيقية المفرزة
-    final String? avatarUrl = (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty) 
-        ? sender.characterImageUrl 
-        : (sender.realUserImageUrl != null && sender.realUserImageUrl!.isNotEmpty 
-            ? sender.realUserImageUrl 
-            : null);
+    // نعتمد على الـ Getter المحسن الذي يختار (صورة التقمص أولاً ثم الصورة الحقيقية)
+    // مع إمكانية استخدام الصورة القادمة من الرسالة كخلفية أمان
+    final String? avatarUrl = sender.displayImageUrl ?? (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {

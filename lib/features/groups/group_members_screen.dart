@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/user_provider.dart'; // مضاف لجلب المستخدم الحالي
+import '../../providers/user_provider.dart'; 
 import '../../core/constants/roles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
@@ -11,14 +11,14 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
 import '../../core/logic/role_assignment_logic.dart';
-import '../../widgets/role_selector_sheet.dart'; // ✅ استيراد الملف الجديد
+import '../../widgets/role_selector_sheet.dart'; 
 
 class GroupMembersScreen extends StatelessWidget {
   final String groupId;
 
   const GroupMembersScreen({Key? key, required this.groupId}) : super(key: key);
 
-  // ✅ الدالة الجديدة التي تستخدم الـ Sheet الفخم للترقية
+  // ✅ الدالة التي تستخدم الـ Sheet الفخم للترقية/التخفيض
   void _showPromotionSheet(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
     final groupProvider = context.read<GroupProvider>();
    
@@ -46,7 +46,6 @@ class GroupMembersScreen extends StatelessWidget {
               adminId: actor.userId,
             );
             
-            // ✅ التعديل المطلوب: تغيير النص ليكون "تحديث" بدلاً من "ترقية" لشمولية التخفيض أيضاً
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('تم تحديث رتبة ${target.effectiveName} إلى ${newRole.label}')),
@@ -176,7 +175,8 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
-              // ✅ التعديل المطلوب: استخدام الـ Getter الذكي displayImageUrl (الذي تم تدعيمه بـ trim)
+              // ✅ التعديل الذهبي: استخدام الـ Getter الذكي displayImageUrl والـ effectiveName
+              // لضمان استقرار العرض حتى لو كانت البيانات في Firestore فارغة (Strings)
               final String? profileImage = member.displayImageUrl;
 
               return ListTile(
@@ -190,7 +190,7 @@ class GroupMembersScreen extends StatelessWidget {
                       : null,
                 ),
                 title: Text(
-                  member.effectiveName, // ✅ استخدام الـ Getter الموحد للاسم
+                  member.effectiveName, 
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: roleColor,

@@ -104,11 +104,10 @@ class GroupProvider extends ChangeNotifier {
       if (userDoc.exists) {
         final userData = userDoc.data();
         currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
-        freshAvatar = userData?['avatarUrl']; // 🔥 جلب الصورة الحقيقية الطازجة
+        freshAvatar = userData?['avatarUrl']; 
         freshUsername = userData?['username'];
       }
 
-      // التحقق من حجز الشخصية يظل فعالاً لمنع التكرار في كل الحالات
       if (requestMember.characterName != null) {
         final isTaken = await isCharacterReserved(
           groupId: groupId,
@@ -121,12 +120,12 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // ✅ التعديل: التأكد من دمج الصورة الحقيقية (avatarUrl) في العضو الجديد المقبول
+      // ✅ مزامنة البيانات الحقيقية عند القبول
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
         realUserName: freshUsername,
-        realUserImageUrl: freshAvatar, // 🔥 هنا نضمن أن الصورة الحقيقية لا تضيع
+        realUserImageUrl: freshAvatar, 
       );
 
       final memberRef = firestore
@@ -235,6 +234,7 @@ class GroupProvider extends ChangeNotifier {
         var member = MemberModel.fromMap(doc.data());
        
         try {
+          // 🔥 Live Sync: جلب أحدث صورة واسم من ملف المستخدم الحقيقي
           final userData = await FirebaseFirestore.instance
               .collection('Users')
               .doc(member.userId.trim())
@@ -243,10 +243,9 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
-            // ✅ Mapping: ضمان ربط الصورة الحقيقية من UserModel بـ realUserImageUrl
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, // 🔥 استخدام رابط الـ Avatar من ملف المستخدم
+              realUserImageUrl: user.avatarUrl, 
               isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
@@ -256,7 +255,6 @@ class GroupProvider extends ChangeNotifier {
         members.add(member);
       }
 
-      // ترتيب المشتركين (Premium أولاً ثم الأحدث)
       members.sort((a, b) {
         if (a.isPremium && !b.isPremium) return -1;
         if (!a.isPremium && b.isPremium) return 1;
@@ -543,6 +541,7 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
+  // ✅ التعديل الذهبي للمزامنة الحية لصور الأعضاء والاسم والبريميوم
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
@@ -553,6 +552,7 @@ class GroupProvider extends ChangeNotifier {
         var member = MemberModel.fromMap(doc.data());
         
         try {
+          // جلب بيانات المستخدم الفعلية في كل مرة يتم فيها تحديث الـ Stream
           final userData = await FirebaseFirestore.instance
               .collection('Users')
               .doc(member.userId.trim())
@@ -561,15 +561,15 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
-            // ✅ Mapping: المزامنة المستمرة للصور الحقيقية لضمان عمل الـ Getter
+            // تحديث كائن العضو بالبيانات الحية القادمة من كولكشن Users
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, // 🔥 ضمان المزامنة من UserModel
+              realUserImageUrl: user.avatarUrl, 
               isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
         } catch (e) {
-          debugPrint("⚠️ Error syncing member ${member.userId} image: $e");
+          debugPrint("⚠️ Error syncing member ${member.userId} live data: $e");
         }
         
         members.add(member);

@@ -86,18 +86,19 @@ class MemberModel {
   factory MemberModel.fromMap(
     Map<String, dynamic> map,
   ) {
-    // وظيفة مساعدة داخلية لتنظيف النصوص القادمة من Firestore
+    // وظيفة مساعدة داخلية قوية لتنظيف النصوص القادمة من Firestore
+    // تضمن عدم مرور المسافات الزائدة وتحويل النصوص الفارغة إلى null فعلياً
     String? clean(dynamic value) {
       if (value == null) return null;
-      final s = value.toString().trim();
+      final String s = value.toString().trim();
       return s.isEmpty ? null : s;
     }
 
     return MemberModel(
-      userId: map['userId'] as String,
-      groupId: map['groupId'] as String,
-      role: Roles.fromString(map['role'] as String),
-      // نطبق التنظيف على الحقول الحساسة لضمان استقرار الـ Getters
+      userId: map['userId']?.toString() ?? '',
+      groupId: map['groupId']?.toString() ?? '',
+      role: Roles.fromString(map['role']?.toString() ?? 'member'),
+      // تطبيق التنظيف الصارم على الحقول لضمان عمل displayImageUrl و effectiveName بدقة
       displayName: clean(map['displayName']),
       characterName: clean(map['characterName']),
       characterImageUrl: clean(map['characterImageUrl']),
@@ -109,7 +110,7 @@ class MemberModel {
       joinedAt: map['joinedAt'] is Timestamp 
           ? (map['joinedAt'] as Timestamp).toDate() 
           : DateTime.now(),
-      lastReadAt: map['lastReadAt'] != null 
+      lastReadAt: map['lastReadAt'] != null && map['lastReadAt'] is Timestamp
           ? (map['lastReadAt'] as Timestamp).toDate() 
           : null,
       isManualRole: map['isManualRole'] ?? false, 
