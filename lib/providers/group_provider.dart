@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'package:rxdart/rxdart.dart'; // ✅ نحتاج هذا للدمج الاحترافي للـ Streams
 
 import '../models/group_model.dart';
 import '../models/member_model.dart';
@@ -234,7 +235,6 @@ class GroupProvider extends ChangeNotifier {
         var member = MemberModel.fromMap(doc.data());
        
         try {
-          // 🔥 Live Sync: جلب أحدث صورة واسم من ملف المستخدم الحقيقي
           final userData = await FirebaseFirestore.instance
               .collection('Users')
               .doc(member.userId.trim())
@@ -541,40 +541,37 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
-  // ✅ التعديل الذهبي للمزامنة الحية لصور الأعضاء والاسم والبريميوم
+  // ✅ التعديل الجذري: استخدام Rx.combineLatest للمزامنة الحقيقية والفورية
+  // هذا التعديل يضمن أن أي تغيير في صورة المستخدم الأصلية ينعكس فوراً في قائمة الأعضاء
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
-        .asyncMap((snapshot) async {
-      List<MemberModel> members = [];
-      
-      for (var doc in snapshot.docs) {
-        var member = MemberModel.fromMap(doc.data());
+        .switchMap((snapshot) {
+      if (snapshot.docs.isEmpty) return Stream.value(<MemberModel>[]);
+
+      // تحويل كل وثيقة عضو إلى Stream يراقب بيانات المستخدم الأصلية
+      final memberStreams = snapshot.docs.map((doc) {
+        final member = MemberModel.fromMap(doc.data());
         
-        try {
-          // جلب بيانات المستخدم الفعلية في كل مرة يتم فيها تحديث الـ Stream
-          final userData = await FirebaseFirestore.instance
-              .collection('Users')
-              .doc(member.userId.trim())
-              .get();
-          
-          if (userData.exists && userData.data() != null) {
-            final user = UserModel.fromMap(userData.data()!, userData.id);
-            
-            // تحديث كائن العضو بالبيانات الحية القادمة من كولكشن Users
-            member = member.copyWith(
+        return FirebaseFirestore.instance
+            .collection('Users')
+            .doc(member.userId.trim())
+            .snapshots()
+            .map((userDoc) {
+          if (userDoc.exists && userDoc.data() != null) {
+            final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
+            return member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, 
+              realUserImageUrl: user.avatarUrl,
               isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
-        } catch (e) {
-          debugPrint("⚠️ Error syncing member ${member.userId} live data: $e");
-        }
-        
-        members.add(member);
-      }
-      return members;
+          return member;
+        });
+      }).toList();
+
+      // دمج كل Streams الأعضاء في قائمة واحدة محدثة دائماً
+      return Rx.combineLatestList(memberStreams);
     });
   }
 

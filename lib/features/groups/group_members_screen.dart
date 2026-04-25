@@ -176,18 +176,40 @@ class GroupMembersScreen extends StatelessWidget {
               );
 
               // ✅ التعديل الذهبي: استخدام الـ Getter الذكي displayImageUrl والـ effectiveName
-              // لضمان استقرار العرض حتى لو كانت البيانات في Firestore فارغة (Strings)
               final String? profileImage = member.displayImageUrl;
 
               return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: badgeBg,
-                  backgroundImage: profileImage != null 
-                      ? NetworkImage(profileImage)
-                      : null,
-                  child: profileImage == null
-                      ? Icon(Icons.person, color: roleColor)
-                      : null,
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: ClipOval(
+                    child: profileImage != null && profileImage.isNotEmpty
+                        ? Image.network(
+                            profileImage,
+                            fit: BoxFit.cover,
+                            // ✅ منع الوميض: يظهر Placeholder بسيط أثناء التحميل
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(roleColor.withOpacity(0.5)),
+                                  ),
+                                ),
+                              );
+                            },
+                            // ✅ في حال فشل التحميل تماماً، نعود للأيقونة
+                            errorBuilder: (context, error, stackTrace) => Icon(Icons.person, color: roleColor),
+                          )
+                        : Icon(Icons.person, color: roleColor),
+                  ),
                 ),
                 title: Text(
                   member.effectiveName, 
