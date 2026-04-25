@@ -104,7 +104,7 @@ class GroupProvider extends ChangeNotifier {
       if (userDoc.exists) {
         final userData = userDoc.data();
         currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
-        freshAvatar = userData?['avatarUrl'];
+        freshAvatar = userData?['avatarUrl']; // 🔥 جلب الصورة الحقيقية الطازجة
         freshUsername = userData?['username'];
       }
 
@@ -121,12 +121,12 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // ✅ تحديث العضو ببيانات الهوية الحقيقية الطازجة قبل الحفظ
+      // ✅ التعديل: التأكد من دمج الصورة الحقيقية (avatarUrl) في العضو الجديد المقبول
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
         realUserName: freshUsername,
-        realUserImageUrl: freshAvatar,
+        realUserImageUrl: freshAvatar, // 🔥 هنا نضمن أن الصورة الحقيقية لا تضيع
       );
 
       final memberRef = firestore
@@ -243,10 +243,10 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
-            // ✅ Mapping: ربط avatarUrl بـ realUserImageUrl لضمان عمل الـ Getter
+            // ✅ Mapping: ضمان ربط الصورة الحقيقية من UserModel بـ realUserImageUrl
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl,
+              realUserImageUrl: user.avatarUrl, // 🔥 استخدام رابط الـ Avatar من ملف المستخدم
               isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }
@@ -561,10 +561,10 @@ class GroupProvider extends ChangeNotifier {
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
             
-            // ✅ Mapping: ربط avatarUrl بـ realUserImageUrl لضمان عمل الـ Getter
+            // ✅ Mapping: المزامنة المستمرة للصور الحقيقية لضمان عمل الـ Getter
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl,
+              realUserImageUrl: user.avatarUrl, // 🔥 ضمان المزامنة من UserModel
               isPremium: user.subscriptionType == SubscriptionType.premium,
             );
           }

@@ -9,6 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
+import '../../../providers/group_provider.dart'; 
+import '../../../models/group_model.dart'; // ✅ إضافة موديل المجموعة
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
@@ -172,12 +174,11 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: _uuid.v4(),
       sender: _currentMember!,
       text: text,
-      userAvatar: userProvider.currentUser?.avatarUrl, // تمرير رابط الصورة الحقيقية كاحتياط
+      userAvatar: userProvider.currentUser?.avatarUrl, 
       replyToId: replyTo?.id,
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
    
-    // ✅ تحديث وقت القراءة فور الإرسال
     _updateReadStatus(_currentMember!.userId);
     _onCancelReply();
     _scrollToBottom(force: true);
@@ -199,7 +200,6 @@ class _ChatScreenState extends State<ChatScreen> {
       replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
-    // ✅ تحديث وقت القراءة فور إرسال الصورة
     _updateReadStatus(_currentMember!.userId);
     _onCancelReply();
     _scrollToBottom(force: true);
@@ -223,81 +223,95 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final chatProvider = Provider.of<ChatProvider>(context);
+    final groupProvider = Provider.of<GroupProvider>(context, listen: false);
+    
+    // ✅ الحل الذهبي: نستخدم StreamBuilder لجلب بيانات المجموعة (الاسم ونوع التقمص) بشكل حي
+    return StreamBuilder<GroupModel?>(
+      stream: groupProvider.streamGroup(groupId: widget.groupId),
+      builder: (context, groupSnapshot) {
+        final group = groupSnapshot.data;
+        final bool isRoleplay = group?.isRoleplay ?? false;
+        final String groupName = group?.name ?? "الدردشة";
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Group Chat"), centerTitle: true),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<MessageModel>>(
-              stream: chatProvider.streamMessages(groupId: widget.groupId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasData) {
-                  // ✅ التعديل الاحترافي: عند وصول رسائل جديدة وأنت تشاهد المحادثة، صفر العداد فوراً
-                  if (snapshot.data!.length > _cachedMessages.length) {
-                    final userProvider = Provider.of<UserProvider>(context, listen: false);
-                    final currentUserId = userProvider.currentUser?.id;
-                    if (currentUserId != null) {
-                      Future.microtask(() => _updateReadStatus(currentUserId));
+        return Scaffold(
+          appBar: AppBar(title: Text(groupName), centerTitle: true),
+          body: Column(
+            children: [
+              Expanded(
+                child: StreamBuilder<List<MessageModel>>(
+                  stream: chatProvider.streamMessages(groupId: widget.groupId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
+                      return const Center(child: CircularProgressIndicator());
                     }
-                  }
-                  _cachedMessages = snapshot.data!;
-                  _isInitialLoad = false;
-                }
-                if (_cachedMessages.isEmpty) {
-                  return const Center(child: EmptyStateWidget(title: 'لا توجد رسائل بعد', subtitle: 'ابدأ المحادثة الآن', icon: Icons.chat_bubble_outline));
-                }
-                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                    if (snapshot.hasData) {
+                      if (snapshot.data!.length > _cachedMessages.length) {
+                        final userProvider = Provider.of<UserProvider>(context, listen: false);
+                        final currentUserId = userProvider.currentUser?.id;
+                        if (currentUserId != null) {
+                          Future.microtask(() => _updateReadStatus(currentUserId));
+                        }
+                      }
+                      _cachedMessages = snapshot.data!;
+                      _isInitialLoad = false;
+                    }
+                    if (_cachedMessages.isEmpty) {
+                      return const Center(child: EmptyStateWidget(
+                        title: 'لا توجد رسائل بعد', 
+                        subtitle: 'ابدأ المحادثة الآن', 
+                        icon: Icons.chat_bubble_outline
+                      ));
+                    }
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.only(top: 12, bottom: 12),
-                  itemCount: _cachedMessages.length,
-                  itemBuilder: (context, index) {
-                    final message = _cachedMessages[index];
-                    final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
-                    
-                    // 🔥 التعديل الذهبي: بناء كائن العضو مع مراعاة منطق التقمص والصورة الحقيقية
-                    final sender = isMe ? _currentMember! : MemberModel(
-                            userId: message.senderId,
-                            groupId: widget.groupId,
-                            role: message.senderRole ?? Roles.member,
-                            joinedAt: DateTime.now(),
-                            displayName: message.senderName,
-                            characterImageUrl: message.senderAvatar, // نضع الصورة المخزنة في الرسالة هنا
-                            realUserImageUrl: message.senderAvatar, // ونضعها هنا أيضاً لضمان ظهورها في الـ Bubble
-                            isPremium: message.senderIsPremium, 
-                          );
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.only(top: 12, bottom: 12),
+                      itemCount: _cachedMessages.length,
+                      itemBuilder: (context, index) {
+                        final message = _cachedMessages[index];
+                        final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
+                        
+                        // 🔥 التعديل: فرز الصورة حسب نوع المجموعة المستلم من الـ Stream
+                        final sender = isMe ? _currentMember! : MemberModel(
+                                userId: message.senderId,
+                                groupId: widget.groupId,
+                                role: message.senderRole ?? Roles.member,
+                                joinedAt: DateTime.now(),
+                                displayName: message.senderName,
+                                characterImageUrl: isRoleplay ? message.senderAvatar : null,
+                                realUserImageUrl: !isRoleplay ? message.senderAvatar : null,
+                                isPremium: message.senderIsPremium, 
+                              );
 
-                    return MessageBubble(
-                      key: ValueKey(message.id),
-                      message: message,
-                      sender: sender,
-                      isMe: isMe,
-                      groupId: widget.groupId,
-                      onReply: (msg) => setState(() => _replyingMessage = msg),
-                      onTapReply: (replyId) => _scrollToMessage(replyId),
+                        return MessageBubble(
+                          key: ValueKey(message.id),
+                          message: message,
+                          sender: sender,
+                          isMe: isMe,
+                          groupId: widget.groupId,
+                          onReply: (msg) => setState(() => _replyingMessage = msg),
+                          onTapReply: (replyId) => _scrollToMessage(replyId),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ),
+                ),
+              ),
 
-          if (_currentMember != null)
-            MessageInputBar(
-              onSendText: _handleSendText,
-              onSendImage: _handleSendImage,
-              replyingMessage: _replyingMessage,
-              onCancelReply: _onCancelReply,
-              onGamePressed: _openGame,
-              isPrivate: false, 
-            ),
-        ],
-      ),
+              if (_currentMember != null)
+                MessageInputBar(
+                  onSendText: _handleSendText,
+                  onSendImage: _handleSendImage,
+                  replyingMessage: _replyingMessage,
+                  onCancelReply: _onCancelReply,
+                  onGamePressed: _openGame,
+                  isPrivate: false, 
+                ),
+            ],
+          ),
+        );
+      }
     );
   }
 }

@@ -10,7 +10,6 @@ class GroupModel {
   final String imageUrl;
 
   final GroupType type;
-  // ✅ الملاحظة: هذه الحقول تبقى nullable لدعم نوع التقمص المفتوح (Open Roleplay)
   final String? animeName; 
   final dynamic animeId; 
   final List<dynamic>? franchiseIds; 
@@ -43,7 +42,10 @@ class GroupModel {
     required this.createdAt,
   });
 
-  /// Convert Firestore → Model
+  // 🔥 إضافة الـ Getter المفقود لحل مشكلة شاشة الدردشة
+  // يعود بـ true إذا كان النوع تقمص أنمي أو تقمص مفتوح
+  bool get isRoleplay => type == GroupType.roleplay || type == GroupType.openRoleplay;
+
   factory GroupModel.fromMap(String id, Map<String, dynamic> map) {
     return GroupModel(
       id: id,
@@ -51,7 +53,6 @@ class GroupModel {
       description: map['description'] ?? '',
       slogan: map['slogan'] ?? '',
       imageUrl: map['imageUrl'] ?? '',
-      // استخدام GroupType المحدث الذي يحتوي على openRoleplay
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
       animeId: map['animeId'], 
@@ -69,7 +70,6 @@ class GroupModel {
     );
   }
 
-  /// Convert Model → Firestore
   Map<String, dynamic> toMap() {
     return {
       'name': name,
@@ -77,8 +77,8 @@ class GroupModel {
       'slogan': slogan,
       'imageUrl': imageUrl,
       'type': type.name,
-      'animeName': animeName, // سيتم حفظه كـ null في حال التقمص المفتوح
-      'animeId': animeId, // سيتم حفظه كـ null في حال التقمص المفتوح
+      'animeName': animeName,
+      'animeId': animeId, 
       'franchiseIds': franchiseIds, 
       'founderId': founderId,
       'membersCount': membersCount,
@@ -89,7 +89,6 @@ class GroupModel {
     };
   }
 
-  /// Clone with modifications
   GroupModel copyWith({
     String? name,
     String? description,

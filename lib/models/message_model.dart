@@ -7,7 +7,7 @@ class MessageModel {
 
   final String senderId;
   final String senderName;
-  final String senderAvatar;
+  final String senderAvatar; // 🔥 هذا الحقل سيحمل الآن (صورة التقمص أو صورة البروفايل) بفضل تعديل الـ Provider
   
   // ✅ الحقل الجديد لتمييز مستخدمي البريميوم بصرياً في الدردشة
   final bool senderIsPremium;

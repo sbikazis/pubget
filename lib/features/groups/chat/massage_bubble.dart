@@ -269,9 +269,9 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // 🔥 التعديل الذهبي: جلب الصورة مع معالجة الخطأ
+  // 🔥 التعديل الذهبي: استهلاك منطق الصور المفرزة
   Widget _buildAvatar(BuildContext context) {
-    // نستخدم الترتيب: صورة التقمص -> صورة المستخدم الحقيقية -> صورة احتياطية (فارغة)
+    // الترتيب: صورة التقمص المفرزة -> أو الصورة الحقيقية المفرزة
     final String? avatarUrl = (sender.characterImageUrl != null && sender.characterImageUrl!.isNotEmpty) 
         ? sender.characterImageUrl 
         : (sender.realUserImageUrl != null && sender.realUserImageUrl!.isNotEmpty 
