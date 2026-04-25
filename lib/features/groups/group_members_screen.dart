@@ -165,8 +165,7 @@ class GroupMembersScreen extends StatelessWidget {
               final isDark = Theme.of(context).brightness == Brightness.dark;
 
               final roleColor = RoleColors.getColor(member.role, isDark: isDark);
-              final badgeBg = RoleColors.getBadgeBackground(member.role, isDark: isDark);
-
+              
               // التحقق من إمكانية الإدارة
               final canManage = RoleAssignmentLogic.canModify(
                 actorRole: currentUserMember.role,
@@ -175,11 +174,10 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
-              // ✅ التعديل الذهبي: جلب الرابط باستخدام المنطق الجديد (يتجاهل الفراغ ويبحث عن http)
+              // ✅ استخدام الـ getter المصلح الذي يتجاوز مشاكل الـ null والمسافات
               final String? profileImage = member.displayImageUrl;
 
               return ListTile(
-                // ✅ تعديل الـ leading ليطابق منطق الـ MessageBubble (الدردشة) حرفياً
                 leading: CircleAvatar(
                   radius: 20,
                   backgroundColor: roleColor.withOpacity(0.1),

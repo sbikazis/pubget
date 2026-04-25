@@ -104,10 +104,9 @@ class GroupProvider extends ChangeNotifier {
 
       if (userDoc.exists) {
         final userData = userDoc.data();
-        // ✅ التعديل: استخدام الموديل لضمان جلب البيانات بشكل صحيح
         final user = UserModel.fromMap(userData!, userDoc.id);
         currentPremiumStatus = user.isPremium;
-        freshAvatar = user.avatarUrl; // سيأخذ null أو رابط حقيقي، ولن يأخذ ''
+        freshAvatar = user.avatarUrl; 
         freshUsername = user.username;
       }
 
@@ -123,7 +122,6 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // ✅ مزامنة البيانات الحقيقية عند القبول
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
@@ -247,7 +245,7 @@ class GroupProvider extends ChangeNotifier {
             
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, // ✅ يتم تمرير الـ null أو الرابط مباشرة
+              realUserImageUrl: user.avatarUrl, 
               isPremium: user.isPremium,
             );
           }
@@ -304,20 +302,7 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      // ✅ التعديل الحاسم: جلب بيانات المستخدم قبل الحفظ لضمان الصورة والاسم
-      final userDoc = await FirebaseFirestore.instance
-          .collection('Users')
-          .doc(member.userId)
-          .get();
-
-      if (!userDoc.exists) throw "فشل إضافة العضو: المستخدم غير موجود في النظام.";
-      final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
-
-      final updatedMember = member.copyWith(
-        realUserName: user.username,
-        realUserImageUrl: user.avatarUrl,
-        isManualRole: true,
-      );
+      final updatedMember = member.copyWith(isManualRole: true);
 
       await _firestore.createDocument(
         path: FirestorePaths.groupMembers(updatedMember.groupId),
@@ -427,24 +412,9 @@ class GroupProvider extends ChangeNotifier {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
-      
-      // ✅ التعديل الحاسم: جلب بيانات المستخدم المؤسس لضمان مزامنة الصورة والاسم
-      final userDoc = await firestore
-          .collection('Users')
-          .doc(founderMember.userId)
-          .get();
-
-      if (!userDoc.exists) throw "فشل إنشاء المجموعة: بيانات المستخدم غير متوفرة.";
-      final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
-
       final batch = firestore.batch();
      
-      final founder = RoleAssignmentLogic.createFounder(
-        member: founderMember.copyWith(
-          realUserName: user.username,
-          realUserImageUrl: user.avatarUrl,
-        ),
-      ).copyWith(isManualRole: true);
+      final founder = RoleAssignmentLogic.createFounder(member: founderMember).copyWith(isManualRole: true);
 
       final groupRef = firestore.collection(FirestorePaths.groups).doc(group.id);
       
@@ -571,14 +541,13 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
-  // ✅ التعديل الجذري: استخدام Rx.combineLatest للمزامنة الحقيقية والفورية
+  // ✅ التعديل الجذري والمحسن للمزامنة الحقيقية
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
         .switchMap((snapshot) {
       if (snapshot.docs.isEmpty) return Stream.value(<MemberModel>[]);
 
-      // تحويل كل وثيقة عضو إلى Stream يراقب بيانات المستخدم الأصلية
       final memberStreams = snapshot.docs.map((doc) {
         final member = MemberModel.fromMap(doc.data());
         
@@ -589,9 +558,11 @@ class GroupProvider extends ChangeNotifier {
             .map((userDoc) {
           if (userDoc.exists && userDoc.data() != null) {
             final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
+            
+            // ✅ هنا يكمن سر الحل: تحديث العضو ببيانات المستخدم الحية
             return member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, // ✅ يتم جلب الـ null أو الرابط مباشرة من الـ UserModel
+              realUserImageUrl: user.avatarUrl, // يمرر الرابط حتى لو كان null في Member لكنه موجود في User
               isPremium: user.isPremium,
             );
           }
@@ -599,7 +570,6 @@ class GroupProvider extends ChangeNotifier {
         });
       }).toList();
 
-      // دمج كل Streams الأعضاء في قائمة واحدة محدثة دائماً
       return Rx.combineLatestList(memberStreams);
     });
   }

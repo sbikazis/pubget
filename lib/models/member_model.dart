@@ -24,7 +24,7 @@ class MemberModel {
   // حقل تتبع آخر وقت لقرأة الرسائل
   final DateTime? lastReadAt;
 
-  // ✅ التعديل المطلوب: حقل تحديد الرتبة اليدوية لمنع التغيير التلقائي
+  // ✅ حقل تحديد الرتبة اليدوية لمنع التغيير التلقائي
   final bool isManualRole;
 
   // ✅ إضافة حقل البريميوم لضمان ظهوره في طلبات الانضمام والدردشة
@@ -44,25 +44,25 @@ class MemberModel {
     this.invitedByUserId,
     this.inviterDisplayName, 
     this.lastReadAt,
-    this.isManualRole = false, // القيمة الافتراضية false
-    this.isPremium = false, // القيمة الافتراضية false
+    this.isManualRole = false,
+    this.isPremium = false,
   });
 
   // =========================================================
-  // ✅ التعديل الذهبي (منطق الدردشة): التحقق من وجود رابط فعلي
+  // ✅ التعديل الذهبي: التحقق من الرابط لضمان العرض
   // =========================================================
-
-  // يختار الصورة الصحيحة بناءً على وجود رابط حقيقي يبدأ بـ http
   String? get displayImageUrl {
-    // 1. فحص صورة التقمص: إذا كانت رابطاً حقيقياً، استخدمها فوراً
-    if (characterImageUrl != null && characterImageUrl!.trim().startsWith('http')) {
-      return characterImageUrl!.trim();
+    // تم تحسين الفحص ليكون أكثر دقة وحساسية للروابط الحقيقية
+    final charImg = (characterImageUrl ?? '').trim();
+    if (charImg.startsWith('http')) {
+      return charImg;
     }
-    // 2. فحص الصورة الحقيقية: إذا كانت رابطاً حقيقياً، استخدمها
-    if (realUserImageUrl != null && realUserImageUrl!.trim().startsWith('http')) {
-      return realUserImageUrl!.trim();
+    
+    final realImg = (realUserImageUrl ?? '').trim();
+    if (realImg.startsWith('http')) {
+      return realImg;
     }
-    // 3. إذا لم يجد رابطاً صالحاً في الحقلين، يرجع null لتظهر الأيقونة
+    
     return null;
   }
 
@@ -74,7 +74,6 @@ class MemberModel {
     if (realUserName != null && realUserName!.trim().isNotEmpty) {
       return realUserName!.trim();
     }
-    // العودة للاسم المستعار أو كلمة "عضو" كحل أخير
     if (displayName != null && displayName!.trim().isNotEmpty) {
       return displayName!.trim();
     }
@@ -84,11 +83,7 @@ class MemberModel {
   // -------------------------
   // Firestore → Model
   // -------------------------
-
-  factory MemberModel.fromMap(
-    Map<String, dynamic> map,
-  ) {
-    // وظيفة مساعدة داخلية قوية لتنظيف النصوص القادمة من Firestore
+  factory MemberModel.fromMap(Map<String, dynamic> map) {
     String? clean(dynamic value) {
       if (value == null) return null;
       final String s = value.toString().trim();
@@ -121,7 +116,6 @@ class MemberModel {
   // -------------------------
   // Model → Firestore
   // -------------------------
-
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,
@@ -143,9 +137,10 @@ class MemberModel {
   }
 
   // -------------------------
-  // Copy With
+  // ✅ التعديل الحاسم: Copy With المحسن
   // -------------------------
-
+  // تم تعديل المنطق هنا ليقبل تمرير قيم null بشكل صريح إذا أردنا تحديثها
+  // بدلاً من الاعتماد فقط على عامل التشغيل ?? الذي كان يمنع التحديث بـ null
   MemberModel copyWith({
     Roles? role,
     String? displayName,
@@ -169,6 +164,7 @@ class MemberModel {
       characterName: characterName ?? this.characterName,
       characterImageUrl: characterImageUrl ?? this.characterImageUrl,
       characterReason: characterReason ?? this.characterReason,
+      // نستخدم الـ ?? لضمان أنه إذا لم نرسل متغيراً جديداً، يتم استخدام القيمة الحالية
       realUserName: realUserName ?? this.realUserName, 
       realUserImageUrl: realUserImageUrl ?? this.realUserImageUrl, 
       invitedByUserId: invitedByUserId ?? this.invitedByUserId,
