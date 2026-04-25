@@ -104,9 +104,11 @@ class GroupProvider extends ChangeNotifier {
 
       if (userDoc.exists) {
         final userData = userDoc.data();
-        currentPremiumStatus = (userData?['subscriptionType'] == 'premium');
-        freshAvatar = userData?['avatarUrl']; 
-        freshUsername = userData?['username'];
+        // ✅ التعديل: استخدام الموديل لضمان جلب البيانات بشكل صحيح
+        final user = UserModel.fromMap(userData!, userDoc.id);
+        currentPremiumStatus = user.isPremium;
+        freshAvatar = user.avatarUrl; // سيأخذ null أو رابط حقيقي، ولن يأخذ ''
+        freshUsername = user.username;
       }
 
       if (requestMember.characterName != null) {
@@ -245,8 +247,8 @@ class GroupProvider extends ChangeNotifier {
             
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, 
-              isPremium: user.subscriptionType == SubscriptionType.premium,
+              realUserImageUrl: user.avatarUrl, // ✅ يتم تمرير الـ null أو الرابط مباشرة
+              isPremium: user.isPremium,
             );
           }
         } catch (e) {
@@ -542,7 +544,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // ✅ التعديل الجذري: استخدام Rx.combineLatest للمزامنة الحقيقية والفورية
-  // هذا التعديل يضمن أن أي تغيير في صورة المستخدم الأصلية ينعكس فوراً في قائمة الأعضاء
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
@@ -562,8 +563,8 @@ class GroupProvider extends ChangeNotifier {
             final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
             return member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl,
-              isPremium: user.subscriptionType == SubscriptionType.premium,
+              realUserImageUrl: user.avatarUrl, // ✅ يتم جلب الـ null أو الرابط مباشرة من الـ UserModel
+              isPremium: user.isPremium,
             );
           }
           return member;
@@ -630,7 +631,7 @@ class GroupProvider extends ChangeNotifier {
 
   // =========================================================
   // USER GROUPS
-  // =========================================================
+  //=========================================================
 
   Future<List<GroupModel>> getUserGroups({required String userId}) async {
     try {
