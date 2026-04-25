@@ -175,38 +175,37 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
-              // ✅ التعديل الذهبي: استخدام الـ Getter الذكي displayImageUrl والـ effectiveName
+              // ✅ التعديل الذهبي: جلب الرابط باستخدام المنطق الجديد (يتجاهل الفراغ ويبحث عن http)
               final String? profileImage = member.displayImageUrl;
 
               return ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: badgeBg,
-                    shape: BoxShape.circle,
-                  ),
+                // ✅ تعديل الـ leading ليطابق منطق الـ MessageBubble (الدردشة) حرفياً
+                leading: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: roleColor.withOpacity(0.1),
                   child: ClipOval(
                     child: profileImage != null && profileImage.isNotEmpty
                         ? Image.network(
                             profileImage,
+                            width: 40,
+                            height: 40,
                             fit: BoxFit.cover,
-                            // ✅ منع الوميض: يظهر Placeholder بسيط أثناء التحميل
+                            errorBuilder: (context, error, stackTrace) => Icon(Icons.person, color: roleColor),
                             loadingBuilder: (context, child, loadingProgress) {
                               if (loadingProgress == null) return child;
                               return Center(
                                 child: SizedBox(
-                                  width: 20,
-                                  height: 20,
+                                  width: 15,
+                                  height: 15,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(roleColor.withOpacity(0.5)),
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                        : null,
                                   ),
                                 ),
                               );
                             },
-                            // ✅ في حال فشل التحميل تماماً، نعود للأيقونة
-                            errorBuilder: (context, error, stackTrace) => Icon(Icons.person, color: roleColor),
                           )
                         : Icon(Icons.person, color: roleColor),
                   ),

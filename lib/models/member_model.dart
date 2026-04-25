@@ -49,18 +49,20 @@ class MemberModel {
   });
 
   // =========================================================
-  // ✅ التعديل الذهبي المحسن (صارم جداً تجاه النصوص الفارغة)
+  // ✅ التعديل الذهبي (منطق الدردشة): التحقق من وجود رابط فعلي
   // =========================================================
 
-  // يختار الصورة الصحيحة: التقمص أولاً، ثم الحقيقية
+  // يختار الصورة الصحيحة بناءً على وجود رابط حقيقي يبدأ بـ http
   String? get displayImageUrl {
-    // نستخدم trim للتأكد أن النص ليس مجرد مسافات، و isNotEmpty للتأكد أنه ليس فارغاً
-    if (characterImageUrl != null && characterImageUrl!.trim().isNotEmpty) {
+    // 1. فحص صورة التقمص: إذا كانت رابطاً حقيقياً، استخدمها فوراً
+    if (characterImageUrl != null && characterImageUrl!.trim().startsWith('http')) {
       return characterImageUrl!.trim();
     }
-    if (realUserImageUrl != null && realUserImageUrl!.trim().isNotEmpty) {
+    // 2. فحص الصورة الحقيقية: إذا كانت رابطاً حقيقياً، استخدمها
+    if (realUserImageUrl != null && realUserImageUrl!.trim().startsWith('http')) {
       return realUserImageUrl!.trim();
     }
+    // 3. إذا لم يجد رابطاً صالحاً في الحقلين، يرجع null لتظهر الأيقونة
     return null;
   }
 
@@ -87,7 +89,6 @@ class MemberModel {
     Map<String, dynamic> map,
   ) {
     // وظيفة مساعدة داخلية قوية لتنظيف النصوص القادمة من Firestore
-    // تضمن عدم مرور المسافات الزائدة وتحويل النصوص الفارغة إلى null فعلياً
     String? clean(dynamic value) {
       if (value == null) return null;
       final String s = value.toString().trim();
@@ -98,7 +99,6 @@ class MemberModel {
       userId: map['userId']?.toString() ?? '',
       groupId: map['groupId']?.toString() ?? '',
       role: Roles.fromString(map['role']?.toString() ?? 'member'),
-      // تطبيق التنظيف الصارم على الحقول لضمان عمل displayImageUrl و effectiveName بدقة
       displayName: clean(map['displayName']),
       characterName: clean(map['characterName']),
       characterImageUrl: clean(map['characterImageUrl']),
@@ -167,17 +167,12 @@ class MemberModel {
       role: role ?? this.role,
       displayName: displayName ?? this.displayName,
       characterName: characterName ?? this.characterName,
-      characterImageUrl:
-          characterImageUrl ?? this.characterImageUrl,
-      characterReason:
-          characterReason ?? this.characterReason,
-      // 🔥 تعديل جوهري: السماح بتمرير القيم مباشرة لضمان التحديث من الـ Provider
-      realUserName: realUserName, 
-      realUserImageUrl: realUserImageUrl, 
-      invitedByUserId:
-          invitedByUserId ?? this.invitedByUserId,
-      inviterDisplayName:
-          inviterDisplayName ?? this.inviterDisplayName, 
+      characterImageUrl: characterImageUrl ?? this.characterImageUrl,
+      characterReason: characterReason ?? this.characterReason,
+      realUserName: realUserName ?? this.realUserName, 
+      realUserImageUrl: realUserImageUrl ?? this.realUserImageUrl, 
+      invitedByUserId: invitedByUserId ?? this.invitedByUserId,
+      inviterDisplayName: inviterDisplayName ?? this.inviterDisplayName, 
       joinedAt: joinedAt ?? this.joinedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       isManualRole: isManualRole ?? this.isManualRole,
