@@ -171,8 +171,9 @@ class MemberModel {
           characterImageUrl ?? this.characterImageUrl,
       characterReason:
           characterReason ?? this.characterReason,
-      realUserName: realUserName ?? this.realUserName, 
-      realUserImageUrl: realUserImageUrl ?? this.realUserImageUrl, 
+      // 🔥 تعديل جوهري: السماح بتمرير القيم مباشرة لضمان التحديث من الـ Provider
+      realUserName: realUserName, 
+      realUserImageUrl: realUserImageUrl, 
       invitedByUserId:
           invitedByUserId ?? this.invitedByUserId,
       inviterDisplayName:
