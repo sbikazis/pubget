@@ -1,7 +1,5 @@
-// lib/features/groups/chat/chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:uuid/uuid.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -10,22 +8,24 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../providers/group_provider.dart'; 
-import '../../../models/group_model.dart'; // ✅ إضافة موديل المجموعة
-
+import '../../../models/group_model.dart'; 
+import '../../../models/game_model.dart'; 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 import '../../../models/user_model.dart'; 
 import '../../../core/constants/roles.dart';
 import '../../../core/constants/firestore_paths.dart'; 
+import '../../../core/constants/game_status.dart'; 
 
-// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح عند الدخول
 import '../../../services/monetization/ad_service.dart';
 
-// ✅ تصحيح المسارات
+// ✅ استيراد المكونات الجديدة
 import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import 'package:pubget/features/groups/chat/massage_input_bar.dart';
+import '../../../widgets/game_bottom_bar.dart'; 
+import '../../../widgets/game_message_bubble.dart'; 
+import '../../../widgets/game_info_dialog.dart'; 
 
-import '../events/guess_character_game_screen.dart';
 import '../../../widgets/empty_state_widget.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -55,15 +55,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final isPremium = currentUser?.isPremium ?? false;
 
       if (currentUser != null) {
-        // 🔥 مزامنة حالة البريميوم فور الدخول لضمان ظهور الجوهرة
         _syncPremiumStatus(currentUser);
-
         _loadCurrentMember(currentUser.id);
-
-        // ✅ تصفير العداد فور دخول الشاشة
         _updateReadStatus(currentUser.id);
 
-        // 🚀 تفعيل إعلان الدخول للمجموعة (منطق الأشباح)
         final adService = Provider.of<AdService>(context, listen: false);
         adService.tryShowGroupAd(isPremium: isPremium);
       }
@@ -72,7 +67,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    // ✅ تصفير العداد عند مغادرة الشاشة لضمان دقة آخر تواجد
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final currentUserId = userProvider.currentUser?.id;
     if (currentUserId != null) {
@@ -82,7 +76,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ✅ دالة مزامنة حالة البريميوم في وثيقة العضو
   Future<void> _syncPremiumStatus(UserModel currentUser) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
@@ -92,15 +85,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (member != null && member.isPremium != currentUser.isPremium) {
-        debugPrint("🔄 Syncing premium status for member in Firestore...");
-        
         await FirebaseFirestore.instance
             .collection(FirestorePaths.groupMembers(widget.groupId))
             .doc(currentUser.id)
-            .update({
-          'isPremium': currentUser.isPremium,
-        });
-
+            .update({'isPremium': currentUser.isPremium});
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -108,15 +96,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ✅ دالة تحديث حالة القراءة (تصفير عداد المجموعة)
   void _updateReadStatus(String userId) {
     try {
       if (!mounted) return;
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      chatProvider.updateLastRead(
-        groupId: widget.groupId,
-        userId: userId,
-      );
+      chatProvider.updateLastRead(groupId: widget.groupId, userId: userId);
     } catch (e) {
       debugPrint("Update status failed: $e");
     }
@@ -125,10 +109,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadCurrentMember(String userId) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
-      final member = await chatProvider.getMember(
-        groupId: widget.groupId,
-        userId: userId,
-      );
+      final member = await chatProvider.getMember(groupId: widget.groupId, userId: userId);
       if (!mounted) return;
       setState(() => _currentMember = member);
     } catch (e) {
@@ -205,27 +186,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom(force: true);
   }
 
-  Future<void> _openGame() async {
-    if (_currentMember == null) return;
-    final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    try {
-      final gameId = await gameProvider.createGame(
-        groupId: widget.groupId,
-        creatorUserId: _currentMember!.userId,
-      );
-      if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => GuessCharacterGameScreen(groupId: widget.groupId, gameId: gameId)));
-    } catch (e) {
-      debugPrint('Failed to create game: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final chatProvider = Provider.of<ChatProvider>(context);
     final groupProvider = Provider.of<GroupProvider>(context, listen: false);
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
     
-    // ✅ الحل الذهبي: نستخدم StreamBuilder لجلب بيانات المجموعة (الاسم ونوع التقمص) بشكل حي
     return StreamBuilder<GroupModel?>(
       stream: groupProvider.streamGroup(groupId: widget.groupId),
       builder: (context, groupSnapshot) {
@@ -272,7 +238,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         final message = _cachedMessages[index];
                         final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
                         
-                        // 🔥 التعديل: فرز الصورة حسب نوع المجموعة المستلم من الـ Stream
+                        if (message.gameId != null && message.gameAction != null) {
+                           return GameMessageBubble(
+                             message: message,
+                             currentMember: _currentMember ?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
+                             groupId: widget.groupId,
+                           );
+                        }
+
                         final sender = isMe ? _currentMember! : MemberModel(
                                 userId: message.senderId,
                                 groupId: widget.groupId,
@@ -300,13 +273,39 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
 
               if (_currentMember != null)
-                MessageInputBar(
-                  onSendText: _handleSendText,
-                  onSendImage: _handleSendImage,
-                  replyingMessage: _replyingMessage,
-                  onCancelReply: _onCancelReply,
-                  onGamePressed: _openGame,
-                  isPrivate: false, 
+                StreamBuilder<List<GameModel>>(
+                  stream: gameProvider.streamActiveGames(widget.groupId),
+                  builder: (context, gameSnapshot) {
+                    final activeGames = gameSnapshot.data ?? [];
+                    
+                    GameModel? activeGameForMe;
+                    try {
+                      activeGameForMe = activeGames.firstWhere(
+                        (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) 
+                                && g.status == GameStatus.guessing
+                      );
+                    } catch (_) {
+                      activeGameForMe = null;
+                    }
+
+                    if (activeGameForMe != null) {
+                      return GameBottomBar(
+                        groupId: widget.groupId,
+                        game: activeGameForMe,
+                        currentMember: _currentMember!,
+                      );
+                    }
+
+                    return MessageInputBar(
+                      groupId: widget.groupId, 
+                      currentMember: _currentMember!, 
+                      onSendText: _handleSendText,
+                      onSendImage: _handleSendImage,
+                      replyingMessage: _replyingMessage,
+                      onCancelReply: _onCancelReply,
+                      isPrivate: false, 
+                    );
+                  }
                 ),
             ],
           ),

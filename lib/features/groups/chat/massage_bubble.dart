@@ -40,13 +40,26 @@ class MessageBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
 
-    final bubbleColor = isMe
-        ? AppColors.myMessageBubble
-        : (isDark
-            ? AppColors.otherMessageBubbleDark
-            : AppColors.otherMessageBubbleLight);
+    // =========================================================
+    // ✅ التعديل الجديد: تحديد ألوان اللعبة بناءً على الـ Slot
+    // =========================================================
+    final bool isGameMessage = message.gameId != null;
+    Color? gameAccentColor;
+    if (isGameMessage) {
+      gameAccentColor = message.gameSlot == 'game_1' 
+          ? const Color(0xFFFFD700) // ذهبي
+          : const Color(0xFFC0C0C0); // فضي
+    }
 
-    final textColor = isMe
+    final bubbleColor = isGameMessage 
+        ? gameAccentColor!.withOpacity(0.15) // لون اللعبة
+        : (isMe
+            ? AppColors.myMessageBubble
+            : (isDark
+                ? AppColors.otherMessageBubbleDark
+                : AppColors.otherMessageBubbleLight));
+
+    final textColor = isMe && !isGameMessage
         ? Colors.white
         : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
 
@@ -58,7 +71,7 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
-            if (!isMe) _buildAvatar(context),
+            if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
@@ -75,6 +88,8 @@ class MessageBubble extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: BorderRadius.circular(16),
+                      // إضافة إطار خفيف إذا كانت رسالة لعبة
+                      border: isGameMessage ? Border.all(color: gameAccentColor!, width: 1) : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,7 +111,7 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
             if (isMe) const SizedBox(width: 8),
-            if (isMe) _buildAvatar(context),
+            if (isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
           ],
         ),
       ),
@@ -269,10 +284,8 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الذهبي: توحيد المنطق باستخدام displayImageUrl المدعوم بالمزامنة الحية
-  Widget _buildAvatar(BuildContext context) {
-    // نعتمد على الـ Getter المحسن الذي يختار (صورة التقمص أولاً ثم الصورة الحقيقية)
-    // مع إمكانية استخدام الصورة القادمة من الرسالة كخلفية أمان
+  // ✅ التعديل الذهبي: إضافة دعم أيقونات اللعبة في الـ Avatar
+  Widget _buildAvatar(BuildContext context, [bool isGame = false, Color? gameColor]) {
     final String? avatarUrl = sender.displayImageUrl ?? (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
@@ -296,9 +309,11 @@ class MessageBubble extends StatelessWidget {
       },
       child: CircleAvatar(
         radius: 18,
-        backgroundColor: AppColors.primary.withOpacity(0.1),
+        backgroundColor: isGame ? gameColor!.withOpacity(0.2) : AppColors.primary.withOpacity(0.1),
         child: ClipOval(
-          child: avatarUrl != null && avatarUrl.isNotEmpty
+          child: isGame 
+            ? Icon(Icons.videogame_asset, size: 20, color: gameColor) // أيقونة اللعبة للمنافسات
+            : (avatarUrl != null && avatarUrl.isNotEmpty
               ? Image.network(
                   avatarUrl,
                   width: 36,
@@ -322,7 +337,7 @@ class MessageBubble extends StatelessWidget {
                     );
                   },
                 )
-              : const Icon(Icons.person, size: 20, color: AppColors.primary),
+              : const Icon(Icons.person, size: 20, color: AppColors.primary)),
         ),
       ),
     );

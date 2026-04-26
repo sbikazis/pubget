@@ -1,4 +1,3 @@
-// lib/providers/chat_provider.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -12,6 +11,7 @@ import '../services/firebase/firestore_service.dart';
 import '../services/firebase/storage_service.dart';
 
 import '../core/constants/firestore_paths.dart';
+import '../core/logic/game_logic_validator.dart'; // 🔥 تم الإضافة
 
 class ChatProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -144,7 +144,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND TEXT MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
+  // SEND TEXT MESSAGE (MODIFIED: GAME INTEGRATION)
   // =========================================================
 
   Future<void> sendTextMessage({
@@ -154,11 +154,13 @@ class ChatProvider extends ChangeNotifier {
     required String text,
     String? userAvatar,
     String? replyToId, 
-    String? replyText, 
+    String? replyText,
+    String? gameId, // 🔥 مضاف للربط بلعبة
+    String? gameSlot, // 🔥 مضاف للتلوين (game_1 / game_2)
   }) async {
     if (text.trim().isEmpty) return;
 
-    // 🔥 خطوة المزامنة الحية: جلب أحدث البيانات من كولكشن Users قبل الإرسال
+    // 🔥 خطوة المزامنة الحية المعتادة لديك
     String? freshRealAvatar = sender.realUserImageUrl;
     String freshRealName = sender.realUserName ?? '';
     bool freshPremiumStatus = sender.isPremium;
@@ -179,14 +181,12 @@ class ChatProvider extends ChangeNotifier {
       debugPrint("⚠️ Warning: Live sync failed, using fallback: $e");
     }
 
-    // تحديث كائن العضو مؤقتاً بالبيانات الجديدة لضمان عمل الـ Getters بدقة
     final updatedSender = sender.copyWith(
       realUserImageUrl: freshRealAvatar,
       realUserName: freshRealName,
       isPremium: freshPremiumStatus,
     );
 
-    // اختيار الصورة: التقمص أولاً، ثم الحقيقية المحدثة، ثم الافتراضية
     final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
 
     final message = MessageModel(
@@ -198,7 +198,9 @@ class ChatProvider extends ChangeNotifier {
       senderIsPremium: updatedSender.isPremium,
       text: text.trim(),
       replyToId: replyToId, 
-      replyText: replyText, 
+      replyText: replyText,
+      gameId: gameId, // 🔥 ربط الرسالة بالجيم
+      gameSlot: gameSlot, // 🔥 لتحديد لون الرسالة في الواجهة
       createdAt: DateTime.now(),
     );
 
@@ -210,7 +212,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND MEDIA MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
+  // SEND MEDIA MESSAGE (REMAINS SAME)
   // =========================================================
 
   Future<void> sendMediaMessage({
@@ -223,14 +225,12 @@ class ChatProvider extends ChangeNotifier {
     String? replyToId, 
     String? replyText, 
   }) async {
-    // رفع الميديا أولاً
     final mediaUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: file,
     );
 
-    // 🔥 جلب أحدث البيانات الحقيقية من كولكشن Users
     String? freshRealAvatar = sender.realUserImageUrl;
     String freshRealName = sender.realUserName ?? '';
     bool freshPremiumStatus = sender.isPremium;
@@ -281,7 +281,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // TOGGLE REACTION
+  // TOGGLE REACTION (REMAINS SAME)
   // =========================================================
 
   Future<void> toggleReaction({
@@ -312,7 +312,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEND GAME MESSAGE (FIXED: REALTIME LIVE DATA SYNC)
+  // SEND GAME MESSAGE (MODIFIED: SLOT & ACTION SUPPORT)
   // =========================================================
 
   Future<void> sendGameMessage({
@@ -320,8 +320,9 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required String gameId,
+    String? gameSlot, // 🔥 مضاف (game_1 أو game_2)
+    String? gameAction, // 🔥 مضاف (مثل: 'start', 'win', 'join')
   }) async {
-    // 🔥 جلب أحدث البيانات من كولكشن Users
     String? freshRealAvatar = sender.realUserImageUrl;
     bool freshPremiumStatus = sender.isPremium;
 
@@ -355,6 +356,8 @@ class ChatProvider extends ChangeNotifier {
       senderRole: updatedSender.role,
       senderIsPremium: updatedSender.isPremium,
       gameId: gameId,
+      gameSlot: gameSlot, // 🔥 تحديد السلوت للرسالة
+      gameAction: gameAction, // 🔥 وصف الحدث (مثلاً: فاز بالجيم)
       createdAt: DateTime.now(),
     );
 
@@ -366,7 +369,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // DELETE MESSAGE
+  // DELETE MESSAGE (REMAINS SAME)
   // =========================================================
 
   Future<void> deleteMessage({
@@ -380,7 +383,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GET MEMBER
+  // GET MEMBER (REMAINS SAME)
   // =========================================================
 
   Future<MemberModel?> getMember({
@@ -398,7 +401,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // LOAD RECENT MESSAGES (ONCE)
+  // LOAD RECENT MESSAGES (REMAINS SAME)
   // =========================================================
 
   Future<List<MessageModel>> getRecentMessages({

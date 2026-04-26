@@ -290,6 +290,47 @@ class AnimeApiService {
       return false;
     }
   }
+  // =========================================================
+  // ✅ الدالة المطلوبة: جلب تفاصيل شخصية محددة داخل أنمي معين
+  // =========================================================
+  static Future<Map<String, String>?> getCharacterDetails({
+    required List<int> animeIds,
+    required String characterName,
+  }) async {
+    final cleanInput = _sanitize(characterName);
+    
+    for (int id in animeIds) {
+      try {
+        final url = Uri.parse('$_baseUrl/anime/$id/characters');
+        final response = await http.get(url, headers: _headers).timeout(
+          const Duration(seconds: 10),
+        );
+
+        if (response.statusCode != 200) continue;
+
+        final data = jsonDecode(response.body);
+        if (data['data'] == null) continue;
+
+        for (final item in data['data']) {
+          final character = item['character'];
+          final String apiName = character['name'] ?? '';
+          final String sanitizedApiName = _sanitize(apiName);
+
+          // التحقق من المطابقة (إما احتواء أو تطابق جزئي)
+          if (sanitizedApiName.contains(cleanInput) || cleanInput.contains(sanitizedApiName)) {
+            return {
+              'name': apiName, // الاسم الرسمي من MAL
+              'imageUrl': character['images']?['jpg']?['image_url'] ?? '',
+            };
+          }
+        }
+      } catch (e) {
+        debugPrint("⚠️ Character Detail Fetch failed for ID $id: $e");
+        continue;
+      }
+    }
+    return null; // لم يتم العثور على الشخصية
+  }
 
   // =========================================================
   // GET CHARACTER IMAGE (SEARCH-BASED)

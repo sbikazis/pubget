@@ -3,26 +3,29 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../models/message_model.dart';
+import '../../../models/member_model.dart'; // ✅ إضافة موديل العضو
 import '../../../core/constants/limits.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../widgets/game_info_dialog.dart'; // ✅ إضافة الديالوج المبرمج
 
 class MessageInputBar extends StatefulWidget {
-  // ✅ التعديل الأساسي: استخدام Callbacks بدلاً من المنطق الداخلي
   final Function(String text, MessageModel? replyTo) onSendText;
   final Function(File file, MessageModel? replyTo) onSendImage;
   
-  final VoidCallback? onGamePressed;
+  // ✅ إضافة البيانات المطلوبة للديالوج
+  final String groupId;
+  final MemberModel currentMember;
+  
   final MessageModel? replyingMessage;
   final VoidCallback? onCancelReply;
-  
-  // خاصية إضافية للتحكم في ظهور الأزرار (مثل إخفاء الألعاب في الخاص)
   final bool isPrivate;
 
   const MessageInputBar({
     super.key,
     required this.onSendText,
     required this.onSendImage,
-    this.onGamePressed,
+    required this.groupId, // ✅
+    required this.currentMember, // ✅
     this.replyingMessage,
     this.onCancelReply,
     this.isPrivate = false,
@@ -54,10 +57,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
         _isSending = true;
       });
 
-      // ✅ تمرير الملف والرسالة المردود عليها للشاشة الأب
       await widget.onSendImage(File(image.path), widget.replyingMessage);
 
-      // إلغاء وضع الرد بعد النجاح
       if (widget.onCancelReply != null) widget.onCancelReply!();
 
     } catch (e) {
@@ -93,12 +94,10 @@ class _MessageInputBarState extends State<MessageInputBar> {
     });
 
     try {
-      // ✅ تمرير النص والرسالة المردود عليها للشاشة الأب
       await widget.onSendText(text, widget.replyingMessage);
 
       _controller.clear();
      
-      // ✅ إلغاء وضع الرد بعد الإرسال
       if (widget.onCancelReply != null) widget.onCancelReply!();
 
     } catch (e) {
@@ -114,6 +113,19 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
+  // =========================================================
+  // ✅ التعديل الجديد: فتح شاشة معلومات اللعبة والقواعد
+  // =========================================================
+  void _handleGamePressed() {
+    showDialog(
+      context: context,
+      builder: (context) => GameInfoDialog(
+        groupId: widget.groupId,
+        currentMember: widget.currentMember,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -125,7 +137,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ✅ واجهة الرد
         if (widget.replyingMessage != null) _buildReplyPreview(isDark),
 
         Container(
@@ -141,12 +152,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 color: AppColors.primary,
                 onPressed: _isSending ? null : _pickAndSendImage,
               ),
-              // إخفاء زر الألعاب إذا كانت الدردشة خاصة
               if (!widget.isPrivate)
                 IconButton(
                   icon: const Icon(Icons.videogame_asset),
                   color: AppColors.goldAccent,
-                  onPressed: widget.onGamePressed,
+                  onPressed: _handleGamePressed, // ✅ استدعاء الدالة الجديدة
                 ),
               Expanded(
                 child: TextField(
@@ -203,7 +213,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ✅ بناء شريط الرد المعلق
   Widget _buildReplyPreview(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

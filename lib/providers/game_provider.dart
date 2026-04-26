@@ -1,31 +1,29 @@
-// lib/providers/game_provider.dart
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/game_model.dart';
 import '../services/firebase/firestore_service.dart';
 import '../services/api/anime_api_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/game_status.dart';
+import '../core/logic/game_logic_validator.dart';
+import '../core/utils/game_timer_manager.dart';
+import '../core/utils/game_auto_judge.dart'; // ✅ إضافة الاستيراد الجديد
 
 class GameProvider extends ChangeNotifier {
   final FirestoreService _firestore;
+  final Uuid _uuid = const Uuid();
 
   GameProvider({FirestoreService? firestore})
       : _firestore = firestore ?? FirestoreService();
 
-  final Uuid _uuid = const Uuid();
-
-  GameModel? _currentGame;
-  GameModel? get currentGame => _currentGame;
-
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  // ===============================
-  // CREATE GAME
-  // ===============================
-
-  Future<String> createGame({
+  // =============================================================
+  // 🛡️ إنشاء لعبة جديدة (مع فحص الحد الأقصى - لعبتين فقط)
+  // =============================================================
+  Future<String?> createGame({
     required String groupId,
     required String creatorUserId,
   }) async {
@@ -33,20 +31,34 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final gameId = _uuid.v4();
+      // 1. جلب الألعاب النشطة الحالية للمجموعة
+      final snapshot = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupGames(groupId))
+          .get();
+      
+      final activeGames = snapshot.docs
+          .map((doc) => GameModel.fromMap(doc.id, doc.data()))
+          .where((g) => !g.status.isOver)
+          .toList();
 
+      // 2. التحقق من قاعدة الحد الأقصى (عبر الـ Validator)
+      if (!GameLogicValidator.canCreateNewGame(activeGames)) {
+        throw Exception("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً.");
+      }
+
+      // 3. تحديد الـ Slot المتاح
+      String assignedSlot = activeGames.any((g) => g.gameSlot == 'game_1') 
+          ? 'game_2' 
+          : 'game_1';
+
+      final gameId = _uuid.v4();
       final game = GameModel(
         id: gameId,
         groupId: groupId,
+        gameSlot: assignedSlot,
         playerOneId: creatorUserId,
-        playerTwoId: null,
-        playerOneCharacter: null,
-        playerTwoCharacter: null,
-        currentTurnUserId: null,
-        status: GameStatus.waiting,
-        winnerUserId: null,
+        status: GameStatus.waitingForOpponent,
         createdAt: DateTime.now(),
-        finishedAt: null,
       );
 
       await _firestore.createDocument(
@@ -55,8 +67,6 @@ class GameProvider extends ChangeNotifier {
         data: game.toMap(),
       );
 
-      _currentGame = game;
-
       return gameId;
     } finally {
       _isLoading = false;
@@ -64,300 +74,238 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  // ===============================
-  // JOIN GAME
-  // ===============================
-
+  // =============================================================
+  // 🛡️ الانضمام للعبة (حماية ذرية Transaction لمنع السبق)
+  // =============================================================
   Future<void> joinGame({
     required String groupId,
     required String gameId,
     required String userId,
   }) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
 
-    if (data == null) {
-      throw Exception("Game not found");
-    }
+    return FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(gameRef);
 
-    final game = GameModel.fromMap(gameId, data);
+      if (!snapshot.exists) throw Exception("اللعبة لم تعد موجودة!");
 
-    if (!game.status.canAcceptOpponent) {
-      throw Exception("Game already started");
-    }
+      final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-    if (game.playerTwoId != null) {
-      throw Exception("Game already has two players");
-    }
+      // فحص الأمان عبر الـ Validator
+      if (!GameLogicValidator.isSlotStillAvailable(game)) {
+        throw Exception("آسفون! قام شخص آخر بالانضمام أثناء قراءتك للقواعد.");
+      }
 
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: {
+      transaction.update(gameRef, {
         'playerTwoId': userId,
-      },
-    );
+        'status': GameStatus.setup.name,
+        'setupStartedAt': FieldValue.serverTimestamp(), // بدء عداد الـ 60 ثانية
+      });
+    });
   }
 
-  // ===============================
-  // SET CHARACTER
-  // ===============================
-
+  // =============================================================
+  // 🛡️ اختيار الشخصية (API + تخزين الصورة + التحقق من الجاهزية)
+  // =============================================================
   Future<void> setCharacter({
     required String groupId,
     required String gameId,
     required String userId,
-    required dynamic animeId, 
+    required List<int> animeIds,
     required String characterName,
-    List<dynamic>? franchiseIds, // ✅ أضفنا هذا الاختياري لزيادة دقة الفحص إذا توفرت السلسلة
   }) async {
-    
-    // ✅ تحضير قائمة المعرفات للفحص الشامل
-    List<int> idsToSearch = [];
-    final int? mainId = int.tryParse(animeId.toString());
-    if (mainId != null) idsToSearch.add(mainId);
-
-    // إذا كانت المجموعة تملك قائمة أجزاء مخزنة، نضيفها
-    if (franchiseIds != null) {
-      for (var id in franchiseIds) {
-        final int? parsedId = int.tryParse(id.toString());
-        if (parsedId != null && !idsToSearch.contains(parsedId)) {
-          idsToSearch.add(parsedId);
-        }
-      }
-    }
-
-    // ✅ الإصلاح: استدعاء الـ API بالبارامتر الصحيح animeIds
-    final valid = await AnimeApiService.validateCharacterExists(
-      animeIds: idsToSearch,
+    // 1. التحقق من MAL وجلب الصورة
+    final charData = await AnimeApiService.getCharacterDetails(
+      animeIds: animeIds,
       characterName: characterName,
     );
 
-    if (!valid) {
-      throw Exception("هذه الشخصية غير موجودة في هذا الأنمي أو أجزائه");
+    if (charData == null) {
+      throw Exception("هذه الشخصية غير موجودة في MAL لهذا الأنمي. تأكد من كتابة الاسم بدقة.");
     }
 
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
 
-    if (data == null) {
-      throw Exception("Game not found");
-    }
+    return FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(gameRef);
+      final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-    final game = GameModel.fromMap(gameId, data);
+      // التحقق من الوقت (60 ثانية)
+      if (game.setupStartedAt != null && 
+          GameTimerManager.hasSetupTimeout(game.setupStartedAt!)) {
+        throw Exception("انتهى الوقت المحدد للاختيار!");
+      }
 
-    Map<String, dynamic> update = {};
+      Map<String, dynamic> updates = {};
+      if (userId == game.playerOneId) {
+        updates['playerOneCharacter'] = charData['name'];
+        updates['playerOneImage'] = charData['imageUrl'];
+      } else {
+        updates['playerTwoCharacter'] = charData['name'];
+        updates['playerTwoImage'] = charData['imageUrl'];
+      }
 
-    if (userId == game.playerOneId) {
-      update['playerOneCharacter'] = characterName;
-    } else if (userId == game.playerTwoId) {
-      update['playerTwoCharacter'] = characterName;
-    }
-
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: update,
-    );
-
-    final refreshed = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
-
-    if (refreshed == null) return;
-
-    final updatedGame = GameModel.fromMap(gameId, refreshed);
-
-    if (updatedGame.playerOneCharacter != null &&
-        updatedGame.playerTwoCharacter != null &&
-        updatedGame.status == GameStatus.waiting) {
-      await startGame(groupId: groupId, gameId: gameId);
-    }
+      transaction.update(gameRef, updates);
+    });
   }
 
-  // ===============================
-  // START GAME
-  // ===============================
-
-  Future<void> startGame({
+  // =============================================================
+  // 🛡️ نظام الجاهزية (بدء اللعبة الفعلي)
+  // =============================================================
+  Future<void> toggleReady({
     required String groupId,
     required String gameId,
+    required String userId,
   }) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
 
-    if (data == null) return;
+    return FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(gameRef);
+      final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-    final game = GameModel.fromMap(gameId, data);
+      bool isP1 = userId == game.playerOneId;
+      Map<String, dynamic> updates = {
+        isP1 ? 'isPlayerOneReady' : 'isPlayerTwoReady': true,
+      };
 
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: {
-        'status': GameStatus.active.name,
-        'currentTurnUserId': game.playerOneId,
-      },
-    );
+      // إذا أصبح كلاهما جاهزاً، تبدأ اللعبة فوراً
+      bool willBeReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+      if (willBeReady) {
+        updates['status'] = GameStatus.guessing.name;
+        updates['currentTurnUserId'] = game.playerOneId; // اللاعب الأول يبدأ السؤال
+        updates['lastActionAt'] = FieldValue.serverTimestamp(); // بدء عداد الـ 40 ثانية
+      }
+
+      transaction.update(gameRef, updates);
+    });
   }
 
-  // ===============================
-  // SWITCH TURN
-  // ===============================
-
-  Future<void> switchTurn({
-    required String groupId,
-    required String gameId,
-  }) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
-
-    if (data == null) return;
-
-    final game = GameModel.fromMap(gameId, data);
-
-    final nextTurn =
-        game.currentTurnUserId == game.playerOneId
-            ? game.playerTwoId
-            : game.playerOneId;
-
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: {
-        'currentTurnUserId': nextTurn,
-      },
-    );
-  }
-
-  // ===============================
-  // GUESS CHARACTER
-  // ===============================
-
+  // =============================================================
+  // 🛡️ منطق التخمين (Win/Loss Logic)
+  // =============================================================
   Future<void> guessCharacter({
     required String groupId,
     required String gameId,
     required String userId,
-    required String guessedCharacter,
+    required String guessedName,
   }) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-    );
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
 
-    if (data == null) return;
+    final snapshot = await gameRef.get();
+    final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-    final game = GameModel.fromMap(gameId, data);
+    final opponentChar = (userId == game.playerOneId) 
+        ? game.playerTwoCharacter 
+        : game.playerOneCharacter;
 
-    if (!game.status.isActive) {
-      throw Exception("Game not active");
-    }
-
-    final opponentCharacter =
-        userId == game.playerOneId
-            ? game.playerTwoCharacter
-            : game.playerOneCharacter;
-
-    if (opponentCharacter == null) return;
-
-    if (guessedCharacter.toLowerCase() ==
-        opponentCharacter.toLowerCase()) {
-      await declareWinner(
-        groupId: groupId,
-        gameId: gameId,
-        winnerUserId: userId,
-      );
+    if (GameLogicValidator.isGuessCorrect(guessedName, opponentChar ?? "")) {
+      // فوز!
+      await finishGame(groupId, gameId, winnerId: userId);
     } else {
-      await switchTurn(
-        groupId: groupId,
-        gameId: gameId,
-      );
+      // خطأ -> نقل الدور للخصم
+      await switchTurn(groupId, gameId);
     }
   }
 
-  // ===============================
-  // DECLARE WINNER
-  // ===============================
+  // =============================================================
+  // 🛡️ تبادل الأدوار + تحديث العداد
+  // =============================================================
+  Future<void> switchTurn(String groupId, String gameId) async {
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
 
-  Future<void> declareWinner({
-    required String groupId,
-    required String gameId,
-    required String winnerUserId,
-  }) async {
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: {
-        'status': GameStatus.finished.name,
-        'winnerUserId': winnerUserId,
-        'finishedAt': DateTime.now(),
-      },
-    );
-  }
+    final snapshot = await gameRef.get();
+    final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-  // ===============================
-  // CANCEL GAME
-  // ===============================
+    final nextTurnId = (game.currentTurnUserId == game.playerOneId) 
+        ? game.playerTwoId 
+        : game.playerOneId;
 
-  Future<void> cancelGame({
-    required String groupId,
-    required String gameId,
-  }) async {
-    await _firestore.updateDocument(
-      path: FirestorePaths.groupGames(groupId),
-      docId: gameId,
-      data: {
-        'status': GameStatus.cancelled.name,
-        'finishedAt': DateTime.now(),
-      },
-    );
-  }
-
-  // ===============================
-  // STREAM GAME
-  // ===============================
-
-  Stream<GameModel?> streamGame({
-    required String groupId,
-    required String gameId,
-  }) {
-    return _firestore
-        .streamDocument(
-          path: FirestorePaths.groupGames(groupId),
-          docId: gameId,
-        )
-        .map((snapshot) {
-      final data = snapshot.data();
-      if (data == null) return null;
-
-      return GameModel.fromMap(snapshot.id, data);
+    await gameRef.update({
+      'currentTurnUserId': nextTurnId,
+      'lastActionAt': FieldValue.serverTimestamp(), // إعادة تصفير الـ 40 ثانية
     });
   }
 
-  // ===============================
-  // STREAM GROUP GAMES
-  // ===============================
+  // =============================================================
+  // 🛡️ التحكيم التلقائي (التحقق من العدادات)
+  // =============================================================
+  Future<void> processAutoJudge(String groupId, GameModel game) async {
+    // 1. فحص نوع التايم آوت عبر الحكم الصامت
+    final timeoutType = GameAutoJudge.checkTimeout(game);
+    if (timeoutType == TimeoutType.none) return;
 
-  Stream<List<GameModel>> streamGroupGames({
-    required String groupId,
-  }) {
-    return _firestore
-        .streamCollection(
-          path: FirestorePaths.groupGames(groupId),
-        )
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) =>
-              GameModel.fromMap(doc.id, doc.data()))
-          .toList();
+    // 2. تحديد الخاسر والرسالة
+    String? timedOutPlayerId = GameAutoJudge.getTimedOutPlayerId(game);
+    String reason = GameAutoJudge.getReasonMessage(timeoutType, timedOutPlayerId ?? "مجهول");
+
+    // 3. تنفيذ الحكم في قاعدة البيانات
+    if (timeoutType == TimeoutType.totalGameTimeout) {
+      // تعادل (انتهت الـ 10 دقائق)
+      await finishGame(groupId, game.id, isCancelled: false, reason: reason);
+    } else {
+      // خسارة بسبب الوقت (40ث أو 60ث)
+      String? winnerId = (timedOutPlayerId == game.playerOneId) 
+          ? game.playerTwoId 
+          : game.playerOneId;
+      await finishGame(groupId, game.id, winnerId: winnerId, reason: reason);
+    }
+  }
+
+  // =============================================================
+  // 🛡️ إنهاء اللعبة (فوز، تعادل، انسحاب)
+  // =============================================================
+  Future<void> finishGame(
+    String groupId, 
+    String gameId, {
+    String? winnerId, 
+    bool isCancelled = false,
+    String? reason,
+  }) async {
+    await FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId)
+        .update({
+      'status': isCancelled ? GameStatus.cancelled.name : GameStatus.finished.name,
+      'winnerUserId': winnerId,
+      'finishedAt': FieldValue.serverTimestamp(),
+      'endReason': reason,
     });
+  }
+
+  // =============================================================
+  // 🛰️ مراقبة الألعاب النشطة للمجموعة (مطلوب للشريط السفلي) - ✅ جديد
+  // =============================================================
+  Stream<List<GameModel>> streamActiveGames(String groupId) {
+    return FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .where('status', whereIn: [
+          GameStatus.waitingForOpponent.name,
+          GameStatus.setup.name,
+          GameStatus.guessing.name,
+        ])
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => GameModel.fromMap(doc.id, doc.data()))
+            .toList());
+  }
+
+  // =============================================================
+  // 🛰️ مراقبة حالة لعبة محددة (Streams)
+  // =============================================================
+  Stream<GameModel?> streamCurrentGame(String groupId, String gameId) {
+    return _firestore.streamDocument(
+      path: FirestorePaths.groupGames(groupId),
+      docId: gameId,
+    ).map((snap) => snap.exists ? GameModel.fromMap(snap.id, snap.data()!) : null);
   }
 }

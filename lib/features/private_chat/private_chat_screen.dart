@@ -39,18 +39,15 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
  
   MessageModel? _replyingMessage;
   
-  // ✅ تخزين الـ Stream لمنع الرعشة وإعادة البناء
   late Stream<List<MessageModel>> _messageStream;
   List<MessageModel> _currentMessages = [];
 
   @override
   void initState() {
     super.initState();
-    // ✅ تثبيت الـ Stream هنا لضمان استقرار الاتصال
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
         .streamMessages(chatId: widget.chatId);
 
-    // ✅ تصفير العداد فور دخول المحادثة الخاصة
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updatePrivateReadStatus();
     });
@@ -58,13 +55,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
-    // ✅ تصفير العداد عند مغادرة المحادثة لضمان دقة الحالة
     _updatePrivateReadStatus();
     _scrollController.dispose();
     super.dispose();
   }
 
-  // ✅ دالة تحديث حالة القراءة في الدردشة الخاصة (تصفير العداد)
   void _updatePrivateReadStatus() {
     try {
       if (!mounted) return;
@@ -83,7 +78,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // ✅ دالة التمرير للأسفل
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
     _scrollController.animateTo(
@@ -93,7 +87,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 
-  // ✅ دالة الانتقال لرسالة محددة
   void _scrollToMessage(String messageId) {
     final index = _currentMessages.indexWhere((m) => m.id == messageId);
     if (index != -1) {
@@ -126,9 +119,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
       );
       
-      // ✅ تصفير العداد محلياً فور الإرسال
       _updatePrivateReadStatus();
-      
       _onCancelReply();
       _scrollToBottom();
     } catch (e) {
@@ -155,9 +146,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
       );
 
-      // ✅ تصفير العداد فور إرسال الصورة
       _updatePrivateReadStatus();
-
       _onCancelReply();
       _scrollToBottom();
     } catch (e) {
@@ -205,16 +194,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
                 if (snapshot.hasData) {
                   final newMessages = snapshot.data!;
-                  
-                  // ✅ التعديل الاحترافي: إذا زاد عدد الرسائل وأنا داخل الشاشة، نحدث حالة القراءة فوراً
                   if (newMessages.length > _currentMessages.length) {
-                    // نستخدم microtask لتجنب استدعاء setState أثناء البناء
                     Future.microtask(() => _updatePrivateReadStatus());
-                    
-                    // التمرير للأسفل عند وصول رسالة جديدة
                     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
                   }
-                  
                   _currentMessages = newMessages;
                 }
 
@@ -258,7 +241,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             ),
           ),
 
+          // ✅ التعديل هنا: تمرير المعطيات المطلوبة للدردشة الخاصة
           MessageInputBar(
+            groupId: widget.chatId, // نمرر الـ chatId كبديل للـ groupId
+            currentMember: MemberModel(
+              userId: currentUser.id,
+              groupId: 'private',
+              role: Roles.member,
+              joinedAt: DateTime.now(),
+              displayName: currentUser.username,
+            ),
             onSendText: _handleSendText,
             onSendImage: _handleSendImage,
             replyingMessage: _replyingMessage,

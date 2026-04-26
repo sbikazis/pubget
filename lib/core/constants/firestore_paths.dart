@@ -31,8 +31,13 @@ class FirestorePaths {
   static String groupMessagesDoc(String groupId, String messageId) =>
       '$groups/$groupId/messages/$messageId';
 
+  // مسار الألعاب داخل المجموعة
   static String groupGames(String groupId) =>
       '$groups/$groupId/games';
+
+  // مسار للوصول إلى مستند لعبة محددة (للتحقق السريع أو التحديث)
+  static String groupGameDoc(String groupId, String gameId) =>
+      '$groups/$groupId/games/$gameId';
 
   // مسار حجز الشخصيات (يستخدم للحجز وللتنظيف عند الخروج أو التفكيك)
   static String groupCharacters(String groupId) =>

@@ -120,9 +120,9 @@ class FirestoreService {
           isEqualTo: condition.isEqualTo,
           isNotEqualTo: condition.isNotEqualTo,
           isLessThan: condition.isLessThan,
-          isLessThanOrEqualTo: condition.isLessThanOrEqualTo, // 🔥 تم الإضافة
+          isLessThanOrEqualTo: condition.isLessThanOrEqualTo,
           isGreaterThan: condition.isGreaterThan,
-          isGreaterThanOrEqualTo: condition.isGreaterThanOrEqualTo, // 🔥 تم الإضافة
+          isGreaterThanOrEqualTo: condition.isGreaterThanOrEqualTo,
           arrayContains: condition.arrayContains,
         );
       }
@@ -140,13 +140,15 @@ class FirestoreService {
   }
 
   // ==============================
-  // TRANSACTION
+  // TRANSACTION (UPDATED TO SUPPORT RETURNS)
   // ==============================
 
-  Future<void> runTransaction(
-    Future<void> Function(Transaction transaction) action,
+  /// تم تحديث الدالة لتدعم إرجاع قيمة (مثل نجاح أو فشل العملية)
+  /// لضمان حماية المنطق الحساس في حالات "السبق في الانضمام"
+  Future<T> runTransaction<T>(
+    Future<T> Function(Transaction transaction) action,
   ) async {
-    await _firestore.runTransaction(action);
+    return await _firestore.runTransaction(action);
   }
 
   // ==============================
@@ -171,9 +173,9 @@ class QueryCondition {
   final dynamic isEqualTo;
   final dynamic isNotEqualTo;
   final dynamic isLessThan;
-  final dynamic isLessThanOrEqualTo; // 🔥 تم الإضافة
+  final dynamic isLessThanOrEqualTo;
   final dynamic isGreaterThan;
-  final dynamic isGreaterThanOrEqualTo; // 🔥 تم الإضافة
+  final dynamic isGreaterThanOrEqualTo;
   final dynamic arrayContains;
 
   QueryCondition({
@@ -181,9 +183,9 @@ class QueryCondition {
     this.isEqualTo,
     this.isNotEqualTo,
     this.isLessThan,
-    this.isLessThanOrEqualTo, // 🔥 تم الإضافة
+    this.isLessThanOrEqualTo,
     this.isGreaterThan,
-    this.isGreaterThanOrEqualTo, // 🔥 تم الإضافة
+    this.isGreaterThanOrEqualTo,
     this.arrayContains,
   });
 }

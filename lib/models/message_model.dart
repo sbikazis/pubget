@@ -1,6 +1,8 @@
-// lib/models/message_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/roles.dart';
+
+/// ✅ إضافة Enum لتحديد نوع الرسالة (عادية أو حدث لعبة)
+enum MessageType { text, media, gameEvent }
 
 class MessageModel {
   final String id;
@@ -20,7 +22,11 @@ class MessageModel {
   final String? mediaUrl;
   final String? mediaType; // image | video | audio
 
-  final String? gameId;
+  // --- حقول نظام اللعبة المضافة ---
+  final MessageType type; // نوع الرسالة (نص، ميديا، أو حدث لعبة)
+  final String? gameId; // معرف اللعبة المرتبط
+  final String? gameSlot; // لتمييز اللون بصرياً (game_1 أو game_2)
+  final String? gameAction; // نوع الحدث (challenge, win, draw, quit, move)
 
   // الحقول الجديدة للرد والتفاعلات
   final String? replyToId; // معرف الرسالة التي يتم الرد عليها
@@ -42,7 +48,10 @@ class MessageModel {
     this.text,
     this.mediaUrl,
     this.mediaType,
+    this.type = MessageType.text, // القيمة الافتراضية نصية
     this.gameId,
+    this.gameSlot,
+    this.gameAction,
     this.replyToId,
     this.replyText,
     this.reactions,
@@ -66,7 +75,13 @@ class MessageModel {
       text: map['text'],
       mediaUrl: map['mediaUrl'],
       mediaType: map['mediaType'],
+      // جلب نوع الرسالة مع قيمة افتراضية
+      type: map['type'] != null 
+          ? MessageType.values.firstWhere((e) => e.name == map['type'], orElse: () => MessageType.text)
+          : MessageType.text,
       gameId: map['gameId'],
+      gameSlot: map['gameSlot'],
+      gameAction: map['gameAction'],
       replyToId: map['replyToId'],
       replyText: map['replyText'],
       // تحويل خريطة التفاعلات من Firestore بأمان
@@ -94,7 +109,10 @@ class MessageModel {
       'text': text,
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
+      'type': type.name, // حفظ اسم النوع في Firestore
       'gameId': gameId,
+      'gameSlot': gameSlot,
+      'gameAction': gameAction,
       'replyToId': replyToId,
       'replyText': replyText,
       'reactions': reactions,
@@ -110,6 +128,10 @@ class MessageModel {
     bool? senderIsPremium,
     Roles? senderRole,
     String? text,
+    MessageType? type,
+    String? gameId,
+    String? gameSlot,
+    String? gameAction,
     Map<String, String>? reactions,
     bool? isRead,
   }) {
@@ -123,7 +145,10 @@ class MessageModel {
       text: text ?? this.text,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
-      gameId: gameId,
+      type: type ?? this.type,
+      gameId: gameId ?? this.gameId,
+      gameSlot: gameSlot ?? this.gameSlot,
+      gameAction: gameAction ?? this.gameAction,
       replyToId: replyToId,
       replyText: replyText,
       reactions: reactions ?? this.reactions,
