@@ -97,7 +97,7 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      final userDoc = await firestore.collection('Users').doc(requestMember.userId).get();
+      final userDoc = await firestore.collection('users').doc(requestMember.userId).get();
       bool currentPremiumStatus = false;
       String? freshAvatar;
       String? freshUsername;
@@ -236,7 +236,7 @@ class GroupProvider extends ChangeNotifier {
        
         try {
           final userData = await FirebaseFirestore.instance
-              .collection('Users')
+              .collection('users')
               .doc(member.userId.trim())
               .get();
          
@@ -552,7 +552,7 @@ class GroupProvider extends ChangeNotifier {
         final member = MemberModel.fromMap(doc.data());
         
         return FirebaseFirestore.instance
-            .collection('Users')
+            .collection('users')
             .doc(member.userId.trim())
             .snapshots()
             .map((userDoc) {
