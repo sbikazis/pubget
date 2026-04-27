@@ -165,10 +165,15 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     return StreamBuilder<GameModel?>(
       stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
       builder: (context, snapshot) {
-        final game = snapshot.data;
+        // 1. حالة التحميل الأولي - لا نعمل pop هنا أبداً
+        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        final game = snapshot.data!;
         
-        // 🛡️ حماية: إذا انتهت اللعبة أو تم إلغاؤها، اخرج من الشاشة
-        if (game == null || game.status.isOver) {
+        // 2. 🛡️ حماية: إذا انتهت اللعبة فعلاً، اخرج من الشاشة
+        if (game.status.isOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && Navigator.canPop(context)) Navigator.pop(context);
           });
