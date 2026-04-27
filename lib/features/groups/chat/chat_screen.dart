@@ -220,15 +220,18 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (currentUserId!= null) {
                           Future.microtask(() => _updateReadStatus(currentUserId));
                         }
+                      }
                       _cachedMessages = snapshot.data!;
                       _isInitialLoad = false;
                     }
                     if (_cachedMessages.isEmpty) {
-                      return const Center(child: EmptyStateWidget(
-                        title: 'لا توجد رسائل بعد',
-                        subtitle: 'ابدأ المحادثة الآن',
-                        icon: Icons.chat_bubble_outline
-                      ));
+                      return const Center(
+                        child: EmptyStateWidget(
+                          title: 'لا توجد رسائل بعد',
+                          subtitle: 'ابدأ المحادثة الآن',
+                          icon: Icons.chat_bubble_outline,
+                        ),
+                      );
                     }
                     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
@@ -241,14 +244,16 @@ class _ChatScreenState extends State<ChatScreen> {
                         final isMe = _currentMember!= null && message.senderId == _currentMember!.userId;
 
                         if (message.gameId!= null && message.gameAction!= null) {
-                           return GameMessageBubble(
-                             message: message,
-                             currentMember: _currentMember?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
-                             groupId: widget.groupId,
-                           );
+                          return GameMessageBubble(
+                            message: message,
+                            currentMember: _currentMember?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
+                            groupId: widget.groupId,
+                          );
                         }
 
-                        final sender = isMe? _currentMember! : MemberModel(
+                        final sender = isMe
+                           ? _currentMember!
+                            : MemberModel(
                                 userId: message.senderId,
                                 groupId: widget.groupId,
                                 role: message.senderRole?? Roles.member,
@@ -284,21 +289,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
-                        (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId)
-                                && (g.status == GameStatus.guessing || g.status == GameStatus.setup)
+                        (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
+                            (g.status == GameStatus.guessing || g.status == GameStatus.setup),
                       );
                     } catch (_) {
                       activeGameForMe = null;
                     }
 
                     if (activeGameForMe!= null) {
-                      // ✅ [التعديل الجوهري]: منطق النقل الآلي لصفحة التجهيز (setup) مع حل مشكلة الـ Getter
+                      // ✅ منطق النقل الآلي لصفحة التجهيز
                       if (activeGameForMe.status == GameStatus.setup) {
                         if (!_navigatedGameIds.contains(activeGameForMe.id)) {
                           _navigatedGameIds.add(activeGameForMe.id);
                           Future.microtask(() {
                             if (mounted) {
-                              // ✅ تجميع كل المعرفات المتاحة من الموديل لتفادي خطأ animeIds غير المعرف
                               List<int> allRelevantIds = [];
                               if (group?.animeId!= null && group!.animeId is int) {
                                 allRelevantIds.add(group.animeId);
@@ -313,7 +317,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                   builder: (context) => GuessCharacterGameScreen(
                                     groupId: widget.groupId,
                                     gameId: activeGameForMe!.id,
-                                    // ✅ نمرر القائمة المجمعة أو null إذا كانت فارغة لدعم المجموعات العامة
                                     animeIds: allRelevantIds.isEmpty? null : allRelevantIds,
                                   ),
                                 ),
@@ -326,7 +329,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
                       }
 
-                      // إذا كانت الحالة guessing، نعرض شريط التحكم الخاص باللعبة
                       return GameBottomBar(
                         groupId: widget.groupId,
                         game: activeGameForMe,
@@ -343,12 +345,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       onCancelReply: _onCancelReply,
                       isPrivate: false,
                     );
-                  }
+                  },
                 ),
             ],
           ),
         );
-      }
+      },
     );
   }
 }
