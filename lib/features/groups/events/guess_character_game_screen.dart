@@ -39,7 +39,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   bool _isConfirming = false;
   
   Timer? _timer;
-  int _secondsLeft = 60; // العداد الصارم (دقيقة واحدة)
+  final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier(60); // العداد الصارم (دقيقة واحدة)
 
   @override
   void initState() {
@@ -50,8 +50,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   void _startTimer() {
     // نستخدم Timer.periodic لتحديث الواجهة والتحقق من الوقت كل ثانية
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_secondsLeft > 0) {
-        if (mounted) setState(() => _secondsLeft--);
+      if (_secondsLeftNotifier.value > 0) {
+        _secondsLeftNotifier.value--;
       } else {
         _timer?.cancel();
         _handleTimeout();
@@ -85,6 +85,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _secondsLeftNotifier.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -199,12 +200,15 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    "$_secondsLeft",
-                    style: TextStyle(
-                      fontSize: 20, 
-                      fontWeight: FontWeight.bold, 
-                      color: _secondsLeft < 10 ? Colors.red : Colors.blue
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _secondsLeftNotifier,
+                    builder: (context, value, _) => Text(
+                      "$value",
+                      style: TextStyle(
+                        fontSize: 20, 
+                        fontWeight: FontWeight.bold, 
+                        color: value < 10 ? Colors.red : Colors.blue
+                      ),
                     ),
                   ),
                 ),

@@ -99,8 +99,10 @@ class GameProvider extends ChangeNotifier {
         .collection(FirestorePaths.groupGames(groupId))
         .doc(gameId);
 
+    String gameSlot = 'game_1';
+
     // ✅ التعديل الجوهري: Transaction تضمن قفل المستند أثناء التحقق لمنع دخول لاعبين معاً
-    return FirebaseFirestore.instance.runTransaction((transaction) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(gameRef);
       if (!snapshot.exists) throw Exception("اللعبة لم تعد موجودة!");
 
@@ -116,23 +118,25 @@ class GameProvider extends ChangeNotifier {
         throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة للانضمام.");
       }
 
+      gameSlot = game.gameSlot;
+
       // ✅ تحديث فوري داخل الـ Transaction لضمان الحجز القطعي
       transaction.update(gameRef, {
         'playerTwoId': userId,
         'status': GameStatus.setup.name, // نقله فوراً لمرحلة التجهيز
         'setupStartedAt': FieldValue.serverTimestamp(), // بدء عداد الـ 60 ثانية
       });
-
-      // ✅ إرسال رسالة "انضمام" آلياً للدردشة مع تحديد الـ Slot للتمييز البصري
-      _sendGameSystemMessage(
-        groupId: groupId,
-        gameId: gameId,
-        action: 'join',
-        senderId: userId,
-        senderName: userName ?? "لاعب",
-        gameSlot: game.gameSlot,
-      );
     });
+
+    // ✅ إرسال رسالة "انضمام" آلياً للدردشة مع تحديد الـ Slot للتمييز البصري - بعد نجاح الـ Transaction
+    await _sendGameSystemMessage(
+      groupId: groupId,
+      gameId: gameId,
+      action: 'join',
+      senderId: userId,
+      senderName: userName ?? "لاعب",
+      gameSlot: gameSlot,
+    );
   }
 
   // =============================================================

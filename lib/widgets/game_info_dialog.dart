@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../providers/chat_provider.dart';
 import '../models/member_model.dart';
-import '../core/constants/game_constants.dart';
 
 class GameInfoDialog extends StatelessWidget {
   final String groupId;
@@ -82,41 +80,22 @@ class GameInfoDialog extends StatelessWidget {
   // ==========================================
   void _handleConfirm(BuildContext context) async {
     final gameProv = context.read<GameProvider>();
-    final chatProv = context.read<ChatProvider>();
 
     try {
       if (gameId == null) {
         // 1. إنشاء لعبة جديدة
-        final newGameId = await gameProv.createGame(
+        await gameProv.createGame(
           groupId: groupId,
           creatorUserId: currentMember.userId,
+          creatorName: currentMember.displayName,
         );
-
-        if (newGameId != null) {
-          // إرسال رسالة "طلب تحدي" في الدردشة
-          await chatProv.sendGameMessage(
-            groupId: groupId,
-            messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-            sender: currentMember,
-            gameId: newGameId,
-            gameAction: 'challenge',
-          );
-        }
       } else {
         // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
         await gameProv.joinGame(
           groupId: groupId,
           gameId: gameId!,
           userId: currentMember.userId,
-        );
-        
-        // إرسال رسالة "انضم للتحدي"
-        await chatProv.sendGameMessage(
-          groupId: groupId,
-          messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-          sender: currentMember,
-          gameId: gameId!,
-          gameAction: 'join',
+          userName: currentMember.displayName,
         );
       }
 
