@@ -210,10 +210,17 @@ class AnimeApiService {
   // =========================================================
 
   static Future<bool> validateCharacterExists({
-    required List<int> animeIds, 
+    List<int>? animeIds, 
     required String characterName,
   }) async {
     final cleanInput = _sanitize(characterName);
+
+    // إذا لم تكن هناك معرفات محددة، نستخدم البحث العالمي للتحقق
+    if (animeIds == null || animeIds.isEmpty) {
+      final globalResult = await getCharacterImage(characterName);
+      return globalResult != null;
+    }
+
     final List<String> inputWords = cleanInput.split(' ').where((w) => w.length > 1).toList();
 
     for (int id in animeIds) {
@@ -290,13 +297,19 @@ class AnimeApiService {
       return false;
     }
   }
+
   // =========================================================
-  // ✅ الدالة المطلوبة: جلب تفاصيل شخصية محددة داخل أنمي معين
+  // ✅ الدالة المطلوبة: جلب تفاصيل شخصية محددة داخل أنمي معين أو عالمياً
   // =========================================================
   static Future<Map<String, String>?> getCharacterDetails({
-    required List<int> animeIds,
+    List<int>? animeIds,
     required String characterName,
   }) async {
+    // إذا كانت القائمة فارغة أو نول، نقوم بالبحث العالمي آلياً
+    if (animeIds == null || animeIds.isEmpty) {
+      return await searchCharacterGlobal(characterName);
+    }
+
     final cleanInput = _sanitize(characterName);
     
     for (int id in animeIds) {
@@ -316,7 +329,6 @@ class AnimeApiService {
           final String apiName = character['name'] ?? '';
           final String sanitizedApiName = _sanitize(apiName);
 
-          // التحقق من المطابقة (إما احتواء أو تطابق جزئي)
           if (sanitizedApiName.contains(cleanInput) || cleanInput.contains(sanitizedApiName)) {
             return {
               'name': apiName, // الاسم الرسمي من MAL
@@ -329,7 +341,39 @@ class AnimeApiService {
         continue;
       }
     }
-    return null; // لم يتم العثور على الشخصية
+    // إذا لم يجدها في المعرفات المحددة، كحل أخير نبحث عالمياً لضمان عدم خيبة أمل المستخدم
+    return await searchCharacterGlobal(characterName);
+  }
+
+  // =========================================================
+  // ✅ الدالة الجديدة: البحث العالمي عن شخصية في كل MAL
+  // =========================================================
+  static Future<Map<String, String>?> searchCharacterGlobal(String characterName) async {
+    try {
+      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+        'q': characterName,
+        'limit': '1',
+      });
+
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
+
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body);
+      if (data['data'] == null || data['data'].isEmpty) return null;
+
+      final charData = data['data'][0];
+      return {
+        'name': charData['name'] ?? '',
+        'imageUrl': charData['images']?['jpg']?['large_image_url'] ?? 
+                   charData['images']?['jpg']?['image_url'] ?? '',
+      };
+    } catch (e) {
+      debugPrint("❌ API Error (searchCharacterGlobal): $e");
+      return null;
+    }
   }
 
   // =========================================================

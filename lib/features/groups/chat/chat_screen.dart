@@ -19,14 +19,17 @@ import '../../../core/constants/game_status.dart';
 
 import '../../../services/monetization/ad_service.dart';
 
-// ✅ استيراد المكونات الجديدة
+// ✅ استيراد المكونات
 import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import 'package:pubget/features/groups/chat/massage_input_bar.dart';
 import '../../../widgets/game_bottom_bar.dart'; 
 import '../../../widgets/game_message_bubble.dart'; 
-import '../../../widgets/game_info_dialog.dart'; 
+
 
 import '../../../widgets/empty_state_widget.dart';
+
+// ✅ استيراد شاشة اللعبة للنقل الآلي
+import '../events/guess_character_game_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -278,17 +281,38 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (context, gameSnapshot) {
                     final activeGames = gameSnapshot.data ?? [];
                     
+                    // ✅ التعديل الجوهري: مراقبة الألعاب التي في حالة setup أو guessing
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
                         (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) 
-                                && g.status == GameStatus.guessing
+                                && (g.status == GameStatus.guessing || g.status == GameStatus.setup)
                       );
                     } catch (_) {
                       activeGameForMe = null;
                     }
 
                     if (activeGameForMe != null) {
+                      // ✅ منطق النقل الآلي لصفحة التجهيز (setup)
+                      if (activeGameForMe.status == GameStatus.setup) {
+                        Future.microtask(() {
+                          if (mounted) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => GuessCharacterGameScreen(
+                                  groupId: widget.groupId,
+                                  gameId: activeGameForMe!.id,
+                                ),
+                              ),
+                            );
+                          }
+                        });
+                        // نعيد مساحة فارغة أو لودينج أثناء الانتقال
+                        return const SizedBox.shrink();
+                      }
+
+                      // إذا كانت الحالة guessing، نعرض شريط التحكم في اللعبة
                       return GameBottomBar(
                         groupId: widget.groupId,
                         game: activeGameForMe,

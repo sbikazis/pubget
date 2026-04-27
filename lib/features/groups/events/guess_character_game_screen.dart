@@ -7,24 +7,24 @@ import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../core/constants/game_status.dart';
 import '../../../widgets/loading_widget.dart';
-import '../../../widgets/empty_state_widget.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/app_textfield.dart';
 
-// ✅ استخدام الخدمة الصحيحة الموجودة في مشروعك
+// الخدمة المسؤولة عن جلب بيانات الشخصيات من MAL
 import '../../../services/api/anime_api_service.dart';
 
 class GuessCharacterGameScreen extends StatefulWidget {
   final String groupId;
   final String gameId;
-  final List<int> animeIds; // ✅ مضاف لجلب الشخصيات من السلسلة المحددة
+  // ✅ التعديل: أصبح اختيارياً لدعم المجموعات العامة
+  final List<int>? animeIds; 
 
   const GuessCharacterGameScreen({
-    Key? key,
+    super.key,
     required this.groupId,
     required this.gameId,
-    required this.animeIds,
-  }) : super(key: key);
+    this.animeIds, // ✅ إزالة required
+  });
 
   @override
   State<GuessCharacterGameScreen> createState() =>
@@ -34,12 +34,12 @@ class GuessCharacterGameScreen extends StatefulWidget {
 class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   final TextEditingController _searchController = TextEditingController();
   
-  List<Map<String, String>> _searchResults = [];
-  bool _isSearching = false;
   Map<String, String>? _selectedCharacter;
+  bool _isSearching = false;
+  bool _isConfirming = false;
   
   Timer? _timer;
-  int _secondsLeft = 60;
+  int _secondsLeft = 60; // العداد الصارم (دقيقة واحدة)
 
   @override
   void initState() {
@@ -58,21 +58,20 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     });
   }
 
-  // ✅ التعامل مع انتهاء الوقت (المنطق القاتل: خسارة اللعبة فوراً)
+  // ⚠️ الجانب المنطقي القاتل: إذا انتهى الوقت ولم يضغط بدأ، تنتهي اللعبة بخسارته
   void _handleTimeout() {
-    if (mounted && _selectedCharacter == null) {
-      final gameProvider = Provider.of<GameProvider>(context, listen: false);
-      final currentUserId = Provider.of<UserProvider>(context, listen: false).currentUser?.id;
-      
-      // إنهاء اللعبة بسبب انسحاب/تايم آوت
-      gameProvider.finishGame(
-        widget.groupId, 
-        widget.gameId,
-        isCancelled: false,
-        reason: "انتهى الوقت المخصص لاختيار الشخصية",
-        winnerId: null, // سيؤدي للتعادل أو خسارة الطرف المتأخر
-      );
-      
+    if (!mounted) return;
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    
+    gameProvider.finishGame(
+      widget.groupId,
+      widget.gameId,
+      isCancelled: false,
+      reason: "انتهى الوقت المخصص للتجهيز (60 ثانية).",
+      winnerId: null, // الـ Provider سيعالج الخاسر بناءً على عدم الجاهزية
+    );
+    
+    if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
   }
@@ -84,189 +83,248 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     super.dispose();
   }
 
-  // ✅ البحث باستخدام AnimeApiService المطور
-  Future<void> _searchCharacters(String query) async {
-    if (query.length < 3) return; // تقليل ضغط الـ API
+  Future<void> _onSearch() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
+
     setState(() => _isSearching = true);
-    
     try {
-      // نبحث في السلسلة المختارة فقط لضمان دقة اللعبة
+      // ✅ التعديل: الـ API الآن سيتعامل مع animeIds سواء كانت قائمة أو null (بحث عالمي)
       final char = await AnimeApiService.getCharacterDetails(
         animeIds: widget.animeIds,
         characterName: query,
       );
       
-      if (char != null) {
-        setState(() => _searchResults = [char]);
-      } else {
-        setState(() => _searchResults = []);
+      if (mounted) {
+        setState(() {
+          _selectedCharacter = char;
+          _isSearching = false;
+        });
+        if (char == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("لم يتم العثور على الشخصية. يرجى التأكد من كتابة الاسم الإنجليزي تماماً كما في MAL."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
-    } finally {
+    } catch (e) {
       if (mounted) setState(() => _isSearching = false);
     }
   }
 
-  Future<void> _confirmCharacter(
-    BuildContext context,
-    GameProvider provider,
-    String userId,
-  ) async {
+  Future<void> _handleStart() async {
     if (_selectedCharacter == null) return;
     
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final userId = userProvider.currentUser?.id;
+
+    if (userId == null) return;
+
+    setState(() => _isConfirming = true);
     try {
-      await provider.setCharacter(
+      // 1. حفظ الشخصية في Firestore
+      await gameProvider.setCharacter(
         groupId: widget.groupId,
         gameId: widget.gameId,
         userId: userId,
-        animeIds: widget.animeIds,
+        animeIds: widget.animeIds ?? [], // نمرر قائمة فارغة للـ Firestore إذا كانت نول
         characterName: _selectedCharacter!['name']!,
       );
-      
-      // بعد تعيين الشخصية، ننتقل للجاهزية
-      await provider.toggleReady(
-        groupId: widget.groupId, 
-        gameId: widget.gameId, 
-        userId: userId
-      );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم التأكيد! انتظر الخصم لبدء اللعبة...')),
+      // 2. إعلان الجاهزية
+      await gameProvider.toggleReady(
+        groupId: widget.groupId,
+        gameId: widget.gameId,
+        userId: userId,
       );
+      
+      _timer?.cancel(); // توقف العداد المحلي لهذا اللاعب
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ: $e')),
-      );
+      if (mounted) {
+        setState(() => _isConfirming = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final gameProvider = Provider.of<GameProvider>(context);
-    final currentUserId = Provider.of<UserProvider>(context, listen: false).currentUser?.id;
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final currentUserId = userProvider.currentUser?.id;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('تجهيز اللعبة'),
-        actions: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('$_secondsLeft s', 
-                style: TextStyle(
-                  color: _secondsLeft < 10 ? Colors.red : Colors.blue, 
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 18
-                )
+    return StreamBuilder<GameModel?>(
+      stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
+      builder: (context, snapshot) {
+        final game = snapshot.data;
+        
+        // 🛡️ حماية: إذا انتهت اللعبة أو تم إلغاؤها، اخرج من الشاشة
+        if (game == null || game.status.isOver) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+          });
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        // 🚀 الانتقال الآلي عند جاهزية الطرفين
+        if (game.status == GameStatus.guessing) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+          });
+        }
+
+        final bool isMeP1 = currentUserId == game.playerOneId;
+        final bool iAmReady = isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
+        final bool opponentReady = isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("تجهيز الشخصية السرية"),
+            automaticallyImplyLeading: false, // منع العودة اليدوية لحماية منطق اللعبة
+            actions: [
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    "$_secondsLeft",
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.bold, 
+                      color: _secondsLeft < 10 ? Colors.red : Colors.blue
+                    ),
+                  ),
+                ),
               ),
-            ),
-          )
-        ],
-      ),
-      body: StreamBuilder<GameModel?>(
-        stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
-        builder: (context, snapshot) {
-          final game = snapshot.data;
-          if (game == null) return const LoadingWidget(message: 'جارٍ المزامنة...');
-
-          // الانتقال التلقائي للدردشة عند بدء التخمين
-          if (game.status == GameStatus.guessing) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) Navigator.pop(context);
-            });
-          }
-
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
+            ],
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               children: [
-                _buildStatusHeader(game),
-                const SizedBox(height: 20),
-                
-                _buildSearchSection(),
-                
-                const Spacer(),
-                if (_selectedCharacter != null)
-                  AppButton(
-                    text: 'تأكيد وبدء اللعبة',
-                    onPressed: () => _confirmCharacter(context, gameProvider, currentUserId!),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildPlayerStatus("أنت", iAmReady),
+                    const Icon(Icons.bolt, size: 40, color: Colors.grey),
+                    _buildPlayerStatus("الخصم", opponentReady),
+                  ],
+                ),
+                const Divider(height: 40),
+
+                if (!iAmReady) ...[
+                  const Text(
+                    "اختر شخصيتك السرية:",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "تنبيه: يجب كتابة اسم الشخصية بالإنجليزية تماماً كما يظهر في موقع MAL لضمان التحقق.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppTextField(
+                          controller: _searchController,
+                          label: "اسم الشخصية (مثال: Levi Ackerman)",
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton.filled(
+                        onPressed: _isSearching ? null : _onSearch,
+                        icon: _isSearching 
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.search),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  if (_selectedCharacter != null) _buildSelectedCard(),
+                ] else
+                  const Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        LoadingWidget(message: "تم حفظ الشخصية بنجاح.."),
+                        SizedBox(height: 10),
+                        Text("بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..", style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+
+                const Spacer(),
+                
+                if (!iAmReady)
+                  AppButton(
+                    text: "بدأ اللعبة",
+                    isLoading: _isConfirming,
+                    onPressed: _selectedCharacter == null ? null : _handleStart,
+                  ),
+                
                 const SizedBox(height: 10),
-                AppButton(
-                  text: 'انسحاب',
+                TextButton(
                   onPressed: () => gameProvider.finishGame(widget.groupId, widget.gameId, isCancelled: true, reason: "انسحاب أحد اللاعبين"),
+                  child: const Text("انسحاب وإلغاء اللعبة", style: TextStyle(color: Colors.red)),
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildStatusHeader(GameModel game) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blueAccent.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.blueAccent.withOpacity(0.3))
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _playerIndicator("أنت", (game.playerOneCharacter != null)),
-          const Icon(Icons.bolt, size: 30, color: Colors.orange),
-          _playerIndicator("الخصم", (game.playerTwoCharacter != null)),
-        ],
-      ),
-    );
-  }
-
-  Widget _playerIndicator(String label, bool isReady) {
+  Widget _buildPlayerStatus(String label, bool ready) {
     return Column(
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Icon(
-          isReady ? Icons.check_circle : Icons.hourglass_top_rounded,
-          color: isReady ? Colors.green : Colors.grey,
-        ),
-        Text(isReady ? "جاهز" : "يختار...", style: TextStyle(fontSize: 12, color: isReady ? Colors.green : Colors.grey)),
+        const SizedBox(height: 8),
+        Icon(ready ? Icons.check_circle : Icons.radio_button_unchecked, 
+             color: ready ? Colors.green : Colors.grey, size: 30),
+        Text(ready ? "جاهز" : "يختار...", style: TextStyle(fontSize: 12, color: ready ? Colors.green : Colors.grey)),
       ],
     );
   }
 
-  Widget _buildSearchSection() {
-    return Expanded(
-      child: Column(
-        children: [
-          const Text('اكتب اسم شخصيتك السرية بدقة (MAL):', 
-            style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          AppTextField(
-            label: 'مثال: Levi Ackerman',
-            controller: _searchController,
-            onChanged: (val) => _searchCharacters(val),
-          ),
-          if (_isSearching) const Padding(
-            padding: EdgeInsets.all(20.0),
-            child: CircularProgressIndicator(),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final char = _searchResults[index];
-                final isSelected = _selectedCharacter?['name'] == char['name'];
-                return ListTile(
-                  leading: CircleAvatar(backgroundImage: NetworkImage(char['imageUrl']!)),
-                  title: Text(char['name']!),
-                  trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                  onTap: () => setState(() => _selectedCharacter = char),
-                );
-              },
+  Widget _buildSelectedCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                _selectedCharacter!['imageUrl']!, 
+                width: 60, 
+                height: 80, 
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 50),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _selectedCharacter!['name']!,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Text("تم التحقق من الشخصية", style: TextStyle(color: Colors.blue, fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.verified, color: Colors.blue),
+          ],
+        ),
       ),
     );
   }

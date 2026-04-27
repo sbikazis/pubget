@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/game_model.dart';
+import '../models/message_model.dart'; // ✅ مضاف للتعامل مع الرسائل
 import '../services/firebase/firestore_service.dart';
 import '../services/api/anime_api_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/game_status.dart';
 import '../core/logic/game_logic_validator.dart';
 import '../core/utils/game_timer_manager.dart';
-import '../core/utils/game_auto_judge.dart'; // ✅ إضافة الاستيراد الجديد
+import '../core/utils/game_auto_judge.dart';
 
 class GameProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -21,17 +22,18 @@ class GameProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   // =============================================================
-  // 🛡️ إنشاء لعبة جديدة (مع فحص الحد الأقصى - لعبتين فقط)
+  // 🛡️ إنشاء لعبة جديدة
   // =============================================================
   Future<String?> createGame({
     required String groupId,
     required String creatorUserId,
+    String? creatorName, // ✅ مضاف لتسجيل الاسم في الرسالة
   }) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // 1. جلب الألعاب النشطة الحالية للمجموعة
+      // ✅ التحقق من عدد الألعاب النشطة لمنع تجاوز لعبتين
       final snapshot = await FirebaseFirestore.instance
           .collection(FirestorePaths.groupGames(groupId))
           .get();
@@ -41,12 +43,11 @@ class GameProvider extends ChangeNotifier {
           .where((g) => !g.status.isOver)
           .toList();
 
-      // 2. التحقق من قاعدة الحد الأقصى (عبر الـ Validator)
       if (!GameLogicValidator.canCreateNewGame(activeGames)) {
         throw Exception("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً.");
       }
 
-      // 3. تحديد الـ Slot المتاح
+      // ✅ تحديد الـ Slot المتاح (1 أو 2)
       String assignedSlot = activeGames.any((g) => g.gameSlot == 'game_1') 
           ? 'game_2' 
           : 'game_1';
@@ -61,10 +62,21 @@ class GameProvider extends ChangeNotifier {
         createdAt: DateTime.now(),
       );
 
+      // إنشاء مستند اللعبة
       await _firestore.createDocument(
         path: FirestorePaths.groupGames(groupId),
         docId: gameId,
         data: game.toMap(),
+      );
+
+      // ✅ إرسال رسالة "طلب تحدي" آلياً للدردشة مع تحديد الـ Slot
+      await _sendGameSystemMessage(
+        groupId: groupId,
+        gameId: gameId,
+        action: 'challenge',
+        senderId: creatorUserId,
+        senderName: creatorName ?? "لاعب",
+        gameSlot: assignedSlot,
       );
 
       return gameId;
@@ -75,39 +87,54 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛡️ الانضمام للعبة (حماية ذرية Transaction لمنع السبق)
+  // 🛡️ الانضمام للعبة (مع حماية Race Condition)
   // =============================================================
   Future<void> joinGame({
     required String groupId,
     required String gameId,
     required String userId,
+    String? userName,
   }) async {
     final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
         .doc(gameId);
 
+    // ✅ استخدام Transaction لضمان عدم دخول لاعبين في نفس الوقت
     return FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(gameRef);
-
       if (!snapshot.exists) throw Exception("اللعبة لم تعد موجودة!");
 
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // فحص الأمان عبر الـ Validator
+      // ✅ التحقق الفوري: هل لا يزال اللاعب الثاني فارغاً؟
+      if (game.playerTwoId != null && game.playerTwoId != userId) {
+        throw Exception("آسفون! قام شخص آخر بالانضمام لهذه اللعبة قبلك.");
+      }
+      
       if (!GameLogicValidator.isSlotStillAvailable(game)) {
-        throw Exception("آسفون! قام شخص آخر بالانضمام أثناء قراءتك للقواعد.");
+        throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة.");
       }
 
       transaction.update(gameRef, {
         'playerTwoId': userId,
         'status': GameStatus.setup.name,
-        'setupStartedAt': FieldValue.serverTimestamp(), // بدء عداد الـ 60 ثانية
+        'setupStartedAt': FieldValue.serverTimestamp(),
       });
+
+      // ✅ إرسال رسالة "انضمام" آلياً للدردشة مع تحديد الـ Slot للتمييز البصري
+      _sendGameSystemMessage(
+        groupId: groupId,
+        gameId: gameId,
+        action: 'join',
+        senderId: userId,
+        senderName: userName ?? "لاعب",
+        gameSlot: game.gameSlot,
+      );
     });
   }
 
   // =============================================================
-  // 🛡️ اختيار الشخصية (API + تخزين الصورة + التحقق من الجاهزية)
+  // 🛡️ اختيار الشخصية
   // =============================================================
   Future<void> setCharacter({
     required String groupId,
@@ -116,14 +143,14 @@ class GameProvider extends ChangeNotifier {
     required List<int> animeIds,
     required String characterName,
   }) async {
-    // 1. التحقق من MAL وجلب الصورة
+    // جلب التفاصيل من API (يتم التحقق عالمياً أو محلياً داخل الخدمة)
     final charData = await AnimeApiService.getCharacterDetails(
       animeIds: animeIds,
       characterName: characterName,
     );
 
     if (charData == null) {
-      throw Exception("هذه الشخصية غير موجودة في MAL لهذا الأنمي. تأكد من كتابة الاسم بدقة.");
+      throw Exception("هذه الشخصية غير موجودة. تأكد من كتابة الاسم الإنجليزي بدقة كما في MAL.");
     }
 
     final gameRef = FirebaseFirestore.instance
@@ -134,10 +161,10 @@ class GameProvider extends ChangeNotifier {
       final snapshot = await transaction.get(gameRef);
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // التحقق من الوقت (60 ثانية)
+      // التحقق من الوقت
       if (game.setupStartedAt != null && 
           GameTimerManager.hasSetupTimeout(game.setupStartedAt!)) {
-        throw Exception("انتهى الوقت المحدد للاختيار!");
+        throw Exception("انتهى الوقت المحدد للاختيار (60 ثانية)!");
       }
 
       Map<String, dynamic> updates = {};
@@ -154,7 +181,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛡️ نظام الجاهزية (بدء اللعبة الفعلي)
+  // 🛡️ نظام الجاهزية
   // =============================================================
   Future<void> toggleReady({
     required String groupId,
@@ -174,12 +201,12 @@ class GameProvider extends ChangeNotifier {
         isP1 ? 'isPlayerOneReady' : 'isPlayerTwoReady': true,
       };
 
-      // إذا أصبح كلاهما جاهزاً، تبدأ اللعبة فوراً
+      // إذا كان الطرف الآخر جاهزاً، تبدأ اللعبة فوراً
       bool willBeReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
       if (willBeReady) {
         updates['status'] = GameStatus.guessing.name;
-        updates['currentTurnUserId'] = game.playerOneId; // اللاعب الأول يبدأ السؤال
-        updates['lastActionAt'] = FieldValue.serverTimestamp(); // بدء عداد الـ 40 ثانية
+        updates['currentTurnUserId'] = game.playerOneId;
+        updates['lastActionAt'] = FieldValue.serverTimestamp();
       }
 
       transaction.update(gameRef, updates);
@@ -187,13 +214,14 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛡️ منطق التخمين (Win/Loss Logic)
+  // 🛡️ منطق التخمين
   // =============================================================
   Future<void> guessCharacter({
     required String groupId,
     required String gameId,
     required String userId,
     required String guessedName,
+    String? userName,
   }) async {
     final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
@@ -207,16 +235,16 @@ class GameProvider extends ChangeNotifier {
         : game.playerOneCharacter;
 
     if (GameLogicValidator.isGuessCorrect(guessedName, opponentChar ?? "")) {
-      // فوز!
-      await finishGame(groupId, gameId, winnerId: userId);
+      // ✅ فوز!
+      await finishGame(groupId, gameId, winnerId: userId, winnerName: userName);
     } else {
-      // خطأ -> نقل الدور للخصم
+      // خطأ، يتم نقل الدور للخصم
       await switchTurn(groupId, gameId);
     }
   }
 
   // =============================================================
-  // 🛡️ تبادل الأدوار + تحديث العداد
+  // 🛡️ تبادل الأدوار
   // =============================================================
   Future<void> switchTurn(String groupId, String gameId) async {
     final gameRef = FirebaseFirestore.instance
@@ -232,58 +260,81 @@ class GameProvider extends ChangeNotifier {
 
     await gameRef.update({
       'currentTurnUserId': nextTurnId,
-      'lastActionAt': FieldValue.serverTimestamp(), // إعادة تصفير الـ 40 ثانية
+      'lastActionAt': FieldValue.serverTimestamp(),
     });
   }
 
   // =============================================================
-  // 🛡️ التحكيم التلقائي (التحقق من العدادات)
-  // =============================================================
-  Future<void> processAutoJudge(String groupId, GameModel game) async {
-    // 1. فحص نوع التايم آوت عبر الحكم الصامت
-    final timeoutType = GameAutoJudge.checkTimeout(game);
-    if (timeoutType == TimeoutType.none) return;
-
-    // 2. تحديد الخاسر والرسالة
-    String? timedOutPlayerId = GameAutoJudge.getTimedOutPlayerId(game);
-    String reason = GameAutoJudge.getReasonMessage(timeoutType, timedOutPlayerId ?? "مجهول");
-
-    // 3. تنفيذ الحكم في قاعدة البيانات
-    if (timeoutType == TimeoutType.totalGameTimeout) {
-      // تعادل (انتهت الـ 10 دقائق)
-      await finishGame(groupId, game.id, isCancelled: false, reason: reason);
-    } else {
-      // خسارة بسبب الوقت (40ث أو 60ث)
-      String? winnerId = (timedOutPlayerId == game.playerOneId) 
-          ? game.playerTwoId 
-          : game.playerOneId;
-      await finishGame(groupId, game.id, winnerId: winnerId, reason: reason);
-    }
-  }
-
-  // =============================================================
-  // 🛡️ إنهاء اللعبة (فوز، تعادل، انسحاب)
+  // 🛡️ إنهاء اللعبة
   // =============================================================
   Future<void> finishGame(
     String groupId, 
     String gameId, {
     String? winnerId, 
+    String? winnerName,
     bool isCancelled = false,
     String? reason,
   }) async {
-    await FirebaseFirestore.instance
+    final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
-        .doc(gameId)
-        .update({
+        .doc(gameId);
+
+    final snapshot = await gameRef.get();
+    if (!snapshot.exists) return;
+    
+    final game = GameModel.fromMap(gameId, snapshot.data()!);
+    if (game.status.isOver) return; // منع الإنهاء المتكرر
+
+    await gameRef.update({
       'status': isCancelled ? GameStatus.cancelled.name : GameStatus.finished.name,
       'winnerUserId': winnerId,
       'finishedAt': FieldValue.serverTimestamp(),
       'endReason': reason,
     });
+
+    // ✅ إرسال رسالة الحالة النهائية للدردشة مع Slot اللعبة
+    await _sendGameSystemMessage(
+      groupId: groupId,
+      gameId: gameId,
+      action: isCancelled ? 'quit' : 'win',
+      senderId: winnerId ?? (isCancelled ? game.playerOneId : ""), 
+      senderName: winnerName ?? (isCancelled ? "لاعب منسحب" : "النظام"),
+      gameSlot: game.gameSlot,
+    );
   }
 
   // =============================================================
-  // 🛰️ مراقبة الألعاب النشطة للمجموعة (مطلوب للشريط السفلي) - ✅ جديد
+  // 🛠️ دالة مساعدة داخلية لإرسال رسائل النظام (مع دعم Slot للتمييز)
+  // =============================================================
+  Future<void> _sendGameSystemMessage({
+    required String groupId,
+    required String gameId,
+    required String action,
+    required String senderId,
+    required String senderName,
+    required String gameSlot,
+  }) async {
+    final messageId = _uuid.v4();
+    final messageData = {
+      'id': messageId,
+      'senderId': senderId,
+      'senderName': senderName,
+      'type': 'text',
+      'text': '', // الـ Bubble يحدد النص برمجياً بناءً على الـ action
+      'timestamp': FieldValue.serverTimestamp(),
+      'gameId': gameId,
+      'gameAction': action,
+      'gameSlot': gameSlot, // ✅ مهم جداً للتمييز البصري بين اللعبتين في الدردشة
+    };
+
+    await FirebaseFirestore.instance
+        .collection(FirestorePaths.groupMessages(groupId))
+        .doc(messageId)
+        .set(messageData);
+  }
+
+  // =============================================================
+  // 🛰️ مراقبة الألعاب النشطة والتحكيم التلقائي
   // =============================================================
   Stream<List<GameModel>> streamActiveGames(String groupId) {
     return FirebaseFirestore.instance
@@ -299,13 +350,25 @@ class GameProvider extends ChangeNotifier {
             .toList());
   }
 
-  // =============================================================
-  // 🛰️ مراقبة حالة لعبة محددة (Streams)
-  // =============================================================
   Stream<GameModel?> streamCurrentGame(String groupId, String gameId) {
     return _firestore.streamDocument(
       path: FirestorePaths.groupGames(groupId),
       docId: gameId,
     ).map((snap) => snap.exists ? GameModel.fromMap(snap.id, snap.data()!) : null);
+  }
+
+  Future<void> processAutoJudge(String groupId, GameModel game) async {
+    final timeoutType = GameAutoJudge.checkTimeout(game);
+    if (timeoutType == TimeoutType.none) return;
+
+    String? timedOutPlayerId = GameAutoJudge.getTimedOutPlayerId(game);
+    String reason = GameAutoJudge.getReasonMessage(timeoutType, timedOutPlayerId ?? "مجهول");
+
+    if (timeoutType == TimeoutType.totalGameTimeout) {
+      await finishGame(groupId, game.id, isCancelled: false, reason: reason);
+    } else {
+      String? winnerId = (timedOutPlayerId == game.playerOneId) ? game.playerTwoId : game.playerOneId;
+      await finishGame(groupId, game.id, winnerId: winnerId, reason: reason);
+    }
   }
 }
