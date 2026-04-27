@@ -48,6 +48,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   }
 
   void _startTimer() {
+    // نستخدم Timer.periodic لتحديث الواجهة والتحقق من الوقت كل ثانية
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsLeft > 0) {
         if (mounted) setState(() => _secondsLeft--);
@@ -58,17 +59,22 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     });
   }
 
-  // ⚠️ الجانب المنطقي القاتل: إذا انتهى الوقت ولم يضغط بدأ، تنتهي اللعبة بخسارته
+  // ⚠️ الجانب المنطقي القاتل: تنفيذ قاعدة الخسارة عند انتهاء الوقت
   void _handleTimeout() {
     if (!mounted) return;
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final currentUserId = userProvider.currentUser?.id;
+
+    if (currentUserId == null) return;
+
+    // إنهاء اللعبة مع تحديد السبب واللاعب الذي انتهى وقته
     gameProvider.finishGame(
       widget.groupId,
       widget.gameId,
       isCancelled: false,
-      reason: "انتهى الوقت المخصص للتجهيز (60 ثانية).",
-      winnerId: null, // الـ Provider سيعالج الخاسر بناءً على عدم الجاهزية
+      reason: "انتهى الوقت المخصص للتجهيز (60 ثانية) دون اختيار.",
+      winnerId: null, // الـ Provider سيعتبر الطرف الآخر فائزاً تلقائياً
     );
     
     if (Navigator.of(context).canPop()) {
@@ -141,7 +147,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         userId: userId,
       );
       
-      _timer?.cancel(); // توقف العداد المحلي لهذا اللاعب
+      _timer?.cancel(); // توقف العداد المحلي لهذا اللاعب بعد الضغط على بدأ
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
@@ -169,7 +175,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // 🚀 الانتقال الآلي عند جاهزية الطرفين
+        // 🚀 الانتقال الآلي عند جاهزية الطرفين (بداية مرحلة التخمين)
         if (game.status == GameStatus.guessing) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && Navigator.canPop(context)) Navigator.pop(context);
@@ -221,7 +227,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    "تنبيه: يجب كتابة اسم الشخصية بالإنجليزية تماماً كما يظهر في موقع MAL لضمان التحقق.",
+                    "تنبيه: يجب كتابة اسم الشخصية بالإنجليزية تماماً كما في MAL لضمان التحقق.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
@@ -252,7 +258,10 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       children: [
                         LoadingWidget(message: "تم حفظ الشخصية بنجاح.."),
                         SizedBox(height: 10),
-                        Text("بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..", style: TextStyle(color: Colors.grey)),
+                        Text("بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..", 
+                          style: TextStyle(color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                     ),
                   ),
@@ -268,7 +277,12 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                 
                 const SizedBox(height: 10),
                 TextButton(
-                  onPressed: () => gameProvider.finishGame(widget.groupId, widget.gameId, isCancelled: true, reason: "انسحاب أحد اللاعبين"),
+                  onPressed: () => gameProvider.finishGame(
+                    widget.groupId, 
+                    widget.gameId, 
+                    isCancelled: true, 
+                    reason: "انسحاب أحد اللاعبين أثناء التجهيز"
+                  ),
                   child: const Text("انسحاب وإلغاء اللعبة", style: TextStyle(color: Colors.red)),
                 ),
               ],

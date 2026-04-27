@@ -87,7 +87,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛡️ الانضمام للعبة (مع حماية Race Condition)
+  // 🛡️ الانضمام للعبة (مع حماية Race Condition صلبة)
   // =============================================================
   Future<void> joinGame({
     required String groupId,
@@ -99,26 +99,28 @@ class GameProvider extends ChangeNotifier {
         .collection(FirestorePaths.groupGames(groupId))
         .doc(gameId);
 
-    // ✅ استخدام Transaction لضمان عدم دخول لاعبين في نفس الوقت
+    // ✅ التعديل الجوهري: Transaction تضمن قفل المستند أثناء التحقق لمنع دخول لاعبين معاً
     return FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(gameRef);
       if (!snapshot.exists) throw Exception("اللعبة لم تعد موجودة!");
 
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // ✅ التحقق الفوري: هل لا يزال اللاعب الثاني فارغاً؟
+      // 🛡️ التحقق المنطقي القاتل: هل تم حجز المكان بالفعل أثناء قراءتك للقواعد؟
       if (game.playerTwoId != null && game.playerTwoId != userId) {
         throw Exception("آسفون! قام شخص آخر بالانضمام لهذه اللعبة قبلك.");
       }
       
-      if (!GameLogicValidator.isSlotStillAvailable(game)) {
-        throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة.");
+      // 🛡️ التأكد من أن الحالة لا تزال "انتظار خصم" حصراً
+      if (game.status != GameStatus.waitingForOpponent) {
+        throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة للانضمام.");
       }
 
+      // ✅ تحديث فوري داخل الـ Transaction لضمان الحجز القطعي
       transaction.update(gameRef, {
         'playerTwoId': userId,
-        'status': GameStatus.setup.name,
-        'setupStartedAt': FieldValue.serverTimestamp(),
+        'status': GameStatus.setup.name, // نقله فوراً لمرحلة التجهيز
+        'setupStartedAt': FieldValue.serverTimestamp(), // بدء عداد الـ 60 ثانية
       });
 
       // ✅ إرسال رسالة "انضمام" آلياً للدردشة مع تحديد الـ Slot للتمييز البصري
@@ -161,7 +163,7 @@ class GameProvider extends ChangeNotifier {
       final snapshot = await transaction.get(gameRef);
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // التحقق من الوقت
+      // التحقق من الوقت (60 ثانية للتجهيز)
       if (game.setupStartedAt != null && 
           GameTimerManager.hasSetupTimeout(game.setupStartedAt!)) {
         throw Exception("انتهى الوقت المحدد للاختيار (60 ثانية)!");
@@ -201,7 +203,7 @@ class GameProvider extends ChangeNotifier {
         isP1 ? 'isPlayerOneReady' : 'isPlayerTwoReady': true,
       };
 
-      // إذا كان الطرف الآخر جاهزاً، تبدأ اللعبة فوراً
+      // إذا كان الطرف الآخر جاهزاً، تبدأ اللعبة فوراً وتنتقل لحالة التخمين
       bool willBeReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
       if (willBeReady) {
         updates['status'] = GameStatus.guessing.name;
@@ -292,7 +294,7 @@ class GameProvider extends ChangeNotifier {
       'endReason': reason,
     });
 
-    // ✅ إرسال رسالة الحالة النهائية للدردشة مع Slot اللعبة
+    // ✅ إرسال رسالة الحالة النهائية للدردشة مع Slot اللعبة للتمييز
     await _sendGameSystemMessage(
       groupId: groupId,
       gameId: gameId,

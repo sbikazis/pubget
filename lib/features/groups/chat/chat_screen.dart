@@ -25,7 +25,6 @@ import 'package:pubget/features/groups/chat/massage_input_bar.dart';
 import '../../../widgets/game_bottom_bar.dart'; 
 import '../../../widgets/game_message_bubble.dart'; 
 
-
 import '../../../widgets/empty_state_widget.dart';
 
 // ✅ استيراد شاشة اللعبة للنقل الآلي
@@ -281,7 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (context, gameSnapshot) {
                     final activeGames = gameSnapshot.data ?? [];
                     
-                    // ✅ التعديل الجوهري: مراقبة الألعاب التي في حالة setup أو guessing
+                    // ✅ مراقبة الألعاب التي في حالة setup أو guessing وتخص المستخدم
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
@@ -293,26 +292,36 @@ class _ChatScreenState extends State<ChatScreen> {
                     }
 
                     if (activeGameForMe != null) {
-                      // ✅ منطق النقل الآلي لصفحة التجهيز (setup)
+                      // ✅ [التعديل الجوهري]: منطق النقل الآلي لصفحة التجهيز (setup) مع حل مشكلة الـ Getter
                       if (activeGameForMe.status == GameStatus.setup) {
                         Future.microtask(() {
                           if (mounted) {
+                            // ✅ تجميع كل المعرفات المتاحة من الموديل لتفادي خطأ animeIds غير المعرف
+                            List<int> allRelevantIds = [];
+                            if (group?.animeId != null && group!.animeId is int) {
+                              allRelevantIds.add(group.animeId);
+                            }
+                            if (group?.franchiseIds != null) {
+                              allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
+                            }
+
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => GuessCharacterGameScreen(
                                   groupId: widget.groupId,
                                   gameId: activeGameForMe!.id,
+                                  // ✅ نمرر القائمة المجمعة أو null إذا كانت فارغة لدعم المجموعات العامة
+                                  animeIds: allRelevantIds.isEmpty ? null : allRelevantIds,
                                 ),
                               ),
                             );
                           }
                         });
-                        // نعيد مساحة فارغة أو لودينج أثناء الانتقال
-                        return const SizedBox.shrink();
+                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
                       }
 
-                      // إذا كانت الحالة guessing، نعرض شريط التحكم في اللعبة
+                      // إذا كانت الحالة guessing، نعرض شريط التحكم الخاص باللعبة
                       return GameBottomBar(
                         groupId: widget.groupId,
                         game: activeGameForMe,
