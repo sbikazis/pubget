@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/game_model.dart';
@@ -10,6 +9,7 @@ import '../core/constants/game_status.dart';
 import '../core/logic/game_logic_validator.dart';
 import '../core/utils/game_timer_manager.dart';
 import '../core/utils/game_auto_judge.dart';
+import 'package:flutter/foundation.dart';
 
 class GameProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -67,16 +67,6 @@ class GameProvider extends ChangeNotifier {
         path: FirestorePaths.groupGames(groupId),
         docId: gameId,
         data: game.toMap(),
-      );
-
-      // ✅ إرسال رسالة "طلب تحدي" آلياً للدردشة مع تحديد الـ Slot
-      await _sendGameSystemMessage(
-        groupId: groupId,
-        gameId: gameId,
-        action: 'challenge',
-        senderId: creatorUserId,
-        senderName: creatorName ?? "لاعب",
-        gameSlot: assignedSlot,
       );
 
       return gameId;

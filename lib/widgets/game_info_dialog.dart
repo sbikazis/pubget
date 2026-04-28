@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
+import '../providers/chat_provider.dart'; // ✅ رجعه
 import '../models/member_model.dart';
 
 class GameInfoDialog extends StatelessWidget {
@@ -80,15 +81,27 @@ class GameInfoDialog extends StatelessWidget {
   // ==========================================
   void _handleConfirm(BuildContext context) async {
     final gameProv = context.read<GameProvider>();
+    final chatProv = context.read<ChatProvider>(); // ✅ رجعه
 
     try {
       if (gameId == null) {
         // 1. إنشاء لعبة جديدة
-        await gameProv.createGame(
+        final newGameId = await gameProv.createGame(
           groupId: groupId,
           creatorUserId: currentMember.userId,
           creatorName: currentMember.displayName,
         );
+
+        if (newGameId != null) {
+          // ✅ رجع الإرسال عبر ChatProvider (يضيف كل الحقول المطلوبة)
+          await chatProv.sendGameMessage(
+            groupId: groupId,
+            messageId: DateTime.now().millisecondsSinceEpoch.toString(),
+            sender: currentMember,
+            gameId: newGameId,
+            gameAction: 'challenge',
+          );
+        }
       } else {
         // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
         await gameProv.joinGame(
