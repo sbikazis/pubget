@@ -60,6 +60,7 @@ class GameProvider extends ChangeNotifier {
         playerOneId: creatorUserId,
         status: GameStatus.waitingForOpponent,
         createdAt: DateTime.now(),
+        lastActionType: null, // ابدأ بدون نوع
       );
 
       // إنشاء مستند اللعبة
@@ -79,7 +80,7 @@ class GameProvider extends ChangeNotifier {
   // =============================================================
   // 🛡️ الانضمام للعبة (مع حماية Race Condition صلبة)
   // =============================================================
-  Future<void> joinGame({
+  Future<String> joinGame({
     required String groupId,
     required String gameId,
     required String userId,
@@ -118,15 +119,7 @@ class GameProvider extends ChangeNotifier {
       });
     });
 
-    // ✅ إرسال رسالة "انضمام" آلياً للدردشة مع تحديد الـ Slot للتمييز البصري - بعد نجاح الـ Transaction
-    await _sendGameSystemMessage(
-      groupId: groupId,
-      gameId: gameId,
-      action: 'join',
-      senderId: userId,
-      senderName: userName ?? "لاعب",
-      gameSlot: gameSlot,
-    );
+    return gameSlot;
   }
 
   // =============================================================
@@ -188,25 +181,43 @@ class GameProvider extends ChangeNotifier {
         .collection(FirestorePaths.groupGames(groupId))
         .doc(gameId);
 
-    return FirebaseFirestore.instance.runTransaction((transaction) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(gameRef);
+      if (!snapshot.exists) throw Exception("اللعبة غير موجودة");
+      
       final game = GameModel.fromMap(gameId, snapshot.data()!);
+      final isP1 = userId == game.playerOneId;
+      
+      // تحقق أن الشخصية محفوظة قبل الجاهزية
+      final hasCharacter = isP1 
+          ? game.playerOneCharacter != null 
+          : game.playerTwoCharacter != null;
+      
+      if (!hasCharacter) {
+        throw Exception("يجب اختيار الشخصية أولاً");
+      }
 
-      bool isP1 = userId == game.playerOneId;
-      Map<String, dynamic> updates = {
+      final updates = <String, dynamic>{
         isP1 ? 'isPlayerOneReady' : 'isPlayerTwoReady': true,
       };
 
-      // إذا كان الطرف الآخر جاهزاً، تبدأ اللعبة فوراً وتنتقل لحالة التخمين
-      bool willBeReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
-      if (willBeReady) {
+      final otherReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+      
+      if (otherReady) {
+        // الاثنين جاهزين - نبدأ اللعبة لكن نبقى في setup لمدة 2 ثانية
+        // عشان الاثنين يشوفون علامة الصح قبل الانتقال
         updates['status'] = GameStatus.guessing.name;
         updates['currentTurnUserId'] = game.playerOneId;
         updates['lastActionAt'] = FieldValue.serverTimestamp();
+        updates['lastActionType'] = null; // أول دور هو سؤال
+        // لا تغير setupStartedAt - نخليه للعداد
       }
 
       transaction.update(gameRef, updates);
     });
+    
+    // انتظر ثانيتين قبل ما نرجع للواجهة - هذا يمنع الخروج المفاجئ
+    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   // =============================================================
@@ -256,6 +267,20 @@ class GameProvider extends ChangeNotifier {
 
     await gameRef.update({
       'currentTurnUserId': nextTurnId,
+      'lastActionAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // =============================================================
+  // 🛡️ تحديث نوع آخر حركة (سؤال/جواب)
+  // =============================================================
+  Future<void> updateLastAction(String groupId, String gameId, String actionType) async {
+    final gameRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupGames(groupId))
+        .doc(gameId);
+
+    await gameRef.update({
+      'lastActionType': actionType,
       'lastActionAt': FieldValue.serverTimestamp(),
     });
   }

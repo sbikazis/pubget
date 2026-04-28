@@ -44,13 +44,15 @@ class _GuessCharacterDialogState extends State<GuessCharacterDialog> {
 
     try {
       // نستخدم دالة getCharacterDetails التي أضفناها لـ AnimeApiService
-      // ملاحظة: نمرر قائمة أنميات الخصم (أو نبحث بشكل عام حسب منطق اللعبة)
-      final details = await AnimeApiService.getCharacterImage(_controller.text.trim());
+      final details = await AnimeApiService.getCharacterDetails(
+        animeIds: [], // بحث عالمي
+        characterName: _controller.text.trim(),
+      );
 
       if (details != null) {
         setState(() {
-          _foundCharacterName = _controller.text.trim();
-          _foundImageUrl = details;
+          _foundCharacterName = details['name'];
+          _foundImageUrl = details['imageUrl'];
         });
       } else {
         setState(() => _errorMessage = "لم يتم العثور على الشخصية في MAL.");
@@ -76,6 +78,17 @@ class _GuessCharacterDialogState extends State<GuessCharacterDialog> {
       gameId: widget.game.id,
       userId: widget.currentMember.userId,
       guessedName: _foundCharacterName!,
+      userName: widget.currentMember.effectiveName,
+    );
+
+    // إرسال رسالة التخمين للدردشة
+    await context.read<ChatProvider>().sendGameMessage(
+      groupId: widget.groupId,
+      messageId: DateTime.now().millisecondsSinceEpoch.toString(),
+      sender: widget.currentMember,
+      gameId: widget.game.id,
+      gameSlot: widget.game.gameSlot,
+      gameAction: 'guess',
     );
 
     if (mounted) Navigator.pop(context);

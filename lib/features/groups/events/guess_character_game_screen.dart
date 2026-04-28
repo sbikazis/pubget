@@ -6,6 +6,8 @@ import '../../../models/game_model.dart';
 import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../core/constants/game_status.dart';
+import '../../../core/constants/game_constants.dart';
+import '../../../core/utils/game_timer_manager.dart';
 import '../../../widgets/loading_widget.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/app_textfield.dart';
@@ -17,7 +19,7 @@ class GuessCharacterGameScreen extends StatefulWidget {
   final String groupId;
   final String gameId;
   // ✅ التعديل: أصبح اختيارياً لدعم المجموعات العامة
-  final List<int>? animeIds; 
+  final List<int>? animeIds;
 
   const GuessCharacterGameScreen({
     super.key,
@@ -33,59 +35,24 @@ class GuessCharacterGameScreen extends StatefulWidget {
 
 class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   final TextEditingController _searchController = TextEditingController();
-  
+ 
   Map<String, String>? _selectedCharacter;
   bool _isSearching = false;
   bool _isConfirming = false;
-  
-  Timer? _timer;
-  final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier(60); // العداد الصارم (دقيقة واحدة)
 
   @override
   void initState() {
     super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    // نستخدم Timer.periodic لتحديث الواجهة والتحقق من الوقت كل ثانية
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_secondsLeftNotifier.value > 0) {
-        _secondsLeftNotifier.value--;
-      } else {
-        _timer?.cancel();
-        _handleTimeout();
-      }
-    });
   }
 
   // ⚠️ الجانب المنطقي القاتل: تنفيذ قاعدة الخسارة عند انتهاء الوقت
-  void _handleTimeout() {
+  void _handleTimeout(GameModel game) {
     if (!mounted) return;
-    final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final currentUserId = userProvider.currentUser?.id;
-
-    if (currentUserId == null) return;
-
-    // إنهاء اللعبة مع تحديد السبب واللاعب الذي انتهى وقته
-    gameProvider.finishGame(
-      widget.groupId,
-      widget.gameId,
-      isCancelled: false,
-      reason: "انتهى الوقت المخصص للتجهيز (60 ثانية) دون اختيار.",
-      winnerId: null, // الـ Provider سيعتبر الطرف الآخر فائزاً تلقائياً
-    );
-    
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+    context.read<GameProvider>().processAutoJudge(widget.groupId, game);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _secondsLeftNotifier.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -101,7 +68,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         animeIds: widget.animeIds,
         characterName: query,
       );
-      
+     
       if (mounted) {
         setState(() {
           _selectedCharacter = char;
@@ -123,7 +90,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
 
   Future<void> _handleStart() async {
     if (_selectedCharacter == null) return;
-    
+   
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final userId = userProvider.currentUser?.id;
@@ -147,8 +114,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         gameId: widget.gameId,
         userId: userId,
       );
-      
-      _timer?.cancel(); // توقف العداد المحلي لهذا اللاعب بعد الضغط على بدأ
+     
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
@@ -172,7 +138,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         }
 
         final game = snapshot.data!;
-        
+       
         // 2. 🛡️ حماية: إذا انتهت اللعبة فعلاً، اخرج من الشاشة
         if (game.status.isOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,9 +148,11 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         }
 
         // 🚀 الانتقال الآلي عند جاهزية الطرفين (بداية مرحلة التخمين)
-        if (game.status == GameStatus.guessing) {
+        if (game.status == GameStatus.guessing && game.isPlayerOneReady && game.isPlayerTwoReady) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+            Future.delayed(const Duration(seconds: 2), () {
+              if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+            });
           });
         }
 
@@ -200,16 +168,30 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: _secondsLeftNotifier,
-                    builder: (context, value, _) => Text(
-                      "$value",
-                      style: TextStyle(
-                        fontSize: 20, 
-                        fontWeight: FontWeight.bold, 
-                        color: value < 10 ? Colors.red : Colors.blue
-                      ),
+                  child: StreamBuilder<int>(
+                    stream: GameTimerManager.startSyncedCountdown(
+                      game.setupStartedAt ?? game.createdAt,
+                      GameConstants.characterSelectionDuration,
                     ),
+                    builder: (context, timerSnapshot) {
+                      final seconds = timerSnapshot.data ?? GameConstants.characterSelectionDuration;
+                      
+                      // إذا انتهى الوقت، نفذ التحكيم التلقائي
+                      if (seconds <= 0 && game.status.isInSetup) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _handleTimeout(game);
+                        });
+                      }
+                      
+                      return Text(
+                        "$seconds",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: seconds < 10 ? Colors.red : Colors.blue
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -252,7 +234,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       const SizedBox(width: 10),
                       IconButton.filled(
                         onPressed: _isSearching ? null : _onSearch,
-                        icon: _isSearching 
+                        icon: _isSearching
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Icon(Icons.search),
                       ),
@@ -267,7 +249,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       children: [
                         LoadingWidget(message: "تم حفظ الشخصية بنجاح.."),
                         SizedBox(height: 10),
-                        Text("بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..", 
+                        Text("بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..",
                           style: TextStyle(color: Colors.grey),
                           textAlign: TextAlign.center,
                         ),
@@ -276,20 +258,20 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   ),
 
                 const Spacer(),
-                
+               
                 if (!iAmReady)
                   AppButton(
                     text: "بدأ اللعبة",
                     isLoading: _isConfirming,
                     onPressed: _selectedCharacter == null ? null : _handleStart,
                   ),
-                
+               
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: () => gameProvider.finishGame(
-                    widget.groupId, 
-                    widget.gameId, 
-                    isCancelled: true, 
+                    widget.groupId,
+                    widget.gameId,
+                    isCancelled: true,
                     reason: "انسحاب أحد اللاعبين أثناء التجهيز"
                   ),
                   child: const Text("انسحاب وإلغاء اللعبة", style: TextStyle(color: Colors.red)),
@@ -307,7 +289,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Icon(ready ? Icons.check_circle : Icons.radio_button_unchecked, 
+        Icon(ready ? Icons.check_circle : Icons.radio_button_unchecked,
              color: ready ? Colors.green : Colors.grey, size: 30),
         Text(ready ? "جاهز" : "يختار...", style: TextStyle(fontSize: 12, color: ready ? Colors.green : Colors.grey)),
       ],
@@ -325,9 +307,9 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: Image.network(
-                _selectedCharacter!['imageUrl']!, 
-                width: 60, 
-                height: 80, 
+                _selectedCharacter!['imageUrl']!,
+                width: 60,
+                height: 80,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 50),
               ),

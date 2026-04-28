@@ -7,7 +7,17 @@ class GameLogicValidator {
   /// 1. التحقق من توفر مكان للعبة (Slot Availability)
   /// يمنع إنشاء لعبة ثالثة في المجموعة
   static bool canCreateNewGame(List<GameModel> activeGames) {
-    return activeGames.length < GameConstants.maxConcurrentGames;
+    // نحسب فقط الألعاب اللي عمرها أقل من 5 دقائق في waiting
+    final now = DateTime.now();
+    final validGames = activeGames.where((g) {
+      if (g.status.isOver) return false;
+      if (g.status == GameStatus.waitingForOpponent) {
+        return now.difference(g.createdAt).inMinutes < 5;
+      }
+      return true;
+    }).length;
+    
+    return validGames < GameConstants.maxConcurrentGames;
   }
 
   /// 2. حماية "السبق في الانضمام"

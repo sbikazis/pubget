@@ -601,7 +601,7 @@ class _CreateRoleplayGroupScreenState
                       const Padding(
                         padding: EdgeInsets.only(top: 4, right: 4),
                         child: Text(
-                          '* يرجى كتابة اسم الأنمي بدقة للبحث في السلسلة كاملة',
+                          'حاول كتابة الإسم كما هو من موقع MAL وفي حالة عدم ظهور كل الأجزاء اكتب إسم الموسم الأخير بدقة ',
                           style: TextStyle(fontSize: 10, color: Colors.grey, fontStyle: FontStyle.italic),
                         ),
                       ),

@@ -33,9 +33,8 @@ class _GameBottomBarState extends State<GameBottomBar> {
   bool get isMyTurn => widget.game.currentTurnUserId == widget.currentMember.userId;
 
   // ✅ تحديد نوع الدور (هل هو دور سؤال أم جواب؟)
-  // في منطقنا: صاحب الدور (isMyTurn) هو السائل دائماً إلا إذا كانت اللعبة في حالة انتظار إجابة
-  // لكن للتبسيط: سنعتمد أن currentTurnUserId هو من عليه التحرك الآن
-  bool get isQuestionTurn => isMyTurn; 
+  bool get isAnswerPhase => widget.game.lastActionType == 'question' && isMyTurn;
+  bool get isQuestionPhase => widget.game.lastActionType!= 'question' && isMyTurn;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +62,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
         children: [
           // ✅ إضافة العداد التنازلي المرئي
           _buildTimerProgress(),
-          
+
           Row(
             children: [
               // زر الانسحاب (موجود دائماً)
@@ -73,7 +72,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
               ),
 
               // زر التخمين (مفعل فقط في دور السؤال)
-              if (isQuestionTurn)
+              if (isQuestionPhase)
                 IconButton(
                   icon: const Icon(Icons.ads_click, color: Colors.amber),
                   onPressed: () => _showGuessDialog(),
@@ -83,8 +82,8 @@ class _GameBottomBarState extends State<GameBottomBar> {
                 child: TextField(
                   controller: _controller,
                   decoration: InputDecoration(
-                    hintText: isQuestionTurn 
-                        ? "اسأل سؤالاً (إجابته نعم/لا)..." 
+                    hintText: isQuestionPhase
+                       ? "اسأل سؤالاً (إجابته نعم/لا)..."
                         : "أجب بـ (نعم) أو (لا) فقط...",
                     hintStyle: const TextStyle(fontSize: 13),
                     border: OutlineInputBorder(
@@ -114,20 +113,20 @@ class _GameBottomBarState extends State<GameBottomBar> {
   Widget _buildTimerProgress() {
     return StreamBuilder<int>(
       stream: GameTimerManager.startSyncedCountdown(
-        widget.game.lastActionAt ?? widget.game.createdAt, 
+        widget.game.lastActionAt?? widget.game.createdAt,
         GameConstants.turnDuration
       ),
       builder: (context, snapshot) {
-        final seconds = snapshot.data ?? GameConstants.turnDuration;
+        final seconds = snapshot.data?? GameConstants.turnDuration;
         final percent = seconds / GameConstants.turnDuration;
-        
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
           child: LinearProgressIndicator(
             value: percent,
             backgroundColor: Colors.grey[300],
             valueColor: AlwaysStoppedAnimation<Color>(
-              seconds < 10 ? Colors.red : Colors.green,
+              seconds < 10? Colors.red : Colors.green,
             ),
             minHeight: 2,
           ),
@@ -176,9 +175,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
     if (text.isEmpty) return;
 
     // ✅ التعديل الذهبي: إذا كان دور الجواب، نتحقق عبر الـ Validator
-    // ملاحظة: نفترض هنا أن النظام يحدد حالة الإجابة برمجياً
-    // إذا لم يكن دور سؤال، فهو حتماً دور إجابة
-    if (!isQuestionTurn) {
+    if (isAnswerPhase) {
       if (!GameLogicValidator.isValidGameAnswer(text)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -200,9 +197,16 @@ class _GameBottomBarState extends State<GameBottomBar> {
       gameSlot: widget.game.gameSlot,
     );
 
+    // بعد الإرسال، حدث نوع الحركة
+    await context.read<GameProvider>().updateLastAction(
+      widget.groupId,
+      widget.game.id,
+      isQuestionPhase? 'question' : 'answer'
+    );
+
     // تبديل الدور تلقائياً بعد الإرسال
     await context.read<GameProvider>().switchTurn(widget.groupId, widget.game.id);
-    
+
     _controller.clear();
   }
 
@@ -228,10 +232,10 @@ class _GameBottomBarState extends State<GameBottomBar> {
           TextButton(
             onPressed: () {
               context.read<GameProvider>().finishGame(
-                widget.groupId, 
-                widget.game.id, 
-                winnerId: widget.game.playerOneId == widget.currentMember.userId 
-                    ? widget.game.playerTwoId 
+                widget.groupId,
+                widget.game.id,
+                winnerId: widget.game.playerOneId == widget.currentMember.userId
+                   ? widget.game.playerTwoId
                     : widget.game.playerOneId,
                 isCancelled: true,
                 reason: "انسحاب اللاعب ${widget.currentMember.displayName}"

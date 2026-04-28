@@ -29,6 +29,7 @@ class GameModel {
   final DateTime createdAt; // وقت إنشاء الطلب
   final DateTime? setupStartedAt; // وقت بدء مرحلة الـ 60 ثانية
   final DateTime? lastActionAt; // وقت آخر سؤال/جواب لإدارة الـ 40 ثانية
+  final String? lastActionType; // 'question' أو 'answer' أو null
   final DateTime? finishedAt;
 
   const GameModel({
@@ -49,6 +50,7 @@ class GameModel {
     required this.createdAt,
     this.setupStartedAt,
     this.lastActionAt,
+    this.lastActionType,
     this.finishedAt,
   });
 
@@ -76,6 +78,7 @@ class GameModel {
       lastActionAt: map['lastActionAt'] != null 
           ? (map['lastActionAt'] as Timestamp).toDate() 
           : null,
+      lastActionType: map['lastActionType'],
       finishedAt: map['finishedAt'] != null
           ? (map['finishedAt'] as Timestamp).toDate()
           : null,
@@ -101,6 +104,7 @@ class GameModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'setupStartedAt': setupStartedAt != null ? Timestamp.fromDate(setupStartedAt!) : null,
       'lastActionAt': lastActionAt != null ? Timestamp.fromDate(lastActionAt!) : null,
+      'lastActionType': lastActionType,
       'finishedAt': finishedAt != null ? Timestamp.fromDate(finishedAt!) : null,
     };
   }
@@ -118,6 +122,7 @@ class GameModel {
     String? winnerUserId,
     DateTime? setupStartedAt,
     DateTime? lastActionAt,
+    String? lastActionType,
     DateTime? finishedAt,
   }) {
     return GameModel(
@@ -138,6 +143,7 @@ class GameModel {
       createdAt: createdAt,
       setupStartedAt: setupStartedAt ?? this.setupStartedAt,
       lastActionAt: lastActionAt ?? this.lastActionAt,
+      lastActionType: lastActionType ?? this.lastActionType,
       finishedAt: finishedAt ?? this.finishedAt,
     );
   }

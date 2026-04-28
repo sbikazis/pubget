@@ -104,11 +104,20 @@ class GameInfoDialog extends StatelessWidget {
         }
       } else {
         // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
-        await gameProv.joinGame(
+        final slot = await gameProv.joinGame(
           groupId: groupId,
           gameId: gameId!,
           userId: currentMember.userId,
           userName: currentMember.displayName,
+        );
+
+        await chatProv.sendGameMessage(
+          groupId: groupId,
+          messageId: DateTime.now().millisecondsSinceEpoch.toString(),
+          sender: currentMember,
+          gameId: gameId!,
+          gameAction: 'join',
+          gameSlot: slot,
         );
       }
 

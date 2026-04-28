@@ -30,7 +30,7 @@ class GameMessageBubble extends StatelessWidget {
       stream: context.read<GameProvider>().streamCurrentGame(groupId, message.gameId ?? ''),
       builder: (context, snapshot) {
         final game = snapshot.data;
-        
+       
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           padding: const EdgeInsets.all(12),
@@ -105,6 +105,10 @@ class GameMessageBubble extends StatelessWidget {
       case 'join':
         text = "دخل الحلبة الآن! بدأت مرحلة التجهيز...";
         icon = Icons.handshake;
+        break;
+      case 'guess': // ✅ جديد
+        text = "${msg.senderName} حاول تخمين الشخصية...";
+        icon = Icons.search;
         break;
       case 'win':
         text = "سحق الخصم وكشف الشخصية! فوز مستحق! 🏆";

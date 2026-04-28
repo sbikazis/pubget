@@ -1,21 +1,23 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart'; // ✅ إضافة موديل العضو
 import '../../../core/constants/limits.dart';
+import '../../../core/constants/firestore_paths.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/game_info_dialog.dart'; // ✅ إضافة الديالوج المبرمج
 
 class MessageInputBar extends StatefulWidget {
   final Function(String text, MessageModel? replyTo) onSendText;
   final Function(File file, MessageModel? replyTo) onSendImage;
-  
+
   // ✅ إضافة البيانات المطلوبة للديالوج
   final String groupId;
   final MemberModel currentMember;
-  
+
   final MessageModel? replyingMessage;
   final VoidCallback? onCancelReply;
   final bool isPrivate;
@@ -59,7 +61,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
       await widget.onSendImage(File(image.path), widget.replyingMessage);
 
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -97,8 +99,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
       await widget.onSendText(text, widget.replyingMessage);
 
       _controller.clear();
-     
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,7 +118,23 @@ class _MessageInputBarState extends State<MessageInputBar> {
   // =========================================================
   // ✅ التعديل الجديد: فتح شاشة معلومات اللعبة والقواعد
   // =========================================================
-  void _handleGamePressed() {
+  void _handleGamePressed() async {
+    // ✅ فحص فوري قبل فتح الديالوج
+    final activeGames = await FirebaseFirestore.instance
+       .collection(FirestorePaths.groupGames(widget.groupId))
+       .where('status', whereIn: ['waitingForOpponent', 'setup', 'guessing'])
+       .get();
+
+    if (activeGames.docs.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => GameInfoDialog(
@@ -131,13 +149,13 @@ class _MessageInputBarState extends State<MessageInputBar> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final background = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final borderColor = isDark? AppColors.darkBorder : AppColors.lightBorder;
+    final background = isDark? AppColors.darkSurface : AppColors.lightSurface;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.replyingMessage != null) _buildReplyPreview(isDark),
+        if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
 
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -150,7 +168,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
               IconButton(
                 icon: const Icon(Icons.attach_file),
                 color: AppColors.primary,
-                onPressed: _isSending ? null : _pickAndSendImage,
+                onPressed: _isSending? null : _pickAndSendImage,
               ),
               if (!widget.isPrivate)
                 IconButton(
@@ -166,7 +184,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                     hintText: "اكتب رسالة...",
                     counterText: "",
                     filled: true,
-                    fillColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+                    fillColor: isDark? AppColors.darkCard : AppColors.lightCard,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 10,
@@ -194,7 +212,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 ),
                 child: IconButton(
                   icon: _isSending
-                      ? const SizedBox(
+                     ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
@@ -203,7 +221,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                           ),
                         )
                       : const Icon(Icons.send, color: Colors.white),
-                  onPressed: _isSending ? null : _sendMessage,
+                  onPressed: _isSending? null : _sendMessage,
                 ),
               ),
             ],
@@ -217,7 +235,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.grey[200],
+        color: isDark? Colors.grey[900] : Colors.grey[200],
         border: const Border(
           right: BorderSide(color: AppColors.primary, width: 4),
         ),
@@ -239,13 +257,13 @@ class _MessageInputBarState extends State<MessageInputBar> {
                   ),
                 ),
                 Text(
-                  widget.replyingMessage!.text ??
-                  (widget.replyingMessage!.mediaType == 'image' ? "صورة 🖼️" : "رسالة وسائط"),
+                  widget.replyingMessage!.text??
+                  (widget.replyingMessage!.mediaType == 'image'? "صورة 🖼️" : "رسالة وسائط"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? Colors.white70 : Colors.black87,
+                    color: isDark? Colors.white70 : Colors.black87,
                   ),
                 ),
               ],

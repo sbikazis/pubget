@@ -9,7 +9,7 @@ class GameTimerManager {
     final now = DateTime.now();
     final difference = now.difference(startedAt).inSeconds;
     final remaining = durationInSeconds - difference;
-    return remaining > 0 ? remaining : 0;
+    return remaining > 0? remaining : 0;
   }
 
   /// يتحقق مما إذا كان الوقت قد انتهى فعلياً
@@ -37,7 +37,7 @@ class GameTimerManager {
   /// التعديل: يدعم الآن المزامنة مع الوقت الفعلي بدلاً من العد من الصفر فقط
   static Stream<int> startCountdown(int seconds) {
     return Stream.periodic(const Duration(seconds: 1), (i) => seconds - i - 1)
-        .take(seconds);
+       .take(seconds);
   }
 
   /// ✅ التعديل الجديد: Stream مزامن مع الوقت الفعلي (Sync Stream)
@@ -45,10 +45,15 @@ class GameTimerManager {
   /// مما يضمن أن كل اللاعبين يرون نفس الرقم في نفس اللحظة.
   static Stream<int> startSyncedCountdown(DateTime lastActionAt, int totalDuration) {
     final initialRemaining = getRemainingSeconds(lastActionAt, totalDuration);
-    
+
     return Stream.periodic(const Duration(seconds: 1), (i) {
       final currentRemaining = getRemainingSeconds(lastActionAt, totalDuration);
       return currentRemaining;
     }).takeWhile((remaining) => remaining >= 0);
+  }
+
+  static DateTime getServerTime(DateTime serverTimestamp) {
+    // نستخدم وقت السيرفر بدل وقت الجهاز
+    return serverTimestamp;
   }
 }
