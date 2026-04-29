@@ -47,6 +47,8 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageModel? _replyingMessage;
   List<MessageModel> _cachedMessages = [];
   bool _isInitialLoad = true;
+  
+  // ✅ مجموعة لتتبع الألعاب التي تم الانتقال إليها لمنع تكرار فتح الشاشة
   final Set<String> _navigatedGameIds = {};
 
   @override
@@ -55,9 +57,9 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final currentUser = userProvider.currentUser;
-      final isPremium = currentUser?.isPremium?? false;
+      final isPremium = currentUser?.isPremium ?? false;
 
-      if (currentUser!= null) {
+      if (currentUser != null) {
         _syncPremiumStatus(currentUser);
         _loadCurrentMember(currentUser.id);
         _updateReadStatus(currentUser.id);
@@ -72,7 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final currentUserId = userProvider.currentUser?.id;
-    if (currentUserId!= null) {
+    if (currentUserId != null) {
       _updateReadStatus(currentUserId);
     }
     _scrollController.dispose();
@@ -87,11 +89,11 @@ class _ChatScreenState extends State<ChatScreen> {
         userId: currentUser.id,
       );
 
-      if (member!= null && member.isPremium!= currentUser.isPremium) {
+      if (member != null && member.isPremium != currentUser.isPremium) {
         await FirebaseFirestore.instance
-          .collection(FirestorePaths.groupMembers(widget.groupId))
-          .doc(currentUser.id)
-          .update({'isPremium': currentUser.isPremium});
+            .collection(FirestorePaths.groupMembers(widget.groupId))
+            .doc(currentUser.id)
+            .update({'isPremium': currentUser.isPremium});
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -135,7 +137,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToMessage(String messageId) {
     final index = _cachedMessages.indexWhere((m) => m.id == messageId);
-    if (index!= -1) {
+    if (index != -1) {
       double targetOffset = index * 100.0;
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
@@ -160,7 +162,7 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text,
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text?? (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
+      replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
     _updateReadStatus(_currentMember!.userId);
@@ -181,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
       mediaType: 'image',
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text?? (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
+      replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
     _updateReadStatus(_currentMember!.userId);
@@ -199,8 +201,8 @@ class _ChatScreenState extends State<ChatScreen> {
       stream: groupProvider.streamGroup(groupId: widget.groupId),
       builder: (context, groupSnapshot) {
         final group = groupSnapshot.data;
-        final bool isRoleplay = group?.isRoleplay?? false;
-        final String groupName = group?.name?? "الدردشة";
+        final bool isRoleplay = group?.isRoleplay ?? false;
+        final String groupName = group?.name ?? "الدردشة";
 
         return Scaffold(
           appBar: AppBar(title: Text(groupName), centerTitle: true),
@@ -217,12 +219,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (snapshot.data!.length > _cachedMessages.length) {
                         final userProvider = Provider.of<UserProvider>(context, listen: false);
                         final currentUserId = userProvider.currentUser?.id;
-                        if (currentUserId!= null) {
+                        if (currentUserId != null) {
                           Future.microtask(() => _updateReadStatus(currentUserId));
                         }
+                      }
                       _cachedMessages = snapshot.data!;
                       _isInitialLoad = false;
-                    }
+                    } // ✅ تم إصلاح إغلاق القوس هنا
+
                     if (_cachedMessages.isEmpty) {
                       return const Center(
                         child: EmptyStateWidget(
@@ -240,26 +244,26 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemCount: _cachedMessages.length,
                       itemBuilder: (context, index) {
                         final message = _cachedMessages[index];
-                        final isMe = _currentMember!= null && message.senderId == _currentMember!.userId;
+                        final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
 
-                        if (message.gameId!= null && message.gameAction!= null) {
+                        if (message.gameId != null && message.gameAction != null) {
                           return GameMessageBubble(
                             message: message,
-                            currentMember: _currentMember?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
+                            currentMember: _currentMember ?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
                             groupId: widget.groupId,
                           );
                         }
 
                         final sender = isMe
-                          ? _currentMember!
+                            ? _currentMember!
                             : MemberModel(
                                 userId: message.senderId,
                                 groupId: widget.groupId,
-                                role: message.senderRole?? Roles.member,
+                                role: message.senderRole ?? Roles.member,
                                 joinedAt: DateTime.now(),
                                 displayName: message.senderName,
-                                characterImageUrl: isRoleplay? message.senderAvatar : null,
-                                realUserImageUrl:!isRoleplay? message.senderAvatar : null,
+                                characterImageUrl: isRoleplay ? message.senderAvatar : null,
+                                realUserImageUrl: !isRoleplay ? message.senderAvatar : null,
                                 isPremium: message.senderIsPremium,
                               );
 
@@ -278,29 +282,56 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
 
-              if (_currentMember!= null)
+              if (_currentMember != null)
                 StreamBuilder<List<GameModel>>(
                   stream: gameProvider.streamActiveGames(widget.groupId),
                   builder: (context, gameSnapshot) {
-                    final activeGames = gameSnapshot.data?? [];
+                    final activeGames = gameSnapshot.data ?? [];
 
-                    // ✅ مراقبة الألعاب التي في حالة guessing فقط وتخص المستخدم
+                    // ✅ البحث عن لعبة تخص المستخدم سواء في حالة setup أو guessing
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
                         (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
-                            g.status == GameStatus.guessing,
+                            (g.status == GameStatus.guessing || g.status == GameStatus.setup),
                       );
                     } catch (_) {
                       activeGameForMe = null;
                     }
 
-                    if (activeGameForMe!= null) {
-                      return GameBottomBar(
-                        groupId: widget.groupId,
-                        game: activeGameForMe,
-                        currentMember: _currentMember!,
-                      );
+                    if (activeGameForMe != null) {
+                      // ✅ حل مشكلة تعليق الخصم: النقل الآلي عند حالة التجهيز
+                      if (activeGameForMe.status == GameStatus.setup && !_navigatedGameIds.contains(activeGameForMe.id)) {
+                        _navigatedGameIds.add(activeGameForMe.id);
+                        Future.microtask(() {
+                          if (mounted) {
+                            List<int> allRelevantIds = [];
+                            if (group?.animeId != null) allRelevantIds.add(group!.animeId);
+                            if (group?.franchiseIds != null) allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => GuessCharacterGameScreen(
+                                  groupId: widget.groupId,
+                                  gameId: activeGameForMe!.id,
+                                  animeIds: allRelevantIds.isEmpty ? null : allRelevantIds,
+                                ),
+                              ),
+                            );
+                          }
+                        });
+                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
+                      }
+
+                      // إذا كانت اللعبة في مرحلة التخمين، اعرض الشريط
+                      if (activeGameForMe.status == GameStatus.guessing) {
+                        return GameBottomBar(
+                          groupId: widget.groupId,
+                          game: activeGameForMe,
+                          currentMember: _currentMember!,
+                        );
+                      }
                     }
 
                     return MessageInputBar(
