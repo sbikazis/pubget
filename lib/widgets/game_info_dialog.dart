@@ -127,17 +127,19 @@ class GameInfoDialog extends StatelessWidget {
       }
 
       if (context.mounted && targetGameId != null) {
-        Navigator.pop(context); // أغلق الديالوج أولاً
-        Navigator.push( // انقل اللاعب فوراً
-          context,
-          MaterialPageRoute(
-            builder: (_) => GuessCharacterGameScreen(
-              groupId: groupId,
-              gameId: targetGameId!,
-              animeIds: [], // سيتم جلبه داخل الشاشة
+        Navigator.of(context, rootNavigator: true).pop(); // أغلق الديالوج أولاً
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).push( // انقل اللاعب فوراً
+            MaterialPageRoute(
+              builder: (_) => GuessCharacterGameScreen(
+                groupId: groupId,
+                gameId: targetGameId!,
+                animeIds: [], // سيتم جلبه داخل الشاشة
+              ),
             ),
-          ),
-        );
+          );
+        }
       } else if (context.mounted) {
         Navigator.pop(context);
       }

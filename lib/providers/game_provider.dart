@@ -242,8 +242,21 @@ class GameProvider extends ChangeNotifier {
         : game.playerOneCharacter;
 
     if (GameLogicValidator.isGuessCorrect(guessedName, opponentChar ?? "")) {
-      // ✅ فوز!
-      await finishGame(groupId, gameId, winnerId: userId, winnerName: userName);
+      // ✅ فوز! أرسل إشعار التخمين الصحيح أولاً
+      await _sendGameSystemMessage(
+        groupId: groupId,
+        gameId: gameId,
+        action: 'guess',
+        senderId: userId,
+        senderName: userName ?? "لاعب",
+        gameSlot: game.gameSlot,
+        text: "✅ ${userName ?? 'لاعب'} خمّن '$guessedName' وهي صحيحة!",
+      );
+      await finishGame(groupId, gameId, 
+        winnerId: userId, 
+        winnerName: userName,
+        guessedCharacter: guessedName
+      );
     } else {
       // خطأ، أرسل إشعار واضح
       await _sendGameSystemMessage(
@@ -305,6 +318,7 @@ class GameProvider extends ChangeNotifier {
     String? winnerName,
     bool isCancelled = false,
     String? reason,
+    String? guessedCharacter,
   }) async {
     final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
@@ -323,10 +337,19 @@ class GameProvider extends ChangeNotifier {
       'endReason': reason,
     });
 
-    // ✅ إرسال رسالة الحالة النهائية للدردشة مع Slot اللعبة للتمييز
-    String finalText = isCancelled 
-      ? "🏳️ انسحب ${winnerName ?? 'لاعب'}! السبب: ${reason ?? 'انسحاب'}"
-      : "🏆 فاز ${winnerName ?? 'لاعب'}! خمن الشخصية الصحيحة.";
+    // ✅ بناء النص التفصيلي الكامل
+    String loserName = winnerId == game.playerOneId 
+        ? (game.playerTwoId ?? "الخصم") 
+        : game.playerOneId;
+
+    String finalText;
+    if (isCancelled) {
+      finalText = "🏳️ انتهت اللعبة!\nالفائز: ${winnerName ?? '—'}\nالخاسر: $loserName\nالسبب: ${reason ?? 'انسحاب'}";
+    } else if (guessedCharacter != null) {
+      finalText = "🏆 انتهت اللعبة!\nالفائز: ${winnerName ?? 'لاعب'}\nالخاسر: $loserName\nالسبب: خمّن الشخصية '$guessedCharacter' بشكل صحيح";
+    } else {
+      finalText = "⏰ انتهت اللعبة!\nالفائز: ${winnerName ?? '—'}\nالخاسر: $loserName\nالسبب: ${reason ?? 'انتهى الوقت'}";
+    }
 
     await _sendGameSystemMessage(
       groupId: groupId,
@@ -335,7 +358,7 @@ class GameProvider extends ChangeNotifier {
       senderId: winnerId ?? "",
       senderName: winnerName ?? "النظام",
       gameSlot: game.gameSlot,
-      text: finalText, // ✅ جديد
+      text: finalText,
     );
   }
 
