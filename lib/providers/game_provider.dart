@@ -245,6 +245,16 @@ class GameProvider extends ChangeNotifier {
       // ✅ فوز!
       await finishGame(groupId, gameId, winnerId: userId, winnerName: userName);
     } else {
+      // خطأ، أرسل إشعار واضح
+      await _sendGameSystemMessage(
+        groupId: groupId,
+        gameId: gameId,
+        action: 'guess',
+        senderId: userId,
+        senderName: userName ?? "لاعب",
+        gameSlot: game.gameSlot,
+        text: "❌ ${userName ?? 'لاعب'} خمن '$guessedName' وهي خاطئة!",
+      );
       // خطأ، يتم نقل الدور للخصم
       await switchTurn(groupId, gameId);
     }
@@ -274,7 +284,7 @@ class GameProvider extends ChangeNotifier {
   // =============================================================
   // 🛡️ تحديث نوع آخر حركة (سؤال/جواب)
   // =============================================================
-  Future<void> updateLastAction(String groupId, String gameId, String actionType) async {
+  Future<void> updateLastAction(String groupId, String gameId, String? actionType) async {
     final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
         .doc(gameId);
@@ -314,13 +324,18 @@ class GameProvider extends ChangeNotifier {
     });
 
     // ✅ إرسال رسالة الحالة النهائية للدردشة مع Slot اللعبة للتمييز
+    String finalText = isCancelled 
+      ? "🏳️ انسحب ${winnerName ?? 'لاعب'}! السبب: ${reason ?? 'انسحاب'}"
+      : "🏆 فاز ${winnerName ?? 'لاعب'}! خمن الشخصية الصحيحة.";
+
     await _sendGameSystemMessage(
       groupId: groupId,
       gameId: gameId,
       action: isCancelled ? 'quit' : 'win',
-      senderId: winnerId ?? (isCancelled ? game.playerOneId : ""), 
-      senderName: winnerName ?? (isCancelled ? "لاعب منسحب" : "النظام"),
+      senderId: winnerId ?? "",
+      senderName: winnerName ?? "النظام",
       gameSlot: game.gameSlot,
+      text: finalText, // ✅ جديد
     );
   }
 
@@ -334,6 +349,7 @@ class GameProvider extends ChangeNotifier {
     required String senderId,
     required String senderName,
     required String gameSlot,
+    String? text,
   }) async {
     final messageId = _uuid.v4();
     final messageData = {
@@ -341,7 +357,7 @@ class GameProvider extends ChangeNotifier {
       'senderId': senderId,
       'senderName': senderName,
       'type': 'text',
-      'text': '', // الـ Bubble يحدد النص برمجياً بناءً على الـ action
+      'text': text ?? '', // ✅ استخدم النص الممرر
       'timestamp': FieldValue.serverTimestamp(),
       'gameId': gameId,
       'gameAction': action,

@@ -89,9 +89,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (member!= null && member.isPremium!= currentUser.isPremium) {
         await FirebaseFirestore.instance
-           .collection(FirestorePaths.groupMembers(widget.groupId))
-           .doc(currentUser.id)
-           .update({'isPremium': currentUser.isPremium});
+          .collection(FirestorePaths.groupMembers(widget.groupId))
+          .doc(currentUser.id)
+          .update({'isPremium': currentUser.isPremium});
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -220,7 +220,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (currentUserId!= null) {
                           Future.microtask(() => _updateReadStatus(currentUserId));
                         }
-                      }
                       _cachedMessages = snapshot.data!;
                       _isInitialLoad = false;
                     }
@@ -252,7 +251,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         }
 
                         final sender = isMe
-                           ? _currentMember!
+                          ? _currentMember!
                             : MemberModel(
                                 userId: message.senderId,
                                 groupId: widget.groupId,
@@ -285,50 +284,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (context, gameSnapshot) {
                     final activeGames = gameSnapshot.data?? [];
 
-                    // ✅ مراقبة الألعاب التي في حالة setup أو guessing وتخص المستخدم
+                    // ✅ مراقبة الألعاب التي في حالة guessing فقط وتخص المستخدم
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
                         (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
-                            (g.status == GameStatus.guessing || g.status == GameStatus.setup),
+                            g.status == GameStatus.guessing,
                       );
                     } catch (_) {
                       activeGameForMe = null;
                     }
 
                     if (activeGameForMe!= null) {
-                      // ✅ منطق النقل الآلي لصفحة التجهيز
-                      if (activeGameForMe.status == GameStatus.setup) {
-                        if (!_navigatedGameIds.contains(activeGameForMe.id)) {
-                          _navigatedGameIds.add(activeGameForMe.id);
-                          Future.microtask(() {
-                            if (mounted) {
-                              List<int> allRelevantIds = [];
-                              if (group?.animeId!= null && group!.animeId is int) {
-                                allRelevantIds.add(group.animeId);
-                              }
-                              if (group?.franchiseIds!= null) {
-                                allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
-                              }
-
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => GuessCharacterGameScreen(
-                                    groupId: widget.groupId,
-                                    gameId: activeGameForMe!.id,
-                                    animeIds: allRelevantIds.isEmpty? null : allRelevantIds,
-                                  ),
-                                ),
-                              ).then((_) {
-                                _navigatedGameIds.remove(activeGameForMe!.id);
-                              });
-                            }
-                          });
-                        }
-                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
-                      }
-
                       return GameBottomBar(
                         groupId: widget.groupId,
                         game: activeGameForMe,

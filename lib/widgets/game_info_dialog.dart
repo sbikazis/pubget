@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart'; // ✅ رجعه
 import '../models/member_model.dart';
+import '../features/groups/events/guess_character_game_screen.dart';
 
 class GameInfoDialog extends StatelessWidget {
   final String groupId;
@@ -83,6 +84,8 @@ class GameInfoDialog extends StatelessWidget {
     final gameProv = context.read<GameProvider>();
     final chatProv = context.read<ChatProvider>(); // ✅ رجعه
 
+    String? targetGameId = gameId;
+
     try {
       if (gameId == null) {
         // 1. إنشاء لعبة جديدة
@@ -101,6 +104,7 @@ class GameInfoDialog extends StatelessWidget {
             gameId: newGameId,
             gameAction: 'challenge',
           );
+          targetGameId = newGameId;
         }
       } else {
         // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
@@ -119,9 +123,24 @@ class GameInfoDialog extends StatelessWidget {
           gameAction: 'join',
           gameSlot: slot,
         );
+        targetGameId = gameId;
       }
 
-      if (context.mounted) Navigator.pop(context);
+      if (context.mounted && targetGameId != null) {
+        Navigator.pop(context); // أغلق الديالوج أولاً
+        Navigator.push( // انقل اللاعب فوراً
+          context,
+          MaterialPageRoute(
+            builder: (_) => GuessCharacterGameScreen(
+              groupId: groupId,
+              gameId: targetGameId!,
+              animeIds: [], // سيتم جلبه داخل الشاشة
+            ),
+          ),
+        );
+      } else if (context.mounted) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context);

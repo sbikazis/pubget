@@ -106,16 +106,16 @@ class GameMessageBubble extends StatelessWidget {
         text = "دخل الحلبة الآن! بدأت مرحلة التجهيز...";
         icon = Icons.handshake;
         break;
-      case 'guess': // ✅ جديد
-        text = "${msg.senderName} حاول تخمين الشخصية...";
+      case 'guess':
+        text = msg.text ?? "${msg.senderName} حاول التخمين...";
         icon = Icons.search;
         break;
       case 'win':
-        text = "سحق الخصم وكشف الشخصية! فوز مستحق! 🏆";
+        text = msg.text ?? "فوز مستحق!";
         icon = Icons.emoji_events;
         break;
       case 'quit':
-        text = "انسحب من المعركة.. الخوف غلبه! 🏳️";
+        text = msg.text ?? "انسحاب";
         icon = Icons.directions_run;
         break;
       default:

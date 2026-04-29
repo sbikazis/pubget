@@ -83,7 +83,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
                   controller: _controller,
                   decoration: InputDecoration(
                     hintText: isQuestionPhase
-                       ? "اسأل سؤالاً (إجابته نعم/لا)..."
+                     ? "اسأل سؤالاً (إجابته نعم/لا)..."
                         : "أجب بـ (نعم) أو (لا) فقط...",
                     hintStyle: const TextStyle(fontSize: 13),
                     border: OutlineInputBorder(
@@ -197,15 +197,18 @@ class _GameBottomBarState extends State<GameBottomBar> {
       gameSlot: widget.game.gameSlot,
     );
 
-    // بعد الإرسال، حدث نوع الحركة
-    await context.read<GameProvider>().updateLastAction(
-      widget.groupId,
-      widget.game.id,
-      isQuestionPhase? 'question' : 'answer'
-    );
-
-    // تبديل الدور تلقائياً بعد الإرسال
-    await context.read<GameProvider>().switchTurn(widget.groupId, widget.game.id);
+    // بعد الإرسال
+    if (isQuestionPhase) {
+      // سؤال: أعط الدور للمجيب فقط
+      await context.read<GameProvider>().updateLastAction(
+        widget.groupId, widget.game.id, 'question');
+      await context.read<GameProvider>().switchTurn(
+        widget.groupId, widget.game.id);
+    } else {
+      // جواب: لا تبدل الدور، فقط صفّر النوع ليصبح السائل هو المجيب السابق
+      await context.read<GameProvider>().updateLastAction(
+        widget.groupId, widget.game.id, null);
+    }
 
     _controller.clear();
   }
@@ -235,7 +238,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
                 widget.groupId,
                 widget.game.id,
                 winnerId: widget.game.playerOneId == widget.currentMember.userId
-                   ? widget.game.playerTwoId
+                 ? widget.game.playerTwoId
                     : widget.game.playerOneId,
                 isCancelled: true,
                 reason: "انسحاب اللاعب ${widget.currentMember.displayName}"
