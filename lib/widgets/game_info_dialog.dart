@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart'; // ✅ رجعه
 import '../models/member_model.dart';
-import '../features/groups/events/guess_character_game_screen.dart';
+// تم حذف استيراد شاشة اللعبة لأن الانتقال أصبح آلياً من شاشة الدردشة
 
 class GameInfoDialog extends StatelessWidget {
   final String groupId;
@@ -82,9 +82,7 @@ class GameInfoDialog extends StatelessWidget {
   // ==========================================
   void _handleConfirm(BuildContext context) async {
     final gameProv = context.read<GameProvider>();
-    final chatProv = context.read<ChatProvider>(); // ✅ رجعه
-
-    String? targetGameId = gameId;
+    final chatProv = context.read<ChatProvider>();
 
     try {
       if (gameId == null) {
@@ -96,7 +94,7 @@ class GameInfoDialog extends StatelessWidget {
         );
 
         if (newGameId != null) {
-          // ✅ رجع الإرسال عبر ChatProvider (يضيف كل الحقول المطلوبة)
+          // إرسال رسالة التحدي للدردشة
           await chatProv.sendGameMessage(
             groupId: groupId,
             messageId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -104,10 +102,9 @@ class GameInfoDialog extends StatelessWidget {
             gameId: newGameId,
             gameAction: 'challenge',
           );
-          targetGameId = newGameId;
         }
       } else {
-        // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
+        // 2. انضمام للعبة موجودة
         final slot = await gameProv.joinGame(
           groupId: groupId,
           gameId: gameId!,
@@ -115,6 +112,7 @@ class GameInfoDialog extends StatelessWidget {
           userName: currentMember.displayName,
         );
 
+        // إرسال رسالة الانضمام للدردشة
         await chatProv.sendGameMessage(
           groupId: groupId,
           messageId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -123,26 +121,14 @@ class GameInfoDialog extends StatelessWidget {
           gameAction: 'join',
           gameSlot: slot,
         );
-        targetGameId = gameId;
       }
 
-      if (context.mounted && targetGameId != null) {
-        Navigator.of(context, rootNavigator: true).pop(); // أغلق الديالوج أولاً
-        await Future.delayed(const Duration(milliseconds: 100));
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).push( // انقل اللاعب فوراً
-            MaterialPageRoute(
-              builder: (_) => GuessCharacterGameScreen(
-                groupId: groupId,
-                gameId: targetGameId!,
-                animeIds: [], // سيتم جلبه داخل الشاشة
-              ),
-            ),
-          );
-        }
-      } else if (context.mounted) {
-        Navigator.pop(context);
+      // ✅ التعديل الجوهري: إغلاق الديالوج فقط
+      // الانتقال لصفحة اللعبة سيحدث آلياً لكل من المنشئ والخصم عبر ChatScreen
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
       }
+      
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context);

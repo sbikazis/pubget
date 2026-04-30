@@ -225,7 +225,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       _cachedMessages = snapshot.data!;
                       _isInitialLoad = false;
-                    } // ✅ تم إصلاح إغلاق القوس هنا
+                    }
 
                     if (_cachedMessages.isEmpty) {
                       return const Center(
@@ -288,7 +288,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (context, gameSnapshot) {
                     final activeGames = gameSnapshot.data ?? [];
 
-                    // ✅ البحث عن لعبة تخص المستخدم سواء في حالة setup أو guessing
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
@@ -300,14 +299,17 @@ class _ChatScreenState extends State<ChatScreen> {
                     }
 
                     if (activeGameForMe != null) {
-                      // ✅ حل مشكلة تعليق الخصم: النقل الآلي عند حالة التجهيز
+                      // ✅ منطق النقل الآلي الموحد (للمنشئ والخصم) في حالة setup
                       if (activeGameForMe.status == GameStatus.setup && !_navigatedGameIds.contains(activeGameForMe.id)) {
                         _navigatedGameIds.add(activeGameForMe.id);
+                        
                         Future.microtask(() {
                           if (mounted) {
                             List<int> allRelevantIds = [];
                             if (group?.animeId != null) allRelevantIds.add(group!.animeId);
-                            if (group?.franchiseIds != null) allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
+                            if (group?.franchiseIds != null) {
+                              allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
+                            }
 
                             Navigator.push(
                               context,
@@ -321,10 +323,14 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                           }
                         });
-                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
+                        // عرض مؤشر تحميل بسيط أثناء الانتقال
+                        return const SizedBox(
+                          height: 80, 
+                          child: Center(child: CircularProgressIndicator(color: Colors.indigo))
+                        );
                       }
 
-                      // إذا كانت اللعبة في مرحلة التخمين، اعرض الشريط
+                      // إذا كانت اللعبة في مرحلة التخمين، اعرض الشريط السفلي
                       if (activeGameForMe.status == GameStatus.guessing) {
                         return GameBottomBar(
                           groupId: widget.groupId,

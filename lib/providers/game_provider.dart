@@ -22,7 +22,7 @@ class GameProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   // =============================================================
-  // 🛡️ إنشاء لعبة جديدة
+  // 🛡️ إنشاء لعبة جديدة (تم تحديث منطق الحماية)
   // =============================================================
   Future<String?> createGame({
     required String groupId,
@@ -33,18 +33,26 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // ✅ التحقق من عدد الألعاب النشطة لمنع تجاوز لعبتين
+      // ✅ التحقق من عدد الألعاب النشطة الفعلي
       final snapshot = await FirebaseFirestore.instance
           .collection(FirestorePaths.groupGames(groupId))
           .get();
       
+      final now = DateTime.now();
       final activeGames = snapshot.docs
           .map((doc) => GameModel.fromMap(doc.id, doc.data()))
-          .where((g) => !g.status.isOver)
+          .where((g) {
+            if (g.status.isOver) return false;
+            // 🛡️ حماية: إذا كانت اللعبة في وضع الانتظار لأكثر من 5 دقائق، نعتبرها "ميتة" ولا تحسب من الحد
+            if (g.status == GameStatus.waitingForOpponent) {
+              return now.difference(g.createdAt).inMinutes < 5;
+            }
+            return true;
+          })
           .toList();
 
       if (!GameLogicValidator.canCreateNewGame(activeGames)) {
-        throw Exception("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً.");
+        throw Exception("المجموعة ممتلئة، هناك لعبتان نشطتان حالياً.");
       }
 
       // ✅ تحديد الـ Slot المتاح (1 أو 2)
@@ -92,21 +100,20 @@ class GameProvider extends ChangeNotifier {
 
     String gameSlot = 'game_1';
 
-    // ✅ التعديل الجوهري: Transaction تضمن قفل المستند أثناء التحقق لمنع دخول لاعبين معاً
+    // ✅ Transaction تضمن قفل المستند أثناء التحقق لمنع دخول لاعبين معاً
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(gameRef);
       if (!snapshot.exists) throw Exception("اللعبة لم تعد موجودة!");
 
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // 🛡️ التحقق المنطقي القاتل: هل تم حجز المكان بالفعل أثناء قراءتك للقواعد؟
+      // 🛡️ التحقق من أن المكان لا يزال متاحاً
       if (game.playerTwoId != null && game.playerTwoId != userId) {
         throw Exception("آسفون! قام شخص آخر بالانضمام لهذه اللعبة قبلك.");
       }
       
-      // 🛡️ التأكد من أن الحالة لا تزال "انتظار خصم" حصراً
       if (game.status != GameStatus.waitingForOpponent) {
-        throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة للانضمام.");
+        throw Exception("هذه اللعبة بدأت بالفعل أو لم تعد متاحة.");
       }
 
       gameSlot = game.gameSlot;
@@ -114,8 +121,8 @@ class GameProvider extends ChangeNotifier {
       // ✅ تحديث فوري داخل الـ Transaction لضمان الحجز القطعي
       transaction.update(gameRef, {
         'playerTwoId': userId,
-        'status': GameStatus.setup.name, // نقله فوراً لمرحلة التجهيز
-        'setupStartedAt': FieldValue.serverTimestamp(), // بدء عداد الـ 60 ثانية
+        'status': GameStatus.setup.name, // الانتقال لمرحلة التجهيز
+        'setupStartedAt': FieldValue.serverTimestamp(),
       });
     });
 
@@ -131,10 +138,9 @@ class GameProvider extends ChangeNotifier {
     required String userId,
     required List<int> animeIds,
     required String characterName,
-    String? validatedName, // ✅ جديد
-    String? validatedImageUrl, // ✅ جديد
+    String? validatedName,
+    String? validatedImageUrl,
   }) async {
-    // إذا البيانات جاهزة من الشاشة، استخدمها مباشرة
     final charData = (validatedName != null && validatedImageUrl != null)
         ? {'name': validatedName, 'imageUrl': validatedImageUrl}
         : await AnimeApiService.getCharacterDetails(
@@ -143,7 +149,7 @@ class GameProvider extends ChangeNotifier {
           );
 
     if (charData == null) {
-      throw Exception("هذه الشخصية غير موجودة. تأكد من كتابة الاسم الإنجليزي بدقة كما في MAL.");
+      throw Exception("هذه الشخصية غير موجودة في MAL.");
     }
 
     final gameRef = FirebaseFirestore.instance
@@ -154,10 +160,9 @@ class GameProvider extends ChangeNotifier {
       final snapshot = await transaction.get(gameRef);
       final game = GameModel.fromMap(gameId, snapshot.data()!);
 
-      // التحقق من الوقت (60 ثانية للتجهيز)
       if (game.setupStartedAt != null && 
           GameTimerManager.hasSetupTimeout(game.setupStartedAt!)) {
-        throw Exception("انتهى الوقت المحدد للاختيار (60 ثانية)!");
+        throw Exception("انتهى الوقت المحدد للاختيار!");
       }
 
       Map<String, dynamic> updates = {};
@@ -192,7 +197,6 @@ class GameProvider extends ChangeNotifier {
       final game = GameModel.fromMap(gameId, snapshot.data()!);
       final isP1 = userId == game.playerOneId;
       
-      // تحقق أن الشخصية محفوظة قبل الجاهزية
       final hasCharacter = isP1 
           ? game.playerOneCharacter != null 
           : game.playerTwoCharacter != null;
@@ -208,19 +212,15 @@ class GameProvider extends ChangeNotifier {
       final otherReady = isP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
       
       if (otherReady) {
-        // الاثنين جاهزين - نبدأ اللعبة لكن نبقى في setup لمدة 2 ثانية
-        // عشان الاثنين يشوفون علامة الصح قبل الانتقال
         updates['status'] = GameStatus.guessing.name;
         updates['currentTurnUserId'] = game.playerOneId;
         updates['lastActionAt'] = FieldValue.serverTimestamp();
-        updates['lastActionType'] = null; // أول دور هو سؤال
-        // لا تغير setupStartedAt - نخليه للعداد
+        updates['lastActionType'] = null;
       }
 
       transaction.update(gameRef, updates);
     });
     
-    // انتظر ثانيتين قبل ما نرجع للواجهة - هذا يمنع الخروج المفاجئ
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
@@ -246,7 +246,7 @@ class GameProvider extends ChangeNotifier {
         : game.playerOneCharacter;
 
     if (GameLogicValidator.isGuessCorrect(guessedName, opponentChar ?? "")) {
-      // ✅ فوز! أرسل إشعار التخمين الصحيح أولاً
+      // ✅ فوز: إرسال تفاصيل التخمين الصحيح
       await _sendGameSystemMessage(
         groupId: groupId,
         gameId: gameId,
@@ -262,7 +262,7 @@ class GameProvider extends ChangeNotifier {
         guessedCharacter: guessedName
       );
     } else {
-      // خطأ، أرسل إشعار واضح
+      // ❌ خطأ: إرسال تفاصيل التخمين الخاطئ
       await _sendGameSystemMessage(
         groupId: groupId,
         gameId: gameId,
@@ -272,13 +272,12 @@ class GameProvider extends ChangeNotifier {
         gameSlot: game.gameSlot,
         text: "❌ ${userName ?? 'لاعب'} خمن '$guessedName' وهي خاطئة!",
       );
-      // خطأ، يتم نقل الدور للخصم
       await switchTurn(groupId, gameId);
     }
   }
 
   // =============================================================
-  // 🛡️ تبادل الأدوار
+  // 🛡️ تبادل الأدوار وتحديث الحركة
   // =============================================================
   Future<void> switchTurn(String groupId, String gameId) async {
     final gameRef = FirebaseFirestore.instance
@@ -298,9 +297,6 @@ class GameProvider extends ChangeNotifier {
     });
   }
 
-  // =============================================================
-  // 🛡️ تحديث نوع آخر حركة (سؤال/جواب)
-  // =============================================================
   Future<void> updateLastAction(String groupId, String gameId, String? actionType) async {
     final gameRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupGames(groupId))
@@ -313,7 +309,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛡️ إنهاء اللعبة
+  // 🛡️ إنهاء اللعبة (تم تحديث منطق الرسائل الموجهة للـ Bubble)
   // =============================================================
   Future<void> finishGame(
     String groupId, 
@@ -332,7 +328,7 @@ class GameProvider extends ChangeNotifier {
     if (!snapshot.exists) return;
     
     final game = GameModel.fromMap(gameId, snapshot.data()!);
-    if (game.status.isOver) return; // منع الإنهاء المتكرر
+    if (game.status.isOver) return;
 
     await gameRef.update({
       'status': isCancelled ? GameStatus.cancelled.name : GameStatus.finished.name,
@@ -341,25 +337,25 @@ class GameProvider extends ChangeNotifier {
       'endReason': reason,
     });
 
-    // ✅ بناء النص التفصيلي الكامل
-    String loserName = winnerId == game.playerOneId 
+    // ✅ بناء النص التفصيلي
+    String loserName = (winnerId == game.playerOneId) 
         ? (game.playerTwoId ?? "الخصم") 
-        : game.playerOneId;
+        : (game.playerOneId ?? "الخصم");
 
     String finalText;
     if (isCancelled) {
-      finalText = "🏳️ انتهت اللعبة!\nالفائز: ${winnerName ?? '—'}\nالخاسر: $loserName\nالسبب: ${reason ?? 'انسحاب'}";
+      finalText = "🏳️ انتهت اللعبة!\nالفائز: ${winnerName ?? '—'}\nالسبب: ${reason ?? 'انسحاب الخصم'}";
     } else if (guessedCharacter != null) {
-      finalText = "🏆 انتهت اللعبة!\nالفائز: ${winnerName ?? 'لاعب'}\nالخاسر: $loserName\nالسبب: خمّن الشخصية '$guessedCharacter' بشكل صحيح";
+      finalText = "🏆 فوز ساحق!\n${winnerName ?? 'لاعب'} كشف الشخصية: '$guessedCharacter'";
     } else {
-      finalText = "⏰ انتهت اللعبة!\nالفائز: ${winnerName ?? '—'}\nالخاسر: $loserName\nالسبب: ${reason ?? 'انتهى الوقت'}";
+      finalText = "⏰ انتهى التحدي!\nالفائز: ${winnerName ?? '—'}\nالسبب: ${reason ?? 'انتهى الوقت'}";
     }
 
     await _sendGameSystemMessage(
       groupId: groupId,
       gameId: gameId,
       action: isCancelled ? 'quit' : 'win',
-      senderId: winnerId ?? "",
+      senderId: winnerId ?? "system",
       senderName: winnerName ?? "النظام",
       gameSlot: game.gameSlot,
       text: finalText,
@@ -367,7 +363,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛠️ دالة مساعدة داخلية لإرسال رسائل النظام (مع دعم Slot للتمييز)
+  // 🛠️ إرسال رسائل النظام (مطابقة مع توقعات الـ Bubble)
   // =============================================================
   Future<void> _sendGameSystemMessage({
     required String groupId,
@@ -384,11 +380,11 @@ class GameProvider extends ChangeNotifier {
       'senderId': senderId,
       'senderName': senderName,
       'type': 'text',
-      'text': text ?? '', // ✅ استخدم النص الممرر
-      'timestamp': FieldValue.serverTimestamp(),
+      'text': text ?? '', 
+      'createdAt': FieldValue.serverTimestamp(), // ✅ استخدام المسمى الموحد
       'gameId': gameId,
       'gameAction': action,
-      'gameSlot': gameSlot, // ✅ مهم جداً للتمييز البصري بين اللعبتين في الدردشة
+      'gameSlot': gameSlot,
     };
 
     await FirebaseFirestore.instance
@@ -398,7 +394,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   // =============================================================
-  // 🛰️ مراقبة الألعاب النشطة والتحكيم التلقائي
+  // 🛰️ مراقبة وتحكيم
   // =============================================================
   Stream<List<GameModel>> streamActiveGames(String groupId) {
     return FirebaseFirestore.instance
