@@ -106,6 +106,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         userId: userId,
         animeIds: widget.animeIds ?? [], // نمرر قائمة فارغة للـ Firestore إذا كانت نول
         characterName: _selectedCharacter!['name']!,
+        validatedName: _selectedCharacter!['name'], // ✅ أضف
+        validatedImageUrl: _selectedCharacter!['imageUrl'], // ✅ أضف
       );
 
       // 2. إعلان الجاهزية

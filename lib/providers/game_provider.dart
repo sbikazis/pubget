@@ -131,12 +131,16 @@ class GameProvider extends ChangeNotifier {
     required String userId,
     required List<int> animeIds,
     required String characterName,
+    String? validatedName, // ✅ جديد
+    String? validatedImageUrl, // ✅ جديد
   }) async {
-    // جلب التفاصيل من API (يتم التحقق عالمياً أو محلياً داخل الخدمة)
-    final charData = await AnimeApiService.getCharacterDetails(
-      animeIds: animeIds,
-      characterName: characterName,
-    );
+    // إذا البيانات جاهزة من الشاشة، استخدمها مباشرة
+    final charData = (validatedName != null && validatedImageUrl != null)
+        ? {'name': validatedName, 'imageUrl': validatedImageUrl}
+        : await AnimeApiService.getCharacterDetails(
+            animeIds: animeIds,
+            characterName: characterName,
+          );
 
     if (charData == null) {
       throw Exception("هذه الشخصية غير موجودة. تأكد من كتابة الاسم الإنجليزي بدقة كما في MAL.");
