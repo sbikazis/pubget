@@ -149,6 +149,46 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
+        // ✅ [تعديل 2] شاشة انتظار للمنشئ حتى يأتي خصم
+        // المنشئ هو playerOneId، وحالة الانتظار هي waitingForOpponent
+        if (game.status == GameStatus.waitingForOpponent &&
+            currentUserId == game.playerOneId) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text("بانتظار خصم"),
+              automaticallyImplyLeading: false,
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "تم إرسال طلب التحدي!",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "بانتظار انضمام خصم للمباراة...",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 40),
+                  TextButton(
+                    onPressed: () => gameProvider.finishGame(
+                      widget.groupId,
+                      widget.gameId,
+                      isCancelled: true,
+                      reason: "إلغاء الطلب من المنشئ",
+                    ),
+                    child: const Text("إلغاء الطلب", style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         // 🚀 الانتقال الآلي عند جاهزية الطرفين (بداية مرحلة التخمين)
         if (game.status == GameStatus.guessing && game.isPlayerOneReady && game.isPlayerTwoReady) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

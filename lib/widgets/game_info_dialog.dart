@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart'; // ✅ رجعه
 import '../models/member_model.dart';
-// تم حذف استيراد شاشة اللعبة لأن الانتقال أصبح آلياً من شاشة الدردشة
+import '../features/groups/events/guess_character_game_screen.dart';
 
-class GameInfoDialog extends StatelessWidget {
+class GameInfoDialog extends StatefulWidget {
   final String groupId;
   final MemberModel currentMember;
   final String? gameId; // إذا كان null يعني إنشاء لعبة جديدة، إذا وجد يعني انضمام
@@ -18,8 +18,16 @@ class GameInfoDialog extends StatelessWidget {
   });
 
   @override
+  State<GameInfoDialog> createState() => _GameInfoDialogState();
+}
+
+class _GameInfoDialogState extends State<GameInfoDialog> {
+  // ✅ [تعديل 3] متغير لإخفاء الزر أثناء التنفيذ
+  bool _isLoading = false;
+
+  @override
   Widget build(BuildContext context) {
-    final bool isJoining = gameId != null;
+    final bool isJoining = widget.gameId != null;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -49,7 +57,8 @@ class GameInfoDialog extends StatelessWidget {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          // ✅ [تعديل 3] تعطيل زر الإلغاء أثناء التنفيذ أيضاً
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text("إلغاء", style: TextStyle(color: Colors.grey)),
         ),
         ElevatedButton(
@@ -57,8 +66,15 @@ class GameInfoDialog extends StatelessWidget {
             backgroundColor: Colors.indigo,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          onPressed: () => _handleConfirm(context),
-          child: Text(isJoining ? "تأكيد الانضمام" : "إنشاء الآن"),
+          // ✅ [تعديل 3] الزر يُعطَّل ويظهر loading أثناء التنفيذ
+          onPressed: _isLoading ? null : () => _handleConfirm(context),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
+              : Text(isJoining ? "تأكيد الانضمام" : "إنشاء الآن"),
         ),
       ],
     );
@@ -81,54 +97,76 @@ class GameInfoDialog extends StatelessWidget {
   // ⚙️ معالجة الضغط (إنشاء أو انضمام)
   // ==========================================
   void _handleConfirm(BuildContext context) async {
+    // ✅ [تعديل 3] تفعيل حالة التحميل لإخفاء الزر
+    setState(() => _isLoading = true);
+
     final gameProv = context.read<GameProvider>();
-    final chatProv = context.read<ChatProvider>();
+    final chatProv = context.read<ChatProvider>(); // ✅ رجعه
+
+    String? targetGameId = widget.gameId;
 
     try {
-      if (gameId == null) {
+      if (widget.gameId == null) {
         // 1. إنشاء لعبة جديدة
-        final newGameId = await gameProv.createGame(
-          groupId: groupId,
-          creatorUserId: currentMember.userId,
-          creatorName: currentMember.displayName,
+        // ✅ [تعديل 1] createGame يُرجع الآن Map يحتوي gameId و gameSlot
+        final result = await gameProv.createGame(
+          groupId: widget.groupId,
+          creatorUserId: widget.currentMember.userId,
+          creatorName: widget.currentMember.displayName,
         );
 
-        if (newGameId != null) {
-          // إرسال رسالة التحدي للدردشة
+        if (result != null) {
+          final newGameId = result['gameId'] as String;
+          final newGameSlot = result['gameSlot'] as String; // ✅ [تعديل 1] استخرج الـ slot
+
+          // ✅ [تعديل 1] تمرير gameSlot لرسالة challenge لإصلاح اللون
           await chatProv.sendGameMessage(
-            groupId: groupId,
+            groupId: widget.groupId,
             messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-            sender: currentMember,
+            sender: widget.currentMember,
             gameId: newGameId,
             gameAction: 'challenge',
+            gameSlot: newGameSlot, // ✅ [تعديل 1] هنا كان السبب الجذري للون الرمادي
           );
+          targetGameId = newGameId;
         }
       } else {
-        // 2. انضمام للعبة موجودة
+        // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
         final slot = await gameProv.joinGame(
-          groupId: groupId,
-          gameId: gameId!,
-          userId: currentMember.userId,
-          userName: currentMember.displayName,
+          groupId: widget.groupId,
+          gameId: widget.gameId!,
+          userId: widget.currentMember.userId,
+          userName: widget.currentMember.displayName,
         );
 
-        // إرسال رسالة الانضمام للدردشة
         await chatProv.sendGameMessage(
-          groupId: groupId,
+          groupId: widget.groupId,
           messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-          sender: currentMember,
-          gameId: gameId!,
+          sender: widget.currentMember,
+          gameId: widget.gameId!,
           gameAction: 'join',
           gameSlot: slot,
         );
+        targetGameId = widget.gameId;
       }
 
-      // ✅ التعديل الجوهري: إغلاق الديالوج فقط
-      // الانتقال لصفحة اللعبة سيحدث آلياً لكل من المنشئ والخصم عبر ChatScreen
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+      if (context.mounted && targetGameId != null) {
+        Navigator.of(context, rootNavigator: true).pop(); // أغلق الديالوج أولاً
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).push( // انقل اللاعب فوراً
+            MaterialPageRoute(
+              builder: (_) => GuessCharacterGameScreen(
+                groupId: widget.groupId,
+                gameId: targetGameId!,
+                animeIds: [], // سيتم جلبه داخل الشاشة
+              ),
+            ),
+          );
+        }
+      } else if (context.mounted) {
+        Navigator.pop(context);
       }
-      
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context);

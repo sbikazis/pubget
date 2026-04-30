@@ -20,30 +20,9 @@ class GameMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ التعديل (1): تحديد اللون بناءً على نوع الحدث (Action) بدلاً من الـ Slot فقط
+    // تحديد اللون بناءً على الـ Slot
     final bool isSlotOne = message.gameSlot == 'game_1';
-    final Color gameColor;
-    
-    switch (message.gameAction) {
-      case 'challenge':
-        gameColor = Colors.redAccent; // أحمر للإعلان كما طلبت
-        break;
-      case 'win':
-        gameColor = const Color(0xFFFFD700); // ذهبي للفوز
-        break;
-      case 'join':
-        gameColor = Colors.blueAccent; // أزرق للانضمام
-        break;
-      case 'guess':
-        gameColor = Colors.orangeAccent; // برتقالي للتخمين
-        break;
-      case 'quit':
-        gameColor = Colors.blueGrey; // رمادي غامق للانسحاب
-        break;
-      default:
-        gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0);
-    }
-
+    final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0); // ذهبي أو فضي
     final Color textColor = Colors.black87;
 
     return StreamBuilder(
@@ -118,28 +97,24 @@ class GameMessageBubble extends StatelessWidget {
     String text = "";
     IconData icon = Icons.info;
 
-    // ✅ التعديل (4): إعطاء الأولوية للنص القادم من السيرفر (msg.text) لعرض التفاصيل
     switch (msg.gameAction) {
       case 'challenge':
-        text = msg.text ?? "أرسل طلب تحدي جديد! من يجرؤ على المواجهة؟";
+        text = "أرسل طلب تحدي جديد! من يجرؤ على المواجهة؟";
         icon = Icons.bolt;
         break;
       case 'join':
-        text = msg.text ?? "دخل الحلبة الآن! بدأت مرحلة التجهيز...";
+        text = "دخل الحلبة الآن! بدأت مرحلة التجهيز...";
         icon = Icons.handshake;
         break;
       case 'guess':
-        // هنا سيعرض: "فلان خمن 'شخصية' وهي خاطئة" كما تم برمجتها في الـ Provider
         text = msg.text ?? "${msg.senderName} حاول التخمين...";
         icon = Icons.search;
         break;
       case 'win':
-        // هنا سيعرض التفاصيل الكاملة: الفائز، الخاسر، والسبب
         text = msg.text ?? "فوز مستحق!";
         icon = Icons.emoji_events;
         break;
       case 'quit':
-        // هنا سيعرض تفاصيل الانسحاب ومن الفائز بالتبعية
         text = msg.text ?? "انسحاب";
         icon = Icons.directions_run;
         break;
