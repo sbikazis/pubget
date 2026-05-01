@@ -73,10 +73,9 @@ class HomeProvider extends ChangeNotifier {
     try {
       // ✅ [إصلاح] ننتظر أول استجابة حقيقية من الـ Stream قبل إيقاف التحميل
       // هذا يمنع ظهور EmptyState قبل وصول البيانات
-      await Future.wait([
-        _loadSuggestedGroups(currentUser.id),
-        _loadPromotedGroupsAndWait(),
-      ]);
+      // حمّل المقترحة أولاً (سريعة)، ثم انتظر المروجة الحقيقية
+      await _loadSuggestedGroups(currentUser.id);
+      await _loadPromotedGroupsAndWait();
 
       _setLoading(false);
 
@@ -104,8 +103,8 @@ class HomeProvider extends ChangeNotifier {
         _promotedGroups = groups;
         notifyListeners();
 
-        // ✅ أول استجابة وصلت — أكمل initialize
-        if (!completer.isCompleted) {
+        // ✅ الحل: لا تكمل إلا إذا وصلت بيانات حقيقية
+        if (!completer.isCompleted && groups.isNotEmpty) {
           completer.complete();
         }
       },
@@ -118,9 +117,9 @@ class HomeProvider extends ChangeNotifier {
       },
     );
 
-    // ✅ انتظر أول استجابة بحد أقصى 5 ثوانٍ لضمان عدم التعليق إذا كان Firestore بطيئاً
+    // ✅ زود الوقت لـ 8 ثواني لأول تشغيل
     await completer.future.timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 8),
       onTimeout: () {
         if (!completer.isCompleted) completer.complete();
       },
