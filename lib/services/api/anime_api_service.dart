@@ -377,6 +377,96 @@ class AnimeApiService {
   }
 
   // =========================================================
+  // ✅ [دالة جديدة] البحث عن شخصيات متعددة لعرضها للمستخدم للاختيار
+  // تُرجع قائمة بكل الشخصيات التي تطابق الاسم المُدخل
+  // =========================================================
+  static Future<List<Map<String, String>>> searchCharacterMultiple({
+    List<int>? animeIds,
+    required String characterName,
+  }) async {
+    final List<Map<String, String>> results = [];
+    final Set<String> addedNames = {}; // لمنع التكرار
+    final cleanInput = _sanitize(characterName);
+
+    // ========================================
+    // المسار 1: إذا كانت هناك معرفات أنمي محددة
+    // نبحث داخل شخصيات كل أنمي في السلسلة
+    // ========================================
+    if (animeIds != null && animeIds.isNotEmpty) {
+      for (int id in animeIds) {
+        try {
+          final url = Uri.parse('$_baseUrl/anime/$id/characters');
+          final response = await http.get(url, headers: _headers).timeout(
+            const Duration(seconds: 10),
+          );
+
+          if (response.statusCode != 200) continue;
+
+          final data = jsonDecode(response.body);
+          if (data['data'] == null) continue;
+
+          for (final item in data['data']) {
+            final character = item['character'];
+            final String apiName = character['name'] ?? '';
+            final String sanitizedApiName = _sanitize(apiName);
+
+            // ✅ نضيف الشخصية فقط إذا كان اسمها يحتوي على ما كتبه المستخدم
+            if (sanitizedApiName.contains(cleanInput) || cleanInput.contains(sanitizedApiName)) {
+              if (!addedNames.contains(apiName)) {
+                addedNames.add(apiName);
+                results.add({
+                  'name': apiName,
+                  'imageUrl': character['images']?['jpg']?['image_url'] ?? '',
+                });
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint("⚠️ searchCharacterMultiple failed for ID $id: $e");
+          continue;
+        }
+      }
+    }
+
+    // ========================================
+    // المسار 2: البحث العالمي دائماً
+    // سواء كانت هناك معرفات أم لا، نضيف نتائج البحث العالمي
+    // لضمان عدم فقدان شخصيات لم تُوجد في المسار 1
+    // ========================================
+    try {
+      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+        'q': characterName,
+        'limit': '8', // ✅ 8 نتائج لإعطاء المستخدم خيارات كافية
+      });
+
+      final response = await http.get(url, headers: _headers).timeout(
+        const Duration(seconds: 10),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List globalResults = data['data'] ?? [];
+
+        for (final charData in globalResults) {
+          final String apiName = charData['name'] ?? '';
+          if (apiName.isNotEmpty && !addedNames.contains(apiName)) {
+            addedNames.add(apiName);
+            results.add({
+              'name': apiName,
+              'imageUrl': charData['images']?['jpg']?['large_image_url'] ??
+                          charData['images']?['jpg']?['image_url'] ?? '',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ API Error (searchCharacterMultiple global): $e");
+    }
+
+    return results;
+  }
+
+  // =========================================================
   // GET CHARACTER IMAGE (SEARCH-BASED)
   // =========================================================
 

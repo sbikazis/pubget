@@ -151,10 +151,11 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
       }
 
       if (context.mounted && targetGameId != null) {
-        Navigator.of(context, rootNavigator: true).pop(); // أغلق الديالوج أولاً
+        // ✅ [إصلاح] إغلاق الديالوج نفسه أولاً بـ pop البسيطة
+        Navigator.of(context).pop();
         await Future.delayed(const Duration(milliseconds: 100));
         if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).push( // انقل اللاعب فوراً
+          Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute(
               builder: (_) => GuessCharacterGameScreen(
                 groupId: widget.groupId,
@@ -165,11 +166,11 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
           );
         }
       } else if (context.mounted) {
-        Navigator.pop(context);
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context);
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );

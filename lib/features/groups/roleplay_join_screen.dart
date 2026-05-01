@@ -84,7 +84,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   }
 
   // =========================================================
-  // ✅ التعديل المصلح: استخدام الدوال الموجودة فعلياً في AnimeApiService
+  // ✅ [تعديل] _fetchCharacterPreview تستدعي searchCharacterMultiple
+  // وتعرض Bottom Sheet للاختيار بدل حفظ أول نتيجة مباشرة
   // =========================================================
   Future<void> _fetchCharacterPreview() async {
     final name = _characterController.text.trim();
@@ -98,53 +99,148 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
-      String? imageUrl;
+      // ✅ [تعديل] تحديد franchiseIds بناءً على نوع المجموعة
+      final List<int> franchiseIds = widget.group.type == GroupType.openRoleplay
+          ? []
+          : (widget.group.franchiseIds?.cast<int>() ?? 
+             (widget.group.animeId != null ? [widget.group.animeId as int] : []));
 
-      // 1. إذا كانت المجموعة "تقمص مفتوح" -> نجلب الصورة مباشرة من أي مكان
-      if (widget.group.type == GroupType.openRoleplay) {
-        imageUrl = await AnimeApiService.getCharacterImage(name);
-      } 
-      // 2. إذا كانت المجموعة "محددة" -> نتحقق أولاً من وجودها في السلسلة
-      else {
-        final List<int> franchiseIds = widget.group.franchiseIds?.cast<int>() ?? [];
-        
-        // استخدام الدالة الموجودة لديك في الـ Service
-        final bool exists = await AnimeApiService.validateCharacterExists(
-          animeIds: franchiseIds.isNotEmpty ? franchiseIds : [widget.group.animeId!],
-          characterName: name,
-        );
+      // ✅ [تعديل] استدعاء searchCharacterMultiple بدل getCharacterImage/validateCharacterExists
+      final results = await AnimeApiService.searchCharacterMultiple(
+        animeIds: franchiseIds.isEmpty ? null : franchiseIds,
+        characterName: name,
+      );
 
-        if (exists) {
-          imageUrl = await AnimeApiService.getCharacterImage(name);
-        } else {
-          // محاولة أخيرة عبر البحث العام في السلسلة إذا كان الاسم معقداً
-          final bool existsInFranchise = await AnimeApiService.isCharacterInFranchise(
-            animeName: widget.group.animeName ?? '',
-            characterName: name,
+      setState(() => _isFetchingPreview = false);
+
+      if (results.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(widget.group.type == GroupType.openRoleplay
+              ? 'لم نجد صورة لهذه الشخصية'
+              : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
           );
-          if (existsInFranchise) {
-            imageUrl = await AnimeApiService.getCharacterImage(name);
-          }
         }
+        return;
       }
 
-      if (imageUrl != null) {
-        setState(() {
-          _autoFetchedImageUrl = imageUrl;
-          _pickedImage = null;
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.group.type == GroupType.openRoleplay 
-            ? 'لم نجد صورة لهذه الشخصية' 
-            : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
-        );
+      // ✅ [تعديل] عرض Bottom Sheet للاختيار
+      if (mounted) {
+        _showCharacterSelectionSheet(results);
       }
     } catch (e) {
       debugPrint("Error fetching character image: $e");
-    } finally {
       if (mounted) setState(() => _isFetchingPreview = false);
     }
+  }
+
+  // ✅ [تعديل] Bottom Sheet لعرض قائمة الشخصيات للاختيار
+  void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_search, color: AppColors.primary),
+                    SizedBox(width: 8),
+                    Text(
+                      'اختر الشخصية الصحيحة',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'وجدنا عدة شخصيات بهذا الاسم، اختر الشخصية التي تريدها',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              const Divider(height: 24),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: characters.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final char = characters[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                          ? Image.network(
+                              char['imageUrl']!,
+                              width: 50,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 50,
+                                height: 60,
+                                color: Colors.grey.shade300,
+                                child: const Icon(Icons.person),
+                              ),
+                            )
+                          : Container(
+                              width: 50,
+                              height: 60,
+                              color: Colors.grey.shade300,
+                              child: const Icon(Icons.person),
+                            ),
+                      ),
+                      title: Text(
+                        char['name'] ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      trailing: const Icon(Icons.check_circle_outline, color: AppColors.primary),
+                      // ✅ [تعديل] تحديد القيم فقط بعد اختيار المستخدم
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _autoFetchedImageUrl = char['imageUrl'];
+                          _pickedImage = null;
+                          // ✅ تحديث اسم الشخصية في الحقل بالاسم الرسمي من MAL
+                          _characterController.text = char['name'] ?? _characterController.text;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _submitJoinRequest(UserModel currentUser) async {
@@ -468,3 +564,4 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     );
   }
 }
+    

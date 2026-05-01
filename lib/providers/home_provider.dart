@@ -63,42 +63,68 @@ class HomeProvider extends ChangeNotifier {
   StreamSubscription? _promotedSub;
 
   // =====================================================
-  // INITIALIZE (تم الإصلاح الجذري لمنع تعليق دائرة التحميل)
+  // INITIALIZE
   // =====================================================
 
   Future<void> initialize({required UserModel currentUser}) async {
-    _setLoading(true); // نبدأ التحميل
+    _setLoading(true);
     _currentUser = currentUser;
 
     try {
-      // 1. جلب البيانات المقترحة كـ Future (ننتظرها)
-      await _loadSuggestedGroups(currentUser.id);
+      // ✅ [إصلاح] ننتظر أول استجابة حقيقية من الـ Stream قبل إيقاف التحميل
+      // هذا يمنع ظهور EmptyState قبل وصول البيانات
+      await Future.wait([
+        _loadSuggestedGroups(currentUser.id),
+        _loadPromotedGroupsAndWait(),
+      ]);
 
-      // 2. تشغيل الـ Stream الخاص بالمجموعات المروجة (لا ننتظره لأنه لا ينتهي)
-      _loadPromotedGroups();
-
-      // 3. بمجرد انتهاء البيانات الأساسية (المقترحة)، نوقف التحميل فوراً لكي تظهر الشاشة للمستخدم
       _setLoading(false);
 
-      // 4. الآن نبدأ جلب المجموعات الثقيلة (المنشأة والمنضم لها) في الخلفية بدون حجب الواجهة
+      // الآن نبدأ جلب المجموعات الثقيلة في الخلفية بدون حجب الواجهة
       _loadUserGroups(currentUser.id);
-     
+
     } catch (e) {
       debugPrint("Initialization error: $e");
-      _setLoading(false); // نوقف التحميل حتى لو حدث خطأ لضمان استجابة التطبيق
+      _setLoading(false);
     }
   }
 
   // =====================================================
-  // PROMOTED GROUPS (تعديل: إزالة async وتحويلها لـ void)
+  // PROMOTED GROUPS
   // =====================================================
 
-  void _loadPromotedGroups() {
+  // ✅ [إصلاح] دالة جديدة تنتظر أول emit من الـ Stream ثم تكمل الاشتراك للتحديثات
+  Future<void> _loadPromotedGroupsAndWait() async {
     _promotedSub?.cancel();
-    _promotedSub = _promotionService.getPromotedGroups().listen((groups) {
-      _promotedGroups = groups;
-      notifyListeners();
-    });
+
+    final completer = Completer<void>();
+
+    _promotedSub = _promotionService.getPromotedGroups().listen(
+      (groups) {
+        _promotedGroups = groups;
+        notifyListeners();
+
+        // ✅ أول استجابة وصلت — أكمل initialize
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      },
+      onError: (e) {
+        debugPrint("Error loading promoted groups: $e");
+        // حتى لو حدث خطأ لا نعلق التحميل
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      },
+    );
+
+    // ✅ انتظر أول استجابة بحد أقصى 5 ثوانٍ لضمان عدم التعليق إذا كان Firestore بطيئاً
+    await completer.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        if (!completer.isCompleted) completer.complete();
+      },
+    );
   }
 
   // =====================================================
@@ -133,12 +159,11 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // USER GROUPS (تعديل لضمان التحديث التدريجي)
+  // USER GROUPS
   // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
-      // جلب المجموعات التي أنشأها المستخدم (سريعة نسبياً)
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -151,9 +176,8 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
      
-      notifyListeners(); // تحديث فوري لعرض "مجموعاتي"
+      notifyListeners();
 
-      // جلب المجموعات المنضم لها (هذه هي العملية الثقيلة لأنها تتطلب التحقق من كل مجموعة)
       final List<GroupModel> joined = [];
       final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
      
@@ -167,7 +191,7 @@ class HomeProvider extends ChangeNotifier {
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
             _joinedGroups = List.from(joined);
-            notifyListeners(); // تحديث الواجهة تدريجياً فور العثور على أي مجموعة منضم لها
+            notifyListeners();
           }
         }
       }
@@ -177,7 +201,7 @@ class HomeProvider extends ChangeNotifier {
   }
 
   // =====================================================
-  // JOIN GROUP (يتوافق مع الـ Validator والحدود)
+  // JOIN GROUP
   // =====================================================
 
   Future<String?> joinGroup({
@@ -189,7 +213,6 @@ class HomeProvider extends ChangeNotifier {
     String? invitedByUserId,
     void Function(SubscriptionLimitsResult)? onLimitReached,
   }) async {
-    // 1. الفحص الأولي للحدود
     final limitResult = SubscriptionLimitsLogic.canJoinGroup(
       user,
       _joinedGroups.length,
@@ -202,7 +225,6 @@ class HomeProvider extends ChangeNotifier {
       return limitResult.message;
     }
 
-    // 2. التحقق العميق من صلاحية الانضمام (Character, Anime, etc.)
     final validation = await _joinValidator.validateJoin(
       user: user,
       currentJoinedGroupsCount: _joinedGroups.length,

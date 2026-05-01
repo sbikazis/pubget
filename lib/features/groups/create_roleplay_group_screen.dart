@@ -91,7 +91,7 @@ class _CreateRoleplayGroupScreenState
       _confirmedAnimeId = null;
       _confirmedFranchiseData = []; 
       _confirmedCharName = null;
-      _charPickedImage = null; // تصفير الصورة اليدوية عند تغيير الأنمي
+      _charPickedImage = null;
     });
 
     try {
@@ -118,10 +118,10 @@ class _CreateRoleplayGroupScreenState
     }
   }
 
+  // ✅ [تعديل 1] _verifyCharacter تستدعي searchCharacterMultiple وتعرض Bottom Sheet
   Future<void> _verifyCharacter() async {
     final charName = _charNameCtrl.text.trim();
 
-    // ✅ التعديل: فحص الشرط بناءً على نوع المجموعة
     if (_selectedGroupType == GroupType.roleplay) {
       if (_confirmedAnimeId == null || _confirmedAnimeName == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -141,59 +141,150 @@ class _CreateRoleplayGroupScreenState
     setState(() {
       _isVerifyingChar = true;
       _confirmedCharName = null;
-      _charPickedImage = null; // ✅ التعديل: تصفير الصورة اليدوية عند البحث عن شخصية جديدة لضمان التزامن
+      _charPickedImage = null;
     });
 
     try {
-      bool exists = false;
+      // ✅ [تعديل 1] استدعاء searchCharacterMultiple بدل getCharacterImage/validateCharacterExists
+      final List<int> franchiseIds = _selectedGroupType == GroupType.roleplay
+          ? (_confirmedFranchiseData.map((item) => item['id'] as int).toList()
+              ..addAll(_confirmedAnimeId != null ? [_confirmedAnimeId as int] : []))
+          : [];
 
-      if (_selectedGroupType == GroupType.openRoleplay) {
-        // ✅ التعديل: في التقمص المفتوح، نتأكد من وجود الشخصية عالمياً فقط
-        final charImageUrl = await AnimeApiService.getCharacterImage(charName);
-        if (charImageUrl != null) {
-          exists = true;
-          setState(() => _confirmedCharImage = charImageUrl);
-        }
-      } else {
-        // التقمص المحدد: البحث داخل السلسلة
-        final List<int> franchiseIds = _confirmedFranchiseData
-            .map((item) => item['id'] as int)
-            .toList();
-        
-        if (franchiseIds.isEmpty) franchiseIds.add(_confirmedAnimeId);
+      final results = await AnimeApiService.searchCharacterMultiple(
+        animeIds: franchiseIds.isEmpty ? null : franchiseIds,
+        characterName: charName,
+      );
 
-        exists = await AnimeApiService.validateCharacterExists(
-          animeIds: franchiseIds,
-          characterName: charName,
-        );
+      setState(() => _isVerifyingChar = false);
 
-        if (!exists) {
-          exists = await AnimeApiService.isCharacterInFranchise(
-            animeName: _confirmedAnimeName!,
-            characterName: charName,
+      if (results.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_selectedGroupType == GroupType.openRoleplay
+              ? 'لم نجد هذه الشخصية في قاعدة البيانات'
+              : 'هذه الشخصية غير موجودة في السلسلة المحددة')),
           );
         }
-
-        if (exists) {
-          final charImageUrl = await AnimeApiService.getCharacterImage(charName);
-          setState(() => _confirmedCharImage = charImageUrl);
-        }
+        return;
       }
 
-      if (exists) {
-        setState(() => _confirmedCharName = charName);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_selectedGroupType == GroupType.openRoleplay 
-            ? 'لم نجد هذه الشخصية في قاعدة البيانات' 
-            : 'هذه الشخصية غير موجودة في السلسلة المحددة')),
-        );
+      // ✅ [تعديل 2] عرض Bottom Sheet وتحديد _confirmedCharName و _confirmedCharImage فقط بعد اختيار المستخدم
+      if (mounted) {
+        _showCharacterSelectionSheet(results);
       }
     } catch (e) {
       debugPrint("Character verification error: $e");
-    } finally {
       setState(() => _isVerifyingChar = false);
     }
+  }
+
+  // ✅ [تعديل 2] Bottom Sheet لعرض قائمة الشخصيات للاختيار
+  void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_search, color: AppColors.primary),
+                    SizedBox(width: 8),
+                    Text(
+                      'اختر الشخصية الصحيحة',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'وجدنا عدة شخصيات بهذا الاسم، اختر الشخصية التي تريدها',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              const Divider(height: 24),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: characters.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final char = characters[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                          ? Image.network(
+                              char['imageUrl']!,
+                              width: 50,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 50,
+                                height: 60,
+                                color: Colors.grey.shade300,
+                                child: const Icon(Icons.person),
+                              ),
+                            )
+                          : Container(
+                              width: 50,
+                              height: 60,
+                              color: Colors.grey.shade300,
+                              child: const Icon(Icons.person),
+                            ),
+                      ),
+                      title: Text(
+                        char['name'] ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      trailing: const Icon(Icons.check_circle_outline, color: AppColors.primary),
+                      // ✅ [تعديل 2] تحديد القيم فقط بعد اختيار المستخدم
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _confirmedCharName = char['name'];
+                          _confirmedCharImage = char['imageUrl'];
+                          _charPickedImage = null;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String? _validateName(String? v) {
@@ -356,7 +447,7 @@ class _CreateRoleplayGroupScreenState
   // ✅ التعديل: تطوير الويدجت لدعم اختيار صورة يدوية وعرضها
   Widget _buildSimpleTile(String title, String? imageUrl, bool isDark) {
     return GestureDetector(
-      onTap: _pickCharImage, // ✅ السماح بتغيير الصورة عند النقر
+      onTap: _pickCharImage,
       child: Container(
         margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.all(8),
