@@ -27,14 +27,10 @@ class HomeProvider extends ChangeNotifier {
     required PromotionService promotionService,
     required AdService adService,
     required GroupJoinValidator joinValidator,
-  }) : _firestore = firestore,
-       _promotionService = promotionService,
-       _adService = adService,
-       _joinValidator = joinValidator;
-
-  // =====================================================
-  // STATE
-  // =====================================================
+  })  : _firestore = firestore,
+        _promotionService = promotionService,
+        _adService = adService,
+        _joinValidator = joinValidator;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -62,73 +58,51 @@ class HomeProvider extends ChangeNotifier {
 
   StreamSubscription? _promotedSub;
 
-  // =====================================================
-  // INITIALIZE
-  // =====================================================
-
   Future<void> initialize({required UserModel currentUser}) async {
     _setLoading(true);
     _currentUser = currentUser;
 
     try {
-      // ✅ [إصلاح] ننتظر أول استجابة حقيقية من الـ Stream قبل إيقاف التحميل
-      // هذا يمنع ظهور EmptyState قبل وصول البيانات
-      // حمّل المقترحة أولاً (سريعة)، ثم انتظر المروجة الحقيقية
       await _loadSuggestedGroups(currentUser.id);
-      await _loadPromotedGroupsAndWait();
+      await _loadPromotedGroupsAndWait(); // ✅ الآن يجيب من السيرفر مباشرة
 
       _setLoading(false);
-
-      // الآن نبدأ جلب المجموعات الثقيلة في الخلفية بدون حجب الواجهة
       _loadUserGroups(currentUser.id);
-
     } catch (e) {
       debugPrint("Initialization error: $e");
       _setLoading(false);
     }
   }
 
-  // =====================================================
-  // PROMOTED GROUPS
-  // =====================================================
-
-  // ✅ [إصلاح] دالة جديدة تنتظر أول emit من الـ Stream ثم تكمل الاشتراك للتحديثات
+  // ✅ الحل النهائي: get() بدل listen() في أول مرة
   Future<void> _loadPromotedGroupsAndWait() async {
     _promotedSub?.cancel();
 
-    final completer = Completer<void>();
+    try {
+      // 1. جيب البيانات مباشرة من Firestore (يتجاوز الكاش الفاضي)
+      final snapshot = await _firestore.getCollection(
+        path: FirestorePaths.groups,
+        query: _firestore.buildQuery(
+          path: FirestorePaths.groups,
+          conditions: [QueryCondition(field: 'isPromoted', isEqualTo: true)],
+          limit: 20,
+        ),
+      );
 
-    _promotedSub = _promotionService.getPromotedGroups().listen(
-      (groups) {
-        _promotedGroups = groups;
-        notifyListeners();
+      _promotedGroups = snapshot.docs
+          .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error loading promoted (get): $e");
+    }
 
-        // ✅ الحل: لا تكمل إلا إذا وصلت بيانات حقيقية
-        if (!completer.isCompleted && groups.isNotEmpty) {
-          completer.complete();
-        }
-      },
-      onError: (e) {
-        debugPrint("Error loading promoted groups: $e");
-        // حتى لو حدث خطأ لا نعلق التحميل
-        if (!completer.isCompleted) {
-          completer.complete();
-        }
-      },
-    );
-
-    // ✅ زود الوقت لـ 8 ثواني لأول تشغيل
-    await completer.future.timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        if (!completer.isCompleted) completer.complete();
-      },
-    );
+    // 2. بعد ما عرضنا البيانات، افتح الـ Stream للتحديثات الحية
+    _promotedSub = _promotionService.getPromotedGroups().listen((groups) {
+      _promotedGroups = groups;
+      notifyListeners();
+    });
   }
-
-  // =====================================================
-  // SUGGESTED GROUPS
-  // =====================================================
 
   Future<void> _loadSuggestedGroups(String userId) async {
     try {
@@ -147,8 +121,8 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .where((group) =>
               group.founderId != userId &&
-              !_joinedGroups.any((jg) => jg.id == group.id)
-          ).toList();
+              !_joinedGroups.any((jg) => jg.id == group.id))
+          .toList();
 
       _suggestedGroups = fetchedGroups;
       notifyListeners();
@@ -156,10 +130,6 @@ class HomeProvider extends ChangeNotifier {
       debugPrint("Error loading suggested groups: $e");
     }
   }
-
-  // =====================================================
-  // USER GROUPS
-  // =====================================================
 
   Future<void> _loadUserGroups(String userId) async {
     try {
@@ -174,19 +144,19 @@ class HomeProvider extends ChangeNotifier {
       _myGroups = myGroupsQuery.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
-     
       notifyListeners();
 
       final List<GroupModel> joined = [];
-      final allGroupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
-     
+      final allGroupsSnapshot =
+          await _firestore.getCollection(path: FirestorePaths.groups);
+
       for (var doc in allGroupsSnapshot.docs) {
         if (doc.data()['founderId'] != userId) {
           final memberDoc = await _firestore.getDocument(
             path: FirestorePaths.groupMembers(doc.id),
             docId: userId,
           );
-         
+
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
             _joinedGroups = List.from(joined);
@@ -198,10 +168,6 @@ class HomeProvider extends ChangeNotifier {
       debugPrint("Error loading user groups: $e");
     }
   }
-
-  // =====================================================
-  // JOIN GROUP
-  // =====================================================
 
   Future<String?> joinGroup({
     required UserModel user,
@@ -218,9 +184,7 @@ class HomeProvider extends ChangeNotifier {
     );
 
     if (!limitResult.isAllowed) {
-      if (onLimitReached != null) {
-        onLimitReached(limitResult);
-      }
+      if (onLimitReached != null) onLimitReached(limitResult);
       return limitResult.message;
     }
 
@@ -286,13 +250,9 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  // =====================================================
-  // SEARCH & FILTERS
-  // =====================================================
-
   void setSearchQuery(String query) async {
     _searchQuery = query;
-   
+
     if (_searchQuery.isEmpty) {
       _globalSearchResults = [];
       notifyListeners();
@@ -306,8 +266,10 @@ class HomeProvider extends ChangeNotifier {
         query: _firestore.buildQuery(
           path: FirestorePaths.groups,
           conditions: [
-            QueryCondition(field: 'name', isGreaterThanOrEqualTo: _searchQuery),
-            QueryCondition(field: 'name', isLessThanOrEqualTo: '$_searchQuery\uf8ff'),
+            QueryCondition(
+                field: 'name', isGreaterThanOrEqualTo: _searchQuery),
+            QueryCondition(
+                field: 'name', isLessThanOrEqualTo: '$_searchQuery\uf8ff'),
           ],
           limit: 20,
         ),
@@ -316,7 +278,6 @@ class HomeProvider extends ChangeNotifier {
       _globalSearchResults = snapshot.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
-
       notifyListeners();
     } catch (e) {
       debugPrint("Error searching groups: $e");
@@ -328,13 +289,12 @@ class HomeProvider extends ChangeNotifier {
   List<GroupModel> get allDiscoveryGroups {
     final list = List<GroupModel>.from(_promotedGroups);
     for (var suggested in _suggestedGroups) {
-      if (!list.any((g) => g.id == suggested.id)) {
-        list.add(suggested);
-      }
+      if (!list.any((g) => g.id == suggested.id)) list.add(suggested);
     }
-
     if (_searchQuery.isEmpty) return list;
-    return list.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+    return list
+        .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
   }
 
   List<GroupModel> get filteredPromotedGroups => _searchQuery.isEmpty
@@ -343,15 +303,15 @@ class HomeProvider extends ChangeNotifier {
 
   List<GroupModel> get filteredMyGroups => _searchQuery.isEmpty
       ? _myGroups
-      : _myGroups.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+      : _myGroups
+          .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
 
   List<GroupModel> get filteredJoinedGroups => _searchQuery.isEmpty
       ? _joinedGroups
-      : _joinedGroups.where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
-
-  // =====================================================
-  // ADS & HELPERS
-  // =====================================================
+      : _joinedGroups
+          .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
 
   Future<void> tryShowMorningAd({required bool isPremium}) async {
     await _adService.tryShowMorningAd(isPremium: isPremium);
