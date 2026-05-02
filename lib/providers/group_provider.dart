@@ -15,7 +15,7 @@ import '../core/constants/firestore_paths.dart';
 import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
 import 'package:pubget/services/monetization/promotion_service.dart';
-import 'package:pubget/constants/roles.dart';
+import 'package:pubget/core/constants/roles.dart';
 
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
