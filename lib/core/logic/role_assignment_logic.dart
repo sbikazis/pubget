@@ -90,7 +90,6 @@ class RoleAssignmentLogic {
     }
 
     // التحقق من صلاحية القائم بالفعل (Actor)
-    // نمرر الـ IDs لضمان عدم قيام الشخص بتعديل نفسه
     if (!canModify(
       actorRole: actor.role,
       targetRole: target.role,
@@ -109,24 +108,50 @@ class RoleAssignmentLogic {
       );
     }
 
-    // التحقق من السعة القصوى للرتبة الجديدة (Limited Roles)
-    // ✅ التعديل: نتحقق من السعة فقط إذا كانت الرتبة الجديدة محدودة (ليست Member)
+    // ✅ [إصلاح المشكلة 4] التحقق من حد الشوغو اليدوي المنفصل
+    // الشوغو يملك فقط: 1 سينسي + 2 هاكوشو + 2 سنباي يدوياً
+    // هذا القيد مستقل عن الإجمالي (maxCount)
+    if (newRole.isLimited && newRole != Roles.member) {
+      final manualLimit = newRole.manualMaxCount ?? 0;
+
+      // عدد من عيّنهم الشوغو يدوياً بهذه الرتبة (isManualRole == true)
+      // نستثني العضو المستهدف لأنه ربما كان يدوياً بالفعل وسيُعاد تعيينه
+      final currentManualCount = allMembers
+          .where((m) =>
+              m.role == newRole &&
+              m.isManualRole == true &&
+              m.userId != target.userId)
+          .length;
+
+      if (currentManualCount >= manualLimit) {
+        return RoleAssignmentResult.denied(
+          "وصلت للحد الأقصى لتعيين ${newRole.label} يدوياً ($manualLimit مقاعد).\n"
+          "المقاعد الأخرى محجوزة لنظام الدعوات التلقائي.",
+        );
+      }
+    }
+
+    // التحقق من السعة الإجمالية للرتبة (يدوي + تلقائي معاً)
     if (newRole.isLimited) {
-      // ✅ التعديل: عند حساب العدد الحالي، نستثني العضو المستهدف (target) 
-      // لأنه إذا كان يمتلك الرتبة بالفعل أو سينتقل منها، فلا يجب أن يحسب كعائق
       final currentCount = allMembers
           .where((m) => m.role == newRole && m.userId != target.userId)
           .length;
 
       if (currentCount >= (newRole.maxCount ?? 0)) {
         return RoleAssignmentResult.denied(
-          "تم الوصول للحد الأقصى لعدد أعضاء رتبة ${newRole.label}.",
+          "تم الوصول للحد الأقصى الإجمالي لعدد أعضاء رتبة ${newRole.label}.",
         );
       }
     }
 
-    // ✅ التعديل: الآن الدالة ستسمح بتعيين Roles.member دون قيود
-    final updated = target.copyWith(role: newRole);
+    // ✅ [إصلاح المشكلة 3] وضع isManualRole: true عند التعيين اليدوي من الشوغو
+    // إذا كانت الرتبة الجديدة هي member، فلا داعي لـ isManualRole
+    final bool isManual = newRole != Roles.member;
+    final updated = target.copyWith(
+      role: newRole,
+      isManualRole: isManual, // ✅ يحمي العضو من إعادة التعيين التلقائي
+    );
+
     return RoleAssignmentResult.allowed(updated);
   }
 
@@ -154,9 +179,11 @@ class RoleAssignmentLogic {
       );
     }
 
-    // إرجاع الرتبة إلى عضو عادي
+    // ✅ [إصلاح المشكلة 3] عند التخفيض لعضو عادي، نُعيد isManualRole: false
+    // حتى يصبح مؤهلاً للترقية التلقائية عبر نظام الدعوات مجدداً
     final updated = target.copyWith(
       role: Roles.member,
+      isManualRole: false,
     );
 
     return RoleAssignmentResult.allowed(updated);

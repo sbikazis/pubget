@@ -57,35 +57,147 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     super.dispose();
   }
 
+  // ✅ [تعديل] _onSearch تستدعي searchCharacterMultiple وتعرض Bottom Sheet
   Future<void> _onSearch() async {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
 
     setState(() => _isSearching = true);
     try {
-      // ✅ التعديل: الـ API الآن سيتعامل مع animeIds سواء كانت قائمة أو null (بحث عالمي)
-      final char = await AnimeApiService.getCharacterDetails(
+      // ✅ [تعديل] استدعاء searchCharacterMultiple بدل getCharacterDetails المباشرة
+      final results = await AnimeApiService.searchCharacterMultiple(
         animeIds: widget.animeIds,
         characterName: query,
       );
-     
+
       if (mounted) {
-        setState(() {
-          _selectedCharacter = char;
-          _isSearching = false;
-        });
-        if (char == null) {
+        setState(() => _isSearching = false);
+
+        if (results.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("لم يتم العثور على الشخصية. يرجى التأكد من كتابة الاسم الإنجليزي تماماً كما في MAL."),
               backgroundColor: Colors.orange,
             ),
           );
+          return;
         }
+
+        // ✅ [تعديل] عرض Bottom Sheet للاختيار بدل حفظ أول نتيجة مباشرة
+        _showCharacterSelectionSheet(results);
       }
     } catch (e) {
       if (mounted) setState(() => _isSearching = false);
     }
+  }
+
+  // ✅ [تعديل] Bottom Sheet لعرض قائمة الشخصيات للاختيار
+  void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_search, color: Colors.indigo),
+                    SizedBox(width: 8),
+                    Text(
+                      'اختر الشخصية الصحيحة',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'وجدنا عدة شخصيات بهذا الاسم، اختر الشخصية التي تريدها',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              const Divider(height: 24),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: characters.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final char = characters[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                          ? Image.network(
+                              char['imageUrl']!,
+                              width: 50,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 50,
+                                height: 60,
+                                color: Colors.grey.shade300,
+                                child: const Icon(Icons.person),
+                              ),
+                            )
+                          : Container(
+                              width: 50,
+                              height: 60,
+                              color: Colors.grey.shade300,
+                              child: const Icon(Icons.person),
+                            ),
+                      ),
+                      title: Text(
+                        char['name'] ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      trailing: const Icon(Icons.check_circle_outline, color: Colors.indigo),
+                      // ✅ [تعديل] تحديد _selectedCharacter فقط بعد اختيار المستخدم
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedCharacter = {
+                            'name': char['name'] ?? '',
+                            'imageUrl': char['imageUrl'] ?? '',
+                          };
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _handleStart() async {

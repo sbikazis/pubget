@@ -37,7 +37,7 @@ enum Roles {
     }
   }
 
-  /// Maximum allowed count per group
+  /// Maximum allowed count per group (إجمالي المقاعد يدوي + تلقائي)
   int? get maxCount {
     switch (this) {
       case Roles.founder:
@@ -51,6 +51,34 @@ enum Roles {
       case Roles.member:
         return null; // unlimited
     }
+  }
+
+  /// ✅ [إضافة] الحد الأقصى الذي يملك الشوغو تعيينه يدوياً
+  /// sensei: 1 يدوي (المقعد الثاني للدعوات)
+  /// hakusho: 2 يدوي (المقعد الثالث للدعوات)
+  /// senpai: 2 يدوي (المقعدان الثالث والرابع للدعوات)
+  int? get manualMaxCount {
+    switch (this) {
+      case Roles.founder:
+        return 0; // لا يمكن تعيين شوغو يدوياً
+      case Roles.sensei:
+        return 1; // الشوغو يعين 1 فقط يدوياً
+      case Roles.hakusho:
+        return 2; // الشوغو يعين 2 فقط يدوياً
+      case Roles.senpai:
+        return 2; // الشوغو يعين 2 فقط يدوياً
+      case Roles.member:
+        return null; // unlimited
+    }
+  }
+
+  /// ✅ [إضافة] المقاعد المتاحة للدعوات التلقائية
+  /// = maxCount - manualMaxCount
+  int? get autoMaxCount {
+    final total = maxCount;
+    final manual = manualMaxCount;
+    if (total == null || manual == null) return null;
+    return total - manual;
   }
 
   /// Whether role has limited slots

@@ -11,6 +11,7 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
 import '../../core/logic/role_assignment_logic.dart';
+import '../../core/logic/invite_ranking_logic.dart'; // ✅ [إضافة] استيراد InviteRankingLogic
 import '../../widgets/role_selector_sheet.dart'; 
 
 class GroupMembersScreen extends StatelessWidget {
@@ -45,6 +46,10 @@ class GroupMembersScreen extends StatelessWidget {
               member: result.updatedMember!,
               adminId: actor.userId,
             );
+
+            // ✅ [إصلاح المشكلة 5] استدعاء refreshRanks بعد التعيين اليدوي
+            // لإعادة ترتيب المقاعد التلقائية بناءً على المقاعد المتبقية
+            await InviteRankingLogic.refreshRanks(groupId: groupId);
             
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -108,6 +113,11 @@ class GroupMembersScreen extends StatelessWidget {
                     userId: target.userId,
                     adminId: actor.userId,
                   );
+
+                  // ✅ [إصلاح المشكلة 5] استدعاء refreshRanks بعد الإزالة أيضاً
+                  // لأن إزالة عضو قد تفتح مقاعد تلقائية لأعضاء آخرين
+                  await InviteRankingLogic.refreshRanks(groupId: groupId);
+
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('تمت الإزالة بنجاح')),

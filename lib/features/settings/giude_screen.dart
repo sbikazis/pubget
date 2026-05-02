@@ -38,7 +38,7 @@ class GuideScreen extends StatelessWidget {
 
                   const InfoTooltip(
                     message:
-                        "ملاحظة : هذه هي النسخة الأولى من التطبيق , نعد مستخدمينا أن نظيف مزايا إضافية ستنال إعجابكم",
+                        "ملاحظة : هذه هي النسخة الأولى من التطبيق نعدكم أن نضيف مزايا أخرى ستنال إعجابكم",
                   ),
 
                   const SizedBox(height: 24),

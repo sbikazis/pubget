@@ -32,18 +32,45 @@ class InviteRankingLogic {
       }
     }
 
-    // 3. تحديد المقاعد الشاغرة
-    int availableSensei = 1; 
-    int availableHakusho = 1;
-    int availableSenpai = 2;
+    // ✅ [إصلاح المشكلة 2] حساب المقاعد المتبقية ديناميكياً
+    // = autoMaxCount من roles.dart (الإجمالي - اليدوي)
+    // مع التأكد أن المقاعد المحسوبة لا تقل عن صفر
+    final int manualSenseiCount = allMembers
+        .where((m) => m.role == Roles.sensei && m.isManualRole == true)
+        .length;
+    final int manualHakushoCount = allMembers
+        .where((m) => m.role == Roles.hakusho && m.isManualRole == true)
+        .length;
+    final int manualSenpaiCount = allMembers
+        .where((m) => m.role == Roles.senpai && m.isManualRole == true)
+        .length;
 
-    // ✅ التعديل الذهبي: تصفية الأعضاء "العاديين" الذين لا يملكون رتبة يدوية فقط
+    // ✅ المقاعد المتاحة للدعوات = autoMaxCount - ما استُخدم من المقاعد اليدوية فعلياً
+    // نستخدم autoMaxCount من roles.dart الذي يساوي (maxCount - manualMaxCount)
+    int availableSensei = ((Roles.sensei.autoMaxCount ?? 0) - 
+        (manualSenseiCount - (Roles.sensei.manualMaxCount ?? 0)).clamp(0, 999)).clamp(0, 999);
+    int availableHakusho = ((Roles.hakusho.autoMaxCount ?? 0) - 
+        (manualHakushoCount - (Roles.hakusho.manualMaxCount ?? 0)).clamp(0, 999)).clamp(0, 999);
+    int availableSenpai = ((Roles.senpai.autoMaxCount ?? 0) - 
+        (manualSenpaiCount - (Roles.senpai.manualMaxCount ?? 0)).clamp(0, 999)).clamp(0, 999);
+
+    // ✅ تصفية الأعضاء "العاديين" الذين لا يملكون رتبة يدوية فقط
     // هؤلاء هم من يحق للنظام ترقيتهم تلقائياً بناءً على الدعوات
     final candidates = allMembers.where((m) => 
       m.role == Roles.member && m.isManualRole == false
     ).toList();
 
-    candidates.sort((a, b) {
+    // ✅ أيضاً نضيف من كانت رتبته تلقائية (sensei/hakusho/senpai غير يدوية)
+    // لأنهم قد يحتاجون لإعادة ترتيب إذا تغيرت الدعوات
+    final autoRankedMembers = allMembers.where((m) =>
+      (m.role == Roles.sensei || m.role == Roles.hakusho || m.role == Roles.senpai) &&
+      m.isManualRole == false
+    ).toList();
+
+    // دمج المرشحين: العاديون + من لديهم رتبة تلقائية قابلة للتغيير
+    final allCandidates = [...candidates, ...autoRankedMembers];
+
+    allCandidates.sort((a, b) {
       final aCount = inviteCounts[a.userId] ?? 0;
       final bCount = inviteCounts[b.userId] ?? 0;
       if (aCount != bCount) return bCount.compareTo(aCount);
@@ -53,10 +80,9 @@ class InviteRankingLogic {
     final WriteBatch batch = firestore.batch();
     bool changed = false;
 
-    // 5. توزيع الرتب الآلية
-    for (var i = 0; i < candidates.length; i++) {
-      Roles newRole = Roles.member; 
-      final member = candidates[i];
+    // توزيع الرتب الآلية بناءً على المقاعد المتاحة المحسوبة ديناميكياً
+    for (var member in allCandidates) {
+      Roles newRole = Roles.member;
 
       if (availableSensei > 0) {
         newRole = Roles.sensei;
@@ -74,7 +100,11 @@ class InviteRankingLogic {
         final ref = firestore
             .collection(FirestorePaths.groupMembers(groupId))
             .doc(member.userId);
-        batch.update(ref, {'role': newRole.name}); 
+        // ✅ نحدث الرتبة مع التأكيد أن isManualRole يبقى false للتلقائيين
+        batch.update(ref, {
+          'role': newRole.name,
+          'isManualRole': false,
+        });
         changed = true;
       }
     }
@@ -95,7 +125,7 @@ class InviteRankingLogic {
       }
     }
 
-    // ✅ التعديل هنا أيضاً: نأخذ فقط من ليس لديه رتبة يدوية
+    // نأخذ فقط من ليس لديه رتبة يدوية
     final eligibleMembers = members.where((m) => 
       m.role == Roles.member && m.isManualRole == false
     ).toList();
