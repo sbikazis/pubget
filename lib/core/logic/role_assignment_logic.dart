@@ -74,7 +74,7 @@ class RoleAssignmentLogic {
   }
 
   // =========================================================
-  // Promote/Assign Member (Updated to support Demotion to Member)
+  // Promote/Assign Member
   // =========================================================
   static RoleAssignmentResult promote({
     required MemberModel actor,
@@ -108,14 +108,26 @@ class RoleAssignmentLogic {
       );
     }
 
-    // ✅ [إصلاح المشكلة 4] التحقق من حد الشوغو اليدوي المنفصل
+    // ✅ [إصلاح المشكلة 2] من ترقى بالدعوات (isManualRole == false) لا يُخفَّض لـ member
+    // يمكن فقط رفعه لرتبة أعلى فيصبح يدوياً — التخفيض لـ member ممنوع
+    if (target.isManualRole == false &&
+        target.role != Roles.member &&
+        newRole == Roles.member) {
+      return RoleAssignmentResult.denied(
+        "لا يمكن تخفيض ${target.effectiveName} لعضو عادي لأن رتبته مكتسبة عبر نظام الدعوات.\n"
+        "يمكنك فقط رفعه لرتبة أعلى.",
+      );
+    }
+
+    // ✅ [إصلاح المشكلة 2] إذا كان من ترقى بالدعوات والرتبة الجديدة أدنى من رتبته الحالية
+    // (ليس member لكن رتبة وسطى أدنى) — هذا مسموح لكنه يصبح يدوياً
+    // لا نحتاج منع هذا لأن الشوغو يستطيع رفعه فقط بالتعريف
+
+    // التحقق من حد الشوغو اليدوي المنفصل
     // الشوغو يملك فقط: 1 سينسي + 2 هاكوشو + 2 سنباي يدوياً
-    // هذا القيد مستقل عن الإجمالي (maxCount)
     if (newRole.isLimited && newRole != Roles.member) {
       final manualLimit = newRole.manualMaxCount ?? 0;
 
-      // عدد من عيّنهم الشوغو يدوياً بهذه الرتبة (isManualRole == true)
-      // نستثني العضو المستهدف لأنه ربما كان يدوياً بالفعل وسيُعاد تعيينه
       final currentManualCount = allMembers
           .where((m) =>
               m.role == newRole &&
@@ -132,7 +144,7 @@ class RoleAssignmentLogic {
     }
 
     // التحقق من السعة الإجمالية للرتبة (يدوي + تلقائي معاً)
-    if (newRole.isLimited) {
+    if (newRole.isLimited && newRole != Roles.member) {
       final currentCount = allMembers
           .where((m) => m.role == newRole && m.userId != target.userId)
           .length;
@@ -144,12 +156,12 @@ class RoleAssignmentLogic {
       }
     }
 
-    // ✅ [إصلاح المشكلة 3] وضع isManualRole: true عند التعيين اليدوي من الشوغو
+    // ✅ وضع isManualRole: true عند التعيين اليدوي من الشوغو
     // إذا كانت الرتبة الجديدة هي member، فلا داعي لـ isManualRole
     final bool isManual = newRole != Roles.member;
     final updated = target.copyWith(
       role: newRole,
-      isManualRole: isManual, // ✅ يحمي العضو من إعادة التعيين التلقائي
+      isManualRole: isManual,
     );
 
     return RoleAssignmentResult.allowed(updated);
@@ -179,7 +191,16 @@ class RoleAssignmentLogic {
       );
     }
 
-    // ✅ [إصلاح المشكلة 3] عند التخفيض لعضو عادي، نُعيد isManualRole: false
+    // ✅ [إصلاح المشكلة 2] منع تخفيض من ترقى بالدعوات لـ member
+    // هذه الدالة تُخفِّض مباشرة لـ member — ممنوعة إذا كان isManualRole == false
+    if (target.isManualRole == false && target.role != Roles.member) {
+      return RoleAssignmentResult.denied(
+        "لا يمكن تخفيض ${target.effectiveName} لعضو عادي لأن رتبته مكتسبة عبر نظام الدعوات.\n"
+        "يمكنك فقط رفعه لرتبة أعلى من خلال التعيين اليدوي.",
+      );
+    }
+
+    // عند التخفيض لعضو عادي، نُعيد isManualRole: false
     // حتى يصبح مؤهلاً للترقية التلقائية عبر نظام الدعوات مجدداً
     final updated = target.copyWith(
       role: Roles.member,

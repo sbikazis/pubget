@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/user_provider.dart'; 
+import '../../providers/user_provider.dart';
 import '../../core/constants/roles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
@@ -11,18 +11,17 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
 import '../../core/logic/role_assignment_logic.dart';
-import '../../core/logic/invite_ranking_logic.dart'; // ✅ [إضافة] استيراد InviteRankingLogic
-import '../../widgets/role_selector_sheet.dart'; 
+import '../../core/logic/invite_ranking_logic.dart';
+import '../../widgets/role_selector_sheet.dart';
 
 class GroupMembersScreen extends StatelessWidget {
   final String groupId;
 
   const GroupMembersScreen({Key? key, required this.groupId}) : super(key: key);
 
-  // ✅ الدالة التي تستخدم الـ Sheet الفخم للترقية/التخفيض
   void _showPromotionSheet(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
     final groupProvider = context.read<GroupProvider>();
-   
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -32,8 +31,8 @@ class GroupMembersScreen extends StatelessWidget {
         targetMember: target,
         onRoleSelected: (newRole) async {
           if (!context.mounted) return;
-          Navigator.pop(context); // إغلاق الـ Sheet
-         
+          Navigator.pop(context);
+
           final result = RoleAssignmentLogic.promote(
             actor: actor,
             target: target,
@@ -41,16 +40,14 @@ class GroupMembersScreen extends StatelessWidget {
             allMembers: allMembers,
           );
 
-          if (result.isAllowed && result.updatedMember != null) {
+          if (result.isAllowed && result.updatedMember!= null) {
             await groupProvider.addMember(
               member: result.updatedMember!,
               adminId: actor.userId,
             );
 
-            // ✅ [إصلاح المشكلة 5] استدعاء refreshRanks بعد التعيين اليدوي
-            // لإعادة ترتيب المقاعد التلقائية بناءً على المقاعد المتبقية
             await InviteRankingLogic.refreshRanks(groupId: groupId);
-            
+
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('تم تحديث رتبة ${target.effectiveName} إلى ${newRole.label}')),
@@ -59,7 +56,7 @@ class GroupMembersScreen extends StatelessWidget {
           } else {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(result.message ?? 'فشل التعديل')),
+                SnackBar(content: Text(result.message?? 'فشل التعديل')),
               );
             }
           }
@@ -114,8 +111,6 @@ class GroupMembersScreen extends StatelessWidget {
                     adminId: actor.userId,
                   );
 
-                  // ✅ [إصلاح المشكلة 5] استدعاء refreshRanks بعد الإزالة أيضاً
-                  // لأن إزالة عضو قد تفتح مقاعد تلقائية لأعضاء آخرين
                   await InviteRankingLogic.refreshRanks(groupId: groupId);
 
                   if (context.mounted) {
@@ -157,10 +152,16 @@ class GroupMembersScreen extends StatelessWidget {
             );
           }
 
-          // ترتيب الأعضاء حسب الهرمية
           final members = RoleAssignmentLogic.sortByHierarchy(snapshot.data!);
-         
-          // تحديد عضوية المستخدم الحالي للتحقق من صلاحياته
+
+          // ✅ [إضافة] حساب عدد الدعوات لكل عضو
+          final Map<String, int> inviteCounts = {};
+          for (var m in members) {
+            if (m.invitedByUserId!= null && m.invitedByUserId!.isNotEmpty) {
+              inviteCounts[m.invitedByUserId!] = (inviteCounts[m.invitedByUserId!]?? 0) + 1;
+            }
+          }
+
           final currentUserMember = members.firstWhere(
             (m) => m.userId == currentUserId,
             orElse: () => MemberModel(userId: '', groupId: '', role: Roles.member, joinedAt: DateTime.now()),
@@ -175,8 +176,7 @@ class GroupMembersScreen extends StatelessWidget {
               final isDark = Theme.of(context).brightness == Brightness.dark;
 
               final roleColor = RoleColors.getColor(member.role, isDark: isDark);
-              
-              // التحقق من إمكانية الإدارة
+
               final canManage = RoleAssignmentLogic.canModify(
                 actorRole: currentUserMember.role,
                 targetRole: member.role,
@@ -184,16 +184,16 @@ class GroupMembersScreen extends StatelessWidget {
                 targetId: member.userId,
               );
 
-              // ✅ استخدام الـ getter المصلح الذي يتجاوز مشاكل الـ null والمسافات
               final String? profileImage = member.displayImageUrl;
+              final int memberInvites = inviteCounts[member.userId]?? 0;
 
               return ListTile(
                 leading: CircleAvatar(
                   radius: 20,
                   backgroundColor: roleColor.withOpacity(0.1),
                   child: ClipOval(
-                    child: profileImage != null && profileImage.isNotEmpty
-                        ? Image.network(
+                    child: profileImage!= null && profileImage.isNotEmpty
+                      ? Image.network(
                             profileImage,
                             width: 40,
                             height: 40,
@@ -207,8 +207,8 @@ class GroupMembersScreen extends StatelessWidget {
                                   height: 15,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    value: loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                    value: loadingProgress.expectedTotalBytes!= null
+                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
                                         : null,
                                   ),
                                 ),
@@ -218,18 +218,86 @@ class GroupMembersScreen extends StatelessWidget {
                         : Icon(Icons.person, color: roleColor),
                   ),
                 ),
-                title: Text(
-                  member.effectiveName, 
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: roleColor,
-                  ),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        member.effectiveName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: roleColor,
+                        ),
+                      ),
+                    ),
+                    // مؤشر يدوي/دعوات
+                    if (member.role!= Roles.member && member.role!= Roles.founder)
+                      Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: member.isManualRole
+                          ? Colors.purple.withOpacity(0.15)
+                            : Colors.teal.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: member.isManualRole
+                            ? Colors.purple.withOpacity(0.3)
+                              : Colors.teal.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              member.isManualRole? Icons.verified_user : Icons.group_add,
+                              size: 10,
+                              color: member.isManualRole? Colors.purple : Colors.teal,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              member.isManualRole? 'يدوي' : 'دعوات',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: member.isManualRole? Colors.purple : Colors.teal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    // ✅ [إضافة] عداد الدعوات - يظهر فقط لو > 0
+                    if (memberInvites > 0)
+                      Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.person_add_alt_1, size: 10, color: Colors.orange),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$memberInvites',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-                subtitle: member.characterName != null && member.characterName!.trim().isNotEmpty
-                    ? Text(
+                subtitle: member.characterName!= null && member.characterName!.trim().isNotEmpty
+                  ? Text(
                         member.characterName!,
                         style: TextStyle(
-                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          color: isDark? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
                         ),
                       )
                     : null,
@@ -244,7 +312,7 @@ class GroupMembersScreen extends StatelessWidget {
                         color: roleColor,
                       ),
                     ),
-                    if (canManage && member.userId != currentUserId)
+                    if (canManage && member.userId!= currentUserId)
                       const Icon(Icons.chevron_left, size: 16, color: Colors.grey),
                   ],
                 ),

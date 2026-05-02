@@ -48,17 +48,36 @@ class GroupJoinValidator {
     return name.trim(); 
   }
 
+  // ✅ [إصلاح] إضافة البحث بـ realUserName لإيجاد صاحب الدعوة بالاسم الحقيقي أو اللقب
+  // هذا هو المصدر الجذري لمشكلة "من يترقى" — بدون هذا الإصلاح لا يُحفظ invitedByUserId
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
     final name = inviterName.trim();
     if (name.isEmpty) return null;
 
-    final membersRef = FirebaseFirestore.instance.collection(FirestorePaths.groupMembers(groupId));
+    final membersRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupMembers(groupId));
 
-    final displayQuery = await membersRef.where('displayName', isEqualTo: name).limit(1).get();
+    // البحث 1: بالاسم المعروض داخل المجموعة (displayName)
+    final displayQuery = await membersRef
+        .where('displayName', isEqualTo: name)
+        .limit(1)
+        .get();
     if (displayQuery.docs.isNotEmpty) return displayQuery.docs.first.id;
 
-    final characterQuery = await membersRef.where('characterName', isEqualTo: name).limit(1).get();
+    // البحث 2: باسم الشخصية (characterName / اللقب)
+    final characterQuery = await membersRef
+        .where('characterName', isEqualTo: name)
+        .limit(1)
+        .get();
     if (characterQuery.docs.isNotEmpty) return characterQuery.docs.first.id;
+
+    // ✅ [إصلاح] البحث 3: بالاسم الحقيقي للمستخدم (realUserName)
+    // هذا كان مفقوداً وهو سبب فشل التعرف على صاحب الدعوة عند كتابة اسمه الحقيقي
+    final realNameQuery = await membersRef
+        .where('realUserName', isEqualTo: name)
+        .limit(1)
+        .get();
+    if (realNameQuery.docs.isNotEmpty) return realNameQuery.docs.first.id;
 
     return null;
   }
@@ -118,7 +137,9 @@ class GroupJoinValidator {
       }
 
       // ✅ بقوة: فحص حجز الشخصية يظل فعالاً لكل أنواع التقمص (محدد أو مفتوح) لمنع التكرار
-      final String characterKey = formattedCharacterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      final String characterKey = formattedCharacterName
+          .toLowerCase()
+          .replaceAll(RegExp(r'\s+'), '');
 
       final reservedDoc = await _firestoreService.getDocument(
         path: FirestorePaths.groupCharacters(groupId),
@@ -145,7 +166,9 @@ class GroupJoinValidator {
       // ب. في حالة التقمص المحدد: الالتزام بالسلسلة (Franchise)
       else {
         if (animeId == null) {
-          return JoinValidationResult.failure('رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.');
+          return JoinValidationResult.failure(
+            'رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.',
+          );
         }
 
         Set<int> idsToSearch = {};
@@ -182,9 +205,13 @@ class GroupJoinValidator {
       return JoinValidationResult.success(inviterId: inviterId);
 
     } on TimeoutException {
-      return JoinValidationResult.failure('فشل الاتصال بخادم الأنمي (انتهت المهلة)، حاول مجدداً.');
+      return JoinValidationResult.failure(
+        'فشل الاتصال بخادم الأنمي (انتهت المهلة)، حاول مجدداً.',
+      );
     } catch (e) {
-      return JoinValidationResult.failure('حدث خطأ غير متوقع: ${e.toString()}');
+      return JoinValidationResult.failure(
+        'حدث خطأ غير متوقع: ${e.toString()}',
+      );
     }
   }
 }

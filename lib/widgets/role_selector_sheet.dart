@@ -1,4 +1,3 @@
-// lib/widgets/role_selector_sheet.dart
 import 'package:flutter/material.dart';
 import '../core/constants/roles.dart';
 import '../core/theme/role_colors.dart';
@@ -16,30 +15,38 @@ class RoleSelectorSheet extends StatelessWidget {
     required this.onRoleSelected,
   }) : super(key: key);
 
-  // ✅ دالة داخلية لتحديد الأيقونة بناءً على الرتبة لتجنب الخطأ
   IconData _getRoleIcon(Roles role) {
     if (role == Roles.founder) return Icons.stars;
     if (role == Roles.sensei) return Icons.psychology;
     if (role == Roles.hakusho) return Icons.shield;
     if (role == Roles.senpai) return Icons.workspace_premium;
-    return Icons.person; // الرتبة العادية
+    return Icons.person;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final availableRoles = [
+    // ✅ [تعديل 1] تحديد الرتب المتاحة بناءً على نوع ترقية العضو
+    List<Roles> availableRoles = [
       Roles.sensei,
       Roles.hakusho,
       Roles.senpai,
-      Roles.member,
     ];
+
+    // ✅ [تعديل 2] خيار "عضو" يظهر فقط إذا كانت رتبته يدوية
+    // لو ترقى بالدعوات، الشوغو ما يقدر يرجعه عضو يدوياً
+    if (targetMember.isManualRole) {
+      availableRoles.add(Roles.member);
+    }
+
+    // ✅ [تعديل 3] لو العضو ترقى تلقائياً، اقفل الشيت كامل
+    final bool isLocked =!targetMember.isManualRole;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark? const Color(0xFF1A1A1A) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
@@ -64,65 +71,101 @@ class RoleSelectorSheet extends StatelessWidget {
             style: TextStyle(color: Colors.grey[600], fontSize: 14),
           ),
           const SizedBox(height: 24),
-          
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.4,
-            ),
-            itemCount: availableRoles.length,
-            itemBuilder: (context, index) {
-              final role = availableRoles[index];
-              final color = RoleColors.getColor(role, isDark: isDark);
-              final bg = RoleColors.getBadgeBackground(role, isDark: isDark);
-              
-              // ✅ التعديل المطلوب: استثناء العضو المستهدف من العد لحساب الأماكن الشاغرة بدقة
-              int currentCount = allMembers.where((m) => m.role == role && m.userId != targetMember.userId).length;
-              bool isFull = role.isLimited && currentCount >= (role.maxCount ?? 0);
 
-              return InkWell(
-                onTap: isFull ? null : () => onRoleSelected(role),
-                child: Opacity(
-                  opacity: isFull ? 0.5 : 1.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: bg.withOpacity(isDark ? 0.1 : 0.05),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: color.withOpacity(0.3), width: 1.5),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // ✅ تم استدعاء الدالة الداخلية هنا لإصلاح الخطأ
-                        Icon(_getRoleIcon(role), color: color, size: 28),
-                        const SizedBox(height: 8),
-                        Text(
-                          role.label,
-                          style: TextStyle(
-                            color: color,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                        if (role.isLimited)
+          // ✅ [تعديل 4] عرض رسالة بدل الشبكة إذا كان مقفول
+          if (isLocked)...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.lock_outline, color: Colors.orange, size: 40),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'رتبة تلقائية',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'هذا العضو حصل على رتبة ${targetMember.role.label} من نظام الدعوات.\nلا يمكن تغيير رتبته يدوياً.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ] else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.4,
+              ),
+              itemCount: availableRoles.length,
+              itemBuilder: (context, index) {
+                final role = availableRoles[index];
+                final color = RoleColors.getColor(role, isDark: isDark);
+                final bg = RoleColors.getBadgeBackground(role, isDark: isDark);
+
+                // استثناء العضو المستهدف من العد لحساب الأماكن الشاغرة بدقة
+                // ✅ [تعديل 5] نحسب فقط الرتب اليدوية عشان الكوتا
+                int currentCount = allMembers
+                   .where((m) => m.role == role && m.isManualRole && m.userId!= targetMember.userId)
+                   .length;
+
+                // الكوتا اليدوية: 1 سينسي، 2 هاكوشو، 2 سنباي
+                int manualQuota = 0;
+                if (role == Roles.sensei) manualQuota = 1;
+                if (role == Roles.hakusho) manualQuota = 2;
+                if (role == Roles.senpai) manualQuota = 2;
+
+                bool isFull = role!= Roles.member && currentCount >= manualQuota;
+
+                return InkWell(
+                  onTap: isFull? null : () => onRoleSelected(role),
+                  child: Opacity(
+                    opacity: isFull? 0.5 : 1.0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: bg.withOpacity(isDark? 0.1 : 0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(_getRoleIcon(role), color: color, size: 28),
+                          const SizedBox(height: 8),
                           Text(
-                            '$currentCount/${role.maxCount}',
+                            role.label,
                             style: TextStyle(
-                              color: isFull ? Colors.red : Colors.grey,
-                              fontSize: 11,
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
                             ),
                           ),
-                      ],
+                          if (role.isLimited && role!= Roles.member)
+                            Text(
+                              '$currentCount/$manualQuota',
+                              style: TextStyle(
+                                color: isFull? Colors.red : Colors.grey,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
           const SizedBox(height: 20),
         ],
       ),
