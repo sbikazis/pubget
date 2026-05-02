@@ -120,13 +120,19 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
+      String? validatedInviterId = requestMember.invitedByUserId;
+      if (validatedInviterId == requestMember.userId) {
+        validatedInviterId = null;
+      }
+
       final batch = firestore.batch();
 
       final newMember = requestMember.copyWith(
         isManualRole: false,
         isPremium: currentPremiumStatus, 
         realUserName: freshUsername,
-        realUserImageUrl: freshAvatar, 
+        realUserImageUrl: freshAvatar,
+        invitedByUserId: validatedInviterId,
       );
 
       final memberRef = firestore
@@ -480,7 +486,7 @@ class GroupProvider extends ChangeNotifier {
           id: notifId,
           title: 'تم تفكيك مجموعة "$groupName" 🚩',
           body: farewellMessage != null && farewellMessage.isNotEmpty 
-              ? 'رسالة المؤسس: $farewellMessage'
+              ? 'رسالة المؤس: $farewellMessage'
               : 'قام المؤسس بحذف المجموعة نهائياً.',
           type: NotificationTypes.groupDisbanded,
           refId: null, 
@@ -540,8 +546,7 @@ class GroupProvider extends ChangeNotifier {
       return null;
     });
   }
-
-  // ✅ التعديل الجذري والمحسن للمزامنة الحقيقية
+// ✅ التعديل الجذري والمحسن للمزامنة الحقيقية
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
@@ -645,7 +650,7 @@ class GroupProvider extends ChangeNotifier {
         if (memberDoc != null) {
           userGroups.add(GroupModel.fromMap(doc.id, doc.data()));
         }
-      }
+      } // ✅ القوس الناقص كان هنا
       return userGroups;
     } catch (e) {
       debugPrint("❌ Error fetching user groups: $e");

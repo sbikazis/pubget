@@ -71,6 +71,8 @@ class InviteRankingLogic {
 
     // توزيع الرتب الآلية بناءً على المقاعد المتاحة المحسوبة ديناميكياً
     for (var member in allCandidates) {
+      final int count = inviteCounts[member.userId] ?? 0;
+      if (count == 0) continue;
       Roles newRole = Roles.member;
 
       if (availableSensei > 0) {
@@ -150,6 +152,11 @@ class InviteRankingLogic {
     // 5. توزيع الرتب الجديدة
     final Map<String, Roles> newRoles = {};
     for (var member in candidates) {
+      final int count = inviteCounts[member.userId] ?? 0;
+      if (count == 0) {
+        newRoles[member.userId] = Roles.member;
+        continue;
+      }
       if (availableSensei > 0) {
         newRoles[member.userId] = Roles.sensei;
         availableSensei--;
