@@ -16,7 +16,6 @@ import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
 import 'package:pubget/services/monetization/promotion_service.dart';
 
-
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
 
@@ -181,9 +180,10 @@ class GroupProvider extends ChangeNotifier {
 
       await batch.commit();
 
-      await Future.delayed(const Duration(milliseconds: 150));
-     
+      // ✅ ضمان تحديث الرتب فوراً بعد نجاح العملية ليتم احتساب الدعوة للداعي
+      await Future.delayed(const Duration(milliseconds: 300));
       await InviteRankingLogic.refreshRanks(groupId: groupId);
+      
       notifyListeners();
     } catch (e) {
       debugPrint("Error accepting request: $e");
@@ -222,8 +222,6 @@ class GroupProvider extends ChangeNotifier {
       batch.set(notifRef, notification.toMap());
 
       await batch.commit();
-
-      await Future.delayed(const Duration(milliseconds: 150));
 
       notifyListeners();
     } catch (e) {
@@ -546,7 +544,7 @@ class GroupProvider extends ChangeNotifier {
       return null;
     });
   }
-// ✅ التعديل الجذري والمحسن للمزامنة الحقيقية
+
   Stream<List<MemberModel>> streamMembers({required String groupId}) {
     return _firestore
         .streamCollection(path: FirestorePaths.groupMembers(groupId))
@@ -564,10 +562,9 @@ class GroupProvider extends ChangeNotifier {
           if (userDoc.exists && userDoc.data() != null) {
             final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
             
-            // ✅ هنا يكمن سر الحل: تحديث العضو ببيانات المستخدم الحية
             return member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, // يمرر الرابط حتى لو كان null في Member لكنه موجود في User
+              realUserImageUrl: user.avatarUrl,
               isPremium: user.isPremium,
             );
           }
@@ -591,6 +588,15 @@ class GroupProvider extends ChangeNotifier {
     );
   }
 
+  Future<bool> isCharacterReserved({required String groupId, required String characterName}) async {
+    final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final doc = await _firestore.getDocument(
+      path: FirestorePaths.groupCharacters(groupId),
+      docId: charKey,
+    );
+    return doc != null;
+  }
+
   Future<void> reserveCharacter({
     required String groupId,
     required String characterName,
@@ -611,24 +617,6 @@ class GroupProvider extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint("❌ Error reserving character: $e");
-      rethrow;
-    }
-  }
-
-  Future<bool> isCharacterReserved({
-    required String groupId,
-    required String characterName,
-  }) async {
-    try {
-      final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
-      final doc = await _firestore.getDocument(
-        path: FirestorePaths.groupCharacters(groupId),
-        docId: charKey,
-      );
-      return doc != null;
-    } catch (e) {
-      debugPrint("❌ Error checking reservation: $e");
-      return false;
     }
   }
 
@@ -650,7 +638,7 @@ class GroupProvider extends ChangeNotifier {
         if (memberDoc != null) {
           userGroups.add(GroupModel.fromMap(doc.id, doc.data()));
         }
-      } // ✅ القوس الناقص كان هنا
+      }
       return userGroups;
     } catch (e) {
       debugPrint("❌ Error fetching user groups: $e");

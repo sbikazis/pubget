@@ -30,6 +30,9 @@ class MemberModel {
   // ✅ إضافة حقل البريميوم لضمان ظهوره في طلبات الانضمام والدردشة
   final bool isPremium;
 
+  // ✅ حقل تتبع عدد الدعوات لتسهيل منطق الترتيب (InviteRankingLogic)
+  final int inviteCount;
+
   const MemberModel({
     required this.userId,
     required this.groupId,
@@ -46,6 +49,7 @@ class MemberModel {
     this.lastReadAt,
     this.isManualRole = false,
     this.isPremium = false,
+    this.inviteCount = 0,
   });
 
   // =========================================================
@@ -108,7 +112,8 @@ class MemberModel {
           ? (map['lastReadAt'] as Timestamp).toDate() 
           : null,
       isManualRole: map['isManualRole'] ?? false, 
-      isPremium: map['isPremium'] ?? false, 
+      isPremium: map['isPremium'] ?? false,
+      inviteCount: map['inviteCount'] ?? 0,
     );
   }
 
@@ -132,6 +137,7 @@ class MemberModel {
       'lastReadAt': lastReadAt != null ? Timestamp.fromDate(lastReadAt!) : null,
       'isManualRole': isManualRole, 
       'isPremium': isPremium, 
+      'inviteCount': inviteCount,
     };
   }
 
@@ -152,6 +158,7 @@ class MemberModel {
     DateTime? lastReadAt,
     bool? isManualRole,
     bool? isPremium,
+    int? inviteCount,
   }) {
     return MemberModel(
       userId: userId,
@@ -169,6 +176,7 @@ class MemberModel {
       lastReadAt: lastReadAt ?? this.lastReadAt,
       isManualRole: isManualRole ?? this.isManualRole,
       isPremium: isPremium ?? this.isPremium,
+      inviteCount: inviteCount ?? this.inviteCount,
     );
   }
 }
