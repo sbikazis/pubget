@@ -51,34 +51,22 @@ class GroupJoinValidator {
   // ✅ [إصلاح] إضافة البحث بـ realUserName لإيجاد صاحب الدعوة بالاسم الحقيقي أو اللقب
   // هذا هو المصدر الجذري لمشكلة "من يترقى" — بدون هذا الإصلاح لا يُحفظ invitedByUserId
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
-    final name = inviterName.trim();
+    final name = inviterName.trim().toLowerCase();
     if (name.isEmpty) return null;
 
-    final membersRef = FirebaseFirestore.instance
-        .collection(FirestorePaths.groupMembers(groupId));
+    final membersRef = FirebaseFirestore.instance.collection(FirestorePaths.groupMembers(groupId));
+    final snapshot = await membersRef.get();
 
-    // البحث 1: بالاسم المعروض داخل المجموعة (displayName)
-    final displayQuery = await membersRef
-        .where('displayName', isEqualTo: name)
-        .limit(1)
-        .get();
-    if (displayQuery.docs.isNotEmpty) return displayQuery.docs.first.id;
-
-    // البحث 2: باسم الشخصية (characterName / اللقب)
-    final characterQuery = await membersRef
-        .where('characterName', isEqualTo: name)
-        .limit(1)
-        .get();
-    if (characterQuery.docs.isNotEmpty) return characterQuery.docs.first.id;
-
-    // ✅ [إصلاح] البحث 3: بالاسم الحقيقي للمستخدم (realUserName)
-    // هذا كان مفقوداً وهو سبب فشل التعرف على صاحب الدعوة عند كتابة اسمه الحقيقي
-    final realNameQuery = await membersRef
-        .where('realUserName', isEqualTo: name)
-        .limit(1)
-        .get();
-    if (realNameQuery.docs.isNotEmpty) return realNameQuery.docs.first.id;
-
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final display = (data['displayName'] ?? '').toString().toLowerCase();
+      final character = (data['characterName'] ?? '').toString().toLowerCase();
+      final real = (data['realUserName'] ?? '').toString().toLowerCase();
+      
+      if (display == name || character == name || real == name) {
+        return doc.id;
+      }
+    }
     return null;
   }
 
