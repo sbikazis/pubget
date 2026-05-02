@@ -15,6 +15,7 @@ import '../core/constants/firestore_paths.dart';
 import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
 import 'package:pubget/services/monetization/promotion_service.dart';
+import 'package:pubget/constants/roles.dart';
 
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -178,10 +179,12 @@ class GroupProvider extends ChangeNotifier {
           .doc(notifId);
       batch.set(notifRef, notification.toMap());
 
+      // ✅ تنفيذ الـ Batch أولاً لضمان وجود العضو في القاعدة
       await batch.commit();
 
-      // ✅ ضمان تحديث الرتب فوراً بعد نجاح العملية ليتم احتساب الدعوة للداعي
-      await Future.delayed(const Duration(milliseconds: 300));
+      // ✅ [تعديل] تحديث الرتب فوراً مع تأخير بسيط لضمان استقرار البيانات في Firestore
+      // هذا يضمن أن نظام الدعوات سيتعرف على العضو الجديد فور انضمامه ويرقي الداعي.
+      await Future.delayed(const Duration(milliseconds: 500));
       await InviteRankingLogic.refreshRanks(groupId: groupId);
       
       notifyListeners();
@@ -306,7 +309,11 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      final updatedMember = member.copyWith(isManualRole: true);
+      // ✅ [تعديل ذهبي]: التحقق مما إذا كانت الرتبة المضافة هي "عضو عادي"
+      // إذا كانت "عضو عادي"، نترك isManualRole = false لكي يتمكن من الترقي تلقائياً بالدعوات.
+      // أما إذا عين الشوغو رتبة خاصة (سينسي مثلاً)، نثبتها بـ isManualRole = true.
+      final bool shouldBeManual = member.role != Roles.member;
+      final updatedMember = member.copyWith(isManualRole: shouldBeManual);
 
       await _firestore.createDocument(
         path: FirestorePaths.groupMembers(updatedMember.groupId),
@@ -607,7 +614,8 @@ class GroupProvider extends ChangeNotifier {
       final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
       await _firestore.createDocument(
         path: FirestorePaths.groupCharacters(groupId),
-        docId: charKey,
+        
+docId: charKey,
         data: {
           'userId': userId,
           'characterName': characterName.trim(),

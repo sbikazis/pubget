@@ -19,52 +19,62 @@ class InviteRankingLogic {
         .map((doc) => MemberModel.fromMap(doc.data()))
         .toList();
 
-    // حساب عدد المدعوين لكل عضو
+    // 1. حساب عدد المدعوين لكل عضو (رصيد النقاط)
     final Map<String, int> inviteCounts = {};
     for (var m in allMembers) {
       final inviter = m.invitedByUserId;
+      // لا نحتسب الدعوة إلا إذا كانت لشخص آخر غير العضو نفسه
       if (inviter != null && inviter.isNotEmpty && inviter != m.userId) {
         inviteCounts.update(inviter, (v) => v + 1, ifAbsent: () => 1);
       }
     }
 
-    // المرشحون: كل من ليس مؤسس وليس يدوياً
+    // 2. تحديد المرشحين للمنافسة: 
+    // أي شخص ليس مؤسساً ولم يتم تثبيت رتبته "يدوياً" من قبل الشوغو
     final candidates = allMembers.where((m) =>
       !m.isManualRole && m.role != Roles.founder
     ).toList();
 
-    // ترتيب المرشحين حسب عدد المدعوين (الأكثر أولاً)
+    // 3. ترتيب المرشحين حسب عدد المدعوين (الأكثر أولاً)
     candidates.sort((a, b) {
       final countA = inviteCounts[a.userId] ?? 0;
       final countB = inviteCounts[b.userId] ?? 0;
       return countB.compareTo(countA);
     });
 
-    // المقاعد التلقائية المتاحة
-    int availableSensei = Roles.sensei.autoMaxCount ?? 0; // 1
-    int availableHakusho = Roles.hakusho.autoMaxCount ?? 0; // 1
-    int availableSenpai = Roles.senpai.autoMaxCount ?? 0; // 2
+    // 4. المقاعد التلقائية المتاحة حسب النظام (1 سينسي، 1 هاكوشو، 2 سنباي)
+    int availableSensei = Roles.sensei.autoMaxCount ?? 0;
+    int availableHakusho = Roles.hakusho.autoMaxCount ?? 0;
+    int availableSenpai = Roles.senpai.autoMaxCount ?? 0;
 
     final Map<String, Roles> newRoles = {};
-    int index = 0;
 
     for (var candidate in candidates) {
-      if (index == 0 && availableSensei > 0) {
+      final count = inviteCounts[candidate.userId] ?? 0;
+
+      // ✅ التعديل الذهبي: إذا كان العضو يملك 0 دعوات، فهو عضو عادي فوراً
+      // ولا يحق له المنافسة على المقاعد الشاغرة مهما كانت خالية.
+      if (count <= 0) {
+        newRoles[candidate.userId] = Roles.member;
+        continue; 
+      }
+
+      // توزيع الرتب على المستحقين (من لديهم دعوات > 0) بالترتيب
+      if (availableSensei > 0) {
         newRoles[candidate.userId] = Roles.sensei;
         availableSensei--;
-      } else if (index == 1 && availableHakusho > 0) {
+      } else if (availableHakusho > 0) {
         newRoles[candidate.userId] = Roles.hakusho;
         availableHakusho--;
-      } else if ((index == 2 || index == 3) && availableSenpai > 0) {
+      } else if (availableSenpai > 0) {
         newRoles[candidate.userId] = Roles.senpai;
         availableSenpai--;
       } else {
         newRoles[candidate.userId] = Roles.member;
       }
-      index++;
     }
 
-    // تحديث Firestore فقط إذا تغيّرت الرتبة
+    // 5. تحديث Firestore بالدفعات (Batch) فقط للأعضاء الذين تغيرت رتبهم فعلياً
     final batch = firestore.batch();
     bool changed = false;
 
@@ -74,9 +84,12 @@ class InviteRankingLogic {
         final ref = firestore
             .collection(FirestorePaths.groupMembers(groupId))
             .doc(member.userId);
+        
         batch.update(ref, {
           'role': newRole.name,
+          // نحافظ على isManualRole كـ false لأن هذه رتبة تلقائية ناتجة عن دعوات
           'isManualRole': false,
+          'inviteCount': inviteCounts[member.userId] ?? 0,
         });
         changed = true;
       }
@@ -85,7 +98,7 @@ class InviteRankingLogic {
     if (changed) await batch.commit();
   }
 
-  /// دالة مساعدة لحساب عدد الدعوات لعضو معين
+  /// دالة مساعدة لحساب عدد الدعوات لعضو معين (للعرض في الواجهات)
   static int getUserInviteCount(String userId, List<MemberModel> allMembers) {
     return allMembers.where((m) => m.invitedByUserId == userId).length;
   }
