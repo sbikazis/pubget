@@ -27,26 +27,29 @@ class RoleSelectorSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ [تعديل 1] تحديد الرتب المتاحة بناءً على نوع ترقية العضو
     List<Roles> availableRoles = [
       Roles.sensei,
       Roles.hakusho,
       Roles.senpai,
     ];
 
-    // ✅ [تعديل 2] خيار "عضو" يظهر فقط إذا كانت رتبته يدوية
+    // خيار "عضو" يظهر فقط إذا كانت رتبته يدوية
     // لو ترقى بالدعوات، الشوغو ما يقدر يرجعه عضو يدوياً
     if (targetMember.isManualRole) {
       availableRoles.add(Roles.member);
     }
 
-    // ✅ [تعديل 3] لو العضو ترقى تلقائياً، اقفل الشيت كامل
-    final bool isLocked =!targetMember.isManualRole;
+    // ✅ [إصلاح] القفل يكون فقط إذا:
+    // - isManualRole == false (ترقى تلقائياً بالدعوات)
+    // - AND رتبته ليست member (أي حصل على رتبة فعلية من الدعوات)
+    // العضو العادي (member + isManualRole == false) لا يُقفل لأنه لم يحصل على رتبة بعد
+    final bool isLocked = !targetMember.isManualRole &&
+        targetMember.role != Roles.member;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
@@ -72,8 +75,8 @@ class RoleSelectorSheet extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // ✅ [تعديل 4] عرض رسالة بدل الشبكة إذا كان مقفول
-          if (isLocked)...[
+          // عرض رسالة بدل الشبكة إذا كان مقفول
+          if (isLocked) ...[
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -114,11 +117,13 @@ class RoleSelectorSheet extends StatelessWidget {
                 final color = RoleColors.getColor(role, isDark: isDark);
                 final bg = RoleColors.getBadgeBackground(role, isDark: isDark);
 
-                // استثناء العضو المستهدف من العد لحساب الأماكن الشاغرة بدقة
-                // ✅ [تعديل 5] نحسب فقط الرتب اليدوية عشان الكوتا
+                // نحسب فقط الرتب اليدوية عشان الكوتا
                 int currentCount = allMembers
-                   .where((m) => m.role == role && m.isManualRole && m.userId!= targetMember.userId)
-                   .length;
+                    .where((m) =>
+                        m.role == role &&
+                        m.isManualRole &&
+                        m.userId != targetMember.userId)
+                    .length;
 
                 // الكوتا اليدوية: 1 سينسي، 2 هاكوشو، 2 سنباي
                 int manualQuota = 0;
@@ -126,15 +131,15 @@ class RoleSelectorSheet extends StatelessWidget {
                 if (role == Roles.hakusho) manualQuota = 2;
                 if (role == Roles.senpai) manualQuota = 2;
 
-                bool isFull = role!= Roles.member && currentCount >= manualQuota;
+                bool isFull = role != Roles.member && currentCount >= manualQuota;
 
                 return InkWell(
-                  onTap: isFull? null : () => onRoleSelected(role),
+                  onTap: isFull ? null : () => onRoleSelected(role),
                   child: Opacity(
-                    opacity: isFull? 0.5 : 1.0,
+                    opacity: isFull ? 0.5 : 1.0,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: bg.withOpacity(isDark? 0.1 : 0.05),
+                        color: bg.withOpacity(isDark ? 0.1 : 0.05),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: color.withOpacity(0.3), width: 1.5),
                       ),
@@ -151,11 +156,11 @@ class RoleSelectorSheet extends StatelessWidget {
                               fontSize: 15,
                             ),
                           ),
-                          if (role.isLimited && role!= Roles.member)
+                          if (role.isLimited && role != Roles.member)
                             Text(
                               '$currentCount/$manualQuota',
                               style: TextStyle(
-                                color: isFull? Colors.red : Colors.grey,
+                                color: isFull ? Colors.red : Colors.grey,
                                 fontSize: 11,
                               ),
                             ),
