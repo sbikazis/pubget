@@ -27,7 +27,7 @@ class HomeProvider extends ChangeNotifier {
     required PromotionService promotionService,
     required AdService adService,
     required GroupJoinValidator joinValidator,
-  })  : _firestore = firestore,
+  }) : _firestore = firestore,
         _promotionService = promotionService,
         _adService = adService,
         _joinValidator = joinValidator;
@@ -64,7 +64,7 @@ class HomeProvider extends ChangeNotifier {
 
     try {
       await _loadSuggestedGroups(currentUser.id);
-      await _loadPromotedGroupsAndWait(); // ✅ الآن يجيب من السيرفر مباشرة
+      await _loadPromotedGroupsAndWait();
 
       _setLoading(false);
       _loadUserGroups(currentUser.id);
@@ -74,12 +74,10 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ الحل النهائي: get() بدل listen() في أول مرة
   Future<void> _loadPromotedGroupsAndWait() async {
     _promotedSub?.cancel();
 
     try {
-      // 1. جيب البيانات مباشرة من Firestore (يتجاوز الكاش الفاضي)
       final snapshot = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
@@ -97,7 +95,6 @@ class HomeProvider extends ChangeNotifier {
       debugPrint("Error loading promoted (get): $e");
     }
 
-    // 2. بعد ما عرضنا البيانات، افتح الـ Stream للتحديثات الحية
     _promotedSub = _promotionService.getPromotedGroups().listen((groups) {
       _promotedGroups = groups;
       notifyListeners();
@@ -210,6 +207,9 @@ class HomeProvider extends ChangeNotifier {
     }
 
     try {
+      // ✅ [إصلاح] تمرير invitedByUserId وبيانات المستخدم الكاملة
+      // كان invitedByUserId مفقوداً تماماً من MemberModel رغم وصوله كـ parameter
+      // هذا هو السبب الجذري لعدم ترقية الداعي في نظام الدعوات
       final requestMember = MemberModel(
         userId: user.id,
         groupId: group.id,
@@ -219,6 +219,10 @@ class HomeProvider extends ChangeNotifier {
         characterName: characterName,
         characterImageUrl: characterImage,
         characterReason: characterReason,
+        invitedByUserId: invitedByUserId, // ✅ الإصلاح الجذري
+        realUserName: user.username, // ✅ لضمان البحث في _verifyInviter
+        realUserImageUrl: user.avatarUrl, // ✅
+        isPremium: user.isPremium, // ✅
       );
 
       await _firestore.createDocument(
@@ -304,13 +308,15 @@ class HomeProvider extends ChangeNotifier {
   List<GroupModel> get filteredMyGroups => _searchQuery.isEmpty
       ? _myGroups
       : _myGroups
-          .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .where((g) =>
+              g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
 
   List<GroupModel> get filteredJoinedGroups => _searchQuery.isEmpty
       ? _joinedGroups
       : _joinedGroups
-          .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .where((g) =>
+              g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
 
   Future<void> tryShowMorningAd({required bool isPremium}) async {
