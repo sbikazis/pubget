@@ -48,25 +48,60 @@ class GroupJoinValidator {
     return name.trim(); 
   }
 
-  // ✅ [إصلاح] إضافة البحث بـ realUserName لإيجاد صاحب الدعوة بالاسم الحقيقي أو اللقب
-  // هذا هو المصدر الجذري لمشكلة "من يترقى" — بدون هذا الإصلاح لا يُحفظ invitedByUserId
+  // ✅ [إصلاح نهائي] البحث في ثلاثة مصادر بالترتيب:
+  // 1. groupMembers (displayName, characterName, realUserName)
+  // 2. users collection مباشرة (username) — هذا كان المصدر الجذري للمشكلة
+  // لأن streamMembers يُحدث realUserName في الذاكرة فقط ولا يكتبه في groupMembers
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
     final name = inviterName.trim().toLowerCase();
     if (name.isEmpty) return null;
 
-    final membersRef = FirebaseFirestore.instance.collection(FirestorePaths.groupMembers(groupId));
-    final snapshot = await membersRef.get();
+    // =========================================================
+    // المرحلة 1: البحث في groupMembers بكل الحقول المتاحة
+    // =========================================================
+    final membersRef = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupMembers(groupId));
+    final membersSnapshot = await membersRef.get();
 
-    for (var doc in snapshot.docs) {
+    for (var doc in membersSnapshot.docs) {
       final data = doc.data();
       final display = (data['displayName'] ?? '').toString().toLowerCase();
       final character = (data['characterName'] ?? '').toString().toLowerCase();
       final real = (data['realUserName'] ?? '').toString().toLowerCase();
-      
+
       if (display == name || character == name || real == name) {
         return doc.id;
       }
     }
+
+    // =========================================================
+    // ✅ [إضافة] المرحلة 2: البحث في users collection مباشرة
+    // هذا يحل مشكلة أن realUserName في groupMembers قد يكون null أو قديم
+    // لأن streamMembers يُحدث البيانات في الذاكرة فقط لا في Firestore
+    // =========================================================
+    for (var memberDoc in membersSnapshot.docs) {
+      final memberId = memberDoc.id;
+
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(memberId)
+            .get();
+
+        if (userDoc.exists && userDoc.data() != null) {
+          final userData = userDoc.data()!;
+          final username = (userData['username'] ?? '').toString().toLowerCase();
+          final nickname = (userData['nickname'] ?? '').toString().toLowerCase();
+
+          if (username == name || nickname == name) {
+            return memberId;
+          }
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
     return null;
   }
 
@@ -146,7 +181,6 @@ class GroupJoinValidator {
 
       // أ. في حالة التقمص المفتوح: تخطي قيود السلسلة والبحث عالمياً
       if (groupType == GroupType.openRoleplay) {
-        // نستخدم جلب الصورة كدليل على وجود الشخصية عالمياً
         final globalImage = await AnimeApiService.getCharacterImage(formattedCharacterName)
             .timeout(const Duration(seconds: 15));
         characterExists = globalImage != null;
@@ -175,7 +209,6 @@ class GroupJoinValidator {
           characterName: formattedCharacterName,
         ).timeout(const Duration(seconds: 15));
 
-        // المرحلة الاحتياطية للتقمص المحدد فقط
         if (!characterExists && animeName != null) {
           characterExists = await AnimeApiService.isCharacterInFranchise(
             animeName: animeName,
