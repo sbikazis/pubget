@@ -360,10 +360,16 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      await _firestore.deleteDocument(
-        path: FirestorePaths.groupMembers(groupId),
-        docId: userId,
-      );
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+
+      final memberRef = firestore.collection(FirestorePaths.groupMembers(groupId)).doc(userId);
+      batch.delete(memberRef);
+
+      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
+
+      await batch.commit();
 
       await InviteRankingLogic.refreshRanks(groupId: groupId);
       notifyListeners();
