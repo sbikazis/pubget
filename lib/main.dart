@@ -1,4 +1,3 @@
-
 // Flutter
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,7 +5,7 @@ import 'package:flutter/services.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 
-// ✅ تم حذف استيراد Google Mobile Ads لأنه لم يعد مستخدماً
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 // ✅ استيراد Provider و AdService لتهيئة العدادات
 import 'package:provider/provider.dart';
 import 'package:pubget/services/monetization/ad_service.dart';
@@ -30,11 +29,8 @@ Future<void> main() async {
     debugPrint("🔥 Firebase init error: $e");
   }
 
-  // 2. AdService Ghost Initialization
-  // تم استبدال تهيئة AdMob بتهيئة منطق الأشباح (Ghost Logic)
-  // ملاحظة: التهيئة الفعلية للعدادات ستتم داخل الـ App لضمان وجود الـ Provider
-  // أو يمكن استدعاؤها هنا إذا كان الـ Service متوفراً بشكل يدوي
-  debugPrint("✅ AdService (Ghost) logic ready");
+  // 2. AdMob Initialization
+  await MobileAds.instance.initialize();
 
   // 3. Orientation Settings
   await SystemChrome.setPreferredOrientations([

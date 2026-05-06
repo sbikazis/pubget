@@ -66,7 +66,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         AppDialog.show(
           context,
           title: 'تنبيه',
-          content: result.message ?? '',
+          content: result.message?? '',
           confirmText: 'حسناً',
         );
       }
@@ -94,6 +94,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 color: AppColors.primary,
                 onTap: () {
                   _checkLimitAndProceed(() {
+                    final adService = context.read<AdService>();
+                    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
+                    adService.showCreateGroupAd(isPremium: isPremium);
                     setState(() => _selectedType = GroupType.public);
                   });
                 },
@@ -106,6 +109,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 color: Colors.amber[700]!, // لون ذهبي للفخامة
                 onTap: () {
                   _checkLimitAndProceed(() {
+                    final adService = context.read<AdService>();
+                    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
+                    adService.showCreateGroupAd(isPremium: isPremium);
                     // نتوجه مباشرة للشاشة الجاهزة التي لديك
                     Navigator.push(
                       context,
@@ -181,14 +187,14 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _sloganController = TextEditingController();
- 
+
   File? _selectedImage;
   bool _isLoading = false;
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _selectedImage = File(picked.path));
+    if (picked!= null) setState(() => _selectedImage = File(picked.path));
   }
 
   Future<void> _createGroup() async {
@@ -196,7 +202,6 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     final authProvider = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
-    final adService = context.read<AdService>();
     final storageService = StorageService();
 
     final user = authProvider.user;
@@ -211,7 +216,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     try {
       String imageUrl = '';
-      if (_selectedImage != null) {
+      if (_selectedImage!= null) {
         imageUrl = await storageService.uploadGroupImage(
           groupId: DateTime.now().millisecondsSinceEpoch.toString(),
           file: _selectedImage!,
@@ -230,7 +235,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         founderId: user.id,
         membersCount: 1,
         maxMembers: user.isPremium
-            ? Limits.maxMembersPremium
+           ? Limits.maxMembersPremium
             : Limits.maxMembersFree,
         isPromoted: false,
         promotionExpiresAt: null,
@@ -248,8 +253,6 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
       await groupProvider.createGroup(group: group, founderMember: founderMember);
 
       if (mounted) {
-        await adService.tryShowGroupAd(isPremium: user.isPremium);
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم إنشاء المجموعة بنجاح')),
         );
@@ -283,7 +286,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         ),
       ),
       body: _isLoading
-          ? const LoadingWidget(message: 'جاري إنشاء المجموعة...')
+         ? const LoadingWidget(message: 'جاري إنشاء المجموعة...')
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Form(
@@ -294,10 +297,10 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       onTap: _pickImage,
                       child: CircleAvatar(
                         radius: 50,
-                        backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null,
+                        backgroundImage: _selectedImage!= null? FileImage(_selectedImage!) : null,
                         backgroundColor: AppColors.lightCard,
                         child: _selectedImage == null
-                            ? const Icon(Icons.camera_alt, size: 32)
+                           ? const Icon(Icons.camera_alt, size: 32)
                             : null,
                       ),
                     ),
@@ -306,7 +309,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       label: 'اسم المجموعة',
                       controller: _nameController,
                       maxLength: Limits.maxGroupNameLength,
-                      validator: (v) => v == null || v.isEmpty ? 'الاسم مطلوب' : null,
+                      validator: (v) => v == null || v.isEmpty? 'الاسم مطلوب' : null,
                     ),
                     const SizedBox(height: 12),
                     AppTextField(
@@ -314,14 +317,14 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       controller: _descriptionController,
                       isMultiline: true,
                       maxLength: Limits.maxGroupDescriptionLength,
-                      validator: (v) => v == null || v.isEmpty ? 'الوصف مطلوب' : null,
+                      validator: (v) => v == null || v.isEmpty? 'الوصف مطلوب' : null,
                     ),
                     const SizedBox(height: 12),
                     AppTextField(
                       label: 'الشعار (3-4 كلمات)',
                       controller: _sloganController,
                       maxLength: Limits.maxGroupSloganLength,
-                      validator: (v) => v == null || v.isEmpty ? 'الشعار مطلوب' : null,
+                      validator: (v) => v == null || v.isEmpty? 'الشعار مطلوب' : null,
                     ),
                     const SizedBox(height: 24),
                     AppButton(

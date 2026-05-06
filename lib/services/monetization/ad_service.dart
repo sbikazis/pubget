@@ -1,19 +1,25 @@
 // lib/services/monetization/ad_service.dart
 import 'dart:async'; 
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../../core/logic/ad_display_logic.dart';
+import '../../core/utils/time_utils.dart';
 import '../local/local_storage_service.dart';
 import 'package:flutter/foundation.dart'; // مضاف للطباعة في الـ debug
 
-/// AdService - Ghost Logic Version (تجهيز لنظام AppLovin مستقبلاً)
+/// AdService - AdMob Real Implementation
 class AdService {
   final LocalStorageService _localStorage;
 
   AdService(this._localStorage);
 
   // ===============================
-  // Ghost State Management
+  // AdMob State Management
   // ===============================
-  int _adsShownToday = 0;
+  static const String _interstitialId = 'ca-app-pub-3303379299409244/1725699149';
+  
+  InterstitialAd? _interstitialAd;
+  bool _isLoading = false;
+  int _groupAdsShownToday = 0;
   bool _isInitialized = false;
 
   // دالة التهيئة لتحميل العدادات من التخزين المحلي
@@ -21,78 +27,128 @@ class AdService {
     if (_isInitialized) return;
     await _localStorage.init();
     
-    // جلب عدد إعلانات اليوم المخزنة (سنفترض وجود دالة في الـ local storage لهذا)
-    // وإعادة تعيينها إذا بدأ يوم جديد
-    _adsShownToday = _localStorage.getAdsCountToday(); 
+    // جلب عدد إعلانات الدخول للمجموعات اليوم
+    _groupAdsShownToday = _localStorage.getAdsCountToday();
     _isInitialized = true;
-    debugPrint("✅ AdService (Ghost) Initialized. Ads shown today: $_adsShownToday");
+    
+    await _loadInterstitial();
+    debugPrint("✅ AdService Initialized. Group ads shown today: $_groupAdsShownToday");
+  }
+
+  Future<void> _loadInterstitial() async {
+    if (_isLoading) return;
+    _isLoading = true;
+
+    await InterstitialAd.load(
+      adUnitId: _interstitialId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          _interstitialAd = ad;
+          _isLoading = false;
+          debugPrint("📢 Interstitial loaded");
+        },
+        onAdFailedToLoad: (error) {
+          _interstitialAd = null;
+          _isLoading = false;
+          debugPrint("❌ Interstitial failed: $error");
+        },
+      ),
+    );
   }
 
   // ===============================
-  // Morning App Open Ad (Ghost)
+  // Create Group Ad (بدون حد)
   // ===============================
-  Future<bool> tryShowMorningAd({
+  Future<bool> showCreateGroupAd({
     required bool isPremium,
   }) async {
-    await init();
-
-    final lastAdTime = _localStorage.getLastAdTime();
-
-    // التحقق من المنطق (يوم جديد، بريميوم، إلخ)
-    var decision = AdDisplayLogic.checkMorningAd(lastAdTime);
-    decision = AdDisplayLogic.checkIfPremium(
-      isPremium: isPremium,
-      decision: decision,
-    );
-
-    // التحقق من الحد اليومي (3 إعلانات)
-    if (decision.shouldShow && _adsShownToday >= 3) {
-      debugPrint("📢 Ad Logic (Ghost): Daily limit reached (3 ads). Skipping.");
+    if (isPremium) {
+      debugPrint("📢 Ad blocked: premium user");
       return false;
     }
 
-    if (!decision.shouldShow) return false;
+    await init();
 
-    // محاكاة إظهار الإعلان
-    _executeGhostAd("Morning App Open Ad");
+    if (_interstitialAd == null) {
+      await _loadInterstitial();
+      return false;
+    }
+
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _loadInterstitial();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _loadInterstitial();
+      },
+    );
+
+    _interstitialAd!.show();
+    _interstitialAd = null;
     
-    // تحديث البيانات
-    await _updateAdStats();
-
+    debugPrint("📢 Create Group Ad shown");
     return true;
   }
 
   // ===============================
-  // Group/Action Ad (Ghost)
+  // Group Click Ad (مرتين/يوم + 10 دقائق)
   // ===============================
-  Future<bool> tryShowGroupAd({
+  Future<bool> showGroupClickAd({
     required bool isPremium,
   }) async {
+    if (isPremium) {
+      debugPrint("📢 Ad blocked: premium user");
+      return false;
+    }
+
     await init();
 
     final lastAdTime = _localStorage.getLastAdTime();
 
-    // التحقق من قاعدة الـ 5 دقائق
-    var decision = AdDisplayLogic.checkFiveMinutesRule(lastAdTime);
-    decision = AdDisplayLogic.checkIfPremium(
-      isPremium: isPremium,
-      decision: decision,
-    );
+    // إعادة تعيين العداد إذا بدأ يوم جديد
+    if (lastAdTime != null && TimeUtils.isNewDay(lastAdTime)) {
+      _groupAdsShownToday = 0;
+      await _localStorage.saveAdsCountToday(0);
+    }
 
-    // التحقق من الحد اليومي
-    if (decision.shouldShow && _adsShownToday >= 3) {
-      debugPrint("📢 Ad Logic (Ghost): Daily limit reached (3 ads). Skipping.");
+    // التحقق من الحد اليومي (إعلانين)
+    if (_groupAdsShownToday >= 2) {
+      debugPrint("📢 Ad Logic: Daily limit reached (2 ads). Skipping.");
       return false;
     }
 
-    if (!decision.shouldShow) return false;
+    // التحقق من مرور 10 دقائق
+    if (lastAdTime != null && !TimeUtils.hasMinutesPassed(lastAdTime, 10)) {
+      debugPrint("📢 Ad Logic: cooldown active (<10 min). Skipping.");
+      return false;
+    }
 
-    // محاكاة إظهار الإعلان
-    _executeGhostAd("Interstitial/Action Ad");
+    if (_interstitialAd == null) {
+      await _loadInterstitial();
+      return false;
+    }
+
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _loadInterstitial();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _loadInterstitial();
+      },
+    );
+
+    _interstitialAd!.show();
+    _interstitialAd = null;
 
     // تحديث البيانات
-    await _updateAdStats();
+    await _updateGroupAdStats();
 
+    debugPrint("📢 Group Click Ad shown");
     return true;
   }
 
@@ -100,19 +156,11 @@ class AdService {
   // PRIVATE HELPER METHODS
   // ===============================
 
-  // وظيفة وهمية تحاكي تشغيل الإعلان
-  void _executeGhostAd(String adType) {
-    debugPrint("--------------------------------------------------");
-    debugPrint("📢 AppLovin Ghost: $adType triggered!");
-    debugPrint("💡 This is where the SDK code will be placed.");
-    debugPrint("--------------------------------------------------");
-  }
-
   // تحديث العدادات في الذاكرة وفي التخزين المحلي
-  Future<void> _updateAdStats() async {
-    _adsShownToday++;
+  Future<void> _updateGroupAdStats() async {
+    _groupAdsShownToday++;
     await _localStorage.saveLastAdTime(DateTime.now());
-    await _localStorage.saveAdsCountToday(_adsShownToday);
-    debugPrint("📊 Ad stats updated: Shown Today = $_adsShownToday");
+    await _localStorage.saveAdsCountToday(_groupAdsShownToday);
+    debugPrint("📊 Ad stats updated: Group ads today = $_groupAdsShownToday");
   }
 }

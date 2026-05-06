@@ -64,8 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadCurrentMember(currentUser.id);
         _updateReadStatus(currentUser.id);
 
-        final adService = Provider.of<AdService>(context, listen: false);
-        adService.tryShowGroupAd(isPremium: isPremium);
+        
       }
     });
   }

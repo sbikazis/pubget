@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../providers/chat_provider.dart'; // ✅ رجعه
+import '../providers/chat_provider.dart';
 import '../models/member_model.dart';
-import '../features/groups/events/guess_character_game_screen.dart';
 
 class GameInfoDialog extends StatefulWidget {
   final String groupId;
   final MemberModel currentMember;
-  final String? gameId; // إذا كان null يعني إنشاء لعبة جديدة، إذا وجد يعني انضمام
+  final String? gameId;
 
   const GameInfoDialog({
     super.key,
@@ -22,7 +21,6 @@ class GameInfoDialog extends StatefulWidget {
 }
 
 class _GameInfoDialogState extends State<GameInfoDialog> {
-  // ✅ [تعديل 3] متغير لإخفاء الزر أثناء التنفيذ
   bool _isLoading = false;
 
   @override
@@ -57,7 +55,6 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
       ),
       actions: [
         TextButton(
-          // ✅ [تعديل 3] تعطيل زر الإلغاء أثناء التنفيذ أيضاً
           onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text("إلغاء", style: TextStyle(color: Colors.grey)),
         ),
@@ -66,7 +63,6 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
             backgroundColor: Colors.indigo,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          // ✅ [تعديل 3] الزر يُعطَّل ويظهر loading أثناء التنفيذ
           onPressed: _isLoading ? null : () => _handleConfirm(context),
           child: _isLoading
               ? const SizedBox(
@@ -93,22 +89,16 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
     );
   }
 
-  // ==========================================
-  // ⚙️ معالجة الضغط (إنشاء أو انضمام)
-  // ==========================================
   void _handleConfirm(BuildContext context) async {
-    // ✅ [تعديل 3] تفعيل حالة التحميل لإخفاء الزر
     setState(() => _isLoading = true);
 
     final gameProv = context.read<GameProvider>();
-    final chatProv = context.read<ChatProvider>(); // ✅ رجعه
+    final chatProv = context.read<ChatProvider>();
 
     String? targetGameId = widget.gameId;
 
     try {
       if (widget.gameId == null) {
-        // 1. إنشاء لعبة جديدة
-        // ✅ [تعديل 1] createGame يُرجع الآن Map يحتوي gameId و gameSlot
         final result = await gameProv.createGame(
           groupId: widget.groupId,
           creatorUserId: widget.currentMember.userId,
@@ -117,21 +107,19 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
 
         if (result != null) {
           final newGameId = result['gameId'] as String;
-          final newGameSlot = result['gameSlot'] as String; // ✅ [تعديل 1] استخرج الـ slot
+          final newGameSlot = result['gameSlot'] as String;
 
-          // ✅ [تعديل 1] تمرير gameSlot لرسالة challenge لإصلاح اللون
           await chatProv.sendGameMessage(
             groupId: widget.groupId,
             messageId: DateTime.now().millisecondsSinceEpoch.toString(),
             sender: widget.currentMember,
             gameId: newGameId,
             gameAction: 'challenge',
-            gameSlot: newGameSlot, // ✅ [تعديل 1] هنا كان السبب الجذري للون الرمادي
+            gameSlot: newGameSlot,
           );
           targetGameId = newGameId;
         }
       } else {
-        // 2. انضمام للعبة موجودة (حماية الترانزكشن مفعلة داخل Provider)
         final slot = await gameProv.joinGame(
           groupId: widget.groupId,
           gameId: widget.gameId!,
@@ -150,23 +138,9 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
         targetGameId = widget.gameId;
       }
 
-      if (context.mounted && targetGameId != null) {
-        // ✅ [إصلاح] إغلاق الديالوج نفسه أولاً بـ pop البسيطة
-        Navigator.of(context).pop();
-        await Future.delayed(const Duration(milliseconds: 100));
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-              builder: (_) => GuessCharacterGameScreen(
-                groupId: widget.groupId,
-                gameId: targetGameId!,
-                animeIds: [], // سيتم جلبه داخل الشاشة
-              ),
-            ),
-          );
-        }
-      } else if (context.mounted) {
-        Navigator.of(context).pop();
+      // ✅ التعديل القاتل: رجع الـ gameId فقط واقفل الديالوج
+      if (context.mounted) {
+        Navigator.of(context).pop(targetGameId);
       }
     } catch (e) {
       if (context.mounted) {

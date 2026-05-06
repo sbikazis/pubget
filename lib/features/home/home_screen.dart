@@ -24,7 +24,7 @@ import 'package:pubget/models/user_model.dart';
 import '../../core/constants/limits.dart'; 
 import 'package:pubget/features/settings/premium_details_screen.dart'; 
 
-import '../../services/monetization/ad_service.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -59,14 +59,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final userProvider = context.read<UserProvider>();
     _homeProvider = context.read<HomeProvider>();
     _authProvider = authProvider;
-    final adService = context.read<AdService>();
+    
 
     final currentUser = authProvider.user;
 
     if (currentUser != null) {
       _homeProvider.initialize(currentUser: currentUser);
       userProvider.syncUser(currentUser);
-      adService.tryShowMorningAd(isPremium: currentUser.isPremium);
+      
     } else {
       Future.delayed(const Duration(milliseconds: 100), () {
         _tryInitialize();
@@ -316,8 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   IconButton(
                     onPressed: () {
-                      final adService = context.read<AdService>();
-                      adService.tryShowMorningAd(isPremium: isPremium);
+                      
                     },
                     icon: const Icon(Icons.campaign_outlined),
                     tooltip: 'عرض إعلان تجريبي',

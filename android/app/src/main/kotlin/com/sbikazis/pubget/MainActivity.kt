@@ -1,4 +1,4 @@
-package com.example.pubget
+package com.sbikazis.pubget
 
 import io.flutter.embedding.android.FlutterActivity
 

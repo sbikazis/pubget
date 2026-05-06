@@ -41,6 +41,7 @@ dependencies:
 
   # Monetization
   google_mobile_ads: ^7.0.0
+  
 
   in_app_purchase: ^3.2.3
   flutter_slidable: ^4.0.3

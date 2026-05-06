@@ -4,19 +4,20 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ تم إضافة ا
 
 import '../../core/theme/app_colors.dart';
 import '../../models/group_model.dart';
-import '../../models/member_model.dart'; 
+import '../../models/member_model.dart';
 import 'package:pubget/providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/chat_provider.dart'; 
+import '../../providers/chat_provider.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
 
 import '../groups/group_details_screen.dart';
 import '../groups/create_group_screen.dart';
-import '../../core/constants/firestore_paths.dart'; 
+import '../../core/constants/firestore_paths.dart';
 import '../../services/firebase/firestore_service.dart'; // ✅ تم إضافة استيراد الخدمة
+import '../../services/monetization/ad_service.dart';
 
 class MyGroupsSection extends StatefulWidget {
   final bool showCreatedOnly;
@@ -34,6 +35,10 @@ class MyGroupsSection extends StatefulWidget {
 
 class _MyGroupsSectionState extends State<MyGroupsSection> {
   Future<void> _openGroupDetails(BuildContext context, GroupModel group) async {
+    final adService = context.read<AdService>();
+    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
+    await adService.showGroupClickAd(isPremium: isPremium);
+
     try {
       Navigator.push(
         context,
@@ -44,7 +49,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
     } catch (_) {
       final groupProvider = context.read<GroupProvider>();
       final fetched = await groupProvider.getGroup(groupId: group.id);
-      if (fetched != null && mounted) {
+      if (fetched!= null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => Scaffold(
@@ -76,21 +81,21 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
       ),
       builder: (context, memberSnap) {
         // نتحقق من وجود البيانات وحالة العضو
-        if (!memberSnap.hasData || !memberSnap.data!.exists) return const SizedBox.shrink();
-       
+        if (!memberSnap.hasData ||!memberSnap.data!.exists) return const SizedBox.shrink();
+
         final memberData = memberSnap.data!.data();
-        final lastReadAt = memberData?['lastReadAt']; 
-       
+        final lastReadAt = memberData?['lastReadAt'];
+
         return StreamBuilder<int>(
           // 🔥 تم حقن الـ userId هنا لإصلاح الخطأ ومنع احتساب رسائل المستخدم نفسه
           stream: chatProvider.streamUnreadCount(
             groupId: groupId,
-            userId: userId, 
+            userId: userId,
             lastReadAt: lastReadAt,
           ),
           builder: (context, countSnap) {
-            final count = countSnap.data ?? 0;
-            
+            final count = countSnap.data?? 0;
+
             // إذا كان العداد صفر، لا نعرض شيئاً
             if (count <= 0) return const SizedBox.shrink();
 
@@ -109,7 +114,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                 ],
               ),
               child: Text(
-                count > 99 ? '99+' : '$count',
+                count > 99? '99+' : '$count',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -126,7 +131,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
 
   Widget _buildGroupCard(BuildContext context, GroupModel group) {
     final bool isPromoted = group.isPromoted;
-    final borderColor = isPromoted ? AppColors.promotedBorder : Colors.transparent;
+    final borderColor = isPromoted? AppColors.promotedBorder : Colors.transparent;
 
     return InkWell(
       onTap: () => _openGroupDetails(context, group),
@@ -135,12 +140,12 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: borderColor, width: isPromoted ? 1.6 : 0),
+          border: Border.all(color: borderColor, width: isPromoted? 1.6 : 0),
         ),
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Stack( 
+            Stack(
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
@@ -148,12 +153,12 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                     width: 64,
                     height: 64,
                     child: group.imageUrl.isNotEmpty
-                        ? Image.network(group.imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) {
+                       ? Image.network(group.imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) {
                             return Container(color: AppColors.lightCard);
                           })
                         : Container(
                             color: Theme.of(context).brightness == Brightness.dark
-                                ? AppColors.darkCard
+                               ? AppColors.darkCard
                                 : AppColors.lightCard,
                             child: const Icon(Icons.group, size: 36, color: Colors.white70),
                           ),
@@ -197,7 +202,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    group.slogan.isNotEmpty ? group.slogan : group.description,
+                    group.slogan.isNotEmpty? group.slogan : group.description,
                     style: TextStyle(
                       fontSize: 13,
                       color: Theme.of(context).textTheme.bodySmall?.color,
@@ -212,12 +217,12 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                       const SizedBox(width: 6),
                       Text('${group.membersCount} عضو'),
                       const SizedBox(width: 12),
-                      if (group.type.isRoleplay && group.animeName != null) ...[
+                      if (group.type.isRoleplay && group.animeName!= null)...[
                         const Icon(Icons.movie, size: 14),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            group.animeName ?? '',
+                            group.animeName?? '',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -289,7 +294,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
           if (isLoading)
             const SizedBox(height: 220, child: Center(child: LoadingWidget(message: 'جاري تحميل المجموعات...'))),
 
-          if (!isLoading) ...[
+          if (!isLoading)...[
             if (!widget.showJoinedOnly)
               Padding(
                 padding: const EdgeInsets.only(bottom: 14.0),
@@ -316,7 +321,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                 },
               ),
 
-            if (!widget.showCreatedOnly && !widget.showJoinedOnly)
+            if (!widget.showCreatedOnly &&!widget.showJoinedOnly)
               const SizedBox(height: 18),
 
             if (!widget.showCreatedOnly)

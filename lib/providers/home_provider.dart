@@ -319,13 +319,7 @@ class HomeProvider extends ChangeNotifier {
               g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
 
-  Future<void> tryShowMorningAd({required bool isPremium}) async {
-    await _adService.tryShowMorningAd(isPremium: isPremium);
-  }
 
-  Future<void> tryShowGroupAd({required bool isPremium}) async {
-    await _adService.tryShowGroupAd(isPremium: isPremium);
-  }
 
   Future<void> refresh(UserModel user) async {
     await initialize(currentUser: user);

@@ -35,7 +35,7 @@ class GuessCharacterGameScreen extends StatefulWidget {
 
 class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   final TextEditingController _searchController = TextEditingController();
- 
+
   Map<String, String>? _selectedCharacter;
   bool _isSearching = false;
   bool _isConfirming = false;
@@ -153,8 +153,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
-                          ? Image.network(
+                        child: char['imageUrl']!= null && char['imageUrl']!.isNotEmpty
+                         ? Image.network(
                               char['imageUrl']!,
                               width: 50,
                               height: 60,
@@ -174,7 +174,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                             ),
                       ),
                       title: Text(
-                        char['name'] ?? '',
+                        char['name']?? '',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       trailing: const Icon(Icons.check_circle_outline, color: Colors.indigo),
@@ -183,8 +183,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                         Navigator.pop(context);
                         setState(() {
                           _selectedCharacter = {
-                            'name': char['name'] ?? '',
-                            'imageUrl': char['imageUrl'] ?? '',
+                            'name': char['name']?? '',
+                            'imageUrl': char['imageUrl']?? '',
                           };
                         });
                       },
@@ -202,7 +202,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
 
   Future<void> _handleStart() async {
     if (_selectedCharacter == null) return;
-   
+
     final gameProvider = Provider.of<GameProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final userId = userProvider.currentUser?.id;
@@ -216,7 +216,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         groupId: widget.groupId,
         gameId: widget.gameId,
         userId: userId,
-        animeIds: widget.animeIds ?? [], // نمرر قائمة فارغة للـ Firestore إذا كانت نول
+        animeIds: widget.animeIds?? [], // نمرر قائمة فارغة للـ Firestore إذا كانت نول
         characterName: _selectedCharacter!['name']!,
         validatedName: _selectedCharacter!['name'], // ✅ أضف
         validatedImageUrl: _selectedCharacter!['imageUrl'], // ✅ أضف
@@ -228,7 +228,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         gameId: widget.gameId,
         userId: userId,
       );
-     
+
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
@@ -247,12 +247,12 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
       stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
       builder: (context, snapshot) {
         // 1. حالة التحميل الأولي - لا نعمل pop هنا أبداً
-        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting ||!snapshot.hasData) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
         final game = snapshot.data!;
-       
+
         // 2. 🛡️ حماية: إذا انتهت اللعبة فعلاً، اخرج من الشاشة
         if (game.status.isOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -311,8 +311,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         }
 
         final bool isMeP1 = currentUserId == game.playerOneId;
-        final bool iAmReady = isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
-        final bool opponentReady = isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+        final bool iAmReady = isMeP1? game.isPlayerOneReady : game.isPlayerTwoReady;
+        final bool opponentReady = isMeP1? game.isPlayerTwoReady : game.isPlayerOneReady;
 
         return Scaffold(
           appBar: AppBar(
@@ -324,25 +324,26 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: StreamBuilder<int>(
                     stream: GameTimerManager.startSyncedCountdown(
-                      game.setupStartedAt ?? game.createdAt,
+                      game.setupStartedAt?? game.createdAt,
                       GameConstants.characterSelectionDuration,
                     ),
                     builder: (context, timerSnapshot) {
-                      final seconds = timerSnapshot.data ?? GameConstants.characterSelectionDuration;
-                      
-                      // إذا انتهى الوقت، نفذ التحكيم التلقائي
-                      if (seconds <= 0 && game.status.isInSetup) {
+                      final seconds = timerSnapshot.data?? GameConstants.characterSelectionDuration;
+
+                      // ✅ التعديل القاتل: إذا انتهى الوقت، نفذ التحكيم التلقائي
+                      // الحل: نشيك على isInSetup أو isLive عشان يغطي الـ 60ث والـ 40ث
+                      if (seconds <= 0 && (game.status.isInSetup || game.status.isLive)) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           _handleTimeout(game);
                         });
                       }
-                      
+
                       return Text(
                         "$seconds",
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: seconds < 10 ? Colors.red : Colors.blue
+                          color: seconds < 10? Colors.red : Colors.blue
                         ),
                       );
                     },
@@ -365,7 +366,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                 ),
                 const Divider(height: 40),
 
-                if (!iAmReady) ...[
+                if (!iAmReady)...[
                   const Text(
                     "اختر شخصيتك السرية:",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -387,15 +388,15 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       ),
                       const SizedBox(width: 10),
                       IconButton.filled(
-                        onPressed: _isSearching ? null : _onSearch,
+                        onPressed: _isSearching? null : _onSearch,
                         icon: _isSearching
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Icon(Icons.search),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
-                  if (_selectedCharacter != null) _buildSelectedCard(),
+                  if (_selectedCharacter!= null) _buildSelectedCard(),
                 ] else
                   const Expanded(
                     child: Column(
@@ -412,14 +413,14 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   ),
 
                 const Spacer(),
-               
+
                 if (!iAmReady)
                   AppButton(
                     text: "بدأ اللعبة",
                     isLoading: _isConfirming,
-                    onPressed: _selectedCharacter == null ? null : _handleStart,
+                    onPressed: _selectedCharacter == null? null : _handleStart,
                   ),
-               
+
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: () => gameProvider.finishGame(
@@ -443,9 +444,9 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Icon(ready ? Icons.check_circle : Icons.radio_button_unchecked,
-             color: ready ? Colors.green : Colors.grey, size: 30),
-        Text(ready ? "جاهز" : "يختار...", style: TextStyle(fontSize: 12, color: ready ? Colors.green : Colors.grey)),
+        Icon(ready? Icons.check_circle : Icons.radio_button_unchecked,
+             color: ready? Colors.green : Colors.grey, size: 30),
+        Text(ready? "جاهز" : "يختار...", style: TextStyle(fontSize: 12, color: ready? Colors.green : Colors.grey)),
       ],
     );
   }

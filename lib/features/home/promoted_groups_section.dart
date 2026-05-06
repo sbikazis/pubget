@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 
 import 'package:pubget/models/group_model.dart';
 import 'package:pubget/providers/home_provider.dart';
+import 'package:pubget/providers/auth_provider.dart';
 import 'package:pubget/widgets/loading_widget.dart';
 import 'package:pubget/widgets/empty_state_widget.dart';
 import 'package:pubget/widgets/app_button.dart';
 import 'package:pubget/core/theme/app_colors.dart';
 import 'package:pubget/features/groups/group_details_screen.dart'; // استيراد صفحة التفاصيل
+import 'package:pubget/services/monetization/ad_service.dart';
 
 class PromotedGroupsSection extends StatelessWidget {
   const PromotedGroupsSection({Key? key}) : super(key: key);
@@ -17,7 +19,7 @@ class PromotedGroupsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
 
-    // تم إزالة شرط الـ isLoading من هنا لأن الصفحة الرئيسية (HomeScreen) 
+    // تم إزالة شرط الـ isLoading من هنا لأن الصفحة الرئيسية (HomeScreen)
     // تدير حالة التحميل بشكل مركزي، ووجوده هنا يسبب تعليق الواجهة.
 
     // نستخدم القائمة المدمجة (مروجة + مقترحة) التي أنشأناها في الـ Provider
@@ -74,28 +76,33 @@ class _DiscoveryGroupCard extends StatelessWidget {
       colors: [
         const Color(0xFFFFD700), // ذهبي ساطع
         const Color(0xFFB8860B), // ذهبي داكن (ملك")
-        const Color(0xFFFFD700), 
+        const Color(0xFFFFD700),
       ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: group.id)),
-      ),
+      onTap: () async {
+        final adService = Provider.of<AdService>(context, listen: false);
+        final isPremium = Provider.of<AuthProvider>(context, listen: false).user?.isPremium?? false;
+        await adService.showGroupClickAd(isPremium: isPremium);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: group.id)),
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           // إذا كانت مروجة نطبق التدرج، وإلا نستخدم لون الكارت العادي
-          gradient: group.isPromoted ? goldenGradient : null,
-          color: group.isPromoted ? null : (isDark ? AppColors.darkCard : AppColors.lightCard),
+          gradient: group.isPromoted? goldenGradient : null,
+          color: group.isPromoted? null : (isDark? AppColors.darkCard : AppColors.lightCard),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: group.isPromoted 
-                ? const Color(0xFFB8860B).withOpacity(0.4) 
+              color: group.isPromoted
+               ? const Color(0xFFB8860B).withOpacity(0.4)
                 : Colors.black12,
               blurRadius: 8,
               offset: const Offset(0, 4),
@@ -110,7 +117,7 @@ class _DiscoveryGroupCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
                 child: group.imageUrl.isNotEmpty
-                    ? Image.network(
+                  ? Image.network(
                         group.imageUrl,
                         width: 110,
                         height: 110,
@@ -138,7 +145,7 @@ class _DiscoveryGroupCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: group.isPromoted ? Colors.black87 : (isDark ? Colors.white : Colors.black),
+                          color: group.isPromoted? Colors.black87 : (isDark? Colors.white : Colors.black),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -146,9 +153,9 @@ class _DiscoveryGroupCard extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            group.type.name == "roleplay" ? Icons.theater_comedy : Icons.public,
+                            group.type.name == "roleplay"? Icons.theater_comedy : Icons.public,
                             size: 14,
-                            color: group.isPromoted ? Colors.black54 : Colors.grey,
+                            color: group.isPromoted? Colors.black54 : Colors.grey,
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -156,7 +163,7 @@ class _DiscoveryGroupCard extends StatelessWidget {
                               "${group.type.name.toUpperCase()} • ${group.membersCount} عضو",
                               style: TextStyle(
                                 fontSize: 12,
-                                color: group.isPromoted ? Colors.black54 : Colors.grey,
+                                color: group.isPromoted? Colors.black54 : Colors.grey,
                               ),
                             ),
                           ),
@@ -171,8 +178,8 @@ class _DiscoveryGroupCard extends StatelessWidget {
                           onPressed: () {
                             final homeProvider = Provider.of<HomeProvider>(context, listen: false);
                             homeProvider.joinGroup(user: homeProvider.currentUser!, group: group)
-                              .then((errorMessage) {
-                                if (errorMessage != null) {
+                             .then((errorMessage) {
+                                if (errorMessage!= null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text(errorMessage)),
                                   );

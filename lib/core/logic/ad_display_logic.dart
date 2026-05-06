@@ -15,9 +15,9 @@ class AdDisplayDecision {
 class AdDisplayLogic {
   AdDisplayLogic._();
 
-  // ✅ إضافة دالة فحص الحد اليومي (3 إعلانات كحد أقصى)
+  // ✅ فحص الحد اليومي (إعلانين كحد أقصى لدخول المجموعات)
   static AdDisplayDecision checkDailyLimit(int adsShownToday) {
-    if (adsShownToday >= 3) {
+    if (adsShownToday >= 2) {
       return const AdDisplayDecision(
         shouldShow: false,
         reason: "daily_limit_reached",
@@ -29,38 +29,8 @@ class AdDisplayLogic {
     );
   }
 
-  // First open in the morning rule
-  static AdDisplayDecision checkMorningAd(
-    DateTime? lastAdTime,
-  ) {
-    AdDisplayDecision decision;
-
-    // Never shown before
-    if (lastAdTime == null) {
-      decision = const AdDisplayDecision(
-        shouldShow: true,
-        reason: "first_time_open",
-      );
-    }
-    // New day
-    else if (TimeUtils.isNewDay(lastAdTime)) {
-      decision = const AdDisplayDecision(
-        shouldShow: true,
-        reason: "new_day",
-      );
-    } else {
-      decision = const AdDisplayDecision(
-        shouldShow: false,
-        reason: "already_shown_today",
-      );
-    }
-
-    debugPrint('📢 Ad Logic (Morning): ${decision.reason} -> Should Show: ${decision.shouldShow}');
-    return decision;
-  }
-
-  // ✅ تعديل دالة الـ 5 دقائق (300 ثانية) للتأكد من الفاصل الزمني
-  static AdDisplayDecision checkFiveMinutesRule(
+  // ✅ دالة الـ 10 دقائق للتأكد من الفاصل الزمني
+  static AdDisplayDecision checkTenMinutesRule(
     DateTime? lastAdTime,
   ) {
     AdDisplayDecision decision;
@@ -72,13 +42,13 @@ class AdDisplayLogic {
         reason: "first_time",
       );
     } else {
-      // التحقق من مرور 5 دقائق (300 ثانية)
-      final passed = TimeUtils.hasMinutesPassed(lastAdTime, 5);
+      // التحقق من مرور 10 دقائق
+      final passed = TimeUtils.hasMinutesPassed(lastAdTime, 10);
 
       if (passed) {
         decision = const AdDisplayDecision(
           shouldShow: true,
-          reason: "five_minutes_passed",
+          reason: "ten_minutes_passed",
         );
       } else {
         decision = const AdDisplayDecision(
