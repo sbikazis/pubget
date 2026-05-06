@@ -5,9 +5,9 @@ import '../providers/chat_provider.dart';
 import '../models/game_model.dart';
 import '../models/member_model.dart';
 import '../core/constants/game_status.dart';
-import '../core/constants/game_constants.dart'; // ✅ إضافة استيراد الثوابت
-import '../core/logic/game_logic_validator.dart'; // ✅ إضافة استيراد الفحص
-import '../core/utils/game_timer_manager.dart'; // ✅ إضافة استيراد العداد
+import '../core/constants/game_constants.dart';
+import '../core/logic/game_logic_validator.dart';
+import '../core/utils/game_timer_manager.dart';
 import 'guess_character_dialog.dart';
 
 class GameBottomBar extends StatefulWidget {
@@ -28,28 +28,25 @@ class GameBottomBar extends StatefulWidget {
 
 class _GameBottomBarState extends State<GameBottomBar> {
   final TextEditingController _controller = TextEditingController();
+  bool _turnTimeoutCalled = false; // ✅ منع استدعاء processAutoJudge أكثر من مرة
 
-  // تحديد دور اللاعب الحالي
-  bool get isMyTurn => widget.game.currentTurnUserId == widget.currentMember.userId;
+  bool get isMyTurn =>
+      widget.game.currentTurnUserId == widget.currentMember.userId;
 
-  // ✅ تحديد نوع الدور (هل هو دور سؤال أم جواب؟)
-  bool get isAnswerPhase => widget.game.lastActionType == 'question' && isMyTurn;
-  bool get isQuestionPhase => widget.game.lastActionType!= 'question' && isMyTurn;
+  bool get isAnswerPhase =>
+      widget.game.lastActionType == 'question' && isMyTurn;
+
+  bool get isQuestionPhase =>
+      widget.game.lastActionType != 'question' && isMyTurn;
 
   @override
   Widget build(BuildContext context) {
-    // 1. حالة الانتظار (ليس دورك)
     if (!isMyTurn) {
       return _buildWaitingBar();
     }
-
-    // 2. حالة دور الأكشن (أنت السائل/المجيب)
     return _buildActionBar();
   }
 
-  // ==========================================
-  // 🟢 شريط الأكشن (دورك سواء سؤال أو جواب)
-  // ==========================================
   Widget _buildActionBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -60,30 +57,24 @@ class _GameBottomBarState extends State<GameBottomBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ✅ إضافة العداد التنازلي المرئي
           _buildTimerProgress(),
-
           Row(
             children: [
-              // زر الانسحاب (موجود دائماً)
               IconButton(
                 icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
                 onPressed: () => _handleQuit(),
               ),
-
-              // زر التخمين (مفعل فقط في دور السؤال)
               if (isQuestionPhase)
                 IconButton(
                   icon: const Icon(Icons.ads_click, color: Colors.amber),
                   onPressed: () => _showGuessDialog(),
                 ),
-
               Expanded(
                 child: TextField(
                   controller: _controller,
                   decoration: InputDecoration(
                     hintText: isQuestionPhase
-                     ? "اسأل سؤالاً (إجابته نعم/لا)..."
+                        ? "اسأل سؤالاً (إجابته نعم/لا)..."
                         : "أجب بـ (نعم) أو (لا) فقط...",
                     hintStyle: const TextStyle(fontSize: 13),
                     border: OutlineInputBorder(
@@ -92,12 +83,11 @@ class _GameBottomBarState extends State<GameBottomBar> {
                     ),
                     fillColor: Colors.grey[200],
                     filled: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 15),
                   ),
                 ),
               ),
-
-              // زر الإرسال
               IconButton(
                 icon: const Icon(Icons.send, color: Colors.blue),
                 onPressed: () => _handleSend(),
@@ -109,24 +99,40 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
-  // ✅ ودجت العداد المرئي (جديد)
   Widget _buildTimerProgress() {
     return StreamBuilder<int>(
       stream: GameTimerManager.startSyncedCountdown(
-        widget.game.lastActionAt?? widget.game.createdAt,
-        GameConstants.turnDuration
+        widget.game.lastActionAt ?? widget.game.createdAt,
+        GameConstants.turnDuration,
       ),
       builder: (context, snapshot) {
-        final seconds = snapshot.data?? GameConstants.turnDuration;
-        final percent = seconds / GameConstants.turnDuration;
+        final seconds = snapshot.data ?? GameConstants.turnDuration;
+        final percent =
+            (seconds / GameConstants.turnDuration).clamp(0.0, 1.0);
+
+        // ✅ انتهاء وقت الدور ينهي اللعبة — مع حماية من التكرار
+        if (seconds <= 0 &&
+            isMyTurn &&
+            widget.game.status == GameStatus.guessing &&
+            !_turnTimeoutCalled) {
+          _turnTimeoutCalled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              context
+                  .read<GameProvider>()
+                  .processAutoJudge(widget.groupId, widget.game);
+            }
+          });
+        }
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
+          padding:
+              const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
           child: LinearProgressIndicator(
             value: percent,
             backgroundColor: Colors.grey[300],
             valueColor: AlwaysStoppedAnimation<Color>(
-              seconds < 10? Colors.red : Colors.green,
+              seconds < 10 ? Colors.red : Colors.green,
             ),
             minHeight: 2,
           ),
@@ -135,9 +141,6 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
-  // ==========================================
-  // 🟡 شريط الانتظار (مجمد)
-  // ==========================================
   Widget _buildWaitingBar() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -145,14 +148,15 @@ class _GameBottomBarState extends State<GameBottomBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildTimerProgress(), // حتى في الانتظار نرى عداد الخصم
+          _buildTimerProgress(),
           Row(
             children: [
               const Expanded(
                 child: Text(
                   "بانتظار حركة الخصم... ⏳",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                  style: TextStyle(
+                      fontStyle: FontStyle.italic, color: Colors.grey),
                 ),
               ),
               IconButton(
@@ -166,15 +170,10 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
-  // ==========================================
-  // ⚙️ العمليات (Logic)
-  // ==========================================
-
   void _handleSend() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    // ✅ التعديل الذهبي: إذا كان دور الجواب، نتحقق عبر الـ Validator
     if (isAnswerPhase) {
       if (!GameLogicValidator.isValidGameAnswer(text)) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -187,7 +186,6 @@ class _GameBottomBarState extends State<GameBottomBar> {
       }
     }
 
-    // إرسال الرسالة
     await context.read<ChatProvider>().sendTextMessage(
       groupId: widget.groupId,
       messageId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -197,17 +195,17 @@ class _GameBottomBarState extends State<GameBottomBar> {
       gameSlot: widget.game.gameSlot,
     );
 
-    // بعد الإرسال
     if (isQuestionPhase) {
-      // سؤال: أعط الدور للمجيب فقط
-      await context.read<GameProvider>().updateLastAction(
-        widget.groupId, widget.game.id, 'question');
-      await context.read<GameProvider>().switchTurn(
-        widget.groupId, widget.game.id);
+      await context
+          .read<GameProvider>()
+          .updateLastAction(widget.groupId, widget.game.id, 'question');
+      await context
+          .read<GameProvider>()
+          .switchTurn(widget.groupId, widget.game.id);
     } else {
-      // جواب: لا تبدل الدور، فقط صفّر النوع ليصبح السائل هو المجيب السابق
-      await context.read<GameProvider>().updateLastAction(
-        widget.groupId, widget.game.id, null);
+      await context
+          .read<GameProvider>()
+          .updateLastAction(widget.groupId, widget.game.id, null);
     }
 
     _controller.clear();
@@ -229,23 +227,29 @@ class _GameBottomBarState extends State<GameBottomBar> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("انسحاب"),
-        content: const Text("هل أنت متأكد من الانسحاب؟ ستعتبر خاسراً في هذه اللعبة."),
+        content: const Text(
+            "هل أنت متأكد من الانسحاب؟ ستعتبر خاسراً في هذه اللعبة."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("إلغاء")),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("إلغاء")),
           TextButton(
             onPressed: () {
               context.read<GameProvider>().finishGame(
-                widget.groupId,
-                widget.game.id,
-                winnerId: widget.game.playerOneId == widget.currentMember.userId
-                 ? widget.game.playerTwoId
-                    : widget.game.playerOneId,
-                isCancelled: true,
-                reason: "انسحاب اللاعب ${widget.currentMember.displayName}"
-              );
+                    widget.groupId,
+                    widget.game.id,
+                    winnerId:
+                        widget.game.playerOneId == widget.currentMember.userId
+                            ? widget.game.playerTwoId
+                            : widget.game.playerOneId,
+                    isCancelled: true,
+                    reason:
+                        "انسحاب اللاعب ${widget.currentMember.displayName}",
+                  );
               Navigator.pop(ctx);
             },
-            child: const Text("انسحاب", style: TextStyle(color: Colors.red)),
+            child:
+                const Text("انسحاب", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

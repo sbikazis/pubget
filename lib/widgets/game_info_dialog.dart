@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart';
 import '../models/member_model.dart';
+import '../features/groups/events/guess_character_game_screen.dart';
 
 class GameInfoDialog extends StatefulWidget {
   final String groupId;
@@ -92,6 +93,12 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
   void _handleConfirm(BuildContext context) async {
     setState(() => _isLoading = true);
 
+    // ✅ حفظ Navigator و ScaffoldMessenger قبل أي await
+    // هذا يمنع استخدام context بعد ما يصبح غير صالح
+    final navigator = Navigator.of(context);
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final messenger = ScaffoldMessenger.of(context);
+
     final gameProv = context.read<GameProvider>();
     final chatProv = context.read<ChatProvider>();
 
@@ -138,14 +145,27 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
         targetGameId = widget.gameId;
       }
 
-      // ✅ التعديل القاتل: رجع الـ gameId فقط واقفل الديالوج
-      if (context.mounted) {
-        Navigator.of(context).pop(targetGameId);
+      if (mounted && targetGameId != null) {
+        navigator.pop(); // ✅ آمن لأنه محفوظ قبل الـ await
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          rootNavigator.push(
+            MaterialPageRoute(
+              builder: (_) => GuessCharacterGameScreen(
+                groupId: widget.groupId,
+                gameId: targetGameId!,
+                animeIds: [],
+              ),
+            ),
+          );
+        }
+      } else if (mounted) {
+        navigator.pop(); // ✅ آمن
       }
     } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        navigator.pop(); // ✅ آمن — يُغلق الديالوج فقط
+        messenger.showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
       }

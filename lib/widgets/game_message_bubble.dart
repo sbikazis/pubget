@@ -5,7 +5,6 @@ import '../models/member_model.dart';
 import '../providers/game_provider.dart';
 import '../core/constants/game_status.dart';
 import 'game_info_dialog.dart';
-import '../features/groups/events/guess_character_game_screen.dart'; // ✅ أضف هذا
 
 class GameMessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -21,11 +20,13 @@ class GameMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // تحديد اللون بناءً على الـ Slot
     final bool isSlotOne = message.gameSlot == 'game_1';
-    final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0);
+    final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0); // ذهبي أو فضي
     final Color textColor = Colors.black87;
 
     return StreamBuilder(
+      // مراقبة حالة هذه اللعبة تحديداً لتحديث الأزرار برمجياً
       stream: context.read<GameProvider>().streamCurrentGame(groupId, message.gameId ?? ''),
       builder: (context, snapshot) {
         final game = snapshot.data;
@@ -44,6 +45,7 @@ class GameMessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // الرأس: أيقونة اللعبة + اسم المرسل
               Row(
                 children: [
                   Icon(Icons.stars, color: gameColor, size: 20),
@@ -60,7 +62,11 @@ class GameMessageBubble extends StatelessWidget {
                 ],
               ),
               const Divider(height: 20),
+
+              // المحتوى: نص الحدث (إعلان، فوز، انضمام)
               _buildMessageContent(message, gameColor),
+
+              // الأزرار التفاعلية (تظهر فقط إذا كانت اللعبة تنتظر خصماً)
               if (message.gameAction == 'challenge' && game != null && game.status == GameStatus.waitingForOpponent)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -84,6 +90,9 @@ class GameMessageBubble extends StatelessWidget {
     );
   }
 
+  // ==========================================
+  // 💬 بناء نص الرسالة بناءً على نوع الحدث
+  // ==========================================
   Widget _buildMessageContent(MessageModel msg, Color accentColor) {
     String text = "";
     IconData icon = Icons.info;
@@ -135,27 +144,13 @@ class GameMessageBubble extends StatelessWidget {
       return;
     }
 
-    // ✅ التعديل القاتل
-    showDialog<String>(
+    showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) => GameInfoDialog(
         groupId: groupId,
         currentMember: currentMember,
-        gameId: message.gameId,
+        gameId: message.gameId, // تمرير الـ ID يحول الديالوج لوضع الانضمام
       ),
-    ).then((gameId) {
-      if (gameId != null && context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => GuessCharacterGameScreen(
-              groupId: groupId,
-              gameId: gameId,
-              animeIds: [],
-            ),
-          ),
-        );
-      }
-    });
+    );
   }
 }
