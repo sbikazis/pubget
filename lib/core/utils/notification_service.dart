@@ -13,7 +13,7 @@ class NotificationService {
 
   static const List<String> _sounds = [
     'an1', 'an2', 'an3', 'an4', 'an5',
-    'an6', 'an7', 'an8', 'an9', 'sound_10',
+    'an6', 'an7', 'an8', 'an9', 'an10',
     'an11', 'an12', 'an13', 'an14', 'an15',
     'an16', 'an17', 'an18', 'an19', 'an20',
     'an21',
