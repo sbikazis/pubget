@@ -16,18 +16,12 @@ import '../../../models/user_model.dart';
 import '../../../core/constants/roles.dart';
 import '../../../core/constants/firestore_paths.dart';
 import '../../../core/constants/game_status.dart';
-
 import '../../../services/monetization/ad_service.dart';
-
-// ✅ استيراد المكونات
 import 'package:pubget/features/groups/chat/massage_bubble.dart';
 import 'package:pubget/features/groups/chat/massage_input_bar.dart';
 import '../../../widgets/game_bottom_bar.dart';
 import '../../../widgets/game_message_bubble.dart';
-
 import '../../../widgets/empty_state_widget.dart';
-
-// ✅ استيراد شاشة اللعبة للنقل الآلي
 import '../events/guess_character_game_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -47,9 +41,11 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageModel? _replyingMessage;
   List<MessageModel> _cachedMessages = [];
   bool _isInitialLoad = true;
-  
-  // ✅ مجموعة لتتبع الألعاب التي تم الانتقال إليها لمنع تكرار فتح الشاشة
   final Set<String> _navigatedGameIds = {};
+
+  // ✅ متغيرات التمرير الذكي
+  DateTime? _lastReadAt;
+  bool _initialScrollDone = false;
 
   @override
   void initState() {
@@ -57,14 +53,11 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final currentUser = userProvider.currentUser;
-      final isPremium = currentUser?.isPremium ?? false;
 
       if (currentUser != null) {
         _syncPremiumStatus(currentUser);
         _loadCurrentMember(currentUser.id);
         _updateReadStatus(currentUser.id);
-
-        
       }
     });
   }
@@ -87,7 +80,6 @@ class _ChatScreenState extends State<ChatScreen> {
         groupId: widget.groupId,
         userId: currentUser.id,
       );
-
       if (member != null && member.isPremium != currentUser.isPremium) {
         await FirebaseFirestore.instance
             .collection(FirestorePaths.groupMembers(widget.groupId))
@@ -113,22 +105,73 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadCurrentMember(String userId) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
-      final member = await chatProvider.getMember(groupId: widget.groupId, userId: userId);
+      final member = await chatProvider.getMember(
+          groupId: widget.groupId, userId: userId);
       if (!mounted) return;
+
+      // ✅ حفظ lastReadAt قبل تحديث الحالة
+      _lastReadAt = member?.lastReadAt;
+
       setState(() => _currentMember = member);
+
+      // ✅ تشغيل التمرير الذكي بعد جلب العضو
+      // نتأكد أن الرسائل محملة قبل التمرير
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToFirstUnread();
+      });
     } catch (e) {
       debugPrint('Failed to load current member: $e');
     }
   }
 
-  void _scrollToBottom({bool animate = true, bool force = false}) {
+  // ✅ التمرير الذكي — أول رسالة غير مقروءة
+  void _scrollToFirstUnread() {
+    if (_initialScrollDone) return;
     if (!_scrollController.hasClients) return;
-    if (!force && _scrollController.offset < _scrollController.position.maxScrollExtent - 200) {
+    if (_cachedMessages.isEmpty) return;
+
+    _initialScrollDone = true;
+
+    // لا يوجد lastReadAt — اذهب لآخر رسالة
+    if (_lastReadAt == null) {
+      _scrollController.jumpTo(
+        _scrollController.position.maxScrollExtent,
+      );
       return;
     }
+
+    // ابحث عن أول رسالة وصلت بعد آخر قراءة
+    final firstUnreadIndex = _cachedMessages.indexWhere(
+      (m) => m.createdAt.isAfter(_lastReadAt!),
+    );
+
+    // لا توجد رسائل جديدة — اذهب لآخر رسالة
+    if (firstUnreadIndex == -1) {
+      _scrollController.jumpTo(
+        _scrollController.position.maxScrollExtent,
+      );
+      return;
+    }
+
+    // ✅ اذهب لأول رسالة غير مقروءة
+    final estimatedOffset = firstUnreadIndex * 80.0;
+    _scrollController.jumpTo(
+      estimatedOffset.clamp(
+        0.0,
+        _scrollController.position.maxScrollExtent,
+      ),
+    );
+  }
+
+  void _scrollToBottom({bool animate = true, bool force = false}) {
+    if (!_scrollController.hasClients) return;
+    if (!force &&
+        _scrollController.offset <
+            _scrollController.position.maxScrollExtent - 200) return;
     final position = _scrollController.position.maxScrollExtent;
     if (animate) {
-      _scrollController.animateTo(position, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      _scrollController.animateTo(position,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     } else {
       _scrollController.jumpTo(position);
     }
@@ -141,7 +184,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
       }
-      _scrollController.animateTo(targetOffset, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+      _scrollController.animateTo(targetOffset,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut);
     }
   }
 
@@ -161,7 +206,8 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text,
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+      replyText:
+          replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
     _updateReadStatus(_currentMember!.userId);
@@ -182,7 +228,8 @@ class _ChatScreenState extends State<ChatScreen> {
       mediaType: 'image',
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+      replyText:
+          replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
 
     _updateReadStatus(_currentMember!.userId);
@@ -209,22 +256,41 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Expanded(
                 child: StreamBuilder<List<MessageModel>>(
-                  stream: chatProvider.streamMessages(groupId: widget.groupId),
+                  stream:
+                      chatProvider.streamMessages(groupId: widget.groupId),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _isInitialLoad) {
                       return const Center(child: CircularProgressIndicator());
                     }
+
                     if (snapshot.hasData) {
-                      if (snapshot.data!.length > _cachedMessages.length) {
-                        final userProvider = Provider.of<UserProvider>(context, listen: false);
+                      final isFirstLoad = _isInitialLoad;
+                      final newMessages = snapshot.data!;
+
+                      if (newMessages.length > _cachedMessages.length &&
+                          !_isInitialLoad) {
+                        // ✅ رسائل جديدة وصلت بعد التحميل الأول
+                        final userProvider = Provider.of<UserProvider>(
+                            context,
+                            listen: false);
                         final currentUserId = userProvider.currentUser?.id;
                         if (currentUserId != null) {
-                          Future.microtask(() => _updateReadStatus(currentUserId));
+                          Future.microtask(
+                              () => _updateReadStatus(currentUserId));
                         }
                       }
-                      _cachedMessages = snapshot.data!;
-                      _isInitialLoad = false;
-                    } // ✅ تم إصلاح إغلاق القوس هنا
+
+                      _cachedMessages = newMessages;
+
+                      if (isFirstLoad) {
+                        _isInitialLoad = false;
+                        // ✅ أول تحميل — شغّل التمرير الذكي
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _scrollToFirstUnread();
+                        });
+                      }
+                    }
 
                     if (_cachedMessages.isEmpty) {
                       return const Center(
@@ -235,7 +301,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       );
                     }
-                    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
+                    // ✅ التمرير التلقائي فقط بعد التحميل الأول
+                    if (_initialScrollDone) {
+                      WidgetsBinding.instance
+                          .addPostFrameCallback((_) => _scrollToBottom());
+                    }
 
                     return ListView.builder(
                       controller: _scrollController,
@@ -243,12 +314,20 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemCount: _cachedMessages.length,
                       itemBuilder: (context, index) {
                         final message = _cachedMessages[index];
-                        final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
+                        final isMe = _currentMember != null &&
+                            message.senderId == _currentMember!.userId;
 
-                        if (message.gameId != null && message.gameAction != null) {
+                        if (message.gameId != null &&
+                            message.gameAction != null) {
                           return GameMessageBubble(
                             message: message,
-                            currentMember: _currentMember ?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()),
+                            currentMember: _currentMember ??
+                                MemberModel(
+                                  userId: '',
+                                  groupId: widget.groupId,
+                                  role: Roles.member,
+                                  joinedAt: DateTime.now(),
+                                ),
                             groupId: widget.groupId,
                           );
                         }
@@ -261,8 +340,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                 role: message.senderRole ?? Roles.member,
                                 joinedAt: DateTime.now(),
                                 displayName: message.senderName,
-                                characterImageUrl: isRoleplay ? message.senderAvatar : null,
-                                realUserImageUrl: !isRoleplay ? message.senderAvatar : null,
+                                characterImageUrl:
+                                    isRoleplay ? message.senderAvatar : null,
+                                realUserImageUrl:
+                                    !isRoleplay ? message.senderAvatar : null,
                                 isPremium: message.senderIsPremium,
                               );
 
@@ -272,7 +353,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           sender: sender,
                           isMe: isMe,
                           groupId: widget.groupId,
-                          onReply: (msg) => setState(() => _replyingMessage = msg),
+                          onReply: (msg) =>
+                              setState(() => _replyingMessage = msg),
                           onTapReply: (replyId) => _scrollToMessage(replyId),
                         );
                       },
@@ -287,48 +369,61 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (context, gameSnapshot) {
                     final activeGames = gameSnapshot.data ?? [];
 
-                    // ✅ البحث عن لعبة تخص المستخدم سواء في حالة setup أو guessing
                     GameModel? activeGameForMe;
                     try {
                       activeGameForMe = activeGames.firstWhere(
-                        (g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
-                            (g.status == GameStatus.guessing || g.status == GameStatus.setup),
+                        (g) =>
+                            (g.playerOneId == _currentMember!.userId ||
+                                g.playerTwoId == _currentMember!.userId) &&
+                            (g.status == GameStatus.guessing ||
+                                g.status == GameStatus.setup),
                       );
                     } catch (_) {
                       activeGameForMe = null;
                     }
 
                     if (activeGameForMe != null) {
-                      // ✅ حل مشكلة تعليق الخصم: النقل الآلي عند حالة التجهيز
-                      if (activeGameForMe.status == GameStatus.setup && !_navigatedGameIds.contains(activeGameForMe.id)) {
+                      // ✅ guessing أولاً
+                      if (activeGameForMe.status == GameStatus.guessing) {
+                        _navigatedGameIds.remove(activeGameForMe.id);
+                        return GameBottomBar(
+                          groupId: widget.groupId,
+                          game: activeGameForMe,
+                          currentMember: _currentMember!,
+                        );
+                      }
+
+                      // ✅ setup — فتح الشاشة مرة واحدة فقط
+                      if (activeGameForMe.status == GameStatus.setup &&
+                          !_navigatedGameIds.contains(activeGameForMe.id)) {
                         _navigatedGameIds.add(activeGameForMe.id);
                         Future.microtask(() {
                           if (mounted) {
                             List<int> allRelevantIds = [];
-                            if (group?.animeId != null) allRelevantIds.add(group!.animeId);
-                            if (group?.franchiseIds != null) allRelevantIds.addAll(group!.franchiseIds!.whereType<int>());
-
+                            if (group?.animeId != null) {
+                              allRelevantIds.add(group!.animeId);
+                            }
+                            if (group?.franchiseIds != null) {
+                              allRelevantIds.addAll(
+                                  group!.franchiseIds!.whereType<int>());
+                            }
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => GuessCharacterGameScreen(
                                   groupId: widget.groupId,
                                   gameId: activeGameForMe!.id,
-                                  animeIds: allRelevantIds.isEmpty ? null : allRelevantIds,
+                                  animeIds: allRelevantIds.isEmpty
+                                      ? null
+                                      : allRelevantIds,
                                 ),
                               ),
                             );
                           }
                         });
-                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
-                      }
-
-                      // إذا كانت اللعبة في مرحلة التخمين، اعرض الشريط
-                      if (activeGameForMe.status == GameStatus.guessing) {
-                        return GameBottomBar(
-                          groupId: widget.groupId,
-                          game: activeGameForMe,
-                          currentMember: _currentMember!,
+                        return const SizedBox(
+                          height: 80,
+                          child: Center(child: CircularProgressIndicator()),
                         );
                       }
                     }

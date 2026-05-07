@@ -1,4 +1,3 @@
-// lib/app.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -55,11 +54,11 @@ class PubgetApp extends StatelessWidget {
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
+        Provider(
+            create: (_) =>
+                GroupJoinValidator(firestoreService: firestore)),
 
         // ================= PROVIDERS =================
-        
-        // ⚠️ التعديل: تم نقل UserProvider للأعلى لأن AuthProvider يحتاجه الآن
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             firestoreService: context.read<FirestoreService>(),
@@ -68,12 +67,10 @@ class PubgetApp extends StatelessWidget {
 
         ChangeNotifierProvider(
           create: (context) {
-            // ✅ الإصلاح: تمرير المعامل الثاني (UserProvider) المطلوب
             final authProvider = AuthProvider(
               context.read<AuthService>(),
-              context.read<UserProvider>(), 
+              context.read<UserProvider>(),
             );
-            // ملاحظة: listenToAuthState يتم استدعاؤه تلقائياً داخل الـ Constructor الآن
             return authProvider;
           },
         ),
@@ -131,18 +128,26 @@ class PubgetApp extends StatelessWidget {
         ),
       ],
 
+      // ✅ تسجيل FCM Token بعد تسجيل الدخول
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
+          // ✅ عند تسجيل الدخول نسجل الـ Token فوراً
+          if (auth.isLoggedIn && auth.user != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              context.read<NotificationsProvider>().registerToken(
+                    auth.user!.id,
+                  );
+            });
+          }
+
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-
-            // 🔥 الإصلاح الجوهري للموجه الذكي (Home Logic)
+            themeMode:
+                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: _getHome(auth),
-
             routes: {
               '/login': (_) => const LoginScreen(),
               '/register': (_) => const RegisterScreen(),
@@ -156,16 +161,10 @@ class PubgetApp extends StatelessWidget {
     );
   }
 
-  /// دالة الموجه لتبسيط كود MaterialApp
   Widget _getHome(AuthProvider auth) {
-    // 1. إذا كان التطبيق لا يزال يتحقق من حالة Firebase
-    if (auth.isLoading) {
-      return const SplashScreen();
-    }
+    if (auth.isLoading) return const SplashScreen();
 
-    // 2. إذا وجد مستخدم مسجل الدخول
     if (auth.isLoggedIn) {
-      // نتحقق هل أكمل بيانات الملف الشخصي أم لا
       if (auth.user?.isProfileCompleted == true) {
         return const HomeScreen();
       } else {
@@ -173,7 +172,6 @@ class PubgetApp extends StatelessWidget {
       }
     }
 
-    // 3. إذا لم يوجد تسجيل دخول، نذهب لصفحة الدخول
     return const LoginScreen();
   }
 }

@@ -36,12 +36,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   Map<String, String>? _selectedCharacter;
   bool _isSearching = false;
   bool _isConfirming = false;
-  bool _timeoutCalled = false; // ✅ منع استدعاء _handleTimeout أكثر من مرة
-
-  @override
-  void initState() {
-    super.initState();
-  }
+  bool _timeoutCalled = false;
+  bool _popCalled = false; // ✅ منع تكرار الـ pop
 
   void _handleTimeout(GameModel game) {
     if (!mounted) return;
@@ -143,10 +139,12 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   itemBuilder: (context, index) {
                     final char = characters[index];
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                        child: char['imageUrl'] != null &&
+                                char['imageUrl']!.isNotEmpty
                             ? Image.network(
                                 char['imageUrl']!,
                                 width: 50,
@@ -170,7 +168,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                         char['name'] ?? '',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      trailing: const Icon(Icons.check_circle_outline, color: Colors.indigo),
+                      trailing: const Icon(Icons.check_circle_outline,
+                          color: Colors.indigo),
                       onTap: () {
                         Navigator.pop(context);
                         setState(() {
@@ -221,7 +220,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -235,19 +235,24 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     return StreamBuilder<GameModel?>(
       stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            !snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
 
         final game = snapshot.data!;
 
+        // 🛡️ اللعبة انتهت — اخرج فوراً
         if (game.status.isOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && Navigator.canPop(context)) Navigator.pop(context);
           });
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
 
+        // شاشة انتظار للمنشئ
         if (game.status == GameStatus.waitingForOpponent &&
             currentUserId == game.playerOneId) {
           return Scaffold(
@@ -278,7 +283,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       isCancelled: true,
                       reason: "إلغاء الطلب من المنشئ",
                     ),
-                    child: const Text("إلغاء الطلب", style: TextStyle(color: Colors.red)),
+                    child: const Text("إلغاء الطلب",
+                        style: TextStyle(color: Colors.red)),
                   ),
                 ],
               ),
@@ -286,19 +292,22 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
           );
         }
 
+        // ✅ الانتقال عند جاهزية الطرفين — مرة واحدة فقط بدون delay
         if (game.status == GameStatus.guessing &&
             game.isPlayerOneReady &&
-            game.isPlayerTwoReady) {
+            game.isPlayerTwoReady &&
+            !_popCalled) {
+          _popCalled = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            Future.delayed(const Duration(seconds: 2), () {
-              if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-            });
+            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
           });
         }
 
         final bool isMeP1 = currentUserId == game.playerOneId;
-        final bool iAmReady = isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
-        final bool opponentReady = isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+        final bool iAmReady =
+            isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
+        final bool opponentReady =
+            isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
 
         return Scaffold(
           appBar: AppBar(
@@ -317,7 +326,6 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                       final seconds = timerSnapshot.data ??
                           GameConstants.characterSelectionDuration;
 
-                      // ✅ _timeoutCalled يمنع الاستدعاء المتكرر
                       if (seconds <= 0 &&
                           game.status.isInSetup &&
                           !_timeoutCalled) {
@@ -413,7 +421,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   AppButton(
                     text: "بدأ اللعبة",
                     isLoading: _isConfirming,
-                    onPressed: _selectedCharacter == null ? null : _handleStart,
+                    onPressed:
+                        _selectedCharacter == null ? null : _handleStart,
                   ),
 
                 const SizedBox(height: 10),
@@ -457,7 +466,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   Widget _buildSelectedCard() {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
         padding: const EdgeInsets.all(12.0),
         child: Row(
@@ -484,7 +494,8 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                         fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const Text("تم التحقق من الشخصية",
-                      style: TextStyle(color: Colors.blue, fontSize: 12)),
+                      style:
+                          TextStyle(color: Colors.blue, fontSize: 12)),
                 ],
               ),
             ),
