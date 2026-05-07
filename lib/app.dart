@@ -1,3 +1,4 @@
+// lib/app.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -36,8 +37,15 @@ import 'features/auth/user_info_screen.dart';
 import 'features/auth/terms_screen.dart';
 import 'features/home/home_screen.dart';
 
-class PubgetApp extends StatelessWidget {
+class PubgetApp extends StatefulWidget { // حولناه لـ StatefulWidget للتحكم في حالة التسجيل
   const PubgetApp({super.key});
+
+  @override
+  State<PubgetApp> createState() => _PubgetAppState();
+}
+
+class _PubgetAppState extends State<PubgetApp> {
+  String? _lastRegisteredUserId; // لمنع تكرار تسجيل الـ Token وتجميد التطبيق
 
   @override
   Widget build(BuildContext context) {
@@ -47,18 +55,14 @@ class PubgetApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
-        // ================= SERVICES =================
         Provider(create: (_) => firestore),
         Provider(create: (_) => storage),
         Provider(create: (_) => localStorage),
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(
-            create: (_) =>
-                GroupJoinValidator(firestoreService: firestore)),
+        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
 
-        // ================= PROVIDERS =================
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             firestoreService: context.read<FirestoreService>(),
@@ -66,13 +70,10 @@ class PubgetApp extends StatelessWidget {
         ),
 
         ChangeNotifierProvider(
-          create: (context) {
-            final authProvider = AuthProvider(
-              context.read<AuthService>(),
-              context.read<UserProvider>(),
-            );
-            return authProvider;
-          },
+          create: (context) => AuthProvider(
+            context.read<AuthService>(),
+            context.read<UserProvider>(),
+          ),
         ),
 
         ChangeNotifierProvider(
@@ -127,16 +128,14 @@ class PubgetApp extends StatelessWidget {
           ),
         ),
       ],
-
-      // ✅ تسجيل FCM Token بعد تسجيل الدخول
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
-          // ✅ عند تسجيل الدخول نسجل الـ Token فوراً
-          if (auth.isLoggedIn && auth.user != null) {
+          
+          // ✅ منطق تسجيل الـ Token الذكي: يتم فقط إذا سجل الدخول ولم يتم التسجيل مسبقاً لهذه الجلسة
+          if (auth.isLoggedIn && auth.user != null && _lastRegisteredUserId != auth.user!.id) {
+            _lastRegisteredUserId = auth.user!.id;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              context.read<NotificationsProvider>().registerToken(
-                    auth.user!.id,
-                  );
+              context.read<NotificationsProvider>().registerToken(auth.user!.id);
             });
           }
 
@@ -145,8 +144,7 @@ class PubgetApp extends StatelessWidget {
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode:
-                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: _getHome(auth),
             routes: {
               '/login': (_) => const LoginScreen(),
@@ -163,15 +161,11 @@ class PubgetApp extends StatelessWidget {
 
   Widget _getHome(AuthProvider auth) {
     if (auth.isLoading) return const SplashScreen();
-
     if (auth.isLoggedIn) {
-      if (auth.user?.isProfileCompleted == true) {
-        return const HomeScreen();
-      } else {
-        return const UserInfoScreen();
-      }
+      return (auth.user?.isProfileCompleted == true) 
+          ? const HomeScreen() 
+          : const UserInfoScreen();
     }
-
     return const LoginScreen();
   }
 }

@@ -8,9 +8,9 @@ import 'package:pubget/services/monetization/ad_service.dart';
 import 'package:pubget/core/utils/notification_service.dart';
 import 'package:pubget/app.dart';
 
-// ✅ معالجة الإشعارات في الخلفية — يجب أن تكون هنا في main.dart
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // استخدام تهيئة سريعة ومختصرة للخلفية
   await Firebase.initializeApp(
     options: const FirebaseOptions(
       apiKey: 'AIzaSyDPgjnaviwqxz8lGK_o9pjg4zuoB7RrVBw',
@@ -19,13 +19,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       projectId: 'pubget-817cf',
     ),
   );
-  await NotificationService.instance.handleBackgroundMessage(message);
 }
 
 Future<void> main() async {
+  // ضمان الربط أولاً
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Firebase Initialization
+  // 1. Firebase Initialization (أساسي للتشغيل)
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -35,24 +35,21 @@ Future<void> main() async {
         projectId: 'pubget-817cf',
       ),
     );
+    
+    // تسجيل معالج الخلفية فوراً بعد التهيئة
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   } catch (e) {
     debugPrint("🔥 Firebase init error: $e");
   }
 
-  // 2. تسجيل معالج الخلفية
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // 3. تهيئة نظام الإشعارات
-  await NotificationService.instance.initialize();
-
-  // 4. AdMob Initialization
-  await MobileAds.instance.initialize();
-
-  // 5. Orientation Settings
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
+  // 2. تهيئة الخدمات الأخرى (بشكل متوازي لا يمنع runApp)
+  // لا نستخدم await هنا للخدمات التي قد تأخذ وقتاً طويلاً وتجمد السبلاش
+  Future.wait([
+    MobileAds.instance.initialize(),
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
+    NotificationService.instance.initialize(), // تهيئة في الخلفية
   ]);
 
-  // 6. Run App
+  // 3. Run App فوراً
   runApp(const PubgetApp());
 }
