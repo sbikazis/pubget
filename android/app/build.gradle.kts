@@ -70,5 +70,5 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     
     // حل مشكلة flutter_local_notifications
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") // <-- أضفت هذا
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") // <-- أضفت هذا
 }
