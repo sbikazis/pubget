@@ -5,46 +5,37 @@ const { getFirestore } = require("firebase-admin/firestore");
 
 initializeApp();
 
-// ✅ إشعار عند وصول رسالة جديدة في مجموعة
+// ✅ رسالة جديدة في مجموعة
 exports.onNewGroupMessage = onDocumentCreated(
-  "Groups/{groupId}/Messages/{messageId}",
+  "groups/{groupId}/messages/{messageId}",
   async (event) => {
     const message = event.data.data();
     const groupId = event.params.groupId;
-
     const db = getFirestore();
 
-    // جلب أعضاء المجموعة
-    const membersSnap = await db
-      .collection("Groups")
-      .doc(groupId)
-      .collection("Members")
-      .get();
-
+    const membersSnap = await db.collection("groups").doc(groupId).collection("members").get();
     const senderId = message.senderId;
     const tokens = [];
 
     for (const memberDoc of membersSnap.docs) {
       const memberId = memberDoc.id;
       if (memberId === senderId) continue;
-
-      const userDoc = await db.collection("Users").doc(memberId).get();
+      const userDoc = await db.collection("users").doc(memberId).get();
       const token = userDoc.data()?.fcmToken;
       if (token) tokens.push(token);
     }
 
     if (tokens.length === 0) return;
 
-    const senderDoc = await db.collection("Users").doc(senderId).get();
+    const senderDoc = await db.collection("users").doc(senderId).get();
     const senderName = senderDoc.data()?.username ?? "Someone";
-
-    const groupDoc = await db.collection("Groups").doc(groupId).get();
+    const groupDoc = await db.collection("groups").doc(groupId).get();
     const groupName = groupDoc.data()?.name ?? "Group";
 
     await getMessaging().sendEachForMulticast({
       tokens,
       notification: {
-        title: `${groupName}`,
+        title: groupName,
         body: `${senderName}: ${message.content ?? "📎 media"}`,
       },
       data: { groupId },
@@ -52,23 +43,21 @@ exports.onNewGroupMessage = onDocumentCreated(
   }
 );
 
-// ✅ إشعار عند وصول رسالة خاصة
+// ✅ رسالة خاصة جديدة
 exports.onNewPrivateMessage = onDocumentCreated(
-  "PrivateChats/{chatId}/Messages/{messageId}",
+  "privateChats/{chatId}/messages/{messageId}",
   async (event) => {
     const message = event.data.data();
     const senderId = message.senderId;
     const receiverId = message.receiverId;
-
     if (!receiverId) return;
 
     const db = getFirestore();
-    const userDoc = await db.collection("Users").doc(receiverId).get();
+    const userDoc = await db.collection("users").doc(receiverId).get();
     const token = userDoc.data()?.fcmToken;
-
     if (!token) return;
 
-    const senderDoc = await db.collection("Users").doc(senderId).get();
+    const senderDoc = await db.collection("users").doc(senderId).get();
     const senderName = senderDoc.data()?.username ?? "Someone";
 
     await getMessaging().send({
@@ -82,29 +71,24 @@ exports.onNewPrivateMessage = onDocumentCreated(
   }
 );
 
-// ✅ إشعار عند طلب انضمام لمجموعة
+// ✅ طلب انضمام لمجموعة
 exports.onJoinRequest = onDocumentCreated(
-  "Groups/{groupId}/JoinRequests/{requestId}",
+  "groups/{groupId}/requests/{requestId}",
   async (event) => {
     const request = event.data.data();
     const groupId = event.params.groupId;
-
     const db = getFirestore();
-    const groupDoc = await db.collection("Groups").doc(groupId).get();
+
+    const groupDoc = await db.collection("groups").doc(groupId).get();
     const ownerId = groupDoc.data()?.ownerId;
     const groupName = groupDoc.data()?.name ?? "Group";
-
     if (!ownerId) return;
 
-    const ownerDoc = await db.collection("Users").doc(ownerId).get();
+    const ownerDoc = await db.collection("users").doc(ownerId).get();
     const token = ownerDoc.data()?.fcmToken;
-
     if (!token) return;
 
-    const requesterDoc = await db
-      .collection("Users")
-      .doc(request.userId)
-      .get();
+    const requesterDoc = await db.collection("users").doc(request.userId).get();
     const requesterName = requesterDoc.data()?.username ?? "Someone";
 
     await getMessaging().send({
