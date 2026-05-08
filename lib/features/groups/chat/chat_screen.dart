@@ -233,11 +233,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     final activeGames = gameSnapshot.data?? [];
                     GameModel? activeGameForMe;
                     try {
-                      activeGameForMe = activeGames.firstWhere((g) => (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) && (g.status == GameStatus.waitingForOpponent || g.status == GameStatus.setup || g.status == GameStatus.guessing));
+                      // ✅ تم إصلاح الخطأ: أزلنا waitingForOpponent
+                      activeGameForMe = activeGames.firstWhere((g) =>
+                        (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
+                        (g.status == GameStatus.setup || g.status == GameStatus.guessing));
                     } catch (_) {}
 
                     if (activeGameForMe!= null) {
-                      // نظّف عند الانتهاء
                       if (activeGameForMe.status.isOver) {
                         _navigatedGameIds.remove(activeGameForMe.id);
                       }
@@ -247,13 +249,17 @@ class _ChatScreenState extends State<ChatScreen> {
                         return GameBottomBar(groupId: widget.groupId, game: activeGameForMe, currentMember: _currentMember!);
                       }
 
-                      // ✅ التنقل التلقائي للمنشئ والمنضم
-                      final shouldNavigate = (activeGameForMe.status == GameStatus.waitingForOpponent || activeGameForMe.status == GameStatus.setup) &&!_navigatedGameIds.contains(activeGameForMe.id);
+                      // ✅ فقط setup
+                      final shouldNavigate = activeGameForMe.status == GameStatus.setup &&!_navigatedGameIds.contains(activeGameForMe.id);
                       if (shouldNavigate) {
                         _navigatedGameIds.add(activeGameForMe.id);
                         Future.microtask(() {
-                          if (mounted) {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => GuessCharacterGameScreen(groupId: widget.groupId, gameId: activeGameForMe!.id, animeIds: group?.animeId!= null? [group!.animeId] : null)));
+                          if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => GuessCharacterGameScreen(
+                              groupId: widget.groupId,
+                              gameId: activeGameForMe!.id,
+                              animeIds: group?.animeId!= null? [group!.animeId] : null
+                            )));
                           }
                         });
                       }
