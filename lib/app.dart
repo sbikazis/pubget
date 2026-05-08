@@ -37,7 +37,7 @@ import 'features/auth/user_info_screen.dart';
 import 'features/auth/terms_screen.dart';
 import 'features/home/home_screen.dart';
 
-class PubgetApp extends StatefulWidget { // حولناه لـ StatefulWidget للتحكم في حالة التسجيل
+class PubgetApp extends StatefulWidget {
   const PubgetApp({super.key});
 
   @override
@@ -45,7 +45,7 @@ class PubgetApp extends StatefulWidget { // حولناه لـ StatefulWidget ل�
 }
 
 class _PubgetAppState extends State<PubgetApp> {
-  String? _lastRegisteredUserId; // لمنع تكرار تسجيل الـ Token وتجميد التطبيق
+  String? _lastRegisteredUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -68,18 +68,15 @@ class _PubgetAppState extends State<PubgetApp> {
             firestoreService: context.read<FirestoreService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => AuthProvider(
             context.read<AuthService>(),
             context.read<UserProvider>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (_) => SettingsProvider()..loadSettings(),
         ),
-
         ChangeNotifierProvider(
           create: (context) => HomeProvider(
             firestore: context.read<FirestoreService>(),
@@ -88,40 +85,34 @@ class _PubgetAppState extends State<PubgetApp> {
             joinValidator: context.read<GroupJoinValidator>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => GroupProvider(
             firestoreService: context.read<FirestoreService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => ChatProvider(
             firestoreService: context.read<FirestoreService>(),
             storageService: context.read<StorageService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => GameProvider(
             firestore: context.read<FirestoreService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => ProfileProvider(
             context.read<FirestoreService>(),
             context.read<StorageService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => PrivateChatProvider(
             firestoreService: context.read<FirestoreService>(),
             storageService: context.read<StorageService>(),
           ),
         ),
-
         ChangeNotifierProvider(
           create: (context) => NotificationsProvider(
             firestoreService: context.read<FirestoreService>(),
@@ -131,11 +122,13 @@ class _PubgetAppState extends State<PubgetApp> {
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
           
-          // ✅ منطق تسجيل الـ Token الذكي: يتم فقط إذا سجل الدخول ولم يتم التسجيل مسبقاً لهذه الجلسة
+          // ✅ تم التعديل هنا - انتظار 3 ثواني
           if (auth.isLoggedIn && auth.user != null && _lastRegisteredUserId != auth.user!.id) {
             _lastRegisteredUserId = auth.user!.id;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              context.read<NotificationsProvider>().registerToken(auth.user!.id);
+              Future.delayed(const Duration(seconds: 3), () {
+                context.read<NotificationsProvider>().registerToken(auth.user!.id);
+              });
             });
           }
 

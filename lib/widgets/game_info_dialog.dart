@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart';
 import '../models/member_model.dart';
+import 'package:pubget/features/groups/events/guess_character_game_screen.dart';
 
 class GameInfoDialog extends StatefulWidget {
   final String groupId;
@@ -94,9 +95,11 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
     
     final gameProv = context.read<GameProvider>();
     final chatProv = context.read<ChatProvider>();
-    final messenger = ScaffoldMessenger.of(context);
 
     try {
+      String? finalGameId = widget.gameId;
+      String? gameSlot;
+
       if (widget.gameId == null) {
         // إنشاء
         final result = await gameProv.createGame(
@@ -105,18 +108,20 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
           creatorName: widget.currentMember.displayName,
         );
         if (result != null) {
+          finalGameId = result['gameId'];
+          gameSlot = result['gameSlot'];
           await chatProv.sendGameMessage(
             groupId: widget.groupId,
             messageId: DateTime.now().millisecondsSinceEpoch.toString(),
             sender: widget.currentMember,
-            gameId: result['gameId']!,
+            gameId: finalGameId!,
             gameAction: 'challenge',
-            gameSlot: result['gameSlot'],
+            gameSlot: gameSlot,
           );
         }
       } else {
         // انضمام
-        final slot = await gameProv.joinGame(
+        gameSlot = await gameProv.joinGame(
           groupId: widget.groupId,
           gameId: widget.gameId!,
           userId: widget.currentMember.userId,
@@ -128,18 +133,33 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
           sender: widget.currentMember,
           gameId: widget.gameId!,
           gameAction: 'join',
-          gameSlot: slot,
+          gameSlot: gameSlot,
         );
       }
 
-      // ✅ الحل: سكّر بالـ rootNavigator فقط، لا تدفع شاشة
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+      if (!mounted) return;
+
+      // 1. سكّر الديالوج
+      Navigator.of(context, rootNavigator: true).pop();
+
+      // 2. انقل اللاعب مباشرة لشاشة اختيار الشخصية
+      if (finalGameId != null) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => GuessCharacterGameScreen(
+              groupId: widget.groupId,
+              gameId: finalGameId!,
+              
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
-        messenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
       }

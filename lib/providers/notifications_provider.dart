@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/notification_model.dart';
 import '../services/firebase/firestore_service.dart';
@@ -23,28 +24,46 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تسجيل FCM Token للمستخدم في Firestore
-  // يُستدعى بعد تسجيل الدخول مباشرة
+  // ✅ تسجيل FCM Token - النسخة المصححة مع إعادة المحاولة
   // =========================================================
   Future<void> registerToken(String userId) async {
     try {
-      final token = await NotificationService.instance.getToken();
-      if (token == null) return;
-
-      await _firestore.updateDocument(
-        path: 'Users',
-        docId: userId,
-        data: {'fcmToken': token},
-      );
-
-      // مراقبة تجديد الـ Token تلقائياً
+      // 1. فعل مراقبة التجديد دائماً أولاً
       NotificationService.instance.listenToTokenRefresh((newToken) async {
         await _firestore.updateDocument(
           path: 'Users',
           docId: userId,
-          data: {'fcmToken': newToken},
+          data: {
+            'fcmToken': newToken,
+            'tokenUpdatedAt': FieldValue.serverTimestamp(),
+          },
         );
+        debugPrint('🔄 FCM Token refreshed for $userId');
       });
+
+      // 2. حاول تجيب التوكن 3 مرات مع انتظار
+      String? token;
+      for (int i = 0; i < 3; i++) {
+        token = await NotificationService.instance.getToken();
+        if (token != null) break;
+        debugPrint('⏳ Waiting for FCM token... attempt ${i + 1}');
+        await Future.delayed(const Duration(seconds: 2));
+      }
+
+      if (token == null) {
+        debugPrint('❌ FCM token still null after retries');
+        return;
+      }
+
+      await _firestore.updateDocument(
+        path: 'Users',
+        docId: userId,
+        data: {
+          'fcmToken': token,
+          'tokenUpdatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+      debugPrint('✅ FCM Token saved for $userId');
     } catch (e) {
       debugPrint('Failed to register FCM token: $e');
     }
