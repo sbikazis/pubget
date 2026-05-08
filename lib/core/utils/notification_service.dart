@@ -31,13 +31,32 @@ class NotificationService {
       sound: true,
     );
 
+    // ✅ السطرين اللي كانوا ناقصين
+    await _fcm.setAutoInitEnabled(true);
+    await _fcm.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
-    // ✅ named parameter للإصدار 21
     await _localNotifications.initialize(
       settings: initSettings,
     );
+
+    // ✅ إنشاء القناة مرة واحدة
+    const channel = AndroidNotificationChannel(
+      'pubget_main_channel',
+      'Pubget Notifications',
+      description: 'إشعارات تطبيق Pubget',
+      importance: Importance.max,
+      playSound: true,
+    );
+    await _localNotifications
+       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+       ?.createNotificationChannel(channel);
 
     FirebaseMessaging.onMessage.listen((message) {
       showLocalNotification(message);
@@ -48,7 +67,7 @@ class NotificationService {
     });
 
     final initialMessage = await _fcm.getInitialMessage();
-    if (initialMessage != null) {
+    if (initialMessage!= null) {
       _handleNotificationTap(initialMessage);
     }
   }
@@ -68,11 +87,10 @@ class NotificationService {
 
     final details = NotificationDetails(android: androidDetails);
 
-    // ✅ named parameters للإصدار 21
     await _localNotifications.show(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title: message.notification?.title ?? 'Pubget',
-      body: message.notification?.body ?? '',
+      title: message.notification?.title?? 'Pubget',
+      body: message.notification?.body?? '',
       notificationDetails: details,
     );
   }
@@ -86,7 +104,9 @@ class NotificationService {
   }
 
   Future<String?> getToken() async {
-    return await _fcm.getToken();
+    final token = await _fcm.getToken();
+    debugPrint('🎯 FCM Token: $token');
+    return token;
   }
 
   void listenToTokenRefresh(Function(String token) onRefresh) {
