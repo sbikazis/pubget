@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/chat_provider.dart';
 import '../models/member_model.dart';
-import '../features/groups/events/guess_character_game_screen.dart';
 
 class GameInfoDialog extends StatefulWidget {
   final String groupId;
@@ -56,7 +55,7 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          onPressed: _isLoading ? null : () => Navigator.of(context, rootNavigator: true).pop(),
           child: const Text("إلغاء", style: TextStyle(color: Colors.grey)),
         ),
         ElevatedButton(
@@ -92,48 +91,37 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
 
   void _handleConfirm(BuildContext context) async {
     setState(() => _isLoading = true);
-
-    // ✅ حفظ Navigator و ScaffoldMessenger قبل أي await
-    // هذا يمنع استخدام context بعد ما يصبح غير صالح
-    final navigator = Navigator.of(context);
-    final rootNavigator = Navigator.of(context, rootNavigator: true);
-    final messenger = ScaffoldMessenger.of(context);
-
+    
     final gameProv = context.read<GameProvider>();
     final chatProv = context.read<ChatProvider>();
-
-    String? targetGameId = widget.gameId;
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       if (widget.gameId == null) {
+        // إنشاء
         final result = await gameProv.createGame(
           groupId: widget.groupId,
           creatorUserId: widget.currentMember.userId,
           creatorName: widget.currentMember.displayName,
         );
-
         if (result != null) {
-          final newGameId = result['gameId'] as String;
-          final newGameSlot = result['gameSlot'] as String;
-
           await chatProv.sendGameMessage(
             groupId: widget.groupId,
             messageId: DateTime.now().millisecondsSinceEpoch.toString(),
             sender: widget.currentMember,
-            gameId: newGameId,
+            gameId: result['gameId']!,
             gameAction: 'challenge',
-            gameSlot: newGameSlot,
+            gameSlot: result['gameSlot'],
           );
-          targetGameId = newGameId;
         }
       } else {
+        // انضمام
         final slot = await gameProv.joinGame(
           groupId: widget.groupId,
           gameId: widget.gameId!,
           userId: widget.currentMember.userId,
           userName: widget.currentMember.displayName,
         );
-
         await chatProv.sendGameMessage(
           groupId: widget.groupId,
           messageId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -142,33 +130,21 @@ class _GameInfoDialogState extends State<GameInfoDialog> {
           gameAction: 'join',
           gameSlot: slot,
         );
-        targetGameId = widget.gameId;
       }
 
-      if (mounted && targetGameId != null) {
-        navigator.pop(); // ✅ آمن لأنه محفوظ قبل الـ await
-        await Future.delayed(const Duration(milliseconds: 100));
-        if (mounted) {
-          rootNavigator.push(
-            MaterialPageRoute(
-              builder: (_) => GuessCharacterGameScreen(
-                groupId: widget.groupId,
-                gameId: targetGameId!,
-                animeIds: [],
-              ),
-            ),
-          );
-        }
-      } else if (mounted) {
-        navigator.pop(); // ✅ آمن
+      // ✅ الحل: سكّر بالـ rootNavigator فقط، لا تدفع شاشة
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
       }
     } catch (e) {
       if (mounted) {
-        navigator.pop(); // ✅ آمن — يُغلق الديالوج فقط
+        Navigator.of(context, rootNavigator: true).pop();
         messenger.showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 }

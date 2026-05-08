@@ -31,13 +31,12 @@ class NotificationService {
       sound: true,
     );
 
-    // ✅ إصلاح: تمرير settings كـ named parameter
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
+    // ✅ named parameter للإصدار 21
     await _localNotifications.initialize(
-      settings: initSettings, // ✅ named parameter
+      settings: initSettings,
     );
 
     FirebaseMessaging.onMessage.listen((message) {
@@ -58,7 +57,7 @@ class NotificationService {
     final sound = _randomSound();
 
     final androidDetails = AndroidNotificationDetails(
-      'pubget_channel_$sound',
+      'pubget_main_channel',
       'Pubget Notifications',
       channelDescription: 'إشعارات تطبيق Pubget',
       importance: Importance.max,
@@ -69,12 +68,12 @@ class NotificationService {
 
     final details = NotificationDetails(android: androidDetails);
 
-    // ✅ إصلاح: استخدام named parameters في show
+    // ✅ named parameters للإصدار 21
     await _localNotifications.show(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000, // ✅ named parameter
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title: message.notification?.title ?? 'Pubget',
       body: message.notification?.body ?? '',
-      notificationDetails: details, // ✅ named parameter
+      notificationDetails: details,
     );
   }
 
