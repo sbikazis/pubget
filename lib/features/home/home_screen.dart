@@ -465,25 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: LoadingWidget(message: 'جاري التحميل...'))
           : Column(
               children: [
-                // <-- هذا هو الشريط الأصفر اللي راح يورينا التوكن
-                FutureBuilder<String?>(
-                  future: FirebaseMessaging.instance.getToken(),
-                  builder: (context, snapshot) {
-                    return Container(
-                      color: Colors.yellow,
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(4),
-                      child: Text(
-                        'TOKEN: ${snapshot.connectionState == ConnectionState.waiting ? "loading..." : (snapshot.data ?? "null")}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.black,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    );
-                  },
-                ),
+
                 Expanded(
                   child: IndexedStack(
                     index: _selectedIndex,

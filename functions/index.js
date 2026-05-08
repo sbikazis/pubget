@@ -5,6 +5,16 @@ const { getFirestore } = require("firebase-admin/firestore");
 
 initializeApp();
 
+const sounds = [
+  'an1','an2','an3','an4','an5','an6','an7',
+  'an8','an9','an10','an11','an12','an13','an14',
+  'an15','an16','an17','an18','an19','an20','an21'
+];
+
+function randomSound() {
+  return sounds[Math.floor(Math.random() * sounds.length)];
+}
+
 // ✅ رسالة جديدة في مجموعة
 exports.onNewGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
@@ -28,15 +38,30 @@ exports.onNewGroupMessage = onDocumentCreated(
     if (tokens.length === 0) return;
 
     const senderDoc = await db.collection("users").doc(senderId).get();
-    const senderName = senderDoc.data()?.username ?? "Someone";
+    const senderName = senderDoc.data()?.senderName ?? senderDoc.data()?.username ?? "Someone";
     const groupDoc = await db.collection("groups").doc(groupId).get();
     const groupName = groupDoc.data()?.name ?? "Group";
 
+    // ✅ تحديد نوع المحتوى
+    let body;
+    if (message.text && message.text.trim() !== "") {
+      body = `${senderName}: ${message.text}`;
+    } else if (message.mediaType === "image") {
+      body = `${senderName}: 🖼️ صورة`;
+    } else if (message.mediaType === "video") {
+      body = `${senderName}: 🎥 فيديو`;
+    } else {
+      body = `${senderName}: 📎 ملف`;
+    }
+
     await getMessaging().sendEachForMulticast({
       tokens,
-      notification: {
-        title: groupName,
-        body: `${senderName}: ${message.content ?? "📎 media"}`,
+      notification: { title: groupName, body },
+      android: {
+        notification: {
+          sound: randomSound(),
+          channelId: 'pubget_main_channel',
+        },
       },
       data: { groupId },
     });
@@ -60,11 +85,25 @@ exports.onNewPrivateMessage = onDocumentCreated(
     const senderDoc = await db.collection("users").doc(senderId).get();
     const senderName = senderDoc.data()?.username ?? "Someone";
 
+    let body;
+    if (message.text && message.text.trim() !== "") {
+      body = message.text;
+    } else if (message.mediaType === "image") {
+      body = "🖼️ صورة";
+    } else if (message.mediaType === "video") {
+      body = "🎥 فيديو";
+    } else {
+      body = "📎 ملف";
+    }
+
     await getMessaging().send({
       token,
-      notification: {
-        title: senderName,
-        body: message.content ?? "📎 media",
+      notification: { title: senderName, body },
+      android: {
+        notification: {
+          sound: randomSound(),
+          channelId: 'pubget_main_channel',
+        },
       },
       data: { senderId },
     });
@@ -96,6 +135,12 @@ exports.onJoinRequest = onDocumentCreated(
       notification: {
         title: groupName,
         body: `${requesterName} wants to join`,
+      },
+      android: {
+        notification: {
+          sound: randomSound(),
+          channelId: 'pubget_main_channel',
+        },
       },
       data: { groupId },
     });

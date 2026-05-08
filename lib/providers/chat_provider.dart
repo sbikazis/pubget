@@ -154,7 +154,7 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('Users')
+         .collection('users')
          .doc(sender.userId)
          .get();
 
@@ -223,7 +223,7 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('Users')
+         .collection('users')
          .doc(sender.userId)
          .get();
 
@@ -312,7 +312,7 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('Users')
+         .collection('users')
          .doc(sender.userId)
          .get();
 
