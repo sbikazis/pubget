@@ -35,10 +35,15 @@ Future<void> main() async {
     debugPrint("🔥 Firebase init error: $e");
   }
 
-  // ✅ التعديل الوحيد: await صريح لكل واحدة على حدة
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  await NotificationService.instance.initialize();
-  MobileAds.instance.initialize(); // بدون await عمداً - لا تأثير على السبلاش
-
+  
+  // ✅ شغّل الواجهة أولاً
   runApp(const PubgetApp());
+
+  // ✅ بعدها هيئ الإشعارات والإعلانات في الخلفية (بدون await)
+  NotificationService.instance.initialize().catchError((e) {
+    debugPrint("⚠️ Notification init error: $e");
+  });
+  
+  MobileAds.instance.initialize();
 }
