@@ -15,7 +15,6 @@ function randomSound() {
   return sounds[Math.floor(Math.random() * sounds.length)];
 }
 
-// ✅ رسالة جديدة في مجموعة
 exports.onNewGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   async (event) => {
@@ -38,11 +37,10 @@ exports.onNewGroupMessage = onDocumentCreated(
     if (tokens.length === 0) return;
 
     const senderDoc = await db.collection("users").doc(senderId).get();
-    const senderName = senderDoc.data()?.senderName ?? senderDoc.data()?.username ?? "Someone";
+    const senderName = senderDoc.data()?.username ?? "Someone";
     const groupDoc = await db.collection("groups").doc(groupId).get();
     const groupName = groupDoc.data()?.name ?? "Group";
 
-    // ✅ تحديد نوع المحتوى
     let body;
     if (message.text && message.text.trim() !== "") {
       body = `${senderName}: ${message.text}`;
@@ -68,16 +66,22 @@ exports.onNewGroupMessage = onDocumentCreated(
   }
 );
 
-// ✅ رسالة خاصة جديدة
 exports.onNewPrivateMessage = onDocumentCreated(
   "privateChats/{chatId}/messages/{messageId}",
   async (event) => {
     const message = event.data.data();
     const senderId = message.senderId;
-    const receiverId = message.receiverId;
-    if (!receiverId) return;
+    const chatId = event.params.chatId;
 
     const db = getFirestore();
+
+    const chatDoc = await db.collection("privateChats").doc(chatId).get();
+    const userA = chatDoc.data()?.userA;
+    const userB = chatDoc.data()?.userB;
+
+    const receiverId = userA === senderId ? userB : userA;
+    if (!receiverId) return;
+
     const userDoc = await db.collection("users").doc(receiverId).get();
     const token = userDoc.data()?.fcmToken;
     if (!token) return;
@@ -110,7 +114,6 @@ exports.onNewPrivateMessage = onDocumentCreated(
   }
 );
 
-// ✅ طلب انضمام لمجموعة
 exports.onJoinRequest = onDocumentCreated(
   "groups/{groupId}/requests/{requestId}",
   async (event) => {

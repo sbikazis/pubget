@@ -31,7 +31,6 @@ class NotificationService {
       sound: true,
     );
 
-    // ✅ السطرين اللي كانوا ناقصين
     await _fcm.setAutoInitEnabled(true);
     await _fcm.setForegroundNotificationPresentationOptions(
       alert: true,
@@ -41,22 +40,22 @@ class NotificationService {
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
+    await _localNotifications.initialize(settings: initSettings);
 
-    await _localNotifications.initialize(
-      settings: initSettings,
-    );
-
-    // ✅ إنشاء القناة مرة واحدة
-    const channel = AndroidNotificationChannel(
-      'pubget_main_channel',
-      'Pubget Notifications',
-      description: 'إشعارات تطبيق Pubget',
-      importance: Importance.max,
-      playSound: true,
-    );
-    await _localNotifications
-       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-       ?.createNotificationChannel(channel);
+    // ✅ إنشاء قناة مختلفة لكل صوت عشان أندرويد يشغلها
+    for (final sound in _sounds) {
+      final channel = AndroidNotificationChannel(
+        'pubget_channel_$sound',
+        'Pubget Notifications',
+        description: 'إشعارات تطبيق Pubget',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(sound),
+      );
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
 
     FirebaseMessaging.onMessage.listen((message) {
       showLocalNotification(message);
@@ -67,7 +66,7 @@ class NotificationService {
     });
 
     final initialMessage = await _fcm.getInitialMessage();
-    if (initialMessage!= null) {
+    if (initialMessage != null) {
       _handleNotificationTap(initialMessage);
     }
   }
@@ -76,7 +75,7 @@ class NotificationService {
     final sound = _randomSound();
 
     final androidDetails = AndroidNotificationDetails(
-      'pubget_main_channel',
+      'pubget_channel_$sound', // ✅ قناة مخصصة لكل صوت
       'Pubget Notifications',
       channelDescription: 'إشعارات تطبيق Pubget',
       importance: Importance.max,
@@ -89,8 +88,8 @@ class NotificationService {
 
     await _localNotifications.show(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title: message.notification?.title?? 'Pubget',
-      body: message.notification?.body?? '',
+      title: message.notification?.title ?? 'Pubget',
+      body: message.notification?.body ?? '',
       notificationDetails: details,
     );
   }
