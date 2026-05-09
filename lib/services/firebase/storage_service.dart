@@ -1,142 +1,103 @@
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class StorageService {
-  final String cloudName = "djk89pmj3";
-  final String uploadPreset = "pubgetanimecity";
+  final _storage = FirebaseStorage.instance;
+  final _auth = FirebaseAuth.instance;
+
+  String get _uid => _auth.currentUser!.uid;
 
   /// ==============================
-  /// INTERNAL GENERIC UPLOAD METHOD
+  /// INTERNAL GENERIC UPLOAD
   /// ==============================
+  Future<String> _uploadFile({
+    required File file,
+    required String path,
+  }) async {
+    try {
+      final ref = _storage.ref().child(path);
+      
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+        customMetadata: {'uploadedBy': _uid},
+      );
 
-Future<String> _uploadFile({
-  required File file,
-  required String path,
-}) async {
-  try {
-    final url = Uri.parse(
-      "https://api.cloudinary.com/v1_1/djk89pmj3/image/upload",
-    );
-
-    final request = http.MultipartRequest("POST", url);
-
-    request.fields["upload_preset"] = uploadPreset;
-    request.fields["folder"] = path;
-
-    request.files.add(
-      await http.MultipartFile.fromPath("file", file.path),
-    );
-
-    final response = await request.send();
-
-    final responseData = await response.stream.bytesToString();
-
-    print("STATUS: ${response.statusCode}");
-    print("RESPONSE: $responseData");
-
-    if (response.statusCode != 200) {
-      throw Exception("Upload failed: $responseData");
+      await ref.putFile(file, metadata);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print("FIREBASE UPLOAD ERROR: $e");
+      rethrow;
     }
-
-    final jsonData = json.decode(responseData);
-
-    return jsonData["secure_url"];
-  } catch (e) {
-    print("ERROR: $e");
-    rethrow;
   }
-}
 
   /// ==============================
   /// USER AVATAR
   /// ==============================
-
   Future<String> uploadUserAvatar({
     required String userId,
     required File file,
   }) async {
-    final path = "users/$userId/avatar";
-
-    return _uploadFile(
-      file: file,
-      path: path,
-    );
+    final path = "avatars/$userId.jpg";
+    return _uploadFile(file: file, path: path);
   }
 
   /// ==============================
   /// GROUP IMAGE
   /// ==============================
-
   Future<String> uploadGroupImage({
     required String groupId,
     required File file,
   }) async {
-    final path = "groups/$groupId/image";
-
-    return _uploadFile(
-      file: file,
-      path: path,
-    );
+    final path = "groups/$groupId.jpg";
+    return _uploadFile(file: file, path: path);
   }
 
   /// ==============================
   /// ROLEPLAY CHARACTER IMAGE
   /// ==============================
-
   Future<String> uploadRoleplayCharacterImage({
     required String groupId,
     required String userId,
     required File file,
   }) async {
-    final path = "groups/$groupId/characters/$userId";
-
-    return _uploadFile(
-      file: file,
-      path: path,
-    );
+    final path = "groups/$groupId/characters/$userId.jpg";
+    return _uploadFile(file: file, path: path);
   }
 
   /// ==============================
   /// GROUP CHAT MEDIA
   /// ==============================
-
   Future<String> uploadGroupChatMedia({
     required String groupId,
     required String messageId,
     required File file,
   }) async {
-    final path = "groups/$groupId/chat/$messageId";
-
-    return _uploadFile(
-      file: file,
-      path: path,
-    );
+    final path = "groups/$groupId/chat/$messageId.jpg";
+    return _uploadFile(file: file, path: path);
   }
 
   /// ==============================
   /// PRIVATE CHAT MEDIA
   /// ==============================
-
   Future<String> uploadPrivateChatMedia({
     required String chatId,
     required String messageId,
     required File file,
   }) async {
-    final path = "private_chats/$chatId/$messageId";
-
-    return _uploadFile(
-      file: file,
-      path: path,
-    );
+    final path = "private_chats/$chatId/$messageId.jpg";
+    return _uploadFile(file: file, path: path);
   }
 
   /// ==============================
-  /// DELETE FILE (اختياري)
+  /// DELETE FILE
   /// ==============================
-
   Future<void> deleteFile(String url) async {
-    // Cloudinary delete يحتاج API Secret (لا تضعه في التطبيق)
-    // لذلك نتركه فارغ أو تنفذه عبر backend مستقبلاً
+    try {
+      final ref = _storage.refFromURL(url);
+      await ref.delete();
+    } catch (e) {
+      print("DELETE ERROR: $e");
+    }
   }
 }
