@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/message_model.dart';
@@ -10,12 +11,12 @@ import '../../../core/utils/time_utils.dart';
 import 'package:pubget/models/user_model.dart';
 import 'package:pubget/providers/user_provider.dart';
 import 'package:pubget/providers/chat_provider.dart';
-import 'package:pubget/providers/private_chat_provider.dart'; 
+import 'package:pubget/providers/private_chat_provider.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 
 import 'role_badge.dart';
-import '../../../widgets/premium_badge.dart'; 
+import '../../../widgets/premium_badge.dart';
 
 class MessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -40,19 +41,16 @@ class MessageBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
 
-    // =========================================================
-    // ✅ التعديل الجديد: تحديد ألوان اللعبة بناءً على الـ Slot
-    // =========================================================
     final bool isGameMessage = message.gameId != null;
     Color? gameAccentColor;
     if (isGameMessage) {
-      gameAccentColor = message.gameSlot == 'game_1' 
-          ? const Color(0xFFFFD700) // ذهبي
-          : const Color(0xFFC0C0C0); // فضي
+      gameAccentColor = message.gameSlot == 'game_1'
+          ? const Color(0xFFFFD700)
+          : const Color(0xFFC0C0C0);
     }
 
-    final bubbleColor = isGameMessage 
-        ? gameAccentColor!.withOpacity(0.15) // لون اللعبة
+    final bubbleColor = isGameMessage
+        ? gameAccentColor!.withOpacity(0.15)
         : (isMe
             ? AppColors.myMessageBubble
             : (isDark
@@ -69,32 +67,36 @@ class MessageBubble extends StatelessWidget {
         onLongPress: () => _showOptionsSheet(context),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   _buildNameRow(roleColor),
-                 
-                  if (message.reactions != null && message.reactions!.isNotEmpty)
+                  if (message.reactions != null &&
+                      message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
-
                   Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: BorderRadius.circular(16),
-                      // إضافة إطار خفيف إذا كانت رسالة لعبة
-                      border: isGameMessage ? Border.all(color: gameAccentColor!, width: 1) : null,
+                      border: isGameMessage
+                          ? Border.all(color: gameAccentColor!, width: 1)
+                          : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (message.replyText != null) _buildReplyPreview(isDark),
+                        if (message.replyText != null)
+                          _buildReplyPreview(isDark),
                         _buildMessageContent(textColor),
                       ],
                     ),
@@ -104,7 +106,9 @@ class MessageBubble extends StatelessWidget {
                     TimeUtils.formatChatTime(message.createdAt),
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
+                      color: isDark
+                          ? AppColors.darkTextHint
+                          : AppColors.lightTextHint,
                     ),
                   ),
                 ],
@@ -117,10 +121,6 @@ class MessageBubble extends StatelessWidget {
       ),
     );
   }
-
-  // ==============================
-  // OPTIONS SHEET
-  // ==============================
 
   void _showOptionsSheet(BuildContext context) {
     final bool isPrivate = sender.groupId == 'private';
@@ -144,17 +144,21 @@ class MessageBubble extends StatelessWidget {
                 children: ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
                   return TextButton(
                     onPressed: () {
-                      final userId = Provider.of<UserProvider>(context, listen: false).currentUser!.id;
-                      
+                      final userId = Provider.of<UserProvider>(context,
+                              listen: false)
+                          .currentUser!
+                          .id;
                       if (isPrivate) {
-                        Provider.of<PrivateChatProvider>(context, listen: false).toggleReaction(
+                        Provider.of<PrivateChatProvider>(context, listen: false)
+                            .toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
                           userId: userId,
                           emoji: emoji,
                         );
                       } else {
-                        Provider.of<ChatProvider>(context, listen: false).toggleReaction(
+                        Provider.of<ChatProvider>(context, listen: false)
+                            .toggleReaction(
                           groupId: groupId,
                           messageId: message.id,
                           userId: userId,
@@ -177,31 +181,53 @@ class MessageBubble extends StatelessWidget {
                 if (onReply != null) onReply!(message);
               },
             ),
+            // ✅ زر النسخ - يظهر فقط إذا كانت الرسالة نصية
+            if (message.text != null && message.text!.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy, color: AppColors.primary),
+                title: const Text('نسخ'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: message.text!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم نسخ الرسالة'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
             if (isMe)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('حذف الرسالة', style: TextStyle(color: Colors.red)),
+                leading:
+                    const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('حذف الرسالة',
+                    style: TextStyle(color: Colors.red)),
                 onTap: () {
                   if (isPrivate) {
                     Provider.of<PrivateChatProvider>(context, listen: false)
-                        .deleteMessage(chatId: groupId, messageId: message.id);
+                        .deleteMessage(
+                            chatId: groupId, messageId: message.id);
                   } else {
                     Provider.of<ChatProvider>(context, listen: false)
-                        .deleteMessage(groupId: groupId, messageId: message.id);
+                        .deleteMessage(
+                            groupId: groupId, messageId: message.id);
                   }
                   Navigator.pop(context);
                 },
               )
             else
               ListTile(
-                leading: const Icon(Icons.person_outline, color: Color(0xFFFFD700)),
+                leading: const Icon(Icons.person_outline,
+                    color: Color(0xFFFFD700)),
                 title: const Text('الملف الشخصي'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ProfileScreen(userId: message.senderId),
+                      builder: (_) =>
+                          ProfileScreen(userId: message.senderId),
                     ),
                   );
                 },
@@ -211,10 +237,6 @@ class MessageBubble extends StatelessWidget {
       ),
     );
   }
-
-  // ==============================
-  // UI COMPONENTS
-  // ==============================
 
   Widget _buildReplyPreview(bool isDark) {
     return GestureDetector(
@@ -226,11 +248,17 @@ class MessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+          color: isDark
+              ? Colors.white.withOpacity(0.05)
+              : Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border(
-            left: isMe ? BorderSide.none : const BorderSide(color: AppColors.primary, width: 4),
-            right: isMe ? const BorderSide(color: AppColors.primary, width: 4) : BorderSide.none,
+            left: isMe
+                ? BorderSide.none
+                : const BorderSide(color: AppColors.primary, width: 4),
+            right: isMe
+                ? const BorderSide(color: AppColors.primary, width: 4)
+                : BorderSide.none,
           ),
         ),
         child: ClipRRect(
@@ -284,17 +312,18 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الذهبي: إضافة دعم أيقونات اللعبة في الـ Avatar
-  Widget _buildAvatar(BuildContext context, [bool isGame = false, Color? gameColor]) {
-    final String? avatarUrl = sender.displayImageUrl ?? (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
+  Widget _buildAvatar(BuildContext context,
+      [bool isGame = false, Color? gameColor]) {
+    final String? avatarUrl = sender.displayImageUrl ??
+        (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        final userProvider =
+            Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
         final targetUser = await userProvider.getUserById(message.senderId);
-        
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
@@ -309,35 +338,40 @@ class MessageBubble extends StatelessWidget {
       },
       child: CircleAvatar(
         radius: 18,
-        backgroundColor: isGame ? gameColor!.withOpacity(0.2) : AppColors.primary.withOpacity(0.1),
+        backgroundColor: isGame
+            ? gameColor!.withOpacity(0.2)
+            : AppColors.primary.withOpacity(0.1),
         child: ClipOval(
-          child: isGame 
-            ? Icon(Icons.videogame_asset, size: 20, color: gameColor) // أيقونة اللعبة للمنافسات
-            : (avatarUrl != null && avatarUrl.isNotEmpty
-              ? Image.network(
-                  avatarUrl,
-                  width: 36,
-                  height: 36,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => 
-                      const Icon(Icons.person, size: 20, color: AppColors.primary),
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Center(
-                      child: SizedBox(
-                        width: 15,
-                        height: 15,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                )
-              : const Icon(Icons.person, size: 20, color: AppColors.primary)),
+          child: isGame
+              ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
+              : (avatarUrl != null && avatarUrl.isNotEmpty
+                  ? Image.network(
+                      avatarUrl,
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.person,
+                              size: 20, color: AppColors.primary),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : const Icon(Icons.person,
+                      size: 20, color: AppColors.primary)),
         ),
       ),
     );
@@ -355,20 +389,16 @@ class MessageBubble extends StatelessWidget {
             sender.effectiveName,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13, 
-              fontWeight: FontWeight.w600, 
-              color: roleColor
-            ),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: roleColor),
           ),
         ),
-        
         if (isPremiumUser) ...[
           const SizedBox(width: 4),
-          const PremiumBadge(size: 14), 
+          const PremiumBadge(size: 14),
         ],
-
         const SizedBox(width: 6),
-
         RoleBadge(role: sender.role),
       ],
     );
@@ -376,7 +406,8 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildMessageContent(Color textColor) {
     if (message.text != null) {
-      return Text(message.text!, style: TextStyle(fontSize: 15, color: textColor));
+      return Text(message.text!,
+          style: TextStyle(fontSize: 15, color: textColor));
     }
     if (message.mediaUrl != null) {
       if (message.mediaType == 'image') {
