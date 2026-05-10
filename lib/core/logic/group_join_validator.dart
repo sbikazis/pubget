@@ -121,6 +121,15 @@ class GroupJoinValidator {
     String? inviterId;
 
     try {
+      // منع المستخدم من طلب الانضمام إذا كان عضواً بالفعل
+      final memberDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(user.id)
+          .get();
+      if (memberDoc.exists) {
+        return JoinValidationResult.failure('أنت عضو بالفعل في هذه المجموعة.');
+      }
+
       final limitResult = SubscriptionLimitsLogic.canJoinGroup(
         user,
         currentJoinedGroupsCount,

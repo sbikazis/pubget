@@ -57,6 +57,15 @@ class GroupProvider extends ChangeNotifier {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
+
+      // منع إرسال طلب إذا كان المستخدم عضواً بالفعل أو هو المؤسس
+      final memberCheck = await firestore
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(memberRequest.userId)
+          .get();
+      if (memberCheck.exists) return;
+      if (memberRequest.userId == founderId) return;
+
       final batch = firestore.batch();
 
       final requestRef = firestore
@@ -125,10 +134,34 @@ class GroupProvider extends ChangeNotifier {
         validatedInviterId = null;
       }
 
+      // تحقق إذا العضو موجود مسبقاً (هذه هي حالة البج)
+      final existingMemberDoc = await firestore
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(requestMember.userId)
+          .get();
+
+      String finalRole = requestMember.role.name;
+      bool finalIsManual = false;
+
+      if (existingMemberDoc.exists) {
+        final data = existingMemberDoc.data()!;
+        finalRole = data['role'] ?? 'member';
+        finalIsManual = data['isManualRole'] ?? false;
+        // إذا كان مؤسس، لا تغير شيء و احذف الطلب فقط
+        if (finalRole == 'founder' || finalRole == 'shogun') {
+          final requestRef = firestore
+              .collection(FirestorePaths.groupJoinRequests(groupId))
+              .doc(requestMember.userId);
+          await requestRef.delete();
+          return;
+        }
+      }
+
       final batch = firestore.batch();
 
       final newMember = requestMember.copyWith(
-        isManualRole: false,
+        role: Roles.fromString(finalRole),
+        isManualRole: finalIsManual,
         isPremium: currentPremiumStatus, 
         realUserName: freshUsername,
         realUserImageUrl: freshAvatar,
@@ -148,7 +181,10 @@ class GroupProvider extends ChangeNotifier {
       final groupRef = firestore
           .collection(FirestorePaths.groups)
           .doc(groupId);
-      batch.update(groupRef, {'membersCount': FieldValue.increment(1)});
+      // لا تزيد العداد إذا كان العضو موجود مسبقاً
+      if (!existingMemberDoc.exists) {
+        batch.update(groupRef, {'membersCount': FieldValue.increment(1)});
+      }
        
       if (newMember.characterName != null) {
          final charKey = newMember.characterName!.toLowerCase().replaceAll(RegExp(r'\s+'), '');
@@ -620,8 +656,7 @@ class GroupProvider extends ChangeNotifier {
       final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
       await _firestore.createDocument(
         path: FirestorePaths.groupCharacters(groupId),
-        
-docId: charKey,
+        docId: charKey,
         data: {
           'userId': userId,
           'characterName': characterName.trim(),

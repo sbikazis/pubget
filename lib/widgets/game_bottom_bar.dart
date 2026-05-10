@@ -28,7 +28,7 @@ class GameBottomBar extends StatefulWidget {
 
 class _GameBottomBarState extends State<GameBottomBar> {
   final TextEditingController _controller = TextEditingController();
-  bool _turnTimeoutCalled = false; // ✅ منع استدعاء processAutoJudge أكثر من مرة
+  bool _turnTimeoutCalled = false;
 
   bool get isMyTurn =>
       widget.game.currentTurnUserId == widget.currentMember.userId;
@@ -59,6 +59,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
         children: [
           _buildTimerProgress(),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
                 icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
@@ -72,6 +73,13 @@ class _GameBottomBarState extends State<GameBottomBar> {
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  minLines: 1,
+                  maxLines: 6,
+                  textAlign: TextAlign.right,
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(fontSize: 15.5, height: 1.4),
                   decoration: InputDecoration(
                     hintText: isQuestionPhase
                         ? "اسأل سؤالاً (إجابته نعم/لا)..."
@@ -83,8 +91,8 @@ class _GameBottomBarState extends State<GameBottomBar> {
                     ),
                     fillColor: Colors.grey[200],
                     filled: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 15),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15, vertical: 10),
                   ),
                 ),
               ),
@@ -110,7 +118,6 @@ class _GameBottomBarState extends State<GameBottomBar> {
         final percent =
             (seconds / GameConstants.turnDuration).clamp(0.0, 1.0);
 
-        // ✅ انتهاء وقت الدور ينهي اللعبة — مع حماية من التكرار
         if (seconds <= 0 &&
             isMyTurn &&
             widget.game.status == GameStatus.guessing &&
@@ -126,8 +133,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
         }
 
         return Padding(
-          padding:
-              const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
+          padding: const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
           child: LinearProgressIndicator(
             value: percent,
             backgroundColor: Colors.grey[300],
@@ -248,8 +254,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
                   );
               Navigator.pop(ctx);
             },
-            child:
-                const Text("انسحاب", style: TextStyle(color: Colors.red)),
+            child: const Text("انسحاب", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

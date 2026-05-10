@@ -5,17 +5,17 @@ import 'package:intl/intl.dart';
 
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/auth_provider.dart'; // إضافة AuthProvider لفحص سعة الشوغو
+import '../../providers/auth_provider.dart';
 import 'package:pubget/features/profile/profile_sceen.dart'; 
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';
-import '../../core/logic/subscription_limits_logic.dart'; // إضافة منطق الحدود
+import '../../core/logic/subscription_limits_logic.dart';
 
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
-import '../../widgets/premium_badge.dart'; // ✅ إضافة مستورد الشارة
+import '../../widgets/premium_badge.dart';
 
 class JoinRequestsScreen extends StatelessWidget {
   final String groupId;
@@ -48,13 +48,22 @@ class JoinRequestsScreen extends StatelessWidget {
     );
   }
 
-  // ✅ التعديل الرئيسي: استخدام showLimitReachedDialog الموحدة لضمان عمل زر الترقية
   Future<void> _handleAccept(BuildContext context, MemberModel request) async {
     final groupProvider = context.read<GroupProvider>();
     final authProvider = context.read<AuthProvider>();
     final adminUser = authProvider.user;
 
     if (adminUser == null) return;
+
+    // منع قبول الطلب إذا كان المرسل هو نفسه المسؤول
+    if (request.userId == adminUser.id) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا يمكنك قبول طلبك الخاص')),
+        );
+      }
+      return;
+    }
 
     try {
       // 1. جلب بيانات المجموعة الحالية للتأكد من عدد الأعضاء
