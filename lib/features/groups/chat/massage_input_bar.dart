@@ -9,10 +9,12 @@ import '../../../core/constants/limits.dart';
 import '../../../core/constants/firestore_paths.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/game_info_dialog.dart';
+import '../../../widgets/gif_picker_sheet.dart';
 
 class MessageInputBar extends StatefulWidget {
   final Function(String text, MessageModel? replyTo) onSendText;
   final Function(File file, MessageModel? replyTo) onSendImage;
+  final Function(String gifUrl, MessageModel? replyTo)? onSendGif;
   final String groupId;
   final MemberModel currentMember;
   final MessageModel? replyingMessage;
@@ -23,6 +25,7 @@ class MessageInputBar extends StatefulWidget {
     super.key,
     required this.onSendText,
     required this.onSendImage,
+    this.onSendGif,
     required this.groupId,
     required this.currentMember,
     this.replyingMessage,
@@ -51,6 +54,32 @@ class _MessageInputBarState extends State<MessageInputBar> {
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  void _openGifPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => GifPickerSheet(
+        onGifSelected: (gifUrl) async {
+          if (widget.onSendGif != null) {
+            setState(() => _isSending = true);
+            try {
+              await widget.onSendGif!(gifUrl, widget.replyingMessage);
+              if (widget.onCancelReply != null) widget.onCancelReply!();
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("فشل إرسال GIF.")));
+              }
+            } finally {
+              if (mounted) setState(() => _isSending = false);
+            }
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _sendMessage() async {
@@ -116,6 +145,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 icon: const Icon(Icons.attach_file),
                 color: AppColors.primary,
                 onPressed: _isSending ? null : _pickAndSendImage,
+              ),
+              IconButton(
+                icon: const Icon(Icons.gif_box_outlined),
+                color: AppColors.primary,
+                onPressed: _isSending ? null : _openGifPicker,
+                tooltip: 'GIF',
               ),
               if (!widget.isPrivate)
                 IconButton(
@@ -197,7 +232,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 ),
                 Text(
                   widget.replyingMessage!.text ??
-                      (widget.replyingMessage!.mediaType == 'image' ? "صورة 🖼️" : "رسالة وسائط"),
+                      (widget.replyingMessage!.mediaType == 'image'
+                          ? "صورة 🖼️"
+                          : widget.replyingMessage!.mediaType == 'gif'
+                              ? "GIF 🎞️"
+                              : "رسالة وسائط"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),

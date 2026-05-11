@@ -82,9 +82,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _syncPremiumStatus(UserModel currentUser) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
-      final member = await chatProvider.getMember(groupId: widget.groupId, userId: currentUser.id);
+      final member = await chatProvider.getMember(
+          groupId: widget.groupId, userId: currentUser.id);
       if (member != null && member.isPremium != currentUser.isPremium) {
-        await FirebaseFirestore.instance.collection(FirestorePaths.groupMembers(widget.groupId)).doc(currentUser.id).update({'isPremium': currentUser.isPremium});
+        await FirebaseFirestore.instance
+            .collection(FirestorePaths.groupMembers(widget.groupId))
+            .doc(currentUser.id)
+            .update({'isPremium': currentUser.isPremium});
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -96,7 +100,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       if (!mounted) return;
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      chatProvider.updateLastRead(groupId: widget.groupId, userId: userId, readUpTo: readUpTo);
+      chatProvider.updateLastRead(
+          groupId: widget.groupId, userId: userId, readUpTo: readUpTo);
     } catch (e) {
       debugPrint("Update status failed: $e");
     }
@@ -121,7 +126,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadCurrentMember(String userId) async {
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     try {
-      final member = await chatProvider.getMember(groupId: widget.groupId, userId: userId);
+      final member = await chatProvider.getMember(
+          groupId: widget.groupId, userId: userId);
       if (!mounted) return;
       _lastReadAt = member?.lastReadAt;
       setState(() => _currentMember = member);
@@ -130,7 +136,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
       }
 
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFirstUnread());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollToFirstUnread());
     } catch (e) {
       debugPrint('Failed to load current member: $e');
     }
@@ -145,7 +152,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     final messages = _cachedMessages.reversed.toList();
-    final firstUnreadIndex = messages.indexWhere((m) => m.createdAt.isAfter(_lastReadAt!));
+    final firstUnreadIndex =
+        messages.indexWhere((m) => m.createdAt.isAfter(_lastReadAt!));
     if (firstUnreadIndex == -1) {
       _scrollController.jumpTo(0);
       return;
@@ -154,7 +162,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final target = messages[firstUnreadIndex];
       final key = _messageKeys[target.id];
       if (key?.currentContext != null) {
-        Scrollable.ensureVisible(key!.currentContext!, duration: const Duration(milliseconds: 300), alignment: 0.1);
+        Scrollable.ensureVisible(key!.currentContext!,
+            duration: const Duration(milliseconds: 300), alignment: 0.1);
       }
     });
   }
@@ -163,20 +172,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!_scrollController.hasClients) return;
     if (!force && _scrollController.offset > 200) return;
     if (animate) {
-      _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      _scrollController.animateTo(0,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     } else {
       _scrollController.jumpTo(0);
     }
   }
 
   void _scrollToMessage(String messageId) {
-    final messages = _cachedMessages.reversed.toList();
-    final index = messages.indexWhere((m) => m.id == messageId);
-    if (index != -1) {
-      final key = _messageKeys[messageId];
-      if (key?.currentContext != null) {
-        Scrollable.ensureVisible(key!.currentContext!, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
-      }
+    final key = _messageKeys[messageId];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(key!.currentContext!,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut);
     }
   }
 
@@ -186,10 +194,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    await chatProvider.sendTextMessage(groupId: widget.groupId, messageId: _uuid.v4(), sender: _currentMember!, text: text, userAvatar: userProvider.currentUser?.avatarUrl, replyToId: replyTo?.id, replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null));
+    await chatProvider.sendTextMessage(
+      groupId: widget.groupId,
+      messageId: _uuid.v4(),
+      sender: _currentMember!,
+      text: text,
+      userAvatar: userProvider.currentUser?.avatarUrl,
+      replyToId: replyTo?.id,
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'image'
+              ? "صورة 🖼️"
+              : replyTo?.mediaType == 'gif'
+                  ? "GIF 🎞️"
+                  : null),
+    );
     _onCancelReply();
     _scrollToBottom(force: true);
-
     final userId = userProvider.currentUser?.id;
     if (userId != null && _cachedMessages.isNotEmpty) {
       _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
@@ -200,9 +220,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    await chatProvider.sendMediaMessage(groupId: widget.groupId, messageId: _uuid.v4(), sender: _currentMember!, file: file, mediaType: 'image', userAvatar: userProvider.currentUser?.avatarUrl, replyToId: replyTo?.id, replyText: replyTo?.text ?? (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null));
+    await chatProvider.sendMediaMessage(
+      groupId: widget.groupId,
+      messageId: _uuid.v4(),
+      sender: _currentMember!,
+      file: file,
+      mediaType: 'image',
+      userAvatar: userProvider.currentUser?.avatarUrl,
+      replyToId: replyTo?.id,
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+    );
     _onCancelReply();
     _scrollToBottom(force: true);
+  }
+
+  // ✅ دالة إرسال GIF الجديدة
+  Future<void> _handleSendGif(String gifUrl, MessageModel? replyTo) async {
+    if (_currentMember == null) return;
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    await chatProvider.sendGifMessage(
+      groupId: widget.groupId,
+      messageId: _uuid.v4(),
+      sender: _currentMember!,
+      gifUrl: gifUrl,
+      replyToId: replyTo?.id,
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null),
+    );
+    _onCancelReply();
+    _scrollToBottom(force: true);
+    final userId = userProvider.currentUser?.id;
+    if (userId != null && _cachedMessages.isNotEmpty) {
+      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+    }
   }
 
   @override
@@ -218,7 +270,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final bool isRoleplay = group?.isRoleplay ?? false;
         final String groupName = group?.name ?? "الدردشة";
 
-        // ✅ التعديل الوحيد: WillPopScope لتصفير العداد قبل الخروج
         return WillPopScope(
           onWillPop: () async {
             await _markReadBeforePop();
@@ -230,31 +281,44 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               children: [
                 Expanded(
                   child: StreamBuilder<List<MessageModel>>(
-                    stream: chatProvider.streamMessages(groupId: widget.groupId),
+                    stream:
+                        chatProvider.streamMessages(groupId: widget.groupId),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
-                        return const Center(child: CircularProgressIndicator());
+                      if (snapshot.connectionState ==
+                              ConnectionState.waiting &&
+                          _isInitialLoad) {
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
                       if (snapshot.hasData) {
                         final isFirstLoad = _isInitialLoad;
                         _cachedMessages = snapshot.data!;
                         if (isFirstLoad) {
                           _isInitialLoad = false;
-                          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFirstUnread());
+                          WidgetsBinding.instance.addPostFrameCallback(
+                              (_) => _scrollToFirstUnread());
                         }
-
                         if (!isFirstLoad && _currentMember != null) {
-                          final userProvider = Provider.of<UserProvider>(context, listen: false);
+                          final userProvider = Provider.of<UserProvider>(
+                              context,
+                              listen: false);
                           final userId = userProvider.currentUser?.id;
                           if (userId != null && _cachedMessages.isNotEmpty) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+                            WidgetsBinding.instance
+                                .addPostFrameCallback((_) {
+                              _updateReadStatus(userId,
+                                  readUpTo:
+                                      _cachedMessages.last.createdAt);
                             });
                           }
                         }
                       }
                       if (_cachedMessages.isEmpty) {
-                        return const Center(child: EmptyStateWidget(title: 'لا توجد رسائل بعد', subtitle: 'ابدأ المحادثة الآن', icon: Icons.chat_bubble_outline));
+                        return const Center(
+                            child: EmptyStateWidget(
+                                title: 'لا توجد رسائل بعد',
+                                subtitle: 'ابدأ المحادثة الآن',
+                                icon: Icons.chat_bubble_outline));
                       }
                       final messages = _cachedMessages.reversed.toList();
                       return ListView.builder(
@@ -264,13 +328,48 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
                           final message = messages[index];
-                          final isMe = _currentMember != null && message.senderId == _currentMember!.userId;
-                          _messageKeys.putIfAbsent(message.id, () => GlobalKey());
-                          if (message.gameId != null && message.gameAction != null) {
-                            return GameMessageBubble(key: _messageKeys[message.id], message: message, currentMember: _currentMember ?? MemberModel(userId: '', groupId: widget.groupId, role: Roles.member, joinedAt: DateTime.now()), groupId: widget.groupId);
+                          final isMe = _currentMember != null &&
+                              message.senderId == _currentMember!.userId;
+                          _messageKeys.putIfAbsent(
+                              message.id, () => GlobalKey());
+                          if (message.gameId != null &&
+                              message.gameAction != null) {
+                            return GameMessageBubble(
+                                key: _messageKeys[message.id],
+                                message: message,
+                                currentMember: _currentMember ??
+                                    MemberModel(
+                                        userId: '',
+                                        groupId: widget.groupId,
+                                        role: Roles.member,
+                                        joinedAt: DateTime.now()),
+                                groupId: widget.groupId);
                           }
-                          final sender = isMe ? _currentMember! : MemberModel(userId: message.senderId, groupId: widget.groupId, role: message.senderRole ?? Roles.member, joinedAt: DateTime.now(), displayName: message.senderName, characterImageUrl: isRoleplay ? message.senderAvatar : null, realUserImageUrl: !isRoleplay ? message.senderAvatar : null, isPremium: message.senderIsPremium);
-                          return MessageBubble(key: _messageKeys[message.id], message: message, sender: sender, isMe: isMe, groupId: widget.groupId, onReply: (msg) => setState(() => _replyingMessage = msg), onTapReply: (replyId) => _scrollToMessage(replyId));
+                          final sender = isMe
+                              ? _currentMember!
+                              : MemberModel(
+                                  userId: message.senderId,
+                                  groupId: widget.groupId,
+                                  role: message.senderRole ?? Roles.member,
+                                  joinedAt: DateTime.now(),
+                                  displayName: message.senderName,
+                                  characterImageUrl: isRoleplay
+                                      ? message.senderAvatar
+                                      : null,
+                                  realUserImageUrl: !isRoleplay
+                                      ? message.senderAvatar
+                                      : null,
+                                  isPremium: message.senderIsPremium);
+                          return MessageBubble(
+                              key: _messageKeys[message.id],
+                              message: message,
+                              sender: sender,
+                              isMe: isMe,
+                              groupId: widget.groupId,
+                              onReply: (msg) =>
+                                  setState(() => _replyingMessage = msg),
+                              onTapReply: (replyId) =>
+                                  _scrollToMessage(replyId));
                         },
                       );
                     },
@@ -278,41 +377,67 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
                 if (_currentMember != null)
                   StreamBuilder<List<GameModel>>(
-                    stream: gameProvider.streamActiveGames(widget.groupId),
+                    stream:
+                        gameProvider.streamActiveGames(widget.groupId),
                     builder: (context, gameSnapshot) {
                       final activeGames = gameSnapshot.data ?? [];
                       GameModel? activeGameForMe;
                       try {
                         activeGameForMe = activeGames.firstWhere((g) =>
-                          (g.playerOneId == _currentMember!.userId || g.playerTwoId == _currentMember!.userId) &&
-                          (g.status == GameStatus.setup || g.status == GameStatus.guessing));
+                            (g.playerOneId == _currentMember!.userId ||
+                                g.playerTwoId ==
+                                    _currentMember!.userId) &&
+                            (g.status == GameStatus.setup ||
+                                g.status == GameStatus.guessing));
                       } catch (_) {}
 
                       if (activeGameForMe != null) {
                         if (activeGameForMe.status.isOver) {
                           _navigatedGameIds.remove(activeGameForMe.id);
                         }
-
                         if (activeGameForMe.status == GameStatus.guessing) {
                           _navigatedGameIds.remove(activeGameForMe.id);
-                          return GameBottomBar(groupId: widget.groupId, game: activeGameForMe, currentMember: _currentMember!);
+                          return GameBottomBar(
+                              groupId: widget.groupId,
+                              game: activeGameForMe,
+                              currentMember: _currentMember!);
                         }
-
-                        final shouldNavigate = activeGameForMe.status == GameStatus.setup && !_navigatedGameIds.contains(activeGameForMe.id);
+                        final shouldNavigate =
+                            activeGameForMe.status == GameStatus.setup &&
+                                !_navigatedGameIds
+                                    .contains(activeGameForMe.id);
                         if (shouldNavigate) {
                           _navigatedGameIds.add(activeGameForMe.id);
                           Future.microtask(() {
-                            if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => GuessCharacterGameScreen(
-                                groupId: widget.groupId,
-                                gameId: activeGameForMe!.id,
-                                animeIds: group?.animeId != null ? [group!.animeId] : null
-                              )));
+                            if (mounted &&
+                                ModalRoute.of(context)?.isCurrent == true) {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          GuessCharacterGameScreen(
+                                            groupId: widget.groupId,
+                                            gameId: activeGameForMe!.id,
+                                            animeIds: group?.animeId != null
+                                                ? [group!.animeId]
+                                                : null,
+                                          )));
                             }
                           });
                         }
                       }
-                      return MessageInputBar(groupId: widget.groupId, currentMember: _currentMember!, onSendText: _handleSendText, onSendImage: _handleSendImage, replyingMessage: _replyingMessage, onCancelReply: _onCancelReply, isPrivate: false);
+
+                      // ✅ تمرير onSendGif
+                      return MessageInputBar(
+                        groupId: widget.groupId,
+                        currentMember: _currentMember!,
+                        onSendText: _handleSendText,
+                        onSendImage: _handleSendImage,
+                        onSendGif: _handleSendGif,
+                        replyingMessage: _replyingMessage,
+                        onCancelReply: _onCancelReply,
+                        isPrivate: false,
+                      );
                     },
                   ),
               ],

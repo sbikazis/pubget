@@ -277,6 +277,46 @@ class PrivateChatProvider extends ChangeNotifier {
       },
     );
   }
+  // =========================================================
+// SEND GIF MESSAGE
+// =========================================================
+Future<void> sendGifMessage({
+  required String chatId,
+  required String messageId,
+  required UserModel sender,
+  required String gifUrl,
+  String? replyToId,
+  String? replyText,
+}) async {
+  final message = MessageModel(
+    id: messageId,
+    senderId: sender.id,
+    senderName: sender.username,
+    senderAvatar: sender.avatarUrl,
+    senderIsPremium: sender.isPremium,
+    senderRole: null,
+    mediaUrl: gifUrl, // ✅ URL من Giphy مباشرة
+    mediaType: 'gif', // ✅ نوع GIF
+    replyToId: replyToId,
+    replyText: replyText,
+    createdAt: DateTime.now(),
+  );
+
+  await _firestore.createDocument(
+    path: FirestorePaths.privateMessages(chatId),
+    docId: messageId,
+    data: message.toMap(),
+  );
+
+  await _firestore.updateDocument(
+    path: FirestorePaths.privateChats,
+    docId: chatId,
+    data: {
+      "lastMessageAt": FieldValue.serverTimestamp(),
+      "lastMessageText": 'GIF 🎞️',
+    },
+  );
+}
 
   // =========================================================
   // TOGGLE REACTION

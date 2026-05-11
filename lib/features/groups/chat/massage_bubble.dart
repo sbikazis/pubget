@@ -405,36 +405,75 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(Color textColor) {
-    if (message.text != null) {
-      return Text(message.text!,
-          style: TextStyle(fontSize: 15, color: textColor));
-    }
-    if (message.mediaUrl != null) {
-      if (message.mediaType == 'image') {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.network(
-            message.mediaUrl!,
-            width: 220,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return const Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 220,
-              height: 150,
-              color: Colors.grey[300],
-              child: const Icon(Icons.broken_image, color: Colors.grey),
+  // ✅ GIF
+  if (message.mediaType == 'gif' && message.mediaUrl != null) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        message.mediaUrl!,
+        width: 200,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            width: 200,
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 200,
+          height: 100,
+          color: Colors.grey[300],
+          child: const Center(
+            child: Icon(Icons.gif, size: 40, color: Colors.grey),
           ),
-        );
-      }
-      return Text("🎬 ${message.mediaType} message");
-    }
-    return const SizedBox();
+        ),
+      ),
+    );
   }
+
+  // نص
+  if (message.text != null) {
+    return Text(message.text!,
+        style: TextStyle(fontSize: 15, color: textColor));
+  }
+
+  // صورة
+  if (message.mediaUrl != null && message.mediaType == 'image') {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        message.mediaUrl!,
+        width: 220,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 220,
+          height: 150,
+          color: Colors.grey[300],
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  if (message.mediaUrl != null) {
+    return Text("🎬 ${message.mediaType} message");
+  }
+
+  return const SizedBox();
+}
 }

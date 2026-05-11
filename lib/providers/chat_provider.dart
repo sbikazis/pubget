@@ -265,6 +265,65 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
   }
+  // =========================================================
+// SEND GIF MESSAGE
+// =========================================================
+Future<void> sendGifMessage({
+  required String groupId,
+  required String messageId,
+  required MemberModel sender,
+  required String gifUrl,
+  String? replyToId,
+  String? replyText,
+}) async {
+  String? freshRealAvatar = sender.realUserImageUrl;
+  String freshRealName = sender.realUserName ?? '';
+  bool freshPremiumStatus = sender.isPremium;
+
+  try {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(sender.userId)
+        .get();
+
+    if (userDoc.exists) {
+      final userData = userDoc.data();
+      freshRealAvatar = userData?['avatarUrl'];
+      freshRealName = userData?['username'] ?? freshRealName;
+      freshPremiumStatus = userData?['subscriptionType'] == 'premium';
+    }
+  } catch (e) {
+    debugPrint("⚠️ Error fetching live user data for gif: $e");
+  }
+
+  final updatedSender = sender.copyWith(
+    realUserImageUrl: freshRealAvatar,
+    realUserName: freshRealName,
+    isPremium: freshPremiumStatus,
+  );
+
+  final finalAvatar = updatedSender.displayImageUrl ?? '';
+
+  final message = MessageModel(
+    id: messageId,
+    senderId: updatedSender.userId,
+    senderName: updatedSender.effectiveName,
+    senderAvatar: finalAvatar,
+    senderRole: updatedSender.role,
+    senderIsPremium: updatedSender.isPremium,
+    mediaUrl: gifUrl, // ✅ URL من Giphy مباشرة بدون رفع
+    mediaType: 'gif', // ✅ نوع GIF
+    replyToId: replyToId,
+    replyText: replyText,
+    createdAt: DateTime.now(),
+  );
+
+  await _firestore.createDocument(
+    path: FirestorePaths.groupMessages(groupId),
+    docId: messageId,
+    data: message.toMap(),
+  );
+}
 
   // =========================================================
   // TOGGLE REACTION
