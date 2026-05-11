@@ -41,20 +41,38 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   late Stream<List<MessageModel>> _messageStream;
   List<MessageModel> _currentMessages = [];
 
+  // ✅ جديد
+  bool _showScrollDown = false;
+
   @override
   void initState() {
     super.initState();
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
-        .streamMessages(chatId: widget.chatId);
+       .streamMessages(chatId: widget.chatId);
+
+    // ✅ جديد: مراقبة السكرول
+    _scrollController.addListener(_scrollListener);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updatePrivateReadStatus();
     });
   }
 
+  // ✅ جديد
+  void _scrollListener() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    final show = (maxScroll - currentScroll) > 200;
+    if (show!= _showScrollDown) {
+      setState(() => _showScrollDown = show);
+    }
+  }
+
   @override
   void dispose() {
     _updatePrivateReadStatus();
+    _scrollController.removeListener(_scrollListener);
     _scrollController.dispose();
     super.dispose();
   }
@@ -67,7 +85,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           Provider.of<PrivateChatProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
 
-      if (currentUserId != null) {
+      if (currentUserId!= null) {
         privateChatProvider.updatePrivateLastRead(
           chatId: widget.chatId,
           userId: currentUserId,
@@ -89,7 +107,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _scrollToMessage(String messageId) {
     final index = _currentMessages.indexWhere((m) => m.id == messageId);
-    if (index != -1) {
+    if (index!= -1) {
       double targetOffset = index * 80.0;
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
@@ -116,11 +134,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         text: text,
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
+        replyText: replyTo?.text??
             (replyTo?.mediaType == 'image'
-                ? "صورة 🖼️"
+               ? "صورة 🖼️"
                 : replyTo?.mediaType == 'gif'
-                    ? "GIF 🎞️"
+                   ? "GIF 🎞️"
                     : null),
       );
       _updatePrivateReadStatus();
@@ -148,8 +166,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         file: file,
         mediaType: 'image',
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
-            (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -161,7 +179,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // ✅ دالة إرسال GIF الجديدة
   Future<void> _handleSendGif(String gifUrl, MessageModel? replyTo) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final privateChatProvider =
@@ -176,7 +193,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         gifUrl: gifUrl,
         replyToId: replyTo?.id,
-        replyText: replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null,
+        replyText: replyTo?.mediaType == 'gif'? "GIF 🎞️" : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -214,84 +231,103 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           ],
         ),
       ),
-      body: Column(
+      // ✅ تم التغليف بـ Stack
+      body: Stack(
         children: [
-          Expanded(
-            child: StreamBuilder<List<MessageModel>>(
-              stream: _messageStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    _currentMessages.isEmpty) {
-                  return const LoadingWidget();
-                }
+          Column(
+            children: [
+              Expanded(
+                child: StreamBuilder<List<MessageModel>>(
+                  stream: _messageStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _currentMessages.isEmpty) {
+                      return const LoadingWidget();
+                    }
 
-                if (snapshot.hasData) {
-                  final newMessages = snapshot.data!;
-                  if (newMessages.length > _currentMessages.length) {
-                    Future.microtask(() => _updatePrivateReadStatus());
-                    WidgetsBinding.instance
-                        .addPostFrameCallback((_) => _scrollToBottom());
-                  }
-                  _currentMessages = newMessages;
-                }
+                    if (snapshot.hasData) {
+                      final newMessages = snapshot.data!;
+                      if (newMessages.length > _currentMessages.length) {
+                        Future.microtask(() => _updatePrivateReadStatus());
+                        WidgetsBinding.instance
+                           .addPostFrameCallback((_) => _scrollToBottom());
+                      }
+                      _currentMessages = newMessages;
+                    }
 
-                if (_currentMessages.isEmpty) {
-                  return const EmptyStateWidget(
-                    title: "لا توجد رسائل",
-                    subtitle: "ابدأ المحادثة الآن",
-                    icon: Icons.chat_bubble_outline,
-                  );
-                }
+                    if (_currentMessages.isEmpty) {
+                      return const EmptyStateWidget(
+                        title: "لا توجد رسائل",
+                        subtitle: "ابدأ المحادثة الآن",
+                        icon: Icons.chat_bubble_outline,
+                      );
+                    }
 
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  itemCount: _currentMessages.length,
-                  itemBuilder: (context, index) {
-                    final message = _currentMessages[index];
-                    final isMe = message.senderId == currentUser.id;
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      itemCount: _currentMessages.length,
+                      itemBuilder: (context, index) {
+                        final message = _currentMessages[index];
+                        final isMe = message.senderId == currentUser.id;
 
-                    final sender = MemberModel(
-                      userId: message.senderId,
-                      groupId: 'private',
-                      role: message.senderRole ?? Roles.member,
-                      joinedAt: DateTime.now(),
-                      displayName: message.senderName,
-                      characterImageUrl: message.senderAvatar,
-                    );
+                        final sender = MemberModel(
+                          userId: message.senderId,
+                          groupId: 'private',
+                          role: message.senderRole?? Roles.member,
+                          joinedAt: DateTime.now(),
+                          displayName: message.senderName,
+                          characterImageUrl: message.senderAvatar,
+                        );
 
-                    return MessageBubble(
-                      key: ValueKey(message.id),
-                      message: message,
-                      sender: sender,
-                      isMe: isMe,
-                      groupId: widget.chatId,
-                      onReply: (msg) =>
-                          setState(() => _replyingMessage = msg),
-                      onTapReply: (replyId) => _scrollToMessage(replyId),
+                        return MessageBubble(
+                          key: ValueKey(message.id),
+                          message: message,
+                          sender: sender,
+                          isMe: isMe,
+                          groupId: widget.chatId,
+                          onReply: (msg) =>
+                              setState(() => _replyingMessage = msg),
+                          onTapReply: (replyId) => _scrollToMessage(replyId),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+              MessageInputBar(
+                groupId: widget.chatId,
+                currentMember: MemberModel(
+                  userId: currentUser.id,
+                  groupId: 'private',
+                  role: Roles.member,
+                  joinedAt: DateTime.now(),
+                  displayName: currentUser.username,
+                ),
+                onSendText: _handleSendText,
+                onSendImage: _handleSendImage,
+                onSendGif: _handleSendGif,
+                replyingMessage: _replyingMessage,
+                onCancelReply: _onCancelReply,
+                isPrivate: true,
+              ),
+            ],
           ),
-
-          // ✅ تمرير onSendGif
-          MessageInputBar(
-            groupId: widget.chatId,
-            currentMember: MemberModel(
-              userId: currentUser.id,
-              groupId: 'private',
-              role: Roles.member,
-              joinedAt: DateTime.now(),
-              displayName: currentUser.username,
+          // ✅ زر النزول
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: AnimatedOpacity(
+              opacity: _showScrollDown? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: _showScrollDown
+                 ? FloatingActionButton.small(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      onPressed: _scrollToBottom,
+                      child: const Icon(Icons.arrow_downward, color: Colors.white),
+                    )
+                  : const SizedBox.shrink(),
             ),
-            onSendText: _handleSendText,
-            onSendImage: _handleSendImage,
-            onSendGif: _handleSendGif,
-            replyingMessage: _replyingMessage,
-            onCancelReply: _onCancelReply,
-            isPrivate: true,
           ),
         ],
       ),
