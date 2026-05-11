@@ -53,7 +53,7 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تم التعديل: مراقبة الرسائل غير المقروءة مع استبعاد "أنا المرسل"
+  // ✅ مراقبة الرسائل غير المقروءة مع استبعاد "أنا المرسل"
   // =========================================================
   Stream<int> streamPrivateUnreadCount({
     required String chatId,
@@ -71,7 +71,6 @@ class PrivateChatProvider extends ChangeNotifier {
       final Timestamp? lastRead =
           isUserA ? data['lastReadUserA'] : data['lastReadUserB'];
 
-      // إذا لم يكن هناك تاريخ قراءة، نستخدم تاريخاً قديماً جداً
       final compareDate = lastRead ?? Timestamp.fromDate(DateTime(2000));
 
       final query = _firestore.buildQuery(
@@ -84,7 +83,6 @@ class PrivateChatProvider extends ChangeNotifier {
       return _firestore
           .streamCollection(path: path, query: query)
           .map((snap) {
-            // 🔥 التعديل الجوهري: استبعاد الرسائل التي يكون فيها المستخدم الحالي هو المرسل
             return snap.docs.where((doc) {
               final msgData = doc.data() as Map<String, dynamic>;
               return msgData['senderId'] != userId;
@@ -166,25 +164,16 @@ class PrivateChatProvider extends ChangeNotifier {
     );
 
     return _firestore
-        .streamCollection(
-          path: path,
-          query: query,
-        )
+        .streamCollection(path: path, query: query)
         .map((snapshot) {
       return snapshot.docs
-          .map(
-            (doc) => MessageModel.fromMap(
-              doc.id,
-              doc.data(),
-            ),
-          )
+          .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
           .toList();
     });
   }
 
   // =========================================================
   // SEND TEXT MESSAGE
-  // ✅ التعديل: إسناد حالة البريميوم من UserModel للرسالة الخاصة
   // =========================================================
   Future<void> sendTextMessage({
     required String chatId,
@@ -231,7 +220,6 @@ class PrivateChatProvider extends ChangeNotifier {
 
   // =========================================================
   // SEND MEDIA MESSAGE
-  // ✅ التعديل: إسناد حالة البريميوم من UserModel لرسالة الميديا الخاصة
   // =========================================================
   Future<void> sendMediaMessage({
     required String chatId,
@@ -277,46 +265,98 @@ class PrivateChatProvider extends ChangeNotifier {
       },
     );
   }
+
   // =========================================================
-// SEND GIF MESSAGE
-// =========================================================
-Future<void> sendGifMessage({
-  required String chatId,
-  required String messageId,
-  required UserModel sender,
-  required String gifUrl,
-  String? replyToId,
-  String? replyText,
-}) async {
-  final message = MessageModel(
-    id: messageId,
-    senderId: sender.id,
-    senderName: sender.username,
-    senderAvatar: sender.avatarUrl,
-    senderIsPremium: sender.isPremium,
-    senderRole: null,
-    mediaUrl: gifUrl, // ✅ URL من Giphy مباشرة
-    mediaType: 'gif', // ✅ نوع GIF
-    replyToId: replyToId,
-    replyText: replyText,
-    createdAt: DateTime.now(),
-  );
+  // SEND GIF MESSAGE
+  // =========================================================
+  Future<void> sendGifMessage({
+    required String chatId,
+    required String messageId,
+    required UserModel sender,
+    required String gifUrl,
+    String? replyToId,
+    String? replyText,
+  }) async {
+    final message = MessageModel(
+      id: messageId,
+      senderId: sender.id,
+      senderName: sender.username,
+      senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium,
+      senderRole: null,
+      mediaUrl: gifUrl,
+      mediaType: 'gif',
+      replyToId: replyToId,
+      replyText: replyText,
+      createdAt: DateTime.now(),
+    );
 
-  await _firestore.createDocument(
-    path: FirestorePaths.privateMessages(chatId),
-    docId: messageId,
-    data: message.toMap(),
-  );
+    await _firestore.createDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: message.toMap(),
+    );
 
-  await _firestore.updateDocument(
-    path: FirestorePaths.privateChats,
-    docId: chatId,
-    data: {
-      "lastMessageAt": FieldValue.serverTimestamp(),
-      "lastMessageText": 'GIF 🎞️',
-    },
-  );
-}
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateChats,
+      docId: chatId,
+      data: {
+        "lastMessageAt": FieldValue.serverTimestamp(),
+        "lastMessageText": 'GIF 🎞️',
+      },
+    );
+  }
+
+  // =========================================================
+  // ✅ SEND AUDIO MESSAGE
+  // =========================================================
+  Future<void> sendAudioMessage({
+    required String chatId,
+    required String messageId,
+    required UserModel sender,
+    required File audioFile,
+    String? replyToId,
+    String? replyText,
+  }) async {
+    // 1. رفع الملف إلى Storage
+    final audioUrl = await _storage.uploadPrivateChatMedia(
+      chatId: chatId,
+      messageId: messageId,
+      file: audioFile,
+    );
+
+    // 2. إنشاء MessageModel بـ mediaType: 'audio'
+    final message = MessageModel(
+      id: messageId,
+      senderId: sender.id,
+      senderName: sender.username,
+      senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium,
+      senderRole: null,
+      mediaUrl: audioUrl,
+      mediaType: 'audio',
+      replyToId: replyToId,
+      replyText: replyText,
+      createdAt: DateTime.now(),
+    );
+
+    // 3. حفظه في Firestore
+    await _firestore.createDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: message.toMap(),
+    );
+
+    // 4. تحديث آخر رسالة في المحادثة
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateChats,
+      docId: chatId,
+      data: {
+        "lastMessageAt": FieldValue.serverTimestamp(),
+        "lastMessageText": '🎤 رسالة صوتية',
+      },
+    );
+  }
 
   // =========================================================
   // TOGGLE REACTION
@@ -328,7 +368,7 @@ Future<void> sendGifMessage({
     required String emoji,
   }) async {
     final path = FirestorePaths.privateMessages(chatId);
-    
+
     final messageData = await _firestore.getDocument(
       path: path,
       docId: messageId,
@@ -336,8 +376,8 @@ Future<void> sendGifMessage({
 
     if (messageData == null) return;
 
-    final Map<String, String> currentReactions = messageData['reactions'] != null 
-        ? Map<String, String>.from(messageData['reactions']) 
+    final Map<String, String> currentReactions = messageData['reactions'] != null
+        ? Map<String, String>.from(messageData['reactions'])
         : {};
 
     if (currentReactions[userId] == emoji) {
@@ -375,20 +415,14 @@ Future<void> sendGifMessage({
     final queryA = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
       conditions: [
-        QueryCondition(
-          field: "userA",
-          isEqualTo: userId,
-        ),
+        QueryCondition(field: "userA", isEqualTo: userId),
       ],
     );
 
     final queryB = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
       conditions: [
-        QueryCondition(
-          field: "userB",
-          isEqualTo: userId,
-        ),
+        QueryCondition(field: "userB", isEqualTo: userId),
       ],
     );
 
@@ -494,12 +528,10 @@ Future<void> sendGifMessage({
     );
 
     return snapshot.docs
-        .map(
-          (doc) => FanModel.fromMap(
-            doc.data() as Map<String, dynamic>,
-            doc.id,
-          ),
-        )
+        .map((doc) => FanModel.fromMap(
+              doc.data() as Map<String, dynamic>,
+              doc.id,
+            ))
         .toList();
   }
 
@@ -514,9 +546,6 @@ Future<void> sendGifMessage({
 
     if (data == null) return null;
 
-    return UserModel.fromMap(
-      data,
-      userId,
-    );
+    return UserModel.fromMap(data, userId);
   }
 }

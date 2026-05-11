@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../core/theme/app_colors.dart';
 
-const String _giphyApiKey = 'dc6zaT0xFJmzC';
+const String _giphyApiKey = 'CoNhilLoOuTHk4KjZCBxC4kOVGTW7v5F';
 
 class GifPickerSheet extends StatefulWidget {
   final Function(String gifUrl) onGifSelected;

@@ -2,7 +2,7 @@ name: pubget
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+6
+version: 1.0.0+7
 
 environment:
   sdk: ^3.11.0
@@ -12,6 +12,11 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.9
   giphy_get: ^3.6.1+1
+  # message voice
+  record: ^6.2.0
+  permission_handler: ^12.0.1
+  path_provider: ^2.1.5
+  audioplayers: ^6.6.0
 
   # Firebase
   firebase_core: ^4.6.0
