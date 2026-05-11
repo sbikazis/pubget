@@ -10,7 +10,7 @@ class MessageModel {
   final String senderId;
   final String senderName;
   final String senderAvatar; // 🔥 هذا الحقل سيحمل الآن (صورة التقمص أو صورة البروفايل) بفضل تعديل الـ Provider
-  
+ 
   // ✅ الحقل الجديد لتمييز مستخدمي البريميوم بصرياً في الدردشة
   final bool senderIsPremium;
 
@@ -34,9 +34,11 @@ class MessageModel {
   final Map<String, String>? reactions; // خريطة: {userId: emoji}
 
   final DateTime createdAt;
-  
+ 
   // ✅ الحقل الجديد لضمان دقة العداد بنسبة 100%
   final bool isRead;
+
+  final int? audioDuration; // بالثواني
 
   const MessageModel({
     required this.id,
@@ -44,7 +46,7 @@ class MessageModel {
     required this.senderName,
     required this.senderAvatar,
     this.senderIsPremium = false, // القيمة الافتراضية عادي
-    this.senderRole, 
+    this.senderRole,
     this.text,
     this.mediaUrl,
     this.mediaType,
@@ -57,6 +59,7 @@ class MessageModel {
     this.reactions,
     required this.createdAt,
     this.isRead = false, // القيمة الافتراضية غير مقروءة
+    this.audioDuration,
   });
 
   /// Firestore → Model
@@ -69,14 +72,14 @@ class MessageModel {
       // جلب حالة البريميوم من Firestore
       senderIsPremium: map['senderIsPremium'] ?? false,
       // ✅ التعامل مع الرتبة بحذر: إذا كانت موجودة نأخذها، وإلا نتركها null للخاص
-      senderRole: map['senderRole'] != null 
-          ? Roles.fromString(map['senderRole']) 
+      senderRole: map['senderRole'] != null
+          ? Roles.fromString(map['senderRole'])
           : null,
       text: map['text'],
       mediaUrl: map['mediaUrl'],
       mediaType: map['mediaType'],
       // جلب نوع الرسالة مع قيمة افتراضية
-      type: map['type'] != null 
+      type: map['type'] != null
           ? MessageType.values.firstWhere((e) => e.name == map['type'], orElse: () => MessageType.text)
           : MessageType.text,
       gameId: map['gameId'],
@@ -85,15 +88,16 @@ class MessageModel {
       replyToId: map['replyToId'],
       replyText: map['replyText'],
       // تحويل خريطة التفاعلات من Firestore بأمان
-      reactions: map['reactions'] != null 
-          ? Map<String, String>.from(map['reactions'] as Map) 
+      reactions: map['reactions'] != null
+          ? Map<String, String>.from(map['reactions'] as Map)
           : null,
       // تأمين تحويل التاريخ لتجنب الأخطاء البرمجية
-      createdAt: map['createdAt'] != null 
-          ? (map['createdAt'] as Timestamp).toDate() 
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
       // جلب حالة القراءة من Firestore
       isRead: map['isRead'] ?? false,
+      audioDuration: map['audioDuration'],
     );
   }
 
@@ -105,7 +109,7 @@ class MessageModel {
       'senderAvatar': senderAvatar,
       'senderIsPremium': senderIsPremium, // إرسال حالة البريميوم
       // ✅ إرسال اسم الرتبة فقط في حال وجودها لضمان عدم وجود قيم فارغة تؤثر على الواجهة
-      'senderRole': senderRole?.name, 
+      'senderRole': senderRole?.name,
       'text': text,
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
@@ -118,6 +122,7 @@ class MessageModel {
       'reactions': reactions,
       'createdAt': Timestamp.fromDate(createdAt), // التأكد من إرسالها كـ Timestamp
       'isRead': isRead,
+      'audioDuration': audioDuration,
     };
   }
 
@@ -134,6 +139,7 @@ class MessageModel {
     String? gameAction,
     Map<String, String>? reactions,
     bool? isRead,
+    int? audioDuration,
   }) {
     return MessageModel(
       id: id,
@@ -154,6 +160,7 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
+      audioDuration: audioDuration ?? this.audioDuration,
     );
   }
 }

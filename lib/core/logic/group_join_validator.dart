@@ -44,8 +44,8 @@ class GroupJoinValidator {
     required FirestoreService firestoreService,
   }) : _firestoreService = firestoreService;
 
-  String _formatCharacterName(String name) {
-    return name.trim(); 
+  String _normalizeCharacterKey(String name) {
+    return name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
   }
 
   // ✅ [إصلاح نهائي] البحث في ثلاثة مصادر بالترتيب:
@@ -157,7 +157,7 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('الرجاء إدخال اسم الشخصية');
       }
 
-      final formattedCharacterName = _formatCharacterName(characterName);
+      final formattedCharacterName = characterName.trim();
 
       final nameError = Validators.validateCharacterName(formattedCharacterName);
       if (nameError != null) {
@@ -169,9 +169,7 @@ class GroupJoinValidator {
       }
 
       // ✅ بقوة: فحص حجز الشخصية يظل فعالاً لكل أنواع التقمص (محدد أو مفتوح) لمنع التكرار
-      final String characterKey = formattedCharacterName
-          .toLowerCase()
-          .replaceAll(RegExp(r'\s+'), '');
+      final String characterKey = _normalizeCharacterKey(formattedCharacterName);
 
       final reservedDoc = await _firestoreService.getDocument(
         path: FirestorePaths.groupCharacters(groupId),

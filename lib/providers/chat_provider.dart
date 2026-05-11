@@ -37,8 +37,8 @@ class ChatProvider extends ChangeNotifier {
       path: path,
       docId: userId,
       data: {
-        'lastReadAt': readUpTo != null
-            ? Timestamp.fromDate(readUpTo)
+        'lastReadAt': readUpTo!= null
+           ? Timestamp.fromDate(readUpTo)
             : FieldValue.serverTimestamp(),
       },
     );
@@ -75,7 +75,7 @@ class ChatProvider extends ChangeNotifier {
     );
 
     return _firestore.streamCollection(path: path, query: query).map((snap) {
-      return snap.docs.where((doc) => doc.data()['senderId'] != userId).length;
+      return snap.docs.where((doc) => doc.data()['senderId']!= userId).length;
     });
   }
 
@@ -90,11 +90,11 @@ class ChatProvider extends ChangeNotifier {
 
     final streams = groups.map((group) {
       return _firestore
-          .streamDocument(
+         .streamDocument(
             path: FirestorePaths.groupMembers(group.id),
             docId: userId,
           )
-          .asyncExpand((memberDoc) {
+         .asyncExpand((memberDoc) {
         if (!memberDoc.exists) return Stream.value(0);
         final lastReadAt = memberDoc.data()?['lastReadAt'];
 
@@ -127,8 +127,8 @@ class ChatProvider extends ChangeNotifier {
 
     return _firestore.streamCollection(path: path, query: query).map((snapshot) {
       return snapshot.docs
-          .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-          .toList();
+         .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+         .toList();
     });
   }
 
@@ -149,19 +149,19 @@ class ChatProvider extends ChangeNotifier {
     if (text.trim().isEmpty) return;
 
     String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
+    String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
 
     try {
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
+         .collection('users')
+         .doc(sender.userId)
+         .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
+        freshRealName = userData?['username']?? freshRealName;
         freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
@@ -174,7 +174,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
 
-    final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
+    final finalAvatar = updatedSender.displayImageUrl?? userAvatar?? '';
 
     final message = MessageModel(
       id: messageId,
@@ -218,19 +218,19 @@ class ChatProvider extends ChangeNotifier {
     );
 
     String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
+    String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
 
     try {
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
+         .collection('users')
+         .doc(sender.userId)
+         .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
+        freshRealName = userData?['username']?? freshRealName;
         freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
@@ -243,7 +243,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
 
-    final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
+    final finalAvatar = updatedSender.displayImageUrl?? userAvatar?? '';
 
     final message = MessageModel(
       id: messageId,
@@ -278,19 +278,19 @@ class ChatProvider extends ChangeNotifier {
     String? replyText,
   }) async {
     String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
+    String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
 
     try {
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
+         .collection('users')
+         .doc(sender.userId)
+         .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
+        freshRealName = userData?['username']?? freshRealName;
         freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
@@ -303,7 +303,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
 
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
+    final finalAvatar = updatedSender.displayImageUrl?? '';
 
     final message = MessageModel(
       id: messageId,
@@ -334,6 +334,7 @@ class ChatProvider extends ChangeNotifier {
     required String messageId,
     required MemberModel sender,
     required File audioFile,
+    required int durationSeconds,
     String? replyToId,
     String? replyText,
   }) async {
@@ -346,19 +347,19 @@ class ChatProvider extends ChangeNotifier {
 
     // 2. جلب بيانات المرسل الحديثة
     String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
+    String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
 
     try {
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
+         .collection('users')
+         .doc(sender.userId)
+         .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
+        freshRealName = userData?['username']?? freshRealName;
         freshPremiumStatus = userData?['subscriptionType'] == 'premium';
       }
     } catch (e) {
@@ -371,7 +372,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
 
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
+    final finalAvatar = updatedSender.displayImageUrl?? '';
 
     // 3. إنشاء MessageModel بـ mediaType: 'audio'
     final message = MessageModel(
@@ -383,6 +384,7 @@ class ChatProvider extends ChangeNotifier {
       senderIsPremium: updatedSender.isPremium,
       mediaUrl: audioUrl,
       mediaType: 'audio',
+      audioDuration: durationSeconds,
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
@@ -411,7 +413,7 @@ class ChatProvider extends ChangeNotifier {
     if (doc == null) return;
 
     final message = MessageModel.fromMap(messageId, doc);
-    Map<String, String> updatedReactions = Map.from(message.reactions ?? {});
+    Map<String, String> updatedReactions = Map.from(message.reactions?? {});
 
     if (updatedReactions[userId] == emoji) {
       updatedReactions.remove(userId);
@@ -442,9 +444,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
+         .collection('users')
+         .doc(sender.userId)
+         .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -460,7 +462,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
 
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
+    final finalAvatar = updatedSender.displayImageUrl?? '';
 
     final message = MessageModel(
       id: messageId,
@@ -526,7 +528,7 @@ class ChatProvider extends ChangeNotifier {
     );
     final snapshot = await _firestore.getCollection(path: path, query: query);
     return snapshot.docs
-        .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-        .toList();
+       .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+       .toList();
   }
 }

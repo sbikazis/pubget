@@ -187,7 +187,7 @@ class GroupProvider extends ChangeNotifier {
       }
        
       if (newMember.characterName != null) {
-         final charKey = newMember.characterName!.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+         final charKey = newMember.characterName!.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
          final charRef = firestore
           .collection(FirestorePaths.groupCharacters(groupId))
           .doc(charKey);
@@ -433,7 +433,7 @@ class GroupProvider extends ChangeNotifier {
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
       if (characterName != null) {
-        final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+        final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
             .doc(charKey);
@@ -479,7 +479,7 @@ class GroupProvider extends ChangeNotifier {
       batch.set(memberRef, founder.toMap());
 
       if (founder.characterName != null) {
-        final charKey = founder.characterName!.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+        final charKey = founder.characterName!.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(group.id))
             .doc(charKey);
@@ -638,7 +638,7 @@ class GroupProvider extends ChangeNotifier {
   }
 
   Future<bool> isCharacterReserved({required String groupId, required String characterName}) async {
-    final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     final doc = await _firestore.getDocument(
       path: FirestorePaths.groupCharacters(groupId),
       docId: charKey,
@@ -653,7 +653,7 @@ class GroupProvider extends ChangeNotifier {
     required String userId,
   }) async {
     try {
-      final charKey = characterName.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
       await _firestore.createDocument(
         path: FirestorePaths.groupCharacters(groupId),
         docId: charKey,

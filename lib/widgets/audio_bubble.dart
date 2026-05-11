@@ -167,7 +167,7 @@ class _AudioBubbleState extends State<AudioBubble> {
                 Text(
                   (isPlaying || isPaused)
                       ? _formatDuration(_position)
-                      : _formatDuration(_duration),
+                      : (_duration.inSeconds > 0 ? _formatDuration(_duration) : "0:00"),
                   style: TextStyle(
                     fontSize: 11,
                     color: activeColor.withOpacity(0.8),

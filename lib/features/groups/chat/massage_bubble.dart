@@ -17,6 +17,7 @@ import 'package:pubget/features/profile/respect_modal.dart';
 
 import 'role_badge.dart';
 import '../../../widgets/premium_badge.dart';
+import '../../../widgets/audio_bubble.dart';
 
 class MessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -41,25 +42,25 @@ class MessageBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
 
-    final bool isGameMessage = message.gameId != null;
+    final bool isGameMessage = message.gameId!= null;
     Color? gameAccentColor;
     if (isGameMessage) {
       gameAccentColor = message.gameSlot == 'game_1'
-          ? const Color(0xFFFFD700)
+         ? const Color(0xFFFFD700)
           : const Color(0xFFC0C0C0);
     }
 
     final bubbleColor = isGameMessage
-        ? gameAccentColor!.withOpacity(0.15)
+       ? gameAccentColor!.withOpacity(0.15)
         : (isMe
-            ? AppColors.myMessageBubble
+           ? AppColors.myMessageBubble
             : (isDark
-                ? AppColors.otherMessageBubbleDark
+               ? AppColors.otherMessageBubbleDark
                 : AppColors.otherMessageBubbleLight));
 
-    final textColor = isMe && !isGameMessage
-        ? Colors.white
-        : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
+    final textColor = isMe &&!isGameMessage
+       ? Colors.white
+        : (isDark? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
@@ -68,17 +69,17 @@ class MessageBubble extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment:
-              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              isMe? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
                 crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                    isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   _buildNameRow(roleColor),
-                  if (message.reactions != null &&
+                  if (message.reactions!= null &&
                       message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
                   Container(
@@ -89,13 +90,13 @@ class MessageBubble extends StatelessWidget {
                       color: bubbleColor,
                       borderRadius: BorderRadius.circular(16),
                       border: isGameMessage
-                          ? Border.all(color: gameAccentColor!, width: 1)
+                         ? Border.all(color: gameAccentColor!, width: 1)
                           : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (message.replyText != null)
+                        if (message.replyText!= null)
                           _buildReplyPreview(isDark),
                         _buildMessageContent(textColor),
                       ],
@@ -107,7 +108,7 @@ class MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       color: isDark
-                          ? AppColors.darkTextHint
+                         ? AppColors.darkTextHint
                           : AppColors.lightTextHint,
                     ),
                   ),
@@ -146,11 +147,11 @@ class MessageBubble extends StatelessWidget {
                     onPressed: () {
                       final userId = Provider.of<UserProvider>(context,
                               listen: false)
-                          .currentUser!
-                          .id;
+                         .currentUser!
+                         .id;
                       if (isPrivate) {
                         Provider.of<PrivateChatProvider>(context, listen: false)
-                            .toggleReaction(
+                           .toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
                           userId: userId,
@@ -158,7 +159,7 @@ class MessageBubble extends StatelessWidget {
                         );
                       } else {
                         Provider.of<ChatProvider>(context, listen: false)
-                            .toggleReaction(
+                           .toggleReaction(
                           groupId: groupId,
                           messageId: message.id,
                           userId: userId,
@@ -178,11 +179,11 @@ class MessageBubble extends StatelessWidget {
               title: const Text('رد'),
               onTap: () {
                 Navigator.pop(context);
-                if (onReply != null) onReply!(message);
+                if (onReply!= null) onReply!(message);
               },
             ),
             // ✅ زر النسخ - يظهر فقط إذا كانت الرسالة نصية
-            if (message.text != null && message.text!.isNotEmpty)
+            if (message.text!= null && message.text!.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy, color: AppColors.primary),
                 title: const Text('نسخ'),
@@ -206,11 +207,11 @@ class MessageBubble extends StatelessWidget {
                 onTap: () {
                   if (isPrivate) {
                     Provider.of<PrivateChatProvider>(context, listen: false)
-                        .deleteMessage(
+                       .deleteMessage(
                             chatId: groupId, messageId: message.id);
                   } else {
                     Provider.of<ChatProvider>(context, listen: false)
-                        .deleteMessage(
+                       .deleteMessage(
                             groupId: groupId, messageId: message.id);
                   }
                   Navigator.pop(context);
@@ -241,7 +242,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildReplyPreview(bool isDark) {
     return GestureDetector(
       onTap: () {
-        if (onTapReply != null && message.replyToId != null) {
+        if (onTapReply!= null && message.replyToId!= null) {
           onTapReply!(message.replyToId!);
         }
       },
@@ -249,15 +250,15 @@ class MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: isDark
-              ? Colors.white.withOpacity(0.05)
+             ? Colors.white.withOpacity(0.05)
               : Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border(
             left: isMe
-                ? BorderSide.none
+               ? BorderSide.none
                 : const BorderSide(color: AppColors.primary, width: 4),
             right: isMe
-                ? const BorderSide(color: AppColors.primary, width: 4)
+               ? const BorderSide(color: AppColors.primary, width: 4)
                 : BorderSide.none,
           ),
         ),
@@ -267,7 +268,7 @@ class MessageBubble extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: () {
-                if (onTapReply != null && message.replyToId != null) {
+                if (onTapReply!= null && message.replyToId!= null) {
                   onTapReply!(message.replyToId!);
                 }
               },
@@ -283,7 +284,7 @@ class MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
-                        color: isDark ? Colors.white70 : Colors.black54,
+                        color: isDark? Colors.white70 : Colors.black54,
                       ),
                     ),
                   ],
@@ -314,8 +315,8 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildAvatar(BuildContext context,
       [bool isGame = false, Color? gameColor]) {
-    final String? avatarUrl = sender.displayImageUrl ??
-        (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
+    final String? avatarUrl = sender.displayImageUrl??
+        (message.senderAvatar.isNotEmpty? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {
@@ -324,7 +325,7 @@ class MessageBubble extends StatelessWidget {
             Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
         final targetUser = await userProvider.getUserById(message.senderId);
-        if (targetUser != null && myId != null) {
+        if (targetUser!= null && myId!= null) {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
@@ -339,13 +340,13 @@ class MessageBubble extends StatelessWidget {
       child: CircleAvatar(
         radius: 18,
         backgroundColor: isGame
-            ? gameColor!.withOpacity(0.2)
+           ? gameColor!.withOpacity(0.2)
             : AppColors.primary.withOpacity(0.1),
         child: ClipOval(
           child: isGame
-              ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
-              : (avatarUrl != null && avatarUrl.isNotEmpty
-                  ? Image.network(
+             ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
+              : (avatarUrl!= null && avatarUrl.isNotEmpty
+                 ? Image.network(
                       avatarUrl,
                       width: 36,
                       height: 36,
@@ -361,8 +362,8 @@ class MessageBubble extends StatelessWidget {
                             height: 15,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
+                              value: loadingProgress.expectedTotalBytes!= null
+                                 ? loadingProgress.cumulativeBytesLoaded /
                                       loadingProgress.expectedTotalBytes!
                                   : null,
                             ),
@@ -382,7 +383,7 @@ class MessageBubble extends StatelessWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: isMe? TextDirection.rtl : TextDirection.ltr,
       children: [
         Flexible(
           child: Text(
@@ -394,7 +395,7 @@ class MessageBubble extends StatelessWidget {
                 color: roleColor),
           ),
         ),
-        if (isPremiumUser) ...[
+        if (isPremiumUser)...[
           const SizedBox(width: 4),
           const PremiumBadge(size: 14),
         ],
@@ -406,7 +407,7 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildMessageContent(Color textColor) {
   // ✅ GIF
-  if (message.mediaType == 'gif' && message.mediaUrl != null) {
+  if (message.mediaType == 'gif' && message.mediaUrl!= null) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Image.network(
@@ -440,13 +441,13 @@ class MessageBubble extends StatelessWidget {
   }
 
   // نص
-  if (message.text != null) {
+  if (message.text!= null) {
     return Text(message.text!,
         style: TextStyle(fontSize: 15, color: textColor));
   }
 
   // صورة
-  if (message.mediaUrl != null && message.mediaType == 'image') {
+  if (message.mediaUrl!= null && message.mediaType == 'image') {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Image.network(
@@ -470,8 +471,12 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  if (message.mediaUrl != null) {
-    return Text("🎬 ${message.mediaType} message");
+  // صوت
+  if (message.mediaType == 'audio' && message.mediaUrl!= null) {
+    return AudioBubble(
+      url: message.mediaUrl!,
+      isMe: isMe,
+    );
   }
 
   return const SizedBox();
