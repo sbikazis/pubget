@@ -308,55 +308,57 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ SEND AUDIO MESSAGE
-  // =========================================================
-  Future<void> sendAudioMessage({
-    required String chatId,
-    required String messageId,
-    required UserModel sender,
-    required File audioFile,
-    String? replyToId,
-    String? replyText,
-  }) async {
-    // 1. رفع الملف إلى Storage
-    final audioUrl = await _storage.uploadPrivateChatMedia(
-      chatId: chatId,
-      messageId: messageId,
-      file: audioFile,
-    );
+// ✅ SEND AUDIO MESSAGE
+// =========================================================
+Future<void> sendAudioMessage({
+  required String chatId,
+  required String messageId,
+  required UserModel sender,
+  required File audioFile,
+  required int durationSeconds, // ← أضفنا هذا
+  String? replyToId,
+  String? replyText,
+}) async {
+  // 1. رفع الملف إلى Storage
+  final audioUrl = await _storage.uploadPrivateChatMedia(
+    chatId: chatId,
+    messageId: messageId,
+    file: audioFile,
+  );
 
-    // 2. إنشاء MessageModel بـ mediaType: 'audio'
-    final message = MessageModel(
-      id: messageId,
-      senderId: sender.id,
-      senderName: sender.username,
-      senderAvatar: sender.avatarUrl,
-      senderIsPremium: sender.isPremium,
-      senderRole: null,
-      mediaUrl: audioUrl,
-      mediaType: 'audio',
-      replyToId: replyToId,
-      replyText: replyText,
-      createdAt: DateTime.now(),
-    );
+  // 2. إنشاء MessageModel بـ mediaType: 'audio'
+  final message = MessageModel(
+    id: messageId,
+    senderId: sender.id,
+    senderName: sender.username,
+    senderAvatar: sender.avatarUrl,
+    senderIsPremium: sender.isPremium,
+    senderRole: null,
+    mediaUrl: audioUrl,
+    mediaType: 'audio',
+    audioDuration: durationSeconds, // ← هنا نحفظ المدة
+    replyToId: replyToId,
+    replyText: replyText,
+    createdAt: DateTime.now(),
+  );
 
-    // 3. حفظه في Firestore
-    await _firestore.createDocument(
-      path: FirestorePaths.privateMessages(chatId),
-      docId: messageId,
-      data: message.toMap(),
-    );
+  // 3. حفظه في Firestore
+  await _firestore.createDocument(
+    path: FirestorePaths.privateMessages(chatId),
+    docId: messageId,
+    data: message.toMap(),
+  );
 
-    // 4. تحديث آخر رسالة في المحادثة
-    await _firestore.updateDocument(
-      path: FirestorePaths.privateChats,
-      docId: chatId,
-      data: {
-        "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": '🎤 رسالة صوتية',
-      },
-    );
-  }
+  // 4. تحديث آخر رسالة في المحادثة
+  await _firestore.updateDocument(
+    path: FirestorePaths.privateChats,
+    docId: chatId,
+    data: {
+      "lastMessageAt": FieldValue.serverTimestamp(),
+      "lastMessageText": '🎤 رسالة صوتية',
+    },
+  );
+}
 
   // =========================================================
   // TOGGLE REACTION

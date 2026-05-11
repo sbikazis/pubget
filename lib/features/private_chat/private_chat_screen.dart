@@ -47,7 +47,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   void initState() {
     super.initState();
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
-        .streamMessages(chatId: widget.chatId);
+       .streamMessages(chatId: widget.chatId);
 
     _scrollController.addListener(_scrollListener);
 
@@ -61,7 +61,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.offset;
     final show = (maxScroll - currentScroll) > 200;
-    if (show != _showScrollDown) {
+    if (show!= _showScrollDown) {
       setState(() => _showScrollDown = show);
     }
   }
@@ -82,7 +82,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           Provider.of<PrivateChatProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
 
-      if (currentUserId != null) {
+      if (currentUserId!= null) {
         privateChatProvider.updatePrivateLastRead(
           chatId: widget.chatId,
           userId: currentUserId,
@@ -104,7 +104,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _scrollToMessage(String messageId) {
     final index = _currentMessages.indexWhere((m) => m.id == messageId);
-    if (index != -1) {
+    if (index!= -1) {
       double targetOffset = index * 80.0;
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
@@ -131,13 +131,13 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         text: text,
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
+        replyText: replyTo?.text??
             (replyTo?.mediaType == 'image'
-                ? "صورة 🖼️"
+               ? "صورة 🖼️"
                 : replyTo?.mediaType == 'gif'
-                    ? "GIF 🎞️"
+                   ? "GIF 🎞️"
                     : replyTo?.mediaType == 'audio'
-                        ? "🎙️ تسجيل صوتي"
+                       ? "🎙️ تسجيل صوتي"
                         : null),
       );
       _updatePrivateReadStatus();
@@ -165,8 +165,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         file: file,
         mediaType: 'image',
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
-            (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -192,7 +192,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         gifUrl: gifUrl,
         replyToId: replyTo?.id,
-        replyText: replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null,
+        replyText: replyTo?.mediaType == 'gif'? "GIF 🎞️" : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -204,7 +204,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  Future<void> _handleSendAudio(File audioFile, MessageModel? replyTo) async {
+  Future<void> _handleSendAudio(File audioFile, MessageModel? replyTo, int duration) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final privateChatProvider =
         Provider.of<PrivateChatProvider>(context, listen: false);
@@ -212,15 +212,15 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (currentUser == null) return;
 
     try {
-      await privateChatProvider.sendMediaMessage(
+      await privateChatProvider.sendAudioMessage(
         chatId: widget.chatId,
         messageId: _uuid.v4(),
         sender: currentUser,
-        file: audioFile,
-        mediaType: 'audio',
+        audioFile: audioFile,
+        durationSeconds: duration,
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
-            (replyTo?.mediaType == 'audio' ? "🎙️ تسجيل صوتي" : null),
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'audio'? "🎙️ تسجيل صوتي" : null),
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -276,7 +276,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       if (newMessages.length > _currentMessages.length) {
                         Future.microtask(() => _updatePrivateReadStatus());
                         WidgetsBinding.instance
-                            .addPostFrameCallback((_) => _scrollToBottom());
+                           .addPostFrameCallback((_) => _scrollToBottom());
                       }
                       _currentMessages = newMessages;
                     }
@@ -300,7 +300,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         final sender = MemberModel(
                           userId: message.senderId,
                           groupId: 'private',
-                          role: message.senderRole ?? Roles.member,
+                          role: message.senderRole?? Roles.member,
                           joinedAt: DateTime.now(),
                           displayName: message.senderName,
                           characterImageUrl: message.senderAvatar,
@@ -344,10 +344,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             bottom: 80,
             right: 16,
             child: AnimatedOpacity(
-              opacity: _showScrollDown ? 1.0 : 0.0,
+              opacity: _showScrollDown? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: _showScrollDown
-                  ? FloatingActionButton.small(
+                 ? FloatingActionButton.small(
                       backgroundColor: Theme.of(context).primaryColor,
                       onPressed: _scrollToBottom,
                       child: const Icon(Icons.arrow_downward, color: Colors.white),
