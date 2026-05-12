@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
-import 'package:rxdart/rxdart.dart'; // ✅ نحتاج هذا للدمج الاحترافي للـ Streams
+import 'package:rxdart/rxdart.dart';
 
 import '../models/group_model.dart';
 import '../models/member_model.dart';
@@ -23,6 +23,20 @@ class GroupProvider extends ChangeNotifier {
   GroupProvider({
     required FirestoreService firestoreService,
   }) : _firestore = firestoreService;
+
+  // =========================================================
+  // ✅ دالة موحدة لتوليد charKey — تُستخدم في كل المواضع
+  // الخوارزمية: تنظيف النص ثم ترتيب الكلمات أبجدياً لضمان التطابق
+  // =========================================================
+  static String _normalizeCharacterKey(String characterName) {
+    final words = characterName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .trim()
+        .split(RegExp(r'\s+'));
+    words.sort();
+    return words.join('');
+  }
 
   // =========================================================
   // PROMOTION
@@ -58,7 +72,6 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      // منع إرسال طلب إذا كان المستخدم عضواً بالفعل أو هو المؤسس
       final memberCheck = await firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(memberRequest.userId)
@@ -73,11 +86,15 @@ class GroupProvider extends ChangeNotifier {
           .doc(memberRequest.userId);
       batch.set(requestRef, memberRequest.toMap());
 
-      final notifId = firestore.collection(FirestorePaths.userNotifications(founderId)).doc().id;
+      final notifId = firestore
+          .collection(FirestorePaths.userNotifications(founderId))
+          .doc()
+          .id;
       final notification = NotificationModel(
         id: notifId,
         title: 'طلب انضمام جديد 📥',
-        body: 'قدم ${memberRequest.realUserName} طلباً للانضمام إلى مجموعة "$groupName"',
+        body:
+            'قدم ${memberRequest.realUserName} طلباً للانضمام إلى مجموعة "$groupName"',
         type: NotificationTypes.joinRequest,
         refId: groupId,
         createdAt: DateTime.now(),
@@ -90,7 +107,7 @@ class GroupProvider extends ChangeNotifier {
       batch.set(notifRef, notification.toMap());
 
       await batch.commit();
-     
+
       notifyListeners();
     } catch (e) {
       debugPrint("❌ Error sending join request with notification: $e");
@@ -106,7 +123,10 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      final userDoc = await firestore.collection('users').doc(requestMember.userId).get();
+      final userDoc = await firestore
+          .collection('users')
+          .doc(requestMember.userId)
+          .get();
       bool currentPremiumStatus = false;
       String? freshAvatar;
       String? freshUsername;
@@ -115,15 +135,14 @@ class GroupProvider extends ChangeNotifier {
         final userData = userDoc.data();
         final user = UserModel.fromMap(userData!, userDoc.id);
         currentPremiumStatus = user.isPremium;
-        freshAvatar = user.avatarUrl; 
+        freshAvatar = user.avatarUrl;
         freshUsername = user.username;
       }
 
       if (requestMember.characterName != null) {
         final isTaken = await isCharacterReserved(
-          groupId: groupId,
-          characterName: requestMember.characterName!
-        );
+            groupId: groupId,
+            characterName: requestMember.characterName!);
         if (isTaken) {
           throw "للأسف، تم حجز هذه الشخصية من قبل عضو آخر قبل لحظات.";
         }
@@ -134,7 +153,6 @@ class GroupProvider extends ChangeNotifier {
         validatedInviterId = null;
       }
 
-      // تحقق إذا العضو موجود مسبقاً (هذه هي حالة البج)
       final existingMemberDoc = await firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(requestMember.userId)
@@ -147,7 +165,6 @@ class GroupProvider extends ChangeNotifier {
         final data = existingMemberDoc.data()!;
         finalRole = data['role'] ?? 'member';
         finalIsManual = data['isManualRole'] ?? false;
-        // إذا كان مؤسس، لا تغير شيء و احذف الطلب فقط
         if (finalRole == 'founder' || finalRole == 'shogun') {
           final requestRef = firestore
               .collection(FirestorePaths.groupJoinRequests(groupId))
@@ -162,7 +179,7 @@ class GroupProvider extends ChangeNotifier {
       final newMember = requestMember.copyWith(
         role: Roles.fromString(finalRole),
         isManualRole: finalIsManual,
-        isPremium: currentPremiumStatus, 
+        isPremium: currentPremiumStatus,
         realUserName: freshUsername,
         realUserImageUrl: freshAvatar,
         invitedByUserId: validatedInviterId,
@@ -178,20 +195,19 @@ class GroupProvider extends ChangeNotifier {
           .doc(newMember.userId);
       batch.delete(requestRef);
 
-      final groupRef = firestore
-          .collection(FirestorePaths.groups)
-          .doc(groupId);
-      // لا تزيد العداد إذا كان العضو موجود مسبقاً
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(groupId);
       if (!existingMemberDoc.exists) {
         batch.update(groupRef, {'membersCount': FieldValue.increment(1)});
       }
-       
+
       if (newMember.characterName != null) {
-         final charKey = newMember.characterName!.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-         final charRef = firestore
-          .collection(FirestorePaths.groupCharacters(groupId))
-          .doc(charKey);
-         batch.set(charRef, {
+        // ✅ استخدام الدالة الموحدة
+        final charKey = _normalizeCharacterKey(newMember.characterName!);
+        final charRef = firestore
+            .collection(FirestorePaths.groupCharacters(groupId))
+            .doc(charKey);
+        batch.set(charRef, {
           'userId': newMember.userId,
           'characterName': newMember.characterName,
           'imageUrl': newMember.characterImageUrl,
@@ -199,11 +215,15 @@ class GroupProvider extends ChangeNotifier {
         });
       }
 
-      final notifId = firestore.collection(FirestorePaths.userNotifications(newMember.userId)).doc().id;
+      final notifId = firestore
+          .collection(FirestorePaths.userNotifications(newMember.userId))
+          .doc()
+          .id;
       final notification = NotificationModel(
         id: notifId,
         title: 'تم قبولك! 🎉',
-        body: 'وافق الشوغو على طلب انضمامك لمجموعة "$groupName". يمكنك الدردشة الآن!',
+        body:
+            'وافق الشوغو على طلب انضمامك لمجموعة "$groupName". يمكنك الدردشة الآن!',
         type: NotificationTypes.requestAccepted,
         refId: groupId,
         createdAt: DateTime.now(),
@@ -215,14 +235,11 @@ class GroupProvider extends ChangeNotifier {
           .doc(notifId);
       batch.set(notifRef, notification.toMap());
 
-      // ✅ تنفيذ الـ Batch أولاً لضمان وجود العضو في القاعدة
       await batch.commit();
 
-      // ✅ [تعديل] تحديث الرتب فوراً مع تأخير بسيط لضمان استقرار البيانات في Firestore
-      // هذا يضمن أن نظام الدعوات سيتعرف على العضو الجديد فور انضمامه ويرقي الداعي.
       await Future.delayed(const Duration(milliseconds: 500));
       await InviteRankingLogic.refreshRanks(groupId: groupId);
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint("Error accepting request: $e");
@@ -244,7 +261,10 @@ class GroupProvider extends ChangeNotifier {
           .doc(userId);
       batch.delete(requestRef);
 
-      final notifId = firestore.collection(FirestorePaths.userNotifications(userId)).doc().id;
+      final notifId = firestore
+          .collection(FirestorePaths.userNotifications(userId))
+          .doc()
+          .id;
       final notification = NotificationModel(
         id: notifId,
         title: 'طلب الانضمام',
@@ -276,24 +296,25 @@ class GroupProvider extends ChangeNotifier {
       List<MemberModel> members = [];
       for (var doc in snapshot.docs) {
         var member = MemberModel.fromMap(doc.data());
-       
+
         try {
           final userData = await FirebaseFirestore.instance
               .collection('users')
               .doc(member.userId.trim())
               .get();
-         
+
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
-            
+
             member = member.copyWith(
               realUserName: user.username,
-              realUserImageUrl: user.avatarUrl, 
+              realUserImageUrl: user.avatarUrl,
               isPremium: user.isPremium,
             );
           }
         } catch (e) {
-          debugPrint("Error fetching real user data for request ${member.userId}: $e");
+          debugPrint(
+              "Error fetching real user data for request ${member.userId}: $e");
         }
         members.add(member);
       }
@@ -322,7 +343,7 @@ class GroupProvider extends ChangeNotifier {
           path: FirestorePaths.groupMembers(member.groupId),
           docId: adminId,
         );
-       
+
         if (adminData == null) throw "خطأ: لم يتم العثور على بيانات المسؤول.";
         final adminMember = MemberModel.fromMap(adminData);
 
@@ -333,7 +354,7 @@ class GroupProvider extends ChangeNotifier {
 
         if (currentTargetData != null) {
           final currentTargetMember = MemberModel.fromMap(currentTargetData);
-         
+
           if (!RoleAssignmentLogic.canModify(
             actorRole: adminMember.role,
             targetRole: currentTargetMember.role,
@@ -345,9 +366,6 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      // ✅ [تعديل ذهبي]: التحقق مما إذا كانت الرتبة المضافة هي "عضو عادي"
-      // إذا كانت "عضو عادي"، نترك isManualRole = false لكي يتمكن من الترقي تلقائياً بالدعوات.
-      // أما إذا عين الشوغو رتبة خاصة (سينسي مثلاً)، نثبتها بـ isManualRole = true.
       final bool shouldBeManual = member.role != Roles.member;
       final updatedMember = member.copyWith(isManualRole: shouldBeManual);
 
@@ -356,7 +374,7 @@ class GroupProvider extends ChangeNotifier {
         docId: updatedMember.userId,
         data: updatedMember.toMap(),
       );
-     
+
       await InviteRankingLogic.refreshRanks(groupId: updatedMember.groupId);
       notifyListeners();
     } catch (e) {
@@ -376,21 +394,20 @@ class GroupProvider extends ChangeNotifier {
           path: FirestorePaths.groupMembers(groupId),
           docId: userId,
         );
-       
+
         if (targetData != null) {
           final targetMember = MemberModel.fromMap(targetData);
           final adminData = await _firestore.getDocument(
             path: FirestorePaths.groupMembers(groupId),
             docId: adminId,
           );
-         
+
           if (adminData == null) throw "خطأ في الصلاحيات.";
           final adminMember = MemberModel.fromMap(adminData);
 
           if (!RoleAssignmentLogic.canModify(
-            actorRole: adminMember.role,
-            targetRole: targetMember.role
-          )) {
+              actorRole: adminMember.role,
+              targetRole: targetMember.role)) {
             throw "لا تملك الصلاحية لطرد هذا العضو.";
           }
         }
@@ -399,10 +416,13 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
-      final memberRef = firestore.collection(FirestorePaths.groupMembers(groupId)).doc(userId);
+      final memberRef = firestore
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(userId);
       batch.delete(memberRef);
 
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
       await batch.commit();
@@ -429,11 +449,13 @@ class GroupProvider extends ChangeNotifier {
           .doc(userId);
       batch.delete(memberRef);
 
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
       if (characterName != null) {
-        final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        // ✅ استخدام الدالة الموحدة
+        final charKey = _normalizeCharacterKey(characterName);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
             .doc(charKey);
@@ -441,7 +463,7 @@ class GroupProvider extends ChangeNotifier {
       }
 
       await batch.commit();
-      
+
       await InviteRankingLogic.refreshRanks(groupId: groupId);
       notifyListeners();
     } catch (e) {
@@ -451,8 +473,11 @@ class GroupProvider extends ChangeNotifier {
   }
 
   Future<List<MemberModel>> getMembers({required String groupId}) async {
-    final snapshot = await _firestore.getCollection(path: FirestorePaths.groupMembers(groupId));
-    return snapshot.docs.map((doc) => MemberModel.fromMap(doc.data())).toList();
+    final snapshot = await _firestore.getCollection(
+        path: FirestorePaths.groupMembers(groupId));
+    return snapshot.docs
+        .map((doc) => MemberModel.fromMap(doc.data()))
+        .toList();
   }
 
   // =========================================================
@@ -466,11 +491,14 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
-     
-      final founder = RoleAssignmentLogic.createFounder(member: founderMember).copyWith(isManualRole: true);
 
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(group.id);
-      
+      final founder =
+          RoleAssignmentLogic.createFounder(member: founderMember)
+              .copyWith(isManualRole: true);
+
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(group.id);
+
       batch.set(groupRef, group.toMap());
 
       final memberRef = firestore
@@ -479,11 +507,12 @@ class GroupProvider extends ChangeNotifier {
       batch.set(memberRef, founder.toMap());
 
       if (founder.characterName != null) {
-        final charKey = founder.characterName!.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        // ✅ استخدام الدالة الموحدة
+        final charKey = _normalizeCharacterKey(founder.characterName!);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(group.id))
             .doc(charKey);
-       
+
         batch.set(charRef, {
           'userId': founder.userId,
           'characterName': founder.characterName,
@@ -518,25 +547,28 @@ class GroupProvider extends ChangeNotifier {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
-      
+
       final membersSnapshot = await firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .get();
-      
+
       final batch = firestore.batch();
 
       for (var doc in membersSnapshot.docs) {
         final memberId = doc.id;
-        final notifId = firestore.collection(FirestorePaths.userNotifications(memberId)).doc().id;
-        
+        final notifId = firestore
+            .collection(FirestorePaths.userNotifications(memberId))
+            .doc()
+            .id;
+
         final notification = NotificationModel(
           id: notifId,
           title: 'تم تفكيك مجموعة "$groupName" 🚩',
-          body: farewellMessage != null && farewellMessage.isNotEmpty 
+          body: farewellMessage != null && farewellMessage.isNotEmpty
               ? 'رسالة المؤس: $farewellMessage'
               : 'قام المؤسس بحذف المجموعة نهائياً.',
           type: NotificationTypes.groupDisbanded,
-          refId: null, 
+          refId: null,
           createdAt: DateTime.now(),
           isRead: false,
         );
@@ -545,11 +577,12 @@ class GroupProvider extends ChangeNotifier {
             .collection(FirestorePaths.userNotifications(memberId))
             .doc(notifId);
         batch.set(notifRef, notification.toMap());
-        
+
         batch.delete(doc.reference);
       }
 
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.delete(groupRef);
 
       await batch.commit();
@@ -602,7 +635,7 @@ class GroupProvider extends ChangeNotifier {
 
       final memberStreams = snapshot.docs.map((doc) {
         final member = MemberModel.fromMap(doc.data());
-        
+
         return FirebaseFirestore.instance
             .collection('users')
             .doc(member.userId.trim())
@@ -610,7 +643,7 @@ class GroupProvider extends ChangeNotifier {
             .map((userDoc) {
           if (userDoc.exists && userDoc.data() != null) {
             final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
-            
+
             return member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
@@ -637,8 +670,12 @@ class GroupProvider extends ChangeNotifier {
     );
   }
 
-  Future<bool> isCharacterReserved({required String groupId, required String characterName}) async {
-    final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  Future<bool> isCharacterReserved({
+    required String groupId,
+    required String characterName,
+  }) async {
+    // ✅ استخدام الدالة الموحدة
+    final charKey = _normalizeCharacterKey(characterName);
     final doc = await _firestore.getDocument(
       path: FirestorePaths.groupCharacters(groupId),
       docId: charKey,
@@ -653,7 +690,8 @@ class GroupProvider extends ChangeNotifier {
     required String userId,
   }) async {
     try {
-      final charKey = characterName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      // ✅ استخدام الدالة الموحدة
+      final charKey = _normalizeCharacterKey(characterName);
       await _firestore.createDocument(
         path: FirestorePaths.groupCharacters(groupId),
         docId: charKey,
@@ -671,11 +709,12 @@ class GroupProvider extends ChangeNotifier {
 
   // =========================================================
   // USER GROUPS
-  //=========================================================
+  // =========================================================
 
   Future<List<GroupModel>> getUserGroups({required String userId}) async {
     try {
-      final groupsSnapshot = await _firestore.getCollection(path: FirestorePaths.groups);
+      final groupsSnapshot =
+          await _firestore.getCollection(path: FirestorePaths.groups);
       final List<GroupModel> userGroups = [];
 
       for (final doc in groupsSnapshot.docs) {

@@ -44,21 +44,22 @@ class GroupJoinValidator {
     required FirestoreService firestoreService,
   }) : _firestoreService = firestoreService;
 
+  // ✅ [إصلاح] ترتيب كلمات الاسم أبجدياً قبل دمجها
+  // هذا يجعل "Naruto Uzumaki" و"Uzumaki Naruto" ينتجان نفس المفتاح تماماً
   String _normalizeCharacterKey(String name) {
-    return name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final words = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .split(RegExp(r'\s+'))
+      ..sort();
+    return words.join('');
   }
 
-  // ✅ [إصلاح نهائي] البحث في ثلاثة مصادر بالترتيب:
-  // 1. groupMembers (displayName, characterName, realUserName)
-  // 2. users collection مباشرة (username) — هذا كان المصدر الجذري للمشكلة
-  // لأن streamMembers يُحدث realUserName في الذاكرة فقط ولا يكتبه في groupMembers
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
     final name = inviterName.trim().toLowerCase();
     if (name.isEmpty) return null;
 
-    // =========================================================
-    // المرحلة 1: البحث في groupMembers بكل الحقول المتاحة
-    // =========================================================
     final membersRef = FirebaseFirestore.instance
         .collection(FirestorePaths.groupMembers(groupId));
     final membersSnapshot = await membersRef.get();
@@ -74,11 +75,6 @@ class GroupJoinValidator {
       }
     }
 
-    // =========================================================
-    // ✅ [إضافة] المرحلة 2: البحث في users collection مباشرة
-    // هذا يحل مشكلة أن realUserName في groupMembers قد يكون null أو قديم
-    // لأن streamMembers يُحدث البيانات في الذاكرة فقط لا في Firestore
-    // =========================================================
     for (var memberDoc in membersSnapshot.docs) {
       final memberId = memberDoc.id;
 
@@ -106,22 +102,20 @@ class GroupJoinValidator {
   }
 
   Future<JoinValidationResult> validateJoin({
-    required UserModel user, 
-    required int currentJoinedGroupsCount, 
+    required UserModel user,
+    required int currentJoinedGroupsCount,
     required String groupId,
     required GroupType groupType,
     required String? characterName,
     required String? characterImageUrl,
     required String? animeName,
-    required dynamic animeId, 
-    List<dynamic>? franchiseIds, 
+    required dynamic animeId,
+    List<dynamic>? franchiseIds,
     String? inviterName,
   }) async {
-   
     String? inviterId;
 
     try {
-      // منع المستخدم من طلب الانضمام إذا كان عضواً بالفعل
       final memberDoc = await FirebaseFirestore.instance
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(user.id)
@@ -168,7 +162,8 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      // ✅ بقوة: فحص حجز الشخصية يظل فعالاً لكل أنواع التقمص (محدد أو مفتوح) لمنع التكرار
+      // ✅ [إصلاح] استخدام _normalizeCharacterKey المُصلَح
+      // الآن "Naruto Uzumaki" و"Uzumaki Naruto" يعطيان نفس المفتاح
       final String characterKey = _normalizeCharacterKey(formattedCharacterName);
 
       final reservedDoc = await _firestoreService.getDocument(
@@ -180,20 +175,15 @@ class GroupJoinValidator {
         return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة.');
       }
 
-      // =========================================================
-      // ✅ التعديل الجوهري: منطق التحقق حسب نوع التقمص
-      // =========================================================
-      
       bool characterExists = false;
 
-      // أ. في حالة التقمص المفتوح: تخطي قيود السلسلة والبحث عالمياً
       if (groupType == GroupType.openRoleplay) {
+        // ✅ التقمص المفتوح: بحث عالمي بدون قيود السلسلة
         final globalImage = await AnimeApiService.getCharacterImage(formattedCharacterName)
             .timeout(const Duration(seconds: 15));
         characterExists = globalImage != null;
-      } 
-      // ب. في حالة التقمص المحدد: الالتزام بالسلسلة (Franchise)
-      else {
+      } else {
+        // ✅ التقمص المحدد: يجب أن تنتمي الشخصية للسلسلة المحددة
         if (animeId == null) {
           return JoinValidationResult.failure(
             'رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.',

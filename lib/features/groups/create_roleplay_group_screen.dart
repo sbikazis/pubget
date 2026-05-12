@@ -335,6 +335,14 @@ class _CreateRoleplayGroupScreenState
     if (currentUser == null) return;
     if (!_formKey.currentState!.validate()) return;
 
+    // ✅ [تعديل 3] تحقق صريح من تأكيد الشخصية قبل المتابعة
+    if (_confirmedCharName == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء التحقق من شخصيتك أولاً قبل إنشاء المجموعة')),
+      );
+      return;
+    }
+
     final limitCheck = SubscriptionLimitsLogic.canCreateGroup(
       currentUser, 
       homeProvider.myGroups.length,
