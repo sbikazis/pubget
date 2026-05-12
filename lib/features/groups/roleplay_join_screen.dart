@@ -75,7 +75,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       imageQuality: 80,
     );
 
-    if (picked!= null) {
+    if (picked != null) {
       setState(() {
         _pickedImage = File(picked.path);
         _autoFetchedImageUrl = null;
@@ -101,13 +101,13 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     try {
       // ✅ [تعديل] تحديد franchiseIds بناءً على نوع المجموعة
       final List<int> franchiseIds = widget.group.type == GroupType.openRoleplay
-         ? []
-          : (widget.group.franchiseIds?.cast<int>()??
-             (widget.group.animeId!= null? [widget.group.animeId as int] : []));
+          ? []
+          : (widget.group.franchiseIds?.cast<int>() ??
+              (widget.group.animeId != null ? [widget.group.animeId as int] : []));
 
       // ✅ [تعديل] استدعاء searchCharacterMultiple بدل getCharacterImage/validateCharacterExists
       final results = await AnimeApiService.searchCharacterMultiple(
-        animeIds: franchiseIds.isEmpty? null : franchiseIds,
+        animeIds: franchiseIds.isEmpty ? null : franchiseIds,
         characterName: name,
       );
 
@@ -117,8 +117,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(widget.group.type == GroupType.openRoleplay
-             ? 'لم نجد صورة لهذه الشخصية'
-              : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
+                ? 'لم نجد صورة لهذه الشخصية'
+                : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
           );
         }
         return;
@@ -196,28 +196,28 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl']!= null && char['imageUrl']!.isNotEmpty
-                         ? Image.network(
-                              char['imageUrl']!,
-                              width: 50,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                            ? Image.network(
+                                char['imageUrl']!,
+                                width: 50,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 50,
+                                  height: 60,
+                                  color: Colors.grey.shade300,
+                                  child: const Icon(Icons.person),
+                                ),
+                              )
+                            : Container(
                                 width: 50,
                                 height: 60,
                                 color: Colors.grey.shade300,
                                 child: const Icon(Icons.person),
                               ),
-                            )
-                          : Container(
-                              width: 50,
-                              height: 60,
-                              color: Colors.grey.shade300,
-                              child: const Icon(Icons.person),
-                            ),
                       ),
                       title: Text(
-                        char['name']?? '',
+                        char['name'] ?? '',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       trailing: const Icon(Icons.check_circle_outline, color: AppColors.primary),
@@ -228,7 +228,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           _autoFetchedImageUrl = char['imageUrl'];
                           _pickedImage = null;
                           // ✅ تحديث اسم الشخصية في الحقل بالاسم الرسمي من MAL
-                          _characterController.text = char['name']?? _characterController.text;
+                          _characterController.text = char['name'] ?? _characterController.text;
                         });
                       },
                     );
@@ -246,6 +246,30 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   Future<void> _submitJoinRequest(UserModel currentUser) async {
     if (!_formKey.currentState!.validate()) return;
 
+    // ✅ [تعديل] التحقق من صحة الشخصية قبل المتابعة (للمجموعات من نوع roleplay فقط)
+    if (widget.group.type == GroupType.roleplay) {
+      final characterName = _characterController.text.trim();
+      final List<int> franchiseIds = widget.group.franchiseIds?.cast<int>() ??
+          (widget.group.animeId != null ? [widget.group.animeId as int] : []);
+
+      final isValid = await AnimeApiService.validateCharacterExists(
+        animeIds: franchiseIds.isEmpty ? null : franchiseIds,
+        characterName: characterName,
+      );
+
+      if (!isValid) {
+        if (!mounted) return;
+        await AppDialog.show(
+          context,
+          title: 'شخصية غير صالحة',
+          content: 'الشخصية التي اخترتها لا تنتمي لأنمي هذه المجموعة، الرجاء اختيار شخصية من ${widget.group.animeName}',
+          confirmText: 'حسناً',
+          onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
+        );
+        return;
+      }
+    }
+
     try {
       setState(() => _isProcessing = true);
 
@@ -256,9 +280,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
       final characterName = _characterController.text.trim();
       final reason = _reasonController.text.trim();
-      final inviterName = _hasInviter? _inviterController.text.trim() : null;
+      final inviterName = _hasInviter ? _inviterController.text.trim() : null;
 
-      final hasImage = _pickedImage!= null || (_autoFetchedImageUrl!= null && _autoFetchedImageUrl!.isNotEmpty);
+      final hasImage = _pickedImage != null || (_autoFetchedImageUrl != null && _autoFetchedImageUrl!.isNotEmpty);
 
       final validator = GroupJoinValidator(firestoreService: firestore);
 
@@ -268,7 +292,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         groupId: widget.group.id,
         groupType: widget.group.type,
         characterName: characterName,
-        characterImageUrl: hasImage? 'valid' : null,
+        characterImageUrl: hasImage ? 'valid' : null,
         animeName: widget.group.animeName,
         animeId: widget.group.animeId,
         franchiseIds: widget.group.franchiseIds?.cast<int>(),
@@ -281,9 +305,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
         await AppDialog.show(
           context,
-          title: validation.shouldShowUpgrade? 'ترقية الحساب' : 'تنبيه',
-          content: validation.errorMessage?? 'فشل التحقق من البيانات.',
-          confirmText: validation.shouldShowUpgrade? 'ترقية الآن' : 'حسناً',
+          title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه',
+          content: validation.errorMessage ?? 'فشل التحقق من البيانات.',
+          confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
           onConfirm: () {
             Navigator.of(context, rootNavigator: true).pop();
           },
@@ -292,7 +316,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       }
 
       String? finalImageUrl = _autoFetchedImageUrl;
-      if (_pickedImage!= null) {
+      if (_pickedImage != null) {
         finalImageUrl = await storage.uploadRoleplayCharacterImage(
           groupId: widget.group.id,
           userId: currentUser.id,
@@ -301,7 +325,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       }
 
       final String finalRealName = (currentUser.username.isNotEmpty)
-         ? currentUser.username
+          ? currentUser.username
           : "مستخدم جديد";
 
       String? finalInviterId = validation.foundInviterId;
@@ -315,7 +339,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         displayName: characterName,
         characterName: characterName,
         characterImageUrl: finalImageUrl,
-        characterReason: reason.isNotEmpty? reason : null,
+        characterReason: reason.isNotEmpty ? reason : null,
         realUserName: finalRealName,
         realUserImageUrl: currentUser.avatarUrl,
         invitedByUserId: finalInviterId,
@@ -329,7 +353,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         memberRequest: memberRequest,
       );
 
-      if (widget.invite!= null) {
+      if (widget.invite != null) {
         await firestore.deleteDocument(
           path: FirestorePaths.groupInvites(widget.group.id),
           docId: widget.invite!.inviteId,
@@ -358,7 +382,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       await AppDialog.show(
         context,
         title: 'فشل العملية',
-        content: 'حدث خطأ: ${e.toString().contains('Timeout')? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
+        content: 'حدث خطأ: ${e.toString().contains('Timeout') ? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
         confirmText: 'حسناً',
         onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
       );
@@ -377,7 +401,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         elevation: 0,
       ),
       body: currentUser == null
-         ? const Center(
+          ? const Center(
               child: EmptyStateWidget(
                 title: 'يجب تسجيل الدخول',
                 subtitle: 'سجل الدخول للانضمام كممثل.',
@@ -393,7 +417,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (widget.group.type == GroupType.roleplay && widget.group.animeName!= null)
+                        if (widget.group.type == GroupType.roleplay && widget.group.animeName != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
                             child: Container(
@@ -438,10 +462,10 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                               child: SizedBox(
                                 height: 56,
                                 child: IconButton.filled(
-                                  onPressed: _isFetchingPreview || _isProcessing? null : _fetchCharacterPreview,
+                                  onPressed: _isFetchingPreview || _isProcessing ? null : _fetchCharacterPreview,
                                   icon: _isFetchingPreview
-                                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                    : const Icon(Icons.search),
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.search),
                                   style: IconButton.styleFrom(
                                     backgroundColor: AppColors.primary,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -462,9 +486,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           value: _hasInviter,
                           activeColor: AppColors.primary,
                           contentPadding: EdgeInsets.zero,
-                          onChanged: _isProcessing? null : (val) => setState(() => _hasInviter = val),
+                          onChanged: _isProcessing ? null : (val) => setState(() => _hasInviter = val),
                         ),
-                        if (_hasInviter)...[
+                        if (_hasInviter) ...[
                           AppTextField(
                             label: 'اسم العضو الداعي',
                             placeholder: 'اكتب اسم العضو أو اسم شخصيته',
@@ -487,24 +511,24 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                         Row(
                           children: [
                             GestureDetector(
-                              onTap: _isProcessing? null : _pickImage,
+                              onTap: _isProcessing ? null : _pickImage,
                               child: Container(
                                 width: 100,
                                 height: 100,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
                                   color: Theme.of(context).brightness == Brightness.dark
-                                     ? AppColors.darkSurface
+                                      ? AppColors.darkSurface
                                       : AppColors.lightSurface,
                                   border: Border.all(color: AppColors.primary.withOpacity(0.3)),
                                 ),
-                                child: _pickedImage!= null
-                                   ? ClipRRect(
+                                child: _pickedImage != null
+                                    ? ClipRRect(
                                         borderRadius: BorderRadius.circular(12),
                                         child: Image.file(_pickedImage!, fit: BoxFit.cover),
                                       )
-                                    : _autoFetchedImageUrl!= null
-                                       ? SizedBox(
+                                    : _autoFetchedImageUrl != null
+                                        ? SizedBox(
                                             width: 100,
                                             height: 100,
                                             child: ClipRRect(
@@ -540,11 +564,11 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                         AppButton(
                           text: 'تقديم طلب الانضمام',
                           isLoading: _isProcessing,
-                          onPressed: _isProcessing? null : () => _submitJoinRequest(currentUser),
+                          onPressed: _isProcessing ? null : () => _submitJoinRequest(currentUser),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: _isProcessing? null : () => Navigator.of(context).pop(false),
+                          onPressed: _isProcessing ? null : () => Navigator.of(context).pop(false),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -343,6 +343,35 @@ class _CreateRoleplayGroupScreenState
       return;
     }
 
+    // ✅ [تعديل جديد] خط دفاع ثانٍ: التحقق من أن الشخصية تنتمي للأنمي المحدد
+    if (_selectedGroupType == GroupType.roleplay) {
+      setState(() => _isLoading = true);
+
+      final List<int> franchiseIds = _confirmedFranchiseData
+          .map((item) => item['id'] as int)
+          .toList();
+      if (_confirmedAnimeId != null && !franchiseIds.contains(_confirmedAnimeId as int)) {
+        franchiseIds.add(_confirmedAnimeId as int);
+      }
+
+      final bool charValid = await AnimeApiService.validateCharacterExists(
+        animeIds: franchiseIds,
+        characterName: _confirmedCharName!,
+      );
+
+      if (!charValid) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('الشخصية التي اخترتها لا تنتمي لأنمي هذه المجموعة')),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+
+      setState(() => _isLoading = false);
+    }
+
     final limitCheck = SubscriptionLimitsLogic.canCreateGroup(
       currentUser, 
       homeProvider.myGroups.length,

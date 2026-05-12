@@ -429,38 +429,39 @@ class AnimeApiService {
     }
 
     // ========================================
-    // المسار 2: البحث العالمي دائماً
-    // سواء كانت هناك معرفات أم لا، نضيف نتائج البحث العالمي
-    // لضمان عدم فقدان شخصيات لم تُوجد في المسار 1
+    // المسار 2: البحث العالمي
+    // يعمل فقط إذا كانت animeIds فارغة أو null (تقمص مفتوح)
     // ========================================
-    try {
-      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
-        'q': characterName,
-        'limit': '8', // ✅ 8 نتائج لإعطاء المستخدم خيارات كافية
-      });
+    if (animeIds == null || animeIds.isEmpty) {
+      try {
+        final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+          'q': characterName,
+          'limit': '8', // ✅ 8 نتائج لإعطاء المستخدم خيارات كافية
+        });
 
-      final response = await http.get(url, headers: _headers).timeout(
-        const Duration(seconds: 10),
-      );
+        final response = await http.get(url, headers: _headers).timeout(
+          const Duration(seconds: 10),
+        );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List globalResults = data['data'] ?? [];
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final List globalResults = data['data'] ?? [];
 
-        for (final charData in globalResults) {
-          final String apiName = charData['name'] ?? '';
-          if (apiName.isNotEmpty && !addedNames.contains(apiName)) {
-            addedNames.add(apiName);
-            results.add({
-              'name': apiName,
-              'imageUrl': charData['images']?['jpg']?['large_image_url'] ??
-                          charData['images']?['jpg']?['image_url'] ?? '',
-            });
+          for (final charData in globalResults) {
+            final String apiName = charData['name'] ?? '';
+            if (apiName.isNotEmpty && !addedNames.contains(apiName)) {
+              addedNames.add(apiName);
+              results.add({
+                'name': apiName,
+                'imageUrl': charData['images']?['jpg']?['large_image_url'] ??
+                            charData['images']?['jpg']?['image_url'] ?? '',
+              });
+            }
           }
         }
+      } catch (e) {
+        debugPrint("❌ API Error (searchCharacterMultiple global): $e");
       }
-    } catch (e) {
-      debugPrint("❌ API Error (searchCharacterMultiple global): $e");
     }
 
     return results;
