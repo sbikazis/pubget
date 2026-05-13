@@ -5,9 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class LocalStorageService {
   // المفاتيح المستخدمة للتخزين
   static const String _lastAdTimeKey = 'last_ad_time';
-  static const String _adsCountKey = 'ads_count_today'; // ✅ مفتاح العداد
-  static const String _lastAdDateKey = 'last_ad_date_string'; // ✅ مفتاح تاريخ اليوم
+  static const String _adsCountKey = 'ads_count_today';
+  static const String _lastAdDateKey = 'last_ad_date_string';
   static const String _darkModeKey = 'dark_mode';
+  static const String _savedGifsKey = 'saved_gifs'; // ← مضاف
 
   // Singleton instance
   LocalStorageService._privateConstructor();
@@ -21,18 +22,15 @@ class LocalStorageService {
   }
 
   // =========================
-  // ✅ وظائف الإعلان (المحدثة)
+  // ✅ وظائف الإعلان
   // =========================
 
-  /// حفظ آخر وقت ظهور إعلان
   Future<void> saveLastAdTime(DateTime time) async {
     await init();
     await _prefs!.setInt(_lastAdTimeKey, time.millisecondsSinceEpoch);
-    // حفظ تاريخ اليوم بصيغة (YYYY-MM-DD) لمقارنته لاحقاً وتصفير العداد
     await _prefs!.setString(_lastAdDateKey, "${time.year}-${time.month}-${time.day}");
   }
 
-  /// استرجاع آخر وقت ظهور إعلان
   DateTime? getLastAdTime() {
     if (_prefs == null) return null;
     final millis = _prefs!.getInt(_lastAdTimeKey);
@@ -40,13 +38,11 @@ class LocalStorageService {
     return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 
-  /// ✅ حفظ عدد إعلانات اليوم
   Future<void> saveAdsCountToday(int count) async {
     await init();
     await _prefs!.setInt(_adsCountKey, count);
   }
 
-  /// ✅ استرجاع عدد إعلانات اليوم مع منطق التصفير التلقائي
   int getAdsCountToday() {
     if (_prefs == null) return 0;
 
@@ -54,7 +50,6 @@ class LocalStorageService {
     final now = DateTime.now();
     final todayDate = "${now.year}-${now.month}-${now.day}";
 
-    // إذا كان التاريخ المخزن يختلف عن تاريخ اليوم، صفر العداد فوراً
     if (lastDate != todayDate) {
       saveAdsCountToday(0);
       return 0;
@@ -63,7 +58,6 @@ class LocalStorageService {
     return _prefs!.getInt(_adsCountKey) ?? 0;
   }
 
-  /// التحقق إذا يمكن عرض إعلان بناءً على مدة التهدئة
   bool canShowAd(Duration cooldown) {
     final lastAd = getLastAdTime();
     if (lastAd == null) return true;
@@ -74,16 +68,28 @@ class LocalStorageService {
   // إعدادات عامة
   // =========================
 
-  /// حفظ وضع التطبيق (داكن/فاتح)
   Future<void> saveDarkMode(bool isDark) async {
     await init();
     await _prefs!.setBool(_darkModeKey, isDark);
   }
 
-  /// استرجاع وضع التطبيق
   bool getDarkMode() {
     if (_prefs == null) return false;
     return _prefs!.getBool(_darkModeKey) ?? false;
+  }
+
+  // =========================
+  // ✅ وظائف GIF المحفوظة
+  // =========================
+
+  Future<void> saveGifs(List<String> urls) async {
+    await init();
+    await _prefs!.setStringList(_savedGifsKey, urls);
+  }
+
+  List<String> getSavedGifs() {
+    if (_prefs == null) return [];
+    return _prefs!.getStringList(_savedGifsKey) ?? [];
   }
 
   // =========================
@@ -125,7 +131,6 @@ class LocalStorageService {
     await _prefs!.remove(key);
   }
 
-  /// مسح جميع البيانات المحلية
   Future<void> clearAll() async {
     await init();
     await _prefs!.clear();

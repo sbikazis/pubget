@@ -12,7 +12,7 @@ class AuthService {
   AuthService({
     FirebaseAuth? auth,
     required FirestoreService firestore,
-  })  : _auth = auth ?? FirebaseAuth.instance,
+  }) : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore;
 
   // =========================================================
@@ -46,6 +46,24 @@ class AuthService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // =========================================================
+  // REGISTER (Email & Password)
+  // =========================================================
+  Future<UserModel> register({
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+
+    final firebaseUser = credential.user;
+    if (firebaseUser == null) throw Exception('فشل إنشاء الحساب / Register failed');
+
+    return await _createInitialUserData(firebaseUser);
   }
 
   // =========================================================

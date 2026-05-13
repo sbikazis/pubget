@@ -67,7 +67,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       if (image == null) return;
       setState(() => _isSending = true);
       await widget.onSendImage(File(image.path), widget.replyingMessage);
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
+      if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل معالجة الصورة.")));
     } finally {
@@ -82,11 +82,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
       backgroundColor: Colors.transparent,
       builder: (_) => GifPickerSheet(
         onGifSelected: (gifUrl) async {
-          if (widget.onSendGif!= null) {
+          if (widget.onSendGif != null) {
             setState(() => _isSending = true);
             try {
               await widget.onSendGif!(gifUrl, widget.replyingMessage);
-              if (widget.onCancelReply!= null) widget.onCancelReply!();
+              if (widget.onCancelReply != null) widget.onCancelReply!();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -112,7 +112,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     try {
       await widget.onSendText(text, widget.replyingMessage);
       _controller.clear();
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
+      if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل إرسال الرسالة.")));
     } finally {
@@ -165,7 +165,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       if (!await file.exists()) return;
       setState(() => _isSending = true);
       await widget.onSendAudio!(file, widget.replyingMessage, _recordSeconds);
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
+      if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -184,7 +184,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     try {
       await _recorder.stop();
       _recordTimer?.cancel();
-      if (_recordingPath!= null) {
+      if (_recordingPath != null) {
         final file = File(_recordingPath!);
         if (await file.exists()) await file.delete();
       }
@@ -200,9 +200,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   void _handleGamePressed() async {
     final activeGames = await FirebaseFirestore.instance
-      .collection(FirestorePaths.groupGames(widget.groupId))
-      .where('status', whereIn: ['waitingForOpponent', 'setup', 'guessing'])
-      .get();
+        .collection(FirestorePaths.groupGames(widget.groupId))
+        .where('status', whereIn: ['waitingForOpponent', 'setup', 'guessing'])
+        .get();
     if (activeGames.docs.length >= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -214,136 +214,166 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
     showDialog(
       context: context,
-      builder: (context) => GameInfoDialog(groupId: widget.groupId, currentMember: widget.currentMember),
+      builder: (context) => GameInfoDialog(
+          groupId: widget.groupId, currentMember: widget.currentMember),
     );
   }
+
+  // ── Helpers ──────────────────────────────────────────────
+
+  Widget _buildIconBtn(IconData icon, VoidCallback? onTap, {Color? color}) {
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, size: 22),
+        color: color ?? AppColors.primary,
+        onPressed: onTap,
+      ),
+    );
+  }
+
+  Widget _circleBtn(IconData? icon, Color color, {bool isLoading = false}) {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      child: Center(
+        child: isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+
+  Widget _buildSendButton(bool showMic) {
+    if (showMic) {
+      return GestureDetector(
+        onLongPress: _isSending ? null : _startRecording,
+        onLongPressEnd: (_) => _stopAndSendRecording(),
+        child: _circleBtn(Icons.mic_rounded, AppColors.primary),
+      );
+    }
+    if (_isRecording) {
+      return GestureDetector(
+        onTap: _stopAndSendRecording,
+        child: _circleBtn(Icons.stop_rounded, Colors.red),
+      );
+    }
+    return GestureDetector(
+      onTap: _isSending ? null : _sendMessage,
+      child: _circleBtn(
+        _isSending ? null : Icons.send_rounded,
+        AppColors.primary,
+        isLoading: _isSending,
+      ),
+    );
+  }
+
+  // ── Build ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark? AppColors.darkBorder : AppColors.lightBorder;
-    final background = isDark? AppColors.darkSurface : AppColors.lightSurface;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
+    final background = isDark ? AppColors.darkSurface : AppColors.lightSurface;
 
-    final bool showMic = _controller.text.trim().isEmpty &&!_isRecording;
+    final bool showMic = _controller.text.trim().isEmpty && !_isRecording;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
+        if (widget.replyingMessage != null) _buildReplyPreview(isDark),
         if (_isRecording) _buildRecordingIndicator(isDark),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.only(
+            left: 8,
+            right: 8,
+            top: 8,
+            bottom: 12,
+          ),
           decoration: BoxDecoration(
             color: background,
-            border: Border(top: BorderSide(color: borderColor)),
+            border: Border(top: BorderSide(color: borderColor, width: 0.5)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (!_isRecording)...[
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  color: AppColors.primary,
-                  onPressed: _isSending? null : _pickAndSendImage,
+              if (!_isRecording) ...[
+                _buildIconBtn(
+                  Icons.attach_file_rounded,
+                  _isSending ? null : _pickAndSendImage,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.gif_box_outlined),
-                  color: AppColors.primary,
-                  onPressed: _isSending? null : _openGifPicker,
-                  tooltip: 'GIF',
+                _buildIconBtn(
+                  Icons.gif_rounded,
+                  _isSending ? null : _openGifPicker,
                 ),
                 if (!widget.isPrivate)
-                  IconButton(
-                    icon: const Icon(Icons.videogame_asset),
+                  _buildIconBtn(
+                    Icons.videogame_asset_rounded,
+                    _handleGamePressed,
                     color: AppColors.goldAccent,
-                    onPressed: _handleGamePressed,
                   ),
               ],
               if (_isRecording)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: _cancelRecording,
-                  tooltip: 'إلغاء التسجيل',
+                _buildIconBtn(
+                  Icons.delete_outline_rounded,
+                  _cancelRecording,
+                  color: Colors.red,
                 ),
+              const SizedBox(width: 4),
               Expanded(
                 child: _isRecording
-                  ? const SizedBox.shrink()
+                    ? const SizedBox.shrink()
                     : TextField(
                         controller: _controller,
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.newline,
                         minLines: 1,
-                        maxLines: 6,
+                        maxLines: 5,
                         textAlign: TextAlign.right,
                         textDirection: TextDirection.rtl,
                         maxLength: Limits.maxMessageLength,
                         onChanged: (_) => setState(() {}),
-                        style: const TextStyle(fontSize: 15.5, height: 1.4),
+                        style: const TextStyle(fontSize: 15, height: 1.4),
                         decoration: InputDecoration(
                           hintText: "اكتب رسالة...",
                           counterText: "",
                           filled: true,
-                          fillColor: isDark? AppColors.darkCard : AppColors.lightCard,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          fillColor: isDark
+                              ? AppColors.darkCard
+                              : AppColors.lightCard,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(color: borderColor),
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide:
+                                BorderSide(color: borderColor, width: 0.8),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(color: borderColor),
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide:
+                                BorderSide(color: borderColor, width: 0.8),
                           ),
                           focusedBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(22)),
-                            borderSide: BorderSide(color: AppColors.primary),
+                            borderRadius:
+                                BorderRadius.all(Radius.circular(24)),
+                            borderSide: BorderSide(
+                                color: AppColors.primary, width: 1.5),
                           ),
                         ),
                       ),
               ),
               const SizedBox(width: 8),
-              showMic
-                ? GestureDetector(
-                      onLongPress: _isSending? null : _startRecording,
-                      onLongPressEnd: (_) => _stopAndSendRecording(),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Icon(Icons.mic, color: Colors.white),
-                        ),
-                      ),
-                    )
-                  : _isRecording
-                    ? Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.stop, color: Colors.white),
-                            onPressed: _stopAndSendRecording,
-                          ),
-                        )
-                      : Container(
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: _isSending
-                              ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Icon(Icons.send, color: Colors.white),
-                            onPressed: _isSending? null : _sendMessage,
-                          ),
-                        ),
+              _buildSendButton(showMic),
             ],
           ),
         ),
@@ -354,24 +384,28 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget _buildRecordingIndicator(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: isDark? Colors.grey[900] : Colors.grey[100],
+      color: isDark ? Colors.grey[900] : Colors.grey[100],
       child: Row(
         children: [
           const Icon(Icons.mic, color: Colors.red, size: 18),
           const SizedBox(width: 8),
           Text(
-            "${_recordSeconds ~/ 60}:${(_recordSeconds % 60).toString().padLeft(2,'0')}",
-            style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+            "${_recordSeconds ~/ 60}:${(_recordSeconds % 60).toString().padLeft(2, '0')}",
+            style: const TextStyle(
+                color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
           ),
           const SizedBox(width: 8),
           const Text(
             "جارٍ التسجيل...",
-            style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
           ),
           const Spacer(),
           Text(
             "اضغط ■ للإرسال أو 🗑 للإلغاء",
-            style: TextStyle(fontSize: 11, color: isDark? Colors.white54 : Colors.black45),
+            style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white54 : Colors.black45),
           ),
         ],
       ),
@@ -382,8 +416,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark? Colors.grey[900] : Colors.grey[200],
-        border: const Border(right: BorderSide(color: AppColors.primary, width: 4)),
+        color: isDark ? Colors.grey[900] : Colors.grey[200],
+        border:
+            const Border(right: BorderSide(color: AppColors.primary, width: 4)),
       ),
       child: Row(
         children: [
@@ -395,23 +430,30 @@ class _MessageInputBarState extends State<MessageInputBar> {
               children: [
                 Text(
                   widget.replyingMessage!.senderName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 12),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                      fontSize: 12),
                 ),
                 Text(
-                  widget.replyingMessage!.text??
+                  widget.replyingMessage!.text ??
                       (widget.replyingMessage!.mediaType == 'image'
-                        ? "صورة 🖼️"
+                          ? "صورة 🖼️"
                           : widget.replyingMessage!.mediaType == 'gif'
-                            ? "GIF 🎞️"
+                              ? "GIF 🎞️"
                               : "رسالة وسائط"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: isDark? Colors.white70 : Colors.black87),
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : Colors.black87),
                 ),
               ],
             ),
           ),
-          IconButton(icon: const Icon(Icons.close, size: 18), onPressed: widget.onCancelReply),
+          IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: widget.onCancelReply),
         ],
       ),
     );

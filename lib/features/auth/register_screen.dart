@@ -65,16 +65,15 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       return;
     }
 
-    await authProvider.login(
+    // ✅ التعديل: register بدل login
+    await authProvider.register(
       email: _emailController.text.trim(),
       password: _passwordController.text,
-      
     );
 
     if (!mounted) return;
 
     if (authProvider.user != null) {
-      // إذا بيانات المستخدم غير مكتملة
       if (authProvider.user!.nickname == null || authProvider.user!.nickname!.isEmpty) {
         Navigator.pushReplacement(
           context,
@@ -120,7 +119,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // شعار التطبيق
               const Center(
                 child: Text(
                   "⛩️",
@@ -130,7 +128,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 24),
 
-              // العبارات التحفيزية
               FadeTransition(
                 opacity: _fadeAnim,
                 child: Text(
@@ -144,7 +141,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 32),
 
-              // البريد الإلكتروني
               AppTextField(
                 controller: _emailController,
                 label: "البريد الإلكتروني",
@@ -154,7 +150,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 16),
 
-              // كلمة المرور
               AppTextField(
                 controller: _passwordController,
                 label: "كلمة المرور",
@@ -165,7 +160,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 16),
 
-              // تأكيد كلمة المرور
               AppTextField(
                 controller: _confirmPasswordController,
                 label: "تأكيد كلمة المرور",
@@ -176,7 +170,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 24),
 
-              // زر إنشاء حساب
               AppButton(
                 text: "إنشاء حساب",
                 isLoading: authProvider.isLoading,
@@ -185,7 +178,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 16),
 
-              // زر Google
               AppButton(
                 text: "التسجيل عبر Google",
                 isLoading: authProvider.isLoading,
@@ -195,7 +187,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 16),
 
-              // رابط العودة لتسجيل الدخول
               GestureDetector(
                 onTap: () {
                   Navigator.pushReplacement(
@@ -214,7 +205,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
 
               const SizedBox(height: 16),
 
-              // رسالة خطأ
               if (authProvider.error != null)
                 Text(
                   authProvider.error!,
@@ -224,7 +214,6 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                   ),
                 ),
 
-              // Loading overlay
               if (authProvider.isLoading)
                 const Padding(
                   padding: EdgeInsets.only(top: 16),
