@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // <-- أضفت هذا ف
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -20,6 +20,8 @@ import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import '../private_chat/private_chats_list_screen.dart';
+import '../edits/edits_screen.dart';
+import '../../providers/edits_provider.dart';
 
 import '../settings/settings_screen.dart';
 import 'package:pubget/models/user_model.dart';
@@ -47,15 +49,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _saveTokenNow();
     });
   }
+
   void _saveTokenNow() async {
-  final user = context.read<AuthProvider>().user;
-  if (user == null) return;
-  final token = await FirebaseMessaging.instance.getToken();
-  if (token != null) {
-    await FirebaseFirestore.instance.collection('users').doc(user.id).update({'fcmToken': token});
-    print('✅ Token saved: $token');
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.id).update({'fcmToken': token});
+      print('✅ Token saved: $token');
+    }
   }
-}
 
   void _tryInitialize() {
     if (!mounted) return;
@@ -465,7 +468,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: LoadingWidget(message: 'جاري التحميل...'))
           : Column(
               children: [
-
                 Expanded(
                   child: IndexedStack(
                     index: _selectedIndex,
@@ -474,6 +476,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const MyGroupsSection(showCreatedOnly: true),
                       const MyGroupsSection(showJoinedOnly: true),
                       const PrivateChatsListScreen(),
+                      const EditsScreen(),
                     ],
                   ),
                 ),
@@ -533,6 +536,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
             label: 'الخاص',
           ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.play_circle_outline),
+            label: 'إيديتات',
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -544,4 +551,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

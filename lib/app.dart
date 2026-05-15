@@ -13,6 +13,7 @@ import 'providers/profile_provider.dart';
 import 'providers/private_chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/notifications_provider.dart';
+import 'providers/edits_provider.dart';
 
 // ================== SERVICES ==================
 import 'services/firebase/auth_service.dart';
@@ -117,6 +118,9 @@ class _PubgetAppState extends State<PubgetApp> {
           create: (context) => NotificationsProvider(
             firestoreService: context.read<FirestoreService>(),
           ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => EditsProvider(),
         ),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(

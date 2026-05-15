@@ -9,6 +9,7 @@ class FirestorePaths {
   static const String respects = 'respects';
   static const String fans = 'fans';
   static const String promotions = 'promotions';
+  static const String edits = 'edits';
 
   // GROUP SUBCOLLECTIONS
   static String groupMembers(String groupId) =>
