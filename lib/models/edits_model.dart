@@ -29,6 +29,36 @@ class EditModel {
     required this.createdAt,
   });
 
+  EditModel copyWith({
+    String? id,
+    String? uploaderId,
+    String? uploaderName,
+    String? uploaderAvatar,
+    String? videoUrl,
+    String? thumbnailUrl,
+    String? animeTitle,
+    String? caption,
+    List<String>? likes,
+    int? commentsCount,
+    int? views,
+    DateTime? createdAt,
+  }) {
+    return EditModel(
+      id: id ?? this.id,
+      uploaderId: uploaderId ?? this.uploaderId,
+      uploaderName: uploaderName ?? this.uploaderName,
+      uploaderAvatar: uploaderAvatar ?? this.uploaderAvatar,
+      videoUrl: videoUrl ?? this.videoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      animeTitle: animeTitle ?? this.animeTitle,
+      caption: caption ?? this.caption,
+      likes: likes ?? this.likes,
+      commentsCount: commentsCount ?? this.commentsCount,
+      views: views ?? this.views,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   factory EditModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return EditModel(
@@ -43,7 +73,6 @@ class EditModel {
       likes: List<String>.from(data['likes'] ?? []),
       commentsCount: data['commentsCount'] ?? 0,
       views: data['views'] ?? 0,
-      // ← تم التصحيح: يقبل null
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -60,7 +89,6 @@ class EditModel {
       'likes': likes,
       'commentsCount': commentsCount,
       'views': views,
-      // ← تم التصحيح: يستخدم وقت السيرفر
       'createdAt': FieldValue.serverTimestamp(),
     };
   }

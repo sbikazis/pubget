@@ -31,13 +31,11 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     final videoFile = File(picked.path);
     final size = await videoFile.length();
 
-    // حد 50MB
     if (size > 50 * 1024 * 1024) {
       _showError('حجم الفيديو يتجاوز 50MB');
       return;
     }
 
-    // استخراج thumbnail تلقائياً
     final thumbPath = await VideoThumbnail.thumbnailFile(
       video: picked.path,
       thumbnailPath: (await getTemporaryDirectory()).path,
@@ -47,7 +45,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
 
     setState(() {
       _videoFile = videoFile;
-      if (thumbPath!= null) _thumbnailFile = File(thumbPath);
+      if (thumbPath != null) _thumbnailFile = File(thumbPath);
     });
   }
 
@@ -60,7 +58,6 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       _showError('اكتب اسم الأنمي');
       return;
     }
-    // ← تم التصحيح: لا ترسل الفيديو كصورة
     if (_thumbnailFile == null) {
       _showError('فشل إنشاء الصورة، اختر فيديو آخر');
       return;
@@ -70,10 +67,15 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     final editsProvider = context.read<EditsProvider>();
     final user = userProvider.currentUser;
 
+    if (user == null) {
+      _showError('يجب تسجيل الدخول أولاً');
+      return;
+    }
+
     final success = await editsProvider.uploadEdit(
       videoFile: _videoFile!,
-      thumbnailFile: _thumbnailFile!, // ← تم التصحيح
-      userId: user!.id,
+      thumbnailFile: _thumbnailFile!,
+      userId: user.id,
       uploaderName: user.username,
       uploaderAvatar: user.avatarUrl,
       animeTitle: _animeTitleController.text.trim(),
@@ -86,15 +88,14 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
         const SnackBar(content: Text('تم نشر الإيديت ✅')),
       );
     } else if (mounted) {
-      // ← تم التصحيح: يعرض الخطأ الحقيقي
-      final err = context.read<EditsProvider>().error?? 'غير معروف';
+      final err = context.read<EditsProvider>().error ?? 'غير معروف';
       _showError('فشل: $err');
     }
   }
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context)
-       .showSnackBar(SnackBar(content: Text(msg)));
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -112,21 +113,30 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       appBar: AppBar(
         title: const Text('نشر إيديت'),
         actions: [
-          TextButton(
-            onPressed: isUploading? null : _upload,
-            child: const Text(
-              'نشر',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 8),
+            child: ElevatedButton(
+              onPressed: isUploading ? null : _upload,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: const Text(
+                'نشر',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
             ),
           ),
         ],
       ),
       body: isUploading
-         ? const Center(
+          ? const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -141,7 +151,6 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── اختيار الفيديو
                   GestureDetector(
                     onTap: _pickVideo,
                     child: Container(
@@ -152,8 +161,8 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.grey[700]!),
                       ),
-                      child: _thumbnailFile!= null
-                         ? ClipRRect(
+                      child: _thumbnailFile != null
+                          ? ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: Stack(
                                 fit: StackFit.expand,
@@ -193,8 +202,6 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // ── اسم الأنمي
                   const Text('اسم الأنمي *',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -208,8 +215,6 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // ── الكابشن
                   const Text('الوصف (اختياري)',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),

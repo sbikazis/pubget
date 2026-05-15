@@ -13,14 +13,21 @@ class EditsScreen extends StatefulWidget {
   State<EditsScreen> createState() => _EditsScreenState();
 }
 
-class _EditsScreenState extends State<EditsScreen> {
+class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClientMixin {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    context.read<EditsProvider>().listenToEdits();
+  bool get wantKeepAlive => true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      context.read<EditsProvider>().listenToEdits();
+    }
   }
 
   @override
@@ -31,6 +38,7 @@ class _EditsScreenState extends State<EditsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
     final currentUserId = userProvider.currentUser?.id ?? '';
@@ -43,8 +51,35 @@ class _EditsScreenState extends State<EditsScreen> {
           if (editsProvider.isLoading)
             const Center(child: CircularProgressIndicator()),
 
+          // ── حالة الخطأ
+          if (!editsProvider.isLoading && editsProvider.error != null)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 50),
+                  const SizedBox(height: 12),
+                  Text(
+                    'حدث خطأ:\n${editsProvider.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      editsProvider.resetError();
+                      editsProvider.listenToEdits();
+                    },
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              ),
+            ),
+
           // ── لا يوجد فيديوهات
-          if (!editsProvider.isLoading && editsProvider.edits.isEmpty)
+          if (!editsProvider.isLoading &&
+              editsProvider.error == null &&
+              editsProvider.edits.isEmpty)
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -69,21 +104,16 @@ class _EditsScreenState extends State<EditsScreen> {
               itemCount: editsProvider.edits.length,
               onPageChanged: (index) {
                 setState(() => _currentIndex = index);
-                // زيادة المشاهدات
-                editsProvider.incrementViews(
-                    editsProvider.edits[index].id);
+                editsProvider.incrementViews(editsProvider.edits[index].id);
               },
               itemBuilder: (context, index) {
                 final edit = editsProvider.edits[index];
                 return Stack(
                   children: [
-                    // ── مشغل الفيديو
                     EditPlayerWidget(
                       edit: edit,
                       isActive: index == _currentIndex,
                     ),
-
-                    // ── معلومات الإيديت (يسار الأسفل)
                     Positioned(
                       bottom: 80,
                       left: 16,
@@ -91,7 +121,6 @@ class _EditsScreenState extends State<EditsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // اسم المستخدم
                           Row(
                             children: [
                               CircleAvatar(
@@ -115,8 +144,6 @@ class _EditsScreenState extends State<EditsScreen> {
                             ],
                           ),
                           const SizedBox(height: 8),
-
-                          // اسم الأنمي
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
@@ -131,8 +158,6 @@ class _EditsScreenState extends State<EditsScreen> {
                             ),
                           ),
                           const SizedBox(height: 6),
-
-                          // الكابشن
                           if (edit.caption.isNotEmpty)
                             Text(
                               edit.caption,
@@ -144,22 +169,16 @@ class _EditsScreenState extends State<EditsScreen> {
                         ],
                       ),
                     ),
-
-                    // ── أزرار التفاعل (يمين)
                     Positioned(
                       bottom: 100,
                       right: 12,
                       child: EditActionsBar(
                         edit: edit,
                         currentUserId: currentUserId,
-                        onLike: () => editsProvider.toggleLike(
-                            edit.id, currentUserId),
-                        onComment: () {
-                          // TODO: فتح كومنتات
-                        },
-                        onShare: () {
-                          // TODO: شير
-                        },
+                        onLike: () =>
+                            editsProvider.toggleLike(edit.id, currentUserId),
+                        onComment: () {},
+                        onShare: () {},
                       ),
                     ),
                   ],
@@ -174,8 +193,7 @@ class _EditsScreenState extends State<EditsScreen> {
             child: GestureDetector(
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => const UploadEditScreen()),
+                MaterialPageRoute(builder: (_) => const UploadEditScreen()),
               ),
               child: Container(
                 padding: const EdgeInsets.all(8),

@@ -16,9 +16,14 @@ class EditsProvider extends ChangeNotifier {
   bool get isUploading => _isUploading;
   String? get error => _error;
 
-  // ── الاستماع للفيديوهات
+  void resetError() {
+    _error = null;
+    notifyListeners();
+  }
+
   void listenToEdits() {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     _service.getEdits().listen(
@@ -35,7 +40,6 @@ class EditsProvider extends ChangeNotifier {
     );
   }
 
-  // ── رفع إيديت جديد
   Future<bool> uploadEdit({
     required File videoFile,
     required File thumbnailFile,
@@ -47,10 +51,12 @@ class EditsProvider extends ChangeNotifier {
   }) async {
     try {
       _isUploading = true;
+      _error = null;
       notifyListeners();
 
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
+      final thumbnailUrl =
+          await _service.uploadThumbnail(thumbnailFile, userId);
 
       final edit = EditModel(
         id: '',
@@ -80,9 +86,7 @@ class EditsProvider extends ChangeNotifier {
     }
   }
 
-  // ── لايك
   Future<void> toggleLike(String editId, String userId) async {
-    // تحديث فوري في الواجهة
     final index = _edits.indexWhere((e) => e.id == editId);
     if (index == -1) return;
 
@@ -95,13 +99,12 @@ class EditsProvider extends ChangeNotifier {
       updatedLikes.add(userId);
     }
 
+    _edits[index] = edit.copyWith(likes: updatedLikes);
     notifyListeners();
 
-    // ثم تحديث Firebase
     await _service.toggleLike(editId, userId);
   }
 
-  // ── مشاهدة
   Future<void> incrementViews(String editId) async {
     await _service.incrementViews(editId);
   }
