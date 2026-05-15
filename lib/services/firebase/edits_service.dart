@@ -16,21 +16,31 @@ class EditsService {
         .map((snap) => snap.docs.map(EditModel.fromFirestore).toList());
   }
 
-  // ── رفع فيديو
+  // ── رفع فيديو ← تم التصحيح
   Future<String> uploadVideo(File file, String userId) async {
     final ref = _storage
         .ref()
-        .child('edits/videos/$userId/${DateTime.now().millisecondsSinceEpoch}.mp4');
-    await ref.putFile(file);
+        .child('edits/$userId/v_${DateTime.now().millisecondsSinceEpoch}.mp4');
+    
+    // أضفنا metadata حتى تقبله الـ Rules
+    await ref.putFile(
+      file,
+      SettableMetadata(contentType: 'video/mp4'),
+    );
     return await ref.getDownloadURL();
   }
 
-  // ── رفع thumbnail
+  // ── رفع thumbnail ← تم التصحيح
   Future<String> uploadThumbnail(File file, String userId) async {
     final ref = _storage
         .ref()
-        .child('edits/thumbnails/$userId/${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await ref.putFile(file);
+        .child('edits/$userId/t_${DateTime.now().millisecondsSinceEpoch}.jpg');
+    
+    // أضفنا metadata
+    await ref.putFile(
+      file,
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
     return await ref.getDownloadURL();
   }
 

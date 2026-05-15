@@ -43,7 +43,8 @@ class EditModel {
       likes: List<String>.from(data['likes'] ?? []),
       commentsCount: data['commentsCount'] ?? 0,
       views: data['views'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      // ← تم التصحيح: يقبل null
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
@@ -59,7 +60,8 @@ class EditModel {
       'likes': likes,
       'commentsCount': commentsCount,
       'views': views,
-      'createdAt': Timestamp.fromDate(createdAt),
+      // ← تم التصحيح: يستخدم وقت السيرفر
+      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 
