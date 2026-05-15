@@ -117,6 +117,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
             ),
           ),
         ],
+
       ),
       body: isUploading
           ? const Center(

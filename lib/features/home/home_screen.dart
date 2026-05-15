@@ -542,12 +542,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateGroup,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add),
-        label: const Text('إنشاء مجموعة'),
-      ),
+      floatingActionButton: _selectedIndex == 4
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _openCreateGroup,
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add),
+              label: const Text('إنشاء مجموعة'),
+            ),
     );
   }
 }
