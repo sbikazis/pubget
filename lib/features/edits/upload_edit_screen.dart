@@ -32,7 +32,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     final size = await videoFile.length();
 
     // حد 50MB
-    if (size > 50 * 1024) {
+    if (size > 50 * 1024 * 1024) {
       _showError('حجم الفيديو يتجاوز 50MB');
       return;
     }
