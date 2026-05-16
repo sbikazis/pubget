@@ -37,7 +37,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
 
   void _loadAd() {
     _nativeAd = NativeAd(
-      adUnitId: 'ca-app-pub-3303379299409244/9117104001',
+      adUnitId: 'ca-app-pub-3940256099942544/2247696110',
       listener: NativeAdListener(
         onAdLoaded: (_) {
           if (!mounted) return;
