@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pubget/models/edits_model.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
 import '../profile/profile_sceen.dart';
@@ -9,14 +10,22 @@ import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 
 class EditsScreen extends StatefulWidget {
-  const EditsScreen({super.key});
+  final List<EditModel>? initialEdits; // ← مضاف
+  final int startIndex; // ← مضاف
+
+  const EditsScreen({
+    super.key,
+    this.initialEdits, // ← مضاف
+    this.startIndex = 0, // ← مضاف
+  });
 
   @override
   State<EditsScreen> createState() => _EditsScreenState();
 }
 
-class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClientMixin {
-  final PageController _pageController = PageController();
+class _EditsScreenState extends State<EditsScreen>
+    with AutomaticKeepAliveClientMixin {
+  late final PageController _pageController;
   int _currentIndex = 0;
   bool _initialized = false;
 
@@ -24,11 +33,21 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.startIndex; // ← مضاف
+    _pageController = PageController(initialPage: widget.startIndex); // ← مضاف
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      context.read<EditsProvider>().listenToEdits();
+      // ← فقط إذا مفيش initialEdits نجيب من Firebase
+      if (widget.initialEdits == null) {
+        context.read<EditsProvider>().listenToEdits();
+      }
     }
   }
 
@@ -52,16 +71,21 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
     final userProvider = context.watch<UserProvider>();
     final currentUserId = userProvider.currentUser?.id ?? '';
 
+    // ← المصدر: إما من البروفايل أو من Firebase
+    final edits = widget.initialEdits ?? editsProvider.edits;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ── حالة التحميل
-          if (editsProvider.isLoading)
+          // ── حالة التحميل (فقط عند جلب من Firebase)
+          if (widget.initialEdits == null && editsProvider.isLoading)
             const Center(child: CircularProgressIndicator()),
 
           // ── حالة الخطأ
-          if (!editsProvider.isLoading && editsProvider.error != null)
+          if (widget.initialEdits == null &&
+              !editsProvider.isLoading &&
+              editsProvider.error != null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -71,7 +95,8 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                   Text(
                     'حدث خطأ:\n${editsProvider.error}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -86,9 +111,8 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
             ),
 
           // ── لا يوجد فيديوهات
-          if (!editsProvider.isLoading &&
-              editsProvider.error == null &&
-              editsProvider.edits.isEmpty)
+          if (edits.isEmpty &&
+              (widget.initialEdits != null || !editsProvider.isLoading))
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -106,17 +130,17 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
             ),
 
           // ── الفيديوهات
-          if (editsProvider.edits.isNotEmpty)
+          if (edits.isNotEmpty)
             PageView.builder(
               controller: _pageController,
               scrollDirection: Axis.vertical,
-              itemCount: editsProvider.edits.length,
+              itemCount: edits.length,
               onPageChanged: (index) {
                 setState(() => _currentIndex = index);
-                editsProvider.incrementViews(editsProvider.edits[index].id);
+                editsProvider.incrementViews(edits[index].id);
               },
               itemBuilder: (context, index) {
-                final edit = editsProvider.edits[index];
+                final edit = edits[index];
                 return Stack(
                   children: [
                     EditPlayerWidget(
@@ -130,16 +154,16 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ── صورة واسم صاحب الإيديت (قابل للضغط)
                           GestureDetector(
                             onTap: () => _openProfile(edit.uploaderId),
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage: edit.uploaderAvatar.isNotEmpty
-                                      ? NetworkImage(edit.uploaderAvatar)
-                                      : null,
+                                  backgroundImage:
+                                      edit.uploaderAvatar.isNotEmpty
+                                          ? NetworkImage(edit.uploaderAvatar)
+                                          : null,
                                   child: edit.uploaderAvatar.isEmpty
                                       ? const Icon(Icons.person, size: 18)
                                       : null,
@@ -206,25 +230,46 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
               },
             ),
 
-          // ── زر الرفع
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            right: 16,
-            child: GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const UploadEditScreen()),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(10),
+          // ── زر الرفع (يظهر فقط في الوضع العادي مش البروفايل)
+          if (widget.initialEdits == null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 10,
+              right: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const UploadEditScreen()),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white, size: 28),
+                ),
               ),
             ),
-          ),
+
+          // ── زر رجوع (يظهر فقط عند الفتح من البروفايل)
+          if (widget.initialEdits != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 10,
+              left: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child:
+                      const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                ),
+              ),
+            ),
         ],
       ),
     );

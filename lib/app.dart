@@ -62,7 +62,9 @@ class _PubgetAppState extends State<PubgetApp> {
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
+        Provider(
+            create: (_) =>
+                GroupJoinValidator(firestoreService: firestore)),
 
         ChangeNotifierProvider(
           create: (context) => UserProvider(
@@ -125,13 +127,15 @@ class _PubgetAppState extends State<PubgetApp> {
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
-          
-          // ✅ تم التعديل هنا - انتظار 3 ثواني
-          if (auth.isLoggedIn && auth.user != null && _lastRegisteredUserId != auth.user!.id) {
+          if (auth.isLoggedIn &&
+              auth.user != null &&
+              _lastRegisteredUserId != auth.user!.id) {
             _lastRegisteredUserId = auth.user!.id;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Future.delayed(const Duration(seconds: 3), () {
-                context.read<NotificationsProvider>().registerToken(auth.user!.id);
+                context
+                    .read<NotificationsProvider>()
+                    .registerToken(auth.user!.id);
               });
             });
           }
@@ -141,7 +145,8 @@ class _PubgetAppState extends State<PubgetApp> {
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode:
+                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: _getHome(auth),
             routes: {
               '/login': (_) => const LoginScreen(),
@@ -149,6 +154,69 @@ class _PubgetAppState extends State<PubgetApp> {
               '/user_info': (_) => const UserInfoScreen(),
               '/terms': (_) => const TermsScreen(),
               '/home': (_) => const HomeScreen(),
+            },
+
+            // ── البanner العالمي لحالة الرفع
+            builder: (context, child) {
+              return Consumer<EditsProvider>(
+                builder: (context, editsProvider, _) {
+                  return Stack(
+                    children: [
+                      child!,
+
+                      // ── شريط "جاري النشر"
+                      if (editsProvider.isUploading)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: SafeArea(
+                              bottom: false,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'جاري نشر الإيديت...',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // ── شريط "تم النشر" لثانيتين
+                      if (!editsProvider.isUploading &&
+                          editsProvider.error == null &&
+                          editsProvider.edits.isNotEmpty)
+                        const SizedBox.shrink(),
+                    ],
+                  );
+                },
+              );
             },
           );
         },
@@ -159,8 +227,8 @@ class _PubgetAppState extends State<PubgetApp> {
   Widget _getHome(AuthProvider auth) {
     if (auth.isLoading) return const SplashScreen();
     if (auth.isLoggedIn) {
-      return (auth.user?.isProfileCompleted == true) 
-          ? const HomeScreen() 
+      return (auth.user?.isProfileCompleted == true)
+          ? const HomeScreen()
           : const UserInfoScreen();
     }
     return const LoginScreen();

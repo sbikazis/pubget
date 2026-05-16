@@ -1,56 +1,44 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/roles.dart';
 
-/// ✅ إضافة Enum لتحديد نوع الرسالة (عادية أو حدث لعبة)
 enum MessageType { text, media, gameEvent }
 
 class MessageModel {
   final String id;
-
   final String senderId;
   final String senderName;
-  final String senderAvatar; // 🔥 هذا الحقل سيحمل الآن (صورة التقمص أو صورة البروفايل) بفضل تعديل الـ Provider
- 
-  // ✅ الحقل الجديد لتمييز مستخدمي البريميوم بصرياً في الدردشة
+  final String senderAvatar;
   final bool senderIsPremium;
-
-  // ✅ جعل الرتبة اختيارية لدعم الدردشة الخاصة
   final Roles? senderRole;
-
   final String? text;
-
   final String? mediaUrl;
-  final String? mediaType; // image | video | audio
-
-  // --- حقول نظام اللعبة المضافة ---
-  final MessageType type; // نوع الرسالة (نص، ميديا، أو حدث لعبة)
-  final String? gameId; // معرف اللعبة المرتبط
-  final String? gameSlot; // لتمييز اللون بصرياً (game_1 أو game_2)
-  final String? gameAction; // نوع الحدث (challenge, win, draw, quit, move)
-
-  // الحقول الجديدة للرد والتفاعلات
-  final String? replyToId; // معرف الرسالة التي يتم الرد عليها
-  final String? replyText; // نص الرسالة المردود عليها (للعرض السريع)
-  final Map<String, String>? reactions; // خريطة: {userId: emoji}
-
+  final String? mediaType;
+  final MessageType type;
+  final String? gameId;
+  final String? gameSlot;
+  final String? gameAction;
+  final String? replyToId;
+  final String? replyText;
+  final Map<String, String>? reactions;
   final DateTime createdAt;
- 
-  // ✅ الحقل الجديد لضمان دقة العداد بنسبة 100%
   final bool isRead;
+  final int? audioDuration;
 
-  final int? audioDuration; // بالثواني
+  // ── حقلان جديدان للإيديت المشارك
+  final String? editThumbnail;
+  final String? editAnimeTitle;
 
   const MessageModel({
     required this.id,
     required this.senderId,
     required this.senderName,
     required this.senderAvatar,
-    this.senderIsPremium = false, // القيمة الافتراضية عادي
+    this.senderIsPremium = false,
     this.senderRole,
     this.text,
     this.mediaUrl,
     this.mediaType,
-    this.type = MessageType.text, // القيمة الافتراضية نصية
+    this.type = MessageType.text,
     this.gameId,
     this.gameSlot,
     this.gameAction,
@@ -58,75 +46,73 @@ class MessageModel {
     this.replyText,
     this.reactions,
     required this.createdAt,
-    this.isRead = false, // القيمة الافتراضية غير مقروءة
+    this.isRead = false,
     this.audioDuration,
+    this.editThumbnail,
+    this.editAnimeTitle,
   });
 
-  /// Firestore → Model
   factory MessageModel.fromMap(String id, Map<String, dynamic> map) {
     return MessageModel(
       id: id,
       senderId: map['senderId'] ?? '',
       senderName: map['senderName'] ?? '',
       senderAvatar: map['senderAvatar'] ?? '',
-      // جلب حالة البريميوم من Firestore
       senderIsPremium: map['senderIsPremium'] ?? false,
-      // ✅ التعامل مع الرتبة بحذر: إذا كانت موجودة نأخذها، وإلا نتركها null للخاص
       senderRole: map['senderRole'] != null
           ? Roles.fromString(map['senderRole'])
           : null,
       text: map['text'],
       mediaUrl: map['mediaUrl'],
       mediaType: map['mediaType'],
-      // جلب نوع الرسالة مع قيمة افتراضية
       type: map['type'] != null
-          ? MessageType.values.firstWhere((e) => e.name == map['type'], orElse: () => MessageType.text)
+          ? MessageType.values.firstWhere(
+              (e) => e.name == map['type'],
+              orElse: () => MessageType.text)
           : MessageType.text,
       gameId: map['gameId'],
       gameSlot: map['gameSlot'],
       gameAction: map['gameAction'],
       replyToId: map['replyToId'],
       replyText: map['replyText'],
-      // تحويل خريطة التفاعلات من Firestore بأمان
       reactions: map['reactions'] != null
           ? Map<String, String>.from(map['reactions'] as Map)
           : null,
-      // تأمين تحويل التاريخ لتجنب الأخطاء البرمجية
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
-      // جلب حالة القراءة من Firestore
       isRead: map['isRead'] ?? false,
       audioDuration: map['audioDuration'],
+      editThumbnail: map['editThumbnail'],
+      editAnimeTitle: map['editAnimeTitle'],
     );
   }
 
-  /// Model → Firestore
   Map<String, dynamic> toMap() {
     return {
       'senderId': senderId,
       'senderName': senderName,
       'senderAvatar': senderAvatar,
-      'senderIsPremium': senderIsPremium, // إرسال حالة البريميوم
-      // ✅ إرسال اسم الرتبة فقط في حال وجودها لضمان عدم وجود قيم فارغة تؤثر على الواجهة
+      'senderIsPremium': senderIsPremium,
       'senderRole': senderRole?.name,
       'text': text,
       'mediaUrl': mediaUrl,
       'mediaType': mediaType,
-      'type': type.name, // حفظ اسم النوع في Firestore
+      'type': type.name,
       'gameId': gameId,
       'gameSlot': gameSlot,
       'gameAction': gameAction,
       'replyToId': replyToId,
       'replyText': replyText,
       'reactions': reactions,
-      'createdAt': Timestamp.fromDate(createdAt), // التأكد من إرسالها كـ Timestamp
+      'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
       'audioDuration': audioDuration,
+      'editThumbnail': editThumbnail,
+      'editAnimeTitle': editAnimeTitle,
     };
   }
 
-  // ✅ إضافة copyWith للحفاظ على مرونة التعديل في المستقبل دون فقدان البيانات
   MessageModel copyWith({
     String? senderName,
     String? senderAvatar,
@@ -140,6 +126,8 @@ class MessageModel {
     Map<String, String>? reactions,
     bool? isRead,
     int? audioDuration,
+    String? editThumbnail,
+    String? editAnimeTitle,
   }) {
     return MessageModel(
       id: id,
@@ -161,6 +149,8 @@ class MessageModel {
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
       audioDuration: audioDuration ?? this.audioDuration,
+      editThumbnail: editThumbnail ?? this.editThumbnail,
+      editAnimeTitle: editAnimeTitle ?? this.editAnimeTitle,
     );
   }
 }

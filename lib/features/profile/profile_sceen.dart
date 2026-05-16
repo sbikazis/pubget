@@ -17,6 +17,7 @@ import '../../widgets/premium_badge.dart'; // ✅ استيراد الشارة
 import '../../core/theme/app_colors.dart';
 import 'package:pubget/features/profile/edit_profile_screen.dart';
 import 'package:pubget/features/profile/respect_modal.dart'; 
+import 'package:pubget/features/edits/user_edits_grid.dart';
 
 class ProfileScreen extends StatefulWidget { 
   final String? userId;
@@ -418,6 +419,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
               ),
               const SizedBox(height: 24),
+
+              // ================= Edits Grid =================
+              const Divider(),
+              const SizedBox(height: 8),
+              UserEditsGrid(
+                userId: user.id,
+                username: user.username,
+              ),
+              const SizedBox(height: 32),
             ],
           ),
         ),

@@ -40,7 +40,8 @@ class EditsProvider extends ChangeNotifier {
     );
   }
 
-  Future<bool> uploadEdit({
+  // ── رفع في الخلفية بدون انتظار
+  void uploadEditInBackground({
     required File videoFile,
     required File thumbnailFile,
     required String userId,
@@ -48,12 +49,38 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
+    void Function()? onComplete,
+    void Function(String)? onFailed,
+  }) {
+    _isUploading = true;
+    _error = null;
+    notifyListeners();
+
+    _runUpload(
+      videoFile: videoFile,
+      thumbnailFile: thumbnailFile,
+      userId: userId,
+      uploaderName: uploaderName,
+      uploaderAvatar: uploaderAvatar,
+      animeTitle: animeTitle,
+      caption: caption,
+      onComplete: onComplete,
+      onFailed: onFailed,
+    );
+  }
+
+  Future<void> _runUpload({
+    required File videoFile,
+    required File thumbnailFile,
+    required String userId,
+    required String uploaderName,
+    required String uploaderAvatar,
+    required String animeTitle,
+    required String caption,
+    void Function()? onComplete,
+    void Function(String)? onFailed,
   }) async {
     try {
-      _isUploading = true;
-      _error = null;
-      notifyListeners();
-
       final videoUrl = await _service.uploadVideo(videoFile, userId);
       final thumbnailUrl =
           await _service.uploadThumbnail(thumbnailFile, userId);
@@ -77,12 +104,12 @@ class EditsProvider extends ChangeNotifier {
 
       _isUploading = false;
       notifyListeners();
-      return true;
+      onComplete?.call();
     } catch (e) {
       _error = e.toString();
       _isUploading = false;
       notifyListeners();
-      return false;
+      onFailed?.call(e.toString());
     }
   }
 
@@ -107,5 +134,22 @@ class EditsProvider extends ChangeNotifier {
 
   Future<void> incrementViews(String editId) async {
     await _service.incrementViews(editId);
+  }
+
+  // ── إيديتات مستخدم معين للبروفايل
+  Stream<List<EditModel>> getUserEdits(String userId) {
+    return _service.getUserEdits(userId);
+  }
+
+  // ── حذف إيديت
+  Future<void> deleteEdit(EditModel edit) async {
+    try {
+      await _service.deleteEdit(edit);
+      _edits.removeWhere((e) => e.id == edit.id);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 }

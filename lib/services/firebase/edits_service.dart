@@ -65,4 +65,31 @@ class EditsService {
       'views': FieldValue.increment(1),
     });
   }
+  Stream<List<EditModel>> getUserEdits(String userId) {
+  return _firestore
+      .collection('edits')
+      .where('uploaderId', isEqualTo: userId)
+      .snapshots()
+      .map((snap) {
+        final list = snap.docs.map(EditModel.fromFirestore).toList();
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list;
+      });
+}
+
+// ── حذف إيديت كامل (الفيديو والـ thumbnail من Storage + Firestore)
+Future<void> deleteEdit(EditModel edit) async {
+  // حذف من Firestore
+  await _firestore.collection('edits').doc(edit.id).delete();
+
+  // حذف الفيديو من Storage
+  try {
+    await _storage.refFromURL(edit.videoUrl).delete();
+  } catch (_) {}
+
+  // حذف الـ thumbnail من Storage
+  try {
+    await _storage.refFromURL(edit.thumbnailUrl).delete();
+  } catch (_) {}
+}
 }

@@ -42,25 +42,25 @@ class MessageBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
 
-    final bool isGameMessage = message.gameId!= null;
+    final bool isGameMessage = message.gameId != null;
     Color? gameAccentColor;
     if (isGameMessage) {
       gameAccentColor = message.gameSlot == 'game_1'
-         ? const Color(0xFFFFD700)
+          ? const Color(0xFFFFD700)
           : const Color(0xFFC0C0C0);
     }
 
     final bubbleColor = isGameMessage
-       ? gameAccentColor!.withOpacity(0.15)
+        ? gameAccentColor!.withOpacity(0.15)
         : (isMe
-           ? AppColors.myMessageBubble
-            : (isDark
-               ? AppColors.otherMessageBubbleDark
-                : AppColors.otherMessageBubbleLight));
+              ? AppColors.myMessageBubble
+              : (isDark
+                    ? AppColors.otherMessageBubbleDark
+                    : AppColors.otherMessageBubbleLight));
 
-    final textColor = isMe &&!isGameMessage
-       ? Colors.white
-        : (isDark? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
+    final textColor = isMe && !isGameMessage
+        ? Colors.white
+        : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
@@ -68,35 +68,39 @@ class MessageBubble extends StatelessWidget {
         onLongPress: () => _showOptionsSheet(context),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment:
-              isMe? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: isMe
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
-                crossAxisAlignment:
-                    isMe? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   _buildNameRow(roleColor),
-                  if (message.reactions!= null &&
+                  if (message.reactions != null &&
                       message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
                   Container(
                     margin: const EdgeInsets.only(top: 4),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: BorderRadius.circular(16),
                       border: isGameMessage
-                         ? Border.all(color: gameAccentColor!, width: 1)
+                          ? Border.all(color: gameAccentColor!, width: 1)
                           : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (message.replyText!= null)
+                        if (message.replyText != null)
                           _buildReplyPreview(isDark),
                         _buildMessageContent(textColor),
                       ],
@@ -108,7 +112,7 @@ class MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       color: isDark
-                         ? AppColors.darkTextHint
+                          ? AppColors.darkTextHint
                           : AppColors.lightTextHint,
                     ),
                   ),
@@ -145,21 +149,25 @@ class MessageBubble extends StatelessWidget {
                 children: ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
                   return TextButton(
                     onPressed: () {
-                      final userId = Provider.of<UserProvider>(context,
-                              listen: false)
-                         .currentUser!
-                         .id;
+                      final userId = Provider.of<UserProvider>(
+                        context,
+                        listen: false,
+                      ).currentUser!.id;
                       if (isPrivate) {
-                        Provider.of<PrivateChatProvider>(context, listen: false)
-                           .toggleReaction(
+                        Provider.of<PrivateChatProvider>(
+                          context,
+                          listen: false,
+                        ).toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
                           userId: userId,
                           emoji: emoji,
                         );
                       } else {
-                        Provider.of<ChatProvider>(context, listen: false)
-                           .toggleReaction(
+                        Provider.of<ChatProvider>(
+                          context,
+                          listen: false,
+                        ).toggleReaction(
                           groupId: groupId,
                           messageId: message.id,
                           userId: userId,
@@ -179,11 +187,11 @@ class MessageBubble extends StatelessWidget {
               title: const Text('رد'),
               onTap: () {
                 Navigator.pop(context);
-                if (onReply!= null) onReply!(message);
+                if (onReply != null) onReply!(message);
               },
             ),
             // ✅ زر النسخ - يظهر فقط إذا كانت الرسالة نصية
-            if (message.text!= null && message.text!.isNotEmpty)
+            if (message.text != null && message.text!.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy, color: AppColors.primary),
                 title: const Text('نسخ'),
@@ -200,35 +208,39 @@ class MessageBubble extends StatelessWidget {
               ),
             if (isMe)
               ListTile(
-                leading:
-                    const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('حذف الرسالة',
-                    style: TextStyle(color: Colors.red)),
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text(
+                  'حذف الرسالة',
+                  style: TextStyle(color: Colors.red),
+                ),
                 onTap: () {
                   if (isPrivate) {
-                    Provider.of<PrivateChatProvider>(context, listen: false)
-                       .deleteMessage(
-                            chatId: groupId, messageId: message.id);
+                    Provider.of<PrivateChatProvider>(
+                      context,
+                      listen: false,
+                    ).deleteMessage(chatId: groupId, messageId: message.id);
                   } else {
-                    Provider.of<ChatProvider>(context, listen: false)
-                       .deleteMessage(
-                            groupId: groupId, messageId: message.id);
+                    Provider.of<ChatProvider>(
+                      context,
+                      listen: false,
+                    ).deleteMessage(groupId: groupId, messageId: message.id);
                   }
                   Navigator.pop(context);
                 },
               )
             else
               ListTile(
-                leading: const Icon(Icons.person_outline,
-                    color: Color(0xFFFFD700)),
+                leading: const Icon(
+                  Icons.person_outline,
+                  color: Color(0xFFFFD700),
+                ),
                 title: const Text('الملف الشخصي'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileScreen(userId: message.senderId),
+                      builder: (_) => ProfileScreen(userId: message.senderId),
                     ),
                   );
                 },
@@ -242,7 +254,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildReplyPreview(bool isDark) {
     return GestureDetector(
       onTap: () {
-        if (onTapReply!= null && message.replyToId!= null) {
+        if (onTapReply != null && message.replyToId != null) {
           onTapReply!(message.replyToId!);
         }
       },
@@ -250,15 +262,15 @@ class MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: isDark
-             ? Colors.white.withOpacity(0.05)
+              ? Colors.white.withOpacity(0.05)
               : Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border(
             left: isMe
-               ? BorderSide.none
+                ? BorderSide.none
                 : const BorderSide(color: AppColors.primary, width: 4),
             right: isMe
-               ? const BorderSide(color: AppColors.primary, width: 4)
+                ? const BorderSide(color: AppColors.primary, width: 4)
                 : BorderSide.none,
           ),
         ),
@@ -268,7 +280,7 @@ class MessageBubble extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: () {
-                if (onTapReply!= null && message.replyToId!= null) {
+                if (onTapReply != null && message.replyToId != null) {
                   onTapReply!(message.replyToId!);
                 }
               },
@@ -284,7 +296,7 @@ class MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
-                        color: isDark? Colors.white70 : Colors.black54,
+                        color: isDark ? Colors.white70 : Colors.black54,
                       ),
                     ),
                   ],
@@ -313,66 +325,74 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(BuildContext context,
-      [bool isGame = false, Color? gameColor]) {
-    final String? avatarUrl = sender.displayImageUrl??
-        (message.senderAvatar.isNotEmpty? message.senderAvatar : null);
+  Widget _buildAvatar(
+    BuildContext context, [
+    bool isGame = false,
+    Color? gameColor,
+  ]) {
+    final String? avatarUrl =
+        sender.displayImageUrl ??
+        (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-        final userProvider =
-            Provider.of<UserProvider>(context, listen: false);
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
         final targetUser = await userProvider.getUserById(message.senderId);
-        if (targetUser!= null && myId!= null) {
+        if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) => RespectModal(
-              targetUser: targetUser,
-              currentUserId: myId,
-            ),
+            builder: (_) =>
+                RespectModal(targetUser: targetUser, currentUserId: myId),
           );
         }
       },
       child: CircleAvatar(
         radius: 18,
         backgroundColor: isGame
-           ? gameColor!.withOpacity(0.2)
+            ? gameColor!.withOpacity(0.2)
             : AppColors.primary.withOpacity(0.1),
         child: ClipOval(
           child: isGame
-             ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
-              : (avatarUrl!= null && avatarUrl.isNotEmpty
-                 ? Image.network(
-                      avatarUrl,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.person,
-                              size: 20, color: AppColors.primary),
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              value: loadingProgress.expectedTotalBytes!= null
-                                 ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
+              ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
+              : (avatarUrl != null && avatarUrl.isNotEmpty
+                    ? Image.network(
+                        avatarUrl,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.person,
+                              size: 20,
+                              color: AppColors.primary,
                             ),
-                          ),
-                        );
-                      },
-                    )
-                  : const Icon(Icons.person,
-                      size: 20, color: AppColors.primary)),
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : const Icon(
+                        Icons.person,
+                        size: 20,
+                        color: AppColors.primary,
+                      )),
         ),
       ),
     );
@@ -383,19 +403,20 @@ class MessageBubble extends StatelessWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      textDirection: isMe? TextDirection.rtl : TextDirection.ltr,
+      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
         Flexible(
           child: Text(
             sender.effectiveName,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: roleColor),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: roleColor,
+            ),
           ),
         ),
-        if (isPremiumUser)...[
+        if (isPremiumUser) ...[
           const SizedBox(width: 4),
           const PremiumBadge(size: 14),
         ],
@@ -406,79 +427,164 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(Color textColor) {
-  // ✅ GIF
-  if (message.mediaType == 'gif' && message.mediaUrl!= null) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.network(
-        message.mediaUrl!,
-        width: 200,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            width: 200,
-            height: 150,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) => Container(
-          width: 200,
-          height: 100,
-          color: Colors.grey[300],
-          child: const Center(
-            child: Icon(Icons.gif, size: 40, color: Colors.grey),
+    // ── إيديت مشارك
+    if (message.mediaType == 'edit_share' && message.mediaUrl != null) {
+      return GestureDetector(
+        onTap: () {},
+        child: Container(
+          width: 220,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    message.editThumbnail != null &&
+                            message.editThumbnail!.isNotEmpty
+                        ? Image.network(
+                            message.editThumbnail!,
+                            width: 220,
+                            height: 140,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 220,
+                              height: 140,
+                              color: Colors.grey[900],
+                              child: const Icon(
+                                Icons.play_circle,
+                                color: Colors.white54,
+                                size: 40,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            width: 220,
+                            height: 140,
+                            color: Colors.grey[900],
+                            child: const Icon(
+                              Icons.play_circle,
+                              color: Colors.white54,
+                              size: 40,
+                            ),
+                          ),
+                    const Icon(
+                      Icons.play_circle_fill,
+                      color: Colors.white70,
+                      size: 44,
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    const Text('🎌 ', style: TextStyle(fontSize: 13)),
+                    Expanded(
+                      child: Text(
+                        message.editAnimeTitle ?? 'إيديت',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  // نص
-  if (message.text!= null) {
-    return Text(message.text!,
-        style: TextStyle(fontSize: 15, color: textColor));
-  }
-
-  // صورة
-  if (message.mediaUrl!= null && message.mediaType == 'image') {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.network(
-        message.mediaUrl!,
-        width: 220,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) => Container(
-          width: 220,
-          height: 150,
-          color: Colors.grey[300],
-          child: const Icon(Icons.broken_image, color: Colors.grey),
+    // ── GIF
+    if (message.mediaType == 'gif' && message.mediaUrl != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          message.mediaUrl!,
+          width: 200,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: 200,
+              height: 150,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: 200,
+            height: 100,
+            color: Colors.grey[300],
+            child: const Center(
+              child: Icon(Icons.gif, size: 40, color: Colors.grey),
+            ),
+          ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  // صوت
-  if (message.mediaType == 'audio' && message.mediaUrl!= null) {
-    return AudioBubble(
-      url: message.mediaUrl!,
-      isMe: isMe,
-    );
-  }
+    // ── نص
+    if (message.text != null) {
+      return Text(
+        message.text!,
+        style: TextStyle(fontSize: 15, color: textColor),
+      );
+    }
 
-  return const SizedBox();
-}
+    // ── صورة
+    if (message.mediaUrl != null && message.mediaType == 'image') {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          message.mediaUrl!,
+          width: 220,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return const Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: 220,
+            height: 150,
+            color: Colors.grey[300],
+            child: const Icon(Icons.broken_image, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    // ── صوت
+    if (message.mediaType == 'audio' && message.mediaUrl != null) {
+      return AudioBubble(url: message.mediaUrl!, isMe: isMe);
+    }
+
+    return const SizedBox();
+  }
 }
