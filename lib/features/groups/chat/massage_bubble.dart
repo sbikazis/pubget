@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
@@ -68,17 +69,15 @@ class MessageBubble extends StatelessWidget {
         onLongPress: () => _showOptionsSheet(context),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: isMe
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
-                crossAxisAlignment: isMe
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   _buildNameRow(roleColor),
                   if (message.reactions != null &&
@@ -136,7 +135,8 @@ class MessageBubble extends StatelessWidget {
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
@@ -176,28 +176,31 @@ class MessageBubble extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                    child:
+                        Text(emoji, style: const TextStyle(fontSize: 28)),
                   );
                 }).toList(),
               ),
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.reply, color: AppColors.primary),
+              leading:
+                  const Icon(Icons.reply, color: AppColors.primary),
               title: const Text('رد'),
               onTap: () {
                 Navigator.pop(context);
                 if (onReply != null) onReply!(message);
               },
             ),
-            // ✅ زر النسخ - يظهر فقط إذا كانت الرسالة نصية
             if (message.text != null && message.text!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.copy, color: AppColors.primary),
+                leading:
+                    const Icon(Icons.copy, color: AppColors.primary),
                 title: const Text('نسخ'),
                 onTap: () {
                   Navigator.pop(context);
-                  Clipboard.setData(ClipboardData(text: message.text!));
+                  Clipboard.setData(
+                      ClipboardData(text: message.text!));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('تم نسخ الرسالة'),
@@ -208,7 +211,8 @@ class MessageBubble extends StatelessWidget {
               ),
             if (isMe)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                leading: const Icon(Icons.delete_outline,
+                    color: Colors.red),
                 title: const Text(
                   'حذف الرسالة',
                   style: TextStyle(color: Colors.red),
@@ -218,12 +222,14 @@ class MessageBubble extends StatelessWidget {
                     Provider.of<PrivateChatProvider>(
                       context,
                       listen: false,
-                    ).deleteMessage(chatId: groupId, messageId: message.id);
+                    ).deleteMessage(
+                        chatId: groupId, messageId: message.id);
                   } else {
                     Provider.of<ChatProvider>(
                       context,
                       listen: false,
-                    ).deleteMessage(groupId: groupId, messageId: message.id);
+                    ).deleteMessage(
+                        groupId: groupId, messageId: message.id);
                   }
                   Navigator.pop(context);
                 },
@@ -240,7 +246,8 @@ class MessageBubble extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ProfileScreen(userId: message.senderId),
+                      builder: (_) =>
+                          ProfileScreen(userId: message.senderId),
                     ),
                   );
                 },
@@ -286,20 +293,15 @@ class MessageBubble extends StatelessWidget {
               },
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.replyText!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: isDark ? Colors.white70 : Colors.black54,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  message.replyText!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                  ),
                 ),
               ),
             ),
@@ -314,7 +316,8 @@ class MessageBubble extends StatelessWidget {
       spacing: 4,
       children: message.reactions!.values.toSet().map((emoji) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: AppColors.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
@@ -330,23 +333,24 @@ class MessageBubble extends StatelessWidget {
     bool isGame = false,
     Color? gameColor,
   ]) {
-    final String? avatarUrl =
-        sender.displayImageUrl ??
+    final String? avatarUrl = sender.displayImageUrl ??
         (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        final userProvider =
+            Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
-        final targetUser = await userProvider.getUserById(message.senderId);
+        final targetUser =
+            await userProvider.getUserById(message.senderId);
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) =>
-                RespectModal(targetUser: targetUser, currentUserId: myId),
+            builder: (_) => RespectModal(
+                targetUser: targetUser, currentUserId: myId),
           );
         }
       },
@@ -359,51 +363,48 @@ class MessageBubble extends StatelessWidget {
           child: isGame
               ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
               : (avatarUrl != null && avatarUrl.isNotEmpty
-                    ? Image.network(
-                        avatarUrl,
-                        width: 36,
-                        height: 36,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                              Icons.person,
-                              size: 20,
-                              color: AppColors.primary,
+                  ? Image.network(
+                      avatarUrl,
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.person,
+                              size: 20, color: AppColors.primary),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              value: loadingProgress.expectedTotalBytes !=
+                                      null
+                                  ? loadingProgress
+                                          .cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
                             ),
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Center(
-                            child: SizedBox(
-                              width: 15,
-                              height: 15,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                value:
-                                    loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
-                                    : null,
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : const Icon(
-                        Icons.person,
-                        size: 20,
-                        color: AppColors.primary,
-                      )),
+                          ),
+                        );
+                      },
+                    )
+                  : const Icon(Icons.person,
+                      size: 20, color: AppColors.primary)),
         ),
       ),
     );
   }
 
   Widget _buildNameRow(Color roleColor) {
-    final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
+    final bool isPremiumUser =
+        message.senderIsPremium || sender.isPremium;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+          isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
         Flexible(
           child: Text(
@@ -427,90 +428,9 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(Color textColor) {
-    // ── إيديت مشارك
+    // ── إيديت مشارك ← التعديل الرئيسي
     if (message.mediaType == 'edit_share' && message.mediaUrl != null) {
-      return GestureDetector(
-        onTap: () {},
-        child: Container(
-          width: 220,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white24),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    message.editThumbnail != null &&
-                            message.editThumbnail!.isNotEmpty
-                        ? Image.network(
-                            message.editThumbnail!,
-                            width: 220,
-                            height: 140,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              width: 220,
-                              height: 140,
-                              color: Colors.grey[900],
-                              child: const Icon(
-                                Icons.play_circle,
-                                color: Colors.white54,
-                                size: 40,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            width: 220,
-                            height: 140,
-                            color: Colors.grey[900],
-                            child: const Icon(
-                              Icons.play_circle,
-                              color: Colors.white54,
-                              size: 40,
-                            ),
-                          ),
-                    const Icon(
-                      Icons.play_circle_fill,
-                      color: Colors.white70,
-                      size: 44,
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                child: Row(
-                  children: [
-                    const Text('🎌 ', style: TextStyle(fontSize: 13)),
-                    Expanded(
-                      child: Text(
-                        message.editAnimeTitle ?? 'إيديت',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _EditShareBubble(message: message);
     }
 
     // ── GIF
@@ -574,7 +494,8 @@ class MessageBubble extends StatelessWidget {
             width: 220,
             height: 150,
             color: Colors.grey[300],
-            child: const Icon(Icons.broken_image, color: Colors.grey),
+            child:
+                const Icon(Icons.broken_image, color: Colors.grey),
           ),
         ),
       );
@@ -586,5 +507,178 @@ class MessageBubble extends StatelessWidget {
     }
 
     return const SizedBox();
+  }
+}
+
+// ══════════════════════════════════════════════
+// ── Widget مستقل لتشغيل الإيديت في الدردشة
+// ══════════════════════════════════════════════
+class _EditShareBubble extends StatefulWidget {
+  final MessageModel message;
+  const _EditShareBubble({required this.message});
+
+  @override
+  State<_EditShareBubble> createState() => _EditShareBubbleState();
+}
+
+class _EditShareBubbleState extends State<_EditShareBubble> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    if (widget.message.mediaUrl == null) return;
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.message.mediaUrl!),
+    );
+    await controller.initialize();
+    controller.setLooping(true);
+    if (mounted) {
+      setState(() {
+        _controller = controller;
+        _initialized = true;
+      });
+    }
+  }
+
+  void _togglePlay() {
+    if (!_initialized || _controller == null) return;
+    setState(() {
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
+        _isPlaying = false;
+      } else {
+        _controller!.play();
+        _isPlaying = true;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _togglePlay,
+      child: Container(
+        width: 220,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── مشغل الفيديو
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+              child: SizedBox(
+                width: 220,
+                height: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // الفيديو أو الـ thumbnail
+                    if (_initialized && _controller != null)
+                      SizedBox.expand(
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _controller!.value.size.width,
+                            height: _controller!.value.size.height,
+                            child: VideoPlayer(_controller!),
+                          ),
+                        ),
+                      )
+                    else if (widget.message.editThumbnail != null &&
+                        widget.message.editThumbnail!.isNotEmpty)
+                      Image.network(
+                        widget.message.editThumbnail!,
+                        width: 220,
+                        height: 140,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey[900],
+                          child: const Icon(Icons.play_circle,
+                              color: Colors.white54, size: 40),
+                        ),
+                      )
+                    else
+                      Container(
+                        color: Colors.grey[900],
+                        child: const Icon(Icons.play_circle,
+                            color: Colors.white54, size: 40),
+                      ),
+
+                    // ── أيقونة Play/Pause
+                    Icon(
+                      _isPlaying
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_fill,
+                      color: Colors.white70,
+                      size: 44,
+                    ),
+
+                    // ── شريط التقدم
+                    if (_initialized && _controller != null)
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: VideoProgressIndicator(
+                          _controller!,
+                          allowScrubbing: true,
+                          colors: const VideoProgressColors(
+                            playedColor: Colors.white,
+                            bufferedColor: Colors.white38,
+                            backgroundColor: Colors.white12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── اسم الأنمي
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  const Text('🎌 ',
+                      style: TextStyle(fontSize: 13)),
+                  Expanded(
+                    child: Text(
+                      widget.message.editAnimeTitle ?? 'إيديت',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

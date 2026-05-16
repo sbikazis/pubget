@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
 import '../profile/profile_sceen.dart';
@@ -9,14 +10,141 @@ import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 
+// ══════════════════════════════════════════════
+// ── Widget الإعلان المدمج في الفيد
+// ══════════════════════════════════════════════
+class _AdEditWidget extends StatefulWidget {
+  final VoidCallback onAdFinished;
+
+  const _AdEditWidget({required this.onAdFinished});
+
+  @override
+  State<_AdEditWidget> createState() => _AdEditWidgetState();
+}
+
+class _AdEditWidgetState extends State<_AdEditWidget> {
+  NativeAd? _nativeAd;
+  bool _adLoaded = false;
+  int _secondsLeft = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAd();
+    _startCountdown();
+  }
+
+  void _loadAd() {
+    _nativeAd = NativeAd(
+      adUnitId: 'ca-app-pub-3303379299409244/9117104001',
+      listener: NativeAdListener(
+        onAdLoaded: (_) {
+          if (mounted) setState(() => _adLoaded = true);
+        },
+        onAdFailedToLoad: (_, __) {
+          if (mounted) widget.onAdFinished();
+        },
+      ),
+      request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
+      ),
+    )..load();
+  }
+
+  void _startCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) {
+        widget.onAdFinished();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _nativeAd?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // ── خلفية الإعلان
+        Container(
+          color: Colors.black,
+          child: _adLoaded
+              ? AdWidget(ad: _nativeAd!)
+              : const Center(
+                  child: CircularProgressIndicator(color: Colors.white54),
+                ),
+        ),
+
+        // ── شارة "إعلان"
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 12,
+          left: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.amber,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'إعلان',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+
+        // ── عداد تنازلي
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 12,
+          right: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '$_secondsLeft ث',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+
+        // ── طبقة تمنع التفاعل أثناء العداد
+        if (_secondsLeft > 0) Positioned.fill(child: AbsorbPointer()),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════
+// ── الشاشة الرئيسية
+// ══════════════════════════════════════════════
 class EditsScreen extends StatefulWidget {
-  final List<EditModel>? initialEdits; // ← مضاف
-  final int startIndex; // ← مضاف
+  final List<EditModel>? initialEdits;
+  final int startIndex;
 
   const EditsScreen({
     super.key,
-    this.initialEdits, // ← مضاف
-    this.startIndex = 0, // ← مضاف
+    this.initialEdits,
+    this.startIndex = 0,
   });
 
   @override
@@ -29,14 +157,18 @@ class _EditsScreenState extends State<EditsScreen>
   int _currentIndex = 0;
   bool _initialized = false;
 
+  // ── كل 5 إيديتات يظهر إعلان
+  static const int _adInterval = 5;
+  final Set<int> _finishedAdIndexes = {};
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.startIndex; // ← مضاف
-    _pageController = PageController(initialPage: widget.startIndex); // ← مضاف
+    _currentIndex = widget.startIndex;
+    _pageController = PageController(initialPage: widget.startIndex);
   }
 
   @override
@@ -44,7 +176,6 @@ class _EditsScreenState extends State<EditsScreen>
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      // ← فقط إذا مفيش initialEdits نجيب من Firebase
       if (widget.initialEdits == null) {
         context.read<EditsProvider>().listenToEdits();
       }
@@ -64,21 +195,124 @@ class _EditsScreenState extends State<EditsScreen>
     );
   }
 
+  // ── حساب هل هذا الـ index موقع إعلان
+  bool _isAdSlot(int index) {
+    final cycleLength = _adInterval + 1;
+    return (index % cycleLength) == _adInterval;
+  }
+
+  // ── تحويل الـ index الكلي إلى index حقيقي للإيديت
+  int _realEditIndex(int index) {
+    final cycleLength = _adInterval + 1;
+    final completeCycles = index ~/ cycleLength;
+    final positionInCycle = index % cycleLength;
+    return (completeCycles * _adInterval) + positionInCycle;
+  }
+
+  // ── العدد الكلي للعناصر (إيديتات + إعلانات)
+  int _totalItemCount(int editsCount) {
+    return editsCount + (editsCount ~/ _adInterval);
+  }
+
+  void _showEndDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🎌', style: TextStyle(fontSize: 40)),
+            const SizedBox(height: 12),
+            const Text(
+              'هذا كل شيء حالياً!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      context.read<EditsProvider>().resetSeen();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'عرض من البداية',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const UploadEditScreen(),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'أضف إيديت ✨',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
     final currentUserId = userProvider.currentUser?.id ?? '';
+    final isPremium = userProvider.currentUser?.isPremium ?? false;
 
-    // ← المصدر: إما من البروفايل أو من Firebase
     final edits = widget.initialEdits ?? editsProvider.edits;
+    final totalCount = _totalItemCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ── حالة التحميل (فقط عند جلب من Firebase)
+          // ── حالة التحميل
           if (widget.initialEdits == null && editsProvider.isLoading)
             const Center(child: CircularProgressIndicator()),
 
@@ -90,13 +324,14 @@ class _EditsScreenState extends State<EditsScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 50),
+                  const Icon(Icons.error_outline,
+                      color: Colors.red, size: 50),
                   const SizedBox(height: 12),
                   Text(
                     'حدث خطأ:\n${editsProvider.error}',
                     textAlign: TextAlign.center,
-                    style:
-                        const TextStyle(color: Colors.white54, fontSize: 13),
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 13),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -129,24 +364,88 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          // ── الفيديوهات
+          // ── الفيد الرئيسي
           if (edits.isNotEmpty)
             PageView.builder(
               controller: _pageController,
               scrollDirection: Axis.vertical,
-              itemCount: edits.length,
+              itemCount: totalCount,
+              // ── منع السكرول اليدوي أثناء الإعلان
+              physics: _isAdSlot(_currentIndex) &&
+                      !_finishedAdIndexes.contains(_currentIndex) &&
+                      !isPremium
+                  ? const NeverScrollableScrollPhysics()
+                  : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 setState(() => _currentIndex = index);
-                editsProvider.incrementViews(edits[index].id);
+
+                // تسجيل مشاهدة فقط إذا لم يكن إعلاناً
+                if (!_isAdSlot(index) || isPremium) {
+                  final realIndex = _realEditIndex(index);
+                  if (realIndex < edits.length) {
+                    editsProvider.incrementViews(edits[realIndex].id);
+                  }
+                }
+
+                // رسالة النهاية
+                if (index == totalCount - 1 &&
+                    editsProvider.allUnseenWatched) {
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted) _showEndDialog();
+                  });
+                }
               },
               itemBuilder: (context, index) {
-                final edit = edits[index];
+                // ══════════════════════════════════════════════
+                // ── موقع إعلان (غير بريميوم فقط)
+                // ══════════════════════════════════════════════
+                if (_isAdSlot(index) &&
+                    widget.initialEdits == null &&
+                    !isPremium) {
+                  final adDone = _finishedAdIndexes.contains(index);
+
+                  if (adDone) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && _currentIndex == index) {
+                        _pageController.nextPage(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeInOut,
+                        );
+                      }
+                    });
+                    return const SizedBox.shrink();
+                  }
+
+                  return _AdEditWidget(
+                    onAdFinished: () {
+                      setState(() => _finishedAdIndexes.add(index));
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (mounted) {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      });
+                    },
+                  );
+                }
+
+                // ══════════════════════════════════════════════
+                // ── إيديت عادي
+                // ══════════════════════════════════════════════
+                final realIndex = _realEditIndex(index);
+                if (realIndex >= edits.length) return const SizedBox.shrink();
+                final edit = edits[realIndex];
+
                 return Stack(
                   children: [
                     EditPlayerWidget(
                       edit: edit,
                       isActive: index == _currentIndex,
                     ),
+
+                    // ── معلومات الإيديت
                     Positioned(
                       bottom: 80,
                       left: 16,
@@ -206,6 +505,8 @@ class _EditsScreenState extends State<EditsScreen>
                         ],
                       ),
                     ),
+
+                    // ── أزرار التفاعل
                     Positioned(
                       bottom: 100,
                       right: 12,
@@ -230,7 +531,7 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          // ── زر الرفع (يظهر فقط في الوضع العادي مش البروفايل)
+          // ── زر الرفع (الوضع العادي)
           if (widget.initialEdits == null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,
@@ -247,12 +548,13 @@ class _EditsScreenState extends State<EditsScreen>
                     color: Colors.white12,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 28),
+                  child:
+                      const Icon(Icons.add, color: Colors.white, size: 28),
                 ),
               ),
             ),
 
-          // ── زر رجوع (يظهر فقط عند الفتح من البروفايل)
+          // ── زر رجوع (من البروفايل)
           if (widget.initialEdits != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,
@@ -265,8 +567,8 @@ class _EditsScreenState extends State<EditsScreen>
                     color: Colors.white12,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                  child: const Icon(Icons.arrow_back,
+                      color: Colors.white, size: 28),
                 ),
               ),
             ),

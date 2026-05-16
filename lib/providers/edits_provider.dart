@@ -7,13 +7,16 @@ class EditsProvider extends ChangeNotifier {
   final EditsService _service = EditsService();
 
   List<EditModel> _edits = [];
+  final Set<String> _seenIds = {};
   bool _isLoading = false;
   bool _isUploading = false;
+  bool _allUnseenWatched = false;
   String? _error;
 
   List<EditModel> get edits => _edits;
   bool get isLoading => _isLoading;
   bool get isUploading => _isUploading;
+  bool get allUnseenWatched => _allUnseenWatched;
   String? get error => _error;
 
   void resetError() {
@@ -21,15 +24,19 @@ class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ══════════════════════════════════════════════
+  // ── الاستماع للإيديتات مع تمرير المشاهدة
+  // ══════════════════════════════════════════════
   void listenToEdits() {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
-    _service.getEdits().listen(
+    _service.getEdits(seenIds: _seenIds.toList()).listen(
       (data) {
         _edits = data;
         _isLoading = false;
+        _checkAllUnseenWatched();
         notifyListeners();
       },
       onError: (e) {
@@ -40,7 +47,32 @@ class EditsProvider extends ChangeNotifier {
     );
   }
 
+  // ══════════════════════════════════════════════
+  // ── تسجيل مشاهدة فيديو
+  // ══════════════════════════════════════════════
+  void markAsSeen(String editId) {
+    if (_seenIds.contains(editId)) return;
+    _seenIds.add(editId);
+    _checkAllUnseenWatched();
+    notifyListeners();
+  }
+
+  // ── التحقق هل شاهد المستخدم كل المحتوى الجديد
+  void _checkAllUnseenWatched() {
+    final hasUnseen = _edits.any((e) => !_seenIds.contains(e.id));
+    _allUnseenWatched = !hasUnseen && _edits.isNotEmpty;
+  }
+
+  // ── إعادة تعيين المشاهدة (مثلاً عند تسجيل الخروج)
+  void resetSeen() {
+    _seenIds.clear();
+    _allUnseenWatched = false;
+    notifyListeners();
+  }
+
+  // ══════════════════════════════════════════════
   // ── رفع في الخلفية بدون انتظار
+  // ══════════════════════════════════════════════
   void uploadEditInBackground({
     required File videoFile,
     required File thumbnailFile,
@@ -82,8 +114,7 @@ class EditsProvider extends ChangeNotifier {
   }) async {
     try {
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl =
-          await _service.uploadThumbnail(thumbnailFile, userId);
+      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
 
       final edit = EditModel(
         id: '',
@@ -113,6 +144,9 @@ class EditsProvider extends ChangeNotifier {
     }
   }
 
+  // ══════════════════════════════════════════════
+  // ── لايك مع تحديث فوري (Optimistic Update)
+  // ══════════════════════════════════════════════
   Future<void> toggleLike(String editId, String userId) async {
     final index = _edits.indexWhere((e) => e.id == editId);
     if (index == -1) return;
@@ -132,7 +166,11 @@ class EditsProvider extends ChangeNotifier {
     await _service.toggleLike(editId, userId);
   }
 
+  // ══════════════════════════════════════════════
+  // ── زيادة المشاهدات + تسجيل المشاهدة
+  // ══════════════════════════════════════════════
   Future<void> incrementViews(String editId) async {
+    markAsSeen(editId);
     await _service.incrementViews(editId);
   }
 
@@ -146,6 +184,8 @@ class EditsProvider extends ChangeNotifier {
     try {
       await _service.deleteEdit(edit);
       _edits.removeWhere((e) => e.id == edit.id);
+      _seenIds.remove(edit.id);
+      _checkAllUnseenWatched();
       notifyListeners();
     } catch (e) {
       _error = e.toString();

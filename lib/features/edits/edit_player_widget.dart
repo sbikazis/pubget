@@ -37,7 +37,6 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     _controller.setLooping(true);
     if (mounted) setState(() => _initialized = true);
 
-    // يشتغل فقط إذا كان active وظاهر
     if (widget.isActive && _isVisible) {
       _controller.play();
     }
@@ -57,17 +56,12 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
 
   void _togglePlayPause() {
     if (!_initialized) return;
-
     setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
-      } else {
-        _controller.play();
-      }
+      _controller.value.isPlaying
+          ? _controller.pause()
+          : _controller.play();
       _showControls = true;
     });
-
-    // إخفاء الأيقونة بعد ثانيتين
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _showControls = false);
     });
@@ -79,20 +73,67 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     super.dispose();
   }
 
+  // ── منطق ذكي للمقاس: مزيج TikTok + Instagram
+  Widget _buildVideoDisplay() {
+    final videoSize = _controller.value.size;
+    final screenSize = MediaQuery.of(context).size;
+
+    if (videoSize.width == 0 || videoSize.height == 0) {
+      return _buildThumbnail();
+    }
+
+    final videoRatio = videoSize.width / videoSize.height;
+    final screenRatio = screenSize.width / screenSize.height;
+
+    // فيديو عمودي (مثل TikTok 9:16) → cover كامل
+    if (videoRatio < 0.85) {
+      return SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: videoSize.width,
+            height: videoSize.height,
+            child: VideoPlayer(_controller),
+          ),
+        ),
+      );
+    }
+
+    // فيديو مربع (مثل Instagram 1:1) → contain مع خلفية سوداء
+    if (videoRatio >= 0.85 && videoRatio <= 1.2) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: videoRatio,
+            child: VideoPlayer(_controller),
+          ),
+        ),
+      );
+    }
+
+    // فيديو أفقي (landscape 16:9) → contain مع letterbox أسود
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: videoRatio,
+          child: VideoPlayer(_controller),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return VisibilityDetector(
       key: Key(widget.edit.id),
       onVisibilityChanged: (info) {
-        final wasVisible = _isVisible;
         _isVisible = info.visibleFraction > 0.8;
-
         if (!_initialized) return;
-
         if (_isVisible && widget.isActive) {
           _controller.play();
         } else if (!_isVisible) {
-          // ← الإصلاح الرئيسي: يوقف الفيديو عند الخروج من الشاشة
           _controller.pause();
         }
       },
@@ -101,21 +142,10 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // ── الفيديو
-            _initialized
-                ? SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _controller.value.size.width,
-                        height: _controller.value.size.height,
-                        child: VideoPlayer(_controller),
-                      ),
-                    ),
-                  )
-                : _buildThumbnail(),
+            // ── الفيديو بمنطق المقاس الذكي
+            _initialized ? _buildVideoDisplay() : _buildThumbnail(),
 
-            // ── أيقونة Play/Pause عند الضغط
+            // ── أيقونة Play/Pause
             AnimatedOpacity(
               opacity: _showControls ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
@@ -126,7 +156,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Icon(
-                  _controller.value.isPlaying
+                  _initialized && _controller.value.isPlaying
                       ? Icons.pause
                       : Icons.play_arrow,
                   color: Colors.white,
@@ -135,7 +165,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
               ),
             ),
 
-            // ── شريط التقدم في الأسفل
+            // ── شريط التقدم
             if (_initialized)
               Positioned(
                 bottom: 0,
