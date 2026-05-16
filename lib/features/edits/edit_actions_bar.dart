@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pubget/models/edits_model.dart';
+import 'edits_comments_sheet.dart';
 
 class EditActionsBar extends StatelessWidget {
   final EditModel edit;
@@ -16,6 +17,18 @@ class EditActionsBar extends StatelessWidget {
     required this.onComment,
     required this.onShare,
   });
+
+  void _openComments(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => EditCommentsSheet(
+        editId: edit.id,
+        currentUserId: currentUserId,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +51,7 @@ class EditActionsBar extends StatelessWidget {
           icon: Icons.chat_bubble_outline,
           color: Colors.white,
           label: '${edit.commentsCount}',
-          onTap: onComment,
+          onTap: () => _openComments(context),
         ),
         const SizedBox(height: 20),
 

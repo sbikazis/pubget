@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
+import '../profile/profile_sceen.dart';
 import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
+import 'edits_share_sheet.dart';
 
 class EditsScreen extends StatefulWidget {
   const EditsScreen({super.key});
@@ -34,6 +36,13 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _openProfile(String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId)),
+    );
   }
 
   @override
@@ -121,27 +130,31 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundImage: edit.uploaderAvatar.isNotEmpty
-                                    ? NetworkImage(edit.uploaderAvatar)
-                                    : null,
-                                child: edit.uploaderAvatar.isEmpty
-                                    ? const Icon(Icons.person, size: 18)
-                                    : null,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                edit.uploaderName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
+                          // ── صورة واسم صاحب الإيديت (قابل للضغط)
+                          GestureDetector(
+                            onTap: () => _openProfile(edit.uploaderId),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundImage: edit.uploaderAvatar.isNotEmpty
+                                      ? NetworkImage(edit.uploaderAvatar)
+                                      : null,
+                                  child: edit.uploaderAvatar.isEmpty
+                                      ? const Icon(Icons.person, size: 18)
+                                      : null,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 8),
+                                Text(
+                                  edit.uploaderName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Container(
@@ -178,7 +191,14 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                         onLike: () =>
                             editsProvider.toggleLike(edit.id, currentUserId),
                         onComment: () {},
-                        onShare: () {},
+                        onShare: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => EditShareSheet(edit: edit),
+                          );
+                        },
                       ),
                     ),
                   ],

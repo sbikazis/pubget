@@ -21,6 +21,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
   late VideoPlayerController _controller;
   bool _initialized = false;
   bool _showControls = false;
+  bool _isVisible = false;
 
   @override
   void initState() {
@@ -34,28 +35,42 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     );
     await _controller.initialize();
     _controller.setLooping(true);
-    setState(() => _initialized = true);
+    if (mounted) setState(() => _initialized = true);
 
-    if (widget.isActive) _controller.play();
+    // يشتغل فقط إذا كان active وظاهر
+    if (widget.isActive && _isVisible) {
+      _controller.play();
+    }
   }
 
   @override
   void didUpdateWidget(covariant EditPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive) {
+    if (!_initialized) return;
+
+    if (widget.isActive && _isVisible) {
       _controller.play();
     } else {
       _controller.pause();
     }
   }
 
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _showControls = false);
-      });
-    }
+  void _togglePlayPause() {
+    if (!_initialized) return;
+
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
+      _showControls = true;
+    });
+
+    // إخفاء الأيقونة بعد ثانيتين
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _showControls = false);
+    });
   }
 
   @override
@@ -69,14 +84,20 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     return VisibilityDetector(
       key: Key(widget.edit.id),
       onVisibilityChanged: (info) {
-        if (info.visibleFraction > 0.8 && widget.isActive) {
+        final wasVisible = _isVisible;
+        _isVisible = info.visibleFraction > 0.8;
+
+        if (!_initialized) return;
+
+        if (_isVisible && widget.isActive) {
           _controller.play();
-        } else {
+        } else if (!_isVisible) {
+          // ← الإصلاح الرئيسي: يوقف الفيديو عند الخروج من الشاشة
           _controller.pause();
         }
       },
       child: GestureDetector(
-        onTap: _toggleControls,
+        onTap: _togglePlayPause,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -94,26 +115,25 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
                   )
                 : _buildThumbnail(),
 
-            // ── زر Play/Pause
-            if (_showControls)
-              AnimatedOpacity(
-                opacity: _showControls ? 1 : 0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.black45,
-                    shape: BoxShape.circle,
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Icon(
-                    _controller.value.isPlaying
-                        ? Icons.pause
-                        : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
+            // ── أيقونة Play/Pause عند الضغط
+            AnimatedOpacity(
+              opacity: _showControls ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.black45,
+                  shape: BoxShape.circle,
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Icon(
+                  _controller.value.isPlaying
+                      ? Icons.pause
+                      : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 48,
                 ),
               ),
+            ),
 
             // ── شريط التقدم في الأسفل
             if (_initialized)
