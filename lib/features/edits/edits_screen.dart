@@ -26,12 +26,13 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   NativeAd? _nativeAd;
   bool _adLoaded = false;
   int _secondsLeft = 5;
+  bool _countdownStarted = false;
 
   @override
   void initState() {
     super.initState();
     _loadAd();
-    _startCountdown();
+    // ← لا نستدعي _startCountdown هنا إطلاقاً
   }
 
   void _loadAd() {
@@ -39,7 +40,13 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
       adUnitId: 'ca-app-pub-3303379299409244/9117104001',
       listener: NativeAdListener(
         onAdLoaded: (_) {
-          if (mounted) setState(() => _adLoaded = true);
+          if (!mounted) return;
+          setState(() => _adLoaded = true);
+          // ← العداد يبدأ فقط بعد ظهور الإعلان فعلاً
+          if (!_countdownStarted) {
+            _countdownStarted = true;
+            _startCountdown();
+          }
         },
         onAdFailedToLoad: (_, __) {
           if (mounted) widget.onAdFinished();
@@ -81,7 +88,18 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
           child: _adLoaded
               ? AdWidget(ad: _nativeAd!)
               : const Center(
-                  child: CircularProgressIndicator(color: Colors.white54),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: Colors.white54),
+                      SizedBox(height: 16),
+                      Text(
+                        'جاري تحميل الإعلان...',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
         ),
 
@@ -90,7 +108,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.amber,
               borderRadius: BorderRadius.circular(6),
@@ -106,29 +125,31 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
           ),
         ),
 
-        // ── عداد تنازلي
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 12,
-          right: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '$_secondsLeft ث',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
+        // ── عداد تنازلي (يظهر فقط بعد تحميل الإعلان)
+        if (_adLoaded)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 12,
+            right: 16,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$_secondsLeft ث',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
-        ),
 
-        // ── طبقة تمنع التفاعل أثناء العداد
-        if (_secondsLeft > 0) Positioned.fill(child: AbsorbPointer()),
+        // ── طبقة تمنع التفاعل دائماً أثناء الإعلان
+        Positioned.fill(child: AbsorbPointer()),
       ],
     );
   }
@@ -156,8 +177,8 @@ class _EditsScreenState extends State<EditsScreen>
   late final PageController _pageController;
   int _currentIndex = 0;
   bool _initialized = false;
+  bool _endDialogShown = false;
 
-  // ── كل 5 إيديتات يظهر إعلان
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
 
@@ -195,13 +216,11 @@ class _EditsScreenState extends State<EditsScreen>
     );
   }
 
-  // ── حساب هل هذا الـ index موقع إعلان
   bool _isAdSlot(int index) {
     final cycleLength = _adInterval + 1;
     return (index % cycleLength) == _adInterval;
   }
 
-  // ── تحويل الـ index الكلي إلى index حقيقي للإيديت
   int _realEditIndex(int index) {
     final cycleLength = _adInterval + 1;
     final completeCycles = index ~/ cycleLength;
@@ -209,9 +228,24 @@ class _EditsScreenState extends State<EditsScreen>
     return (completeCycles * _adInterval) + positionInCycle;
   }
 
-  // ── العدد الكلي للعناصر (إيديتات + إعلانات)
   int _totalItemCount(int editsCount) {
     return editsCount + (editsCount ~/ _adInterval);
+  }
+
+  // ── التحقق من النهاية بناءً على realIndex لا totalCount
+  void _checkAndShowEndDialog(EditsProvider editsProvider, int index) {
+    if (_endDialogShown) return;
+    if (!editsProvider.allUnseenWatched) return;
+
+    final realIndex = _realEditIndex(index);
+    final editsCount = editsProvider.edits.length;
+
+    if (realIndex >= editsCount - 1) {
+      _endDialogShown = true;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _showEndDialog();
+      });
+    }
   }
 
   void _showEndDialog() {
@@ -250,6 +284,7 @@ class _EditsScreenState extends State<EditsScreen>
                   child: OutlinedButton(
                     onPressed: () {
                       Navigator.pop(context);
+                      setState(() => _endDialogShown = false);
                       context.read<EditsProvider>().resetSeen();
                     },
                     style: OutlinedButton.styleFrom(
@@ -306,7 +341,9 @@ class _EditsScreenState extends State<EditsScreen>
     final isPremium = userProvider.currentUser?.isPremium ?? false;
 
     final edits = widget.initialEdits ?? editsProvider.edits;
-    final totalCount = _totalItemCount(edits.length);
+    final totalCount = isPremium
+        ? edits.length
+        : _totalItemCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -358,7 +395,8 @@ class _EditsScreenState extends State<EditsScreen>
                   Text(
                     'لا يوجد إيديتات بعد\nكن أول من ينشر!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54, fontSize: 16),
+                    style:
+                        TextStyle(color: Colors.white54, fontSize: 16),
                   ),
                 ],
               ),
@@ -370,38 +408,33 @@ class _EditsScreenState extends State<EditsScreen>
               controller: _pageController,
               scrollDirection: Axis.vertical,
               itemCount: totalCount,
-              // ── منع السكرول اليدوي أثناء الإعلان
-              physics: _isAdSlot(_currentIndex) &&
-                      !_finishedAdIndexes.contains(_currentIndex) &&
-                      !isPremium
+              physics: !isPremium &&
+                      _isAdSlot(_currentIndex) &&
+                      !_finishedAdIndexes.contains(_currentIndex)
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 setState(() => _currentIndex = index);
 
-                // تسجيل مشاهدة فقط إذا لم يكن إعلاناً
-                if (!_isAdSlot(index) || isPremium) {
+                if (isPremium) {
+                  if (index < edits.length) {
+                    editsProvider.incrementViews(edits[index].id);
+                  }
+                } else if (!_isAdSlot(index)) {
                   final realIndex = _realEditIndex(index);
                   if (realIndex < edits.length) {
                     editsProvider.incrementViews(edits[realIndex].id);
+                    _checkAndShowEndDialog(editsProvider, index);
                   }
-                }
-
-                // رسالة النهاية
-                if (index == totalCount - 1 &&
-                    editsProvider.allUnseenWatched) {
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    if (mounted) _showEndDialog();
-                  });
                 }
               },
               itemBuilder: (context, index) {
                 // ══════════════════════════════════════════════
                 // ── موقع إعلان (غير بريميوم فقط)
                 // ══════════════════════════════════════════════
-                if (_isAdSlot(index) &&
-                    widget.initialEdits == null &&
-                    !isPremium) {
+                if (!isPremium &&
+                    _isAdSlot(index) &&
+                    widget.initialEdits == null) {
                   final adDone = _finishedAdIndexes.contains(index);
 
                   if (adDone) {
@@ -434,7 +467,8 @@ class _EditsScreenState extends State<EditsScreen>
                 // ══════════════════════════════════════════════
                 // ── إيديت عادي
                 // ══════════════════════════════════════════════
-                final realIndex = _realEditIndex(index);
+                final realIndex =
+                    isPremium ? index : _realEditIndex(index);
                 if (realIndex >= edits.length) return const SizedBox.shrink();
                 final edit = edits[realIndex];
 
@@ -445,7 +479,6 @@ class _EditsScreenState extends State<EditsScreen>
                       isActive: index == _currentIndex,
                     ),
 
-                    // ── معلومات الإيديت
                     Positioned(
                       bottom: 80,
                       left: 16,
@@ -506,7 +539,6 @@ class _EditsScreenState extends State<EditsScreen>
                       ),
                     ),
 
-                    // ── أزرار التفاعل
                     Positioned(
                       bottom: 100,
                       right: 12,
@@ -531,7 +563,7 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          // ── زر الرفع (الوضع العادي)
+          // ── زر الرفع
           if (widget.initialEdits == null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,
@@ -548,13 +580,12 @@ class _EditsScreenState extends State<EditsScreen>
                     color: Colors.white12,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      const Icon(Icons.add, color: Colors.white, size: 28),
+                  child: const Icon(Icons.add, color: Colors.white, size: 28),
                 ),
               ),
             ),
 
-          // ── زر رجوع (من البروفايل)
+          // ── زر رجوع
           if (widget.initialEdits != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,

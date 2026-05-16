@@ -25,7 +25,7 @@ class EditsProvider extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ── الاستماع للإيديتات مع تمرير المشاهدة
+  // ── الاستماع للإيديتات
   // ══════════════════════════════════════════════
   void listenToEdits() {
     _isLoading = true;
@@ -57,13 +57,19 @@ class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── التحقق هل شاهد المستخدم كل المحتوى الجديد
+  // ── التحقق هل شاهد المستخدم كل المحتوى
+  // ── يعتمد على _seenIds مباشرة بدون الـ stream
   void _checkAllUnseenWatched() {
-    final hasUnseen = _edits.any((e) => !_seenIds.contains(e.id));
-    _allUnseenWatched = !hasUnseen && _edits.isNotEmpty;
+    if (_edits.isEmpty) {
+      _allUnseenWatched = false;
+      return;
+    }
+    // كل الإيديتات الموجودة حالياً شوفها المستخدم؟
+    final allSeen = _edits.every((e) => _seenIds.contains(e.id));
+    _allUnseenWatched = allSeen;
   }
 
-  // ── إعادة تعيين المشاهدة (مثلاً عند تسجيل الخروج)
+  // ── إعادة تعيين المشاهدة
   void resetSeen() {
     _seenIds.clear();
     _allUnseenWatched = false;
@@ -71,7 +77,7 @@ class EditsProvider extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ── رفع في الخلفية بدون انتظار
+  // ── رفع في الخلفية
   // ══════════════════════════════════════════════
   void uploadEditInBackground({
     required File videoFile,
@@ -114,7 +120,8 @@ class EditsProvider extends ChangeNotifier {
   }) async {
     try {
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
+      final thumbnailUrl =
+          await _service.uploadThumbnail(thumbnailFile, userId);
 
       final edit = EditModel(
         id: '',
@@ -145,7 +152,7 @@ class EditsProvider extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ── لايك مع تحديث فوري (Optimistic Update)
+  // ── لايك مع تحديث فوري
   // ══════════════════════════════════════════════
   Future<void> toggleLike(String editId, String userId) async {
     final index = _edits.indexWhere((e) => e.id == editId);
@@ -174,7 +181,7 @@ class EditsProvider extends ChangeNotifier {
     await _service.incrementViews(editId);
   }
 
-  // ── إيديتات مستخدم معين للبروفايل
+  // ── إيديتات مستخدم معين
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _service.getUserEdits(userId);
   }

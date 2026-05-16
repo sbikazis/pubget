@@ -10,11 +10,14 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/role_colors.dart';
 import '../../../core/utils/time_utils.dart';
 import 'package:pubget/models/user_model.dart';
+import 'package:pubget/models/edits_model.dart';
 import 'package:pubget/providers/user_provider.dart';
 import 'package:pubget/providers/chat_provider.dart';
 import 'package:pubget/providers/private_chat_provider.dart';
+import 'package:pubget/providers/edits_provider.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
+import 'package:pubget/features/edits/edits_screen.dart';
 
 import 'role_badge.dart';
 import '../../../widgets/premium_badge.dart';
@@ -54,10 +57,10 @@ class MessageBubble extends StatelessWidget {
     final bubbleColor = isGameMessage
         ? gameAccentColor!.withOpacity(0.15)
         : (isMe
-              ? AppColors.myMessageBubble
-              : (isDark
-                    ? AppColors.otherMessageBubbleDark
-                    : AppColors.otherMessageBubbleLight));
+            ? AppColors.myMessageBubble
+            : (isDark
+                ? AppColors.otherMessageBubbleDark
+                : AppColors.otherMessageBubbleLight));
 
     final textColor = isMe && !isGameMessage
         ? Colors.white
@@ -176,16 +179,14 @@ class MessageBubble extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    child:
-                        Text(emoji, style: const TextStyle(fontSize: 28)),
+                    child: Text(emoji, style: const TextStyle(fontSize: 28)),
                   );
                 }).toList(),
               ),
             ),
             const Divider(),
             ListTile(
-              leading:
-                  const Icon(Icons.reply, color: AppColors.primary),
+              leading: const Icon(Icons.reply, color: AppColors.primary),
               title: const Text('رد'),
               onTap: () {
                 Navigator.pop(context);
@@ -194,13 +195,11 @@ class MessageBubble extends StatelessWidget {
             ),
             if (message.text != null && message.text!.isNotEmpty)
               ListTile(
-                leading:
-                    const Icon(Icons.copy, color: AppColors.primary),
+                leading: const Icon(Icons.copy, color: AppColors.primary),
                 title: const Text('نسخ'),
                 onTap: () {
                   Navigator.pop(context);
-                  Clipboard.setData(
-                      ClipboardData(text: message.text!));
+                  Clipboard.setData(ClipboardData(text: message.text!));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('تم نسخ الرسالة'),
@@ -211,8 +210,7 @@ class MessageBubble extends StatelessWidget {
               ),
             if (isMe)
               ListTile(
-                leading: const Icon(Icons.delete_outline,
-                    color: Colors.red),
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text(
                   'حذف الرسالة',
                   style: TextStyle(color: Colors.red),
@@ -316,8 +314,7 @@ class MessageBubble extends StatelessWidget {
       spacing: 4,
       children: message.reactions!.values.toSet().map((emoji) {
         return Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: AppColors.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
@@ -349,8 +346,8 @@ class MessageBubble extends StatelessWidget {
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) => RespectModal(
-                targetUser: targetUser, currentUserId: myId),
+            builder: (_) =>
+                RespectModal(targetUser: targetUser, currentUserId: myId),
           );
         }
       },
@@ -379,10 +376,8 @@ class MessageBubble extends StatelessWidget {
                             height: 15,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              value: loadingProgress.expectedTotalBytes !=
-                                      null
-                                  ? loadingProgress
-                                          .cumulativeBytesLoaded /
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
                                       loadingProgress.expectedTotalBytes!
                                   : null,
                             ),
@@ -403,8 +398,7 @@ class MessageBubble extends StatelessWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      textDirection:
-          isMe ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: isMe ? TextDirection.rtl : TextDirection.ltr,
       children: [
         Flexible(
           child: Text(
@@ -428,7 +422,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(Color textColor) {
-    // ── إيديت مشارك ← التعديل الرئيسي
+    // ── إيديت مشارك
     if (message.mediaType == 'edit_share' && message.mediaUrl != null) {
       return _EditShareBubble(message: message);
     }
@@ -494,8 +488,7 @@ class MessageBubble extends StatelessWidget {
             width: 220,
             height: 150,
             color: Colors.grey[300],
-            child:
-                const Icon(Icons.broken_image, color: Colors.grey),
+            child: const Icon(Icons.broken_image, color: Colors.grey),
           ),
         ),
       );
@@ -560,6 +553,58 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
     });
   }
 
+  // ══════════════════════════════════════════════
+  // ── فتح EditsScreen عند الضغط على زر "عرض"
+  // ══════════════════════════════════════════════
+  void _openInEditsScreen(BuildContext context) {
+    final editsProvider =
+        Provider.of<EditsProvider>(context, listen: false);
+    final allEdits = editsProvider.edits;
+
+    // ── نبحث عن الإيديت بالـ URL
+    final index = allEdits.indexWhere(
+      (e) => e.videoUrl == widget.message.mediaUrl,
+    );
+
+    if (index != -1) {
+      // ── الإيديت موجود في الفيد — نفتح من موقعه
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EditsScreen(
+            startIndex: index,
+          ),
+        ),
+      );
+    } else {
+      // ── الإيديت غير موجود في الفيد — نبنيه من بيانات الرسالة
+      final editModel = EditModel(
+        id: widget.message.id ,
+        uploaderId: widget.message.senderId,
+        uploaderName: widget.message.senderName,
+        uploaderAvatar: widget.message.senderAvatar,
+        videoUrl: widget.message.mediaUrl!,
+        thumbnailUrl: widget.message.editThumbnail ?? '',
+        animeTitle: widget.message.editAnimeTitle ?? '',
+        caption: '',
+        likes: [],
+        commentsCount: 0,
+        views: 0,
+        createdAt: widget.message.createdAt,
+      );
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EditsScreen(
+            initialEdits: [editModel],
+            startIndex: 0,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -568,20 +613,20 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _togglePlay,
-      child: Container(
-        width: 220,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white24),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── مشغل الفيديو
-            ClipRRect(
+    return Container(
+      width: 220,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── مشغل الفيديو (ضغطة تشغيل/إيقاف)
+          GestureDetector(
+            onTap: _togglePlay,
+            child: ClipRRect(
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(12),
               ),
@@ -591,7 +636,6 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // الفيديو أو الـ thumbnail
                     if (_initialized && _controller != null)
                       SizedBox.expand(
                         child: FittedBox(
@@ -623,7 +667,6 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                             color: Colors.white54, size: 40),
                       ),
 
-                    // ── أيقونة Play/Pause
                     Icon(
                       _isPlaying
                           ? Icons.pause_circle_filled
@@ -632,7 +675,6 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                       size: 44,
                     ),
 
-                    // ── شريط التقدم
                     if (_initialized && _controller != null)
                       Positioned(
                         bottom: 0,
@@ -648,36 +690,77 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                           ),
                         ),
                       ),
+
+                    // ── زر "عرض كامل" في الزاوية
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () => _openInEditsScreen(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.open_in_full,
+                                  color: Colors.white, size: 12),
+                              SizedBox(width: 4),
+                              Text(
+                                'عرض',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
+          ),
 
-            // ── اسم الأنمي
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 6),
-              child: Row(
-                children: [
-                  const Text('🎌 ',
-                      style: TextStyle(fontSize: 13)),
-                  Expanded(
-                    child: Text(
-                      widget.message.editAnimeTitle ?? 'إيديت',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+          // ── اسم الأنمي + زر فتح الفيد
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                const Text('🎌 ', style: TextStyle(fontSize: 13)),
+                Expanded(
+                  child: Text(
+                    widget.message.editAnimeTitle ?? 'إيديت',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
+                ),
+                // ── زر "فتح في الفيد"
+                GestureDetector(
+                  onTap: () => _openInEditsScreen(context),
+                  child: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white54,
+                    size: 14,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
