@@ -16,10 +16,9 @@ class EditsService {
     return interactionScore * decayFactor + (1.0 / (1.0 + ageHours * 0.01));
   }
 
-  // ← التعديل: getter بدل قيمة ثابتة — يُقرأ عند كل snapshot
   Stream<List<EditModel>> getEdits({required Set<String> Function() seenIdsGetter}) {
     return _firestore.collection('edits').snapshots().map((snap) {
-      final seenIds = seenIdsGetter(); // ← يقرأ الـ seenIds الحالية الآن
+      final seenIds = seenIdsGetter();
       final list = snap.docs.map(EditModel.fromFirestore).toList();
       final unseen = list.where((e) => !seenIds.contains(e.id)).toList();
       final seen = list.where((e) => seenIds.contains(e.id)).toList();

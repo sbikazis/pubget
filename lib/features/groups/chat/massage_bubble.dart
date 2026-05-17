@@ -561,25 +561,23 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
         Provider.of<EditsProvider>(context, listen: false);
     final allEdits = editsProvider.edits;
 
-    // ── نبحث عن الإيديت بالـ URL
     final index = allEdits.indexWhere(
       (e) => e.videoUrl == widget.message.mediaUrl,
     );
 
     if (index != -1) {
-      // ── الإيديت موجود في الفيد — نفتح من موقعه
+      // ← موجود في الفيد — ضعه أولاً وافتح
+      editsProvider.prependEdit(allEdits[index]);
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => EditsScreen(
-            startIndex: index,
-          ),
+          builder: (_) => const EditsScreen(startIndex: 0),
         ),
       );
     } else {
-      // ── الإيديت غير موجود في الفيد — نبنيه من بيانات الرسالة
+      // ← غير موجود — ابنه وضعه أولاً وافتح
       final editModel = EditModel(
-        id: widget.message.id ,
+        id: widget.message.id,
         uploaderId: widget.message.senderId,
         uploaderName: widget.message.senderName,
         uploaderAvatar: widget.message.senderAvatar,
@@ -592,14 +590,11 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
         views: 0,
         createdAt: widget.message.createdAt,
       );
-
+      editsProvider.prependEdit(editModel);
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => EditsScreen(
-            initialEdits: [editModel],
-            startIndex: 0,
-          ),
+          builder: (_) => const EditsScreen(startIndex: 0),
         ),
       );
     }

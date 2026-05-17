@@ -47,7 +47,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         },
       ),
       request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(templateType: TemplateType.medium),
+      nativeTemplateStyle:
+          NativeTemplateStyle(templateType: TemplateType.medium),
     )..load();
   }
 
@@ -85,7 +86,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
                       CircularProgressIndicator(color: Colors.white54),
                       SizedBox(height: 16),
                       Text('جاري تحميل الإعلان...',
-                          style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          style:
+                              TextStyle(color: Colors.white54, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -94,7 +96,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.amber,
               borderRadius: BorderRadius.circular(6),
@@ -111,7 +114,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
             top: MediaQuery.of(context).padding.top + 12,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(20),
@@ -130,12 +134,11 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
 }
 
 class EditsScreen extends StatefulWidget {
-  final List<EditModel>? initialEdits;
   final int startIndex;
 
+  // ← حذف initialEdits نهائياً — لا نحتاجه بعد الآن
   const EditsScreen({
     super.key,
-    this.initialEdits,
     this.startIndex = 0,
   });
 
@@ -145,7 +148,7 @@ class EditsScreen extends StatefulWidget {
 
 class _EditsScreenState extends State<EditsScreen>
     with AutomaticKeepAliveClientMixin {
-  late final PageController _pageController;
+  late PageController _pageController;
   int _currentIndex = 0;
   bool _initialized = false;
   bool _endDialogShown = false;
@@ -168,9 +171,8 @@ class _EditsScreenState extends State<EditsScreen>
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      if (widget.initialEdits == null) {
-        context.read<EditsProvider>().listenToEdits();
-      }
+      // ← listenToEdits دائماً — لا يوجد initialEdits بعد الآن
+      context.read<EditsProvider>().listenToEdits();
     }
   }
 
@@ -300,25 +302,25 @@ class _EditsScreenState extends State<EditsScreen>
     final currentUserId = userProvider.currentUser?.id ?? '';
     final isPremium = userProvider.currentUser?.isPremium ?? false;
 
-    final edits = widget.initialEdits ?? editsProvider.edits;
+    final edits = editsProvider.edits;
     final totalCount =
         isPremium ? edits.length : _totalItemCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // ← backgroundColor: Colors.transparent يسمح للشريط العالمي بالظهور فوقه
       body: Stack(
         children: [
-          if (widget.initialEdits == null && editsProvider.isLoading)
+          if (editsProvider.isLoading && edits.isEmpty)
             const Center(child: CircularProgressIndicator()),
 
-          if (widget.initialEdits == null &&
-              !editsProvider.isLoading &&
-              editsProvider.error != null)
+          if (!editsProvider.isLoading && editsProvider.error != null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 50),
+                  const Icon(Icons.error_outline,
+                      color: Colors.red, size: 50),
                   const SizedBox(height: 12),
                   Text('حدث خطأ:\n${editsProvider.error}',
                       textAlign: TextAlign.center,
@@ -336,8 +338,7 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          if (edits.isEmpty &&
-              (widget.initialEdits != null || !editsProvider.isLoading))
+          if (edits.isEmpty && !editsProvider.isLoading)
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -347,7 +348,8 @@ class _EditsScreenState extends State<EditsScreen>
                   SizedBox(height: 16),
                   Text('لا يوجد إيديتات بعد\nكن أول من ينشر!',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, fontSize: 16)),
+                      style:
+                          TextStyle(color: Colors.white54, fontSize: 16)),
                 ],
               ),
             ),
@@ -380,22 +382,15 @@ class _EditsScreenState extends State<EditsScreen>
                 }
               },
               itemBuilder: (context, index) {
-                if (!isPremium &&
-                    _isAdSlot(index) &&
-                    widget.initialEdits == null) {
+                if (!isPremium && _isAdSlot(index)) {
                   final adDone = _finishedAdIndexes.contains(index);
-
-                  // ← التعديل: عندما adDone == true أرجع SizedBox فقط
-                  // بدون أي nextPage هنا — nextPage حدث مرة واحدة في onAdFinished
-                  if (adDone) {
-                    return const SizedBox.shrink();
-                  }
+                  if (adDone) return const SizedBox.shrink();
 
                   return _AdEditWidget(
                     onAdFinished: () {
-                      // ← nextPage يُستدعى هنا فقط — مرة واحدة لا غير
                       setState(() => _finishedAdIndexes.add(index));
-                      Future.delayed(const Duration(milliseconds: 300), () {
+                      Future.delayed(const Duration(milliseconds: 300),
+                          () {
                         if (mounted) {
                           _pageController.nextPage(
                             duration: const Duration(milliseconds: 400),
@@ -407,8 +402,10 @@ class _EditsScreenState extends State<EditsScreen>
                   );
                 }
 
-                final realIndex = isPremium ? index : _realEditIndex(index);
-                if (realIndex >= edits.length) return const SizedBox.shrink();
+                final realIndex =
+                    isPremium ? index : _realEditIndex(index);
+                if (realIndex >= edits.length)
+                  return const SizedBox.shrink();
                 final edit = edits[realIndex];
 
                 return Stack(
@@ -430,11 +427,14 @@ class _EditsScreenState extends State<EditsScreen>
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage: edit.uploaderAvatar.isNotEmpty
-                                      ? NetworkImage(edit.uploaderAvatar)
-                                      : null,
+                                  backgroundImage:
+                                      edit.uploaderAvatar.isNotEmpty
+                                          ? NetworkImage(
+                                              edit.uploaderAvatar)
+                                          : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                      ? const Icon(Icons.person, size: 18)
+                                      ? const Icon(Icons.person,
+                                          size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
@@ -474,8 +474,8 @@ class _EditsScreenState extends State<EditsScreen>
                       child: EditActionsBar(
                         edit: edit,
                         currentUserId: currentUserId,
-                        onLike: () =>
-                            editsProvider.toggleLike(edit.id, currentUserId),
+                        onLike: () => editsProvider.toggleLike(
+                            edit.id, currentUserId),
                         onComment: () {},
                         onShare: () {
                           showModalBottomSheet(
@@ -492,41 +492,26 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          if (widget.initialEdits == null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              right: 16,
-              child: GestureDetector(
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const UploadEditScreen())),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 28),
+          // ← زر الإضافة دائماً ظاهر
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            right: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const UploadEditScreen())),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white12,
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child:
+                    const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
-
-          if (widget.initialEdits != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 16,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.arrow_back,
-                      color: Colors.white, size: 28),
-                ),
-              ),
-            ),
+          ),
         ],
       ),
     );

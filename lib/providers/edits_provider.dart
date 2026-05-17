@@ -46,8 +46,6 @@ class EditsProvider extends ChangeNotifier {
     // ← لا notifyListeners هنا عمداً لمنع إعادة بناء الـ builder
   }
 
-  // ← يضع الإيديت الجديد في أول القائمة مؤقتاً
-  // الـ stream سيُحدّثها لاحقاً من Firestore
   void prependEdit(EditModel edit) {
     _edits.removeWhere((e) => e.id == edit.id);
     _edits = [edit, ..._edits];
@@ -162,7 +160,8 @@ class EditsProvider extends ChangeNotifier {
   }) async {
     try {
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
+      final thumbnailUrl =
+          await _service.uploadThumbnail(thumbnailFile, userId);
 
       final edit = EditModel(
         id: '',

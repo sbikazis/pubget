@@ -37,7 +37,6 @@ class UserEditsGrid extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── العنوان
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Row(
@@ -69,7 +68,6 @@ class UserEditsGrid extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // ── حالة فارغة
             if (edits.isEmpty)
               Center(
                 child: Padding(
@@ -93,7 +91,6 @@ class UserEditsGrid extends StatelessWidget {
                 ),
               ),
 
-            // ── الـ Grid
             if (edits.isNotEmpty)
               GridView.builder(
                 shrinkWrap: true,
@@ -109,18 +106,13 @@ class UserEditsGrid extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final edit = edits[index];
                   return GestureDetector(
-                    // ── ضغط عادي: فتح المشغل
-                    onTap: () => _openEdit(context, edits, index),
-
-                    // ── ضغط مطول: حذف (للمالك فقط)
+                    onTap: () => _openEdit(context, edit),
                     onLongPress: isMe
                         ? () => _confirmDelete(context, edit)
                         : null,
-
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // الـ thumbnail
                         edit.thumbnailUrl.isNotEmpty
                             ? Image.network(
                                 edit.thumbnailUrl,
@@ -129,8 +121,6 @@ class UserEditsGrid extends StatelessWidget {
                                     _buildPlaceholder(isDark),
                               )
                             : _buildPlaceholder(isDark),
-
-                        // أيقونة play
                         const Positioned(
                           bottom: 6,
                           left: 6,
@@ -140,8 +130,6 @@ class UserEditsGrid extends StatelessWidget {
                             size: 20,
                           ),
                         ),
-
-                        // عدد اللايكات
                         Positioned(
                           bottom: 6,
                           right: 6,
@@ -176,21 +164,18 @@ class UserEditsGrid extends StatelessWidget {
     );
   }
 
-  // ── فتح الإيديت في EditsScreen من اللحظة المحددة
-  void _openEdit(
-      BuildContext context, List<EditModel> edits, int startIndex) {
+  // ← ضع الإيديت أولاً في القائمة العامة ثم افتح EditsScreen
+  void _openEdit(BuildContext context, EditModel edit) {
+    final editsProvider = context.read<EditsProvider>();
+    editsProvider.prependEdit(edit);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => EditsScreen(
-          initialEdits: edits,
-          startIndex: startIndex,
-        ),
+        builder: (_) => const EditsScreen(startIndex: 0),
       ),
     );
   }
 
-  // ── تأكيد الحذف
   void _confirmDelete(BuildContext context, EditModel edit) {
     showDialog(
       context: context,
