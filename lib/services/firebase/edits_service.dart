@@ -7,44 +7,26 @@ class EditsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // ══════════════════════════════════════════════
-  // ── الخوارزمية الذكية لحساب نقاط الإيديت
-  // ══════════════════════════════════════════════
   double _score(EditModel e) {
     final ageHours =
         DateTime.now().difference(e.createdAt).inHours.toDouble();
-
-    // نقاط التفاعل
     final interactionScore =
         (e.likes.length * 3.0) + (e.views * 0.5) + (e.commentsCount * 2.0);
-
-    // عامل الحداثة: كلما قدم الإيديت قلت نقاطه تدريجياً
     final decayFactor = 1.0 / (1.0 + (ageHours / 24.0));
-
     return interactionScore * decayFactor + (1.0 / (1.0 + ageHours * 0.01));
   }
 
-  // ══════════════════════════════════════════════
-  // ── جلب الفيديوهات مع الخوارزمية + تجنب المشاهدة
-  // ══════════════════════════════════════════════
   Stream<List<EditModel>> getEdits({List<String> seenIds = const []}) {
     return _firestore.collection('edits').snapshots().map((snap) {
       final list = snap.docs.map(EditModel.fromFirestore).toList();
-
-      // ── فصل المشاهدة وغير المشاهدة
       final unseen = list.where((e) => !seenIds.contains(e.id)).toList();
       final seen = list.where((e) => seenIds.contains(e.id)).toList();
-
-      // ── ترتيب كل مجموعة بالخوارزمية
       unseen.sort((a, b) => _score(b).compareTo(_score(a)));
       seen.sort((a, b) => _score(b).compareTo(_score(a)));
-
-      // ── غير المشاهدة أولاً ثم المشاهدة
       return [...unseen, ...seen];
     });
   }
 
-  // ── جلب إيديتات مستخدم معين
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _firestore
         .collection('edits')
@@ -73,8 +55,10 @@ class EditsService {
     return await ref.getDownloadURL();
   }
 
-  Future<void> postEdit(EditModel edit) async {
-    await _firestore.collection('edits').add(edit.toMap());
+  // ← يُرجع الـ ID الحقيقي بعد النشر
+  Future<String> postEdit(EditModel edit) async {
+    final doc = await _firestore.collection('edits').add(edit.toMap());
+    return doc.id;
   }
 
   Future<void> toggleLike(String editId, String userId) async {
@@ -89,7 +73,18 @@ class EditsService {
     await ref.update({'likes': likes});
   }
 
-  Future<void> incrementViews(String editId) async {
+  // ── مشاهدة واحدة لكل مستخدم لكل إيديت
+  Future<void> incrementViews(String editId, String userId) async {
+    final viewRef = _firestore
+        .collection('edits')
+        .doc(editId)
+        .collection('viewers')
+        .doc(userId);
+
+    final existing = await viewRef.get();
+    if (existing.exists) return;
+
+    await viewRef.set({'viewedAt': FieldValue.serverTimestamp()});
     await _firestore.collection('edits').doc(editId).update({
       'views': FieldValue.increment(1),
     });

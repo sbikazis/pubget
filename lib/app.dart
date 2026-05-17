@@ -1,8 +1,6 @@
 // lib/app.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-// ================== PROVIDERS ==================
 import 'providers/auth_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/home_provider.dart';
@@ -14,29 +12,22 @@ import 'providers/private_chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/edits_provider.dart';
-
-// ================== SERVICES ==================
 import 'services/firebase/auth_service.dart';
 import 'services/firebase/firestore_service.dart';
 import 'services/firebase/storage_service.dart';
 import 'services/local/local_storage_service.dart';
 import 'services/monetization/ad_service.dart';
 import 'services/monetization/promotion_service.dart';
-
-// ================== LOGIC ==================
 import 'core/logic/group_join_validator.dart';
-
-// ================== THEMES ==================
 import 'core/theme/light_theme.dart';
 import 'core/theme/dark_theme.dart';
-
-// ================== SCREENS ==================
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/auth/user_info_screen.dart';
 import 'features/auth/terms_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/edits/edits_screen.dart';
 
 class PubgetApp extends StatefulWidget {
   const PubgetApp({super.key});
@@ -47,6 +38,7 @@ class PubgetApp extends StatefulWidget {
 
 class _PubgetAppState extends State<PubgetApp> {
   String? _lastRegisteredUserId;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +54,7 @@ class _PubgetAppState extends State<PubgetApp> {
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(
-            create: (_) =>
-                GroupJoinValidator(firestoreService: firestore)),
-
+        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             firestoreService: context.read<FirestoreService>(),
@@ -137,16 +126,17 @@ class _PubgetAppState extends State<PubgetApp> {
                     .read<NotificationsProvider>()
                     .registerToken(auth.user!.id);
               });
+              context.read<EditsProvider>().loadSeenIds();
             });
           }
 
           return MaterialApp(
+            navigatorKey: _navigatorKey, // ← مفتاح التنقل العالمي
             debugShowCheckedModeBanner: false,
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode:
-                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: _getHome(auth),
             routes: {
               '/login': (_) => const LoginScreen(),
@@ -155,11 +145,26 @@ class _PubgetAppState extends State<PubgetApp> {
               '/terms': (_) => const TermsScreen(),
               '/home': (_) => const HomeScreen(),
             },
-
-            // ── البanner العالمي لحالة الرفع
             builder: (context, child) {
               return Consumer<EditsProvider>(
                 builder: (context, editsProvider, _) {
+
+                  // ── الانتقال التلقائي بعد اكتمال النشر
+                  if (editsProvider.lastUploadedEdit != null) {
+                    final uploadedEdit = editsProvider.lastUploadedEdit!;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      editsProvider.clearLastUploadedEdit();
+                      _navigatorKey.currentState?.push(
+                        MaterialPageRoute(
+                          builder: (_) => EditsScreen(
+                            initialEdits: [uploadedEdit],
+                            startIndex: 0,
+                          ),
+                        ),
+                      );
+                    });
+                  }
+
                   return Stack(
                     children: [
                       child!,
@@ -207,12 +212,6 @@ class _PubgetAppState extends State<PubgetApp> {
                             ),
                           ),
                         ),
-
-                      // ── شريط "تم النشر" لثانيتين
-                      if (!editsProvider.isUploading &&
-                          editsProvider.error == null &&
-                          editsProvider.edits.isNotEmpty)
-                        const SizedBox.shrink(),
                     ],
                   );
                 },

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pubget/models/edits_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firebase/edits_service.dart';
 
 class EditsProvider extends ChangeNotifier {
@@ -12,21 +13,40 @@ class EditsProvider extends ChangeNotifier {
   bool _isUploading = false;
   bool _allUnseenWatched = false;
   String? _error;
+  EditModel? _lastUploadedEdit; // ← جديد
 
   List<EditModel> get edits => _edits;
   bool get isLoading => _isLoading;
   bool get isUploading => _isUploading;
   bool get allUnseenWatched => _allUnseenWatched;
   String? get error => _error;
+  EditModel? get lastUploadedEdit => _lastUploadedEdit; // ← جديد
+
+  static const _seenKey = 'seen_edit_ids';
+
+  Future<void> loadSeenIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_seenKey) ?? [];
+    _seenIds.addAll(saved);
+    notifyListeners();
+  }
+
+  Future<void> _saveSeenIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_seenKey, _seenIds.toList());
+  }
 
   void resetError() {
     _error = null;
     notifyListeners();
   }
 
-  // ══════════════════════════════════════════════
-  // ── الاستماع للإيديتات
-  // ══════════════════════════════════════════════
+  // ← جديد: تصفير الإيديت المنشور بعد الانتقال
+  void clearLastUploadedEdit() {
+    _lastUploadedEdit = null;
+    notifyListeners();
+  }
+
   void listenToEdits() {
     _isLoading = true;
     _error = null;
@@ -47,38 +67,53 @@ class EditsProvider extends ChangeNotifier {
     );
   }
 
-  // ══════════════════════════════════════════════
-  // ── تسجيل مشاهدة فيديو
-  // ══════════════════════════════════════════════
   void markAsSeen(String editId) {
     if (_seenIds.contains(editId)) return;
     _seenIds.add(editId);
+    _saveSeenIds();
     _checkAllUnseenWatched();
     notifyListeners();
   }
 
-  // ── التحقق هل شاهد المستخدم كل المحتوى
-  // ── يعتمد على _seenIds مباشرة بدون الـ stream
   void _checkAllUnseenWatched() {
     if (_edits.isEmpty) {
       _allUnseenWatched = false;
       return;
     }
-    // كل الإيديتات الموجودة حالياً شوفها المستخدم؟
-    final allSeen = _edits.every((e) => _seenIds.contains(e.id));
-    _allUnseenWatched = allSeen;
+    _allUnseenWatched = _edits.every((e) => _seenIds.contains(e.id));
   }
 
-  // ── إعادة تعيين المشاهدة
   void resetSeen() {
     _seenIds.clear();
+    _saveSeenIds();
     _allUnseenWatched = false;
     notifyListeners();
   }
 
-  // ══════════════════════════════════════════════
-  // ── رفع في الخلفية
-  // ══════════════════════════════════════════════
+  Future<void> toggleLike(String editId, String userId) async {
+    final index = _edits.indexWhere((e) => e.id == editId);
+    if (index == -1) return;
+
+    final edit = _edits[index];
+    final updatedLikes = List<String>.from(edit.likes);
+
+    if (updatedLikes.contains(userId)) {
+      updatedLikes.remove(userId);
+    } else {
+      updatedLikes.add(userId);
+    }
+
+    _edits[index] = edit.copyWith(likes: updatedLikes);
+    notifyListeners();
+
+    await _service.toggleLike(editId, userId);
+  }
+
+  Future<void> incrementViews(String editId, String userId) async {
+    markAsSeen(editId);
+    await _service.incrementViews(editId, userId);
+  }
+
   void uploadEditInBackground({
     required File videoFile,
     required File thumbnailFile,
@@ -87,7 +122,7 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
-    void Function()? onComplete,
+    void Function(EditModel)? onComplete, // ← تغيير: يمرر الإيديت
     void Function(String)? onFailed,
   }) {
     _isUploading = true;
@@ -115,13 +150,12 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
-    void Function()? onComplete,
+    void Function(EditModel)? onComplete,
     void Function(String)? onFailed,
   }) async {
     try {
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl =
-          await _service.uploadThumbnail(thumbnailFile, userId);
+      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
 
       final edit = EditModel(
         id: '',
@@ -138,11 +172,13 @@ class EditsProvider extends ChangeNotifier {
         createdAt: DateTime.now(),
       );
 
-      await _service.postEdit(edit);
+      final docId = await _service.postEdit(edit);
 
+      // ← الإيديت المنشور مع ID الحقيقي
+      _lastUploadedEdit = edit.copyWith(id: docId);
       _isUploading = false;
       notifyListeners();
-      onComplete?.call();
+      onComplete?.call(_lastUploadedEdit!);
     } catch (e) {
       _error = e.toString();
       _isUploading = false;
@@ -151,47 +187,16 @@ class EditsProvider extends ChangeNotifier {
     }
   }
 
-  // ══════════════════════════════════════════════
-  // ── لايك مع تحديث فوري
-  // ══════════════════════════════════════════════
-  Future<void> toggleLike(String editId, String userId) async {
-    final index = _edits.indexWhere((e) => e.id == editId);
-    if (index == -1) return;
-
-    final edit = _edits[index];
-    final updatedLikes = List<String>.from(edit.likes);
-
-    if (updatedLikes.contains(userId)) {
-      updatedLikes.remove(userId);
-    } else {
-      updatedLikes.add(userId);
-    }
-
-    _edits[index] = edit.copyWith(likes: updatedLikes);
-    notifyListeners();
-
-    await _service.toggleLike(editId, userId);
-  }
-
-  // ══════════════════════════════════════════════
-  // ── زيادة المشاهدات + تسجيل المشاهدة
-  // ══════════════════════════════════════════════
-  Future<void> incrementViews(String editId) async {
-    markAsSeen(editId);
-    await _service.incrementViews(editId);
-  }
-
-  // ── إيديتات مستخدم معين
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _service.getUserEdits(userId);
   }
 
-  // ── حذف إيديت
   Future<void> deleteEdit(EditModel edit) async {
     try {
       await _service.deleteEdit(edit);
       _edits.removeWhere((e) => e.id == edit.id);
       _seenIds.remove(edit.id);
+      _saveSeenIds();
       _checkAllUnseenWatched();
       notifyListeners();
     } catch (e) {

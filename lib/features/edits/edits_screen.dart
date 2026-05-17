@@ -10,12 +10,8 @@ import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 
-// ══════════════════════════════════════════════
-// ── Widget الإعلان المدمج في الفيد
-// ══════════════════════════════════════════════
 class _AdEditWidget extends StatefulWidget {
   final VoidCallback onAdFinished;
-
   const _AdEditWidget({required this.onAdFinished});
 
   @override
@@ -32,17 +28,15 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   void initState() {
     super.initState();
     _loadAd();
-    // ← لا نستدعي _startCountdown هنا إطلاقاً
   }
 
   void _loadAd() {
     _nativeAd = NativeAd(
-      adUnitId: 'ca-app-pub-3940256099942544/2247696110',
+      adUnitId: 'ca-app-pub-3303379299409244/3972031025',
       listener: NativeAdListener(
         onAdLoaded: (_) {
           if (!mounted) return;
           setState(() => _adLoaded = true);
-          // ← العداد يبدأ فقط بعد ظهور الإعلان فعلاً
           if (!_countdownStarted) {
             _countdownStarted = true;
             _startCountdown();
@@ -53,9 +47,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         },
       ),
       request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.medium,
-      ),
+      nativeTemplateStyle: NativeTemplateStyle(templateType: TemplateType.medium),
     )..load();
   }
 
@@ -82,7 +74,6 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // ── خلفية الإعلان
         Container(
           color: Colors.black,
           child: _adLoaded
@@ -93,71 +84,51 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
                     children: [
                       CircularProgressIndicator(color: Colors.white54),
                       SizedBox(height: 16),
-                      Text(
-                        'جاري تحميل الإعلان...',
-                        style:
-                            TextStyle(color: Colors.white54, fontSize: 13),
-                      ),
+                      Text('جاري تحميل الإعلان...',
+                          style: TextStyle(color: Colors.white54, fontSize: 13)),
                     ],
                   ),
                 ),
         ),
-
-        // ── شارة "إعلان"
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.amber,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text(
-              'إعلان',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: const Text('إعلان',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
           ),
         ),
-
-        // ── عداد تنازلي (يظهر فقط بعد تحميل الإعلان)
         if (_adLoaded)
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
             right: 16,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                '$_secondsLeft ث',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: Text('$_secondsLeft ث',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold)),
             ),
           ),
-
-        // ── طبقة تمنع التفاعل دائماً أثناء الإعلان
         Positioned.fill(child: AbsorbPointer()),
       ],
     );
   }
 }
 
-// ══════════════════════════════════════════════
-// ── الشاشة الرئيسية
-// ══════════════════════════════════════════════
 class EditsScreen extends StatefulWidget {
   final List<EditModel>? initialEdits;
   final int startIndex;
@@ -232,7 +203,6 @@ class _EditsScreenState extends State<EditsScreen>
     return editsCount + (editsCount ~/ _adInterval);
   }
 
-  // ── التحقق من النهاية بناءً على realIndex لا totalCount
   void _checkAndShowEndDialog(EditsProvider editsProvider, int index) {
     if (_endDialogShown) return;
     if (!editsProvider.allUnseenWatched) return;
@@ -263,14 +233,11 @@ class _EditsScreenState extends State<EditsScreen>
           children: [
             const Text('🎌', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 12),
-            const Text(
-              'هذا كل شيء حالياً!',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            const Text('هذا كل شيء حالياً!',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             const Text(
               'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
@@ -290,13 +257,10 @@ class _EditsScreenState extends State<EditsScreen>
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.white24),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'عرض من البداية',
-                      style: TextStyle(color: Colors.white70),
-                    ),
+                    child: const Text('عرض من البداية',
+                        style: TextStyle(color: Colors.white70)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -307,20 +271,16 @@ class _EditsScreenState extends State<EditsScreen>
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const UploadEditScreen(),
-                        ),
+                            builder: (_) => const UploadEditScreen()),
                       );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.deepPurple,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'أضف إيديت ✨',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    child: const Text('أضف إيديت ✨',
+                        style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
@@ -341,19 +301,16 @@ class _EditsScreenState extends State<EditsScreen>
     final isPremium = userProvider.currentUser?.isPremium ?? false;
 
     final edits = widget.initialEdits ?? editsProvider.edits;
-    final totalCount = isPremium
-        ? edits.length
-        : _totalItemCount(edits.length);
+    final totalCount =
+        isPremium ? edits.length : _totalItemCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ── حالة التحميل
           if (widget.initialEdits == null && editsProvider.isLoading)
             const Center(child: CircularProgressIndicator()),
 
-          // ── حالة الخطأ
           if (widget.initialEdits == null &&
               !editsProvider.isLoading &&
               editsProvider.error != null)
@@ -361,15 +318,12 @@ class _EditsScreenState extends State<EditsScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.red, size: 50),
+                  const Icon(Icons.error_outline, color: Colors.red, size: 50),
                   const SizedBox(height: 12),
-                  Text(
-                    'حدث خطأ:\n${editsProvider.error}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 13),
-                  ),
+                  Text('حدث خطأ:\n${editsProvider.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 13)),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
@@ -382,7 +336,6 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          // ── لا يوجد فيديوهات
           if (edits.isEmpty &&
               (widget.initialEdits != null || !editsProvider.isLoading))
             const Center(
@@ -392,17 +345,13 @@ class _EditsScreenState extends State<EditsScreen>
                   Icon(Icons.movie_creation_outlined,
                       color: Colors.white54, size: 60),
                   SizedBox(height: 16),
-                  Text(
-                    'لا يوجد إيديتات بعد\nكن أول من ينشر!',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: Colors.white54, fontSize: 16),
-                  ),
+                  Text('لا يوجد إيديتات بعد\nكن أول من ينشر!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54, fontSize: 16)),
                 ],
               ),
             ),
 
-          // ── الفيد الرئيسي
           if (edits.isNotEmpty)
             PageView.builder(
               controller: _pageController,
@@ -418,25 +367,25 @@ class _EditsScreenState extends State<EditsScreen>
 
                 if (isPremium) {
                   if (index < edits.length) {
-                    editsProvider.incrementViews(edits[index].id);
+                    // ← تمرير userId
+                    editsProvider.incrementViews(
+                        edits[index].id, currentUserId);
                   }
                 } else if (!_isAdSlot(index)) {
                   final realIndex = _realEditIndex(index);
                   if (realIndex < edits.length) {
-                    editsProvider.incrementViews(edits[realIndex].id);
+                    // ← تمرير userId
+                    editsProvider.incrementViews(
+                        edits[realIndex].id, currentUserId);
                     _checkAndShowEndDialog(editsProvider, index);
                   }
                 }
               },
               itemBuilder: (context, index) {
-                // ══════════════════════════════════════════════
-                // ── موقع إعلان (غير بريميوم فقط)
-                // ══════════════════════════════════════════════
                 if (!isPremium &&
                     _isAdSlot(index) &&
                     widget.initialEdits == null) {
                   final adDone = _finishedAdIndexes.contains(index);
-
                   if (adDone) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted && _currentIndex == index) {
@@ -448,7 +397,6 @@ class _EditsScreenState extends State<EditsScreen>
                     });
                     return const SizedBox.shrink();
                   }
-
                   return _AdEditWidget(
                     onAdFinished: () {
                       setState(() => _finishedAdIndexes.add(index));
@@ -464,11 +412,7 @@ class _EditsScreenState extends State<EditsScreen>
                   );
                 }
 
-                // ══════════════════════════════════════════════
-                // ── إيديت عادي
-                // ══════════════════════════════════════════════
-                final realIndex =
-                    isPremium ? index : _realEditIndex(index);
+                final realIndex = isPremium ? index : _realEditIndex(index);
                 if (realIndex >= edits.length) return const SizedBox.shrink();
                 final edit = edits[realIndex];
 
@@ -478,7 +422,6 @@ class _EditsScreenState extends State<EditsScreen>
                       edit: edit,
                       isActive: index == _currentIndex,
                     ),
-
                     Positioned(
                       bottom: 80,
                       left: 16,
@@ -492,23 +435,19 @@ class _EditsScreenState extends State<EditsScreen>
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage:
-                                      edit.uploaderAvatar.isNotEmpty
-                                          ? NetworkImage(edit.uploaderAvatar)
-                                          : null,
+                                  backgroundImage: edit.uploaderAvatar.isNotEmpty
+                                      ? NetworkImage(edit.uploaderAvatar)
+                                      : null,
                                   child: edit.uploaderAvatar.isEmpty
                                       ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  edit.uploaderName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                  ),
-                                ),
+                                Text(edit.uploaderName,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
                               ],
                             ),
                           ),
@@ -520,25 +459,20 @@ class _EditsScreenState extends State<EditsScreen>
                               color: Colors.white12,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text(
-                              '🎌 ${edit.animeTitle}',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
-                            ),
+                            child: Text('🎌 ${edit.animeTitle}',
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 13)),
                           ),
                           const SizedBox(height: 6),
                           if (edit.caption.isNotEmpty)
-                            Text(
-                              edit.caption,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 13),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            Text(edit.caption,
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 13),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
-
                     Positioned(
                       bottom: 100,
                       right: 12,
@@ -563,17 +497,13 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          // ── زر الرفع
           if (widget.initialEdits == null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,
               right: 16,
               child: GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const UploadEditScreen()),
-                ),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const UploadEditScreen())),
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -585,7 +515,6 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          // ── زر رجوع
           if (widget.initialEdits != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 10,

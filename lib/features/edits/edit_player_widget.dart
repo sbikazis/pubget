@@ -73,23 +73,21 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     super.dispose();
   }
 
-  // ── منطق ذكي للمقاس: مزيج TikTok + Instagram
   Widget _buildVideoDisplay() {
     final videoSize = _controller.value.size;
-    final screenSize = MediaQuery.of(context).size;
 
     if (videoSize.width == 0 || videoSize.height == 0) {
       return _buildThumbnail();
     }
 
     final videoRatio = videoSize.width / videoSize.height;
-    final screenRatio = screenSize.width / screenSize.height;
 
-    // فيديو عمودي (مثل TikTok 9:16) → cover كامل
-    if (videoRatio < 0.85) {
+    // فيديو عمودي (9:16 أو أضيق) → contain لعرض كامل الفيديو بدون قطع
+    if (videoRatio <= 1.0) {
       return SizedBox.expand(
         child: FittedBox(
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
           child: SizedBox(
             width: videoSize.width,
             height: videoSize.height,
@@ -99,20 +97,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
       );
     }
 
-    // فيديو مربع (مثل Instagram 1:1) → contain مع خلفية سوداء
-    if (videoRatio >= 0.85 && videoRatio <= 1.2) {
-      return Container(
-        color: Colors.black,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: videoRatio,
-            child: VideoPlayer(_controller),
-          ),
-        ),
-      );
-    }
-
-    // فيديو أفقي (landscape 16:9) → contain مع letterbox أسود
+    // فيديو أفقي أو مربع → letterbox أسود
     return Container(
       color: Colors.black,
       child: Center(
@@ -142,10 +127,8 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // ── الفيديو بمنطق المقاس الذكي
             _initialized ? _buildVideoDisplay() : _buildThumbnail(),
 
-            // ── أيقونة Play/Pause
             AnimatedOpacity(
               opacity: _showControls ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
@@ -165,7 +148,6 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
               ),
             ),
 
-            // ── شريط التقدم
             if (_initialized)
               Positioned(
                 bottom: 0,
@@ -191,7 +173,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
     return widget.edit.thumbnailUrl.isNotEmpty
         ? Image.network(
             widget.edit.thumbnailUrl,
-            fit: BoxFit.cover,
+            fit: BoxFit.contain,
             width: double.infinity,
             height: double.infinity,
           )

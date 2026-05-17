@@ -107,7 +107,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       uploaderAvatar: user.avatarUrl,
       animeTitle: _animeTitleController.text.trim(),
       caption: _captionController.text.trim(),
-      onComplete: () {},
+      onComplete: (edit) {},
       onFailed: (error) {},
     );
   }
