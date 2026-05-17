@@ -136,7 +136,6 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
 class EditsScreen extends StatefulWidget {
   final int startIndex;
 
-  // ← حذف initialEdits نهائياً — لا نحتاجه بعد الآن
   const EditsScreen({
     super.key,
     this.startIndex = 0,
@@ -171,7 +170,6 @@ class _EditsScreenState extends State<EditsScreen>
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      // ← listenToEdits دائماً — لا يوجد initialEdits بعد الآن
       context.read<EditsProvider>().listenToEdits();
     }
   }
@@ -308,7 +306,6 @@ class _EditsScreenState extends State<EditsScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
-      // ← backgroundColor: Colors.transparent يسمح للشريط العالمي بالظهور فوقه
       body: Stack(
         children: [
           if (editsProvider.isLoading && edits.isEmpty)
@@ -404,14 +401,14 @@ class _EditsScreenState extends State<EditsScreen>
 
                 final realIndex =
                     isPremium ? index : _realEditIndex(index);
-                if (realIndex >= edits.length)
+                // ── التعديل: التحقق من الحدود أولاً ثم القراءة المباشرة من الـ provider
+                if (realIndex >= editsProvider.edits.length)
                   return const SizedBox.shrink();
-                final edit = edits[realIndex];
 
                 return Stack(
                   children: [
                     EditPlayerWidget(
-                      edit: edit,
+                      edit: editsProvider.edits[realIndex],
                       isActive: index == _currentIndex,
                     ),
                     Positioned(
@@ -422,23 +419,30 @@ class _EditsScreenState extends State<EditsScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onTap: () => _openProfile(edit.uploaderId),
+                            onTap: () => _openProfile(
+                                editsProvider.edits[realIndex].uploaderId),
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage:
-                                      edit.uploaderAvatar.isNotEmpty
-                                          ? NetworkImage(
-                                              edit.uploaderAvatar)
-                                          : null,
-                                  child: edit.uploaderAvatar.isEmpty
-                                      ? const Icon(Icons.person,
-                                          size: 18)
+                                  backgroundImage: editsProvider
+                                          .edits[realIndex]
+                                          .uploaderAvatar
+                                          .isNotEmpty
+                                      ? NetworkImage(editsProvider
+                                          .edits[realIndex].uploaderAvatar)
+                                      : null,
+                                  child: editsProvider
+                                          .edits[realIndex]
+                                          .uploaderAvatar
+                                          .isEmpty
+                                      ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(edit.uploaderName,
+                                Text(
+                                    editsProvider
+                                        .edits[realIndex].uploaderName,
                                     style: const TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -454,13 +458,16 @@ class _EditsScreenState extends State<EditsScreen>
                               color: Colors.white12,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text('🎌 ${edit.animeTitle}',
+                            child: Text(
+                                '🎌 ${editsProvider.edits[realIndex].animeTitle}',
                                 style: const TextStyle(
                                     color: Colors.white, fontSize: 13)),
                           ),
                           const SizedBox(height: 6),
-                          if (edit.caption.isNotEmpty)
-                            Text(edit.caption,
+                          if (editsProvider
+                              .edits[realIndex].caption.isNotEmpty)
+                            Text(
+                                editsProvider.edits[realIndex].caption,
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 13),
                                 maxLines: 2,
@@ -472,17 +479,19 @@ class _EditsScreenState extends State<EditsScreen>
                       bottom: 100,
                       right: 12,
                       child: EditActionsBar(
-                        edit: edit,
+                        edit: editsProvider.edits[realIndex],
                         currentUserId: currentUserId,
                         onLike: () => editsProvider.toggleLike(
-                            edit.id, currentUserId),
+                            editsProvider.edits[realIndex].id,
+                            currentUserId),
                         onComment: () {},
                         onShare: () {
                           showModalBottomSheet(
                             context: context,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
-                            builder: (_) => EditShareSheet(edit: edit),
+                            builder: (_) => EditShareSheet(
+                                edit: editsProvider.edits[realIndex]),
                           );
                         },
                       ),
@@ -492,7 +501,6 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          // ← زر الإضافة دائماً ظاهر
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             right: 16,

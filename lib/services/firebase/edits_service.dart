@@ -16,15 +16,20 @@ class EditsService {
     return interactionScore * decayFactor + (1.0 / (1.0 + ageHours * 0.01));
   }
 
-  Stream<List<EditModel>> getEdits({required Set<String> Function() seenIdsGetter}) {
+  // ← التعديل: يرجع Map يحتوي على القائمة المفلترة والعدد الكلي
+  Stream<Map<String, dynamic>> getEdits({
+    required Set<String> Function() seenIdsGetter,
+  }) {
     return _firestore.collection('edits').snapshots().map((snap) {
       final seenIds = seenIdsGetter();
       final list = snap.docs.map(EditModel.fromFirestore).toList();
+      final totalCount = list.length;
       final unseen = list.where((e) => !seenIds.contains(e.id)).toList();
-      final seen = list.where((e) => seenIds.contains(e.id)).toList();
       unseen.sort((a, b) => _score(b).compareTo(_score(a)));
-      seen.sort((a, b) => _score(b).compareTo(_score(a)));
-      return [...unseen, ...seen];
+      return {
+        'edits': unseen,
+        'totalCount': totalCount,
+      };
     });
   }
 

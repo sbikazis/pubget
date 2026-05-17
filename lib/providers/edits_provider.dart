@@ -9,6 +9,7 @@ class EditsProvider extends ChangeNotifier {
 
   List<EditModel> _edits = [];
   final Set<String> _seenIds = {};
+  int _totalEditsCount = 0;
   bool _isLoading = false;
   bool _isUploading = false;
   bool _allUnseenWatched = false;
@@ -43,7 +44,7 @@ class EditsProvider extends ChangeNotifier {
 
   void clearLastUploadedEdit() {
     _lastUploadedEdit = null;
-    // ← لا notifyListeners هنا عمداً لمنع إعادة بناء الـ builder
+    notifyListeners();
   }
 
   void prependEdit(EditModel edit) {
@@ -59,7 +60,9 @@ class EditsProvider extends ChangeNotifier {
 
     _service.getEdits(seenIdsGetter: () => _seenIds).listen(
       (data) {
-        _edits = data;
+        // ← التعديل: نستخرج القائمة والعدد الكلي من الـ Map
+        _edits = (data['edits'] as List<EditModel>);
+        _totalEditsCount = data['totalCount'] as int;
         _isLoading = false;
         _checkAllUnseenWatched();
         notifyListeners();
@@ -81,11 +84,11 @@ class EditsProvider extends ChangeNotifier {
   }
 
   void _checkAllUnseenWatched() {
-    if (_edits.isEmpty) {
+    if (_totalEditsCount == 0) {
       _allUnseenWatched = false;
       return;
     }
-    _allUnseenWatched = _edits.every((e) => _seenIds.contains(e.id));
+    _allUnseenWatched = _seenIds.length >= _totalEditsCount;
   }
 
   void resetSeen() {
