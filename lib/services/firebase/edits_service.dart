@@ -16,8 +16,10 @@ class EditsService {
     return interactionScore * decayFactor + (1.0 / (1.0 + ageHours * 0.01));
   }
 
-  Stream<List<EditModel>> getEdits({List<String> seenIds = const []}) {
+  // ← التعديل: getter بدل قيمة ثابتة — يُقرأ عند كل snapshot
+  Stream<List<EditModel>> getEdits({required Set<String> Function() seenIdsGetter}) {
     return _firestore.collection('edits').snapshots().map((snap) {
+      final seenIds = seenIdsGetter(); // ← يقرأ الـ seenIds الحالية الآن
       final list = snap.docs.map(EditModel.fromFirestore).toList();
       final unseen = list.where((e) => !seenIds.contains(e.id)).toList();
       final seen = list.where((e) => seenIds.contains(e.id)).toList();
@@ -55,7 +57,6 @@ class EditsService {
     return await ref.getDownloadURL();
   }
 
-  // ← يُرجع الـ ID الحقيقي بعد النشر
   Future<String> postEdit(EditModel edit) async {
     final doc = await _firestore.collection('edits').add(edit.toMap());
     return doc.id;
@@ -73,7 +74,6 @@ class EditsService {
     await ref.update({'likes': likes});
   }
 
-  // ── مشاهدة واحدة لكل مستخدم لكل إيديت
   Future<void> incrementViews(String editId, String userId) async {
     final viewRef = _firestore
         .collection('edits')

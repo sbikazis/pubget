@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
+import '../../providers/edits_provider.dart';
 import 'edits_comments_sheet.dart';
 
 class EditActionsBar extends StatelessWidget {
@@ -18,13 +20,13 @@ class EditActionsBar extends StatelessWidget {
     required this.onShare,
   });
 
-  void _openComments(BuildContext context) {
+  void _openComments(BuildContext context, String editId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => EditCommentsSheet(
-        editId: edit.id,
+        editId: editId,
         currentUserId: currentUserId,
       ),
     );
@@ -32,7 +34,16 @@ class EditActionsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLiked = edit.isLikedBy(currentUserId);
+    // ← التعديل: اقرأ الـ edit المحدّث من الـ provider عند كل build
+    // fallback للـ edit الممرر إن لم يوجد في القائمة (حالة initialEdits)
+    final provider = context.watch<EditsProvider>();
+    final liveEdit = provider.edits.cast<EditModel?>().firstWhere(
+          (e) => e?.id == edit.id,
+          orElse: () => null,
+        ) ??
+        edit;
+
+    final isLiked = liveEdit.isLikedBy(currentUserId);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -41,7 +52,7 @@ class EditActionsBar extends StatelessWidget {
         _ActionButton(
           icon: isLiked ? Icons.favorite : Icons.favorite_border,
           color: isLiked ? Colors.red : Colors.white,
-          label: '${edit.likes.length}',
+          label: '${liveEdit.likes.length}',
           onTap: onLike,
         ),
         const SizedBox(height: 20),
@@ -50,8 +61,8 @@ class EditActionsBar extends StatelessWidget {
         _ActionButton(
           icon: Icons.chat_bubble_outline,
           color: Colors.white,
-          label: '${edit.commentsCount}',
-          onTap: () => _openComments(context),
+          label: '${liveEdit.commentsCount}',
+          onTap: () => _openComments(context, liveEdit.id),
         ),
         const SizedBox(height: 20),
 
@@ -68,7 +79,7 @@ class EditActionsBar extends StatelessWidget {
         _ActionButton(
           icon: Icons.remove_red_eye_outlined,
           color: Colors.white,
-          label: '${edit.views}',
+          label: '${liveEdit.views}',
           onTap: () {},
         ),
       ],

@@ -131,7 +131,7 @@ class _PubgetAppState extends State<PubgetApp> {
           }
 
           return MaterialApp(
-            navigatorKey: _navigatorKey, // ← مفتاح التنقل العالمي
+            navigatorKey: _navigatorKey,
             debugShowCheckedModeBanner: false,
             title: 'Pubget',
             theme: LightTheme.theme,
@@ -153,13 +153,17 @@ class _PubgetAppState extends State<PubgetApp> {
                   if (editsProvider.lastUploadedEdit != null) {
                     final uploadedEdit = editsProvider.lastUploadedEdit!;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
+                      // ← تصفير أولاً بدون notify لمنع إعادة الدخول
                       editsProvider.clearLastUploadedEdit();
+
+                      // ← ضع الإيديت في أول القائمة
+                      editsProvider.prependEdit(uploadedEdit);
+
+                      // ← انتقل لـ EditsScreen عادياً بدون initialEdits
+                      // هكذا المستخدم يرى الإيديت الجديد أولاً ويكمل للقائمة العامة
                       _navigatorKey.currentState?.push(
                         MaterialPageRoute(
-                          builder: (_) => EditsScreen(
-                            initialEdits: [uploadedEdit],
-                            startIndex: 0,
-                          ),
+                          builder: (_) => const EditsScreen(),
                         ),
                       );
                     });
@@ -169,7 +173,7 @@ class _PubgetAppState extends State<PubgetApp> {
                     children: [
                       child!,
 
-                      // ── شريط "جاري النشر"
+                      // ── شريط "جاري النشر" — عالمي يظهر أينما كان المستخدم
                       if (editsProvider.isUploading)
                         Positioned(
                           top: 0,

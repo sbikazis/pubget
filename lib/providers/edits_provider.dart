@@ -13,14 +13,14 @@ class EditsProvider extends ChangeNotifier {
   bool _isUploading = false;
   bool _allUnseenWatched = false;
   String? _error;
-  EditModel? _lastUploadedEdit; // ← جديد
+  EditModel? _lastUploadedEdit;
 
   List<EditModel> get edits => _edits;
   bool get isLoading => _isLoading;
   bool get isUploading => _isUploading;
   bool get allUnseenWatched => _allUnseenWatched;
   String? get error => _error;
-  EditModel? get lastUploadedEdit => _lastUploadedEdit; // ← جديد
+  EditModel? get lastUploadedEdit => _lastUploadedEdit;
 
   static const _seenKey = 'seen_edit_ids';
 
@@ -41,9 +41,16 @@ class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ← جديد: تصفير الإيديت المنشور بعد الانتقال
   void clearLastUploadedEdit() {
     _lastUploadedEdit = null;
+    // ← لا notifyListeners هنا عمداً لمنع إعادة بناء الـ builder
+  }
+
+  // ← يضع الإيديت الجديد في أول القائمة مؤقتاً
+  // الـ stream سيُحدّثها لاحقاً من Firestore
+  void prependEdit(EditModel edit) {
+    _edits.removeWhere((e) => e.id == edit.id);
+    _edits = [edit, ..._edits];
     notifyListeners();
   }
 
@@ -52,7 +59,7 @@ class EditsProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    _service.getEdits(seenIds: _seenIds.toList()).listen(
+    _service.getEdits(seenIdsGetter: () => _seenIds).listen(
       (data) {
         _edits = data;
         _isLoading = false;
@@ -122,7 +129,7 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
-    void Function(EditModel)? onComplete, // ← تغيير: يمرر الإيديت
+    void Function(EditModel)? onComplete,
     void Function(String)? onFailed,
   }) {
     _isUploading = true;
@@ -174,7 +181,6 @@ class EditsProvider extends ChangeNotifier {
 
       final docId = await _service.postEdit(edit);
 
-      // ← الإيديت المنشور مع ID الحقيقي
       _lastUploadedEdit = edit.copyWith(id: docId);
       _isUploading = false;
       notifyListeners();

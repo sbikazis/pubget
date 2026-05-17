@@ -367,14 +367,12 @@ class _EditsScreenState extends State<EditsScreen>
 
                 if (isPremium) {
                   if (index < edits.length) {
-                    // ← تمرير userId
                     editsProvider.incrementViews(
                         edits[index].id, currentUserId);
                   }
                 } else if (!_isAdSlot(index)) {
                   final realIndex = _realEditIndex(index);
                   if (realIndex < edits.length) {
-                    // ← تمرير userId
                     editsProvider.incrementViews(
                         edits[realIndex].id, currentUserId);
                     _checkAndShowEndDialog(editsProvider, index);
@@ -386,19 +384,16 @@ class _EditsScreenState extends State<EditsScreen>
                     _isAdSlot(index) &&
                     widget.initialEdits == null) {
                   final adDone = _finishedAdIndexes.contains(index);
+
+                  // ← التعديل: عندما adDone == true أرجع SizedBox فقط
+                  // بدون أي nextPage هنا — nextPage حدث مرة واحدة في onAdFinished
                   if (adDone) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted && _currentIndex == index) {
-                        _pageController.nextPage(
-                          duration: const Duration(milliseconds: 400),
-                          curve: Curves.easeInOut,
-                        );
-                      }
-                    });
                     return const SizedBox.shrink();
                   }
+
                   return _AdEditWidget(
                     onAdFinished: () {
+                      // ← nextPage يُستدعى هنا فقط — مرة واحدة لا غير
                       setState(() => _finishedAdIndexes.add(index));
                       Future.delayed(const Duration(milliseconds: 300), () {
                         if (mounted) {
