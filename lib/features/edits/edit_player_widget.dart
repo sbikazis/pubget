@@ -24,7 +24,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
   bool _isVisible = false;
 
   @override
-  bool get wantKeepAlive => true; // ← التعديل المضاف
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -48,6 +48,16 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
   @override
   void didUpdateWidget(covariant EditPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // ← التعديل الجديد: إذا تغير الفيديو، أعد التهيئة
+    if (oldWidget.edit.id != widget.edit.id) {
+      _controller.dispose();
+      _initialized = false;
+      if (mounted) setState(() {});
+      _initVideo();
+      return;
+    }
+
     if (!_initialized) return;
 
     if (widget.isActive && _isVisible) {
@@ -85,7 +95,6 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
 
     final videoRatio = videoSize.width / videoSize.height;
 
-    // فيديو عمودي (9:16 أو أضيق) → contain لعرض كامل الفيديو بدون قطع
     if (videoRatio <= 1.0) {
       return SizedBox.expand(
         child: FittedBox(
@@ -100,7 +109,6 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
       );
     }
 
-    // فيديو أفقي أو مربع → letterbox أسود
     return Container(
       color: Colors.black,
       child: Center(
@@ -114,7 +122,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // ← مهم مع AutomaticKeepAliveClientMixin
+    super.build(context);
     return VisibilityDetector(
       key: Key(widget.edit.id),
       onVisibilityChanged: (info) {
