@@ -4,7 +4,7 @@ import 'package:pubget/models/edits_model.dart';
 import '../../providers/edits_provider.dart';
 import 'edits_comments_sheet.dart';
 
-class EditActionsBar extends StatelessWidget {
+class EditActionsBar extends StatefulWidget {
   final EditModel edit;
   final String currentUserId;
   final VoidCallback onLike;
@@ -20,6 +20,11 @@ class EditActionsBar extends StatelessWidget {
     required this.onShare,
   });
 
+  @override
+  State<EditActionsBar> createState() => _EditActionsBarState();
+}
+
+class _EditActionsBarState extends State<EditActionsBar> {
   void _openComments(BuildContext context, String editId) {
     showModalBottomSheet(
       context: context,
@@ -27,32 +32,27 @@ class EditActionsBar extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => EditCommentsSheet(
         editId: editId,
-        currentUserId: currentUserId,
+        currentUserId: widget.currentUserId,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // ← التعديل: نقرأ من _editsMap مباشرة بدل _sessionFeed
     final provider = context.watch<EditsProvider>();
-    final liveEdit = provider.getEditById(edit.id) ?? edit;
-
-    final isLiked = liveEdit.isLikedBy(currentUserId);
+    final liveEdit = provider.getEditById(widget.edit.id) ?? widget.edit;
+    final isLiked = liveEdit.isLikedBy(widget.currentUserId);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── اللايك
         _ActionButton(
           icon: isLiked ? Icons.favorite : Icons.favorite_border,
           color: isLiked ? Colors.red : Colors.white,
           label: '${liveEdit.likes.length}',
-          onTap: onLike,
+          onTap: widget.onLike,
         ),
         const SizedBox(height: 20),
-
-        // ── الكومنت
         _ActionButton(
           icon: Icons.chat_bubble_outline,
           color: Colors.white,
@@ -60,17 +60,13 @@ class EditActionsBar extends StatelessWidget {
           onTap: () => _openComments(context, liveEdit.id),
         ),
         const SizedBox(height: 20),
-
-        // ── الشير
         _ActionButton(
           icon: Icons.share,
           color: Colors.white,
           label: 'شارك',
-          onTap: onShare,
+          onTap: widget.onShare,
         ),
         const SizedBox(height: 20),
-
-        // ── المشاهدات
         _ActionButton(
           icon: Icons.remove_red_eye_outlined,
           color: Colors.white,
