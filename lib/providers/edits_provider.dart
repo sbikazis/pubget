@@ -81,16 +81,20 @@ class EditsProvider extends ChangeNotifier {
 
   Future<void> toggleLike(String editId, String userId) async {
     final existing = _editsMap[editId]; if (existing == null) return;
+    final wasLiked = existing.likes.contains(userId); // ← مهم
+
     final updatedLikes = List<String>.from(existing.likes);
-    updatedLikes.contains(userId)? updatedLikes.remove(userId) : updatedLikes.add(userId);
+    wasLiked? updatedLikes.remove(userId) : updatedLikes.add(userId);
+
     _pendingLikeUpdates[editId] = updatedLikes.toSet();
     final updatedEdit = existing.copyWith(likes: updatedLikes);
     _editsMap[editId] = updatedEdit;
     final idx = _sessionFeed.indexWhere((e) => e.id == editId);
     if (idx!= -1) _sessionFeed[idx] = updatedEdit;
     notifyListeners();
+
     try {
-      await _service.toggleLike(editId, userId);
+      await _service.toggleLike(editId, userId, wasLiked); // ← بدون get
     } catch (_) {
       _pendingLikeUpdates.remove(editId);
       _editsMap[editId] = existing;
