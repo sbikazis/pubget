@@ -80,20 +80,24 @@ class EditsProvider extends ChangeNotifier {
   }
 
   Future<void> toggleLike(String editId, String userId) async {
-  final existing = _editsMap[editId]; if (existing == null) return;
-  final updatedLikes = List<String>.from(existing.likes);
-  updatedLikes.contains(userId)? updatedLikes.remove(userId) : updatedLikes.add(userId);
-  _pendingLikeUpdates[editId] = updatedLikes.toSet();
-  final updatedEdit = existing.copyWith(likes: updatedLikes);
-  _editsMap[editId] = updatedEdit;
-  final idx = _sessionFeed.indexWhere((e) => e.id == editId);
-  if (idx!= -1) _sessionFeed[idx] = updatedEdit;
-
-  _error = 'TEST ${updatedLikes.length}'; // ← سيظهر على الشاشة
-  notifyListeners();
-
-  try { await _service.toggleLike(editId, userId); _error = null; notifyListeners(); } catch(e){ _error = 'ERR $e'; notifyListeners(); }
-}
+    final existing = _editsMap[editId]; if (existing == null) return;
+    final updatedLikes = List<String>.from(existing.likes);
+    updatedLikes.contains(userId)? updatedLikes.remove(userId) : updatedLikes.add(userId);
+    _pendingLikeUpdates[editId] = updatedLikes.toSet();
+    final updatedEdit = existing.copyWith(likes: updatedLikes);
+    _editsMap[editId] = updatedEdit;
+    final idx = _sessionFeed.indexWhere((e) => e.id == editId);
+    if (idx!= -1) _sessionFeed[idx] = updatedEdit;
+    notifyListeners();
+    try {
+      await _service.toggleLike(editId, userId);
+    } catch (_) {
+      _pendingLikeUpdates.remove(editId);
+      _editsMap[editId] = existing;
+      if (idx!= -1) _sessionFeed[idx] = existing;
+      notifyListeners();
+    }
+  }
 
   Future<void> incrementViews(String editId, String userId) async { markAsSeen(editId); await _service.incrementViews(editId, userId); }
   void prependEdit(EditModel edit) { _editsMap[edit.id]=edit; _sessionFeed.removeWhere((e)=>e.id==edit.id); _sessionFeed.insert(0,edit); notifyListeners(); }

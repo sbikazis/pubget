@@ -11,26 +11,26 @@ class EditsService {
 
   Stream<List<EditModel>> getEdits() {
     return _firestore
-        .collection('edits')
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .snapshots()
-        .map(
+       .collection('edits')
+       .orderBy('createdAt', descending: true)
+       .limit(50)
+       .snapshots()
+       .map(
           (snap) => snap.docs
-              .map((doc) => EditModel.fromFirestore(doc))
-              .toList(),
+             .map((doc) => EditModel.fromFirestore(doc))
+             .toList(),
         );
   }
 
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _firestore
-        .collection('edits')
-        .where('uploaderId', isEqualTo: userId)
-        .snapshots()
-        .map((snap) {
+       .collection('edits')
+       .where('uploaderId', isEqualTo: userId)
+       .snapshots()
+       .map((snap) {
       final list = snap.docs
-          .map((doc) => EditModel.fromFirestore(doc))
-          .toList();
+         .map((doc) => EditModel.fromFirestore(doc))
+         .toList();
 
       list.sort(
         (a, b) => b.createdAt.compareTo(a.createdAt),
@@ -68,48 +68,33 @@ class EditsService {
 
   Future<String> postEdit(EditModel edit) async {
     final doc = await _firestore
-        .collection('edits')
-        .add(edit.toMap());
+       .collection('edits')
+       .add(edit.toMap());
 
     return doc.id;
   }
 
-  Future<void> toggleLike(
-    String editId,
-    String userId,
-  ) async {
+  // ← النسخة النهائية: أسرع ولا تتعارض مع التحديث المحلي
+  Future<void> toggleLike(String editId, String userId) async {
     final ref = _firestore.collection('edits').doc(editId);
+    final doc = await ref.get();
+    final likes = List<String>.from(doc.data()?['likes']?? []);
 
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(ref);
-
-      final likes =
-          List<String>.from(snapshot.data()?['likes'] ?? []);
-
-      if (likes.contains(userId)) {
-        likes.remove(userId);
-      } else {
-        likes.add(userId);
-      }
-
-      transaction.update(ref, {
-        'likes': likes,
-      });
-    });
+    if (likes.contains(userId)) {
+      await ref.update({'likes': FieldValue.arrayRemove([userId])});
+    } else {
+      await ref.update({'likes': FieldValue.arrayUnion([userId])});
+    }
   }
 
-  Future<void> incrementViews(
-    String editId,
-    String userId,
-  ) async {
+  Future<void> incrementViews(String editId, String userId) async {
     final viewerRef = _firestore
-        .collection('edits')
-        .doc(editId)
-        .collection('viewers')
-        .doc(userId);
+       .collection('edits')
+       .doc(editId)
+       .collection('viewers')
+       .doc(userId);
 
     final existing = await viewerRef.get();
-
     if (existing.exists) return;
 
     await viewerRef.set({
@@ -122,10 +107,7 @@ class EditsService {
   }
 
   Future<void> deleteEdit(EditModel edit) async {
-    await _firestore
-        .collection('edits')
-        .doc(edit.id)
-        .delete();
+    await _firestore.collection('edits').doc(edit.id).delete();
 
     try {
       await _storage.refFromURL(edit.videoUrl).delete();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ← أضفنا
 
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
@@ -74,7 +75,8 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId = userProvider.currentUser?.id?? '';
+    // ← التعديل الجوهري: نأخذ الـ ID مباشرة من Firebase
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
     final isPremium = userProvider.currentUser?.isPremium?? false;
     final edits = editsProvider.sessionFeed;
     final totalCount = isPremium? edits.length : _totalVisualCount(edits.length);
@@ -83,7 +85,7 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
       backgroundColor: Colors.black,
       body: Stack(children: [
         if (editsProvider.isLoading && edits.isEmpty) const Center(child: CircularProgressIndicator()),
-        if (!editsProvider.isLoading && editsProvider.error!= null &&!editsProvider.error!.startsWith('TEST'))
+        if (!editsProvider.isLoading && editsProvider.error!= null)
           Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 50), const SizedBox(height: 12), Text('حدث خطأ:\n${editsProvider.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 16), ElevatedButton(onPressed: () { editsProvider.resetError(); editsProvider.listenToEdits(); }, child: const Text('إعادة المحاولة'))])),
         if (edits.isEmpty &&!editsProvider.isLoading) const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 60), SizedBox(height: 16), Text('لا يوجد إيديتات بعد\nكن أول من ينشر!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 16))])),
         if (edits.isNotEmpty)
@@ -119,14 +121,11 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                   const SizedBox(height: 6),
                   if (edit.caption.isNotEmpty) Text(edit.caption, style: const TextStyle(color: Colors.white70, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                 ])),
-                Positioned(bottom: 100, right: 12, child: EditActionsBar(edit: edit, currentUserId: currentUserId, onLike: () { if (currentUserId.isEmpty) return; editsProvider.toggleLike(edit.id, currentUserId); }, onComment: () {}, onShare: () { showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => EditShareSheet(edit: edit)); })),
+                Positioned(bottom: 100, right: 12, child: EditActionsBar(edit: edit, currentUserId: currentUserId, onLike: () => editsProvider.toggleLike(edit.id, currentUserId), onComment: () {}, onShare: () { showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => EditShareSheet(edit: edit)); })),
               ]);
             },
           ),
         Positioned(top: MediaQuery.of(context).padding.top + 10, right: 16, child: GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadEditScreen())), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.add, color: Colors.white, size: 28)))),
-        // ← مؤشر التشخيص البصري
-        if (editsProvider.error!= null && (editsProvider.error!.startsWith('TEST') || editsProvider.error!.startsWith('ERR')))
-          Positioned(top: MediaQuery.of(context).padding.top + 60, left: 20, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(8)), child: Text(editsProvider.error!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))),
       ]),
     );
   }
