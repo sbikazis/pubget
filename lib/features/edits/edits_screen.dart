@@ -366,7 +366,10 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                       child: EditActionsBar(
                         edit: edit,
                         currentUserId: currentUserId,
-                        onLike: () => editsProvider.toggleLike(edit.id, currentUserId),
+                        onLike: () {
+  if (currentUserId.isEmpty) return;
+  editsProvider.toggleLike(edit.id, currentUserId);
+},
                         onComment: () {},
                         onShare: () {
                           showModalBottomSheet(
