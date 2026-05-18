@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
+
 import '../profile/profile_sceen.dart';
 import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
@@ -12,7 +14,10 @@ import 'edits_share_sheet.dart';
 
 class _AdEditWidget extends StatefulWidget {
   final VoidCallback onAdFinished;
-  const _AdEditWidget({required this.onAdFinished});
+
+  const _AdEditWidget({
+    required this.onAdFinished,
+  });
 
   @override
   State<_AdEditWidget> createState() => _AdEditWidgetState();
@@ -20,9 +25,11 @@ class _AdEditWidget extends StatefulWidget {
 
 class _AdEditWidgetState extends State<_AdEditWidget> {
   NativeAd? _nativeAd;
+
   bool _adLoaded = false;
-  int _secondsLeft = 5;
   bool _countdownStarted = false;
+
+  int _secondsLeft = 5;
 
   @override
   void initState() {
@@ -33,34 +40,47 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   void _loadAd() {
     _nativeAd = NativeAd(
       adUnitId: 'ca-app-pub-3303379299409244/3972031025',
+      request: const AdRequest(),
+      nativeTemplateStyle: NativeTemplateStyle(
+        templateType: TemplateType.medium,
+      ),
       listener: NativeAdListener(
         onAdLoaded: (_) {
           if (!mounted) return;
-          setState(() => _adLoaded = true);
+
+          setState(() {
+            _adLoaded = true;
+          });
+
           if (!_countdownStarted) {
             _countdownStarted = true;
             _startCountdown();
           }
         },
         onAdFailedToLoad: (_, __) {
-          if (mounted) widget.onAdFinished();
+          if (!mounted) return;
+
+          widget.onAdFinished();
         },
       ),
-      request: const AdRequest(),
-      nativeTemplateStyle:
-          NativeTemplateStyle(templateType: TemplateType.medium),
     )..load();
   }
 
   void _startCountdown() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
+
       if (!mounted) return false;
-      setState(() => _secondsLeft--);
+
+      setState(() {
+        _secondsLeft--;
+      });
+
       if (_secondsLeft <= 0) {
         widget.onAdFinished();
         return false;
       }
+
       return true;
     });
   }
@@ -83,51 +103,72 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: Colors.white54),
+                      CircularProgressIndicator(
+                        color: Colors.white54,
+                      ),
                       SizedBox(height: 16),
-                      Text('جاري تحميل الإعلان...',
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 13)),
+                      Text(
+                        'جاري تحميل الإعلان...',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
                 ),
         ),
+
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
             decoration: BoxDecoration(
               color: Colors.amber,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text('إعلان',
-                style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold)),
+            child: const Text(
+              'إعلان',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
+
         if (_adLoaded)
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
             right: 16,
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
+                horizontal: 12,
+                vertical: 6,
+              ),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text('$_secondsLeft ث',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold)),
+              child: Text(
+                '$_secondsLeft ث',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
-        Positioned.fill(child: AbsorbPointer()),
+
+        const Positioned.fill(
+          child: AbsorbPointer(),
+        ),
       ],
     );
   }
@@ -147,12 +188,15 @@ class EditsScreen extends StatefulWidget {
 
 class _EditsScreenState extends State<EditsScreen>
     with AutomaticKeepAliveClientMixin {
-  late PageController _pageController;
+  late final PageController _pageController;
+
   int _currentIndex = 0;
+
   bool _initialized = false;
   bool _endDialogShown = false;
 
   static const int _adInterval = 5;
+
   final Set<int> _finishedAdIndexes = {};
 
   @override
@@ -161,17 +205,23 @@ class _EditsScreenState extends State<EditsScreen>
   @override
   void initState() {
     super.initState();
+
     _currentIndex = widget.startIndex;
-    _pageController = PageController(initialPage: widget.startIndex);
+
+    _pageController = PageController(
+      initialPage: widget.startIndex,
+    );
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      _initialized = true;
-      context.read<EditsProvider>().listenToEdits();
-    }
+
+    if (_initialized) return;
+
+    _initialized = true;
+
+    context.read<EditsProvider>().listenToEdits();
   }
 
   @override
@@ -180,173 +230,264 @@ class _EditsScreenState extends State<EditsScreen>
     super.dispose();
   }
 
-  void _openProfile(String userId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId)),
-    );
-  }
-
   bool _isAdSlot(int index) {
     final cycleLength = _adInterval + 1;
+
     return (index % cycleLength) == _adInterval;
   }
 
   int _realEditIndex(int index) {
     final cycleLength = _adInterval + 1;
+
     final completeCycles = index ~/ cycleLength;
     final positionInCycle = index % cycleLength;
+
     return (completeCycles * _adInterval) + positionInCycle;
   }
 
-  int _totalItemCount(int editsCount) {
+  int _totalVisualCount(int editsCount) {
     return editsCount + (editsCount ~/ _adInterval);
   }
 
-  void _checkAndShowEndDialog(EditsProvider editsProvider, int index) {
-    if (_endDialogShown) return;
-    if (!editsProvider.allUnseenWatched) return;
-
-    final realIndex = _realEditIndex(index);
-    final editsCount = editsProvider.edits.length;
-
-    if (realIndex >= editsCount - 1) {
-      _endDialogShown = true;
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _showEndDialog();
-      });
-    }
+  void _openProfile(String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProfileScreen(userId: userId),
+      ),
+    );
   }
 
   void _showEndDialog() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🎌', style: TextStyle(fontSize: 40)),
-            const SizedBox(height: 12),
-            const Text('هذا كل شيء حالياً!',
+      builder: (_) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '🎌',
+                style: TextStyle(fontSize: 40),
+              ),
+
+              const SizedBox(height: 12),
+
+              const Text(
+                'هذا كل شيء حالياً!',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            const Text(
-              'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      setState(() => _endDialogShown = false);
-                      context.read<EditsProvider>().resetSeen();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white24),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('عرض من البداية',
-                        style: TextStyle(color: Colors.white70)),
-                  ),
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const UploadEditScreen()),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('أضف إيديت ✨',
-                        style: TextStyle(color: Colors.white)),
-                  ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 13,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+
+                        setState(() {
+                          _endDialogShown = false;
+                        });
+
+                        context.read<EditsProvider>().resetSeen();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                          color: Colors.white24,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'عرض من البداية',
+                        style: TextStyle(
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const UploadEditScreen(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'أضف إيديت ✨',
+                        style: TextStyle(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  void _checkEndOfFeed(
+    List<EditModel> edits,
+    int visualIndex,
+  ) {
+    if (_endDialogShown) return;
+
+    final realIndex = _realEditIndex(visualIndex);
+
+    if (realIndex >= edits.length - 1) {
+      _endDialogShown = true;
+
+      Future.delayed(
+        const Duration(milliseconds: 500),
+        () {
+          if (!mounted) return;
+
+          _showEndDialog();
+        },
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId = userProvider.currentUser?.id ?? '';
-    final isPremium = userProvider.currentUser?.isPremium ?? false;
 
-    final edits = editsProvider.edits;
-    final totalCount =
-        isPremium ? edits.length : _totalItemCount(edits.length);
+    final currentUserId =
+        userProvider.currentUser?.id ?? '';
+
+    final isPremium =
+        userProvider.currentUser?.isPremium ?? false;
+
+    /// مهم جدًا:
+    /// snapshot ثابت أثناء الـ build
+    final edits = List<EditModel>.from(
+      editsProvider.sessionFeed,
+    );
+
+    final totalCount = isPremium
+        ? edits.length
+        : _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           if (editsProvider.isLoading && edits.isEmpty)
-            const Center(child: CircularProgressIndicator()),
+            const Center(
+              child: CircularProgressIndicator(),
+            ),
 
-          if (!editsProvider.isLoading && editsProvider.error != null)
+          if (!editsProvider.isLoading &&
+              editsProvider.error != null)
             Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.red, size: 50),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 50,
+                  ),
+
                   const SizedBox(height: 12),
-                  Text('حدث خطأ:\n${editsProvider.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 13)),
+
+                  Text(
+                    'حدث خطأ:\n${editsProvider.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                  ),
+
                   const SizedBox(height: 16),
+
                   ElevatedButton(
                     onPressed: () {
                       editsProvider.resetError();
                       editsProvider.listenToEdits();
                     },
-                    child: const Text('إعادة المحاولة'),
+                    child: const Text(
+                      'إعادة المحاولة',
+                    ),
                   ),
                 ],
               ),
             ),
 
-          if (edits.isEmpty && !editsProvider.isLoading)
+          if (edits.isEmpty &&
+              !editsProvider.isLoading)
             const Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.movie_creation_outlined,
-                      color: Colors.white54, size: 60),
+                  Icon(
+                    Icons.movie_creation_outlined,
+                    color: Colors.white54,
+                    size: 60,
+                  ),
+
                   SizedBox(height: 16),
-                  Text('لا يوجد إيديتات بعد\nكن أول من ينشر!',
-                      textAlign: TextAlign.center,
-                      style:
-                          TextStyle(color: Colors.white54, fontSize: 16)),
+
+                  Text(
+                    'لا يوجد إيديتات بعد\nكن أول من ينشر!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 16,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -358,140 +499,228 @@ class _EditsScreenState extends State<EditsScreen>
               itemCount: totalCount,
               physics: !isPremium &&
                       _isAdSlot(_currentIndex) &&
-                      !_finishedAdIndexes.contains(_currentIndex)
+                      !_finishedAdIndexes
+                          .contains(_currentIndex)
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
-              onPageChanged: (index) {
-                setState(() => _currentIndex = index);
 
-                if (isPremium) {
-                  if (index < edits.length) {
-                    editsProvider.incrementViews(
-                        edits[index].id, currentUserId);
-                  }
-                } else if (!_isAdSlot(index)) {
-                  final realIndex = _realEditIndex(index);
-                  if (realIndex < edits.length) {
-                    editsProvider.incrementViews(
-                        edits[realIndex].id, currentUserId);
-                    _checkAndShowEndDialog(editsProvider, index);
-                  }
+              onPageChanged: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+
+                if (!isPremium &&
+                    _isAdSlot(index)) {
+                  return;
                 }
+
+                final realIndex = isPremium
+                    ? index
+                    : _realEditIndex(index);
+
+                if (realIndex >= edits.length) {
+                  return;
+                }
+
+                final edit = edits[realIndex];
+
+                editsProvider.incrementViews(
+                  edit.id,
+                  currentUserId,
+                );
+
+                _checkEndOfFeed(
+                  edits,
+                  index,
+                );
               },
+
               itemBuilder: (context, index) {
-                if (!isPremium && _isAdSlot(index)) {
-                  final adDone = _finishedAdIndexes.contains(index);
-                  if (adDone) return const SizedBox.shrink();
+                if (!isPremium &&
+                    _isAdSlot(index)) {
+                  final adDone =
+                      _finishedAdIndexes.contains(index);
+
+                  if (adDone) {
+                    return const SizedBox.shrink();
+                  }
 
                   return _AdEditWidget(
                     onAdFinished: () {
-                      setState(() => _finishedAdIndexes.add(index));
-                      Future.delayed(const Duration(milliseconds: 300),
-                          () {
-                        if (mounted) {
+                      setState(() {
+                        _finishedAdIndexes.add(index);
+                      });
+
+                      Future.delayed(
+                        const Duration(
+                          milliseconds: 300,
+                        ),
+                        () {
+                          if (!mounted) return;
+
                           _pageController.nextPage(
-                            duration: const Duration(milliseconds: 400),
+                            duration:
+                                const Duration(
+                              milliseconds: 400,
+                            ),
                             curve: Curves.easeInOut,
                           );
-                        }
-                      });
+                        },
+                      );
                     },
                   );
                 }
 
-                final realIndex =
-                    isPremium ? index : _realEditIndex(index);
-                // ── التعديل: التحقق من الحدود أولاً ثم القراءة المباشرة من الـ provider
-                if (realIndex >= editsProvider.edits.length)
+                final realIndex = isPremium
+                    ? index
+                    : _realEditIndex(index);
+
+                if (realIndex >= edits.length) {
                   return const SizedBox.shrink();
+                }
+
+                /// أهم نقطة:
+                /// مرجع ثابت داخل هذا frame
+                final edit = edits[realIndex];
 
                 return Stack(
                   children: [
                     EditPlayerWidget(
-                      edit: editsProvider.edits[realIndex],
-                      isActive: index == _currentIndex,
+                      edit: edit,
+                      isActive:
+                          index == _currentIndex,
                     ),
+
                     Positioned(
                       bottom: 80,
                       left: 16,
                       right: 80,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onTap: () => _openProfile(
-                                editsProvider.edits[realIndex].uploaderId),
+                            onTap: () {
+                              _openProfile(
+                                edit.uploaderId,
+                              );
+                            },
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage: editsProvider
-                                          .edits[realIndex]
-                                          .uploaderAvatar
-                                          .isNotEmpty
-                                      ? NetworkImage(editsProvider
-                                          .edits[realIndex].uploaderAvatar)
-                                      : null,
-                                  child: editsProvider
-                                          .edits[realIndex]
+                                  backgroundImage:
+                                      edit.uploaderAvatar
+                                              .isNotEmpty
+                                          ? NetworkImage(
+                                              edit
+                                                  .uploaderAvatar,
+                                            )
+                                          : null,
+                                  child: edit
                                           .uploaderAvatar
                                           .isEmpty
-                                      ? const Icon(Icons.person, size: 18)
+                                      ? const Icon(
+                                          Icons.person,
+                                          size: 18,
+                                        )
                                       : null,
                                 ),
-                                const SizedBox(width: 8),
+
+                                const SizedBox(
+                                  width: 8,
+                                ),
+
                                 Text(
-                                    editsProvider
-                                        .edits[realIndex].uploaderName,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15)),
+                                  edit.uploaderName,
+                                  style:
+                                      const TextStyle(
+                                    color:
+                                        Colors.white,
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
+
                           const SizedBox(height: 8),
+
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white12,
-                              borderRadius: BorderRadius.circular(20),
+                            padding:
+                                const EdgeInsets
+                                    .symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  Colors.white12,
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(20),
                             ),
                             child: Text(
-                                '🎌 ${editsProvider.edits[realIndex].animeTitle}',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 13)),
+                              '🎌 ${edit.animeTitle}',
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Colors.white,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
+
                           const SizedBox(height: 6),
-                          if (editsProvider
-                              .edits[realIndex].caption.isNotEmpty)
+
+                          if (edit.caption.isNotEmpty)
                             Text(
-                                editsProvider.edits[realIndex].caption,
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis),
+                              edit.caption,
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Colors.white70,
+                                fontSize: 13,
+                              ),
+                              maxLines: 2,
+                              overflow:
+                                  TextOverflow
+                                      .ellipsis,
+                            ),
                         ],
                       ),
                     ),
+
                     Positioned(
                       bottom: 100,
                       right: 12,
                       child: EditActionsBar(
-                        edit: editsProvider.edits[realIndex],
-                        currentUserId: currentUserId,
-                        onLike: () => editsProvider.toggleLike(
-                            editsProvider.edits[realIndex].id,
-                            currentUserId),
+                        edit: edit,
+                        currentUserId:
+                            currentUserId,
+                        onLike: () {
+                          editsProvider.toggleLike(
+                            edit.id,
+                            currentUserId,
+                          );
+                        },
                         onComment: () {},
                         onShare: () {
                           showModalBottomSheet(
                             context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => EditShareSheet(
-                                edit: editsProvider.edits[realIndex]),
+                            isScrollControlled:
+                                true,
+                            backgroundColor:
+                                Colors.transparent,
+                            builder: (_) {
+                              return EditShareSheet(
+                                edit: edit,
+                              );
+                            },
                           );
                         },
                       ),
@@ -502,21 +731,35 @@ class _EditsScreenState extends State<EditsScreen>
             ),
 
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
+            top:
+                MediaQuery.of(context)
+                        .padding
+                        .top +
+                    10,
             right: 16,
             child: GestureDetector(
-              onTap: () => Navigator.push(
+              onTap: () {
+                Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const UploadEditScreen())),
+                    builder: (_) =>
+                        const UploadEditScreen(),
+                  ),
+                );
+              },
               child: Container(
-                padding: const EdgeInsets.all(8),
+                padding:
+                    const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white12,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius:
+                      BorderRadius.circular(10),
                 ),
-                child:
-                    const Icon(Icons.add, color: Colors.white, size: 28),
+                child: const Icon(
+                  Icons.add,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
             ),
           ),
