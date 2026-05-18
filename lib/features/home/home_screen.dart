@@ -55,8 +55,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) return;
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.id).update({'fcmToken': token});
-      print('✅ Token saved: $token');
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.id)
+          .update({'fcmToken': token});
     }
   }
 
@@ -89,33 +91,34 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSearch() => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const SearchScreen()),
-  );
+        context,
+        MaterialPageRoute(builder: (_) => const SearchScreen()),
+      );
+
   void _openNotifications() => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-  );
+        context,
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      );
+
   void _openCreateGroup() => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
-  );
+        context,
+        MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+      );
+
   void _openProfile() {
     final currentUser = context.read<AuthProvider>().user;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => ProfileScreen(userId: currentUser?.id)),
+      MaterialPageRoute(
+          builder: (_) => ProfileScreen(userId: currentUser?.id)),
     );
   }
 
-  void _openPrivateChats() => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const PrivateChatsListScreen()),
-  );
   void _openSuggested() => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const SearchScreen()),
-  );
+        context,
+        MaterialPageRoute(builder: (_) => const SearchScreen()),
+      );
+
   void _openPremiumDetails() {
     showModalBottomSheet(
       context: context,
@@ -141,7 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white, width: 1),
               ),
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              constraints:
+                  const BoxConstraints(minWidth: 16, minHeight: 16),
               child: Text(
                 count > 9 ? '9+' : '$count',
                 style: const TextStyle(
@@ -182,14 +186,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundImage: user != null && user.avatarUrl.isNotEmpty
                     ? NetworkImage(user.avatarUrl)
                     : null,
-                backgroundColor: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkCard
-                    : AppColors.lightCard,
+                backgroundColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.darkCard
+                        : AppColors.lightCard,
                 child: (user == null || user.avatarUrl.isEmpty)
                     ? const Icon(Icons.person)
                     : null,
               ),
-              decoration: const BoxDecoration(color: AppColors.primary),
+              decoration:
+                  const BoxDecoration(color: AppColors.primary),
             ),
             ListTile(
               leading: const Icon(Icons.person),
@@ -230,14 +236,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: isPremium ? Colors.teal : Colors.amber[700],
               ),
               title: Text(
-                isPremium ? 'عضوية Premium نشطة' : 'ترقية إلى Premium',
+                isPremium
+                    ? 'عضوية Premium نشطة'
+                    : 'ترقية إلى Premium',
                 style: TextStyle(
-                  color: isPremium ? Colors.teal : Colors.amber[800],
+                  color: isPremium
+                      ? Colors.teal
+                      : Colors.amber[800],
                   fontWeight: FontWeight.bold,
                 ),
               ),
               trailing: isPremium
-                  ? const Icon(Icons.check_circle, size: 18, color: Colors.teal)
+                  ? const Icon(Icons.check_circle,
+                      size: 18, color: Colors.teal)
                   : null,
               onTap: isPremium
                   ? null
@@ -253,7 +264,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.of(context).pop();
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const SettingsScreen()),
                 );
               },
             ),
@@ -284,18 +296,21 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
                 children: [
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
                             Text(
                               currentUser != null &&
-                                      currentUser.username.isNotEmpty
+                                      currentUser
+                                          .username.isNotEmpty
                                   ? 'مرحباً، ${currentUser.username}'
                                   : 'مرحباً بك في Pubget',
                               style: const TextStyle(
@@ -307,7 +322,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 Limits.premiumBadge,
-                                style: const TextStyle(fontSize: 16),
+                                style: const TextStyle(
+                                    fontSize: 16),
                               ),
                             ],
                           ],
@@ -315,7 +331,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 6),
                         Text(
                           'اكتشف مجموعات جديدة الآن',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium,
                         ),
                       ],
                     ),
@@ -338,12 +356,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationIcon(String userId) {
-    final notificationProvider = context.read<NotificationsProvider>();
+    final notificationProvider =
+        context.read<NotificationsProvider>();
     return StreamBuilder<List<NotificationModel>>(
       stream: notificationProvider.streamNotifications(userId),
       initialData: const [],
       builder: (context, snapshot) {
-        final unreadCount = snapshot.data?.where((n) => !n.isRead).length ?? 0;
+        final unreadCount =
+            snapshot.data?.where((n) => !n.isRead).length ?? 0;
         return Stack(
           alignment: Alignment.center,
           children: [
@@ -394,10 +414,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = context.watch<AuthProvider>();
     final homeProvider = context.watch<HomeProvider>();
     final chatProvider = context.read<ChatProvider>();
-    final privateChatProvider = context.read<PrivateChatProvider>();
+    final privateChatProvider =
+        context.read<PrivateChatProvider>();
     final user = context.watch<UserProvider>().currentUser;
     final bool contentLoading =
-        homeProvider.isLoading || authProvider.isLoading || _isRefreshing;
+        homeProvider.isLoading ||
+        authProvider.isLoading ||
+        _isRefreshing;
     final bool isPremium = user?.isPremium ?? false;
 
     return Scaffold(
@@ -410,7 +433,8 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (BuildContext context) {
             return IconButton(
               icon: const Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openDrawer(),
+              onPressed: () =>
+                  Scaffold.of(context).openDrawer(),
               tooltip: 'القائمة',
             );
           },
@@ -438,16 +462,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundImage: user != null && user.avatarUrl.isNotEmpty
+                    backgroundImage: user != null &&
+                            user.avatarUrl.isNotEmpty
                         ? NetworkImage(user.avatarUrl)
                         : null,
                     backgroundColor:
-                        Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.darkCard
-                        : AppColors.lightCard,
-                    child: (user == null || user.avatarUrl.isEmpty)
-                        ? const Icon(Icons.person, size: 18)
-                        : null,
+                        Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? AppColors.darkCard
+                            : AppColors.lightCard,
+                    child:
+                        (user == null || user.avatarUrl.isEmpty)
+                            ? const Icon(Icons.person, size: 18)
+                            : null,
                   ),
                   if (isPremium)
                     Positioned(
@@ -465,7 +492,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: contentLoading
-          ? const Center(child: LoadingWidget(message: 'جاري التحميل...'))
+          ? const Center(
+              child: LoadingWidget(message: 'جاري التحميل...'))
           : Column(
               children: [
                 Expanded(
@@ -473,10 +501,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     index: _selectedIndex,
                     children: [
                       _buildHomeDiscoveryContent(user),
-                      const MyGroupsSection(showCreatedOnly: true),
-                      const MyGroupsSection(showJoinedOnly: true),
+                      const MyGroupsSection(
+                          showCreatedOnly: true),
+                      const MyGroupsSection(
+                          showJoinedOnly: true),
                       const PrivateChatsListScreen(),
-                      const EditsScreen(),
+                      // ← التعديل: EditsScreen تُبنى فقط عند تحديد تبويب الإيديتات
+                      _selectedIndex == 4
+                          ? const EditsScreen()
+                          : const SizedBox.shrink(),
                     ],
                   ),
                 ),
@@ -497,12 +530,14 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: (user == null)
                 ? const Icon(Icons.admin_panel_settings)
                 : StreamBuilder<int>(
-                    stream: chatProvider.streamTotalGroupsUnreadCount(
+                    stream:
+                        chatProvider.streamTotalGroupsUnreadCount(
                       userId: user.id,
                       groups: homeProvider.myGroups,
                     ),
                     initialData: 0,
-                    builder: (context, snapshot) => _buildTabIcon(
+                    builder: (context, snapshot) =>
+                        _buildTabIcon(
                       Icons.admin_panel_settings,
                       snapshot.data ?? 0,
                     ),
@@ -513,13 +548,15 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: (user == null)
                 ? const Icon(Icons.group)
                 : StreamBuilder<int>(
-                    stream: chatProvider.streamTotalGroupsUnreadCount(
+                    stream:
+                        chatProvider.streamTotalGroupsUnreadCount(
                       userId: user.id,
                       groups: homeProvider.joinedGroups,
                     ),
                     initialData: 0,
                     builder: (context, snapshot) =>
-                        _buildTabIcon(Icons.group, snapshot.data ?? 0),
+                        _buildTabIcon(
+                            Icons.group, snapshot.data ?? 0),
                   ),
             label: 'منضم لها',
           ),
@@ -527,12 +564,12 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: (user == null)
                 ? const Icon(Icons.chat_bubble)
                 : StreamBuilder<int>(
-                    stream: privateChatProvider.streamAllPrivateUnreadCount(
-                      user.id,
-                    ),
+                    stream: privateChatProvider
+                        .streamAllPrivateUnreadCount(user.id),
                     initialData: 0,
                     builder: (context, snapshot) =>
-                        _buildTabIcon(Icons.chat_bubble, snapshot.data ?? 0),
+                        _buildTabIcon(Icons.chat_bubble,
+                            snapshot.data ?? 0),
                   ),
             label: 'الخاص',
           ),
