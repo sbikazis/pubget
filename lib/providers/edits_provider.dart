@@ -226,6 +226,7 @@ class EditsProvider extends ChangeNotifier {
       );
 
       _pendingLikeUpdates.remove(editId);
+      notifyListeners(); // ← التعديل المضاف لضمان تحديث الـ UI مباشرة
     } catch (_) {}
   }
 

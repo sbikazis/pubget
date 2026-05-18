@@ -37,11 +37,10 @@ class EditActionsBar extends StatelessWidget {
     // ← التعديل: اقرأ الـ edit المحدّث من الـ provider عند كل build
     // fallback للـ edit الممرر إن لم يوجد في القائمة (حالة initialEdits)
     final provider = context.watch<EditsProvider>();
-    final liveEdit = provider.edits.cast<EditModel?>().firstWhere(
-          (e) => e?.id == edit.id,
-          orElse: () => null,
-        ) ??
-        edit;
+    final liveEdit = provider.edits.firstWhere(
+      (e) => e.id == edit.id,
+      orElse: () => edit,
+    );
 
     final isLiked = liveEdit.isLikedBy(currentUserId);
 

@@ -401,17 +401,12 @@ class _EditsScreenState extends State<EditsScreen>
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
 
-    final currentUserId =
-        userProvider.currentUser?.id ?? '';
+    final currentUserId = userProvider.currentUser?.id ?? '';
 
-    final isPremium =
-        userProvider.currentUser?.isPremium ?? false;
+    final isPremium = userProvider.currentUser?.isPremium ?? false;
 
-    /// مهم جدًا:
-    /// snapshot ثابت أثناء الـ build
-    final edits = List<EditModel>.from(
-      editsProvider.sessionFeed,
-    );
+    // ← التعديل: مرجع مباشر بدون نسخ لمنع تبديل الفيديوهات
+    final edits = editsProvider.sessionFeed;
 
     final totalCount = isPremium
         ? edits.length
@@ -430,8 +425,7 @@ class _EditsScreenState extends State<EditsScreen>
               editsProvider.error != null)
             Center(
               child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(
                     Icons.error_outline,
@@ -465,12 +459,10 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          if (edits.isEmpty &&
-              !editsProvider.isLoading)
+          if (edits.isEmpty && !editsProvider.isLoading)
             const Center(
               child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.movie_creation_outlined,
@@ -499,8 +491,7 @@ class _EditsScreenState extends State<EditsScreen>
               itemCount: totalCount,
               physics: !isPremium &&
                       _isAdSlot(_currentIndex) &&
-                      !_finishedAdIndexes
-                          .contains(_currentIndex)
+                      !_finishedAdIndexes.contains(_currentIndex)
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
 
@@ -509,8 +500,7 @@ class _EditsScreenState extends State<EditsScreen>
                   _currentIndex = index;
                 });
 
-                if (!isPremium &&
-                    _isAdSlot(index)) {
+                if (!isPremium && _isAdSlot(index)) {
                   return;
                 }
 
@@ -536,10 +526,8 @@ class _EditsScreenState extends State<EditsScreen>
               },
 
               itemBuilder: (context, index) {
-                if (!isPremium &&
-                    _isAdSlot(index)) {
-                  final adDone =
-                      _finishedAdIndexes.contains(index);
+                if (!isPremium && _isAdSlot(index)) {
+                  final adDone = _finishedAdIndexes.contains(index);
 
                   if (adDone) {
                     return const SizedBox.shrink();
@@ -552,17 +540,12 @@ class _EditsScreenState extends State<EditsScreen>
                       });
 
                       Future.delayed(
-                        const Duration(
-                          milliseconds: 300,
-                        ),
+                        const Duration(milliseconds: 300),
                         () {
                           if (!mounted) return;
 
                           _pageController.nextPage(
-                            duration:
-                                const Duration(
-                              milliseconds: 400,
-                            ),
+                            duration: const Duration(milliseconds: 400),
                             curve: Curves.easeInOut,
                           );
                         },
@@ -579,16 +562,13 @@ class _EditsScreenState extends State<EditsScreen>
                   return const SizedBox.shrink();
                 }
 
-                /// أهم نقطة:
-                /// مرجع ثابت داخل هذا frame
                 final edit = edits[realIndex];
 
                 return Stack(
                   children: [
                     EditPlayerWidget(
                       edit: edit,
-                      isActive:
-                          index == _currentIndex,
+                      isActive: index == _currentIndex,
                     ),
 
                     Positioned(
@@ -596,50 +576,31 @@ class _EditsScreenState extends State<EditsScreen>
                       left: 16,
                       right: 80,
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
                             onTap: () {
-                              _openProfile(
-                                edit.uploaderId,
-                              );
+                              _openProfile(edit.uploaderId);
                             },
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundImage:
-                                      edit.uploaderAvatar
-                                              .isNotEmpty
-                                          ? NetworkImage(
-                                              edit
-                                                  .uploaderAvatar,
-                                            )
-                                          : null,
-                                  child: edit
-                                          .uploaderAvatar
-                                          .isEmpty
-                                      ? const Icon(
-                                          Icons.person,
-                                          size: 18,
-                                        )
+                                  backgroundImage: edit.uploaderAvatar.isNotEmpty
+                                      ? NetworkImage(edit.uploaderAvatar)
+                                      : null,
+                                  child: edit.uploaderAvatar.isEmpty
+                                      ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
 
-                                const SizedBox(
-                                  width: 8,
-                                ),
+                                const SizedBox(width: 8),
 
                                 Text(
                                   edit.uploaderName,
-                                  style:
-                                      const TextStyle(
-                                    color:
-                                        Colors.white,
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
                                     fontSize: 15,
                                   ),
                                 ),
@@ -650,26 +611,18 @@ class _EditsScreenState extends State<EditsScreen>
                           const SizedBox(height: 8),
 
                           Container(
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
-                            decoration:
-                                BoxDecoration(
-                              color:
-                                  Colors.white12,
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white12,
+                              borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               '🎌 ${edit.animeTitle}',
-                              style:
-                                  const TextStyle(
-                                color:
-                                    Colors.white,
+                              style: const TextStyle(
+                                color: Colors.white,
                                 fontSize: 13,
                               ),
                             ),
@@ -680,16 +633,12 @@ class _EditsScreenState extends State<EditsScreen>
                           if (edit.caption.isNotEmpty)
                             Text(
                               edit.caption,
-                              style:
-                                  const TextStyle(
-                                color:
-                                    Colors.white70,
+                              style: const TextStyle(
+                                color: Colors.white70,
                                 fontSize: 13,
                               ),
                               maxLines: 2,
-                              overflow:
-                                  TextOverflow
-                                      .ellipsis,
+                              overflow: TextOverflow.ellipsis,
                             ),
                         ],
                       ),
@@ -700,8 +649,7 @@ class _EditsScreenState extends State<EditsScreen>
                       right: 12,
                       child: EditActionsBar(
                         edit: edit,
-                        currentUserId:
-                            currentUserId,
+                        currentUserId: currentUserId,
                         onLike: () {
                           editsProvider.toggleLike(
                             edit.id,
@@ -712,14 +660,10 @@ class _EditsScreenState extends State<EditsScreen>
                         onShare: () {
                           showModalBottomSheet(
                             context: context,
-                            isScrollControlled:
-                                true,
-                            backgroundColor:
-                                Colors.transparent,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
                             builder: (_) {
-                              return EditShareSheet(
-                                edit: edit,
-                              );
+                              return EditShareSheet(edit: edit);
                             },
                           );
                         },
@@ -731,29 +675,22 @@ class _EditsScreenState extends State<EditsScreen>
             ),
 
           Positioned(
-            top:
-                MediaQuery.of(context)
-                        .padding
-                        .top +
-                    10,
+            top: MediaQuery.of(context).padding.top + 10,
             right: 16,
             child: GestureDetector(
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const UploadEditScreen(),
+                    builder: (_) => const UploadEditScreen(),
                   ),
                 );
               },
               child: Container(
-                padding:
-                    const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white12,
-                  borderRadius:
-                      BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.add,

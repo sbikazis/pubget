@@ -17,11 +17,14 @@ class EditPlayerWidget extends StatefulWidget {
   State<EditPlayerWidget> createState() => _EditPlayerWidgetState();
 }
 
-class _EditPlayerWidgetState extends State<EditPlayerWidget> {
+class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepAliveClientMixin {
   late VideoPlayerController _controller;
   bool _initialized = false;
   bool _showControls = false;
   bool _isVisible = false;
+
+  @override
+  bool get wantKeepAlive => true; // ← التعديل المضاف
 
   @override
   void initState() {
@@ -111,6 +114,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // ← مهم مع AutomaticKeepAliveClientMixin
     return VisibilityDetector(
       key: Key(widget.edit.id),
       onVisibilityChanged: (info) {
