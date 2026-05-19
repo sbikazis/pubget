@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ← إضافة
 import '../models/edits_model.dart';
 import '../services/firebase/edits_service.dart';
+import 'package:pubget/services/firebase/feed_service.dart'; // ← إضافة
 
 class EditsProvider extends ChangeNotifier {
   final EditsService _service = EditsService();
+  final FeedService _feedService = FeedService(); // ← إضافة
   final Map<String, EditModel> _editsMap = {};
   final Map<String, Set<String>> _pendingLikeUpdates = {};
   final Set<String> _seenIds = {};
@@ -37,7 +40,7 @@ class EditsProvider extends ChangeNotifier {
 
   Future<void> loadSeenIds() async {
     final prefs = await SharedPreferences.getInstance();
-    _seenIds.addAll(prefs.getStringList(_seenKey) ?? []);
+    _seenIds.addAll(prefs.getStringList(_seenKey)?? []);
   }
 
   Future<void> _saveSeenIds() async {
@@ -49,19 +52,54 @@ class EditsProvider extends ChangeNotifier {
     if (_seenIds.contains(editId)) return;
     _seenIds.add(editId);
     _saveSeenIds();
+    // ← إضافة: حفظ في Firestore أيضاً
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId!= null) {
+      _feedService.markAsSeen(userId, editId);
+    }
   }
 
   Future<void> resetSeen() async {
     _seenIds.clear();
     await _saveSeenIds();
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId!= null) {
+      await _feedService.clearSeenIds(userId); // ← إضافة
+    }
     _sessionFeed = _editsMap.values.toList()
-      ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+     ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     notifyListeners();
   }
 
   // ══════════════════════════════════════════════
-  // ── جلب الـ Feed
+  // ── جلب الـ Feed الذكي
   // ══════════════════════════════════════════════
+
+  // ← دالة جديدة كاملة
+  Future<void> loadSmartFeed(String userId) async {
+    _isLoading = true;
+    notifyListeners();
+
+    await loadSeenIds();
+    final firestoreSeen = await _feedService.getSeenIds(userId);
+    _seenIds.addAll(firestoreSeen);
+
+    final feed = await _feedService.fetchSmartFeed(
+      userId: userId,
+      seenIds: _seenIds.toList(),
+    );
+
+    _sessionFeed = feed;
+    _editsMap.clear();
+    for (final e in feed) {
+      _editsMap[e.id] = e;
+    }
+
+    _isLoading = false;
+    notifyListeners();
+
+    if (!_isListening) listenToEdits();
+  }
 
   Future<void> listenToEdits() async {
     if (_isListening) return;
@@ -71,7 +109,6 @@ class EditsProvider extends ChangeNotifier {
 
     await _editsSubscription?.cancel();
 
-    // ── Stream للتحديثات الصغيرة (لايك، كومنت)
     _editsSubscription = _service.getEdits().listen(
       (incoming) {
         _mergeIncomingEdits(incoming);
@@ -104,7 +141,7 @@ class EditsProvider extends ChangeNotifier {
       final merged = _mergeEdit(existing, edit);
       _editsMap[edit.id] = merged;
       final idx = _sessionFeed.indexWhere((e) => e.id == edit.id);
-      if (idx != -1) _sessionFeed[idx] = merged;
+      if (idx!= -1) _sessionFeed[idx] = merged;
       changed = true;
     }
 
@@ -128,7 +165,7 @@ class EditsProvider extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════
-  // ── تسجيل وقت المشاهدة
+  // باقي الملف كما هو بدون تغيير
   // ══════════════════════════════════════════════
 
   Future<void> recordWatchTime({
@@ -148,24 +185,20 @@ class EditsProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ══════════════════════════════════════════════
-  // ── اللايك
-  // ══════════════════════════════════════════════
-
   Future<void> toggleLike(String editId, String userId) async {
     final existing = _editsMap[editId];
     if (existing == null) return;
 
     final wasLiked = existing.likes.contains(userId);
     final updatedLikes = List<String>.from(existing.likes);
-    wasLiked ? updatedLikes.remove(userId) : updatedLikes.add(userId);
+    wasLiked? updatedLikes.remove(userId) : updatedLikes.add(userId);
 
     _pendingLikeUpdates[editId] = updatedLikes.toSet();
     final updatedEdit = existing.copyWith(likes: updatedLikes);
     _editsMap[editId] = updatedEdit;
 
     final idx = _sessionFeed.indexWhere((e) => e.id == editId);
-    if (idx != -1) _sessionFeed[idx] = updatedEdit;
+    if (idx!= -1) _sessionFeed[idx] = updatedEdit;
     notifyListeners();
 
     try {
@@ -173,23 +206,15 @@ class EditsProvider extends ChangeNotifier {
     } catch (_) {
       _pendingLikeUpdates.remove(editId);
       _editsMap[editId] = existing;
-      if (idx != -1) _sessionFeed[idx] = existing;
+      if (idx!= -1) _sessionFeed[idx] = existing;
       notifyListeners();
     }
   }
-
-  // ══════════════════════════════════════════════
-  // ── المشاهدات
-  // ══════════════════════════════════════════════
 
   Future<void> incrementViews(String editId, String userId) async {
     markAsSeen(editId);
     await _service.incrementViews(editId, userId);
   }
-
-  // ══════════════════════════════════════════════
-  // ── الرفع
-  // ══════════════════════════════════════════════
 
   void uploadEditInBackground({
     required File videoFile,
@@ -265,10 +290,6 @@ class EditsProvider extends ChangeNotifier {
       onFailed?.call(e.toString());
     }
   }
-
-  // ══════════════════════════════════════════════
-  // ── أدوات متنوعة
-  // ══════════════════════════════════════════════
 
   void prependEdit(EditModel edit) {
     _editsMap[edit.id] = edit;

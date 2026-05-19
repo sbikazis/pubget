@@ -65,50 +65,65 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
   bool _endDialogShown = false;
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
-
-  // ✅ [تعديل جديد] تتبع وقت دخول كل إيديت للكشف عن السكرول السريع
   DateTime? _pageEntryTime;
 
   @override bool get wantKeepAlive => true;
-  @override void initState() { super.initState(); _currentIndex = widget.startIndex; _pageController = PageController(initialPage: widget.startIndex); }
-  @override void didChangeDependencies() { super.didChangeDependencies(); if (_initialized) return; _initialized = true; context.read<EditsProvider>().listenToEdits(); }
+
+  @override void initState() {
+    super.initState();
+    _currentIndex = widget.startIndex;
+    _pageController = PageController(initialPage: widget.startIndex);
+  }
+
+  @override void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final userId = FirebaseAuth.instance.currentUser?.uid?? '';
+    context.read<EditsProvider>().loadSmartFeed(userId);
+  }
+
   @override void dispose() { _pageController.dispose(); super.dispose(); }
+
   bool _isAdSlot(int index) { final cycleLength = _adInterval + 1; return (index % cycleLength) == _adInterval; }
   int _realEditIndex(int index) { final cycleLength = _adInterval + 1; final completeCycles = index ~/ cycleLength; final positionInCycle = index % cycleLength; return (completeCycles * _adInterval) + positionInCycle; }
   int _totalVisualCount(int editsCount) { return editsCount + (editsCount ~/ _adInterval); }
   void _openProfile(String userId) { Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId))); }
-  void _showEndDialog() { showModalBottomSheet(context: context, backgroundColor: Colors.transparent, builder: (_) { return Container(padding: const EdgeInsets.all(24), decoration: const BoxDecoration(color: Color(0xFF1A1A1A), borderRadius: BorderRadius.vertical(top: Radius.circular(24))), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('🎌', style: TextStyle(fontSize: 40)), const SizedBox(height: 12), const Text('هذا كل شيء حالياً!', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text('شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 20), Row(children: [Expanded(child: OutlinedButton(onPressed: () { Navigator.pop(context); setState(() => _endDialogShown = false); context.read<EditsProvider>().resetSeen(); }, style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('عرض من البداية', style: TextStyle(color: Colors.white70)))), const SizedBox(width: 12), Expanded(child: ElevatedButton(onPressed: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadEditScreen())); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('أضف إيديت ✨', style: TextStyle(color: Colors.white))))]), const SizedBox(height: 8)]));});}
+
+  void _showEndDialog() {
+    showModalBottomSheet(context: context, backgroundColor: Colors.transparent, builder: (_) {
+      return Container(padding: const EdgeInsets.all(24), decoration: const BoxDecoration(color: Color(0xFF1A1A1A), borderRadius: BorderRadius.vertical(top: Radius.circular(24))), child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('🎌', style: TextStyle(fontSize: 40)), const SizedBox(height: 12), const Text('هذا كل شيء حالياً!', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text('شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 20), Row(children: [Expanded(child: OutlinedButton(onPressed: () { Navigator.pop(context); setState(() => _endDialogShown = false); context.read<EditsProvider>().resetSeen(); final uid = FirebaseAuth.instance.currentUser?.uid?? ''; context.read<EditsProvider>().loadSmartFeed(uid); }, style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('عرض من البداية', style: TextStyle(color: Colors.white70)))), const SizedBox(width: 12), Expanded(child: ElevatedButton(onPressed: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadEditScreen())); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('أضف إيديت ✨', style: TextStyle(color: Colors.white))))]), const SizedBox(height: 8)]));});}
+
   void _checkEndOfFeed(List<EditModel> edits, int visualIndex) { if (_endDialogShown) return; final realIndex = _realEditIndex(visualIndex); if (realIndex >= edits.length - 1) { _endDialogShown = true; Future.delayed(const Duration(milliseconds: 500), () { if (!mounted) return; _showEndDialog(); }); } }
 
   @override Widget build(BuildContext context) {
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final isPremium = userProvider.currentUser?.isPremium ?? false;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
+    final isPremium = userProvider.currentUser?.isPremium?? false;
     final edits = editsProvider.sessionFeed;
-    final totalCount = isPremium ? edits.length : _totalVisualCount(edits.length);
+    final totalCount = isPremium? edits.length : _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(children: [
         if (editsProvider.isLoading && edits.isEmpty) const Center(child: CircularProgressIndicator()),
-        if (!editsProvider.isLoading && editsProvider.error != null)
-          Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 50), const SizedBox(height: 12), Text('حدث خطأ:\n${editsProvider.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 16), ElevatedButton(onPressed: () { editsProvider.resetError(); editsProvider.listenToEdits(); }, child: const Text('إعادة المحاولة'))])),
-        if (edits.isEmpty && !editsProvider.isLoading) const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 60), SizedBox(height: 16), Text('لا يوجد إيديتات بعد\nكن أول من ينشر!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 16))])),
+        if (!editsProvider.isLoading && editsProvider.error!= null)
+          Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 50), const SizedBox(height: 12), Text('حدث خطأ:\n${editsProvider.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 16), ElevatedButton(onPressed: () { editsProvider.resetError(); final uid = FirebaseAuth.instance.currentUser?.uid?? ''; editsProvider.loadSmartFeed(uid); }, child: const Text('إعادة المحاولة'))])),
+        if (edits.isEmpty &&!editsProvider.isLoading) const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 60), SizedBox(height: 16), Text('لا يوجد إيديتات بعد\nكن أول من ينشر!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 16))])),
         if (edits.isNotEmpty)
           PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
             itemCount: totalCount,
-            physics: !isPremium && _isAdSlot(_currentIndex) && !_finishedAdIndexes.contains(_currentIndex) ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+            physics:!isPremium && _isAdSlot(_currentIndex) &&!_finishedAdIndexes.contains(_currentIndex)? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
             onPageChanged: (index) {
-              // ✅ [تعديل جديد] كشف السكرول السريع وتسجيله كـ skip
               final entryTime = _pageEntryTime;
-              if (entryTime != null) {
+              if (entryTime!= null) {
                 final secondsSpent = DateTime.now().difference(entryTime).inSeconds;
-                if (secondsSpent < 3 && !_isAdSlot(_currentIndex)) {
-                  final prevRealIndex = isPremium ? _currentIndex : _realEditIndex(_currentIndex);
+                if (secondsSpent < 3 &&!_isAdSlot(_currentIndex)) {
+                  final prevRealIndex = isPremium? _currentIndex : _realEditIndex(_currentIndex);
                   if (prevRealIndex < edits.length) {
                     editsProvider.recordWatchTime(
                       editId: edits[prevRealIndex].id,
@@ -123,7 +138,7 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
 
               setState(() => _currentIndex = index);
               if (!isPremium && _isAdSlot(index)) return;
-              final realIndex = isPremium ? index : _realEditIndex(index);
+              final realIndex = isPremium? index : _realEditIndex(index);
               if (realIndex >= edits.length) return;
               final edit = edits[realIndex];
               editsProvider.incrementViews(edit.id, currentUserId);
@@ -135,11 +150,10 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                 if (adDone) return const SizedBox.shrink();
                 return _AdEditWidget(onAdFinished: () { setState(() => _finishedAdIndexes.add(index)); Future.delayed(const Duration(milliseconds: 300), () { if (!mounted) return; _pageController.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut); }); });
               }
-              final realIndex = isPremium ? index : _realEditIndex(index);
+              final realIndex = isPremium? index : _realEditIndex(index);
               if (realIndex >= edits.length) return const SizedBox.shrink();
               final edit = edits[realIndex];
               return Stack(key: ValueKey(edit.id), children: [
-                // ✅ [تعديل جديد] تمرير onWatchTime للـ EditPlayerWidget
                 EditPlayerWidget(
                   key: ValueKey(edit.id),
                   edit: edit,
@@ -154,7 +168,7 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                   },
                 ),
                 Positioned(bottom: 80, left: 16, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  GestureDetector(onTap: () => _openProfile(edit.uploaderId), child: Row(children: [CircleAvatar(radius: 18, backgroundImage: edit.uploaderAvatar.isNotEmpty ? NetworkImage(edit.uploaderAvatar) : null, child: edit.uploaderAvatar.isEmpty ? const Icon(Icons.person, size: 18) : null), const SizedBox(width: 8), Text(edit.uploaderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))])),
+                  GestureDetector(onTap: () => _openProfile(edit.uploaderId), child: Row(children: [CircleAvatar(radius: 18, backgroundImage: edit.uploaderAvatar.isNotEmpty? NetworkImage(edit.uploaderAvatar) : null, child: edit.uploaderAvatar.isEmpty? const Icon(Icons.person, size: 18) : null), const SizedBox(width: 8), Text(edit.uploaderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))])),
                   const SizedBox(height: 8),
                   Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)), child: Text('🎌 ${edit.animeTitle}', style: const TextStyle(color: Colors.white, fontSize: 13))),
                   const SizedBox(height: 6),
