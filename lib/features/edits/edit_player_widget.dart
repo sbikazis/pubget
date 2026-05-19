@@ -7,21 +7,29 @@ class EditPlayerWidget extends StatefulWidget {
   final EditModel edit;
   final bool isActive;
 
+  // ── callback لإرسال وقت المشاهدة للـ provider
+  final void Function(int watchSeconds, double watchPercent)? onWatchTime;
+
   const EditPlayerWidget({
     super.key,
     required this.edit,
     required this.isActive,
+    this.onWatchTime,
   });
 
   @override
   State<EditPlayerWidget> createState() => _EditPlayerWidgetState();
 }
 
-class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepAliveClientMixin {
+class _EditPlayerWidgetState extends State<EditPlayerWidget>
+    with AutomaticKeepAliveClientMixin {
   late VideoPlayerController _controller;
   bool _initialized = false;
   bool _showControls = false;
   bool _isVisible = false;
+
+  // ── تتبع وقت المشاهدة
+  DateTime? _watchStartTime;
 
   @override
   bool get wantKeepAlive => true;
@@ -41,6 +49,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
     if (mounted) setState(() => _initialized = true);
 
     if (widget.isActive && _isVisible) {
+      _startWatching();
       _controller.play();
     }
   }
@@ -49,8 +58,8 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
   void didUpdateWidget(covariant EditPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // ← التعديل الجديد: إذا تغير الفيديو، أعد التهيئة
     if (oldWidget.edit.id != widget.edit.id) {
+      _stopWatching();
       _controller.dispose();
       _initialized = false;
       if (mounted) setState(() {});
@@ -61,20 +70,51 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
     if (!_initialized) return;
 
     if (widget.isActive && _isVisible) {
+      _startWatching();
       _controller.play();
     } else {
+      _stopWatching();
       _controller.pause();
     }
+  }
+
+  // ── بدء تسجيل وقت المشاهدة
+  void _startWatching() {
+    _watchStartTime ??= DateTime.now();
+  }
+
+  // ── إيقاف وإرسال وقت المشاهدة
+  void _stopWatching() {
+    if (_watchStartTime == null) return;
+
+    final watchSeconds =
+        DateTime.now().difference(_watchStartTime!).inSeconds;
+    _watchStartTime = null;
+
+    if (!_initialized || watchSeconds <= 0) return;
+
+    final totalDuration =
+        _controller.value.duration.inSeconds.toDouble();
+    final watchPercent = totalDuration > 0
+        ? (watchSeconds / totalDuration).clamp(0.0, 1.0)
+        : 0.0;
+
+    widget.onWatchTime?.call(watchSeconds, watchPercent);
   }
 
   void _togglePlayPause() {
     if (!_initialized) return;
     setState(() {
-      _controller.value.isPlaying
-          ? _controller.pause()
-          : _controller.play();
+      if (_controller.value.isPlaying) {
+        _stopWatching();
+        _controller.pause();
+      } else {
+        _startWatching();
+        _controller.play();
+      }
       _showControls = true;
     });
+
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _showControls = false);
     });
@@ -82,10 +122,12 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
 
   @override
   void dispose() {
+    _stopWatching();
     _controller.dispose();
     super.dispose();
   }
 
+  // ── منطق المقاس الذكي
   Widget _buildVideoDisplay() {
     final videoSize = _controller.value.size;
 
@@ -95,6 +137,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
 
     final videoRatio = videoSize.width / videoSize.height;
 
+    // فيديو عمودي → contain بدون قص
     if (videoRatio <= 1.0) {
       return SizedBox.expand(
         child: FittedBox(
@@ -109,6 +152,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
       );
     }
 
+    // فيديو أفقي → letterbox أسود
     return Container(
       color: Colors.black,
       child: Center(
@@ -123,14 +167,18 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     return VisibilityDetector(
       key: Key(widget.edit.id),
       onVisibilityChanged: (info) {
         _isVisible = info.visibleFraction > 0.8;
         if (!_initialized) return;
+
         if (_isVisible && widget.isActive) {
+          _startWatching();
           _controller.play();
         } else if (!_isVisible) {
+          _stopWatching();
           _controller.pause();
         }
       },
@@ -139,8 +187,10 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // ── الفيديو
             _initialized ? _buildVideoDisplay() : _buildThumbnail(),
 
+            // ── أيقونة Play/Pause
             AnimatedOpacity(
               opacity: _showControls ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
@@ -160,6 +210,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget> with AutomaticKeepA
               ),
             ),
 
+            // ── شريط التقدم
             if (_initialized)
               Positioned(
                 bottom: 0,

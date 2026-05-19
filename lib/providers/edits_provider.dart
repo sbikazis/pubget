@@ -12,11 +12,15 @@ class EditsProvider extends ChangeNotifier {
   final Set<String> _seenIds = {};
   List<EditModel> _sessionFeed = [];
   StreamSubscription<List<EditModel>>? _editsSubscription;
-  bool _isLoading = false, _isUploading = false, _isListening = false;
+  bool _isLoading = false;
+  bool _isUploading = false;
+  bool _isListening = false;
   String? _error;
   EditModel? _lastUploadedEdit;
+
   static const String _seenKey = 'seen_edit_ids';
-  final ValueNotifier<EditModel?> uploadCompletedNotifier = ValueNotifier<EditModel?>(null);
+  final ValueNotifier<EditModel?> uploadCompletedNotifier =
+      ValueNotifier<EditModel?>(null);
 
   List<EditModel> get edits => List.unmodifiable(_sessionFeed);
   List<EditModel> get sessionFeed => List.unmodifiable(_sessionFeed);
@@ -27,105 +31,284 @@ class EditsProvider extends ChangeNotifier {
   bool get allUnseenWatched => _sessionFeed.isEmpty;
   EditModel? getEditById(String id) => _editsMap[id];
 
+  // ══════════════════════════════════════════════
+  // ── الـ Seen System
+  // ══════════════════════════════════════════════
+
   Future<void> loadSeenIds() async {
     final prefs = await SharedPreferences.getInstance();
-    _seenIds.addAll(prefs.getStringList(_seenKey)?? []);
+    _seenIds.addAll(prefs.getStringList(_seenKey) ?? []);
   }
+
   Future<void> _saveSeenIds() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_seenKey, _seenIds.toList());
   }
 
+  void markAsSeen(String editId) {
+    if (_seenIds.contains(editId)) return;
+    _seenIds.add(editId);
+    _saveSeenIds();
+  }
+
+  Future<void> resetSeen() async {
+    _seenIds.clear();
+    await _saveSeenIds();
+    _sessionFeed = _editsMap.values.toList()
+      ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+    notifyListeners();
+  }
+
+  // ══════════════════════════════════════════════
+  // ── جلب الـ Feed
+  // ══════════════════════════════════════════════
+
   Future<void> listenToEdits() async {
     if (_isListening) return;
-    _isListening = true; _isLoading = true; notifyListeners();
+    _isListening = true;
+    _isLoading = true;
+    notifyListeners();
+
     await _editsSubscription?.cancel();
-    _editsSubscription = _service.getEdits().listen((incoming) {
-      _mergeIncomingEdits(incoming); _isLoading = false; notifyListeners();
-    }, onError: (e) { _error = e.toString(); _isLoading = false; notifyListeners(); });
+
+    // ── Stream للتحديثات الصغيرة (لايك، كومنت)
+    _editsSubscription = _service.getEdits().listen(
+      (incoming) {
+        _mergeIncomingEdits(incoming);
+        _isLoading = false;
+        notifyListeners();
+      },
+      onError: (e) {
+        _error = e.toString();
+        _isLoading = false;
+        notifyListeners();
+      },
+    );
   }
 
   void _mergeIncomingEdits(List<EditModel> incoming) {
     bool changed = false;
+
     for (final edit in incoming) {
       final existing = _editsMap[edit.id];
+
       if (existing == null) {
         _editsMap[edit.id] = edit;
-        if (!_seenIds.contains(edit.id)) _sessionFeed.add(edit);
-        changed = true; continue;
+        if (!_seenIds.contains(edit.id)) {
+          _sessionFeed.add(edit);
+        }
+        changed = true;
+        continue;
       }
+
       final merged = _mergeEdit(existing, edit);
       _editsMap[edit.id] = merged;
       final idx = _sessionFeed.indexWhere((e) => e.id == edit.id);
-      if (idx!= -1) _sessionFeed[idx] = merged;
+      if (idx != -1) _sessionFeed[idx] = merged;
       changed = true;
     }
-    if (changed) _sessionFeed.sort((a,b)=>b.createdAt.compareTo(a.createdAt));
+
+    if (changed) {
+      _sessionFeed.sort(
+          (a, b) => b.computeScore().compareTo(a.computeScore()));
+    }
   }
 
   EditModel _mergeEdit(EditModel local, EditModel remote) {
     final pending = _pendingLikeUpdates[local.id];
     if (pending == null) return remote;
+
     final remoteSet = remote.likes.toSet();
-    if (remoteSet.length == pending.length && remoteSet.containsAll(pending)) {
+    if (remoteSet.length == pending.length &&
+        remoteSet.containsAll(pending)) {
       _pendingLikeUpdates.remove(local.id);
       return remote;
     }
     return remote.copyWith(likes: pending.toList());
   }
 
-  void markAsSeen(String editId) {
-    if (_seenIds.contains(editId)) return;
-    _seenIds.add(editId); _saveSeenIds();
+  // ══════════════════════════════════════════════
+  // ── تسجيل وقت المشاهدة
+  // ══════════════════════════════════════════════
+
+  Future<void> recordWatchTime({
+    required String editId,
+    required String userId,
+    required int watchSeconds,
+    required double watchPercent,
+  }) async {
+    if (watchSeconds <= 0) return;
+    try {
+      await _service.recordWatchTime(
+        editId: editId,
+        userId: userId,
+        watchSeconds: watchSeconds,
+        watchPercent: watchPercent,
+      );
+    } catch (_) {}
   }
 
-  Future<void> toggleLike(String editId, String userId) async {
-    final existing = _editsMap[editId]; if (existing == null) return;
-    final wasLiked = existing.likes.contains(userId); // ← مهم
+  // ══════════════════════════════════════════════
+  // ── اللايك
+  // ══════════════════════════════════════════════
 
+  Future<void> toggleLike(String editId, String userId) async {
+    final existing = _editsMap[editId];
+    if (existing == null) return;
+
+    final wasLiked = existing.likes.contains(userId);
     final updatedLikes = List<String>.from(existing.likes);
-    wasLiked? updatedLikes.remove(userId) : updatedLikes.add(userId);
+    wasLiked ? updatedLikes.remove(userId) : updatedLikes.add(userId);
 
     _pendingLikeUpdates[editId] = updatedLikes.toSet();
     final updatedEdit = existing.copyWith(likes: updatedLikes);
     _editsMap[editId] = updatedEdit;
+
     final idx = _sessionFeed.indexWhere((e) => e.id == editId);
-    if (idx!= -1) _sessionFeed[idx] = updatedEdit;
+    if (idx != -1) _sessionFeed[idx] = updatedEdit;
     notifyListeners();
 
     try {
-      await _service.toggleLike(editId, userId, wasLiked); // ← بدون get
+      await _service.toggleLike(editId, userId, wasLiked);
     } catch (_) {
       _pendingLikeUpdates.remove(editId);
       _editsMap[editId] = existing;
-      if (idx!= -1) _sessionFeed[idx] = existing;
+      if (idx != -1) _sessionFeed[idx] = existing;
       notifyListeners();
     }
   }
 
-  Future<void> incrementViews(String editId, String userId) async { markAsSeen(editId); await _service.incrementViews(editId, userId); }
-  void prependEdit(EditModel edit) { _editsMap[edit.id]=edit; _sessionFeed.removeWhere((e)=>e.id==edit.id); _sessionFeed.insert(0,edit); notifyListeners(); }
-  Future<void> resetSeen() async { _seenIds.clear(); await _saveSeenIds(); _sessionFeed=_editsMap.values.toList()..sort((a,b)=>b.createdAt.compareTo(a.createdAt)); notifyListeners(); }
-  void resetError(){ _error=null; notifyListeners(); }
-  void clearLastUploadedEdit(){ _lastUploadedEdit=null; uploadCompletedNotifier.value=null; notifyListeners(); }
+  // ══════════════════════════════════════════════
+  // ── المشاهدات
+  // ══════════════════════════════════════════════
 
-  void uploadEditInBackground({required File videoFile, required File thumbnailFile, required String userId, required String uploaderName, required String uploaderAvatar, required String animeTitle, required String caption, void Function(EditModel)? onComplete, void Function(String)? onFailed}) {
-    if (_isUploading) return; _isUploading=true; notifyListeners();
-    _runUpload(videoFile:videoFile, thumbnailFile:thumbnailFile, userId:userId, uploaderName:uploaderName, uploaderAvatar:uploaderAvatar, animeTitle:animeTitle, caption:caption, onComplete:onComplete, onFailed:onFailed);
+  Future<void> incrementViews(String editId, String userId) async {
+    markAsSeen(editId);
+    await _service.incrementViews(editId, userId);
   }
 
-  Future<void> _runUpload({required File videoFile, required File thumbnailFile, required String userId, required String uploaderName, required String uploaderAvatar, required String animeTitle, required String caption, void Function(EditModel)? onComplete, void Function(String)? onFailed}) async {
+  // ══════════════════════════════════════════════
+  // ── الرفع
+  // ══════════════════════════════════════════════
+
+  void uploadEditInBackground({
+    required File videoFile,
+    required File thumbnailFile,
+    required String userId,
+    required String uploaderName,
+    required String uploaderAvatar,
+    required String animeTitle,
+    required String caption,
+    void Function(EditModel)? onComplete,
+    void Function(String)? onFailed,
+  }) {
+    if (_isUploading) return;
+    _isUploading = true;
+    notifyListeners();
+
+    _runUpload(
+      videoFile: videoFile,
+      thumbnailFile: thumbnailFile,
+      userId: userId,
+      uploaderName: uploaderName,
+      uploaderAvatar: uploaderAvatar,
+      animeTitle: animeTitle,
+      caption: caption,
+      onComplete: onComplete,
+      onFailed: onFailed,
+    );
+  }
+
+  Future<void> _runUpload({
+    required File videoFile,
+    required File thumbnailFile,
+    required String userId,
+    required String uploaderName,
+    required String uploaderAvatar,
+    required String animeTitle,
+    required String caption,
+    void Function(EditModel)? onComplete,
+    void Function(String)? onFailed,
+  }) async {
     try {
       final videoUrl = await _service.uploadVideo(videoFile, userId);
-      final thumbnailUrl = await _service.uploadThumbnail(thumbnailFile, userId);
-      final edit = EditModel(id:'', uploaderId:userId, uploaderName:uploaderName, uploaderAvatar:uploaderAvatar, videoUrl:videoUrl, thumbnailUrl:thumbnailUrl, animeTitle:animeTitle, caption:caption, likes:[], commentsCount:0, views:0, createdAt:DateTime.now());
+      final thumbnailUrl =
+          await _service.uploadThumbnail(thumbnailFile, userId);
+
+      final edit = EditModel(
+        id: '',
+        uploaderId: userId,
+        uploaderName: uploaderName,
+        uploaderAvatar: uploaderAvatar,
+        videoUrl: videoUrl,
+        thumbnailUrl: thumbnailUrl,
+        animeTitle: animeTitle,
+        caption: caption,
+        likes: [],
+        commentsCount: 0,
+        views: 0,
+        createdAt: DateTime.now(),
+      );
+
       final docId = await _service.postEdit(edit);
-      final uploadedEdit = edit.copyWith(id:docId);
-      _lastUploadedEdit = uploadedEdit; uploadCompletedNotifier.value = uploadedEdit; _isUploading=false; notifyListeners(); onComplete?.call(uploadedEdit);
-    } catch(e){ _error=e.toString(); _isUploading=false; notifyListeners(); onFailed?.call(e.toString()); }
+      final uploadedEdit = edit.copyWith(id: docId);
+
+      _lastUploadedEdit = uploadedEdit;
+      uploadCompletedNotifier.value = uploadedEdit;
+      _isUploading = false;
+      notifyListeners();
+      onComplete?.call(uploadedEdit);
+    } catch (e) {
+      _error = e.toString();
+      _isUploading = false;
+      notifyListeners();
+      onFailed?.call(e.toString());
+    }
   }
 
-  Stream<List<EditModel>> getUserEdits(String userId) => _service.getUserEdits(userId);
-  Future<void> deleteEdit(EditModel edit) async { try{ await _service.deleteEdit(edit); _editsMap.remove(edit.id); _sessionFeed.removeWhere((e)=>e.id==edit.id); _seenIds.remove(edit.id); await _saveSeenIds(); notifyListeners(); }catch(e){ _error=e.toString(); notifyListeners(); } }
-  @override void dispose(){ _editsSubscription?.cancel(); uploadCompletedNotifier.dispose(); super.dispose(); }
+  // ══════════════════════════════════════════════
+  // ── أدوات متنوعة
+  // ══════════════════════════════════════════════
+
+  void prependEdit(EditModel edit) {
+    _editsMap[edit.id] = edit;
+    _sessionFeed.removeWhere((e) => e.id == edit.id);
+    _sessionFeed.insert(0, edit);
+    notifyListeners();
+  }
+
+  void resetError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  void clearLastUploadedEdit() {
+    _lastUploadedEdit = null;
+    uploadCompletedNotifier.value = null;
+    notifyListeners();
+  }
+
+  Stream<List<EditModel>> getUserEdits(String userId) =>
+      _service.getUserEdits(userId);
+
+  Future<void> deleteEdit(EditModel edit) async {
+    try {
+      await _service.deleteEdit(edit);
+      _editsMap.remove(edit.id);
+      _sessionFeed.removeWhere((e) => e.id == edit.id);
+      _seenIds.remove(edit.id);
+      await _saveSeenIds();
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _editsSubscription?.cancel();
+    uploadCompletedNotifier.dispose();
+    super.dispose();
+  }
 }

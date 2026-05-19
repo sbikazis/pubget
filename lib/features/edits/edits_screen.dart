@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // ← أضفنا
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
@@ -59,7 +59,16 @@ class EditsScreen extends StatefulWidget {
 }
 
 class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClientMixin {
-  late final PageController _pageController; int _currentIndex = 0; bool _initialized = false; bool _endDialogShown = false; static const int _adInterval = 5; final Set<int> _finishedAdIndexes = {};
+  late final PageController _pageController;
+  int _currentIndex = 0;
+  bool _initialized = false;
+  bool _endDialogShown = false;
+  static const int _adInterval = 5;
+  final Set<int> _finishedAdIndexes = {};
+
+  // ✅ [تعديل جديد] تتبع وقت دخول كل إيديت للكشف عن السكرول السريع
+  DateTime? _pageEntryTime;
+
   @override bool get wantKeepAlive => true;
   @override void initState() { super.initState(); _currentIndex = widget.startIndex; _pageController = PageController(initialPage: widget.startIndex); }
   @override void didChangeDependencies() { super.didChangeDependencies(); if (_initialized) return; _initialized = true; context.read<EditsProvider>().listenToEdits(); }
@@ -75,29 +84,46 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    // ← التعديل الجوهري: نأخذ الـ ID مباشرة من Firebase
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
-    final isPremium = userProvider.currentUser?.isPremium?? false;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isPremium = userProvider.currentUser?.isPremium ?? false;
     final edits = editsProvider.sessionFeed;
-    final totalCount = isPremium? edits.length : _totalVisualCount(edits.length);
+    final totalCount = isPremium ? edits.length : _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(children: [
         if (editsProvider.isLoading && edits.isEmpty) const Center(child: CircularProgressIndicator()),
-        if (!editsProvider.isLoading && editsProvider.error!= null)
+        if (!editsProvider.isLoading && editsProvider.error != null)
           Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 50), const SizedBox(height: 12), Text('حدث خطأ:\n${editsProvider.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 13)), const SizedBox(height: 16), ElevatedButton(onPressed: () { editsProvider.resetError(); editsProvider.listenToEdits(); }, child: const Text('إعادة المحاولة'))])),
-        if (edits.isEmpty &&!editsProvider.isLoading) const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 60), SizedBox(height: 16), Text('لا يوجد إيديتات بعد\nكن أول من ينشر!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 16))])),
+        if (edits.isEmpty && !editsProvider.isLoading) const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 60), SizedBox(height: 16), Text('لا يوجد إيديتات بعد\nكن أول من ينشر!', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 16))])),
         if (edits.isNotEmpty)
           PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
             itemCount: totalCount,
-            physics:!isPremium && _isAdSlot(_currentIndex) &&!_finishedAdIndexes.contains(_currentIndex)? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+            physics: !isPremium && _isAdSlot(_currentIndex) && !_finishedAdIndexes.contains(_currentIndex) ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
             onPageChanged: (index) {
+              // ✅ [تعديل جديد] كشف السكرول السريع وتسجيله كـ skip
+              final entryTime = _pageEntryTime;
+              if (entryTime != null) {
+                final secondsSpent = DateTime.now().difference(entryTime).inSeconds;
+                if (secondsSpent < 3 && !_isAdSlot(_currentIndex)) {
+                  final prevRealIndex = isPremium ? _currentIndex : _realEditIndex(_currentIndex);
+                  if (prevRealIndex < edits.length) {
+                    editsProvider.recordWatchTime(
+                      editId: edits[prevRealIndex].id,
+                      userId: currentUserId,
+                      watchSeconds: 0,
+                      watchPercent: 0.0,
+                    );
+                  }
+                }
+              }
+              _pageEntryTime = DateTime.now();
+
               setState(() => _currentIndex = index);
               if (!isPremium && _isAdSlot(index)) return;
-              final realIndex = isPremium? index : _realEditIndex(index);
+              final realIndex = isPremium ? index : _realEditIndex(index);
               if (realIndex >= edits.length) return;
               final edit = edits[realIndex];
               editsProvider.incrementViews(edit.id, currentUserId);
@@ -109,13 +135,26 @@ class _EditsScreenState extends State<EditsScreen> with AutomaticKeepAliveClient
                 if (adDone) return const SizedBox.shrink();
                 return _AdEditWidget(onAdFinished: () { setState(() => _finishedAdIndexes.add(index)); Future.delayed(const Duration(milliseconds: 300), () { if (!mounted) return; _pageController.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut); }); });
               }
-              final realIndex = isPremium? index : _realEditIndex(index);
+              final realIndex = isPremium ? index : _realEditIndex(index);
               if (realIndex >= edits.length) return const SizedBox.shrink();
               final edit = edits[realIndex];
               return Stack(key: ValueKey(edit.id), children: [
-                EditPlayerWidget(key: ValueKey(edit.id), edit: edit, isActive: index == _currentIndex),
+                // ✅ [تعديل جديد] تمرير onWatchTime للـ EditPlayerWidget
+                EditPlayerWidget(
+                  key: ValueKey(edit.id),
+                  edit: edit,
+                  isActive: index == _currentIndex,
+                  onWatchTime: (watchSeconds, watchPercent) {
+                    editsProvider.recordWatchTime(
+                      editId: edit.id,
+                      userId: currentUserId,
+                      watchSeconds: watchSeconds,
+                      watchPercent: watchPercent,
+                    );
+                  },
+                ),
                 Positioned(bottom: 80, left: 16, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  GestureDetector(onTap: () => _openProfile(edit.uploaderId), child: Row(children: [CircleAvatar(radius: 18, backgroundImage: edit.uploaderAvatar.isNotEmpty? NetworkImage(edit.uploaderAvatar) : null, child: edit.uploaderAvatar.isEmpty? const Icon(Icons.person, size: 18) : null), const SizedBox(width: 8), Text(edit.uploaderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))])),
+                  GestureDetector(onTap: () => _openProfile(edit.uploaderId), child: Row(children: [CircleAvatar(radius: 18, backgroundImage: edit.uploaderAvatar.isNotEmpty ? NetworkImage(edit.uploaderAvatar) : null, child: edit.uploaderAvatar.isEmpty ? const Icon(Icons.person, size: 18) : null), const SizedBox(width: 8), Text(edit.uploaderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))])),
                   const SizedBox(height: 8),
                   Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)), child: Text('🎌 ${edit.animeTitle}', style: const TextStyle(color: Colors.white, fontSize: 13))),
                   const SizedBox(height: 6),
