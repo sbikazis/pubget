@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../models/group_model.dart';
 import '../../models/user_model.dart';
@@ -16,19 +17,18 @@ import '../../providers/home_provider.dart';
 
 import '../../services/firebase/firestore_service.dart';
 import '../../services/firebase/storage_service.dart';
+import '../../services/api/anime_api_service.dart';
 
 import '../../core/logic/group_join_validator.dart';
 import '../../core/theme/app_colors.dart';
-
 import '../../core/constants/roles.dart';
 import '../../core/constants/firestore_paths.dart';
 import '../../core/constants/group_type.dart';
 
-import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_textfield.dart';
 import '../../widgets/empty_state_widget.dart';
-import 'package:pubget/services/api/anime_api_service.dart';
 
 class RoleplayJoinScreen extends StatefulWidget {
   final GroupModel group;
@@ -46,17 +46,66 @@ class RoleplayJoinScreen extends StatefulWidget {
 
 class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _characterController = TextEditingController();
   final _reasonController = TextEditingController();
   final _inviterController = TextEditingController();
 
+  // ── الشخصية المختارة
+  int? _selectedCharId;
+  String? _selectedCharName;
+  String? _selectedCharImageUrl;
+
   File? _pickedImage;
-  String? _autoFetchedImageUrl;
   bool _isProcessing = false;
-  bool _isFetchingPreview = false;
+  bool _isLoadingCharacters = false;
   bool _hasInviter = false;
 
+  // ── الشخصيات المحجوزة داخل المجموعة
+  Set<String> _reservedCharacterNames = {};
+
   final ImagePicker _picker = ImagePicker();
+
+  // ─────────────────────────────────────────────
+  // INIT - جلب الشخصيات المحجوزة
+  // ─────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReservedCharacters();
+  }
+
+  Future<void> _loadReservedCharacters() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupCharacters(widget.group.id))
+          .get();
+      final reserved = <String>{};
+      for (final doc in snapshot.docs) {
+        reserved.add(doc.id); // الـ key هو _normalizeCharacterKey
+      }
+      if (mounted) setState(() => _reservedCharacterNames = reserved);
+    } catch (e) {
+      debugPrint("⚠️ Failed to load reserved characters: $e");
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // NORMALIZE KEY (نفس منطق group_join_validator)
+  // ─────────────────────────────────────────────
+
+  String _normalizeKey(String name) {
+    final words = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .split(RegExp(r'\s+'))
+      ..sort();
+    return words.join('');
+  }
+
+  bool _isReserved(String characterName) {
+    return _reservedCharacterNames.contains(_normalizeKey(characterName));
+  }
 
   // ─────────────────────────────────────────────
   // DISPOSE
@@ -64,7 +113,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
   @override
   void dispose() {
-    _characterController.dispose();
     _reasonController.dispose();
     _inviterController.dispose();
     super.dispose();
@@ -81,69 +129,58 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       maxHeight: 1200,
       imageQuality: 80,
     );
-
     if (picked != null) {
       setState(() {
         _pickedImage = File(picked.path);
-        _autoFetchedImageUrl = null;
       });
     }
   }
 
   // ─────────────────────────────────────────────
-  // FETCH CHARACTER PREVIEW (زر البحث)
-  // بحث عالمي فقط — بدون أي تحقق من الانتماء هنا
-  // التحقق من الانتماء والحجز يحصل فقط في _submitJoinRequest
+  // SHOW AVAILABLE CHARACTERS
   // ─────────────────────────────────────────────
 
-  Future<void> _fetchCharacterPreview() async {
-    final name = _characterController.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء كتابة اسم الشخصية أولاً')),
-      );
-      return;
-    }
-
-    setState(() => _isFetchingPreview = true);
+  Future<void> _showAvailableCharacters() async {
+    setState(() => _isLoadingCharacters = true);
 
     try {
-      // ── بحث عالمي دائماً — animeIds: null
-      // لا يوجد أي تحقق من الانتماء هنا إطلاقاً
-      final results = await AnimeApiService.searchCharacterMultiple(
-        animeIds: null,
-        characterName: name,
-      );
+      final List<int> idsToFetch =
+          (widget.group.franchiseIds?.cast<int>() ?? []).toList();
+      if (widget.group.animeId != null) {
+        final int mainId = int.tryParse(widget.group.animeId.toString()) ?? 0;
+        if (mainId != 0 && !idsToFetch.contains(mainId)) {
+          idsToFetch.add(mainId);
+        }
+      }
 
-      if (mounted) setState(() => _isFetchingPreview = false);
+      final characters =
+          await AnimeApiService.getAnimeCharacters(animeIds: idsToFetch);
 
-      if (results.isEmpty) {
+      if (mounted) setState(() => _isLoadingCharacters = false);
+
+      if (characters.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'لم نجد هذه الشخصية في قاعدة البيانات، تأكد من الاسم بالإنجليزية',
-              ),
-            ),
+                content:
+                    Text('لم نجد شخصيات لهذا الأنمي، حاول لاحقاً')),
           );
         }
         return;
       }
 
-      if (mounted) {
-        _showCharacterSelectionSheet(results);
-      }
+      if (mounted) _showCharacterSheet(characters);
     } catch (e) {
-      debugPrint("Error fetching character preview: $e");
-      if (mounted) setState(() => _isFetchingPreview = false);
+      debugPrint("Error loading characters: $e");
+      if (mounted) setState(() => _isLoadingCharacters = false);
     }
   }
 
   // ─────────────────────────────────────────────
-  // CHARACTER SELECTION BOTTOM SHEET
+  // CHARACTER SHEET مع إظهار المحجوز
   // ─────────────────────────────────────────────
 
-  void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
+  void _showCharacterSheet(List<Map<String, dynamic>> characters) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -151,8 +188,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       builder: (context) {
         return Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
-          ),
+              maxHeight: MediaQuery.of(context).size.height * 0.75),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             borderRadius:
@@ -166,85 +202,130 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 16),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Icon(Icons.person_search, color: AppColors.primary),
-                    SizedBox(width: 8),
-                    Text(
-                      'اختر الشخصية الصحيحة',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(children: [
+                  const Icon(Icons.people_alt_outlined,
+                      color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'شخصيات ${widget.group.animeName ?? "الأنمي"}',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ]),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  'وجدنا عدة شخصيات بهذا الاسم، اختر الشخصية التي تريدها',
+                  'الشخصيات الرمادية محجوزة بالفعل',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
               const Divider(height: 24),
               Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GridView.builder(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
                   itemCount: characters.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final char = characters[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 4),
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null &&
-                                char['imageUrl']!.isNotEmpty
-                            ? Image.network(
-                                char['imageUrl']!,
-                                width: 50,
-                                height: 60,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  width: 50,
-                                  height: 60,
-                                  color: Colors.grey.shade300,
-                                  child: const Icon(Icons.person),
-                                ),
-                              )
-                            : Container(
-                                width: 50,
-                                height: 60,
-                                color: Colors.grey.shade300,
-                                child: const Icon(Icons.person),
-                              ),
-                      ),
-                      title: Text(
-                        char['name'] ?? '',
-                        style:
-                            const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      trailing: const Icon(Icons.check_circle_outline,
-                          color: AppColors.primary),
-                      // ── الاختيار يحدد القيم فقط، لا تحقق API
+                    final String charName = char['name'] ?? '';
+                    final bool reserved = _isReserved(charName);
+
+                    return GestureDetector(
                       onTap: () {
+                        if (reserved) {
+                          // ── محجوزة: أظهر رسالة فقط
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  '"$charName" محجوزة بالفعل داخل هذه المجموعة'),
+                              backgroundColor: Colors.red.shade400,
+                            ),
+                          );
+                          return;
+                        }
+                        // ── متاحة: اختر
                         Navigator.pop(context);
                         setState(() {
-                          _autoFetchedImageUrl = char['imageUrl'];
+                          _selectedCharId = char['id'];
+                          _selectedCharName = charName;
+                          _selectedCharImageUrl = char['imageUrl'];
                           _pickedImage = null;
-                          _characterController.text =
-                              char['name'] ?? _characterController.text;
                         });
                       },
+                      child: Opacity(
+                        opacity: reserved ? 0.35 : 1.0,
+                        child: Stack(
+                          children: [
+                            Column(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: char['imageUrl'] != null &&
+                                            char['imageUrl']!.isNotEmpty
+                                        ? Image.network(
+                                            char['imageUrl']!,
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            errorBuilder: (_, __, ___) =>
+                                                Container(
+                                              color: Colors.grey.shade300,
+                                              child: const Icon(Icons.person,
+                                                  size: 30),
+                                            ),
+                                          )
+                                        : Container(
+                                            color: Colors.grey.shade300,
+                                            child: const Icon(Icons.person,
+                                                size: 30),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  charName,
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold),
+                                  maxLines: 2,
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                            // ── أيقونة القفل على المحجوزة
+                            if (reserved)
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(Icons.lock,
+                                      size: 12, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -259,23 +340,23 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
   // ─────────────────────────────────────────────
   // SUBMIT JOIN REQUEST
-  // التحقق الكامل (الانتماء + الحجز) يحصل هنا فقط عبر validateJoin
   // ─────────────────────────────────────────────
 
   Future<void> _submitJoinRequest(UserModel currentUser) async {
     if (!_formKey.currentState!.validate()) return;
 
-    final hasImage = _pickedImage != null ||
-        (_autoFetchedImageUrl != null && _autoFetchedImageUrl!.isNotEmpty);
-
-    if (!hasImage) {
+    if (_selectedCharName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text(
-                'الرجاء البحث عن الشخصية واختيارها من القائمة أولاً')),
+            content:
+                Text('الرجاء اختيار شخصيتك من قائمة الشخصيات أولاً')),
       );
       return;
     }
+
+    final hasImage = _pickedImage != null ||
+        (_selectedCharImageUrl != null &&
+            _selectedCharImageUrl!.isNotEmpty);
 
     try {
       setState(() => _isProcessing = true);
@@ -285,19 +366,18 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       final firestore = context.read<FirestoreService>();
       final storage = context.read<StorageService>();
 
-      final characterName = _characterController.text.trim();
+      final inviterName =
+          _hasInviter ? _inviterController.text.trim() : null;
       final reason = _reasonController.text.trim();
-      final inviterName = _hasInviter ? _inviterController.text.trim() : null;
 
       final validator = GroupJoinValidator(firestoreService: firestore);
 
-      // ── validateJoin يتحقق من الانتماء والحدود والحجز في خطوة واحدة
       final validation = await validator.validateJoin(
         user: currentUser,
         currentJoinedGroupsCount: homeProvider.joinedGroups.length,
         groupId: widget.group.id,
         groupType: widget.group.type,
-        characterName: characterName,
+        characterName: _selectedCharName,
         characterImageUrl: hasImage ? 'valid' : null,
         animeName: widget.group.animeName,
         animeId: widget.group.animeId,
@@ -308,21 +388,19 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       if (!validation.isValid) {
         if (mounted) setState(() => _isProcessing = false);
         if (!mounted) return;
-
         await AppDialog.show(
           context,
           title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه',
           content: validation.errorMessage ?? 'فشل التحقق من البيانات.',
           confirmText:
               validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
-          onConfirm: () {
-            Navigator.of(context, rootNavigator: true).pop();
-          },
+          onConfirm: () =>
+              Navigator.of(context, rootNavigator: true).pop(),
         );
         return;
       }
 
-      String? finalImageUrl = _autoFetchedImageUrl;
+      String? finalImageUrl = _selectedCharImageUrl;
       if (_pickedImage != null) {
         finalImageUrl = await storage.uploadRoleplayCharacterImage(
           groupId: widget.group.id,
@@ -343,8 +421,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         groupId: widget.group.id,
         role: Roles.member,
         joinedAt: DateTime.now(),
-        displayName: characterName,
-        characterName: characterName,
+        displayName: _selectedCharName,
+        characterName: _selectedCharName,
         characterImageUrl: finalImageUrl,
         characterReason: reason.isNotEmpty ? reason : null,
         realUserName: finalRealName,
@@ -391,7 +469,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         content:
             'حدث خطأ: ${e.toString().contains('Timeout') ? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
         confirmText: 'حسناً',
-        onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
+        onConfirm: () =>
+            Navigator.of(context, rootNavigator: true).pop(),
       );
     }
   }
@@ -429,6 +508,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+
                         // ── بانر اسم الأنمي
                         if (widget.group.type == GroupType.roleplay &&
                             widget.group.animeName != null)
@@ -440,86 +520,140 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                                 color: AppColors.primary.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color:
-                                        AppColors.primary.withOpacity(0.2)),
+                                    color: AppColors.primary
+                                        .withOpacity(0.2)),
                               ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.movie_filter,
-                                      color: AppColors.primary, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'هذه المجموعة تتبع أنمي: ${widget.group.animeName}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13),
-                                    ),
+                              child: Row(children: [
+                                const Icon(Icons.movie_filter,
+                                    color: AppColors.primary, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'هذه المجموعة تتبع أنمي: ${widget.group.animeName}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ]),
                             ),
                           ),
 
-                        // ── حقل اسم الشخصية + زر البحث
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: AppTextField(
-                                label: 'اسم الشخصية (بالانجليزية)',
-                                placeholder: 'مثال: Levi Ackerman',
-                                controller: _characterController,
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return 'الرجاء إدخال اسم الشخصية';
-                                  }
-                                  return null;
-                                },
-                                onChanged: (_) {
-                                  // إعادة تعيين الصورة عند تغيير الاسم
-                                  if (_autoFetchedImageUrl != null) {
-                                    setState(() {
-                                      _autoFetchedImageUrl = null;
-                                    });
-                                  }
-                                },
-                              ),
+                        // ── زر عرض الشخصيات المتاحة
+                        SizedBox(
+                          height: 54,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoadingCharacters || _isProcessing
+                                ? null
+                                : _showAvailableCharacters,
+                            icon: _isLoadingCharacters
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white))
+                                : const Icon(Icons.people_alt_outlined),
+                            label: Text(
+                              _selectedCharName != null
+                                  ? 'تغيير الشخصية'
+                                  : 'عرض الشخصيات المتاحة',
+                              style: const TextStyle(fontSize: 14),
                             ),
-                            const SizedBox(width: 8),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: SizedBox(
-                                height: 56,
-                                child: IconButton.filled(
-                                  onPressed: _isFetchingPreview ||
-                                          _isProcessing
-                                      ? null
-                                      : _fetchCharacterPreview,
-                                  icon: _isFetchingPreview
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white))
-                                      : const Icon(Icons.search),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // ── بطاقة الشخصية المختارة
+                        if (_selectedCharName != null)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.07),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: AppColors.primary.withOpacity(0.3)),
+                            ),
+                            child: Row(children: [
+                              GestureDetector(
+                                onTap: _isProcessing ? null : _pickImage,
+                                child: Stack(children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: _pickedImage != null
+                                        ? Image.file(_pickedImage!,
+                                            width: 55,
+                                            height: 65,
+                                            fit: BoxFit.cover)
+                                        : (_selectedCharImageUrl != null &&
+                                                _selectedCharImageUrl!
+                                                    .isNotEmpty
+                                            ? Image.network(
+                                                _selectedCharImageUrl!,
+                                                width: 55,
+                                                height: 65,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (_, __, ___) => Container(
+                                                  width: 55,
+                                                  height: 65,
+                                                  color: Colors.grey.shade300,
+                                                  child: const Icon(
+                                                      Icons.person),
+                                                ),
+                                              )
+                                            : Container(
+                                                width: 55,
+                                                height: 65,
+                                                color: Colors.grey.shade300,
+                                                child: const Icon(
+                                                    Icons.person),
+                                              )),
                                   ),
-                                ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                          color: AppColors.primary,
+                                          shape: BoxShape.circle),
+                                      child: const Icon(Icons.edit,
+                                          size: 10, color: Colors.white),
+                                    ),
+                                  ),
+                                ]),
                               ),
-                            ),
-                          ],
-                        ),
-                        const Text(
-                          ' تلميح: اكتب الاسم بالإنجليزية كما يظهر في MyAnimeList.',
-                          style:
-                              TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                    Text(_selectedCharName!,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14)),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                        'اضغط على الصورة لتغييرها اختيارياً',
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey)),
+                                  ])),
+                              const Icon(Icons.check_circle,
+                                  color: Colors.green, size: 20),
+                            ]),
+                          ),
+
                         const SizedBox(height: 16),
 
                         // ── هل تمت دعوتك؟
@@ -527,14 +661,16 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           title: const Text(
                             'هل تمت دعوتك من قبل عضو؟',
                             style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.bold),
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold),
                           ),
                           value: _hasInviter,
                           activeColor: AppColors.primary,
                           contentPadding: EdgeInsets.zero,
                           onChanged: _isProcessing
                               ? null
-                              : (val) => setState(() => _hasInviter = val),
+                              : (val) =>
+                                  setState(() => _hasInviter = val),
                         ),
                         if (_hasInviter) ...[
                           AppTextField(
@@ -559,73 +695,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           controller: _reasonController,
                           isMultiline: true,
                         ),
-                        const SizedBox(height: 16),
-
-                        // ── صورة الشخصية
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: _isProcessing ? null : _pickImage,
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? AppColors.darkSurface
-                                      : AppColors.lightSurface,
-                                  border: Border.all(
-                                      color: AppColors.primary
-                                          .withOpacity(0.3)),
-                                ),
-                                child: _pickedImage != null
-                                    ? ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(12),
-                                        child: Image.file(_pickedImage!,
-                                            fit: BoxFit.cover),
-                                      )
-                                    : _autoFetchedImageUrl != null
-                                        ? ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            child: Image.network(
-                                              _autoFetchedImageUrl!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error,
-                                                      stackTrace) =>
-                                                  Container(
-                                                color: Colors.grey[300],
-                                                child: const Icon(
-                                                    Icons.broken_image,
-                                                    color: Colors.grey),
-                                              ),
-                                              loadingBuilder: (context,
-                                                  child, loadingProgress) {
-                                                if (loadingProgress == null)
-                                                  return child;
-                                                return const Center(
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                            strokeWidth: 2));
-                                              },
-                                            ),
-                                          )
-                                        : const Center(
-                                            child: Icon(Icons.add_a_photo,
-                                                size: 32)),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Text(
-                                'سيتم استخدام هذه الصورة كصورتك الشخصية داخل هذه المجموعة فقط.',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: 24),
 
                         // ── أزرار
@@ -649,18 +718,17 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           ),
                           child: const Text('إلغاء'),
                         ),
+                        const SizedBox(height: 30),
                       ],
                     ),
                   ),
                 ),
 
-                // ── Loading overlay
                 if (_isProcessing)
                   Positioned.fill(
                     child: Container(
-                      color: Colors.black12,
-                      child: const AbsorbPointer(),
-                    ),
+                        color: Colors.black12,
+                        child: const AbsorbPointer()),
                   ),
               ],
             ),

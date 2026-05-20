@@ -164,14 +164,16 @@ class UserEditsGrid extends StatelessWidget {
     );
   }
 
-  // ← ضع الإيديت أولاً في القائمة العامة ثم افتح EditsScreen
   void _openEdit(BuildContext context, EditModel edit) {
     final editsProvider = context.read<EditsProvider>();
     editsProvider.prependEdit(edit);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const EditsScreen(startIndex: 0),
+        builder: (_) => ChangeNotifierProvider.value(
+          value: editsProvider,
+          child: const EditsScreen(startIndex: 0),
+        ),
       ),
     );
   }

@@ -21,29 +21,49 @@ class AnimeApiService {
         .trim();
   }
 
-  // >>> جديد: مطابقة ذكية بدل ==
+  // ── مطابقة ذكية مُحسَّنة
   static bool _isSameName(String input, String apiName) {
-  final a = _sanitize(input);
-  final b = _sanitize(apiName);
-  if (a.isEmpty || b.isEmpty) return false;
-  
-  // 1. تطابق تام
-  if (a == b) return true;
-  
-  // 2. اسمح فقط إذا المستخدم كتب جزء من الاسم الحقيقي
-  // "douma" يقبل "douma" ✓
-  // "douma" يقبل "douma upper rank" ✓
-  // "hiroto douma" يرفض "douma" ✗ ← هذا هو الإصلاح
-  final inputWords = a.split(' ');
-  final apiWords = b.split(' ');
-  
-  // المستخدم خاصو يكتب كلمات أقل أو قد اللي في API
-  if (inputWords.length <= apiWords.length) {
+    final a = _sanitize(input);
+    final b = _sanitize(apiName);
+    if (a.isEmpty || b.isEmpty) return false;
+
+    // 1. تطابق تام
+    if (a == b) return true;
+
+    // تجاهل الكلمات المكونة من حرف واحد
+    final inputWords = a.split(' ').where((w) => w.length > 1).toList();
+    final apiWords = b.split(' ').where((w) => w.length > 1).toList();
+
+    if (inputWords.isEmpty || apiWords.isEmpty) return false;
+
+    // 2. إذا المستخدم كتب كلمات أكثر من اسم الـ API → رفض فوري
+    // "Hiroto Douma" (2) vs "Douma" (1) → false
+    if (inputWords.length > apiWords.length) return false;
+
+    // 3. كل كلمات المستخدم يجب أن تكون موجودة في اسم الـ API
+    // "Douma" vs "Douma Upper Moon Two" → true
     return inputWords.every((word) => apiWords.contains(word));
   }
-  
-  return false;
-}
+
+  // ── مطابقة اسم الأنمي بشكل صارم
+  static bool _isSameAnime(String inputAnimeName, String apiAnimeTitle) {
+    final cleanInput = _sanitize(inputAnimeName);
+    final cleanTitle = _sanitize(apiAnimeTitle);
+
+    if (cleanInput.isEmpty || cleanTitle.isEmpty) return false;
+
+    if (cleanInput == cleanTitle) return true;
+
+    final inputWords = cleanInput.split(' ').where((w) => w.length > 2).toList();
+    final titleWords = cleanTitle.split(' ').where((w) => w.length > 2).toList();
+
+    if (inputWords.isEmpty) return false;
+
+    final commonWords = inputWords.where((w) => titleWords.contains(w)).length;
+    final threshold = (inputWords.length * 0.6).ceil();
+
+    return commonWords >= threshold;
+  }
 
   // =========================================================
   // SEARCH ANIME
@@ -185,7 +205,7 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // VALIDATE CHARACTER EXISTS - تم التعديل هنا
+  // VALIDATE CHARACTER EXISTS
   // =========================================================
   static Future<bool> validateCharacterExists({List<int>? animeIds, required String characterName}) async {
     if (animeIds == null || animeIds.isEmpty) {
@@ -201,7 +221,6 @@ class AnimeApiService {
         if (data['data'] == null || data['data'].isEmpty) continue;
         for (final item in data['data']) {
           final character = item['character'];
-          // >>> تغيير: استعمل _isSameName بدل ==
           if (_isSameName(characterName, character['name'] ?? '')) {
             return true;
           }
@@ -215,23 +234,25 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // IS CHARACTER IN FRANCHISE - تم التعديل هنا
+  // IS CHARACTER IN FRANCHISE
   // =========================================================
   static Future<bool> isCharacterInFranchise({required String animeName, required String characterName}) async {
     try {
-      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {'q': characterName, 'limit': '15'}); // زدنا limit
+      final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {'q': characterName, 'limit': '15'});
       final response = await http.get(url, headers: _headers).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);
       if (data['data'] == null || data['data'].isEmpty) return false;
-      final cleanAnimeName = _sanitize(animeName);
+
       for (final charData in data['data']) {
-        // >>> تغيير: استعمل _isSameName
+        // تحقق صارم من اسم الشخصية
         if (!_isSameName(characterName, charData['name'] ?? '')) continue;
+
         final List animeList = charData['anime'] ?? [];
         for (final animeEntry in animeList) {
-          final String title = _sanitize(animeEntry['anime']?['title'] ?? '');
-          if (title.contains(cleanAnimeName) || cleanAnimeName.contains(title)) {
+          final String title = animeEntry['anime']?['title'] ?? '';
+          // تحقق صارم من اسم الأنمي
+          if (_isSameAnime(animeName, title)) {
             return true;
           }
         }
@@ -244,7 +265,7 @@ class AnimeApiService {
   }
 
   // =========================================================
-  // GET CHARACTER DETAILS - تم التعديل هنا
+  // GET CHARACTER DETAILS
   // =========================================================
   static Future<Map<String, String>?> getCharacterDetails({List<int>? animeIds, required String characterName}) async {
     if (animeIds == null || animeIds.isEmpty) {
@@ -260,7 +281,6 @@ class AnimeApiService {
         for (final item in data['data']) {
           final character = item['character'];
           final String apiName = character['name'] ?? '';
-          // >>> تغيير
           if (_isSameName(characterName, apiName)) {
             return {'name': apiName, 'imageUrl': character['images']?['jpg']?['image_url'] ?? ''};
           }
@@ -273,7 +293,9 @@ class AnimeApiService {
     return await searchCharacterGlobal(characterName);
   }
 
-  // باقي الدوال تبقى كما هي بدون تغيير
+  // =========================================================
+  // SEARCH CHARACTER GLOBAL
+  // =========================================================
   static Future<Map<String, String>?> searchCharacterGlobal(String characterName) async {
     try {
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {'q': characterName, 'limit': '1'});
@@ -282,17 +304,24 @@ class AnimeApiService {
       final data = jsonDecode(response.body);
       if (data['data'] == null || data['data'].isEmpty) return null;
       final charData = data['data'][0];
-      return {'name': charData['name'] ?? '', 'imageUrl': charData['images']?['jpg']?['large_image_url'] ?? charData['images']?['jpg']?['image_url'] ?? ''};
+      return {
+        'name': charData['name'] ?? '',
+        'imageUrl': charData['images']?['jpg']?['large_image_url'] ?? charData['images']?['jpg']?['image_url'] ?? ''
+      };
     } catch (e) {
       debugPrint("❌ API Error (searchCharacterGlobal): $e");
       return null;
     }
   }
 
+  // =========================================================
+  // SEARCH CHARACTER MULTIPLE
+  // =========================================================
   static Future<List<Map<String, String>>> searchCharacterMultiple({List<int>? animeIds, required String characterName}) async {
     final List<Map<String, String>> results = [];
     final Set<String> addedNames = {};
     final cleanInput = _sanitize(characterName);
+
     if (animeIds != null && animeIds.isNotEmpty) {
       for (int id in animeIds) {
         try {
@@ -318,6 +347,7 @@ class AnimeApiService {
         }
       }
     }
+
     if (animeIds == null || animeIds.isEmpty) {
       try {
         final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {'q': characterName, 'limit': '8'});
@@ -329,7 +359,10 @@ class AnimeApiService {
             final String apiName = charData['name'] ?? '';
             if (apiName.isNotEmpty && !addedNames.contains(apiName)) {
               addedNames.add(apiName);
-              results.add({'name': apiName, 'imageUrl': charData['images']?['jpg']?['large_image_url'] ?? charData['images']?['jpg']?['image_url'] ?? ''});
+              results.add({
+                'name': apiName,
+                'imageUrl': charData['images']?['jpg']?['large_image_url'] ?? charData['images']?['jpg']?['image_url'] ?? ''
+              });
             }
           }
         }
@@ -337,9 +370,13 @@ class AnimeApiService {
         debugPrint("❌ API Error (searchCharacterMultiple global): $e");
       }
     }
+
     return results;
   }
 
+  // =========================================================
+  // GET CHARACTER IMAGE
+  // =========================================================
   static Future<String?> getCharacterImage(String characterName) async {
     try {
       final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {'q': characterName, 'limit': '1'});
@@ -352,5 +389,44 @@ class AnimeApiService {
       debugPrint("❌ API Error (GetCharacterImage): $e");
       return null;
     }
+  }
+  // =========================================================
+  // GET ALL ANIME CHARACTERS (للاختيار من القائمة)
+  // =========================================================
+  static Future<List<Map<String, dynamic>>> getAnimeCharacters({
+    required List<int> animeIds,
+  }) async {
+    final List<Map<String, dynamic>> results = [];
+    final Set<int> addedIds = {};
+
+    for (int id in animeIds) {
+      try {
+        await Future.delayed(const Duration(milliseconds: 400));
+        final url = Uri.parse('$_baseUrl/anime/$id/characters');
+        final response = await http
+            .get(url, headers: _headers)
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode != 200) continue;
+        final data = jsonDecode(response.body);
+        if (data['data'] == null || data['data'].isEmpty) continue;
+
+        for (final item in data['data']) {
+          final character = item['character'];
+          final int charId = character['mal_id'] ?? 0;
+          if (charId == 0 || addedIds.contains(charId)) continue;
+          addedIds.add(charId);
+          results.add({
+            'id': charId,
+            'name': character['name'] ?? '',
+            'imageUrl': character['images']?['jpg']?['image_url'] ?? '',
+          });
+        }
+      } catch (e) {
+        debugPrint("⚠️ getAnimeCharacters failed for ID $id: $e");
+        continue;
+      }
+    }
+
+    return results;
   }
 }

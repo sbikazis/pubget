@@ -57,10 +57,10 @@ class MessageBubble extends StatelessWidget {
     final bubbleColor = isGameMessage
         ? gameAccentColor!.withOpacity(0.15)
         : (isMe
-            ? AppColors.myMessageBubble
-            : (isDark
-                ? AppColors.otherMessageBubbleDark
-                : AppColors.otherMessageBubbleLight));
+              ? AppColors.myMessageBubble
+              : (isDark
+                    ? AppColors.otherMessageBubbleDark
+                    : AppColors.otherMessageBubbleLight));
 
     final textColor = isMe && !isGameMessage
         ? Colors.white
@@ -72,15 +72,17 @@ class MessageBubble extends StatelessWidget {
         onLongPress: () => _showOptionsSheet(context),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment:
-              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: isMe
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   _buildNameRow(roleColor),
                   if (message.reactions != null &&
@@ -138,8 +140,7 @@ class MessageBubble extends StatelessWidget {
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
@@ -220,14 +221,12 @@ class MessageBubble extends StatelessWidget {
                     Provider.of<PrivateChatProvider>(
                       context,
                       listen: false,
-                    ).deleteMessage(
-                        chatId: groupId, messageId: message.id);
+                    ).deleteMessage(chatId: groupId, messageId: message.id);
                   } else {
                     Provider.of<ChatProvider>(
                       context,
                       listen: false,
-                    ).deleteMessage(
-                        groupId: groupId, messageId: message.id);
+                    ).deleteMessage(groupId: groupId, messageId: message.id);
                   }
                   Navigator.pop(context);
                 },
@@ -244,8 +243,7 @@ class MessageBubble extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileScreen(userId: message.senderId),
+                      builder: (_) => ProfileScreen(userId: message.senderId),
                     ),
                   );
                 },
@@ -330,17 +328,16 @@ class MessageBubble extends StatelessWidget {
     bool isGame = false,
     Color? gameColor,
   ]) {
-    final String? avatarUrl = sender.displayImageUrl ??
+    final String? avatarUrl =
+        sender.displayImageUrl ??
         (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-        final userProvider =
-            Provider.of<UserProvider>(context, listen: false);
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
-        final targetUser =
-            await userProvider.getUserById(message.senderId);
+        final targetUser = await userProvider.getUserById(message.senderId);
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
@@ -360,41 +357,47 @@ class MessageBubble extends StatelessWidget {
           child: isGame
               ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
               : (avatarUrl != null && avatarUrl.isNotEmpty
-                  ? Image.network(
-                      avatarUrl,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.person,
-                              size: 20, color: AppColors.primary),
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
+                    ? Image.network(
+                        avatarUrl,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.person,
+                              size: 20,
+                              color: AppColors.primary,
                             ),
-                          ),
-                        );
-                      },
-                    )
-                  : const Icon(Icons.person,
-                      size: 20, color: AppColors.primary)),
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : const Icon(
+                        Icons.person,
+                        size: 20,
+                        color: AppColors.primary,
+                      )),
         ),
       ),
     );
   }
 
   Widget _buildNameRow(Color roleColor) {
-    final bool isPremiumUser =
-        message.senderIsPremium || sender.isPremium;
+    final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -553,49 +556,117 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
     });
   }
 
-  // ══════════════════════════════════════════════
-  // ── فتح EditsScreen عند الضغط على زر "عرض"
-  // ══════════════════════════════════════════════
+  // ← الإصلاح النهائي
   void _openInEditsScreen(BuildContext context) {
-    final editsProvider =
-        Provider.of<EditsProvider>(context, listen: false);
-    final allEdits = editsProvider.edits;
-
-    final index = allEdits.indexWhere(
-      (e) => e.videoUrl == widget.message.mediaUrl,
-    );
-
-    if (index != -1) {
-      // ← موجود في الفيد — ضعه أولاً وافتح
-      editsProvider.prependEdit(allEdits[index]);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const EditsScreen(startIndex: 0),
-        ),
-      );
-    } else {
-      // ← غير موجود — ابنه وضعه أولاً وافتح
-      final editModel = EditModel(
-        id: widget.message.id,
-        uploaderId: widget.message.senderId,
-        uploaderName: widget.message.senderName,
-        uploaderAvatar: widget.message.senderAvatar,
-        videoUrl: widget.message.mediaUrl!,
-        thumbnailUrl: widget.message.editThumbnail ?? '',
-        animeTitle: widget.message.editAnimeTitle ?? '',
-        caption: '',
-        likes: [],
-        commentsCount: 0,
-        views: 0,
-        createdAt: widget.message.createdAt,
-      );
-      editsProvider.prependEdit(editModel);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const EditsScreen(startIndex: 0),
-        ),
-      );
+    final editId = widget.message.editId;
+    if (editId == null || editId.isEmpty) {
+      // fallback: إذا ما كاينش editId، ما تفتحش
+      return;
     }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChangeNotifierProvider.value(
+          value: context.read<EditsProvider>(),
+          child: EditsScreen(initialEditId: editId),
+        ),
+      ),
+    );
   }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: _togglePlay,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: SizedBox(
+                width: 220,
+                height: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (_initialized && _controller!= null)
+                      SizedBox.expand(
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _controller!.value.size.width,
+                            height: _controller!.value.size.height,
+                            child: VideoPlayer(_controller!),
+                          ),
+                        ),
+                      )
+                    else if (widget.message.editThumbnail!= null &&
+                        widget.message.editThumbnail!.isNotEmpty)
+                      Image.network(widget.message.editThumbnail!, width: 220, height: 140, fit: BoxFit.cover)
+                    else
+                      Container(color: Colors.grey[900]),
+                    Icon(_isPlaying? Icons.pause_circle_filled : Icons.play_circle_fill,
+                        color: Colors.white70, size: 44),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () => _openInEditsScreen(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.open_in_full, color: Colors.white, size: 12),
+                              SizedBox(width: 4),
+                              Text('عرض', style: TextStyle(color: Colors.white, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                const Text('🎌 ', style: TextStyle(fontSize: 13)),
+                Expanded(
+                  child: Text(
+                    widget.message.editAnimeTitle?? 'إيديت',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _openInEditsScreen(context),
+                  child: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
