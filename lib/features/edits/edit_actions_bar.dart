@@ -46,11 +46,37 @@ class _EditActionsBarState extends State<EditActionsBar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _ActionButton(
-          icon: isLiked ? Icons.favorite : Icons.favorite_border,
-          color: isLiked ? Colors.red : Colors.white,
-          label: '${liveEdit.likes.length}',
+        // ── زر اللايك مع AnimatedSwitcher
+        GestureDetector(
           onTap: widget.onLike,
+          child: Column(
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.elasticOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) => ScaleTransition(
+                  scale: animation,
+                  child: child,
+                ),
+                child: Icon(
+                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  key: ValueKey(isLiked),
+                  color: isLiked ? Colors.red : Colors.white,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${liveEdit.likes.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 20),
         _ActionButton(

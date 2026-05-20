@@ -23,10 +23,56 @@ class _EditShareSheetState extends State<EditShareSheet>
   bool _isSending = false;
   String? _sentTo;
 
+  // ── بيانات الدردشات الخاصة مع المستخدمين (جلب مرة واحدة)
+  List<Map<String, dynamic>> _privateChats = [];
+  Map<String, dynamic> _usersCache = {};
+  bool _chatsLoading = true;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPrivateChatsWithUsers();
+  }
+
+  Future<void> _loadPrivateChatsWithUsers() async {
+    final user = context.read<UserProvider>().currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _chatsLoading = false);
+      return;
+    }
+
+    final privateChatProvider = context.read<PrivateChatProvider>();
+
+    try {
+      // 1. جلب قائمة الدردشات
+      final chats = await privateChatProvider.getUserChats(userId: user.id);
+
+      // 2. استخراج IDs المستخدمين الآخرين (بدون تكرار)
+      final otherIds = chats
+          .map((c) => c['userA'] == user.id ? c['userB'] : c['userA'])
+          .toSet()
+          .toList();
+
+      // 3. جلب بيانات جميع المستخدمين دفعة واحدة
+      final usersData = <String, dynamic>{};
+      await Future.wait(
+        otherIds.map((id) async {
+          final otherUser = await privateChatProvider.getUserById(id);
+          if (otherUser != null) usersData[id] = otherUser;
+        }),
+      );
+
+      if (mounted) {
+        setState(() {
+          _privateChats = chats;
+          _usersCache = usersData;
+          _chatsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _chatsLoading = false);
+    }
   }
 
   @override
@@ -157,7 +203,6 @@ class _EditShareSheetState extends State<EditShareSheet>
   @override
   Widget build(BuildContext context) {
     final homeProvider = context.read<HomeProvider>();
-    final privateChatProvider = context.read<PrivateChatProvider>();
     final user = context.read<UserProvider>().currentUser;
 
     final allGroups = [
@@ -295,8 +340,7 @@ class _EditShareSheetState extends State<EditShareSheet>
                             ),
                             title: Text(
                               group.name,
-                              style:
-                                  const TextStyle(color: Colors.white),
+                              style: const TextStyle(color: Colors.white),
                             ),
                             trailing: isSending
                                 ? const SizedBox(
@@ -323,48 +367,28 @@ class _EditShareSheetState extends State<EditShareSheet>
                           style: TextStyle(color: Colors.white38),
                         ),
                       )
-                    : FutureBuilder<List<Map<String, dynamic>>>(
-                        future: privateChatProvider.getUserChats(
-                            userId: user.id),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          }
-
-                          final chats = snapshot.data ?? [];
-
-                          if (chats.isEmpty) {
-                            return const Center(
-                              child: Text(
-                                'لا توجد دردشات خاصة',
-                                style:
-                                    TextStyle(color: Colors.white38),
-                              ),
-                            );
-                          }
-
-                          return ListView.builder(
-                            itemCount: chats.length,
-                            itemBuilder: (context, index) {
-                              final chat = chats[index];
-                              final chatId = chat['chatId'];
-                              final otherId = chat['userA'] == user.id
-                                  ? chat['userB']
-                                  : chat['userA'];
-                              final isSending = _isSending &&
-                                  _sentTo == chatId;
-
-                              return FutureBuilder<dynamic>(
-                                future: privateChatProvider
-                                    .getUserById(otherId),
-                                builder: (context, userSnap) {
-                                  final otherUser = userSnap.data;
-                                  final name = otherUser?.username ??
-                                      '...';
-                                  final avatar =
-                                      otherUser?.avatarUrl ?? '';
+                    : _chatsLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _privateChats.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'لا توجد دردشات خاصة',
+                                  style: TextStyle(color: Colors.white38),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: _privateChats.length,
+                                itemBuilder: (context, index) {
+                                  final chat = _privateChats[index];
+                                  final chatId = chat['chatId'];
+                                  final otherId = chat['userA'] == user.id
+                                      ? chat['userB']
+                                      : chat['userA'];
+                                  final otherUser = _usersCache[otherId];
+                                  final name = otherUser?.username ?? '...';
+                                  final avatar = otherUser?.avatarUrl ?? '';
+                                  final isSending =
+                                      _isSending && _sentTo == chatId;
 
                                   return ListTile(
                                     leading: CircleAvatar(
@@ -386,8 +410,7 @@ class _EditShareSheetState extends State<EditShareSheet>
                                         ? const SizedBox(
                                             width: 20,
                                             height: 20,
-                                            child:
-                                                CircularProgressIndicator(
+                                            child: CircularProgressIndicator(
                                               strokeWidth: 2,
                                               color: Colors.white,
                                             ),
@@ -398,11 +421,7 @@ class _EditShareSheetState extends State<EditShareSheet>
                                         chatId, otherId, name),
                                   );
                                 },
-                              );
-                            },
-                          );
-                        },
-                      ),
+                              ),
               ],
             ),
           ),

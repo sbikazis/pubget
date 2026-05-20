@@ -225,6 +225,12 @@ class _UploadEditScreenState
       return;
     }
 
+    // ── إيقاف الفيديو فوراً لتحرير الذاكرة قبل الخروج
+    if (_videoController != null &&
+        _videoController!.value.isPlaying) {
+      await _videoController!.pause();
+    }
+
     setState(() {
       _isSubmitting = true;
     });

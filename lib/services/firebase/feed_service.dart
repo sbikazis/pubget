@@ -95,11 +95,11 @@ class FeedService {
     required List<String> seenIds,
   }) async {
     try {
-      // 1. جلب الإيديتات الأخيرة (100 كحد أقصى)
+      // 1. جلب الإيديتات الأخيرة (50 كحد أقصى)
       final snap = await _firestore
           .collection('edits')
           .orderBy('createdAt', descending: true)
-          .limit(100)
+          .limit(50)
           .get();
 
       final all = snap.docs
@@ -137,21 +137,30 @@ class FeedService {
 
   // ══════════════════════════════════════════════
   // ── مسح قائمة المشاهَد (عند "عرض من البداية")
+  // ── مع معالجة حد الـ 500 عملية لكل batch
   // ══════════════════════════════════════════════
 
   Future<void> clearSeenIds(String userId) async {
     try {
-      final snap = await _firestore
+      const batchLimit = 500;
+      final Query query = _firestore
           .collection('user_seen')
           .doc(userId)
           .collection('seen_edits')
-          .get();
+          .limit(batchLimit);
 
-      final batch = _firestore.batch();
-      for (final doc in snap.docs) {
-        batch.delete(doc.reference);
+      while (true) {
+        final snap = await query.get();
+        if (snap.docs.isEmpty) break;
+
+        final batch = _firestore.batch();
+        for (final doc in snap.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+
+        if (snap.docs.length < batchLimit) break;
       }
-      await batch.commit();
     } catch (e) {
       debugPrint('❌ FeedService.clearSeenIds: $e');
     }

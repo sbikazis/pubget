@@ -11,15 +11,15 @@ import '../../core/constants/roles.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
-import '../../widgets/app_dialog.dart'; 
+import '../../widgets/app_dialog.dart';
 import '../../services/api/anime_api_service.dart';
 import '../../services/firebase/storage_service.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/home_provider.dart'; 
+import '../../providers/home_provider.dart';
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
-import '../../core/logic/subscription_limits_logic.dart'; 
+import '../../core/logic/subscription_limits_logic.dart';
 
 class CreateRoleplayGroupScreen extends StatefulWidget {
   const CreateRoleplayGroupScreen({Key? key}) : super(key: key);
@@ -37,22 +37,20 @@ class _CreateRoleplayGroupScreenState
   final TextEditingController _sloganCtrl = TextEditingController();
   final TextEditingController _descriptionCtrl = TextEditingController();
   final TextEditingController _animeCtrl = TextEditingController();
- 
   final TextEditingController _charNameCtrl = TextEditingController();
   final TextEditingController _charReasonCtrl = TextEditingController();
 
-  // ✅ الإضافة: التحكم بنوع المجموعة (محدد أو مفتوح)
   GroupType _selectedGroupType = GroupType.roleplay;
 
   File? _pickedImage;
-  File? _charPickedImage; // ✅ الإضافة: لحفظ صورة الشخصية المختارة يدوياً
+  File? _charPickedImage;
   bool _isLoading = false;
- 
+
   bool _isVerifyingAnime = false;
   String? _confirmedAnimeName;
   String? _confirmedAnimeImage;
-  dynamic _confirmedAnimeId; 
-  
+  dynamic _confirmedAnimeId;
+
   List<Map<String, dynamic>> _confirmedFranchiseData = [];
 
   bool _isVerifyingChar = false;
@@ -68,7 +66,6 @@ class _CreateRoleplayGroupScreenState
     setState(() => _pickedImage = File(file.path));
   }
 
-  // ✅ الإضافة: دالة لاختيار صورة الشخصية يدوياً
   Future<void> _pickCharImage() async {
     final XFile? file =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -89,7 +86,7 @@ class _CreateRoleplayGroupScreenState
       _isVerifyingAnime = true;
       _confirmedAnimeName = null;
       _confirmedAnimeId = null;
-      _confirmedFranchiseData = []; 
+      _confirmedFranchiseData = [];
       _confirmedCharName = null;
       _charPickedImage = null;
     });
@@ -98,17 +95,21 @@ class _CreateRoleplayGroupScreenState
       final result = await AnimeApiService.searchAnime(name);
       if (result != null) {
         final int malId = result['id'];
-        final franchiseFullData = await AnimeApiService.getAnimeFranchiseFullDetails(malId, result['title']);
+        final franchiseFullData =
+            await AnimeApiService.getAnimeFranchiseFullDetails(
+                malId, result['title']);
 
         setState(() {
           _confirmedAnimeName = result['title'];
           _confirmedAnimeImage = result['image_url'];
           _confirmedAnimeId = malId;
-          _confirmedFranchiseData = franchiseFullData; 
+          _confirmedFranchiseData = franchiseFullData;
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم العثور على هذا الأنمي، تأكد من الاسم بالإنجليزية')),
+          const SnackBar(
+              content: Text(
+                  'لم يتم العثور على هذا الأنمي، تأكد من الاسم بالإنجليزية')),
         );
       }
     } catch (e) {
@@ -118,7 +119,8 @@ class _CreateRoleplayGroupScreenState
     }
   }
 
-  // ✅ [تعديل 1] _verifyCharacter تستدعي searchCharacterMultiple وتعرض Bottom Sheet
+  // ── زر "فحص": يجلب قائمة الشخصيات فقط ويعرض Bottom Sheet للاختيار
+  // ── لا يستدعي validateCharacterExists هنا إطلاقاً
   Future<void> _verifyCharacter() async {
     final charName = _charNameCtrl.text.trim();
 
@@ -130,7 +132,7 @@ class _CreateRoleplayGroupScreenState
         return;
       }
     }
-    
+
     if (charName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال اسم شخصيتك')),
@@ -145,12 +147,16 @@ class _CreateRoleplayGroupScreenState
     });
 
     try {
-      // ✅ [تعديل 1] استدعاء searchCharacterMultiple بدل getCharacterImage/validateCharacterExists
       final List<int> franchiseIds = _selectedGroupType == GroupType.roleplay
-          ? (_confirmedFranchiseData.map((item) => item['id'] as int).toList()
-              ..addAll(_confirmedAnimeId != null ? [_confirmedAnimeId as int] : []))
+          ? (_confirmedFranchiseData
+                  .map((item) => item['id'] as int)
+                  .toList()
+                ..addAll(_confirmedAnimeId != null
+                    ? [_confirmedAnimeId as int]
+                    : []))
           : [];
 
+      // ── جلب قائمة الشخصيات للعرض فقط — بدون أي تحقق
       final results = await AnimeApiService.searchCharacterMultiple(
         animeIds: franchiseIds.isEmpty ? null : franchiseIds,
         characterName: charName,
@@ -161,15 +167,16 @@ class _CreateRoleplayGroupScreenState
       if (results.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_selectedGroupType == GroupType.openRoleplay
-              ? 'لم نجد هذه الشخصية في قاعدة البيانات'
-              : 'هذه الشخصية غير موجودة في السلسلة المحددة')),
+            SnackBar(
+                content: Text(_selectedGroupType == GroupType.openRoleplay
+                    ? 'لم نجد هذه الشخصية في قاعدة البيانات'
+                    : 'هذه الشخصية غير موجودة في السلسلة المحددة')),
           );
         }
         return;
       }
 
-      // ✅ [تعديل 2] عرض Bottom Sheet وتحديد _confirmedCharName و _confirmedCharImage فقط بعد اختيار المستخدم
+      // ── عرض القائمة للمستخدم ليختار منها
       if (mounted) {
         _showCharacterSelectionSheet(results);
       }
@@ -179,7 +186,6 @@ class _CreateRoleplayGroupScreenState
     }
   }
 
-  // ✅ [تعديل 2] Bottom Sheet لعرض قائمة الشخصيات للاختيار
   void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
     showModalBottomSheet(
       context: context,
@@ -192,7 +198,8 @@ class _CreateRoleplayGroupScreenState
           ),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -215,7 +222,8 @@ class _CreateRoleplayGroupScreenState
                     SizedBox(width: 8),
                     Text(
                       'اختر الشخصية الصحيحة',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -238,35 +246,38 @@ class _CreateRoleplayGroupScreenState
                   itemBuilder: (context, index) {
                     final char = characters[index];
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
-                          ? Image.network(
-                              char['imageUrl']!,
-                              width: 50,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                        child: char['imageUrl'] != null &&
+                                char['imageUrl']!.isNotEmpty
+                            ? Image.network(
+                                char['imageUrl']!,
+                                width: 50,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 50,
+                                  height: 60,
+                                  color: Colors.grey.shade300,
+                                  child: const Icon(Icons.person),
+                                ),
+                              )
+                            : Container(
                                 width: 50,
                                 height: 60,
                                 color: Colors.grey.shade300,
                                 child: const Icon(Icons.person),
                               ),
-                            )
-                          : Container(
-                              width: 50,
-                              height: 60,
-                              color: Colors.grey.shade300,
-                              child: const Icon(Icons.person),
-                            ),
                       ),
                       title: Text(
                         char['name'] ?? '',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      trailing: const Icon(Icons.check_circle_outline, color: AppColors.primary),
-                      // ✅ [تعديل 2] تحديد القيم فقط بعد اختيار المستخدم
+                      trailing: const Icon(Icons.check_circle_outline,
+                          color: AppColors.primary),
+                      // ── الاختيار يحدد القيم فقط هنا، لا تحقق API
                       onTap: () {
                         Navigator.pop(context);
                         setState(() {
@@ -315,65 +326,41 @@ class _CreateRoleplayGroupScreenState
   }
 
   String? _validateAnime(String? v) {
-    if (_selectedGroupType == GroupType.roleplay && _confirmedAnimeName == null) {
+    if (_selectedGroupType == GroupType.roleplay &&
+        _confirmedAnimeName == null) {
       return 'يجب التحقق من اسم الأنمي أولاً';
     }
     return null;
   }
 
   String? _validateCharacter(String? v) {
-    if (_confirmedCharName == null) return 'يجب التحقق من وجود الشخصية أولاً';
+    if (_confirmedCharName == null)
+      return 'يجب اختيار الشخصية من قائمة الفحص أولاً';
     return null;
   }
 
   Future<void> _createGroup() async {
     final auth = context.read<AuthProvider>();
     final groupProvider = context.read<GroupProvider>();
-    final homeProvider = context.read<HomeProvider>(); 
+    final homeProvider = context.read<HomeProvider>();
     final currentUser = auth.user;
 
     if (currentUser == null) return;
     if (!_formKey.currentState!.validate()) return;
 
-    // ✅ [تعديل 3] تحقق صريح من تأكيد الشخصية قبل المتابعة
+    // ── guard: يجب أن يكون المستخدم اختار شخصية من القائمة
     if (_confirmedCharName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء التحقق من شخصيتك أولاً قبل إنشاء المجموعة')),
+        const SnackBar(
+            content:
+                Text('الرجاء اختيار شخصيتك من قائمة الفحص أولاً')),
       );
       return;
     }
 
-    // ✅ [تعديل جديد] خط دفاع ثانٍ: التحقق من أن الشخصية تنتمي للأنمي المحدد
-    if (_selectedGroupType == GroupType.roleplay) {
-      setState(() => _isLoading = true);
-
-      final List<int> franchiseIds = _confirmedFranchiseData
-          .map((item) => item['id'] as int)
-          .toList();
-      if (_confirmedAnimeId != null && !franchiseIds.contains(_confirmedAnimeId as int)) {
-        franchiseIds.add(_confirmedAnimeId as int);
-      }
-
-      final bool charValid = await AnimeApiService.validateCharacterExists(
-        animeIds: franchiseIds,
-        characterName: _confirmedCharName!,
-      );
-
-      if (!charValid) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('الشخصية التي اخترتها لا تنتمي لأنمي هذه المجموعة')),
-          );
-          setState(() => _isLoading = false);
-        }
-        return;
-      }
-
-      setState(() => _isLoading = false);
-    }
-
+    // ── التحقق من حدود الاشتراك
     final limitCheck = SubscriptionLimitsLogic.canCreateGroup(
-      currentUser, 
+      currentUser,
       homeProvider.myGroups.length,
     );
 
@@ -383,7 +370,8 @@ class _CreateRoleplayGroupScreenState
         builder: (context) => AppDialog(
           title: 'تنبيه الحدود',
           content: limitCheck.message ?? '',
-          confirmText: limitCheck.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          confirmText:
+              limitCheck.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
           onConfirm: () => Navigator.pop(context),
         ),
       );
@@ -404,7 +392,6 @@ class _CreateRoleplayGroupScreenState
         );
       }
 
-      // ✅ التعديل: التعامل مع صورة الشخصية (سواء كانت من MAL أو مرفوعة يدوياً)
       String finalCharImageUrl = _confirmedCharImage ?? '';
       if (_charPickedImage != null) {
         finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
@@ -424,14 +411,19 @@ class _CreateRoleplayGroupScreenState
         description: _descriptionCtrl.text.trim(),
         slogan: _sloganCtrl.text.trim(),
         imageUrl: groupImageUrl,
-        type: _selectedGroupType, // ✅ إرسال النوع المختار
-        animeName: _selectedGroupType == GroupType.roleplay ? _confirmedAnimeName : null,
-        animeId: _selectedGroupType == GroupType.roleplay ? _confirmedAnimeId : null, 
-        franchiseIds: _selectedGroupType == GroupType.roleplay ? franchiseIds : [],
+        type: _selectedGroupType,
+        animeName: _selectedGroupType == GroupType.roleplay
+            ? _confirmedAnimeName
+            : null,
+        animeId: _selectedGroupType == GroupType.roleplay
+            ? _confirmedAnimeId
+            : null,
+        franchiseIds:
+            _selectedGroupType == GroupType.roleplay ? franchiseIds : [],
         founderId: currentUser.id,
         membersCount: 1,
-        maxMembers: currentUser.isPremium 
-            ? Limits.maxMembersPremium 
+        maxMembers: currentUser.isPremium
+            ? Limits.maxMembersPremium
             : Limits.maxMembersFree,
         isPromoted: false,
         promotionExpiresAt: null,
@@ -445,7 +437,7 @@ class _CreateRoleplayGroupScreenState
         joinedAt: DateTime.now(),
         displayName: _confirmedCharName,
         characterName: _confirmedCharName,
-        characterImageUrl: finalCharImageUrl, // ✅ استخدام الرابط النهائي
+        characterImageUrl: finalCharImageUrl,
         characterReason: _charReasonCtrl.text.trim(),
         realUserName: currentUser.username,
         realUserImageUrl: currentUser.avatarUrl,
@@ -458,7 +450,9 @@ class _CreateRoleplayGroupScreenState
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إنشاء الإمبراطورية بنجاح، أيها الشوغو!')),
+        const SnackBar(
+            content:
+                Text('تم إنشاء الإمبراطورية بنجاح، أيها الشوغو!')),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -481,7 +475,6 @@ class _CreateRoleplayGroupScreenState
     super.dispose();
   }
 
-  // ✅ التعديل: تطوير الويدجت لدعم اختيار صورة يدوية وعرضها
   Widget _buildSimpleTile(String title, String? imageUrl, bool isDark) {
     return GestureDetector(
       onTap: _pickCharImage,
@@ -499,19 +492,24 @@ class _CreateRoleplayGroupScreenState
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: _charPickedImage != null 
-                    ? Image.file(_charPickedImage!, width: 45, height: 45, fit: BoxFit.cover)
-                    : (imageUrl != null
-                        ? Image.network(imageUrl, width: 45, height: 45, fit: BoxFit.cover)
-                        : Container(color: Colors.grey, width: 45, height: 45)),
+                  child: _charPickedImage != null
+                      ? Image.file(_charPickedImage!,
+                          width: 45, height: 45, fit: BoxFit.cover)
+                      : (imageUrl != null
+                          ? Image.network(imageUrl,
+                              width: 45, height: 45, fit: BoxFit.cover)
+                          : Container(
+                              color: Colors.grey, width: 45, height: 45)),
                 ),
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                    child: const Icon(Icons.edit, size: 10, color: Colors.white),
+                    decoration: const BoxDecoration(
+                        color: AppColors.primary, shape: BoxShape.circle),
+                    child:
+                        const Icon(Icons.edit, size: 10, color: Colors.white),
                   ),
                 ),
               ],
@@ -521,8 +519,11 @@ class _CreateRoleplayGroupScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const Text('اضغط على الصورة لتغييرها اختيارياً', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text(title,
+                      style:
+                          const TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('اضغط على الصورة لتغييرها اختيارياً',
+                      style: TextStyle(fontSize: 10, color: Colors.grey)),
                 ],
               ),
             ),
@@ -541,12 +542,17 @@ class _CreateRoleplayGroupScreenState
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: imageUrl != null 
-              ? Image.network(imageUrl, height: 60, width: 60, fit: BoxFit.cover)
-              : Container(color: Colors.grey, height: 60, width: 60),
+            child: imageUrl != null
+                ? Image.network(imageUrl,
+                    height: 60, width: 60, fit: BoxFit.cover)
+                : Container(color: Colors.grey, height: 60, width: 60),
           ),
           const SizedBox(height: 4),
-          Text(title, style: const TextStyle(fontSize: 9), maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+          Text(title,
+              style: const TextStyle(fontSize: 9),
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -575,31 +581,36 @@ class _CreateRoleplayGroupScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ✅ 1. اختيار نوع المجموعة (محدد أو مفتوح)
                     Row(
                       children: [
                         Expanded(
                           child: ChoiceChip(
                             label: const Center(child: Text('أنمي محدد')),
-                            selected: _selectedGroupType == GroupType.roleplay,
+                            selected:
+                                _selectedGroupType == GroupType.roleplay,
                             onSelected: (val) {
-                              if (val) setState(() {
-                                _selectedGroupType = GroupType.roleplay;
-                                _confirmedCharName = null;
-                              });
+                              if (val)
+                                setState(() {
+                                  _selectedGroupType = GroupType.roleplay;
+                                  _confirmedCharName = null;
+                                });
                             },
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: ChoiceChip(
-                            label: const Center(child: Text('تقمص مفتوح')),
-                            selected: _selectedGroupType == GroupType.openRoleplay,
+                            label:
+                                const Center(child: Text('تقمص مفتوح')),
+                            selected: _selectedGroupType ==
+                                GroupType.openRoleplay,
                             onSelected: (val) {
-                              if (val) setState(() {
-                                _selectedGroupType = GroupType.openRoleplay;
-                                _confirmedCharName = null;
-                              });
+                              if (val)
+                                setState(() {
+                                  _selectedGroupType =
+                                      GroupType.openRoleplay;
+                                  _confirmedCharName = null;
+                                });
                             },
                           ),
                         ),
@@ -615,17 +626,23 @@ class _CreateRoleplayGroupScreenState
                                 width: 120,
                                 height: 120,
                                 decoration: BoxDecoration(
-                                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                                  color: isDark
+                                      ? AppColors.darkCard
+                                      : AppColors.lightCard,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                                    color: isDark
+                                        ? AppColors.darkBorder
+                                        : AppColors.lightBorder,
                                     width: 1,
                                   ),
                                 ),
                                 child: Icon(
                                   Icons.camera_alt_outlined,
                                   size: 40,
-                                  color: isDark ? AppColors.darkTextSecondary : Colors.grey,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : Colors.grey,
                                 ),
                               )
                             : Container(
@@ -649,6 +666,7 @@ class _CreateRoleplayGroupScreenState
                       ),
                     ),
                     const SizedBox(height: 20),
+
                     AppTextField(
                       controller: _nameCtrl,
                       label: 'اسم المجموعة',
@@ -675,8 +693,7 @@ class _CreateRoleplayGroupScreenState
                       maxLength: Limits.maxGroupDescriptionLength,
                       validator: _validateDescription,
                     ),
-                    
-                    // ✅ 2. إخفاء/إظهار قسم الأنمي بناءً على النوع
+
                     if (_selectedGroupType == GroupType.roleplay) ...[
                       const SizedBox(height: 12),
                       Row(
@@ -693,7 +710,7 @@ class _CreateRoleplayGroupScreenState
                                 if (_confirmedAnimeName != null) {
                                   setState(() {
                                     _confirmedAnimeName = null;
-                                    _confirmedAnimeId = null; 
+                                    _confirmedAnimeId = null;
                                     _confirmedFranchiseData = [];
                                     _confirmedCharName = null;
                                     _charPickedImage = null;
@@ -709,28 +726,40 @@ class _CreateRoleplayGroupScreenState
                               height: 54,
                               width: 80,
                               child: ElevatedButton(
-                                onPressed: _isVerifyingAnime ? null : _verifyAnime,
+                                onPressed: _isVerifyingAnime
+                                    ? null
+                                    : _verifyAnime,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(10)),
                                   padding: EdgeInsets.zero,
                                 ),
                                 child: _isVerifyingAnime
-                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Text('تحقق', style: TextStyle(fontSize: 13)),
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
+                                    : const Text('تحقق',
+                                        style: TextStyle(fontSize: 13)),
                               ),
                             ),
                           ),
                         ],
                       ),
-                      // ✅ الإضافة: تنويه نصي للمستخدم
                       const Padding(
                         padding: EdgeInsets.only(top: 4, right: 4),
                         child: Text(
-                          'حاول كتابة الإسم كما هو من موقع MAL وفي حالة عدم ظهور كل الأجزاء اكتب إسم الموسم الأخير بدقة ',
-                          style: TextStyle(fontSize: 10, color: Colors.grey, fontStyle: FontStyle.italic),
+                          'حاول كتابة الإسم كما هو من موقع MAL وفي حالة عدم ظهور كل الأجزاء اكتب إسم الموسم الأخير بدقة',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                              fontStyle: FontStyle.italic),
                         ),
                       ),
 
@@ -739,10 +768,14 @@ class _CreateRoleplayGroupScreenState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.only(top: 12, bottom: 8),
+                              padding: const EdgeInsets.only(
+                                  top: 12, bottom: 8),
                               child: Text(
                                 "السلسلة المكتشفة (${_confirmedFranchiseData.length}):",
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primary),
                               ),
                             ),
                             SizedBox(
@@ -751,11 +784,12 @@ class _CreateRoleplayGroupScreenState
                                 scrollDirection: Axis.horizontal,
                                 itemCount: _confirmedFranchiseData.length,
                                 itemBuilder: (context, index) {
-                                  final item = _confirmedFranchiseData[index];
+                                  final item =
+                                      _confirmedFranchiseData[index];
                                   return _buildFranchiseTile(
-                                    item['title'], 
-                                    item['image_url'], 
-                                    isDark
+                                    item['title'],
+                                    item['image_url'],
+                                    isDark,
                                   );
                                 },
                               ),
@@ -768,7 +802,10 @@ class _CreateRoleplayGroupScreenState
 
                     const Text(
                       'بيانات شخصيتك (الشوغو)',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -798,17 +835,27 @@ class _CreateRoleplayGroupScreenState
                             height: 54,
                             width: 80,
                             child: ElevatedButton(
-                              onPressed: _isVerifyingChar ? null : _verifyCharacter,
+                              onPressed: _isVerifyingChar
+                                  ? null
+                                  : _verifyCharacter,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.orange,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(10)),
                                 padding: EdgeInsets.zero,
                               ),
                               child: _isVerifyingChar
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Text('فحص', style: TextStyle(fontSize: 13)),
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white))
+                                  : const Text('فحص',
+                                      style: TextStyle(fontSize: 13)),
                             ),
                           ),
                         ),
@@ -818,13 +865,15 @@ class _CreateRoleplayGroupScreenState
                     AppTextField(
                       controller: _charReasonCtrl,
                       label: 'لماذا اخترت هذه الشخصية؟',
-                      placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
+                      placeholder:
+                          'اختياري: اكتب سبب تقمصك لهذه الشخصية',
                       isMultiline: true,
                       maxLength: 150,
                     ),
 
                     if (_confirmedCharName != null)
-                      _buildSimpleTile(_confirmedCharName!, _confirmedCharImage, isDark),
+                      _buildSimpleTile(
+                          _confirmedCharName!, _confirmedCharImage, isDark),
 
                     const SizedBox(height: 32),
                     AppButton(
@@ -837,7 +886,9 @@ class _CreateRoleplayGroupScreenState
                       'بصفتك الشوغو، سيتم حجز هذه الشخصية لك تلقائياً ولا يمكن لأحد تغييرها.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
+                        color: isDark
+                            ? AppColors.darkTextHint
+                            : AppColors.lightTextHint,
                       ),
                       textAlign: TextAlign.center,
                     ),

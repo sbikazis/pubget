@@ -27,7 +27,6 @@ import '../../core/constants/group_type.dart';
 
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
-
 import '../../widgets/app_dialog.dart';
 import '../../widgets/empty_state_widget.dart';
 
@@ -83,10 +82,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     }
   }
 
-  // =========================================================
-  // ✅ [تعديل] _fetchCharacterPreview تستدعي searchCharacterMultiple
-  // وتعرض Bottom Sheet للاختيار بدل حفظ أول نتيجة مباشرة
-  // =========================================================
+  // ── زر البحث: يجلب قائمة الشخصيات فقط ويعرض Bottom Sheet للاختيار
+  // ── لا يستدعي validateCharacterExists هنا إطلاقاً
   Future<void> _fetchCharacterPreview() async {
     final name = _characterController.text.trim();
     if (name.isEmpty) {
@@ -99,13 +96,14 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     setState(() => _isFetchingPreview = true);
 
     try {
-      // ✅ [تعديل] تحديد franchiseIds بناءً على نوع المجموعة
-      final List<int> franchiseIds = widget.group.type == GroupType.openRoleplay
-          ? []
-          : (widget.group.franchiseIds?.cast<int>() ??
-              (widget.group.animeId != null ? [widget.group.animeId as int] : []));
+      final List<int> franchiseIds =
+          widget.group.type == GroupType.openRoleplay
+              ? []
+              : (widget.group.franchiseIds?.cast<int>() ??
+                  (widget.group.animeId != null
+                      ? [widget.group.animeId as int]
+                      : []));
 
-      // ✅ [تعديل] استدعاء searchCharacterMultiple بدل getCharacterImage/validateCharacterExists
       final results = await AnimeApiService.searchCharacterMultiple(
         animeIds: franchiseIds.isEmpty ? null : franchiseIds,
         characterName: name,
@@ -116,15 +114,16 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       if (results.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(widget.group.type == GroupType.openRoleplay
-                ? 'لم نجد صورة لهذه الشخصية'
-                : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
+            SnackBar(
+                content: Text(
+                    widget.group.type == GroupType.openRoleplay
+                        ? 'لم نجد صورة لهذه الشخصية'
+                        : 'هذه الشخصية لا تنتمي لسلسلة ${widget.group.animeName}')),
           );
         }
         return;
       }
 
-      // ✅ [تعديل] عرض Bottom Sheet للاختيار
       if (mounted) {
         _showCharacterSelectionSheet(results);
       }
@@ -134,7 +133,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     }
   }
 
-  // ✅ [تعديل] Bottom Sheet لعرض قائمة الشخصيات للاختيار
   void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
     showModalBottomSheet(
       context: context,
@@ -147,7 +145,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           ),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -170,7 +169,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     SizedBox(width: 8),
                     Text(
                       'اختر الشخصية الصحيحة',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -193,10 +193,12 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                   itemBuilder: (context, index) {
                     final char = characters[index];
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null && char['imageUrl']!.isNotEmpty
+                        child: char['imageUrl'] != null &&
+                                char['imageUrl']!.isNotEmpty
                             ? Image.network(
                                 char['imageUrl']!,
                                 width: 50,
@@ -218,17 +220,19 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                       ),
                       title: Text(
                         char['name'] ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style:
+                            const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      trailing: const Icon(Icons.check_circle_outline, color: AppColors.primary),
-                      // ✅ [تعديل] تحديد القيم فقط بعد اختيار المستخدم
+                      trailing: const Icon(Icons.check_circle_outline,
+                          color: AppColors.primary),
+                      // ── الاختيار يحدد القيم فقط هنا، لا تحقق API
                       onTap: () {
                         Navigator.pop(context);
                         setState(() {
                           _autoFetchedImageUrl = char['imageUrl'];
                           _pickedImage = null;
-                          // ✅ تحديث اسم الشخصية في الحقل بالاسم الرسمي من MAL
-                          _characterController.text = char['name'] ?? _characterController.text;
+                          _characterController.text =
+                              char['name'] ?? _characterController.text;
                         });
                       },
                     );
@@ -243,31 +247,22 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     );
   }
 
+  // ── التحقق الكامل يحدث هنا فقط عند الضغط على "تقديم طلب الانضمام"
+  // ── validateCharacterExists محذوفة من هنا — validateJoin يتكفل بها
   Future<void> _submitJoinRequest(UserModel currentUser) async {
     if (!_formKey.currentState!.validate()) return;
 
-    // ✅ [تعديل] التحقق من صحة الشخصية قبل المتابعة (للمجموعات من نوع roleplay فقط)
-    if (widget.group.type == GroupType.roleplay) {
-      final characterName = _characterController.text.trim();
-      final List<int> franchiseIds = widget.group.franchiseIds?.cast<int>() ??
-          (widget.group.animeId != null ? [widget.group.animeId as int] : []);
+    // ── guard: يجب أن يكون المستخدم اختار صورة (من البحث أو يدوياً)
+    final hasImage = _pickedImage != null ||
+        (_autoFetchedImageUrl != null && _autoFetchedImageUrl!.isNotEmpty);
 
-      final isValid = await AnimeApiService.validateCharacterExists(
-        animeIds: franchiseIds.isEmpty ? null : franchiseIds,
-        characterName: characterName,
+    if (!hasImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'الرجاء البحث عن الشخصية واختيارها من القائمة أولاً')),
       );
-
-      if (!isValid) {
-        if (!mounted) return;
-        await AppDialog.show(
-          context,
-          title: 'شخصية غير صالحة',
-          content: 'الشخصية التي اخترتها لا تنتمي لأنمي هذه المجموعة، الرجاء اختيار شخصية من ${widget.group.animeName}',
-          confirmText: 'حسناً',
-          onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
-        );
-        return;
-      }
+      return;
     }
 
     try {
@@ -280,12 +275,12 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
 
       final characterName = _characterController.text.trim();
       final reason = _reasonController.text.trim();
-      final inviterName = _hasInviter ? _inviterController.text.trim() : null;
-
-      final hasImage = _pickedImage != null || (_autoFetchedImageUrl != null && _autoFetchedImageUrl!.isNotEmpty);
+      final inviterName =
+          _hasInviter ? _inviterController.text.trim() : null;
 
       final validator = GroupJoinValidator(firestoreService: firestore);
 
+      // ── validateJoin يتحقق من الشخصية والحدود والحجز في خطوة واحدة
       final validation = await validator.validateJoin(
         user: currentUser,
         currentJoinedGroupsCount: homeProvider.joinedGroups.length,
@@ -306,8 +301,10 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         await AppDialog.show(
           context,
           title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه',
-          content: validation.errorMessage ?? 'فشل التحقق من البيانات.',
-          confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          content:
+              validation.errorMessage ?? 'فشل التحقق من البيانات.',
+          confirmText:
+              validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
           onConfirm: () {
             Navigator.of(context, rootNavigator: true).pop();
           },
@@ -324,9 +321,9 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         );
       }
 
-      final String finalRealName = (currentUser.username.isNotEmpty)
+      final String finalRealName = currentUser.username.isNotEmpty
           ? currentUser.username
-          : "مستخدم جديد";
+          : 'مستخدم جديد';
 
       String? finalInviterId = validation.foundInviterId;
       if (finalInviterId == currentUser.id) finalInviterId = null;
@@ -367,14 +364,14 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       await AppDialog.show(
         context,
         title: 'تم إرسال الطلب',
-        content: 'لقد تم إرسال طلبك بنجاح. سيقوم الشوغو بمراجعته وقبوله قريباً!',
+        content:
+            'لقد تم إرسال طلبك بنجاح. سيقوم الشوغو بمراجعته وقبوله قريباً!',
         confirmText: 'حسناً',
         onConfirm: () {
           Navigator.of(context, rootNavigator: true).pop();
           Navigator.of(context).pop(true);
         },
       );
-
     } catch (e) {
       debugPrint("❌ Error in _submitJoinRequest: $e");
       if (mounted) setState(() => _isProcessing = false);
@@ -382,9 +379,11 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       await AppDialog.show(
         context,
         title: 'فشل العملية',
-        content: 'حدث خطأ: ${e.toString().contains('Timeout') ? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
+        content:
+            'حدث خطأ: ${e.toString().contains('Timeout') ? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
         confirmText: 'حسناً',
-        onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
+        onConfirm: () =>
+            Navigator.of(context, rootNavigator: true).pop(),
       );
     }
   }
@@ -411,30 +410,38 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           : Stack(
               children: [
                 SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 18),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (widget.group.type == GroupType.roleplay && widget.group.animeName != null)
+                        if (widget.group.type == GroupType.roleplay &&
+                            widget.group.animeName != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
+                                color:
+                                    AppColors.primary.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                                border: Border.all(
+                                    color: AppColors.primary
+                                        .withOpacity(0.2)),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.movie_filter, color: AppColors.primary, size: 20),
+                                  const Icon(Icons.movie_filter,
+                                      color: AppColors.primary, size: 20),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       'هذه المجموعة تتبع أنمي: ${widget.group.animeName}',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13),
                                     ),
                                   ),
                                 ],
@@ -451,7 +458,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                                 placeholder: 'مثال: Levi Ackerman',
                                 controller: _characterController,
                                 validator: (v) {
-                                  if (v == null || v.trim().isEmpty) return 'الرجاء إدخال اسم الشخصية';
+                                  if (v == null || v.trim().isEmpty)
+                                    return 'الرجاء إدخال اسم الشخصية';
                                   return null;
                                 },
                               ),
@@ -462,13 +470,23 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                               child: SizedBox(
                                 height: 56,
                                 child: IconButton.filled(
-                                  onPressed: _isFetchingPreview || _isProcessing ? null : _fetchCharacterPreview,
+                                  onPressed: _isFetchingPreview ||
+                                          _isProcessing
+                                      ? null
+                                      : _fetchCharacterPreview,
                                   icon: _isFetchingPreview
-                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white))
                                       : const Icon(Icons.search),
                                   style: IconButton.styleFrom(
                                     backgroundColor: AppColors.primary,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
                                   ),
                                 ),
                               ),
@@ -477,24 +495,34 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                         ),
                         const Text(
                           ' تلميح: اكتب الاسم بالإنجليزية كما يظهر في MyAnimeList.',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.grey),
                         ),
                         const SizedBox(height: 16),
 
                         SwitchListTile(
-                          title: const Text('هل تمت دعوتك من قبل عضو؟', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                          title: const Text('هل تمت دعوتك من قبل عضو؟',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold)),
                           value: _hasInviter,
                           activeColor: AppColors.primary,
                           contentPadding: EdgeInsets.zero,
-                          onChanged: _isProcessing ? null : (val) => setState(() => _hasInviter = val),
+                          onChanged: _isProcessing
+                              ? null
+                              : (val) =>
+                                  setState(() => _hasInviter = val),
                         ),
                         if (_hasInviter) ...[
                           AppTextField(
                             label: 'اسم العضو الداعي',
-                            placeholder: 'اكتب اسم العضو أو اسم شخصيته',
+                            placeholder:
+                                'اكتب اسم العضو أو اسم شخصيته',
                             controller: _inviterController,
                             validator: (v) {
-                              if (_hasInviter && (v == null || v.trim().isEmpty)) return 'الرجاء إدخال اسم الداعي';
+                              if (_hasInviter &&
+                                  (v == null || v.trim().isEmpty))
+                                return 'الرجاء إدخال اسم الداعي';
                               return null;
                             },
                           ),
@@ -508,46 +536,71 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           isMultiline: true,
                         ),
                         const SizedBox(height: 16),
+
                         Row(
                           children: [
                             GestureDetector(
-                              onTap: _isProcessing ? null : _pickImage,
+                              onTap:
+                                  _isProcessing ? null : _pickImage,
                               child: Container(
                                 width: 100,
                                 height: 100,
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).brightness == Brightness.dark
+                                  borderRadius:
+                                      BorderRadius.circular(12),
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
                                       ? AppColors.darkSurface
                                       : AppColors.lightSurface,
-                                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                                  border: Border.all(
+                                      color: AppColors.primary
+                                          .withOpacity(0.3)),
                                 ),
                                 child: _pickedImage != null
                                     ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: Image.file(_pickedImage!, fit: BoxFit.cover),
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                        child: Image.file(_pickedImage!,
+                                            fit: BoxFit.cover),
                                       )
                                     : _autoFetchedImageUrl != null
                                         ? SizedBox(
                                             width: 100,
                                             height: 100,
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      12),
                                               child: Image.network(
                                                 _autoFetchedImageUrl!,
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) => Container(
+                                                errorBuilder: (context,
+                                                        error,
+                                                        stackTrace) =>
+                                                    Container(
                                                   color: Colors.grey[300],
-                                                  child: const Icon(Icons.broken_image, color: Colors.grey),
+                                                  child: const Icon(
+                                                      Icons.broken_image,
+                                                      color: Colors.grey),
                                                 ),
-                                                loadingBuilder: (context, child, loadingProgress) {
-                                                  if (loadingProgress == null) return child;
-                                                  return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                                loadingBuilder: (context,
+                                                    child,
+                                                    loadingProgress) {
+                                                  if (loadingProgress ==
+                                                      null) return child;
+                                                  return const Center(
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                              strokeWidth:
+                                                                  2));
                                                 },
                                               ),
                                             ),
                                           )
-                                        : const Center(child: Icon(Icons.add_a_photo, size: 32)),
+                                        : const Center(
+                                            child: Icon(
+                                                Icons.add_a_photo,
+                                                size: 32)),
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -564,14 +617,21 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                         AppButton(
                           text: 'تقديم طلب الانضمام',
                           isLoading: _isProcessing,
-                          onPressed: _isProcessing ? null : () => _submitJoinRequest(currentUser),
+                          onPressed: _isProcessing
+                              ? null
+                              : () => _submitJoinRequest(currentUser),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: _isProcessing ? null : () => Navigator.of(context).pop(false),
+                          onPressed: _isProcessing
+                              ? null
+                              : () => Navigator.of(context).pop(false),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
                           ),
                           child: const Text('إلغاء'),
                         ),

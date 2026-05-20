@@ -60,6 +60,7 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget>
 
     if (oldWidget.edit.id != widget.edit.id) {
       _stopWatching();
+      _watchStartTime = null;
       _controller.dispose();
       _initialized = false;
       if (mounted) setState(() {});
@@ -85,13 +86,14 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget>
 
   // ── إيقاف وإرسال وقت المشاهدة
   void _stopWatching() {
+    if (!_initialized) return;
     if (_watchStartTime == null) return;
 
     final watchSeconds =
         DateTime.now().difference(_watchStartTime!).inSeconds;
     _watchStartTime = null;
 
-    if (!_initialized || watchSeconds <= 0) return;
+    if (watchSeconds <= 0) return;
 
     final totalDuration =
         _controller.value.duration.inSeconds.toDouble();

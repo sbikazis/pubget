@@ -22,10 +22,23 @@ class EditCommentsSheet extends StatefulWidget {
 class _EditCommentsSheetState extends State<EditCommentsSheet> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isSending = false;
   String? _replyToId;
   String? _replyToName;
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
   Future<void> _sendComment() async {
     final text = _controller.text.trim();
@@ -66,6 +79,8 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         _replyToName = null;
         _isSending = false;
       });
+
+      _scrollToBottom();
     } catch (e) {
       setState(() => _isSending = false);
       if (mounted) {
@@ -110,6 +125,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -186,6 +202,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                 }
 
                 return ListView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
