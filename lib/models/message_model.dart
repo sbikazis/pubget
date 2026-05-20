@@ -24,9 +24,10 @@ class MessageModel {
   final bool isRead;
   final int? audioDuration;
 
-  // ── حقلان جديدان للإيديت المشارك
+  // ── حقول الإيديت المشارك
   final String? editThumbnail;
   final String? editAnimeTitle;
+  final String? editId; // ← الجديد: ID الحقيقي للإيديت
 
   const MessageModel({
     required this.id,
@@ -50,6 +51,7 @@ class MessageModel {
     this.audioDuration,
     this.editThumbnail,
     this.editAnimeTitle,
+    this.editId, // ← جديد
   });
 
   factory MessageModel.fromMap(String id, Map<String, dynamic> map) {
@@ -85,6 +87,7 @@ class MessageModel {
       audioDuration: map['audioDuration'],
       editThumbnail: map['editThumbnail'],
       editAnimeTitle: map['editAnimeTitle'],
+      editId: map['editId'], // ← جديد
     );
   }
 
@@ -110,6 +113,7 @@ class MessageModel {
       'audioDuration': audioDuration,
       'editThumbnail': editThumbnail,
       'editAnimeTitle': editAnimeTitle,
+      'editId': editId, // ← جديد
     };
   }
 
@@ -128,6 +132,7 @@ class MessageModel {
     int? audioDuration,
     String? editThumbnail,
     String? editAnimeTitle,
+    String? editId, // ← جديد
   }) {
     return MessageModel(
       id: id,
@@ -151,6 +156,7 @@ class MessageModel {
       audioDuration: audioDuration ?? this.audioDuration,
       editThumbnail: editThumbnail ?? this.editThumbnail,
       editAnimeTitle: editAnimeTitle ?? this.editAnimeTitle,
+      editId: editId ?? this.editId, // ← جديد
     );
   }
 }

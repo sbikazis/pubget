@@ -23,18 +23,27 @@ class AnimeApiService {
 
   // >>> جديد: مطابقة ذكية بدل ==
   static bool _isSameName(String input, String apiName) {
-    final a = _sanitize(input);
-    final b = _sanitize(apiName);
-    if (a.isEmpty || b.isEmpty) return false;
-    
-    // 1. تطابق تام
-    if (a == b) return true;
-    
-    // 2. كل كلمات الاسم موجودة في الثاني (يقبل "Douma" = "Douma Upper Rank")
-    final aw = a.split(' ');
-    final bw = b.split(' ');
-    return aw.every((w) => bw.contains(w)) || bw.every((w) => aw.contains(w));
+  final a = _sanitize(input);
+  final b = _sanitize(apiName);
+  if (a.isEmpty || b.isEmpty) return false;
+  
+  // 1. تطابق تام
+  if (a == b) return true;
+  
+  // 2. اسمح فقط إذا المستخدم كتب جزء من الاسم الحقيقي
+  // "douma" يقبل "douma" ✓
+  // "douma" يقبل "douma upper rank" ✓
+  // "hiroto douma" يرفض "douma" ✗ ← هذا هو الإصلاح
+  final inputWords = a.split(' ');
+  final apiWords = b.split(' ');
+  
+  // المستخدم خاصو يكتب كلمات أقل أو قد اللي في API
+  if (inputWords.length <= apiWords.length) {
+    return inputWords.every((word) => apiWords.contains(word));
   }
+  
+  return false;
+}
 
   // =========================================================
   // SEARCH ANIME

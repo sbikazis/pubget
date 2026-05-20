@@ -32,7 +32,7 @@ class UserEditsGrid extends StatelessWidget {
           );
         }
 
-        final edits = snapshot.data ?? [];
+        final edits = snapshot.data?? [];
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,14 +76,14 @@ class UserEditsGrid extends StatelessWidget {
                     children: [
                       Icon(Icons.movie_creation_outlined,
                           size: 48,
-                          color: isDark ? Colors.white30 : Colors.black26),
+                          color: isDark? Colors.white30 : Colors.black26),
                       const SizedBox(height: 8),
                       Text(
                         isMe
-                            ? 'لم تنشر أي إيديت بعد'
+                           ? 'لم تنشر أي إيديت بعد'
                             : 'لا توجد إيديتات بعد',
                         style: TextStyle(
-                          color: isDark ? Colors.white38 : Colors.black38,
+                          color: isDark? Colors.white38 : Colors.black38,
                         ),
                       ),
                     ],
@@ -108,13 +108,13 @@ class UserEditsGrid extends StatelessWidget {
                   return GestureDetector(
                     onTap: () => _openEdit(context, edit),
                     onLongPress: isMe
-                        ? () => _confirmDelete(context, edit)
+                       ? () => _confirmDelete(context, edit)
                         : null,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
                         edit.thumbnailUrl.isNotEmpty
-                            ? Image.network(
+                           ? Image.network(
                                 edit.thumbnailUrl,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) =>
@@ -164,14 +164,15 @@ class UserEditsGrid extends StatelessWidget {
     );
   }
 
-  // ← ضع الإيديت أولاً في القائمة العامة ثم افتح EditsScreen
+  // ← التعديل هنا: ما عادش كنديرو prepend، كنمررو Provider و ID
   void _openEdit(BuildContext context, EditModel edit) {
-    final editsProvider = context.read<EditsProvider>();
-    editsProvider.prependEdit(edit);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const EditsScreen(startIndex: 0),
+        builder: (_) => ChangeNotifierProvider.value(
+          value: context.read<EditsProvider>(),
+          child: EditsScreen(initialEditId: edit.id),
+        ),
       ),
     );
   }
@@ -204,7 +205,7 @@ class UserEditsGrid extends StatelessWidget {
 
   Widget _buildPlaceholder(bool isDark) {
     return Container(
-      color: isDark ? Colors.grey[850] : Colors.grey[300],
+      color: isDark? Colors.grey[850] : Colors.grey[300],
       child: const Center(
         child: Icon(Icons.movie_outlined, color: Colors.grey),
       ),
