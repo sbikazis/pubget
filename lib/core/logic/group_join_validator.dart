@@ -28,7 +28,8 @@ class JoinValidationResult {
     );
   }
 
-  factory JoinValidationResult.failure(String message, {bool shouldUpgrade = false}) {
+  factory JoinValidationResult.failure(String message,
+      {bool shouldUpgrade = false}) {
     return JoinValidationResult(
       isValid: false,
       errorMessage: message,
@@ -44,8 +45,8 @@ class GroupJoinValidator {
     required FirestoreService firestoreService,
   }) : _firestoreService = firestoreService;
 
-  // ✅ [إصلاح] ترتيب كلمات الاسم أبجدياً قبل دمجها
-  // هذا يجعل "Naruto Uzumaki" و"Uzumaki Naruto" ينتجان نفس المفتاح تماماً
+  // ── ترتيب كلمات الاسم أبجدياً قبل دمجها
+  // هذا يجعل "Naruto Uzumaki" و"Uzumaki Naruto" ينتجان نفس المفتاح
   String _normalizeCharacterKey(String name) {
     final words = name
         .trim()
@@ -55,6 +56,10 @@ class GroupJoinValidator {
       ..sort();
     return words.join('');
   }
+
+  // ─────────────────────────────────────────────
+  // VERIFY INVITER
+  // ─────────────────────────────────────────────
 
   Future<String?> _verifyInviter(String groupId, String inviterName) async {
     final name = inviterName.trim().toLowerCase();
@@ -67,7 +72,8 @@ class GroupJoinValidator {
     for (var doc in membersSnapshot.docs) {
       final data = doc.data();
       final display = (data['displayName'] ?? '').toString().toLowerCase();
-      final character = (data['characterName'] ?? '').toString().toLowerCase();
+      final character =
+          (data['characterName'] ?? '').toString().toLowerCase();
       final real = (data['realUserName'] ?? '').toString().toLowerCase();
 
       if (display == name || character == name || real == name) {
@@ -77,7 +83,6 @@ class GroupJoinValidator {
 
     for (var memberDoc in membersSnapshot.docs) {
       final memberId = memberDoc.id;
-
       try {
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
@@ -86,8 +91,10 @@ class GroupJoinValidator {
 
         if (userDoc.exists && userDoc.data() != null) {
           final userData = userDoc.data()!;
-          final username = (userData['username'] ?? '').toString().toLowerCase();
-          final nickname = (userData['nickname'] ?? '').toString().toLowerCase();
+          final username =
+              (userData['username'] ?? '').toString().toLowerCase();
+          final nickname =
+              (userData['nickname'] ?? '').toString().toLowerCase();
 
           if (username == name || nickname == name) {
             return memberId;
@@ -100,6 +107,11 @@ class GroupJoinValidator {
 
     return null;
   }
+
+  // ─────────────────────────────────────────────
+  // VALIDATE JOIN
+  // التحقق الكامل: العضوية + الحدود + الداعي + الحجز + الانتماء
+  // ─────────────────────────────────────────────
 
   Future<JoinValidationResult> validateJoin({
     required UserModel user,
@@ -116,19 +128,21 @@ class GroupJoinValidator {
     String? inviterId;
 
     try {
+      // ── 1. التحقق من أنه ليس عضواً بالفعل
       final memberDoc = await FirebaseFirestore.instance
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(user.id)
           .get();
       if (memberDoc.exists) {
-        return JoinValidationResult.failure('أنت عضو بالفعل في هذه المجموعة.');
+        return JoinValidationResult.failure(
+            'أنت عضو بالفعل في هذه المجموعة.');
       }
 
+      // ── 2. التحقق من حدود الاشتراك
       final limitResult = SubscriptionLimitsLogic.canJoinGroup(
         user,
         currentJoinedGroupsCount,
       );
-
       if (!limitResult.isAllowed) {
         return JoinValidationResult.failure(
           limitResult.message ?? 'لقد وصلت للحد الأقصى للمجموعات.',
@@ -136,35 +150,41 @@ class GroupJoinValidator {
         );
       }
 
+      // ── 3. التحقق من الداعي
       if (inviterName != null && inviterName.trim().isNotEmpty) {
         inviterId = await _verifyInviter(groupId, inviterName);
         if (inviterId == null) {
-          return JoinValidationResult.failure('العضو "$inviterName" غير موجود في هذه المجموعة.');
+          return JoinValidationResult.failure(
+              'العضو "$inviterName" غير موجود في هذه المجموعة.');
         }
       }
 
+      // ── 4. إذا النوع لا يتطلب شخصية (مجموعة عامة) نوافق مباشرة
       if (!groupType.requiresCharacter) {
         return JoinValidationResult.success(inviterId: inviterId);
       }
 
+      // ── 5. التحقق من اسم الشخصية
       if (characterName == null || characterName.trim().isEmpty) {
         return JoinValidationResult.failure('الرجاء إدخال اسم الشخصية');
       }
 
       final formattedCharacterName = characterName.trim();
 
-      final nameError = Validators.validateCharacterName(formattedCharacterName);
+      final nameError =
+          Validators.validateCharacterName(formattedCharacterName);
       if (nameError != null) {
         return JoinValidationResult.failure(nameError);
       }
 
+      // ── 6. التحقق من وجود صورة
       if (characterImageUrl == null || characterImageUrl.trim().isEmpty) {
         return JoinValidationResult.failure('يجب اختيار صورة للشخصية');
       }
 
-      // ✅ [إصلاح] استخدام _normalizeCharacterKey المُصلَح
-      // الآن "Naruto Uzumaki" و"Uzumaki Naruto" يعطيان نفس المفتاح
-      final String characterKey = _normalizeCharacterKey(formattedCharacterName);
+      // ── 7. التحقق من أن الشخصية غير محجوزة
+      final String characterKey =
+          _normalizeCharacterKey(formattedCharacterName);
 
       final reservedDoc = await _firestoreService.getDocument(
         path: FirestorePaths.groupCharacters(groupId),
@@ -172,18 +192,21 @@ class GroupJoinValidator {
       );
 
       if (reservedDoc != null) {
-        return JoinValidationResult.failure('هذه الشخصية محجوزة بالفعل داخل المجموعة.');
+        return JoinValidationResult.failure(
+            'هذه الشخصية محجوزة بالفعل داخل المجموعة.');
       }
 
+      // ── 8. التحقق من انتماء الشخصية
       bool characterExists = false;
 
       if (groupType == GroupType.openRoleplay) {
-        // ✅ التقمص المفتوح: بحث عالمي بدون قيود السلسلة
-        final globalImage = await AnimeApiService.getCharacterImage(formattedCharacterName)
+        // التقمص المفتوح: بحث عالمي بدون قيود السلسلة
+        final globalImage = await AnimeApiService.getCharacterImage(
+                formattedCharacterName)
             .timeout(const Duration(seconds: 15));
         characterExists = globalImage != null;
       } else {
-        // ✅ التقمص المحدد: يجب أن تنتمي الشخصية للسلسلة المحددة
+        // التقمص المحدد: يجب أن تنتمي الشخصية للسلسلة المحددة
         if (animeId == null) {
           return JoinValidationResult.failure(
             'رقم تعريف الأنمي (ID) غير محدد لهذه المجموعة.',
@@ -201,11 +224,13 @@ class GroupJoinValidator {
           }
         }
 
+        // ── validateCharacterExists الآن تستخدم مطابقة تامة فقط
         characterExists = await AnimeApiService.validateCharacterExists(
           animeIds: idsToSearch.toList(),
           characterName: formattedCharacterName,
         ).timeout(const Duration(seconds: 15));
 
+        // ── خط دفاع ثانٍ: isCharacterInFranchise أيضاً محسّنة بمطابقة تامة
         if (!characterExists && animeName != null) {
           characterExists = await AnimeApiService.isCharacterInFranchise(
             animeName: animeName,
@@ -216,12 +241,11 @@ class GroupJoinValidator {
 
       if (!characterExists) {
         return JoinValidationResult.failure(
-          'لم نتمكن من العثور على "$formattedCharacterName" ضمن قائمة الشخصيات. تأكد من كتابة الاسم بدقة بالإنجليزية.',
+          'الشخصية "$formattedCharacterName" لا تنتمي لهذه السلسلة. تأكد من اختيار الشخصية الصحيحة.',
         );
       }
 
       return JoinValidationResult.success(inviterId: inviterId);
-
     } on TimeoutException {
       return JoinValidationResult.failure(
         'فشل الاتصال بخادم الأنمي (انتهت المهلة)، حاول مجدداً.',
