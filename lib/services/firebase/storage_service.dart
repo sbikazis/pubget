@@ -1,32 +1,57 @@
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:path/path.dart' as p;
 
 class StorageService {
   final _storage = FirebaseStorage.instance;
   final _auth = FirebaseAuth.instance;
 
-  String get _uid => _auth.currentUser!.uid;
-
   /// ==============================
-  /// INTERNAL GENERIC UPLOAD
+  /// INTERNAL GENERIC UPLOAD - نسخة آمنة
   /// ==============================
   Future<String> _uploadFile({
     required File file,
     required String path,
   }) async {
     try {
+      // 1. تأكد المستخدم مسجل
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) {
+        throw Exception('AUTH_NULL: المستخدم غير مسجل دخول');
+      }
+
+      // 2. تأكد الملف موجود
+      if (!await file.exists()) {
+        throw Exception('FILE_NOT_FOUND: ${file.path}');
+      }
+
+      final fileSize = await file.length();
+      print('STORAGE UPLOAD: $path | ${(fileSize/1024).toStringAsFixed(1)}KB | uid=$uid');
+
       final ref = _storage.ref().child(path);
       
+      // 3. حدد نوع الصورة تلقائياً
+      final ext = p.extension(file.path).toLowerCase();
+      final contentType = ext == '.png' ? 'image/png' 
+                         : ext == '.webp' ? 'image/webp'
+                         : ext == '.gif' ? 'image/gif'
+                         : 'image/jpeg';
+
       final metadata = SettableMetadata(
-        contentType: 'image/jpeg',
-        customMetadata: {'uploadedBy': _uid},
+        contentType: contentType,
+        customMetadata: {'uploadedBy': uid},
       );
 
       await ref.putFile(file, metadata);
-      return await ref.getDownloadURL();
-    } catch (e) {
+      final url = await ref.getDownloadURL();
+      
+      print('STORAGE SUCCESS: $url');
+      return url;
+      
+    } catch (e, stack) {
       print("FIREBASE UPLOAD ERROR: $e");
+      print("STACK: $stack");
       rethrow;
     }
   }
