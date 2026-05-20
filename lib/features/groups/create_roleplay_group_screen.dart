@@ -386,12 +386,13 @@ class _CreateRoleplayGroupScreenState
       }
 
       String finalCharImageUrl = _confirmedCharImage ?? '';
-      if (_charPickedImage != null) {
-        finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
-            groupId: groupId,
-            userId: currentUser.id,
-            file: _charPickedImage!);
-      }
+// فقط ارفع إذا اختار المستخدم صورة من جهازه يدوياً
+if (_charPickedImage != null && await _charPickedImage!.exists()) {
+  finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
+      groupId: groupId,
+      userId: currentUser.id,
+      file: _charPickedImage!);
+}
 
       final List<int> franchiseIds =
           _confirmedFranchiseData.map((item) => item['id'] as int).toList();
