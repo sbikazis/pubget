@@ -81,7 +81,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         Container(
           color: Colors.black,
           child: _adLoaded
-              ? AdWidget(ad: _nativeAd!)
+             ? AdWidget(ad: _nativeAd!)
               : const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -135,7 +135,8 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
 
 class EditsScreen extends StatefulWidget {
   final int startIndex;
-  const EditsScreen({super.key, this.startIndex = 0});
+  final String? initialEditId;
+  const EditsScreen({super.key, this.startIndex = 0, this.initialEditId});
 
   @override
   State<EditsScreen> createState() => _EditsScreenState();
@@ -149,7 +150,7 @@ class _EditsScreenState extends State<EditsScreen>
   bool _endDialogShown = false;
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
-  final Set<int> _navigatingAdIndexes = {}; // ← guard للـ double scroll
+  final Set<int> _navigatingAdIndexes = {};
   DateTime? _pageEntryTime;
 
   @override
@@ -160,6 +161,28 @@ class _EditsScreenState extends State<EditsScreen>
     super.initState();
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
+
+    // ← جديد: إذا جاي من الشات أو البروفايل، قفز للإيديت المطلوب
+    if (widget.initialEditId!= null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          final provider = context.read<EditsProvider>();
+          final isPremium = context.read<UserProvider>().currentUser?.isPremium?? false;
+          final realIdx = provider.edits.indexWhere((e) => e.id == widget.initialEditId);
+          if (realIdx!= -1) {
+            int visualIdx = realIdx;
+            if (!isPremium) {
+              visualIdx = realIdx + (realIdx ~/ _adInterval);
+            }
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(visualIdx);
+              setState(() => _currentIndex = visualIdx);
+            }
+          }
+        });
+      });
+    }
   }
 
   @override
@@ -167,7 +190,7 @@ class _EditsScreenState extends State<EditsScreen>
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final userId = FirebaseAuth.instance.currentUser?.uid?? '';
     context.read<EditsProvider>().loadSmartFeed(userId);
   }
 
@@ -183,7 +206,7 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   int _realEditIndex(int index, bool isPremium) {
-    if (isPremium) return index; // ← مراعاة حالة البريميوم
+    if (isPremium) return index;
     final cycleLength = _adInterval + 1;
     final completeCycles = index ~/ cycleLength;
     final positionInCycle = index % cycleLength;
@@ -236,7 +259,7 @@ class _EditsScreenState extends State<EditsScreen>
                         setState(() => _endDialogShown = false);
                         context.read<EditsProvider>().resetSeen();
                         final uid =
-                            FirebaseAuth.instance.currentUser?.uid ?? '';
+                            FirebaseAuth.instance.currentUser?.uid?? '';
                         context.read<EditsProvider>().loadSmartFeed(uid);
                       },
                       style: OutlinedButton.styleFrom(
@@ -280,7 +303,6 @@ class _EditsScreenState extends State<EditsScreen>
   void _checkEndOfFeed(
       List<EditModel> edits, int visualIndex, bool isPremium) {
     if (_endDialogShown) return;
-    // ← مراعاة isPremium في حساب الـ realIndex
     final realIndex = _realEditIndex(visualIndex, isPremium);
     if (realIndex >= edits.length - 1) {
       _endDialogShown = true;
@@ -296,11 +318,11 @@ class _EditsScreenState extends State<EditsScreen>
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final isPremium = userProvider.currentUser?.isPremium ?? false;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
+    final isPremium = userProvider.currentUser?.isPremium?? false;
     final edits = editsProvider.sessionFeed;
     final totalCount =
-        isPremium ? edits.length : _totalVisualCount(edits.length);
+        isPremium? edits.length : _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -309,7 +331,7 @@ class _EditsScreenState extends State<EditsScreen>
           if (editsProvider.isLoading && edits.isEmpty)
             const Center(child: CircularProgressIndicator()),
 
-          if (!editsProvider.isLoading && editsProvider.error != null)
+          if (!editsProvider.isLoading && editsProvider.error!= null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -326,7 +348,7 @@ class _EditsScreenState extends State<EditsScreen>
                     onPressed: () {
                       editsProvider.resetError();
                       final uid =
-                          FirebaseAuth.instance.currentUser?.uid ?? '';
+                          FirebaseAuth.instance.currentUser?.uid?? '';
                       editsProvider.loadSmartFeed(uid);
                     },
                     child: const Text('إعادة المحاولة'),
@@ -335,7 +357,7 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          if (edits.isEmpty && !editsProvider.isLoading)
+          if (edits.isEmpty &&!editsProvider.isLoading)
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -356,17 +378,17 @@ class _EditsScreenState extends State<EditsScreen>
               controller: _pageController,
               scrollDirection: Axis.vertical,
               itemCount: totalCount,
-              physics: !isPremium &&
+              physics:!isPremium &&
                       _isAdSlot(_currentIndex) &&
-                      !_finishedAdIndexes.contains(_currentIndex)
-                  ? const NeverScrollableScrollPhysics()
+                     !_finishedAdIndexes.contains(_currentIndex)
+                 ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 final entryTime = _pageEntryTime;
-                if (entryTime != null) {
+                if (entryTime!= null) {
                   final secondsSpent =
                       DateTime.now().difference(entryTime).inSeconds;
-                  if (secondsSpent < 3 && !_isAdSlot(_currentIndex)) {
+                  if (secondsSpent < 3 &&!_isAdSlot(_currentIndex)) {
                     final prevRealIndex =
                         _realEditIndex(_currentIndex, isPremium);
                     if (prevRealIndex < edits.length) {
@@ -386,7 +408,7 @@ class _EditsScreenState extends State<EditsScreen>
                 final realIndex = _realEditIndex(index, isPremium);
                 if (realIndex >= edits.length) return;
                 final edit =
-                    editsProvider.getEditById(edits[realIndex].id) ??
+                    editsProvider.getEditById(edits[realIndex].id)??
                         edits[realIndex];
                 editsProvider.incrementViews(edit.id, currentUserId);
                 _checkEndOfFeed(edits, index, isPremium);
@@ -396,7 +418,6 @@ class _EditsScreenState extends State<EditsScreen>
                   final adDone = _finishedAdIndexes.contains(index);
 
                   if (adDone) {
-                    // ← guard: تجنب استدعاء nextPage أكثر من مرة
                     if (!_navigatingAdIndexes.contains(index)) {
                       _navigatingAdIndexes.add(index);
                       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -407,7 +428,6 @@ class _EditsScreenState extends State<EditsScreen>
                             curve: Curves.easeInOut,
                           );
                         }
-                        // ← أزل بعد التنفيذ لو احتجنا مستقبلاً
                         _navigatingAdIndexes.remove(index);
                       });
                     }
@@ -432,7 +452,7 @@ class _EditsScreenState extends State<EditsScreen>
                 if (realIndex >= edits.length) return const SizedBox.shrink();
 
                 final edit =
-                    editsProvider.getEditById(edits[realIndex].id) ??
+                    editsProvider.getEditById(edits[realIndex].id)??
                         edits[realIndex];
 
                 return Stack(
@@ -466,10 +486,10 @@ class _EditsScreenState extends State<EditsScreen>
                                   radius: 18,
                                   backgroundImage:
                                       edit.uploaderAvatar.isNotEmpty
-                                          ? NetworkImage(edit.uploaderAvatar)
+                                         ? NetworkImage(edit.uploaderAvatar)
                                           : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                      ? const Icon(Icons.person, size: 18)
+                                     ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),

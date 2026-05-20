@@ -23,11 +23,9 @@ class MessageModel {
   final DateTime createdAt;
   final bool isRead;
   final int? audioDuration;
-
-  // ── حقول الإيديت المشارك
   final String? editThumbnail;
   final String? editAnimeTitle;
-  final String? editId; // ← الجديد: ID الحقيقي للإيديت
+  final String? editId; // ← جديد
 
   const MessageModel({
     required this.id,

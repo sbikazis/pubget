@@ -146,6 +146,20 @@ class EditsService {
         .doc(editId)
         .update({'views': FieldValue.increment(1)});
   }
+  
+// ── جلب إيديت واحد بالـ id من Firestore
+  Future<EditModel?> getEditById(String editId) async {
+    try {
+      final doc = await _firestore
+          .collection('edits')
+          .doc(editId)
+          .get();
+      if (!doc.exists) return null;
+      return EditModel.fromFirestore(doc);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> deleteEdit(EditModel edit) async {
     // ← حذف متوازٍ للـ Storage
