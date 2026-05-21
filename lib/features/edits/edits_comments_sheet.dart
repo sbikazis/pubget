@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
+import '../../providers/edits_provider.dart';
+import '../../providers/notifications_provider.dart';
 
 class EditCommentsSheet extends StatefulWidget {
   final String editId;
@@ -47,31 +49,32 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     final user = context.read<UserProvider>().currentUser;
     if (user == null) return;
 
+    final editsProvider = context.read<EditsProvider>();
+    final notificationsProvider = context.read<NotificationsProvider>();
+    final edit = editsProvider.getEditById(widget.editId);
+
     setState(() => _isSending = true);
 
     try {
-      final commentRef = _firestore
-          .collection('edits')
-          .doc(widget.editId)
-          .collection('comments')
-          .doc();
+      // 1. حفظ التعليق عبر الـ Provider
+      await editsProvider.addComment(
+        editId: widget.editId,
+        userId: user.id,
+        username: user.username,
+        userAvatar: user.avatarUrl,
+        text: text,
+      );
 
-      await commentRef.set({
-        'id': commentRef.id,
-        'userId': user.id,
-        'username': user.username,
-        'avatarUrl': user.avatarUrl,
-        'text': text,
-        'likes': [],
-        'replyToId': _replyToId,
-        'replyToName': _replyToName,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // تحديث عداد التعليقات
-      await _firestore.collection('edits').doc(widget.editId).update({
-        'commentsCount': FieldValue.increment(1),
-      });
+      // 2. إرسال إشعار لمول الإيديت إذا ماشي هو نفس الشخص
+      if (edit != null && edit.uploaderId != user.id) {
+        await notificationsProvider.createCommentNotification(
+          toUserId: edit.uploaderId,
+          fromUserId: user.id,
+          fromUsername: user.username,
+          editId: widget.editId,
+          commentText: text,
+        );
+      }
 
       _controller.clear();
       setState(() {

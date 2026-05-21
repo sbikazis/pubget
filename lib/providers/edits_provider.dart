@@ -1,3 +1,4 @@
+// lib/providers/edits_provider.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -41,7 +42,7 @@ class EditsProvider extends ChangeNotifier {
 
   Future<void> loadSeenIds() async {
     final prefs = await SharedPreferences.getInstance();
-    _seenIds.addAll(prefs.getStringList(_seenKey) ?? []);
+    _seenIds.addAll(prefs.getStringList(_seenKey)?? []);
   }
 
   Future<void> _saveSeenIds() async {
@@ -54,7 +55,7 @@ class EditsProvider extends ChangeNotifier {
     _seenIds.add(editId);
     _saveSeenIds();
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId != null) {
+    if (userId!= null) {
       _feedService.markAsSeen(userId, editId);
     }
   }
@@ -63,11 +64,11 @@ class EditsProvider extends ChangeNotifier {
     _seenIds.clear();
     await _saveSeenIds();
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId != null) {
+    if (userId!= null) {
       await _feedService.clearSeenIds(userId);
     }
     _sessionFeed = _editsMap.values.toList()
-      ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+     ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     notifyListeners();
   }
 
@@ -145,13 +146,13 @@ class EditsProvider extends ChangeNotifier {
       final merged = _mergeEdit(existing, edit);
       _editsMap[edit.id] = merged;
       final idx = _sessionFeed.indexWhere((e) => e.id == edit.id);
-      if (idx != -1) _sessionFeed[idx] = merged;
+      if (idx!= -1) _sessionFeed[idx] = merged;
     }
 
     // ← إعادة الترتيب فقط عند وجود إيديت جديد
     if (hasNewEdit) {
       _sessionFeed
-          .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+         .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     }
   }
 
@@ -195,14 +196,14 @@ class EditsProvider extends ChangeNotifier {
 
     final wasLiked = existing.likes.contains(userId);
     final updatedLikes = List<String>.from(existing.likes);
-    wasLiked ? updatedLikes.remove(userId) : updatedLikes.add(userId);
+    wasLiked? updatedLikes.remove(userId) : updatedLikes.add(userId);
 
     _pendingLikeUpdates[editId] = updatedLikes.toSet();
     final updatedEdit = existing.copyWith(likes: updatedLikes);
     _editsMap[editId] = updatedEdit;
 
     final idx = _sessionFeed.indexWhere((e) => e.id == editId);
-    if (idx != -1) _sessionFeed[idx] = updatedEdit;
+    if (idx!= -1) _sessionFeed[idx] = updatedEdit;
     notifyListeners();
 
     try {
@@ -210,7 +211,7 @@ class EditsProvider extends ChangeNotifier {
     } catch (_) {
       _pendingLikeUpdates.remove(editId);
       _editsMap[editId] = existing;
-      if (idx != -1) _sessionFeed[idx] = existing;
+      if (idx!= -1) _sessionFeed[idx] = existing;
       notifyListeners();
     }
   }
@@ -218,6 +219,38 @@ class EditsProvider extends ChangeNotifier {
   Future<void> incrementViews(String editId, String userId) async {
     markAsSeen(editId);
     await _service.incrementViews(editId, userId);
+  }
+
+  Future<void> addComment({
+    required String editId,
+    required String userId,
+    required String username,
+    required String userAvatar,
+    required String text,
+  }) async {
+    try {
+      await _service.addComment(
+        editId: editId,
+        userId: userId,
+        username: username,
+        userAvatar: userAvatar,
+        text: text,
+      );
+
+      final existing = _editsMap[editId];
+      if (existing!= null) {
+        final updated = existing.copyWith(
+          commentsCount: existing.commentsCount + 1,
+        );
+        _editsMap[editId] = updated;
+        final idx = _sessionFeed.indexWhere((e) => e.id == editId);
+        if (idx!= -1) _sessionFeed[idx] = updated;
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 
   // ══════════════════════════════════════════════
@@ -337,7 +370,7 @@ class EditsProvider extends ChangeNotifier {
     if (_editsMap.containsKey(editId)) return _editsMap[editId];
     try {
       final edit = await _service.getEditById(editId);
-      if (edit != null) _editsMap[editId] = edit;
+      if (edit!= null) _editsMap[editId] = edit;
       return edit;
     } catch (_) {
       return null;

@@ -1,3 +1,4 @@
+// lib/core/constants/storage_paths.dart
 class StoragePaths {
 
   // USER STORAGE
@@ -11,6 +12,16 @@ class StoragePaths {
   /// groups/{groupId}/group_image.jpg
   static String groupImage(String groupId) =>
       'groups/$groupId/group_image.jpg';
+
+  // ✅ جديد: خلفية دردشة المجموعة (يرفعها المؤسس)
+  /// groups/{groupId}/chat_background.jpg
+  static String groupChatBackground(String groupId) =>
+      'groups/$groupId/chat_background.jpg';
+
+  // ✅ جديد: خلفية الدردشة الخاصة (تُحفظ محلياً فقط، لكن المسار احتياطي)
+  /// privateChats/{chatId}/backgrounds/{userId}.jpg
+  static String privateChatBackground(String chatId, String userId) =>
+      'privateChats/$chatId/backgrounds/$userId.jpg';
 
   // ROLEPLAY CHARACTER STORAGE
 
@@ -39,7 +50,7 @@ class StoragePaths {
   ) =>
       'privateChats/$chatId/media/$messageId';
 
-  // VOICE MESSAGES - جديد للنظام الصوتي
+  // VOICE MESSAGES
 
   /// groups/{groupId}/voices/{messageId}.m4a
   static String groupVoice(

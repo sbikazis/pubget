@@ -10,9 +10,9 @@ class GroupModel {
   final String imageUrl;
 
   final GroupType type;
-  final String? animeName; 
-  final dynamic animeId; 
-  final List<dynamic>? franchiseIds; 
+  final String? animeName;
+  final dynamic animeId;
+  final List<dynamic>? franchiseIds;
 
   final String founderId;
 
@@ -24,6 +24,9 @@ class GroupModel {
 
   final DateTime createdAt;
 
+  // ✅ جديد: خلفية الدردشة للمجموعة (يعينها المؤسس فقط، تظهر للجميع)
+  final String? chatBackgroundUrl;
+
   const GroupModel({
     required this.id,
     required this.name,
@@ -32,19 +35,19 @@ class GroupModel {
     required this.imageUrl,
     required this.type,
     this.animeName,
-    this.animeId, 
-    this.franchiseIds, 
+    this.animeId,
+    this.franchiseIds,
     required this.founderId,
     required this.membersCount,
     required this.maxMembers,
     required this.isPromoted,
     this.promotionExpiresAt,
     required this.createdAt,
+    this.chatBackgroundUrl,
   });
 
-  // 🔥 إضافة الـ Getter المفقود لحل مشكلة شاشة الدردشة
-  // يعود بـ true إذا كان النوع تقمص أنمي أو تقمص مفتوح
-  bool get isRoleplay => type == GroupType.roleplay || type == GroupType.openRoleplay;
+  bool get isRoleplay =>
+      type == GroupType.roleplay || type == GroupType.openRoleplay;
 
   factory GroupModel.fromMap(String id, Map<String, dynamic> map) {
     return GroupModel(
@@ -55,8 +58,8 @@ class GroupModel {
       imageUrl: map['imageUrl'] ?? '',
       type: GroupType.fromString(map['type'] ?? 'public'),
       animeName: map['animeName'],
-      animeId: map['animeId'], 
-      franchiseIds: map['franchiseIds'] ?? [], 
+      animeId: map['animeId'],
+      franchiseIds: map['franchiseIds'] ?? [],
       founderId: map['founderId'] ?? '',
       membersCount: map['membersCount'] ?? 0,
       maxMembers: map['maxMembers'] ?? 100,
@@ -67,6 +70,7 @@ class GroupModel {
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
+      chatBackgroundUrl: map['chatBackgroundUrl'],
     );
   }
 
@@ -78,14 +82,15 @@ class GroupModel {
       'imageUrl': imageUrl,
       'type': type.name,
       'animeName': animeName,
-      'animeId': animeId, 
-      'franchiseIds': franchiseIds, 
+      'animeId': animeId,
+      'franchiseIds': franchiseIds,
       'founderId': founderId,
       'membersCount': membersCount,
       'maxMembers': maxMembers,
       'isPromoted': isPromoted,
       'promotionExpiresAt': promotionExpiresAt,
       'createdAt': createdAt,
+      'chatBackgroundUrl': chatBackgroundUrl,
     };
   }
 
@@ -96,12 +101,13 @@ class GroupModel {
     String? imageUrl,
     GroupType? type,
     String? animeName,
-    dynamic animeId, 
-    List<dynamic>? franchiseIds, 
+    dynamic animeId,
+    List<dynamic>? franchiseIds,
     int? membersCount,
     int? maxMembers,
     bool? isPromoted,
     DateTime? promotionExpiresAt,
+    String? chatBackgroundUrl,
   }) {
     return GroupModel(
       id: id,
@@ -111,14 +117,15 @@ class GroupModel {
       imageUrl: imageUrl ?? this.imageUrl,
       type: type ?? this.type,
       animeName: animeName ?? this.animeName,
-      animeId: animeId ?? this.animeId, 
-      franchiseIds: franchiseIds ?? this.franchiseIds, 
+      animeId: animeId ?? this.animeId,
+      franchiseIds: franchiseIds ?? this.franchiseIds,
       founderId: founderId,
       membersCount: membersCount ?? this.membersCount,
       maxMembers: maxMembers ?? this.maxMembers,
       isPromoted: isPromoted ?? this.isPromoted,
       promotionExpiresAt: promotionExpiresAt ?? this.promotionExpiresAt,
       createdAt: createdAt,
+      chatBackgroundUrl: chatBackgroundUrl ?? this.chatBackgroundUrl,
     );
   }
 }

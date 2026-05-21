@@ -17,6 +17,7 @@ import '../groups/join_requests_screen.dart'; // 🔥 مضاف للتوجه لط
 import '../private_chat/private_chat_screen.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'search_screen.dart';
+import '../edits/edits_screen.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -53,7 +54,7 @@ class NotificationsScreen extends StatelessWidget {
             return const LoadingWidget(message: "جاري تحميل الإشعارات...");
           }
 
-          final notifications = snapshot.data ?? [];
+          final notifications = snapshot.data?? [];
 
           if (notifications.isEmpty) {
             return const EmptyStateWidget(
@@ -71,18 +72,18 @@ class NotificationsScreen extends StatelessWidget {
               final n = notifications[index];
 
               return ListTile(
-                tileColor: n.isRead ? null : AppColors.primary.withOpacity(0.05),
+                tileColor: n.isRead? null : AppColors.primary.withOpacity(0.05),
                 leading: CircleAvatar(
-                  backgroundColor: n.isRead ? AppColors.lightCard : AppColors.primary,
+                  backgroundColor: n.isRead? AppColors.lightCard : AppColors.primary,
                   child: Icon(
                     _iconForType(n.type),
-                    color: n.isRead ? Colors.black54 : Colors.white,
+                    color: n.isRead? Colors.black54 : Colors.white,
                     size: 22,
                   ),
                 ),
                 title: Text(
                   n.title,
-                  style: TextStyle(fontWeight: n.isRead ? FontWeight.w500 : FontWeight.bold),
+                  style: TextStyle(fontWeight: n.isRead? FontWeight.w500 : FontWeight.bold),
                 ),
                 subtitle: Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis),
                 onTap: () async {
@@ -121,7 +122,7 @@ class NotificationsScreen extends StatelessWidget {
       // إذا تم قبول العضو أو إشعار مجموعة عام
       case NotificationTypes.requestAccepted:
       case "group":
-        if (notification.refId != null) {
+        if (notification.refId!= null) {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: notification.refId!)),
@@ -131,7 +132,7 @@ class NotificationsScreen extends StatelessWidget {
 
       // إذا كان إشعار بطلب انضمام جديد (يصل للشوغو)
       case NotificationTypes.joinRequest:
-        if (notification.refId != null) {
+        if (notification.refId!= null) {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => JoinRequestsScreen(groupId: notification.refId!)),
@@ -144,8 +145,20 @@ class NotificationsScreen extends StatelessWidget {
         // يمكننا عرض رسالة تنبيه بسيطة أو البقاء في شاشة الإشعارات
         break;
 
+      // تعليق جديد على إيديت
+      case NotificationTypes.comment:
+        if (notification.refId!= null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditsScreen(initialEditId: notification.refId!),
+            ),
+          );
+        }
+        break;
+
       case "private_message":
-        if (notification.refId != null) {
+        if (notification.refId!= null) {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -182,6 +195,8 @@ class NotificationsScreen extends StatelessWidget {
         return Icons.person_add_outlined;
       case NotificationTypes.groupDisbanded: // أيقونة خاصة لتفكيك المجموعة
         return Icons.group_off_outlined;
+      case NotificationTypes.comment:
+        return Icons.comment;
       case "group":
         return Icons.group;
       case "private_message":

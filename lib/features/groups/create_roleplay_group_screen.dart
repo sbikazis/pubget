@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/group_type.dart';
@@ -51,7 +52,6 @@ class _CreateRoleplayGroupScreenState
   dynamic _confirmedAnimeId;
   List<Map<String, dynamic>> _confirmedFranchiseData = [];
 
-  // ── شخصية مختارة من القائمة (id من API)
   int? _confirmedCharId;
   String? _confirmedCharName;
   String? _confirmedCharImage;
@@ -68,14 +68,26 @@ class _CreateRoleplayGroupScreenState
     final XFile? file =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
-    setState(() => _pickedImage = File(file.path));
+
+    // ✅ نسخ الصورة من cache إلى مجلد ثابت
+    final appDir = await getApplicationDocumentsDirectory();
+    final savedFile = await File(file.path).copy(
+      '${appDir.path}/group_img_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    setState(() => _pickedImage = savedFile);
   }
 
   Future<void> _pickCharImage() async {
     final XFile? file =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
-    setState(() => _charPickedImage = File(file.path));
+
+    // ✅ نسخ الصورة من cache إلى مجلد ثابت
+    final appDir = await getApplicationDocumentsDirectory();
+    final savedFile = await File(file.path).copy(
+      '${appDir.path}/char_img_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    setState(() => _charPickedImage = savedFile);
   }
 
   // ─────────────────────────────────────────────
@@ -132,7 +144,7 @@ class _CreateRoleplayGroupScreenState
   }
 
   // ─────────────────────────────────────────────
-  // SHOW ANIME CHARACTERS (الجديد - بدل _verifyCharacter)
+  // SHOW ANIME CHARACTERS
   // ─────────────────────────────────────────────
 
   Future<void> _showAnimeCharacters() async {
@@ -380,19 +392,20 @@ class _CreateRoleplayGroupScreenState
       final groupId = DateTime.now().millisecondsSinceEpoch.toString();
       String groupImageUrl = '';
 
-      if (_pickedImage != null) {
+      // ✅ فحص exists() قبل رفع صورة المجموعة
+      if (_pickedImage != null && await _pickedImage!.exists()) {
         groupImageUrl = await storage.uploadGroupImage(
             groupId: groupId, file: _pickedImage!);
       }
 
       String finalCharImageUrl = _confirmedCharImage ?? '';
-// فقط ارفع إذا اختار المستخدم صورة من جهازه يدوياً
-if (_charPickedImage != null && await _charPickedImage!.exists()) {
-  finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
-      groupId: groupId,
-      userId: currentUser.id,
-      file: _charPickedImage!);
-}
+      // ✅ فحص exists() قبل رفع صورة الشخصية
+      if (_charPickedImage != null && await _charPickedImage!.exists()) {
+        finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
+            groupId: groupId,
+            userId: currentUser.id,
+            file: _charPickedImage!);
+      }
 
       final List<int> franchiseIds =
           _confirmedFranchiseData.map((item) => item['id'] as int).toList();
@@ -465,6 +478,9 @@ if (_charPickedImage != null && await _charPickedImage!.exists()) {
     _descriptionCtrl.dispose();
     _animeCtrl.dispose();
     _charReasonCtrl.dispose();
+    // ✅ حذف الملفات المؤقتة عند الخروج
+    _pickedImage?.delete().catchError((_) {});
+    _charPickedImage?.delete().catchError((_) {});
     super.dispose();
   }
 
@@ -521,8 +537,7 @@ if (_charPickedImage != null && await _charPickedImage!.exists()) {
     );
   }
 
-  Widget _buildFranchiseTile(
-      String title, String? imageUrl, bool isDark) {
+  Widget _buildFranchiseTile(String title, String? imageUrl, bool isDark) {
     return Container(
       width: 70,
       margin: const EdgeInsets.only(right: 10),
@@ -780,9 +795,7 @@ if (_charPickedImage != null && await _charPickedImage!.exists()) {
                             color: AppColors.primary)),
                     const SizedBox(height: 12),
 
-                    // ── زر عرض الشخصيات (roleplay) أو نص فحص (openRoleplay)
                     if (_selectedGroupType == GroupType.roleplay) ...[
-                      // ── زر عرض شخصيات الأنمي
                       FormField<String>(
                         validator: (_) => _validateCharacter(null),
                         builder: (state) => Column(
@@ -823,11 +836,14 @@ if (_charPickedImage != null && await _charPickedImage!.exists()) {
                             ),
                             if (state.hasError)
                               Padding(
-                                padding: const EdgeInsets.only(top: 6, right: 8),
+                                padding: const EdgeInsets.only(
+                                    top: 6, right: 8),
                                 child: Text(state.errorText!,
                                     style: TextStyle(
                                         fontSize: 12,
-                                        color: Theme.of(context).colorScheme.error)),
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error)),
                               ),
                           ],
                         ),

@@ -1,3 +1,4 @@
+// lib/providers/notifications_provider.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -183,6 +184,37 @@ class NotificationsProvider extends ChangeNotifier {
     } finally {
       _setLoading(false);
     }
+  }
+
+  // =========================================================
+  // إنشاء إشعار تعليق جديد
+  // =========================================================
+  Future<void> createCommentNotification({
+    required String toUserId,
+    required String fromUserId,
+    required String fromUsername,
+    required String editId,
+    required String commentText,
+  }) async {
+    final notification = NotificationModel(
+      id: '',
+      title: 'تعليق جديد',
+      body: '$fromUsername علق: $commentText',
+      type: NotificationTypes.comment,
+      refId: editId,
+      senderId: fromUserId,
+      createdAt: DateTime.now(),
+      isRead: false,
+    );
+
+    final path = FirestorePaths.userNotifications(toUserId);
+    final docId = FirebaseFirestore.instance.collection(path).doc().id;
+
+    await _firestore.createDocument(
+      path: path,
+      docId: docId,
+      data: notification.toMap(),
+    );
   }
 
   @override

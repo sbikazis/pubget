@@ -14,6 +14,7 @@ import 'providers/private_chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/edits_provider.dart';
+import 'providers/chat_background_provider.dart'; // ✅ جديد
 
 import 'services/firebase/auth_service.dart';
 import 'services/firebase/firestore_service.dart';
@@ -59,7 +60,9 @@ class _PubgetAppState extends State<PubgetApp> {
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
+        Provider(
+            create: (_) =>
+                GroupJoinValidator(firestoreService: firestore)),
         ChangeNotifierProvider(
           create: (context) => UserProvider(
             firestoreService: context.read<FirestoreService>(),
@@ -117,6 +120,10 @@ class _PubgetAppState extends State<PubgetApp> {
         ),
         ChangeNotifierProvider(
           create: (_) => EditsProvider(),
+        ),
+        // ✅ تسجيل ChatBackgroundProvider
+        ChangeNotifierProvider(
+          create: (_) => ChatBackgroundProvider(),
         ),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
@@ -220,13 +227,8 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
 
     _isNavigating = true;
 
-    // ← صفّر الـ notifier أولاً قبل أي شيء
     editsProvider.clearLastUploadedEdit();
-
-    // ← أضف الإيديت في أول القائمة
     editsProvider.prependEdit(uploadedEdit);
-
-    // ← فعّل الـ flag لمنع loadSmartFeed من مسح الـ feed عند فتح EditsScreen
     editsProvider.setSkipNextLoad();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {

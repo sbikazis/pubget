@@ -7,6 +7,7 @@ class NotificationTypes {
   static const String requestAccepted = 'request_accepted'; // تم قبولك (يصل للمستخدم)
   static const String requestRejected = 'request_rejected'; // تم رفضك (يصل للمستخدم)
   static const String groupDisbanded = 'group_disbanded'; // 🔥 مضاف: تفكيك المجموعة من قبل المؤسس
+  static const String comment = 'comment'; // تعليق جديد على إيديت
   static const String generic = 'generic'; // إشعار عام
 }
 

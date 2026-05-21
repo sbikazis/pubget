@@ -1,3 +1,5 @@
+// lib/features/groups/edit_group_screen.dart
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/group_model.dart';
 import '../../providers/group_provider.dart';
+import '../../providers/chat_background_provider.dart';
 import '../../services/firebase/storage_service.dart';
 import '../../widgets/app_button.dart';
 import 'package:pubget/widgets/app_textfield.dart';
@@ -22,12 +25,15 @@ class EditGroupScreen extends StatefulWidget {
 
 class _EditGroupScreenState extends State<EditGroupScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   late TextEditingController _sloganController;
-  
+
   File? _imageFile;
+  File? _backgroundFile;        // ✅ صورة الخلفية المختارة
+  String? _backgroundPreviewUrl; // ✅ للعرض المؤقت (URL الحالي أو مسار الملف)
+
   bool _isUploading = false;
   final StorageService _storageService = StorageService();
 
@@ -35,8 +41,12 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.group.name);
-    _descriptionController = TextEditingController(text: widget.group.description);
+    _descriptionController =
+        TextEditingController(text: widget.group.description);
     _sloganController = TextEditingController(text: widget.group.slogan);
+
+    // ✅ تحميل الخلفية الحالية للمجموعة إن وجدت
+    _backgroundPreviewUrl = widget.group.chatBackgroundUrl;
   }
 
   @override
@@ -49,13 +59,38 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
     if (pickedFile != null) {
       setState(() {
         _imageFile = File(pickedFile.path);
       });
     }
+  }
+
+  // ✅ اختيار صورة الخلفية
+  Future<void> _pickBackground() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+    if (pickedFile != null) {
+      setState(() {
+        _backgroundFile = File(pickedFile.path);
+        _backgroundPreviewUrl = pickedFile.path; // عرض مؤقت محلي
+      });
+    }
+  }
+
+  // ✅ إزالة الخلفية
+  void _removeBackground() {
+    setState(() {
+      _backgroundFile = null;
+      _backgroundPreviewUrl = null;
+    });
   }
 
   Future<void> _saveChanges() async {
@@ -66,7 +101,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     try {
       String finalImageUrl = widget.group.imageUrl;
 
-      // 1. رفع الصورة الجديدة إذا تم اختيارها
+      // 1. رفع صورة المجموعة إن تغيرت
       if (_imageFile != null) {
         finalImageUrl = await _storageService.uploadGroupImage(
           groupId: widget.group.id,
@@ -74,18 +109,35 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
         );
       }
 
-      // 2. تحديث البيانات في Firestore عبر الـ Provider
+      // 2. ✅ رفع خلفية الدردشة عبر ChatBackgroundProvider
+      String? finalBackgroundUrl = widget.group.chatBackgroundUrl;
+
+      if (_backgroundFile != null) {
+        // خلفية جديدة مختارة → ارفعها
+        finalBackgroundUrl =
+            await context.read<ChatBackgroundProvider>().uploadGroupBackground(
+                  groupId: widget.group.id,
+                  file: _backgroundFile!,
+                );
+      } else if (_backgroundPreviewUrl == null &&
+          widget.group.chatBackgroundUrl != null) {
+        // المستخدم أزال الخلفية → احذفها
+        finalBackgroundUrl = null;
+      }
+
+      // 3. تحديث Firestore
       final Map<String, dynamic> updateData = {
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'slogan': _sloganController.text.trim(),
         'imageUrl': finalImageUrl,
+        'chatBackgroundUrl': finalBackgroundUrl, // ✅ حفظ رابط الخلفية
       };
 
       await context.read<GroupProvider>().updateGroup(
-        groupId: widget.group.id,
-        data: updateData,
-      );
+            groupId: widget.group.id,
+            data: updateData,
+          );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,6 +154,147 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  // ✅ ويدجت معاينة الخلفية الحالية
+  Widget _buildBackgroundPreview() {
+    final bool hasBackground = _backgroundPreviewUrl != null;
+    final bool isLocalFile = hasBackground &&
+        !_backgroundPreviewUrl!.startsWith('http');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.wallpaper, color: AppColors.primary, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'خلفية الدردشة',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            const Spacer(),
+            if (hasBackground)
+              GestureDetector(
+                onTap: _removeBackground,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'إزالة',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _pickBackground,
+          child: Container(
+            height: 140,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: hasBackground
+                    ? AppColors.primary
+                    : AppColors.primary.withOpacity(0.3),
+                width: hasBackground ? 2 : 1,
+              ),
+              image: hasBackground
+                  ? DecorationImage(
+                      fit: BoxFit.cover,
+                      image: isLocalFile
+                          ? FileImage(File(_backgroundPreviewUrl!))
+                              as ImageProvider
+                          : NetworkImage(_backgroundPreviewUrl!),
+                    )
+                  : null,
+              color: hasBackground ? null : AppColors.primary.withOpacity(0.04),
+            ),
+            child: hasBackground
+                ? Stack(
+                    children: [
+                      // طبقة overlay للمعاينة
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.black.withOpacity(0.35),
+                        ),
+                      ),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black45,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.edit, color: Colors.white, size: 16),
+                              SizedBox(width: 6),
+                              Text(
+                                'تغيير الخلفية',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppColors.primary,
+                        size: 36,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'اضغط لاختيار خلفية للدردشة',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 13,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'ستظهر للجميع في دردشة المجموعة',
+                        style: TextStyle(
+                          color: AppColors.darkTextHint,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -121,7 +314,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // قسم الصورة بتصميم فخم
+                  // قسم صورة المجموعة
                   Center(
                     child: Stack(
                       children: [
@@ -130,7 +323,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                           height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.primary, width: 3),
+                            border:
+                                Border.all(color: AppColors.primary, width: 3),
                             image: DecorationImage(
                               fit: BoxFit.cover,
                               image: _imageFile != null
@@ -147,7 +341,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                             child: CircleAvatar(
                               backgroundColor: AppColors.primary,
                               radius: 20,
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ),
@@ -156,7 +354,6 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   ),
                   const SizedBox(height: 30),
 
-                  // حقول الإدخال باستخدام الـ Widgets الخاصة بك
                   AppTextField(
                     label: 'اسم المجموعة',
                     controller: _nameController,
@@ -181,6 +378,10 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     prefixIcon: Icons.description_outlined,
                     validator: (v) => v!.isEmpty ? 'الوصف مطلوب' : null,
                   ),
+                  const SizedBox(height: 28),
+
+                  // ✅ قسم خلفية الدردشة (للمؤسس فقط)
+                  _buildBackgroundPreview(),
                   const SizedBox(height: 40),
 
                   AppButton(
@@ -197,7 +398,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             const Positioned.fill(
               child: ColoredBox(
                 color: Colors.black45,
-                child: Center(child: LoadingWidget(message: 'جاري الحفظ...')),
+                child:
+                    Center(child: LoadingWidget(message: 'جاري الحفظ...')),
               ),
             ),
         ],
