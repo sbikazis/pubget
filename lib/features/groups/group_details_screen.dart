@@ -1,4 +1,5 @@
 // lib/features/groups/group_details_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/firestore_paths.dart';
-import '../../core/constants/app_links.dart';
+import '../../core/constants/app_links.dart'; // ✅ يحتوي على PubgetLinks
 import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_textfield.dart';
@@ -52,9 +53,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _homeProvider = context.read<HomeProvider>();
   }
 
-  // ✅ زر مشاركة رابط المجموعة
+  // ✅ استخدام PubgetLinks بدل AppLinks
   void _shareGroupLink(String groupId) {
-    final link = AppLinks.groupLink(groupId);
+    final link = PubgetLinks.groupLink(groupId);
     Share.share(
       'انضم لمجموعتي على Pubget 🎌\n$link',
       subject: 'دعوة لمجموعة على Pubget',
@@ -309,8 +310,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
@@ -335,8 +336,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 _buildOptionsSheet(group, isFounder, currentMember),
           );
         },
-        icon:
-            Icon(isFounder ? Icons.admin_panel_settings : Icons.more_vert),
+        icon: Icon(
+            isFounder ? Icons.admin_panel_settings : Icons.more_vert),
         tooltip: isFounder ? 'أدوات المؤسس' : 'خيارات المجموعة',
       );
 
@@ -369,16 +370,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 },
               ),
               ListTile(
-                leading:
-                    const Icon(Icons.delete_forever, color: Colors.red),
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
                 title: const Text('تفكيك المجموعة (حذف نهائي)',
                     style: TextStyle(color: Colors.red)),
                 onTap: () => _handleDisbandGroup(group),
               ),
             ] else if (currentMember != null) ...[
               ListTile(
-                leading:
-                    const Icon(Icons.exit_to_app, color: Colors.red),
+                leading: const Icon(Icons.exit_to_app, color: Colors.red),
                 title: const Text('خروج من المجموعة',
                     style: TextStyle(color: Colors.red)),
                 onTap: () => _handleLeaveGroup(group, currentMember),
@@ -404,8 +403,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               child: const Text('إلغاء')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('مغادرة',
-                style: TextStyle(color: Colors.red)),
+            child:
+                const Text('مغادرة', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -484,8 +483,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('خطأ أثناء الحذف: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('خطأ أثناء الحذف: $e')));
         }
       } finally {
         if (mounted) setState(() => _isProcessing = false);
@@ -521,8 +520,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       MaterialPageRoute(
           builder: (_) => GroupMembersScreen(groupId: groupId)));
 
-  void _openChat(String groupId) => Navigator.push(
-      context, MaterialPageRoute(builder: (_) => ChatScreen(groupId: groupId)));
+  void _openChat(String groupId) => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => ChatScreen(groupId: groupId)));
 
   @override
   Widget build(BuildContext context) {
@@ -538,7 +537,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-              body: Center(child: LoadingWidget(message: 'جاري التحميل...')));
+              body: Center(
+                  child: LoadingWidget(message: 'جاري التحميل...')));
         }
 
         final group = snapshot.data;
@@ -564,8 +564,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               appBar: AppBar(
                 title: const Text('تفاصيل المجموعة'),
                 centerTitle: true,
-                // ✅ زر المشاركة
                 actions: [
+                  // ✅ زر مشاركة الرابط
                   IconButton(
                     onPressed: () => _shareGroupLink(group.id),
                     icon: const Icon(Icons.share_outlined),
@@ -636,7 +636,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 fontSize: 22, fontWeight: FontWeight.bold)),
         Text(group.type.label,
             style: TextStyle(
-                color: AppColors.primary, fontWeight: FontWeight.w600)),
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Row(
           children: [
