@@ -1,17 +1,13 @@
-// lib/services/deep_link_service.dart
-
 import 'package:app_links/app_links.dart';
 import '../core/constants/app_links.dart';
 
 class DeepLinkService {
   final AppLinks _appLinks = AppLinks();
 
+  // في app_links 6.x ما فيه getInitialAppLink
+  // الرابط الأول يجي عبر الـ stream مباشرة
   Future<Uri?> getInitialLink() async {
-    try {
-      return await _appLinks.getInitialLink();
-    } catch (_) {
-      return null;
-    }
+    return null; // نخليه null، الـ stream يكفي
   }
 
   Stream<Uri> get linkStream => _appLinks.uriLinkStream;

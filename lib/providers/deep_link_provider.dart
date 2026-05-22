@@ -1,5 +1,3 @@
-// lib/providers/deep_link_provider.dart
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -10,23 +8,17 @@ class DeepLinkProvider extends ChangeNotifier {
 
   StreamSubscription<Uri>? _sub;
 
-  /// آخر نتيجة رابط واردة لم تُعالج بعد
   DeepLinkResult? _pendingLink;
   DeepLinkResult? get pendingLink => _pendingLink;
 
-  // ══════════════════════════════════════════════
-  // ── تهيئة الاستماع
-  // ══════════════════════════════════════════════
-
-  /// يُستدعى مرة واحدة عند بدء التطبيق
   Future<void> init() async {
-    // 1. رابط بدء التطبيق (كان مغلقاً)
+    // 1. رابط فتح التطبيق وهو مغلق
     final initial = await _service.getInitialLink();
     if (initial != null) {
       _handleUri(initial);
     }
 
-    // 2. الاستماع للروابط اللاحقة (التطبيق في الخلفية)
+    // 2. روابط أثناء عمل التطبيق
     _sub = _service.linkStream.listen(
       _handleUri,
       onError: (_) {},
@@ -41,11 +33,6 @@ class DeepLinkProvider extends ChangeNotifier {
     }
   }
 
-  // ══════════════════════════════════════════════
-  // ── تصفير الرابط بعد المعالجة
-  // ══════════════════════════════════════════════
-
-  /// يُستدعى بعد التنقل للشاشة الصحيحة
   void clearPendingLink() {
     _pendingLink = null;
     notifyListeners();
