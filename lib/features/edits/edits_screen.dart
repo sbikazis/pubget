@@ -81,7 +81,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         Container(
           color: Colors.black,
           child: _adLoaded
-            ? AdWidget(ad: _nativeAd!)
+           ? AdWidget(ad: _nativeAd!)
               : const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -161,24 +161,28 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
+    // ✅ التعديل الجوهري: جلب الإيديت المحدد مباشرة
     if (widget.initialEditId!= null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 600), () {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final provider = context.read<EditsProvider>();
+
+        // جيب الإيديت حتى لو مو موجود في الفيد
+        EditModel? targetEdit = provider.getEditById(widget.initialEditId!);
+        targetEdit??= await provider.fetchEditById(widget.initialEditId!);
+
+        if (targetEdit!= null && mounted) {
+          // حطه أول القائمة عشان يظهر فوراً
+          provider.prependEdit(targetEdit);
+
+          await Future.delayed(const Duration(milliseconds: 100));
           if (!mounted) return;
-          final provider = context.read<EditsProvider>();
-          final isPremium = context.read<UserProvider>().currentUser?.isPremium?? false;
-          final realIdx = provider.edits.indexWhere((e) => e.id == widget.initialEditId);
-          if (realIdx!= -1) {
-            int visualIdx = realIdx;
-            if (!isPremium) {
-              visualIdx = realIdx + (realIdx ~/ _adInterval);
-            }
-            if (_pageController.hasClients) {
-              _pageController.jumpToPage(visualIdx);
-              setState(() => _currentIndex = visualIdx);
-            }
+
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(0);
+            setState(() => _currentIndex = 0);
           }
-        });
+        }
       });
     }
   }
@@ -228,7 +232,7 @@ class _EditsScreenState extends State<EditsScreen>
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
+            color: Color(0xFF1A1A),
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -378,8 +382,8 @@ class _EditsScreenState extends State<EditsScreen>
               itemCount: totalCount,
               physics:!isPremium &&
                       _isAdSlot(_currentIndex) &&
-                    !_finishedAdIndexes.contains(_currentIndex)
-                ? const NeverScrollableScrollPhysics()
+                   !_finishedAdIndexes.contains(_currentIndex)
+               ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 final entryTime = _pageEntryTime;
@@ -412,9 +416,7 @@ class _EditsScreenState extends State<EditsScreen>
                 _checkEndOfFeed(edits, index, isPremium);
               },
               itemBuilder: (context, index) {
-                // ✅ الإعلان كل 5 سكرول
                 if (!isPremium && _isAdSlot(index)) {
-                  // لو شفناه من قبل، لا تعرض شيء
                   if (_finishedAdIndexes.contains(index)) {
                     return const SizedBox.shrink();
                   }
@@ -426,7 +428,6 @@ class _EditsScreenState extends State<EditsScreen>
 
                       setState(() => _finishedAdIndexes.add(index));
 
-                      // سكرول تلقائي واحد فقط للفيديو الموالي
                       if (_currentIndex == index && _pageController.hasClients) {
                         _pageController.nextPage(
                           duration: const Duration(milliseconds: 350),
@@ -475,10 +476,10 @@ class _EditsScreenState extends State<EditsScreen>
                                   radius: 18,
                                   backgroundImage:
                                       edit.uploaderAvatar.isNotEmpty
-                                        ? NetworkImage(edit.uploaderAvatar)
+                                       ? NetworkImage(edit.uploaderAvatar)
                                           : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                    ? const Icon(Icons.person, size: 18)
+                                   ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),

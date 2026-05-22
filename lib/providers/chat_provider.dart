@@ -24,7 +24,7 @@ class ChatProvider extends ChangeNotifier {
         _storage = storageService;
 
   // =========================================================
-  // ✅ تحديث وقت القراءة - النسخة المصححة
+  // ✅ تحديث وقت القراءة
   // =========================================================
   Future<void> updateLastRead({
     required String groupId,
@@ -112,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // STREAM MESSAGES (REALTIME)
+  // STREAM MESSAGES
   // =========================================================
   Stream<List<MessageModel>> streamMessages({
     required String groupId,
@@ -196,6 +196,17 @@ class ChatProvider extends ChangeNotifier {
       docId: messageId,
       data: message.toMap(),
     );
+
+    // ✅ تحديث آخر رسالة في المجموعة
+    final preview = text.trim().length > 80? text.trim().substring(0, 80) : text.trim();
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': preview,
+      },
+    );
   }
 
   // =========================================================
@@ -264,6 +275,17 @@ class ChatProvider extends ChangeNotifier {
       docId: messageId,
       data: message.toMap(),
     );
+
+    // ✅ تحديث آخر رسالة
+    final preview = mediaType == 'image'? '📷 صورة' : mediaType == 'video'? '🎥 فيديو' : '📎 ملف';
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': preview,
+      },
+    );
   }
 
   // =========================================================
@@ -324,10 +346,20 @@ class ChatProvider extends ChangeNotifier {
       docId: messageId,
       data: message.toMap(),
     );
+
+    // ✅ تحديث آخر رسالة
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': 'GIF',
+      },
+    );
   }
 
   // =========================================================
-  // ✅ SEND AUDIO MESSAGE
+  // SEND AUDIO MESSAGE
   // =========================================================
   Future<void> sendAudioMessage({
     required String groupId,
@@ -338,14 +370,12 @@ class ChatProvider extends ChangeNotifier {
     String? replyToId,
     String? replyText,
   }) async {
-    // 1. رفع الملف إلى Storage
     final audioUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: audioFile,
     );
 
-    // 2. جلب بيانات المرسل الحديثة
     String? freshRealAvatar = sender.realUserImageUrl;
     String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
@@ -374,7 +404,6 @@ class ChatProvider extends ChangeNotifier {
 
     final finalAvatar = updatedSender.displayImageUrl?? '';
 
-    // 3. إنشاء MessageModel بـ mediaType: 'audio'
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -390,11 +419,20 @@ class ChatProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
-    // 4. حفظه في Firestore
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
+    );
+
+    // ✅ تحديث آخر رسالة
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': '🎤 رسالة صوتية',
+      },
     );
   }
 
@@ -481,6 +519,16 @@ class ChatProvider extends ChangeNotifier {
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
+    );
+
+    // ✅ تحديث آخر رسالة
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': '🎮 لعبة',
+      },
     );
   }
 

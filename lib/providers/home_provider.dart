@@ -1,4 +1,3 @@
-// lib/providers/home_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -130,19 +129,31 @@ class HomeProvider extends ChangeNotifier {
 
   Future<void> _loadUserGroups(String userId) async {
     try {
+      // ✅ المجموعات التي أنشأتها - مرتبة حسب آخر رسالة
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
           path: FirestorePaths.groups,
           conditions: [QueryCondition(field: 'founderId', isEqualTo: userId)],
+          orderBy: 'lastMessageAt',
+          descending: true,
         ),
       );
 
       _myGroups = myGroupsQuery.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
+
+      // ترتيب احتياطي في حال lastMessageAt null
+      _myGroups.sort((a, b) {
+        final aTime = a.lastMessageAt ?? a.createdAt;
+        final bTime = b.lastMessageAt ?? b.createdAt;
+        return bTime.compareTo(aTime);
+      });
+      
       notifyListeners();
 
+      // ✅ المجموعات المنضم لها
       final List<GroupModel> joined = [];
       final allGroupsSnapshot =
           await _firestore.getCollection(path: FirestorePaths.groups);
@@ -156,11 +167,20 @@ class HomeProvider extends ChangeNotifier {
 
           if (memberDoc != null) {
             joined.add(GroupModel.fromMap(doc.id, doc.data()));
-            _joinedGroups = List.from(joined);
-            notifyListeners();
           }
         }
       }
+
+      // ✅ ترتيب حسب آخر رسالة
+      joined.sort((a, b) {
+        final aTime = a.lastMessageAt ?? a.createdAt;
+        final bTime = b.lastMessageAt ?? b.createdAt;
+        return bTime.compareTo(aTime);
+      });
+
+      _joinedGroups = joined;
+      notifyListeners();
+
     } catch (e) {
       debugPrint("Error loading user groups: $e");
     }
@@ -207,9 +227,6 @@ class HomeProvider extends ChangeNotifier {
     }
 
     try {
-      // ✅ [إصلاح] تمرير invitedByUserId وبيانات المستخدم الكاملة
-      // كان invitedByUserId مفقوداً تماماً من MemberModel رغم وصوله كـ parameter
-      // هذا هو السبب الجذري لعدم ترقية الداعي في نظام الدعوات
       final requestMember = MemberModel(
         userId: user.id,
         groupId: group.id,
@@ -219,10 +236,10 @@ class HomeProvider extends ChangeNotifier {
         characterName: characterName,
         characterImageUrl: characterImage,
         characterReason: characterReason,
-        invitedByUserId: invitedByUserId, // ✅ الإصلاح الجذري
-        realUserName: user.username, // ✅ لضمان البحث في _verifyInviter
-        realUserImageUrl: user.avatarUrl, // ✅
-        isPremium: user.isPremium, // ✅
+        invitedByUserId: invitedByUserId,
+        realUserName: user.username,
+        realUserImageUrl: user.avatarUrl,
+        isPremium: user.isPremium,
       );
 
       await _firestore.createDocument(
@@ -318,8 +335,6 @@ class HomeProvider extends ChangeNotifier {
           .where((g) =>
               g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
-
-
 
   Future<void> refresh(UserModel user) async {
     await initialize(currentUser: user);

@@ -24,8 +24,12 @@ class GroupModel {
 
   final DateTime createdAt;
 
-  // ✅ جديد: خلفية الدردشة للمجموعة (يعينها المؤسس فقط، تظهر للجميع)
+  // ✅ جديد: خلفية الدردشة للمجموعة
   final String? chatBackgroundUrl;
+
+  // ✅ جديد: لترتيب المجموعات حسب آخر رسالة
+  final DateTime? lastMessageAt;
+  final String? lastMessageText;
 
   const GroupModel({
     required this.id,
@@ -44,6 +48,8 @@ class GroupModel {
     this.promotionExpiresAt,
     required this.createdAt,
     this.chatBackgroundUrl,
+    this.lastMessageAt,
+    this.lastMessageText,
   });
 
   bool get isRoleplay =>
@@ -71,6 +77,10 @@ class GroupModel {
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
       chatBackgroundUrl: map['chatBackgroundUrl'],
+      lastMessageAt: map['lastMessageAt'] != null
+          ? (map['lastMessageAt'] as Timestamp).toDate()
+          : null,
+      lastMessageText: map['lastMessageText'] ?? '',
     );
   }
 
@@ -91,6 +101,8 @@ class GroupModel {
       'promotionExpiresAt': promotionExpiresAt,
       'createdAt': createdAt,
       'chatBackgroundUrl': chatBackgroundUrl,
+      'lastMessageAt': lastMessageAt,
+      'lastMessageText': lastMessageText,
     };
   }
 
@@ -108,6 +120,8 @@ class GroupModel {
     bool? isPromoted,
     DateTime? promotionExpiresAt,
     String? chatBackgroundUrl,
+    DateTime? lastMessageAt,
+    String? lastMessageText,
   }) {
     return GroupModel(
       id: id,
@@ -126,6 +140,8 @@ class GroupModel {
       promotionExpiresAt: promotionExpiresAt ?? this.promotionExpiresAt,
       createdAt: createdAt,
       chatBackgroundUrl: chatBackgroundUrl ?? this.chatBackgroundUrl,
+      lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+      lastMessageText: lastMessageText ?? this.lastMessageText,
     );
   }
 }

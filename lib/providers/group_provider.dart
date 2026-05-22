@@ -25,9 +25,6 @@ class GroupProvider extends ChangeNotifier {
   }) : _firestore = firestoreService;
 
   // =========================================================
-  // ✅ دالة موحدة لتوليد charKey — تُستخدم في كل المواضع
-  // الخوارزمية: تنظيف النص ثم ترتيب الكلمات أبجدياً لضمان التطابق
-  // =========================================================
   static String _normalizeCharacterKey(String characterName) {
     final words = characterName
         .toLowerCase()
@@ -38,8 +35,6 @@ class GroupProvider extends ChangeNotifier {
     return words.join('');
   }
 
-  // =========================================================
-  // PROMOTION
   // =========================================================
   Future<void> promoteGroup({
     required String groupId,
@@ -60,9 +55,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // JOIN REQUESTS LOGIC
-  // =========================================================
-
   Future<void> sendJoinRequest({
     required String groupId,
     required String groupName,
@@ -202,7 +194,6 @@ class GroupProvider extends ChangeNotifier {
       }
 
       if (newMember.characterName != null) {
-        // ✅ استخدام الدالة الموحدة
         final charKey = _normalizeCharacterKey(newMember.characterName!);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
@@ -330,9 +321,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // MEMBERS MANAGEMENT
-  // =========================================================
-
   Future<void> addMember({
     required MemberModel member,
     String? adminId,
@@ -454,7 +442,6 @@ class GroupProvider extends ChangeNotifier {
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
       if (characterName != null) {
-        // ✅ استخدام الدالة الموحدة
         final charKey = _normalizeCharacterKey(characterName);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
@@ -481,9 +468,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // CREATE, UPDATE, DELETE GROUP
-  // =========================================================
-
   Future<void> createGroup({
     required GroupModel group,
     required MemberModel founderMember,
@@ -499,7 +483,15 @@ class GroupProvider extends ChangeNotifier {
       final groupRef =
           firestore.collection(FirestorePaths.groups).doc(group.id);
 
-      batch.set(groupRef, group.toMap());
+      // ✅ إضافة lastMessageAt و lastMessageText عند الإنشاء
+      final groupWithTimestamp = group.copyWith(
+        lastMessageAt: group.createdAt,
+        lastMessageText: group.description.isNotEmpty 
+            ? group.description 
+            : 'تم إنشاء المجموعة',
+      );
+
+      batch.set(groupRef, groupWithTimestamp.toMap());
 
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(group.id))
@@ -507,7 +499,6 @@ class GroupProvider extends ChangeNotifier {
       batch.set(memberRef, founder.toMap());
 
       if (founder.characterName != null) {
-        // ✅ استخدام الدالة الموحدة
         final charKey = _normalizeCharacterKey(founder.characterName!);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(group.id))
@@ -601,9 +592,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GETTERS & STREAMS
-  // =========================================================
-
   Future<GroupModel?> getGroup({required String groupId}) async {
     final data = await _firestore.getDocument(
       path: FirestorePaths.groups,
@@ -659,9 +647,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // INVITE & CHARACTER LOGIC
-  // =========================================================
-
   Future<void> createInvite({required InviteModel invite}) async {
     await _firestore.createDocument(
       path: FirestorePaths.groupInvites(invite.groupId),
@@ -674,7 +659,6 @@ class GroupProvider extends ChangeNotifier {
     required String groupId,
     required String characterName,
   }) async {
-    // ✅ استخدام الدالة الموحدة
     final charKey = _normalizeCharacterKey(characterName);
     final doc = await _firestore.getDocument(
       path: FirestorePaths.groupCharacters(groupId),
@@ -690,7 +674,6 @@ class GroupProvider extends ChangeNotifier {
     required String userId,
   }) async {
     try {
-      // ✅ استخدام الدالة الموحدة
       final charKey = _normalizeCharacterKey(characterName);
       await _firestore.createDocument(
         path: FirestorePaths.groupCharacters(groupId),
@@ -708,9 +691,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // USER GROUPS
-  // =========================================================
-
   Future<List<GroupModel>> getUserGroups({required String userId}) async {
     try {
       final groupsSnapshot =

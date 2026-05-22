@@ -140,6 +140,8 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<EditsProvider>().uploadCompletedNotifier.addListener(_handleUploadCompleted);
       context.read<DeepLinkProvider>().addListener(_handleDeepLink);
+      // ✅ نسمع للـ Auth أيضاً عشان نعيد المحاولة بعد تسجيل الدخول
+      context.read<AuthProvider>().addListener(_handleDeepLink);
     });
   }
 
@@ -147,6 +149,7 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
   void dispose() {
     context.read<EditsProvider>().uploadCompletedNotifier.removeListener(_handleUploadCompleted);
     context.read<DeepLinkProvider>().removeListener(_handleDeepLink);
+    context.read<AuthProvider>().removeListener(_handleDeepLink);
     super.dispose();
   }
 
@@ -156,9 +159,10 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
     if (pending == null) return;
 
     final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn) return; // ✅ لا تمسح الرابط، انتظر تسجيل الدخول
+    // ✅ انتظر لين يخلص التحميل ويسجل دخول
+    if (auth.isLoading || !auth.isLoggedIn) return;
 
-    deepLinkProvider.clearPendingLink(); // ✅ امسح بعد التأكد
+    deepLinkProvider.clearPendingLink();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;

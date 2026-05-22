@@ -11,19 +11,16 @@ class DeepLinkProvider extends ChangeNotifier {
   DeepLinkResult? _pendingLink;
   DeepLinkResult? get pendingLink => _pendingLink;
 
-  Future<void> init() async {
-    // 1. رابط فتح التطبيق وهو مغلق
-    final initial = await _service.getInitialLink();
-    if (initial != null) {
-      _handleUri(initial);
-    }
-
-    // 2. روابط أثناء عمل التطبيق
+  // ✅ الاشتراك يصير فوراً في الـ constructor
+  DeepLinkProvider() {
     _sub = _service.linkStream.listen(
       _handleUri,
       onError: (_) {},
     );
   }
+
+  // نخليه للتوافق مع الكود القديم (..init())
+  Future<void> init() async {}
 
   void _handleUri(Uri uri) {
     final result = _service.parseLink(uri);
