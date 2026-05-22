@@ -129,14 +129,12 @@ class HomeProvider extends ChangeNotifier {
 
   Future<void> _loadUserGroups(String userId) async {
     try {
-      // ✅ المجموعات التي أنشأتها - مرتبة حسب آخر رسالة
+      // ✅ المجموعات التي أنشأتها - بدون orderBy لتجنب مشكلة الـ index
       final myGroupsQuery = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
           path: FirestorePaths.groups,
           conditions: [QueryCondition(field: 'founderId', isEqualTo: userId)],
-          orderBy: 'lastMessageAt',
-          descending: true,
         ),
       );
 
@@ -144,7 +142,7 @@ class HomeProvider extends ChangeNotifier {
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .toList();
 
-      // ترتيب احتياطي في حال lastMessageAt null
+      // ترتيب في الذاكرة حسب آخر رسالة (أو تاريخ الإنشاء)
       _myGroups.sort((a, b) {
         final aTime = a.lastMessageAt ?? a.createdAt;
         final bTime = b.lastMessageAt ?? b.createdAt;
@@ -171,7 +169,7 @@ class HomeProvider extends ChangeNotifier {
         }
       }
 
-      // ✅ ترتيب حسب آخر رسالة
+      // ترتيب حسب آخر رسالة
       joined.sort((a, b) {
         final aTime = a.lastMessageAt ?? a.createdAt;
         final bTime = b.lastMessageAt ?? b.createdAt;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/edits_model.dart';
 import '../services/firebase/edits_service.dart';
 import 'package:pubget/services/firebase/feed_service.dart';
@@ -19,7 +20,7 @@ class EditsProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isUploading = false;
   bool _isListening = false;
-  bool _skipNextLoad = false; // ← flag لمنع مسح الـ feed بعد النشر
+  bool _skipNextLoad = false;
   String? _error;
   EditModel? _lastUploadedEdit;
 
@@ -77,7 +78,6 @@ class EditsProvider extends ChangeNotifier {
   // ══════════════════════════════════════════════
 
   Future<void> loadSmartFeed(String userId) async {
-    // ← إذا كان الـ flag مفعلاً، تخطَّ الجلسة الحالية ولا تمسح الـ feed
     if (_skipNextLoad) {
       _skipNextLoad = false;
       return;
@@ -110,7 +110,6 @@ class EditsProvider extends ChangeNotifier {
   Future<void> listenToEdits() async {
     if (_isListening) return;
     _isListening = true;
-    // ← إزالة _isLoading = true لأن listenToEdits للتحديثات فقط وليس loading أولي
 
     await _editsSubscription?.cancel();
 
@@ -127,29 +126,26 @@ class EditsProvider extends ChangeNotifier {
   }
 
   void _mergeIncomingEdits(List<EditModel> incoming) {
-    bool hasNewEdit = false; // ← track إضافة إيديت جديد فقط
+    bool hasNewEdit = false;
 
     for (final edit in incoming) {
       final existing = _editsMap[edit.id];
 
       if (existing == null) {
-        // ← إيديت جديد تماماً
         _editsMap[edit.id] = edit;
         if (!_seenIds.contains(edit.id)) {
           _sessionFeed.add(edit);
-          hasNewEdit = true; // ← فقط هنا نُعيد الترتيب
+          hasNewEdit = true;
         }
         continue;
       }
 
-      // ← تحديث لايك أو كومنت — لا إعادة ترتيب
       final merged = _mergeEdit(existing, edit);
       _editsMap[edit.id] = merged;
       final idx = _sessionFeed.indexWhere((e) => e.id == edit.id);
       if (idx!= -1) _sessionFeed[idx] = merged;
     }
 
-    // ← إعادة الترتيب فقط عند وجود إيديت جديد
     if (hasNewEdit) {
       _sessionFeed
          .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
@@ -221,7 +217,8 @@ class EditsProvider extends ChangeNotifier {
     await _service.incrementViews(editId, userId);
   }
 
-  Future<void> addComment({
+  // ── تم التعديل: يرجع ID التعليق
+  Future<String?> addComment({
     required String editId,
     required String userId,
     required String username,
@@ -229,7 +226,7 @@ class EditsProvider extends ChangeNotifier {
     required String text,
   }) async {
     try {
-      await _service.addComment(
+      final commentId = await _service.addComment(
         editId: editId,
         userId: userId,
         username: username,
@@ -247,10 +244,38 @@ class EditsProvider extends ChangeNotifier {
         if (idx!= -1) _sessionFeed[idx] = updated;
         notifyListeners();
       }
+      return commentId;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      return null;
     }
+  }
+
+  // ── دالة جديدة: stream التعليقات مع جلب صور المستخدمين
+  Stream<List<CommentModel>> streamComments(String editId) {
+    return _service.streamComments(editId).asyncMap((comments) async {
+      final enriched = <CommentModel>[];
+      for (final c in comments) {
+        if (c.userAvatar.isEmpty) {
+          try {
+            final userDoc = await FirebaseFirestore.instance
+               .collection('Users')
+               .doc(c.userId)
+               .get();
+            final data = userDoc.data();
+            final avatar = data?['avatarUrl']?? '';
+            final name = data?['username']?? c.userName;
+            enriched.add(c.copyWith(userAvatar: avatar, userName: name));
+          } catch (_) {
+            enriched.add(c);
+          }
+        } else {
+          enriched.add(c);
+        }
+      }
+      return enriched;
+    });
   }
 
   // ══════════════════════════════════════════════
@@ -297,7 +322,6 @@ class EditsProvider extends ChangeNotifier {
     void Function(String)? onFailed,
   }) async {
     try {
-      // ← رفع متوازٍ للفيديو والـ thumbnail معاً
       final urls = await _service.uploadVideoAndThumbnail(
           videoFile, thumbnailFile, userId);
       final videoUrl = urls[0];
@@ -322,13 +346,11 @@ class EditsProvider extends ChangeNotifier {
       final uploadedEdit = edit.copyWith(id: docId);
 
       _lastUploadedEdit = uploadedEdit;
-
-      // ← فعّل الـ flag لمنع loadSmartFeed من مسح الـ feed
       _skipNextLoad = true;
 
       _isUploading = false;
-      notifyListeners(); // ← يُخفي الشريط
-      uploadCompletedNotifier.value = uploadedEdit; // ← يُطلق الانتقال
+      notifyListeners();
+      uploadCompletedNotifier.value = uploadedEdit;
       onComplete?.call(uploadedEdit);
     } catch (e) {
       _error = e.toString();
@@ -337,13 +359,14 @@ class EditsProvider extends ChangeNotifier {
       onFailed?.call(e.toString());
     }
   }
-  void setSkipNextLoad(){
+
+  void setSkipNextLoad() {
     _skipNextLoad = true;
   }
 
   // ══════════════════════════════════════════════
   // ── أدوات مساعدة
-  // ══════════════════════════════════════════════
+  // ══════════════════════════════
 
   void prependEdit(EditModel edit) {
     _editsMap[edit.id] = edit;
@@ -366,7 +389,7 @@ class EditsProvider extends ChangeNotifier {
   Stream<List<EditModel>> getUserEdits(String userId) =>
       _service.getUserEdits(userId);
 
-   Future<EditModel?> fetchEditById(String editId) async {
+  Future<EditModel?> fetchEditById(String editId) async {
     if (_editsMap.containsKey(editId)) return _editsMap[editId];
     try {
       final edit = await _service.getEditById(editId);
@@ -376,6 +399,7 @@ class EditsProvider extends ChangeNotifier {
       return null;
     }
   }
+
   Future<void> deleteEdit(EditModel edit) async {
     try {
       await _service.deleteEdit(edit);

@@ -13,7 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/notification_model.dart';
 
 import '../groups/group_details_screen.dart';
-import '../groups/join_requests_screen.dart'; // 🔥 مضاف للتوجه لطلبات الانضمام
+import '../groups/join_requests_screen.dart';
 import '../private_chat/private_chat_screen.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'search_screen.dart';
@@ -119,7 +119,6 @@ class NotificationsScreen extends StatelessWidget {
     required dynamic currentUser,
   }) {
     switch (notification.type) {
-      // إذا تم قبول العضو أو إشعار مجموعة عام
       case NotificationTypes.requestAccepted:
       case "group":
         if (notification.refId!= null) {
@@ -130,7 +129,6 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // إذا كان إشعار بطلب انضمام جديد (يصل للشوغو)
       case NotificationTypes.joinRequest:
         if (notification.refId!= null) {
           Navigator.push(
@@ -140,18 +138,20 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // حالة تفكيك المجموعة: لا نقوم بالتوجه لمكان لأن المجموعة حُذفت
       case NotificationTypes.groupDisbanded:
-        // يمكننا عرض رسالة تنبيه بسيطة أو البقاء في شاشة الإشعارات
         break;
 
-      // تعليق جديد على إيديت
+      // تعليق جديد على إيديت - مع فتح الشيت والسكرول
       case NotificationTypes.comment:
         if (notification.refId!= null) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => EditsScreen(initialEditId: notification.refId!),
+              builder: (_) => EditsScreen(
+                initialEditId: notification.refId!,
+                initialCommentId: notification.commentId,
+                autoOpenComments: true,
+              ),
             ),
           );
         }
@@ -193,7 +193,7 @@ class NotificationsScreen extends StatelessWidget {
         return Icons.error_outline;
       case NotificationTypes.joinRequest:
         return Icons.person_add_outlined;
-      case NotificationTypes.groupDisbanded: // أيقونة خاصة لتفكيك المجموعة
+      case NotificationTypes.groupDisbanded:
         return Icons.group_off_outlined;
       case NotificationTypes.comment:
         return Icons.comment;

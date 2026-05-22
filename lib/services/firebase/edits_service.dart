@@ -11,11 +11,11 @@ class EditsService {
   // ── Stream للتحديثات الصغيرة فقط (لايك، كومنت)
   Stream<List<EditModel>> getEdits() {
     return _firestore
-       .collection('edits')
-       .orderBy('createdAt', descending: true)
-       .limit(50)
-       .snapshots()
-       .map((snap) =>
+      .collection('edits')
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .snapshots()
+      .map((snap) =>
             snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList());
   }
 
@@ -25,21 +25,18 @@ class EditsService {
     required List<String> seenIds,
   }) async {
     final snap = await _firestore
-       .collection('edits')
-       .orderBy('createdAt', descending: true)
-       .limit(50) // ← تقليص من 100 إلى 50 للسرعة
-       .get();
+      .collection('edits')
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .get();
 
     final all = snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList();
-
     final unseen = all.where((e) =>!seenIds.contains(e.id)).toList();
-
     unseen.sort((a, b) => b.computeScore().compareTo(a.computeScore()));
-
     return unseen;
   }
 
-  // ── تسجيل وقت المشاهدة — خفيف بدون transaction
+  // ── تسجيل وقت المشاهدة
   Future<void> recordWatchTime({
     required String editId,
     required String userId,
@@ -49,31 +46,26 @@ class EditsService {
     if (watchSeconds <= 0) return;
 
     final editRef = _firestore.collection('edits').doc(editId);
-    final watchRef =
-        editRef.collection('watch_events').doc(userId);
+    final watchRef = editRef.collection('watch_events').doc(userId);
 
-    // ← حفظ حدث المشاهدة بدون transaction
     watchRef.set({
       'watchSeconds': watchSeconds,
       'watchPercent': watchPercent,
       'recordedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    // ← تحديث المجموع بـ increment مباشرة بدون قراءة أولى
     editRef.update({
       'totalWatchSeconds': FieldValue.increment(watchSeconds),
-      // ← متوسط تقريبي: نجمع نسبة المشاهدة ونقسمها لاحقاً بالعدد
-      // لا نحتاج دقة 100% هنا، الهدف الاتجاه العام
       'avgWatchPercent': watchPercent,
     });
   }
 
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _firestore
-       .collection('edits')
-       .where('uploaderId', isEqualTo: userId)
-       .snapshots()
-       .map((snap) {
+      .collection('edits')
+      .where('uploaderId', isEqualTo: userId)
+      .snapshots()
+      .map((snap) {
       final list =
           snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -81,29 +73,26 @@ class EditsService {
     });
   }
 
-  // ── رفع الفيديو والـ thumbnail بشكل متوازٍ
+  // ── رفع الفيديو والـ thumbnail
   Future<List<String>> uploadVideoAndThumbnail(
       File videoFile, File thumbnailFile, String userId) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-
     final videoRef = _storage.ref().child('edits/$userId/v_$timestamp.mp4');
     final thumbRef = _storage.ref().child('edits/$userId/t_$timestamp.jpg');
 
-    // ← رفع متوازٍ بدل التسلسلي
     final results = await Future.wait([
       videoRef
-         .putFile(videoFile, SettableMetadata(contentType: 'video/mp4'))
-         .then((_) => videoRef.getDownloadURL()),
+        .putFile(videoFile, SettableMetadata(contentType: 'video/mp4'))
+        .then((_) => videoRef.getDownloadURL()),
       thumbRef
-         .putFile(thumbnailFile,
+        .putFile(thumbnailFile,
               SettableMetadata(contentType: 'image/jpeg'))
-         .then((_) => thumbRef.getDownloadURL()),
+        .then((_) => thumbRef.getDownloadURL()),
     ]);
 
-    return results; // [videoUrl, thumbnailUrl]
+    return results;
   }
 
-  // ← الاحتفاظ بهما منفردَين للتوافق مع أجزاء أخرى قد تستخدمهما
   Future<String> uploadVideo(File file, String userId) async {
     final ref = _storage.ref().child(
         'edits/$userId/v_${DateTime.now().millisecondsSinceEpoch}.mp4');
@@ -128,33 +117,32 @@ class EditsService {
     final ref = _firestore.collection('edits').doc(editId);
     await ref.update({
       'likes': isCurrentlyLiked
-         ? FieldValue.arrayRemove([userId])
+        ? FieldValue.arrayRemove([userId])
           : FieldValue.arrayUnion([userId]),
     });
   }
 
   Future<void> incrementViews(String editId, String userId) async {
     final viewerRef = _firestore
-       .collection('edits')
-       .doc(editId)
-       .collection('viewers')
-       .doc(userId);
+      .collection('edits')
+      .doc(editId)
+      .collection('viewers')
+      .doc(userId);
     final existing = await viewerRef.get();
     if (existing.exists) return;
     await viewerRef.set({'viewedAt': FieldValue.serverTimestamp()});
     await _firestore
-       .collection('edits')
-       .doc(editId)
-       .update({'views': FieldValue.increment(1)});
+      .collection('edits')
+      .doc(editId)
+      .update({'views': FieldValue.increment(1)});
   }
 
-  // ── جلب إيديت واحد بالـ id من Firestore
   Future<EditModel?> getEditById(String editId) async {
     try {
       final doc = await _firestore
-         .collection('edits')
-         .doc(editId)
-         .get();
+        .collection('edits')
+        .doc(editId)
+        .get();
       if (!doc.exists) return null;
       return EditModel.fromFirestore(doc);
     } catch (_) {
@@ -162,8 +150,8 @@ class EditsService {
     }
   }
 
-  // ── إضافة تعليق جديد
-  Future<void> addComment({
+  // ── إضافة تعليق جديد - يرجع ID
+  Future<String> addComment({
     required String editId,
     required String userId,
     required String username,
@@ -171,25 +159,39 @@ class EditsService {
     required String text,
   }) async {
     final commentsRef = _firestore
-       .collection('edits')
-       .doc(editId)
-       .collection('comments');
+      .collection('edits')
+      .doc(editId)
+      .collection('comments');
 
-    await commentsRef.add({
+    final docRef = await commentsRef.add({
       'userId': userId,
       'username': username,
       'userAvatar': userAvatar,
       'text': text,
       'createdAt': FieldValue.serverTimestamp(),
+      'likes': [],
     });
 
     await _firestore.collection('edits').doc(editId).update({
       'commentsCount': FieldValue.increment(1),
     });
+
+    return docRef.id; // ← مهم للإشعار
+  }
+
+  // ── Stream التعليقات الجديد
+  Stream<List<CommentModel>> streamComments(String editId) {
+    return _firestore
+      .collection('edits')
+      .doc(editId)
+      .collection('comments')
+      .orderBy('createdAt', descending: false)
+      .snapshots()
+      .map((snap) =>
+           snap.docs.map((doc) => CommentModel.fromFirestore(doc)).toList());
   }
 
   Future<void> deleteEdit(EditModel edit) async {
-    // ← حذف متوازٍ للـ Storage
     await Future.wait([
       _firestore.collection('edits').doc(edit.id).delete(),
       Future(() async {

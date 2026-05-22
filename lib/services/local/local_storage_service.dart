@@ -8,7 +8,7 @@ class LocalStorageService {
   static const String _adsCountKey = 'ads_count_today';
   static const String _lastAdDateKey = 'last_ad_date_string';
   static const String _darkModeKey = 'dark_mode';
-  static const String _savedGifsKey = 'saved_gifs'; // ← مضاف
+  static const String _savedGifsKey = 'saved_gifs';
 
   // Singleton instance
   LocalStorageService._privateConstructor();

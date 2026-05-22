@@ -25,11 +25,10 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تسجيل FCM Token - النسخة المصححة مع إعادة المحاولة
+  // ✅ تسجيل FCM Token
   // =========================================================
   Future<void> registerToken(String userId) async {
     try {
-      // 1. فعل مراقبة التجديد دائماً أولاً
       NotificationService.instance.listenToTokenRefresh((newToken) async {
         await _firestore.updateDocument(
           path: 'Users',
@@ -42,7 +41,6 @@ class NotificationsProvider extends ChangeNotifier {
         debugPrint('🔄 FCM Token refreshed for $userId');
       });
 
-      // 2. حاول تجيب التوكن 3 مرات مع انتظار
       String? token;
       for (int i = 0; i < 3; i++) {
         token = await NotificationService.instance.getToken();
@@ -71,7 +69,7 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // Stream notifications for a specific user
+  // Stream notifications
   // =========================================================
   Stream<List<NotificationModel>> streamNotifications(String userId) {
     final path = FirestorePaths.userNotifications(userId);
@@ -88,9 +86,6 @@ class NotificationsProvider extends ChangeNotifier {
     return stream;
   }
 
-  // =========================================================
-  // مراقبة عدد الإشعارات غير المقروءة
-  // =========================================================
   Stream<int> getUnreadCountStream(String userId) {
     final path = FirestorePaths.userNotifications(userId);
     return _firestore.streamCollection(path: path).map((snapshot) {
@@ -100,9 +95,6 @@ class NotificationsProvider extends ChangeNotifier {
     });
   }
 
-  // =========================================================
-  // Mark single notification as read
-  // =========================================================
   Future<void> markAsRead({
     required String userId,
     required String notificationId,
@@ -119,9 +111,6 @@ class NotificationsProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // Mark single notification as unread
-  // =========================================================
   Future<void> markAsUnread({
     required String userId,
     required String notificationId,
@@ -138,9 +127,6 @@ class NotificationsProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // Mark all notifications as read
-  // =========================================================
   Future<void> markAllAsRead({required String userId}) async {
     _setLoading(true);
     try {
@@ -168,9 +154,6 @@ class NotificationsProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // Delete a notification
-  // =========================================================
   Future<void> deleteNotification({
     required String userId,
     required String notificationId,
@@ -187,7 +170,7 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // إنشاء إشعار تعليق جديد
+  // إنشاء إشعار تعليق جديد - مع commentId
   // =========================================================
   Future<void> createCommentNotification({
     required String toUserId,
@@ -195,6 +178,7 @@ class NotificationsProvider extends ChangeNotifier {
     required String fromUsername,
     required String editId,
     required String commentText,
+    required String commentId, // ← جديد
   }) async {
     final notification = NotificationModel(
       id: '',
@@ -203,6 +187,7 @@ class NotificationsProvider extends ChangeNotifier {
       type: NotificationTypes.comment,
       refId: editId,
       senderId: fromUserId,
+      commentId: commentId, // ← جديد
       createdAt: DateTime.now(),
       isRead: false,
     );

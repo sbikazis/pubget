@@ -127,3 +127,70 @@ class EditModel {
         (1.0 / (1.0 + ageHours * 0.01));
   }
 }
+
+// ══════════════════════════════════════════════
+// ── موديل التعليقات الجديد
+// ══════════════════════════════════════════════
+class CommentModel {
+  final String id;
+  final String userId;
+  final String userName;
+  final String userAvatar;
+  final String text;
+  final DateTime createdAt;
+  final List<String> likes;
+
+  CommentModel({
+    required this.id,
+    required this.userId,
+    required this.userName,
+    required this.userAvatar,
+    required this.text,
+    required this.createdAt,
+    this.likes = const [],
+  });
+
+  factory CommentModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return CommentModel(
+      id: doc.id,
+      userId: data['userId'] ?? '',
+      userName: data['username'] ?? data['userName'] ?? '',
+      userAvatar: data['userAvatar'] ?? '',
+      text: data['text'] ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      likes: List<String>.from(data['likes'] ?? []),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'username': userName,
+      'userAvatar': userAvatar,
+      'text': text,
+      'createdAt': FieldValue.serverTimestamp(),
+      'likes': likes,
+    };
+  }
+
+  CommentModel copyWith({
+    String? id,
+    String? userId,
+    String? userName,
+    String? userAvatar,
+    String? text,
+    DateTime? createdAt,
+    List<String>? likes,
+  }) {
+    return CommentModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      userName: userName ?? this.userName,
+      userAvatar: userAvatar ?? this.userAvatar,
+      text: text ?? this.text,
+      createdAt: createdAt ?? this.createdAt,
+      likes: likes ?? this.likes,
+    );
+  }
+}

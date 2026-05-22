@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../core/theme/app_colors.dart';
-import '../services/local/local_storage_service.dart'; // ← مضاف
+import '../services/local/local_storage_service.dart';
 
 const String _giphyApiKey = 'CoNhilLoOuTHk4KjZCBxC4kOVGTW7v5F';
 
@@ -32,8 +32,17 @@ class _GifPickerSheetState extends State<GifPickerSheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _savedGifs = LocalStorageService.instance.getSavedGifs(); // ← مضاف
+    _loadSaved(); // ✅ حمّل المحفوظات بعد التهيئة
     _loadTrending();
+  }
+
+  Future<void> _loadSaved() async {
+    await LocalStorageService.instance.init();
+    if (mounted) {
+      setState(() {
+        _savedGifs = LocalStorageService.instance.getSavedGifs();
+      });
+    }
   }
 
   @override
@@ -44,62 +53,65 @@ class _GifPickerSheetState extends State<GifPickerSheet>
   }
 
   Future<void> _loadTrending() async {
-    setState(() => _isLoadingTrending = true);
-    try {
-      final res = await http.get(Uri.parse(
-          'https://api.giphy.com/v1/gifs/trending?api_key=$_giphyApiKey&limit=30&rating=g'));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final List gifs = data['data'];
+  setState(() => _isLoadingTrending = true);
+  try {
+    final res = await http.get(Uri.parse(
+        'https://api.giphy.com/v1/gifs/trending?api_key=$_giphyApiKey&limit=30&rating=g'));
+    if (res.statusCode == 200) {
+      final data = json.decode(res.body);
+      final List gifs = data['data'];
+      if (mounted) {
         setState(() {
           _trendingGifs = gifs
-              .map<String>((g) =>
-                  g['images']['fixed_height']['url'] as String? ?? '')
+              .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
               .where((url) => url.isNotEmpty)
               .toList();
         });
       }
-    } catch (_) {}
-    if (mounted) setState(() => _isLoadingTrending = false);
-  }
+    }
+  } catch (_) {}
+  if (mounted) setState(() => _isLoadingTrending = false);
+}
 
-  Future<void> _search(String query) async {
-    if (query.trim().isEmpty) return;
-    if (query == _lastQuery) return;
-    _lastQuery = query;
-    setState(() => _isSearching = true);
-    try {
-      final res = await http.get(Uri.parse(
-          'https://api.giphy.com/v1/gifs/search?api_key=$_giphyApiKey&q=${Uri.encodeComponent(query)}&limit=30&rating=g'));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final List gifs = data['data'];
+Future<void> _search(String query) async {
+  if (query.trim().isEmpty) return;
+  if (query == _lastQuery) return;
+  _lastQuery = query;
+  setState(() => _isSearching = true);
+  try {
+    final res = await http.get(Uri.parse(
+        'https://api.giphy.com/v1/gifs/search?api_key=$_giphyApiKey&q=${Uri.encodeComponent(query)}&limit=30&rating=g'));
+    if (res.statusCode == 200) {
+      final data = json.decode(res.body);
+      final List gifs = data['data'];
+      if (mounted) {
         setState(() {
           _searchResults = gifs
-              .map<String>((g) =>
-                  g['images']['fixed_height']['url'] as String? ?? '')
+              .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
               .where((url) => url.isNotEmpty)
               .toList();
         });
       }
-    } catch (_) {}
-    if (mounted) setState(() => _isSearching = false);
-  }
+    }
+  } catch (_) {}
+  if (mounted) setState(() => _isSearching = false);
+}
 
   void _onGifTap(String url) {
     widget.onGifSelected(url);
     Navigator.pop(context);
   }
 
-  void _toggleSave(String url) {
+  Future<void> _toggleSave(String url) async {
+    await LocalStorageService.instance.init();
     setState(() {
       if (_savedGifs.contains(url)) {
         _savedGifs.remove(url);
       } else {
-        _savedGifs.add(url);
+        _savedGifs.insert(0, url); // الأحدث أولاً
       }
     });
-    LocalStorageService.instance.saveGifs(_savedGifs); // ← مضاف
+    await LocalStorageService.instance.saveGifs(_savedGifs);
   }
 
   @override
@@ -109,7 +121,7 @@ class _GifPickerSheetState extends State<GifPickerSheet>
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
+        color: isDark? AppColors.darkSurface : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
@@ -126,10 +138,10 @@ class _GifPickerSheetState extends State<GifPickerSheet>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
-              children: [
-                const Icon(Icons.gif, size: 36, color: AppColors.primary),
-                const SizedBox(width: 8),
-                const Text(
+              children: const [
+                Icon(Icons.gif, size: 36, color: AppColors.primary),
+                SizedBox(width: 8),
+                Text(
                   'GIF & ملصقات',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
@@ -146,7 +158,7 @@ class _GifPickerSheetState extends State<GifPickerSheet>
                 hintText: 'ابحث عن GIF...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
+                   ? IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: () {
                           _searchController.clear();
@@ -159,7 +171,7 @@ class _GifPickerSheetState extends State<GifPickerSheet>
                       )
                     : null,
                 filled: true,
-                fillColor: isDark ? AppColors.darkCard : Colors.grey.shade100,
+                fillColor: isDark? AppColors.darkCard : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -206,7 +218,7 @@ class _GifPickerSheetState extends State<GifPickerSheet>
                   gifs: _searchResults,
                   isLoading: _isSearching,
                   emptyMessage: _lastQuery.isEmpty
-                      ? 'ابحث عن GIF أعلاه'
+                     ? 'ابحث عن GIF أعلاه'
                       : 'لا توجد نتائج لـ "$_lastQuery"',
                 ),
                 _buildGifGrid(
@@ -267,12 +279,13 @@ class _GifPickerSheetState extends State<GifPickerSheet>
 
         return GestureDetector(
           onTap: () => _onGifTap(url),
-          onLongPress: () {
-            _toggleSave(url);
+          onLongPress: () async {
+            await _toggleSave(url);
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                    isSaved ? 'تم إزالة GIF من المحفوظات' : 'تم حفظ GIF ⭐'),
+                    isSaved? 'تم إزالة GIF من المحفوظات' : 'تم حفظ GIF ⭐'),
                 duration: const Duration(seconds: 1),
                 behavior: SnackBarBehavior.floating,
               ),

@@ -12,6 +12,7 @@ import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
+import 'edits_comments_sheet.dart'; // ← مضاف
 
 class _AdEditWidget extends StatefulWidget {
   final VoidCallback onAdFinished;
@@ -81,7 +82,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         Container(
           color: Colors.black,
           child: _adLoaded
-           ? AdWidget(ad: _nativeAd!)
+         ? AdWidget(ad: _nativeAd!)
               : const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -136,7 +137,16 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
 class EditsScreen extends StatefulWidget {
   final int startIndex;
   final String? initialEditId;
-  const EditsScreen({super.key, this.startIndex = 0, this.initialEditId});
+  final String? initialCommentId; // ← جديد
+  final bool autoOpenComments; // ← جديد
+
+  const EditsScreen({
+    super.key,
+    this.startIndex = 0,
+    this.initialEditId,
+    this.initialCommentId,
+    this.autoOpenComments = false,
+  });
 
   @override
   State<EditsScreen> createState() => _EditsScreenState();
@@ -161,18 +171,15 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
-    // ✅ التعديل الجوهري: جلب الإيديت المحدد مباشرة
     if (widget.initialEditId!= null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final provider = context.read<EditsProvider>();
 
-        // جيب الإيديت حتى لو مو موجود في الفيد
         EditModel? targetEdit = provider.getEditById(widget.initialEditId!);
         targetEdit??= await provider.fetchEditById(widget.initialEditId!);
 
         if (targetEdit!= null && mounted) {
-          // حطه أول القائمة عشان يظهر فوراً
           provider.prependEdit(targetEdit);
 
           await Future.delayed(const Duration(milliseconds: 100));
@@ -181,6 +188,14 @@ class _EditsScreenState extends State<EditsScreen>
           if (_pageController.hasClients) {
             _pageController.jumpToPage(0);
             setState(() => _currentIndex = 0);
+          }
+
+          // ← فتح التعليقات تلقائياً
+          if (widget.autoOpenComments || widget.initialCommentId!= null) {
+            await Future.delayed(const Duration(milliseconds: 400));
+            if (mounted) {
+              _openComments(targetEdit.id, commentId: widget.initialCommentId);
+            }
           }
         }
       });
@@ -192,8 +207,11 @@ class _EditsScreenState extends State<EditsScreen>
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    final userId = FirebaseAuth.instance.currentUser?.uid?? '';
-    context.read<EditsProvider>().loadSmartFeed(userId);
+
+    if (widget.initialEditId == null) {
+      final userId = FirebaseAuth.instance.currentUser?.uid?? '';
+      context.read<EditsProvider>().loadSmartFeed(userId);
+    }
   }
 
   @override
@@ -224,6 +242,20 @@ class _EditsScreenState extends State<EditsScreen>
         MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId)));
   }
 
+  void _openComments(String editId, {String? commentId}) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => EditCommentsSheet(
+        editId: editId,
+        currentUserId: currentUserId,
+        scrollToCommentId: commentId,
+      ),
+    );
+  }
+
   void _showEndDialog() {
     showModalBottomSheet(
       context: context,
@@ -232,7 +264,7 @@ class _EditsScreenState extends State<EditsScreen>
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
-            color: Color(0xFF1A1A),
+            color: Color(0xFF1A1A1A),
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -382,8 +414,8 @@ class _EditsScreenState extends State<EditsScreen>
               itemCount: totalCount,
               physics:!isPremium &&
                       _isAdSlot(_currentIndex) &&
-                   !_finishedAdIndexes.contains(_currentIndex)
-               ? const NeverScrollableScrollPhysics()
+                 !_finishedAdIndexes.contains(_currentIndex)
+             ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 final entryTime = _pageEntryTime;
@@ -476,10 +508,10 @@ class _EditsScreenState extends State<EditsScreen>
                                   radius: 18,
                                   backgroundImage:
                                       edit.uploaderAvatar.isNotEmpty
-                                       ? NetworkImage(edit.uploaderAvatar)
+                                     ? NetworkImage(edit.uploaderAvatar)
                                           : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                   ? const Icon(Icons.person, size: 18)
+                                 ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
@@ -521,7 +553,7 @@ class _EditsScreenState extends State<EditsScreen>
                         currentUserId: currentUserId,
                         onLike: () => editsProvider.toggleLike(
                             edit.id, currentUserId),
-                        onComment: () {},
+                        onComment: () => _openComments(edit.id),
                         onShare: () {
                           showModalBottomSheet(
                             context: context,

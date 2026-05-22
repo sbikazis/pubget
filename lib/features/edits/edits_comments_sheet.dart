@@ -6,15 +6,19 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/notifications_provider.dart';
+import '../../models/edits_model.dart';
+import '../profile/profile_sceen.dart';
 
 class EditCommentsSheet extends StatefulWidget {
   final String editId;
   final String currentUserId;
+  final String? scrollToCommentId; // ← جديد
 
   const EditCommentsSheet({
     super.key,
     required this.editId,
     required this.currentUserId,
+    this.scrollToCommentId,
   });
 
   @override
@@ -26,9 +30,30 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Map<String, GlobalKey> _commentKeys = {};
   bool _isSending = false;
   String? _replyToId;
   String? _replyToName;
+
+  @override
+  void initState() {
+    super.initState();
+    // سكرول للتعليق بعد التحميل
+    if (widget.scrollToCommentId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToComment());
+    }
+  }
+
+  void _scrollToComment() {
+    final key = _commentKeys[widget.scrollToCommentId];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOut,
+      );
+    }
+  }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -56,8 +81,8 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     setState(() => _isSending = true);
 
     try {
-      // 1. حفظ التعليق عبر الـ Provider
-      await editsProvider.addComment(
+      // 1. حفظ التعليق وجيب الـ ID
+      final commentId = await editsProvider.addComment(
         editId: widget.editId,
         userId: user.id,
         username: user.username,
@@ -65,14 +90,15 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         text: text,
       );
 
-      // 2. إرسال إشعار لمول الإيديت إذا ماشي هو نفس الشخص
-      if (edit != null && edit.uploaderId != user.id) {
+      // 2. إرسال إشعار مع الـ commentId
+      if (edit != null && edit.uploaderId != user.id && commentId != null) {
         await notificationsProvider.createCommentNotification(
           toUserId: edit.uploaderId,
           fromUserId: user.id,
           fromUsername: user.username,
           editId: widget.editId,
           commentText: text,
+          commentId: commentId,
         );
       }
 
@@ -124,6 +150,13 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     });
   }
 
+  void _openProfile(String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId)),
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -134,6 +167,8 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final editsProvider = context.watch<EditsProvider>();
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: const BoxDecoration(
@@ -169,23 +204,18 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           ),
           const Divider(color: Colors.white12, height: 1),
 
-          // ── قائمة التعليقات
+          // ── قائمة التعليقات (تستخدم streamComments)
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('edits')
-                  .doc(widget.editId)
-                  .collection('comments')
-                  .orderBy('createdAt', descending: false)
-                  .snapshots(),
+            child: StreamBuilder<List<CommentModel>>(
+              stream: editsProvider.streamComments(widget.editId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final docs = snapshot.data?.docs ?? [];
+                final comments = snapshot.data ?? [];
 
-                if (docs.isEmpty) {
+                if (comments.isEmpty) {
                   return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -204,35 +234,40 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                   );
                 }
 
+                // أنشئ keys للسكرول
+                for (final c in comments) {
+                  _commentKeys.putIfAbsent(c.id, () => GlobalKey());
+                }
+
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: docs.length,
+                  itemCount: comments.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final commentId = docs[index].id;
-                    final likes = List.from(data['likes'] ?? []);
-                    final isLiked = likes.contains(widget.currentUserId);
-                    final replyToName = data['replyToName'];
+                    final comment = comments[index];
+                    final isLiked = comment.likes.contains(widget.currentUserId);
 
-                    return Padding(
+                    return Container(
+                      key: _commentKeys[comment.id],
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // الصورة
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundImage:
-                                (data['avatarUrl'] ?? '').isNotEmpty
-                                    ? NetworkImage(data['avatarUrl'])
-                                    : null,
-                            backgroundColor: Colors.white24,
-                            child: (data['avatarUrl'] ?? '').isEmpty
-                                ? const Icon(Icons.person,
-                                    size: 18, color: Colors.white)
-                                : null,
+                          // الصورة مع ضغط للبروفايل
+                          GestureDetector(
+                            onTap: () => _openProfile(comment.userId),
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundImage: comment.userAvatar.isNotEmpty
+                                  ? NetworkImage(comment.userAvatar)
+                                  : null,
+                              backgroundColor: Colors.white24,
+                              child: comment.userAvatar.isEmpty
+                                  ? const Icon(Icons.person,
+                                      size: 18, color: Colors.white)
+                                  : null,
+                            ),
                           ),
                           const SizedBox(width: 10),
 
@@ -241,54 +276,36 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // الاسم
-                                Text(
-                                  data['username'] ?? '',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
+                                GestureDetector(
+                                  onTap: () => _openProfile(comment.userId),
+                                  child: Text(
+                                    comment.userName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-
-                                // رد على
-                                if (replyToName != null)
-                                  Text(
-                                    'رداً على @$replyToName',
-                                    style: const TextStyle(
-                                      color: Colors.blueAccent,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-
-                                const SizedBox(height: 2),
-
-                                // النص
                                 Text(
-                                  data['text'] ?? '',
+                                  comment.text,
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 14,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
-
-                                // رد + لايك
-                                Row(
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () => _setReply(
-                                          commentId, data['username'] ?? ''),
-                                      child: const Text(
-                                        'رد',
-                                        style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 12,
-                                        ),
-                                      ),
+                                GestureDetector(
+                                  onTap: () =>
+                                      _setReply(comment.id, comment.userName),
+                                  child: const Text(
+                                    'رد',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 12,
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -296,8 +313,8 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
 
                           // لايك التعليق
                           GestureDetector(
-                            onTap: () =>
-                                _toggleCommentLike(commentId, likes),
+                            onTap: () => _toggleCommentLike(
+                                comment.id, comment.likes),
                             child: Column(
                               children: [
                                 Icon(
@@ -308,9 +325,9 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                                       isLiked ? Colors.red : Colors.white38,
                                   size: 18,
                                 ),
-                                if (likes.isNotEmpty)
+                                if (comment.likes.isNotEmpty)
                                   Text(
-                                    '${likes.length}',
+                                    '${comment.likes.length}',
                                     style: const TextStyle(
                                       color: Colors.white38,
                                       fontSize: 11,

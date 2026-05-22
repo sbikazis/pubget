@@ -25,7 +25,7 @@ class EditActionsBar extends StatefulWidget {
 }
 
 class _EditActionsBarState extends State<EditActionsBar> {
-  void _openComments(BuildContext context, String editId) {
+  void _openComments(BuildContext context, String editId, {String? commentId}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -33,6 +33,7 @@ class _EditActionsBarState extends State<EditActionsBar> {
       builder: (_) => EditCommentsSheet(
         editId: editId,
         currentUserId: widget.currentUserId,
+        scrollToCommentId: commentId,
       ),
     );
   }
