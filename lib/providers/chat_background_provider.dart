@@ -6,8 +6,9 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../models/chat_background_model.dart';
 import 'package:pubget/services/firebase/chat_backgroud_service.dart';
-import '../services/local/chat_background_local_service.dart';
+import '../services/local/chat_background_local_service.dart'; // تمت إضافته 
 import '../core/constants/storage_paths.dart';
+
 
 class ChatBackgroundProvider extends ChangeNotifier {
   final ChatBackgroundService _firebaseService = ChatBackgroundService();
