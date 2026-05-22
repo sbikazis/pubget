@@ -1,3 +1,5 @@
+// lib/features/groups/chat/chat_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
@@ -8,6 +10,7 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../providers/group_provider.dart';
+import '../../../providers/chat_background_provider.dart';
 import '../../../models/group_model.dart';
 import '../../../models/game_model.dart';
 import '../../../models/message_model.dart';
@@ -58,7 +61,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final currentUser = userProvider.currentUser;
-      if (currentUser!= null) {
+      if (currentUser != null) {
         _syncPremiumStatus(currentUser);
         _loadCurrentMember(currentUser.id);
       }
@@ -68,7 +71,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _scrollListener() {
     if (!_scrollController.hasClients) return;
     final show = _scrollController.offset > 200;
-    if (show!= _showScrollDown) {
+    if (show != _showScrollDown) {
       setState(() => _showScrollDown = show);
     }
   }
@@ -78,7 +81,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final userId = userProvider.currentUser?.id;
-      if (userId!= null && _cachedMessages.isNotEmpty) {
+      if (userId != null && _cachedMessages.isNotEmpty) {
         _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
       }
     }
@@ -97,11 +100,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final member = await chatProvider.getMember(
           groupId: widget.groupId, userId: currentUser.id);
-      if (member!= null && member.isPremium!= currentUser.isPremium) {
+      if (member != null && member.isPremium != currentUser.isPremium) {
         await FirebaseFirestore.instance
-           .collection(FirestorePaths.groupMembers(widget.groupId))
-           .doc(currentUser.id)
-           .update({'isPremium': currentUser.isPremium});
+            .collection(FirestorePaths.groupMembers(widget.groupId))
+            .doc(currentUser.id)
+            .update({'isPremium': currentUser.isPremium});
         _loadCurrentMember(currentUser.id);
       }
     } catch (e) {
@@ -124,7 +127,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final userId = userProvider.currentUser?.id;
-      if (userId!= null && _cachedMessages.isNotEmpty) {
+      if (userId != null && _cachedMessages.isNotEmpty) {
         await Provider.of<ChatProvider>(context, listen: false).updateLastRead(
           groupId: widget.groupId,
           userId: userId,
@@ -150,14 +153,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       WidgetsBinding.instance
-         .addPostFrameCallback((_) => _scrollToFirstUnread());
+          .addPostFrameCallback((_) => _scrollToFirstUnread());
     } catch (e) {
       debugPrint('Failed to load current member: $e');
     }
   }
 
   void _scrollToFirstUnread() {
-    if (_initialScrollDone ||!_scrollController.hasClients) return;
+    if (_initialScrollDone || !_scrollController.hasClients) return;
     if (_cachedMessages.isEmpty) return;
     _initialScrollDone = true;
     if (_lastReadAt == null) {
@@ -174,7 +177,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = messages[firstUnreadIndex];
       final key = _messageKeys[target.id];
-      if (key?.currentContext!= null) {
+      if (key?.currentContext != null) {
         Scrollable.ensureVisible(key!.currentContext!,
             duration: const Duration(milliseconds: 300), alignment: 0.1);
       }
@@ -194,7 +197,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scrollToMessage(String messageId) {
     final key = _messageKeys[messageId];
-    if (key?.currentContext!= null) {
+    if (key?.currentContext != null) {
       Scrollable.ensureVisible(key!.currentContext!,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut);
@@ -214,19 +217,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       text: text,
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text??
+      replyText: replyTo?.text ??
           (replyTo?.mediaType == 'image'
-             ? "صورة 🖼️"
+              ? "صورة 🖼️"
               : replyTo?.mediaType == 'gif'
-                 ? "GIF 🎞️"
+                  ? "GIF 🎞️"
                   : replyTo?.mediaType == 'audio'
-                     ? "🎙️ تسجيل صوتي"
+                      ? "🎙️ تسجيل صوتي"
                       : null),
     );
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
-    if (userId!= null && _cachedMessages.isNotEmpty) {
+    if (userId != null && _cachedMessages.isNotEmpty) {
       _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
     }
   }
@@ -243,8 +246,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       mediaType: 'image',
       userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text??
-          (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
     );
     _onCancelReply();
     _scrollToBottom(force: true);
@@ -260,19 +263,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       sender: _currentMember!,
       gifUrl: gifUrl,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text??
-          (replyTo?.mediaType == 'gif'? "GIF 🎞️" : null),
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null),
     );
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
-    if (userId!= null && _cachedMessages.isNotEmpty) {
+    if (userId != null && _cachedMessages.isNotEmpty) {
       _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
     }
   }
 
-  // ✅ تم التصحيح: إضافة duration واستدعاء sendAudioMessage
-  Future<void> _handleSendAudio(File audioFile, MessageModel? replyTo, int duration) async {
+  Future<void> _handleSendAudio(
+      File audioFile, MessageModel? replyTo, int duration) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -283,15 +286,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       audioFile: audioFile,
       durationSeconds: duration,
       replyToId: replyTo?.id,
-      replyText: replyTo?.text??
-          (replyTo?.mediaType == 'audio'? "🎙️ تسجيل صوتي" : null),
+      replyText: replyTo?.text ??
+          (replyTo?.mediaType == 'audio' ? "🎙️ تسجيل صوتي" : null),
     );
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
-    if (userId!= null && _cachedMessages.isNotEmpty) {
+    if (userId != null && _cachedMessages.isNotEmpty) {
       _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
     }
+  }
+
+  // ✅ بناء طبقة الخلفية مع الـ Overlay
+  Widget _buildBackground(String? backgroundUrl) {
+    if (backgroundUrl == null || backgroundUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned.fill(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // صورة الخلفية
+          Image.network(
+            backgroundUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                const SizedBox.shrink(),
+          ),
+          // ✅ Overlay شفاف لضمان وضوح عناصر الدردشة
+          Container(
+            color: Colors.black.withOpacity(0.38),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -304,8 +333,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       stream: groupProvider.streamGroup(groupId: widget.groupId),
       builder: (context, groupSnapshot) {
         final group = groupSnapshot.data;
-        final bool isRoleplay = group?.isRoleplay?? false;
-        final String groupName = group?.name?? "الدردشة";
+        final bool isRoleplay = group?.isRoleplay ?? false;
+        final String groupName = group?.name ?? "الدردشة";
+
+        // ✅ قراءة رابط الخلفية من الـ GroupModel
+        final String? backgroundUrl = group?.chatBackgroundUrl;
+        final bool hasBackground =
+            backgroundUrl != null && backgroundUrl.isNotEmpty;
 
         return WillPopScope(
           onWillPop: () async {
@@ -316,28 +350,43 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             appBar: AppBar(title: Text(groupName), centerTitle: true),
             body: Stack(
               children: [
+                // ✅ الطبقة السفلى: صورة الخلفية + Overlay
+                _buildBackground(backgroundUrl),
+
+                // الطبقة العليا: محتوى الدردشة
                 Column(
                   children: [
                     Expanded(
                       child: StreamBuilder<List<MessageModel>>(
-                        stream: chatProvider.streamMessages(groupId: widget.groupId),
+                        stream: chatProvider.streamMessages(
+                            groupId: widget.groupId),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
-                            return const Center(child: CircularProgressIndicator());
+                          if (snapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              _isInitialLoad) {
+                            return const Center(
+                                child: CircularProgressIndicator());
                           }
                           if (snapshot.hasData) {
                             final isFirstLoad = _isInitialLoad;
                             _cachedMessages = snapshot.data!;
                             if (isFirstLoad) {
                               _isInitialLoad = false;
-                              WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFirstUnread());
+                              WidgetsBinding.instance.addPostFrameCallback(
+                                  (_) => _scrollToFirstUnread());
                             }
-                            if (!isFirstLoad && _currentMember!= null) {
-                              final userProvider = Provider.of<UserProvider>(context, listen: false);
+                            if (!isFirstLoad && _currentMember != null) {
+                              final userProvider = Provider.of<UserProvider>(
+                                  context,
+                                  listen: false);
                               final userId = userProvider.currentUser?.id;
-                              if (userId!= null && _cachedMessages.isNotEmpty) {
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+                              if (userId != null &&
+                                  _cachedMessages.isNotEmpty) {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  _updateReadStatus(userId,
+                                      readUpTo:
+                                          _cachedMessages.last.createdAt);
                                 });
                               }
                             }
@@ -357,14 +406,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
                               final message = messages[index];
-                              final isMe = _currentMember!= null &&
+                              final isMe = _currentMember != null &&
                                   message.senderId == _currentMember!.userId;
-                              _messageKeys.putIfAbsent(message.id, () => GlobalKey());
-                              if (message.gameId!= null && message.gameAction!= null) {
+                              _messageKeys.putIfAbsent(
+                                  message.id, () => GlobalKey());
+                              if (message.gameId != null &&
+                                  message.gameAction != null) {
                                 return GameMessageBubble(
                                     key: _messageKeys[message.id],
                                     message: message,
-                                    currentMember: _currentMember??
+                                    currentMember: _currentMember ??
                                         MemberModel(
                                             userId: '',
                                             groupId: widget.groupId,
@@ -373,48 +424,60 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     groupId: widget.groupId);
                               }
                               final sender = isMe
-                                 ? _currentMember!
+                                  ? _currentMember!
                                   : MemberModel(
                                       userId: message.senderId,
                                       groupId: widget.groupId,
-                                      role: message.senderRole?? Roles.member,
+                                      role: message.senderRole ?? Roles.member,
                                       joinedAt: DateTime.now(),
                                       displayName: message.senderName,
-                                      characterImageUrl: isRoleplay? message.senderAvatar : null,
-                                      realUserImageUrl:!isRoleplay? message.senderAvatar : null,
+                                      characterImageUrl: isRoleplay
+                                          ? message.senderAvatar
+                                          : null,
+                                      realUserImageUrl: !isRoleplay
+                                          ? message.senderAvatar
+                                          : null,
                                       isPremium: message.senderIsPremium);
                               return MessageBubble(
-                                  key: _messageKeys[message.id],
-                                  message: message,
-                                  sender: sender,
-                                  isMe: isMe,
-                                  groupId: widget.groupId,
-                                  onReply: (msg) => setState(() => _replyingMessage = msg),
-                                  onTapReply: (replyId) => _scrollToMessage(replyId));
+                                key: _messageKeys[message.id],
+                                message: message,
+                                sender: sender,
+                                isMe: isMe,
+                                groupId: widget.groupId,
+                                // ✅ تمرير حالة الخلفية لـ MessageBubble
+                                hasBackground: hasBackground,
+                                onReply: (msg) =>
+                                    setState(() => _replyingMessage = msg),
+                                onTapReply: (replyId) =>
+                                    _scrollToMessage(replyId),
+                              );
                             },
                           );
                         },
                       ),
                     ),
-                    if (_currentMember!= null)
+                    if (_currentMember != null)
                       StreamBuilder<List<GameModel>>(
-                        stream: gameProvider.streamActiveGames(widget.groupId),
+                        stream:
+                            gameProvider.streamActiveGames(widget.groupId),
                         builder: (context, gameSnapshot) {
-                          final activeGames = gameSnapshot.data?? [];
+                          final activeGames = gameSnapshot.data ?? [];
                           GameModel? activeGameForMe;
                           try {
                             activeGameForMe = activeGames.firstWhere((g) =>
                                 (g.playerOneId == _currentMember!.userId ||
-                                    g.playerTwoId == _currentMember!.userId) &&
+                                    g.playerTwoId ==
+                                        _currentMember!.userId) &&
                                 (g.status == GameStatus.setup ||
                                     g.status == GameStatus.guessing));
                           } catch (_) {}
 
-                          if (activeGameForMe!= null) {
+                          if (activeGameForMe != null) {
                             if (activeGameForMe.status.isOver) {
                               _navigatedGameIds.remove(activeGameForMe.id);
                             }
-                            if (activeGameForMe.status == GameStatus.guessing) {
+                            if (activeGameForMe.status ==
+                                GameStatus.guessing) {
                               _navigatedGameIds.remove(activeGameForMe.id);
                               return GameBottomBar(
                                   groupId: widget.groupId,
@@ -423,21 +486,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             }
                             final shouldNavigate =
                                 activeGameForMe.status == GameStatus.setup &&
-                                   !_navigatedGameIds.contains(activeGameForMe.id);
+                                    !_navigatedGameIds
+                                        .contains(activeGameForMe.id);
                             if (shouldNavigate) {
                               _navigatedGameIds.add(activeGameForMe.id);
                               Future.microtask(() {
                                 if (mounted &&
-                                    ModalRoute.of(context)?.isCurrent == true) {
+                                    ModalRoute.of(context)?.isCurrent ==
+                                        true) {
                                   Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                          builder: (_) => GuessCharacterGameScreen(
+                                          builder: (_) =>
+                                              GuessCharacterGameScreen(
                                                 groupId: widget.groupId,
                                                 gameId: activeGameForMe!.id,
-                                                animeIds: group?.animeId!= null
-                                                   ? [group!.animeId]
-                                                    : null,
+                                                animeIds:
+                                                    group?.animeId != null
+                                                        ? [group!.animeId]
+                                                        : null,
                                               )));
                                 }
                               });
@@ -459,17 +526,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ),
                   ],
                 ),
+
+                // زر التمرير للأسفل
                 Positioned(
                   bottom: 80,
                   right: 16,
                   child: AnimatedOpacity(
-                    opacity: _showScrollDown? 1.0 : 0.0,
+                    opacity: _showScrollDown ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 200),
                     child: _showScrollDown
-                       ? FloatingActionButton.small(
+                        ? FloatingActionButton.small(
                             backgroundColor: Theme.of(context).primaryColor,
                             onPressed: () => _scrollToBottom(force: true),
-                            child: const Icon(Icons.arrow_downward, color: Colors.white),
+                            child: const Icon(Icons.arrow_downward,
+                                color: Colors.white),
                           )
                         : const SizedBox.shrink(),
                   ),

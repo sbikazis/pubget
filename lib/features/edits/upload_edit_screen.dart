@@ -305,40 +305,40 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
         title: const Text('نشر إيديت'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(left: 8, right: 8),
-            child: ElevatedButton(
-              onPressed: _isSubmitting ? null : _submitUpload,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppColors.primary.withOpacity(0.5),
-                disabledForegroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'نشر',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
+  padding: const EdgeInsets.only(left: 8, right: 8),
+  child: TextButton(
+    onPressed: _isSubmitting ? null : _submitUpload,
+    style: TextButton.styleFrom(
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: AppColors.primary.withOpacity(0.4),
+      disabledForegroundColor: Colors.white54,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 8,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+    ),
+    child: _isSubmitting
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          )
+        : const Text(
+            'نشر',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
             ),
           ),
+  ),
+),
         ],
       ),
       body: SingleChildScrollView(

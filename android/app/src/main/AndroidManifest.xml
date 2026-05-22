@@ -18,7 +18,6 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3303379299409244~9117104001"/>
 
-        <!-- ✅ أهم سطرين لـ FCM -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="pubget_main_channel" />
@@ -37,20 +36,31 @@
             android:windowSoftInputMode="adjustResize">
 
             <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"
             />
+
+            <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- ✅ Deep Links: https://pubget.app/group/GROUP_ID -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="pubget.app"/>
+            </intent-filter>
+
         </activity>
 
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        
-        <!-- ❌ احذف السيرفس اليدوي اللي كان هنا -->
 
     </application>
 </manifest>

@@ -61,6 +61,8 @@ dependencies:
   flutter_slidable: ^4.0.3
   async: ^2.13.1
   rxdart: ^0.28.0
+  app_links: ^7.0.0
+  share_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:

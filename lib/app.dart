@@ -14,7 +14,8 @@ import 'providers/private_chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/edits_provider.dart';
-import 'providers/chat_background_provider.dart'; // ✅ جديد
+import 'providers/chat_background_provider.dart';
+import 'providers/deep_link_provider.dart'; // ✅ جديد
 
 import 'services/firebase/auth_service.dart';
 import 'services/firebase/firestore_service.dart';
@@ -34,6 +35,7 @@ import 'features/auth/user_info_screen.dart';
 import 'features/auth/terms_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/edits/edits_screen.dart';
+import 'features/groups/group_details_screen.dart'; // ✅ جديد
 
 class PubgetApp extends StatefulWidget {
   const PubgetApp({super.key});
@@ -121,9 +123,12 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(
           create: (_) => EditsProvider(),
         ),
-        // ✅ تسجيل ChatBackgroundProvider
         ChangeNotifierProvider(
           create: (_) => ChatBackgroundProvider(),
+        ),
+        // ✅ تسجيل DeepLinkProvider
+        ChangeNotifierProvider(
+          create: (_) => DeepLinkProvider()..init(),
         ),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
@@ -205,6 +210,11 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
           .read<EditsProvider>()
           .uploadCompletedNotifier
           .addListener(_handleUploadCompleted);
+
+      // ✅ الاستماع للـ Deep Links
+      context
+          .read<DeepLinkProvider>()
+          .addListener(_handleDeepLink);
     });
   }
 
@@ -214,7 +224,38 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
         .read<EditsProvider>()
         .uploadCompletedNotifier
         .removeListener(_handleUploadCompleted);
+    context
+        .read<DeepLinkProvider>()
+        .removeListener(_handleDeepLink);
     super.dispose();
+  }
+
+  // ✅ معالجة الـ Deep Link والتنقل للشاشة الصحيحة
+  void _handleDeepLink() {
+    final deepLinkProvider = context.read<DeepLinkProvider>();
+    final pending = deepLinkProvider.pendingLink;
+    if (pending == null) return;
+
+    // تصفير الرابط أولاً لمنع التكرار
+    deepLinkProvider.clearPendingLink();
+
+    // التحقق من تسجيل الدخول
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (pending.type) {
+        case DeepLinkType.group:
+          widget.navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  GroupDetailsScreen(groupId: pending.id),
+            ),
+          );
+          break;
+      }
+    });
   }
 
   void _handleUploadCompleted() {
@@ -222,11 +263,9 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
 
     final editsProvider = context.read<EditsProvider>();
     final uploadedEdit = editsProvider.uploadCompletedNotifier.value;
-
     if (uploadedEdit == null) return;
 
     _isNavigating = true;
-
     editsProvider.clearLastUploadedEdit();
     editsProvider.prependEdit(uploadedEdit);
     editsProvider.setSkipNextLoad();

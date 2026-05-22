@@ -312,12 +312,28 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         ),
         // ✅ زر اختيار الخلفية في الـ AppBar
         actions: [
-          IconButton(
-            onPressed: _openBackgroundPicker,
-            icon: const Icon(Icons.wallpaper_outlined),
-            tooltip: 'خلفية الدردشة',
-          ),
-        ],
+  PopupMenuButton<String>(
+    icon: const Icon(Icons.more_vert),
+    onSelected: (value) {
+      if (value == 'background') {
+        _openBackgroundPicker();
+      }
+    },
+    itemBuilder: (context) => [
+      const PopupMenuItem(
+        value: 'background',
+        child: Row(
+          children: [
+            Icon(Icons.wallpaper_outlined),
+            SizedBox(width: 12),
+            Text('خلفية الدردشة'),
+          ],
+        ),
+      ),
+      // هنا تضيف أي خيارات مستقبلية
+    ],
+  ),
+],
       ),
       body: Stack(
         children: [
