@@ -81,7 +81,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         Container(
           color: Colors.black,
           child: _adLoaded
-             ? AdWidget(ad: _nativeAd!)
+            ? AdWidget(ad: _nativeAd!)
               : const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -150,7 +150,6 @@ class _EditsScreenState extends State<EditsScreen>
   bool _endDialogShown = false;
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
-  final Set<int> _navigatingAdIndexes = {};
   DateTime? _pageEntryTime;
 
   @override
@@ -162,7 +161,6 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
-    // ← جديد: إذا جاي من الشات أو البروفايل، قفز للإيديت المطلوب
     if (widget.initialEditId!= null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 600), () {
@@ -380,8 +378,8 @@ class _EditsScreenState extends State<EditsScreen>
               itemCount: totalCount,
               physics:!isPremium &&
                       _isAdSlot(_currentIndex) &&
-                     !_finishedAdIndexes.contains(_currentIndex)
-                 ? const NeverScrollableScrollPhysics()
+                    !_finishedAdIndexes.contains(_currentIndex)
+                ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
                 final entryTime = _pageEntryTime;
@@ -414,36 +412,27 @@ class _EditsScreenState extends State<EditsScreen>
                 _checkEndOfFeed(edits, index, isPremium);
               },
               itemBuilder: (context, index) {
+                // ✅ الإعلان كل 5 سكرول
                 if (!isPremium && _isAdSlot(index)) {
-                  final adDone = _finishedAdIndexes.contains(index);
-
-                  if (adDone) {
-                    if (!_navigatingAdIndexes.contains(index)) {
-                      _navigatingAdIndexes.add(index);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted) return;
-                        if (_currentIndex == index) {
-                          _pageController.nextPage(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeInOut,
-                          );
-                        }
-                        _navigatingAdIndexes.remove(index);
-                      });
-                    }
+                  // لو شفناه من قبل، لا تعرض شيء
+                  if (_finishedAdIndexes.contains(index)) {
                     return const SizedBox.shrink();
                   }
 
                   return _AdEditWidget(
                     onAdFinished: () {
+                      if (!mounted) return;
+                      if (_finishedAdIndexes.contains(index)) return;
+
                       setState(() => _finishedAdIndexes.add(index));
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        if (!mounted) return;
+
+                      // سكرول تلقائي واحد فقط للفيديو الموالي
+                      if (_currentIndex == index && _pageController.hasClients) {
                         _pageController.nextPage(
-                          duration: const Duration(milliseconds: 400),
+                          duration: const Duration(milliseconds: 350),
                           curve: Curves.easeInOut,
                         );
-                      });
+                      }
                     },
                   );
                 }
@@ -486,10 +475,10 @@ class _EditsScreenState extends State<EditsScreen>
                                   radius: 18,
                                   backgroundImage:
                                       edit.uploaderAvatar.isNotEmpty
-                                         ? NetworkImage(edit.uploaderAvatar)
+                                        ? NetworkImage(edit.uploaderAvatar)
                                           : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                     ? const Icon(Icons.person, size: 18)
+                                    ? const Icon(Icons.person, size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
