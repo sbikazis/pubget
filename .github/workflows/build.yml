@@ -1,4 +1,4 @@
-name: Pubget AAB
+name: Pubget APK
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-aab:
+  build-apk:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,11 +35,11 @@ jobs:
       - name: Get packages
         run: flutter pub get
 
-      - name: Build AAB
-        run: flutter build appbundle --release
+      - name: Build APK
+        run: flutter build apk --release --split-per-abi
 
-      - name: Upload AAB
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: pubget-aab
-          path: build/app/outputs/bundle/release/*.aab
+          name: pubget-apk
+          path: build/app/outputs/flutter-apk/*.apk
