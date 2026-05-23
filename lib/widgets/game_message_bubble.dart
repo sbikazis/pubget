@@ -35,11 +35,11 @@ class GameMessageBubble extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: gameColor.withOpacity(0.15),
+            color: gameColor.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: gameColor, width: 2),
             boxShadow: [
-              BoxShadow(color: gameColor.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2)),
+              BoxShadow(color: gameColor.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2)),
             ],
           ),
           child: Column(
@@ -57,7 +57,7 @@ class GameMessageBubble extends StatelessWidget {
                   const Spacer(),
                   Text(
                     isSlotOne ? "التحدي الأول" : "التحدي الثاني",
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: gameColor.withOpacity(0.8)),
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: gameColor.withValues(alpha: 0.8)),
                   ),
                 ],
               ),

@@ -276,7 +276,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               : Image.file(File(backgroundPath), fit: BoxFit.cover),
           // ✅ Overlay شفاف لضمان وضوح عناصر الدردشة
           Container(
-            color: Colors.black.withOpacity(0.38),
+            color: Colors.black.withValues(alpha: 0.38),
           ),
         ],
       ),

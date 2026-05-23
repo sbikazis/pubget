@@ -102,7 +102,7 @@ class _DiscoveryGroupCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: group.isPromoted
-               ? const Color(0xFFB8860B).withOpacity(0.4)
+               ? const Color(0xFFB8860B).withValues(alpha: 0.4)
                 : Colors.black12,
               blurRadius: 8,
               offset: const Offset(0, 4),
@@ -125,7 +125,7 @@ class _DiscoveryGroupCard extends StatelessWidget {
                       )
                     : Container(
                         width: 110,
-                        color: AppColors.primary.withOpacity(0.2),
+                        color: AppColors.primary.withValues(alpha: 0.2),
                         child: const Icon(Icons.group, size: 40),
                       ),
               ),

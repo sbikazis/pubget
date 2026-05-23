@@ -152,7 +152,7 @@ class DarkTheme {
       elevation: 10, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: AppColors.primary.withOpacity(0.1), width: 0.5),
+        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.1), width: 0.5),
       ),
       titleTextStyle: const TextStyle(
         color: AppColors.darkTextPrimary,
@@ -183,7 +183,7 @@ class DarkTheme {
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           // ✅ تم التصحيح هنا: استبدال withValues بـ withOpacity لضمان التوافق ومنع السواد المفاجئ
-          return AppColors.primary.withOpacity(0.4);
+          return AppColors.primary.withValues(alpha: 0.4);
         }
         return AppColors.darkCard;
       }),

@@ -82,7 +82,7 @@ class _RespectModalState extends State<RespectModal> {
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         border: Border.all(
-          color: const Color(0xFFFFD700).withOpacity(0.2), // حدود ذهبية خفيفة جداً للفخامة
+          color: const Color(0xFFFFD700).withValues(alpha: 0.2), // حدود ذهبية خفيفة جداً للفخامة
           width: 0.5,
         ),
       ),
@@ -100,7 +100,7 @@ class _RespectModalState extends State<RespectModal> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
+                    color: Colors.grey.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -176,9 +176,9 @@ class _RespectModalState extends State<RespectModal> {
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: AppColors.primary,
-                    inactiveTrackColor: AppColors.primary.withOpacity(0.2),
+                    inactiveTrackColor: AppColors.primary.withValues(alpha: 0.2),
                     thumbColor: const Color(0xFFFFD700),
-                    overlayColor: const Color(0xFFFFD700).withOpacity(0.1),
+                    overlayColor: const Color(0xFFFFD700).withValues(alpha: 0.1),
                     valueIndicatorColor: AppColors.primary,
                     valueIndicatorTextStyle: const TextStyle(color: Colors.white),
                   ),
@@ -203,7 +203,7 @@ class _RespectModalState extends State<RespectModal> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
+                      color: Colors.amber.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Row(

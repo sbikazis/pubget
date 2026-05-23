@@ -99,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen> {
             SizedBox(
               width: 40,
               child: LinearProgressIndicator(
-                backgroundColor: Colors.grey.withOpacity(0.2),
+                backgroundColor: Colors.grey.withValues(alpha: 0.2),
                 color: Theme.of(context).primaryColor,
               ),
             ),

@@ -77,7 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // ✅ ظل خفيف جداً لإبراز التميز
         boxShadow: isPremium ? [
           BoxShadow(
-            color: const Color(0xFFD4AF37).withOpacity(0.2),
+            color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
             blurRadius: 4,
             spreadRadius: 1,
           )
@@ -267,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: user.isPremium 
-                          ? const Color(0xFFD4AF37).withOpacity(0.5) 
+                          ? const Color(0xFFD4AF37).withValues(alpha: 0.5) 
                           : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       width: 0.5,
                     ),
@@ -329,7 +329,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: Text(anime, style: const TextStyle(fontSize: 12)),
                     backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
                     side: BorderSide(
-                      color: user.isPremium ? const Color(0xFFD4AF37).withOpacity(0.5) : (isDark ? AppColors.darkBorder : AppColors.lightBorder)
+                      color: user.isPremium ? const Color(0xFFD4AF37).withValues(alpha: 0.5) : (isDark ? AppColors.darkBorder : AppColors.lightBorder)
                     ),
                     labelStyle: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
                   )).toList(),

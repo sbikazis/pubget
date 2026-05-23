@@ -110,7 +110,7 @@ class _AudioBubbleState extends State<AudioBubble> {
     final Color activeColor =
         widget.isMe ? Colors.white : AppColors.primary;
     final Color inactiveColor =
-        widget.isMe ? Colors.white38 : AppColors.primary.withOpacity(0.25);
+        widget.isMe ? Colors.white38 : AppColors.primary.withValues(alpha: 0.25);
 
     return SizedBox(
       width: 220,
@@ -123,7 +123,7 @@ class _AudioBubbleState extends State<AudioBubble> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: activeColor.withOpacity(0.15),
+                color: activeColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: _isLoading
@@ -170,7 +170,7 @@ class _AudioBubbleState extends State<AudioBubble> {
                       : (_duration.inSeconds > 0 ? _formatDuration(_duration) : "0:00"),
                   style: TextStyle(
                     fontSize: 11,
-                    color: activeColor.withOpacity(0.8),
+                    color: activeColor.withValues(alpha: 0.8),
                   ),
                 ),
               ],
@@ -183,7 +183,7 @@ class _AudioBubbleState extends State<AudioBubble> {
           Icon(
             Icons.mic,
             size: 16,
-            color: activeColor.withOpacity(0.5),
+            color: activeColor.withValues(alpha: 0.5),
           ),
         ],
       ),

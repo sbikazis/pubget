@@ -73,7 +73,7 @@ class _ThemeOption extends StatelessWidget {
         selected ? AppColors.primary : Theme.of(context).dividerColor;
 
     final backgroundColor = selected
-        ? AppColors.primary.withOpacity(0.08)
+        ? AppColors.primary.withValues(alpha: 0.08)
         : Theme.of(context).cardColor;
 
     return InkWell(

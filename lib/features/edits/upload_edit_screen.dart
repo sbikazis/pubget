@@ -311,7 +311,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     style: TextButton.styleFrom(
       backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
-      disabledBackgroundColor: AppColors.primary.withOpacity(0.4),
+      disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.4),
       disabledForegroundColor: Colors.white54,
       padding: const EdgeInsets.symmetric(
         horizontal: 20,

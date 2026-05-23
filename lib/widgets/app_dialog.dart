@@ -124,14 +124,14 @@ class AppDialog extends StatelessWidget {
     return Dialog(
       surfaceTintColor: Colors.transparent,
       elevation: isDark ? 8 : 2,
-      shadowColor: isDark ? Colors.black.withOpacity(0.5) : Colors.black26,
+      shadowColor: isDark ? Colors.black.withValues(alpha: 0.5) : Colors.black26,
       backgroundColor: isDark
           ? AppColors.darkSurface
           : AppColors.lightSurface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: isDark 
-            ? BorderSide(color: AppColors.primary.withOpacity(0.15), width: 0.8)
+            ? BorderSide(color: AppColors.primary.withValues(alpha: 0.15), width: 0.8)
             : BorderSide.none,
       ),
       child: Material(

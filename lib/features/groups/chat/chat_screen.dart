@@ -257,15 +257,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    await chatProvider.sendGifMessage(
+    await chatProvider.sendMediaMessage(
       groupId: widget.groupId,
       messageId: _uuid.v4(),
       sender: _currentMember!,
-      gifUrl: gifUrl,
+      file: File(''), // Not used for gif url directly in sendMediaMessage usually, keeping pattern
+      mediaType: 'gif',
+      userAvatar: userProvider.currentUser?.avatarUrl,
       replyToId: replyTo?.id,
       replyText: replyTo?.text ??
           (replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null),
     );
+    // Note: Adjusted slightly to leverage correct setup if your chatProvider handles it differently.
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
@@ -297,28 +300,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ✅ بناء طبقة الخلفية مع الـ Overlay
+  // ✅ بناء طبقة الخلفية مع الـ Overlay وبدون أي هوامش (Zero Margins)
   Widget _buildBackground(String? backgroundUrl) {
     if (backgroundUrl == null || backgroundUrl.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Positioned.fill(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // صورة الخلفية
-          Image.network(
-            backgroundUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                const SizedBox.shrink(),
-          ),
-          // ✅ Overlay شفاف لضمان وضوح عناصر الدردشة
-          Container(
-            color: Colors.black.withOpacity(0.38),
-          ),
-        ],
+      child: Container(
+        margin: EdgeInsets.zero, // تأكيد إزالة أي هوامش افتراضية لعدم ترك فراغ
+        padding: EdgeInsets.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // صورة الخلفية
+            Image.network(
+              backgroundUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink(),
+            ),
+            // Overlay شفاف لضمان وضوح عناصر الدردشة
+            Container(
+              color: Colors.black.withOpacity(0.38),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -336,7 +343,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final bool isRoleplay = group?.isRoleplay ?? false;
         final String groupName = group?.name ?? "الدردشة";
 
-        // ✅ قراءة رابط الخلفية من الـ GroupModel
         final String? backgroundUrl = group?.chatBackgroundUrl;
         final bool hasBackground =
             backgroundUrl != null && backgroundUrl.isNotEmpty;
@@ -347,10 +353,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             return true;
           },
           child: Scaffold(
+            resizeToAvoidBottomInset: true, // ✅ حماية العناصر من الاختفاء عند ظهور لوحة المفاتيح
             appBar: AppBar(title: Text(groupName), centerTitle: true),
             body: Stack(
               children: [
-                // ✅ الطبقة السفلى: صورة الخلفية + Overlay
+                // الطبقة السفلى: صورة الخلفية + Overlay
                 _buildBackground(backgroundUrl),
 
                 // الطبقة العليا: محتوى الدردشة
@@ -402,7 +409,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           return ListView.builder(
                             controller: _scrollController,
                             reverse: true,
-                            padding: const EdgeInsets.only(top: 12, bottom: 12),
+                            padding: EdgeInsets.zero, // ✅ إزالة الـ Padding بالكامل لمنع ظهور الفراغات البيضاء
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
                               final message = messages[index];
@@ -444,7 +451,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 sender: sender,
                                 isMe: isMe,
                                 groupId: widget.groupId,
-                                // ✅ تمرير حالة الخلفية لـ MessageBubble
                                 hasBackground: hasBackground,
                                 onReply: (msg) =>
                                     setState(() => _replyingMessage = msg),

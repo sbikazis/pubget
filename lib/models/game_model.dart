@@ -4,38 +4,42 @@ import '../../core/constants/game_status.dart';
 class GameModel {
   final String id;
   final String groupId;
-
-  // تمييز مكان اللعبة (game_1 أو game_2) لتمييز الألوان والرسائل
   final String gameSlot;
 
+  // نوع اللعبة
+  final String gameType; // 'guess' أو 'anime_chain'
+
+  // --- حقول لعبة التخمين ---
   final String playerOneId;
   final String? playerTwoId;
-
-  // بيانات الشخصيات (الاسم والصورة من MAL)
   final String? playerOneCharacter;
   final String? playerOneImage;
   final String? playerTwoCharacter;
   final String? playerTwoImage;
-
-  // نظام الجاهزية (للتأكد من ضغط زر "بدأ" من الطرفين)
   final bool isPlayerOneReady;
   final bool isPlayerTwoReady;
 
+  // --- حقول سلسلة الأنمي ---
+  final String? currentWord;
+  final String? lastLetter;
+  final List<String> usedWords;
+  final List<String> players;
+
+  // --- حقول مشتركة ---
   final String? currentTurnUserId;
   final GameStatus status;
   final String? winnerUserId;
-
-  // نظام العدادات الزمنية
-  final DateTime createdAt; // وقت إنشاء الطلب
-  final DateTime? setupStartedAt; // وقت بدء مرحلة الـ 60 ثانية
-  final DateTime? lastActionAt; // وقت آخر سؤال/جواب لإدارة الـ 40 ثانية
-  final String? lastActionType; // 'question' أو 'answer' أو null
+  final DateTime createdAt;
+  final DateTime? setupStartedAt;
+  final DateTime? lastActionAt;
+  final String? lastActionType;
   final DateTime? finishedAt;
 
   const GameModel({
     required this.id,
     required this.groupId,
     required this.gameSlot,
+    this.gameType = 'guess',
     required this.playerOneId,
     this.playerTwoId,
     this.playerOneCharacter,
@@ -44,6 +48,10 @@ class GameModel {
     this.playerTwoImage,
     this.isPlayerOneReady = false,
     this.isPlayerTwoReady = false,
+    this.currentWord,
+    this.lastLetter,
+    this.usedWords = const [],
+    this.players = const [],
     this.currentTurnUserId,
     required this.status,
     this.winnerUserId,
@@ -54,12 +62,12 @@ class GameModel {
     this.finishedAt,
   });
 
-  /// Firestore → Model
   factory GameModel.fromMap(String id, Map<String, dynamic> map) {
     return GameModel(
       id: id,
       groupId: map['groupId'] ?? '',
       gameSlot: map['gameSlot'] ?? 'game_1',
+      gameType: map['gameType'] ?? 'guess',
       playerOneId: map['playerOneId'] ?? '',
       playerTwoId: map['playerTwoId'],
       playerOneCharacter: map['playerOneCharacter'],
@@ -68,15 +76,19 @@ class GameModel {
       playerTwoImage: map['playerTwoImage'],
       isPlayerOneReady: map['isPlayerOneReady'] ?? false,
       isPlayerTwoReady: map['isPlayerTwoReady'] ?? false,
+      currentWord: map['currentWord'],
+      lastLetter: map['lastLetter'],
+      usedWords: List<String>.from(map['usedWords'] ?? []),
+      players: List<String>.from(map['players'] ?? []),
       currentTurnUserId: map['currentTurnUserId'],
       status: GameStatus.fromString(map['status'] ?? 'waitingForOpponent'),
       winnerUserId: map['winnerUserId'],
       createdAt: (map['createdAt'] as Timestamp).toDate(),
-      setupStartedAt: map['setupStartedAt'] != null 
-          ? (map['setupStartedAt'] as Timestamp).toDate() 
+      setupStartedAt: map['setupStartedAt'] != null
+          ? (map['setupStartedAt'] as Timestamp).toDate()
           : null,
-      lastActionAt: map['lastActionAt'] != null 
-          ? (map['lastActionAt'] as Timestamp).toDate() 
+      lastActionAt: map['lastActionAt'] != null
+          ? (map['lastActionAt'] as Timestamp).toDate()
           : null,
       lastActionType: map['lastActionType'],
       finishedAt: map['finishedAt'] != null
@@ -85,11 +97,11 @@ class GameModel {
     );
   }
 
-  /// Model → Firestore
   Map<String, dynamic> toMap() {
     return {
       'groupId': groupId,
       'gameSlot': gameSlot,
+      'gameType': gameType,
       'playerOneId': playerOneId,
       'playerTwoId': playerTwoId,
       'playerOneCharacter': playerOneCharacter,
@@ -98,18 +110,25 @@ class GameModel {
       'playerTwoImage': playerTwoImage,
       'isPlayerOneReady': isPlayerOneReady,
       'isPlayerTwoReady': isPlayerTwoReady,
+      'currentWord': currentWord,
+      'lastLetter': lastLetter,
+      'usedWords': usedWords,
+      'players': players,
       'currentTurnUserId': currentTurnUserId,
       'status': status.name,
       'winnerUserId': winnerUserId,
       'createdAt': Timestamp.fromDate(createdAt),
-      'setupStartedAt': setupStartedAt != null ? Timestamp.fromDate(setupStartedAt!) : null,
-      'lastActionAt': lastActionAt != null ? Timestamp.fromDate(lastActionAt!) : null,
+      'setupStartedAt':
+          setupStartedAt != null ? Timestamp.fromDate(setupStartedAt!) : null,
+      'lastActionAt':
+          lastActionAt != null ? Timestamp.fromDate(lastActionAt!) : null,
       'lastActionType': lastActionType,
       'finishedAt': finishedAt != null ? Timestamp.fromDate(finishedAt!) : null,
     };
   }
 
   GameModel copyWith({
+    String? gameType,
     String? playerTwoId,
     String? playerOneCharacter,
     String? playerOneImage,
@@ -117,6 +136,10 @@ class GameModel {
     String? playerTwoImage,
     bool? isPlayerOneReady,
     bool? isPlayerTwoReady,
+    String? currentWord,
+    String? lastLetter,
+    List<String>? usedWords,
+    List<String>? players,
     String? currentTurnUserId,
     GameStatus? status,
     String? winnerUserId,
@@ -129,6 +152,7 @@ class GameModel {
       id: id,
       groupId: groupId,
       gameSlot: gameSlot,
+      gameType: gameType ?? this.gameType,
       playerOneId: playerOneId,
       playerTwoId: playerTwoId ?? this.playerTwoId,
       playerOneCharacter: playerOneCharacter ?? this.playerOneCharacter,
@@ -137,6 +161,10 @@ class GameModel {
       playerTwoImage: playerTwoImage ?? this.playerTwoImage,
       isPlayerOneReady: isPlayerOneReady ?? this.isPlayerOneReady,
       isPlayerTwoReady: isPlayerTwoReady ?? this.isPlayerTwoReady,
+      currentWord: currentWord ?? this.currentWord,
+      lastLetter: lastLetter ?? this.lastLetter,
+      usedWords: usedWords ?? this.usedWords,
+      players: players ?? this.players,
       currentTurnUserId: currentTurnUserId ?? this.currentTurnUserId,
       status: status ?? this.status,
       winnerUserId: winnerUserId ?? this.winnerUserId,

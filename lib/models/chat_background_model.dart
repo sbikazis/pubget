@@ -64,7 +64,7 @@ class ChatBackgroundModel {
   bool get isLocal => type == ChatBackgroundType.local;
 
   /// نسخة معدّلة مع تغيير الـ opacity فقط
-  ChatBackgroundModel withOpacity(double opacity) {
+  ChatBackgroundModel withOpcity( double opacity) {
     return ChatBackgroundModel(
       type: type,
       path: path,

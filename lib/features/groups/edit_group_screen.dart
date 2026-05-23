@@ -186,7 +186,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
@@ -212,7 +212,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               border: Border.all(
                 color: hasBackground
                     ? AppColors.primary
-                    : AppColors.primary.withOpacity(0.3),
+                    : AppColors.primary.withValues(alpha: 0.3),
                 width: hasBackground ? 2 : 1,
               ),
               image: hasBackground
@@ -224,7 +224,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                           : NetworkImage(_backgroundPreviewUrl!),
                     )
                   : null,
-              color: hasBackground ? null : AppColors.primary.withOpacity(0.04),
+              color: hasBackground ? null : AppColors.primary.withValues(alpha: 0.04),
             ),
             child: hasBackground
                 ? Stack(
@@ -233,7 +233,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                       Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.black.withOpacity(0.35),
+                          color: Colors.black.withValues(alpha: 0.35),
                         ),
                       ),
                       Center(

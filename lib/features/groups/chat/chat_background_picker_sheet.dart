@@ -180,7 +180,7 @@ class _ChatBackgroundPickerSheetState
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
@@ -235,7 +235,7 @@ class _ChatBackgroundPickerSheetState
                   Container(
                     height: 160,
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(
+                      color: Colors.black.withValues(alpha: 
                         widget.isGroup
                             ? provider.groupBackground.overlayOpacity
                             : provider.privateBackground.overlayOpacity,
@@ -321,10 +321,10 @@ class _ChatBackgroundPickerSheetState
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.06),
+                color: AppColors.primary.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppColors.primary.withOpacity(0.15),
+                  color: AppColors.primary.withValues(alpha: 0.15),
                 ),
               ),
               child: const Row(
@@ -372,16 +372,16 @@ class _ChatBackgroundPickerSheetState
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.06),
+            color: color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.15)),
+            border: Border.all(color: color.withValues(alpha: 0.15)),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -404,7 +404,7 @@ class _ChatBackgroundPickerSheetState
                       subtitle,
                       style: TextStyle(
                         fontSize: 12,
-                        color: color.withOpacity(0.7),
+                        color: color.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -412,7 +412,7 @@ class _ChatBackgroundPickerSheetState
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: color.withOpacity(0.5),
+                color: color.withValues(alpha: 0.5),
                 size: 14,
               ),
             ],

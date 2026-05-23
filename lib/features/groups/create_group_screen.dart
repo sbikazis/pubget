@@ -147,9 +147,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: color.withOpacity(0.5), width: 2),
+          border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
           boxShadow: [
-            BoxShadow(color: color.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5)),
+            BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5)),
           ],
         ),
         child: Row(

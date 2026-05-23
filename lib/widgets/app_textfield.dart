@@ -51,7 +51,7 @@ class _AppTextFieldState extends State<AppTextField> {
 
     // ✅ التعديل: جعل الحدود تبرز بشكل أفضل في الوضع الداكن
     final borderColor = isDark
-        ? colorScheme.outline.withOpacity(0.5)
+        ? colorScheme.outline.withValues(alpha: 0.5)
         : AppColors.lightBorder;
 
     // ✅ التعديل: اختيار لون خلفية للحقل يختلف عن خلفية الـ Scaffold

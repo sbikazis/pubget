@@ -236,8 +236,8 @@ class JoinRequestsScreen extends StatelessWidget {
                   gradient: req.isPremium 
                     ? LinearGradient(
                         colors: isDark 
-                          ? [const Color(0xFFD4AF37).withOpacity(0.15), AppColors.darkCard]
-                          : [const Color(0xFFD4AF37).withOpacity(0.1), AppColors.lightCard],
+                          ? [const Color(0xFFD4AF37).withValues(alpha: 0.15), AppColors.darkCard]
+                          : [const Color(0xFFD4AF37).withValues(alpha: 0.1), AppColors.lightCard],
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
                       )
@@ -328,7 +328,7 @@ class JoinRequestsScreen extends StatelessWidget {
                                         },
                                       ),
                                       if (req.isPremium) ...[
-                                         _buildRoleBadge('أولوية ✨', const Color(0xFFD4AF37), const Color(0xFFD4AF37).withOpacity(0.15)),
+                                         _buildRoleBadge('أولوية ✨', const Color(0xFFD4AF37), const Color(0xFFD4AF37).withValues(alpha: 0.15)),
                                          const SizedBox(width: 4),
                                       ],
                                       _buildRoleBadge('طالب انضمام', RoleColors.senpai, RoleColors.senpaiBadgeBg),

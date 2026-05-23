@@ -107,7 +107,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 2,
                     offset: const Offset(0, 1),
                   )
@@ -190,7 +190,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryLight.withOpacity(0.12),
+                          color: AppColors.primaryLight.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

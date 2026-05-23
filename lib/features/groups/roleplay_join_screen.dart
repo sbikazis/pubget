@@ -517,11 +517,11 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
+                                color: AppColors.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                     color: AppColors.primary
-                                        .withOpacity(0.2)),
+                                        .withValues(alpha: 0.2)),
                               ),
                               child: Row(children: [
                                 const Icon(Icons.movie_filter,
@@ -577,10 +577,10 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.07),
+                              color: AppColors.primary.withValues(alpha: 0.07),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: AppColors.primary.withOpacity(0.3)),
+                                  color: AppColors.primary.withValues(alpha: 0.3)),
                             ),
                             child: Row(children: [
                               GestureDetector(

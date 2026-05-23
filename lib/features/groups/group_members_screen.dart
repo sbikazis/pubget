@@ -190,7 +190,7 @@ class GroupMembersScreen extends StatelessWidget {
               return ListTile(
                 leading: CircleAvatar(
                   radius: 20,
-                  backgroundColor: roleColor.withOpacity(0.1),
+                  backgroundColor: roleColor.withValues(alpha: 0.1),
                   child: ClipOval(
                     child: profileImage!= null && profileImage.isNotEmpty
                       ? Image.network(
@@ -236,13 +236,13 @@ class GroupMembersScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: member.isManualRole
-                          ? Colors.purple.withOpacity(0.15)
-                            : Colors.teal.withOpacity(0.15),
+                          ? Colors.purple.withValues(alpha: 0.15)
+                            : Colors.teal.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: member.isManualRole
-                            ? Colors.purple.withOpacity(0.3)
-                              : Colors.teal.withOpacity(0.3),
+                            ? Colors.purple.withValues(alpha: 0.3)
+                              : Colors.teal.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
@@ -271,9 +271,9 @@ class GroupMembersScreen extends StatelessWidget {
                         margin: const EdgeInsets.only(left: 4),
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.15),
+                          color: Colors.orange.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

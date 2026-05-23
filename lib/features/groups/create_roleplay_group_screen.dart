@@ -498,7 +498,7 @@ class _CreateRoleplayGroupScreenState
             color: isDark ? AppColors.darkCard : AppColors.lightCard,
             borderRadius: BorderRadius.circular(10),
             border:
-                Border.all(color: AppColors.primary.withOpacity(0.3))),
+                Border.all(color: AppColors.primary.withValues(alpha: 0.3))),
         child: Row(children: [
           Stack(children: [
             ClipRRect(

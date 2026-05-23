@@ -2,17 +2,15 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 import '../../../core/constants/limits.dart';
-import '../../../core/constants/firestore_paths.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../widgets/game_info_dialog.dart';
 import '../../../widgets/gif_picker_sheet.dart';
+import '../../../widgets/game_events_sheet.dart';
 
 class MessageInputBar extends StatefulWidget {
   final Function(String text, MessageModel? replyTo) onSendText;
@@ -199,23 +197,13 @@ class _MessageInputBarState extends State<MessageInputBar> {
   }
 
   void _handleGamePressed() async {
-    final activeGames = await FirebaseFirestore.instance
-        .collection(FirestorePaths.groupGames(widget.groupId))
-        .where('status', whereIn: ['waitingForOpponent', 'setup', 'guessing'])
-        .get();
-    if (activeGames.docs.length >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً."),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => GameInfoDialog(
-          groupId: widget.groupId, currentMember: widget.currentMember),
+      backgroundColor: Colors.transparent,
+      builder: (_) => GameEventsSheet(
+        groupId: widget.groupId,
+        currentMember: widget.currentMember,
+      ),
     );
   }
 
@@ -223,11 +211,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Widget _buildIconBtn(IconData icon, VoidCallback? onTap, {Color? color}) {
     return SizedBox(
-      width: 36,
-      height: 36,
+      width: 32, // تصغير عرض الزر ليتناسب مع حجم الأيقونة الجديد
+      height: 32,
       child: IconButton(
         padding: EdgeInsets.zero,
-        icon: Icon(icon, size: 22),
+        icon: Icon(icon, size: 20), // تصغير الأيقونات من 22 إلى 20
         color: color ?? AppColors.primary,
         onPressed: onTap,
       ),
@@ -236,17 +224,17 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Widget _circleBtn(IconData? icon, Color color, {bool isLoading = false}) {
     return Container(
-      width: 42,
-      height: 42,
+      width: 38, // تصغير قطر الزر الدائري للميكروفون والإرسال من 42 إلى 38
+      height: 38,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Center(
         child: isLoading
             ? const SizedBox(
-                width: 18,
-                height: 18,
+                width: 16,
+                height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               )
-            : Icon(icon, color: Colors.white, size: 20),
+            : Icon(icon, color: Colors.white, size: 18),
       ),
     );
   }
@@ -282,102 +270,77 @@ class _MessageInputBarState extends State<MessageInputBar> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final background = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    
+    // تغيير لون الخلفية إلى لون الـ Scaffold الأصلي للتوافق الكامل
+    final background = theme.scaffoldBackgroundColor;
 
     final bool showMic = _controller.text.trim().isEmpty && !_isRecording;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (widget.replyingMessage != null) _buildReplyPreview(isDark),
-        if (_isRecording) _buildRecordingIndicator(isDark),
-        Container(
-          padding: const EdgeInsets.only(
-            left: 8,
-            right: 8,
-            top: 8,
-            bottom: 12,
-          ),
-          decoration: BoxDecoration(
-            color: background,
-            border: Border(top: BorderSide(color: borderColor, width: 0.5)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (!_isRecording) ...[
-                _buildIconBtn(
-                  Icons.attach_file_rounded,
-                  _isSending ? null : _pickAndSendImage,
-                ),
-                _buildIconBtn(
-                  Icons.gif_rounded,
-                  _isSending ? null : _openGifPicker,
-                ),
-                if (!widget.isPrivate)
-                  _buildIconBtn(
-                    Icons.videogame_asset_rounded,
-                    _handleGamePressed,
-                    color: AppColors.goldAccent,
-                  ),
-              ],
-              if (_isRecording)
-                _buildIconBtn(
-                  Icons.delete_outline_rounded,
-                  _cancelRecording,
-                  color: Colors.red,
-                ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: _isRecording
-                    ? const SizedBox.shrink()
-                    : TextField(
-                        controller: _controller,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        minLines: 1,
-                        maxLines: 5,
-                        textAlign: TextAlign.right,
-                        textDirection: TextDirection.rtl,
-                        maxLength: Limits.maxMessageLength,
-                        onChanged: (_) => setState(() {}),
-                        style: const TextStyle(fontSize: 15, height: 1.4),
-                        decoration: InputDecoration(
-                          hintText: "اكتب رسالة...",
-                          counterText: "",
-                          filled: true,
-                          fillColor: isDark
-                              ? AppColors.darkCard
-                              : AppColors.lightCard,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide:
-                                BorderSide(color: borderColor, width: 0.8),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide:
-                                BorderSide(color: borderColor, width: 0.8),
-                          ),
-                          focusedBorder: const OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.all(Radius.circular(24)),
-                            borderSide: BorderSide(
-                                color: AppColors.primary, width: 1.5),
+    return SafeArea(
+      top: false, // تعطيل الحماية من الأعلى لعدم التأثير على الشاشة
+      bottom: true, // تفعيل الحماية من الأسفل لتفادي شريط التنقل الخاص بالنظام
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.replyingMessage != null) _buildReplyPreview(isDark),
+          if (_isRecording) _buildRecordingIndicator(isDark),
+          Container(
+            padding: EdgeInsets.zero, // إزالة البادينج الداخلي بالكامل لجعل العناصر حرة الحركة ومحاذية للحواف
+            decoration: BoxDecoration(
+              color: background,
+              // تم حذف الخط العلوي Border top بناءً على طلبك
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const SizedBox(width: 4), // مسافة بسيطة من الحافة اليسرى
+                if (!_isRecording) ...[
+                  _buildIconBtn(Icons.attach_file_rounded, _isSending ? null : _pickAndSendImage),
+                  const SizedBox(width: 4), // تقليص المسافة بين الأزرار إلى 4 بدل 8
+                  _buildIconBtn(Icons.gif_rounded, _isSending ? null : _openGifPicker),
+                  const SizedBox(width: 4),
+                  if (!widget.isPrivate)
+                    _buildIconBtn(Icons.videogame_asset_rounded, _handleGamePressed, color: AppColors.goldAccent),
+                ],
+                if (_isRecording)
+                  _buildIconBtn(Icons.delete_outline_rounded, _cancelRecording, color: Colors.red),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _isRecording
+                      ? const SizedBox.shrink()
+                      : TextField(
+                          controller: _controller,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
+                          minLines: 1,
+                          maxLines: 5,
+                          textAlign: TextAlign.right,
+                          textDirection: TextDirection.rtl,
+                          maxLength: Limits.maxMessageLength,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(fontSize: 15, height: 1.4),
+                          decoration: InputDecoration(
+                            hintText: "اكتب رسالة...",
+                            counterText: "",
+                            filled: true,
+                            // استخدام نفس لون الخلفية العامة مع شفافية 0.7
+                            fillColor: background.withOpacity(0.7),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            // تقليص الـ BorderRadius الخاص بحقل النص من 24 إلى 20
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: borderColor, width: 0.8)),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: borderColor, width: 0.8)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
                           ),
                         ),
-                      ),
-              ),
-              const SizedBox(width: 8),
-              _buildSendButton(showMic),
-            ],
+                ),
+                const SizedBox(width: 4), // تقليص المسافة قبل زر الإرسال والميكروفون
+                _buildSendButton(showMic),
+                const SizedBox(width: 4), // مسافة بسيطة من الحافة اليمنى
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -389,24 +352,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
         children: [
           const Icon(Icons.mic, color: Colors.red, size: 18),
           const SizedBox(width: 8),
-          Text(
-            "${_recordSeconds ~/ 60}:${(_recordSeconds % 60).toString().padLeft(2, '0')}",
-            style: const TextStyle(
-                color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
-          ),
+          Text("${_recordSeconds ~/ 60}:${(_recordSeconds % 60).toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          const Text(
-            "جارٍ التسجيل...",
-            style: TextStyle(
-                color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
-          ),
+          const Text("جارٍ التسجيل...", style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500)),
           const Spacer(),
-          Text(
-            "اضغط ■ للإرسال أو 🗑 للإلغاء",
-            style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.white54 : Colors.black45),
-          ),
+          Text("اضغط ■ للإرسال أو 🗑 للإلغاء", style: TextStyle(fontSize: 11, color: isDark ? Colors.white54 : Colors.black45)),
         ],
       ),
     );
@@ -415,11 +365,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget _buildReplyPreview(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.grey[200],
-        border:
-            const Border(right: BorderSide(color: AppColors.primary, width: 4)),
-      ),
+      decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.grey[200], border: const Border(right: BorderSide(color: AppColors.primary, width: 4))),
       child: Row(
         children: [
           const Icon(Icons.reply, size: 20, color: AppColors.primary),
@@ -428,32 +374,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.replyingMessage!.senderName,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                      fontSize: 12),
-                ),
-                Text(
-                  widget.replyingMessage!.text ??
-                      (widget.replyingMessage!.mediaType == 'image'
-                          ? "صورة 🖼️"
-                          : widget.replyingMessage!.mediaType == 'gif'
-                              ? "GIF 🎞️"
-                              : "رسالة وسائط"),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.white70 : Colors.black87),
-                ),
+                Text(widget.replyingMessage!.senderName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 12)),
+                Text(widget.replyingMessage!.text ?? (widget.replyingMessage!.mediaType == 'image' ? "صورة 🖼️" : widget.replyingMessage!.mediaType == 'gif' ? "GIF 🎞️" : "رسالة وسائط"), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87)),
               ],
             ),
           ),
-          IconButton(
-              icon: const Icon(Icons.close, size: 18),
-              onPressed: widget.onCancelReply),
+          IconButton(icon: const Icon(Icons.close, size: 18), onPressed: widget.onCancelReply),
         ],
       ),
     );

@@ -59,7 +59,7 @@ class RoleSelectorSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.3),
+              color: Colors.grey.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -80,9 +80,9 @@ class RoleSelectorSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Column(
                 children: [
@@ -139,9 +139,9 @@ class RoleSelectorSheet extends StatelessWidget {
                     opacity: isFull ? 0.5 : 1.0,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: bg.withOpacity(isDark ? 0.1 : 0.05),
+                        color: bg.withValues(alpha: isDark ? 0.1 : 0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+                        border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,

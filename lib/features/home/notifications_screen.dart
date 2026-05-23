@@ -72,7 +72,7 @@ class NotificationsScreen extends StatelessWidget {
               final n = notifications[index];
 
               return ListTile(
-                tileColor: n.isRead? null : AppColors.primary.withOpacity(0.05),
+                tileColor: n.isRead? null : AppColors.primary.withValues(alpha: 0.05),
                 leading: CircleAvatar(
                   backgroundColor: n.isRead? AppColors.lightCard : AppColors.primary,
                   child: Icon(
