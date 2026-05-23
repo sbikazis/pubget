@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/game_provider.dart';
-import '../providers/chat_provider.dart';
-import '../models/game_model.dart';
-import '../models/member_model.dart';
-import '../core/constants/game_status.dart';
-import '../core/constants/game_constants.dart';
-import '../core/logic/game_logic_validator.dart';
-import '../core/utils/game_timer_manager.dart';
+import '../../../providers/game_provider.dart';
+import '../../../providers/chat_provider.dart';
+import '../../../models/game_model.dart';
+import '../../../models/member_model.dart';
+import '../../../core/constants/game_status.dart';
+import '../../../core/constants/game_constants.dart';
+import '../../../core/logic/game_logic_validator.dart';
+import '../../../core/utils/game_timer_manager.dart';
 import 'guess_character_dialog.dart';
 
 class GameBottomBar extends StatefulWidget {
@@ -33,11 +33,14 @@ class _GameBottomBarState extends State<GameBottomBar> {
   bool get isMyTurn =>
       widget.game.currentTurnUserId == widget.currentMember.userId;
 
+  // حقول خاصة بلعبة التخمين التقليدية
   bool get isAnswerPhase =>
       widget.game.lastActionType == 'question' && isMyTurn;
 
   bool get isQuestionPhase =>
       widget.game.lastActionType != 'question' && isMyTurn;
+
+  bool get isAnimeChain => widget.game.gameType == 'anime_chain';
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +68,8 @@ class _GameBottomBarState extends State<GameBottomBar> {
                 icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
                 onPressed: () => _handleQuit(),
               ),
-              if (isQuestionPhase)
+              // إخفاء زر التخمين المباشر إذا كنا في لعبة السلسلة
+              if (!isAnimeChain && isQuestionPhase)
                 IconButton(
                   icon: const Icon(Icons.ads_click, color: Colors.amber),
                   onPressed: () => _showGuessDialog(),
@@ -81,10 +85,12 @@ class _GameBottomBarState extends State<GameBottomBar> {
                   textDirection: TextDirection.rtl,
                   style: const TextStyle(fontSize: 15.5, height: 1.4),
                   decoration: InputDecoration(
-                    hintText: isQuestionPhase
-                        ? "اسأل سؤالاً (إجابته نعم/لا)..."
-                        : "أجب بـ (نعم) أو (لا) فقط...",
-                    hintStyle: const TextStyle(fontSize: 13),
+                    hintText: isAnimeChain
+                        ? "اكتب كلمة تبدأ بحرف: (${widget.game.lastLetter?.toUpperCase() ?? 'أي حرف'})"
+                        : (isQuestionPhase
+                            ? "اسأل سؤالاً (إجابته نعم/لا)..."
+                            : "أجب بـ (نعم) أو (لا) فقط..."),
+                    hintStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                       borderSide: BorderSide.none,
@@ -180,6 +186,41 @@ class _GameBottomBarState extends State<GameBottomBar> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    // 1. منطق معالجة الإرسال الخاص بلعبة سلسلة الأنمي
+    if (isAnimeChain) {
+      if (!GameLogicValidator.isValidChainWord(text, widget.game.lastLetter, widget.game.usedWords)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.game.usedWords.contains(text.toLowerCase())
+                  ? "هذه الكلمة تم استخدامها من قبل في هذه السلسلة!"
+                  : "خطأ! الكلمة يجب أن تبدأ بحرف (${widget.game.lastLetter?.toUpperCase()}) ولم تستخدم سابقاً.",
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      // إرسال الحركة عبر الـ Provider المحدث الذي يعكس الدور تلقائياً
+      final success = await context.read<GameProvider>().submitChainWord(
+            groupId: widget.groupId,
+            gameId: widget.game.id,
+            word: text,
+            userId: widget.currentMember.userId,
+            userName: widget.currentMember.displayName,
+          );
+
+      if (success) {
+        _controller.clear();
+        setState(() {
+          _turnTimeoutCalled = false; // إعادة تهيئة العداد للدور الجديد
+        });
+      }
+      return;
+    }
+
+    // 2. منطق معالجة الإرسال التقليدي للعبة التخمين
     if (isAnswerPhase) {
       if (!GameLogicValidator.isValidGameAnswer(text)) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -215,6 +256,9 @@ class _GameBottomBarState extends State<GameBottomBar> {
     }
 
     _controller.clear();
+    setState(() {
+      _turnTimeoutCalled = false;
+    });
   }
 
   void _showGuessDialog() {

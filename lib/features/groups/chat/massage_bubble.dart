@@ -62,7 +62,6 @@ class MessageBubble extends StatelessWidget {
 
     final Color bubbleColor;
     if (isGameMessage) {
-      // تعديل: تقليل الـ opacity من 0.15 إلى 0.08 لرسائل الألعاب
       bubbleColor = gameAccentColor!.withOpacity(0.08);
     } else if (isMe) {
       bubbleColor = hasBackground
@@ -80,25 +79,27 @@ class MessageBubble extends StatelessWidget {
       }
     }
 
+    // تعديل وتطوير الألوان لظهور النص بوضوح تام جداً عالي التباين
     final Color textColor;
     if (isMe && !isGameMessage) {
-      textColor = Colors.white; // تعديل: نص أبيض دائم لرسائل المستخدم الخاص
+      textColor = Colors.white; // أبيض ناصع ثابت لرسائلي
+    } else if (isGameMessage) {
+      textColor = isDark ? Colors.white : Colors.black87; // نص واضح جداً لرسائل الألعاب
     } else if (hasBackground) {
-      textColor = isDark ? Colors.white : AppColors.lightTextPrimary;
+      textColor = isDark ? Colors.white : const Color(0xFF111111); // أسود داكن جداً للإضاءة
     } else {
-      textColor = isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+      textColor = isDark ? Colors.white : const Color(0xFF1A1A1A); // ألوان متباينة بالكامل مع الخلفية الأساسية
     }
 
     final Color timeColor;
     if (isMe && !isGameMessage) {
-      timeColor = Colors.white70;
+      timeColor = Colors.white.withOpacity(0.85);
     } else if (hasBackground) {
-      timeColor = isDark ? Colors.white.withOpacity(0.75) : Colors.black.withOpacity(0.60);
+      timeColor = isDark ? Colors.white.withOpacity(0.80) : Colors.black.withOpacity(0.70);
     } else {
-      timeColor = isDark ? AppColors.darkTextHint : AppColors.lightTextHint;
+      timeColor = isDark ? Colors.white70 : Colors.black54;
     }
 
-    // تعديل الحواف لنمط واتساب (حافة حادة جهة الإرسال)
     final borderRadius = isMe
         ? const BorderRadius.only(
             topLeft: Radius.circular(16),
@@ -132,22 +133,21 @@ class MessageBubble extends StatelessWidget {
                   Container(
                     margin: const EdgeInsets.only(top: 2),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10, // تعديل: تقليل البادينج الأفقي من 14 إلى 10
-                      vertical: 8,   // تعديل: تقليل البادينج العمودي من 10 إلى 8
+                      horizontal: 12, // زيادة طفيفة لراحة العين أثناء القراءة
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: borderRadius,
-                      // تعديل: إضافة حدود ذهبية للمشتركين المميزين Premium
                       border: isGameMessage
-                          ? Border.all(color: gameAccentColor!, width: 1)
+                          ? Border.all(color: gameAccentColor!, width: 1.2)
                           : (isPremiumUser
-                              ? Border.all(color: const Color(0xFFFFD700), width: 0.8)
+                              ? Border.all(color: const Color(0xFFFFD700), width: 1.0)
                               : null),
                       boxShadow: hasBackground
                           ? [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.20),
+                                color: Colors.black.withOpacity(0.25),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -158,7 +158,6 @@ class MessageBubble extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // تعديل: عرض الاسم داخل الفقاعة فقط للمستخدم الآخر (!isMe)
                         if (!isMe) ...[
                           _buildNameRow(roleColor, isPremiumUser),
                           const SizedBox(height: 4),
@@ -166,8 +165,7 @@ class MessageBubble extends StatelessWidget {
                         if (message.replyText != null)
                           _buildReplyPreview(isDark),
                         _buildMessageContent(context, textColor),
-                        const SizedBox(height: 4),
-                        // تعديل: إضافة الوقت وأيقونة القراءة في صف مدمج بالأسفل داخل الفقاعة
+                        const SizedBox(height: 6),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.end,
@@ -175,7 +173,8 @@ class MessageBubble extends StatelessWidget {
                             Text(
                               TimeUtils.formatChatTime(message.createdAt),
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 11, // تكبير طفيف للوقت ليصبح أكثر وضوحاً
+                                fontWeight: FontWeight.w500,
                                 color: timeColor,
                               ),
                             ),
@@ -183,8 +182,8 @@ class MessageBubble extends StatelessWidget {
                               const SizedBox(width: 4),
                               Icon(
                                 Icons.done_all_rounded,
-                                size: 14,
-                                color: isGameMessage ? Colors.grey : Colors.white70,
+                                size: 15,
+                                color: isGameMessage ? Colors.grey : Colors.white.withOpacity(0.9),
                               ),
                             ],
                           ],
@@ -260,7 +259,7 @@ class MessageBubble extends StatelessWidget {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.reply, color: AppColors.primary),
-              title: const Text('رد'),
+              title: const Text('رد', style: TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.pop(context);
                 if (onReply != null) onReply!(message);
@@ -269,7 +268,7 @@ class MessageBubble extends StatelessWidget {
             if (message.text != null && message.text!.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy, color: AppColors.primary),
-                title: const Text('نسخ'),
+                title: const Text('نسخ', style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
                   Clipboard.setData(ClipboardData(text: message.text!));
@@ -286,7 +285,7 @@ class MessageBubble extends StatelessWidget {
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text(
                   'حذف الرسالة',
-                  style: TextStyle(color: Colors.red),
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                 ),
                 onTap: () {
                   if (isPrivate) {
@@ -311,7 +310,7 @@ class MessageBubble extends StatelessWidget {
                   Icons.person_outline,
                   color: Color(0xFFFFD700),
                 ),
-                title: const Text('الملف الشخصي'),
+                title: const Text('الملف الشخصي', style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -340,8 +339,8 @@ class MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: isDark
-              ? Colors.white.withOpacity(0.05)
-              : Colors.black.withOpacity(0.05),
+              ? Colors.white.withOpacity(0.08)
+              : Colors.black.withOpacity(0.06),
           borderRadius: BorderRadius.circular(8),
           border: Border(
             left: isMe
@@ -370,8 +369,9 @@ class MessageBubble extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
+                    fontWeight: FontWeight.w600, // تغميق النص للوضوح التام
                     fontStyle: FontStyle.italic,
-                    color: isDark ? Colors.white70 : Colors.black54,
+                    color: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
               ),
@@ -389,7 +389,7 @@ class MessageBubble extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(emoji, style: const TextStyle(fontSize: 12)),
@@ -398,11 +398,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(
-    BuildContext context, [
-    bool isGame = false,
-    Color? gameColor,
-  ]) {
+  Widget _buildAvatar(BuildContext context, [bool isGame = false, Color? gameColor]) {
     final String? avatarUrl = sender.displayImageUrl ??
         (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
 
@@ -467,7 +463,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // تعديل: تمرير معامل الـ premium مباشرة من الـ build لتسهيل المنطق
   Widget _buildNameRow(Color roleColor, bool isPremiumUser) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -478,8 +473,8 @@ class MessageBubble extends StatelessWidget {
             sender.effectiveName,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              fontSize: 13, // تكبير الخط بمقدار درجة واحدة للوضوح
+              fontWeight: FontWeight.bold, // جعله عريضاً بشكل صريح
               color: roleColor,
             ),
           ),
@@ -558,7 +553,12 @@ class MessageBubble extends StatelessWidget {
     if (message.text != null) {
       return Text(
         message.text!,
-        style: TextStyle(fontSize: 15, color: textColor),
+        style: TextStyle(
+          fontSize: 15.5, // حجم خط مثالي للقراءة المريحة والواضحة جداً
+          fontWeight: FontWeight.w500, // سماكة خط متوسطة تعزز القراءة والوضوح
+          color: textColor,
+          height: 1.3, // ترك مسافة مريحة بين الأسطر للنصوص الطويلة
+        ),
       );
     }
 
@@ -726,7 +726,7 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                             children: [
                               Icon(Icons.open_in_full, color: Colors.white, size: 12),
                               SizedBox(width: 4),
-                              Text('عرض', style: TextStyle(color: Colors.white, fontSize: 11)),
+                              Text('عرض', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -748,7 +748,7 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.bold, // نص بارز تماماً في فقاعات المشاركة
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

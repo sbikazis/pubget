@@ -211,12 +211,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Widget _buildIconBtn(IconData icon, VoidCallback? onTap, {Color? color}) {
     return SizedBox(
-      width: 32, // تصغير عرض الزر ليتناسب مع حجم الأيقونة الجديد
-      height: 32,
+      width: 28,
+      height: 28,
       child: IconButton(
         padding: EdgeInsets.zero,
-        icon: Icon(icon, size: 20), // تصغير الأيقونات من 22 إلى 20
-        color: color ?? AppColors.primary,
+        icon: Icon(icon, size: 22),
+        color: color ?? Colors.grey[600], // لون الأيقونات رمادي مثل واتساب تماماً
         onPressed: onTap,
       ),
     );
@@ -224,17 +224,17 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Widget _circleBtn(IconData? icon, Color color, {bool isLoading = false}) {
     return Container(
-      width: 38, // تصغير قطر الزر الدائري للميكروفون والإرسال من 42 إلى 38
-      height: 38,
+      width: 44, // تكبير زر الميكروفون/الإرسال الدائري ليصبح متناسقاً وبارزاً
+      height: 44,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Center(
         child: isLoading
             ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
               )
-            : Icon(icon, color: Colors.white, size: 18),
+            : Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }
@@ -244,7 +244,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       return GestureDetector(
         onLongPress: _isSending ? null : _startRecording,
         onLongPressEnd: (_) => _stopAndSendRecording(),
-        child: _circleBtn(Icons.mic_rounded, AppColors.primary),
+        child: _circleBtn(Icons.mic_rounded, const Color(0xFF00A884)), // لون أخضر واتساب الافتراضي
       );
     }
     if (_isRecording) {
@@ -257,7 +257,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       onTap: _isSending ? null : _sendMessage,
       child: _circleBtn(
         _isSending ? null : Icons.send_rounded,
-        AppColors.primary,
+        const Color(0xFF00A884),
         isLoading: _isSending,
       ),
     );
@@ -269,73 +269,110 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
     
-    // تغيير لون الخلفية إلى لون الـ Scaffold الأصلي للتوافق الكامل
-    final background = theme.scaffoldBackgroundColor;
+    // إزالة الخلفية البيضاء للشريط السفلي بالكامل وجعله شفافاً ليظهر فوق خلفية المحادثة
+    final containerBackground = Colors.transparent;
+    
+    // لون إطار حقل النص (داكن لواتساب المظلم، أو رمادي خفيف للمضيء)
+    final inputFillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
 
     final bool showMic = _controller.text.trim().isEmpty && !_isRecording;
 
     return SafeArea(
-      top: false, // تعطيل الحماية من الأعلى لعدم التأثير على الشاشة
-      bottom: true, // تفعيل الحماية من الأسفل لتفادي شريط التنقل الخاص بالنظام
+      top: false,
+      bottom: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (widget.replyingMessage != null) _buildReplyPreview(isDark),
           if (_isRecording) _buildRecordingIndicator(isDark),
           Container(
-            padding: EdgeInsets.zero, // إزالة البادينج الداخلي بالكامل لجعل العناصر حرة الحركة ومحاذية للحواف
-            decoration: BoxDecoration(
-              color: background,
-              // تم حذف الخط العلوي Border top بناءً على طلبك
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            color: containerBackground,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const SizedBox(width: 4), // مسافة بسيطة من الحافة اليسرى
-                if (!_isRecording) ...[
-                  _buildIconBtn(Icons.attach_file_rounded, _isSending ? null : _pickAndSendImage),
-                  const SizedBox(width: 4), // تقليص المسافة بين الأزرار إلى 4 بدل 8
-                  _buildIconBtn(Icons.gif_rounded, _isSending ? null : _openGifPicker),
-                  const SizedBox(width: 4),
-                  if (!widget.isPrivate)
-                    _buildIconBtn(Icons.videogame_asset_rounded, _handleGamePressed, color: AppColors.goldAccent),
-                ],
-                if (_isRecording)
-                  _buildIconBtn(Icons.delete_outline_rounded, _cancelRecording, color: Colors.red),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: _isRecording
-                      ? const SizedBox.shrink()
-                      : TextField(
-                          controller: _controller,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.newline,
-                          minLines: 1,
-                          maxLines: 5,
-                          textAlign: TextAlign.right,
-                          textDirection: TextDirection.rtl,
-                          maxLength: Limits.maxMessageLength,
-                          onChanged: (_) => setState(() {}),
-                          style: const TextStyle(fontSize: 15, height: 1.4),
-                          decoration: InputDecoration(
-                            hintText: "اكتب رسالة...",
-                            counterText: "",
-                            filled: true,
-                            // استخدام نفس لون الخلفية العامة مع شفافية 0.7
-                            fillColor: background.withOpacity(0.7),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            // تقليص الـ BorderRadius الخاص بحقل النص من 24 إلى 20
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: borderColor, width: 0.8)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: borderColor, width: 0.8)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 4), // تقليص المسافة قبل زر الإرسال والميكروفون
+                // 1. زر الميكروفون أو الإرسال على اليمين تماماً (تم قلبه ليتوافق مع الواجهة العربية لواتساب)
                 _buildSendButton(showMic),
-                const SizedBox(width: 4), // مسافة بسيطة من الحافة اليمنى
+                const SizedBox(width: 6),
+                
+                // 2. إطار حقل النص وبداخله أزرار الملحقات والألعاب (مثل تصميم واتساب المطور)
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: inputFillColor,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        )
+                      ],
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // أزرار الملحقات على اليسار داخل نفس الإطار
+                        if (!_isRecording) ...[
+                          const SizedBox(width: 8),
+                          _buildIconBtn(Icons.attach_file_rounded, _isSending ? null : _pickAndSendImage),
+                          const SizedBox(width: 4),
+                          _buildIconBtn(Icons.gif_rounded, _isSending ? null : _openGifPicker),
+                          const SizedBox(width: 4),
+                          if (!widget.isPrivate)
+                            _buildIconBtn(Icons.videogame_asset_rounded, _handleGamePressed, color: AppColors.goldAccent),
+                          const SizedBox(width: 4),
+                        ],
+                        if (_isRecording) ...[
+                          const SizedBox(width: 8),
+                          _buildIconBtn(Icons.delete_outline_rounded, _cancelRecording, color: Colors.red),
+                          const SizedBox(width: 4),
+                        ],
+                        
+                        // حقل إدخال النص الممتد
+                        Expanded(
+                          child: _isRecording
+                              ? const SizedBox.shrink()
+                              : TextField(
+                                  controller: _controller,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  minLines: 1,
+                                  maxLines: 5,
+                                  textAlign: TextAlign.right,
+                                  textDirection: TextDirection.rtl,
+                                  maxLength: Limits.maxMessageLength,
+                                  onChanged: (_) => setState(() {}),
+                                  style: TextStyle(
+                                    fontSize: 16, 
+                                    height: 1.3,
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    hintText: "مراسلة", // تغييرها لـ "مراسلة" لتطابق واتساب الجديد بالكامل
+                                    counterText: "",
+                                    filled: false, // إلغاء الـ fill الداخلي للاعتماد على الحاوية الخارجية
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                  ),
+                                ),
+                        ),
+                        
+                        // أيقونة إضافية على اليمين داخل حقل النص (اختياري، مثل شكل الـ Emoji الفيس في واتساب)
+                        if (!_isRecording) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6, right: 8, left: 4),
+                            child: Icon(Icons.sentiment_satisfied_alt_rounded, color: Colors.grey[500], size: 24),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
               ],
             ),
           ),
@@ -365,16 +402,16 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget _buildReplyPreview(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.grey[200], border: const Border(right: BorderSide(color: AppColors.primary, width: 4))),
+      decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.grey[200], border: const Border(right: BorderSide(color: Color(0xFF00A884), width: 4))),
       child: Row(
         children: [
-          const Icon(Icons.reply, size: 20, color: AppColors.primary),
+          const Icon(Icons.reply, size: 20, color: Color(0xFF00A884)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.replyingMessage!.senderName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 12)),
+                Text(widget.replyingMessage!.senderName, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00A884), fontSize: 12)),
                 Text(widget.replyingMessage!.text ?? (widget.replyingMessage!.mediaType == 'image' ? "صورة 🖼️" : widget.replyingMessage!.mediaType == 'gif' ? "GIF 🎞️" : "رسالة وسائط"), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87)),
               ],
             ),

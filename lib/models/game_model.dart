@@ -9,6 +9,10 @@ class GameModel {
   // نوع اللعبة
   final String gameType; // 'guess' أو 'anime_chain'
 
+  // --- حقول أسماء اللاعبين ---
+  final String? playerOneName;
+  final String? playerTwoName;
+
   // --- حقول لعبة التخمين ---
   final String playerOneId;
   final String? playerTwoId;
@@ -23,7 +27,7 @@ class GameModel {
   final String? currentWord;
   final String? lastLetter;
   final List<String> usedWords;
-  final List<String> players;
+  final List<String> players; // معرفات اللاعبين المشاركين بالترتيب
 
   // --- حقول مشتركة ---
   final String? currentTurnUserId;
@@ -34,12 +38,15 @@ class GameModel {
   final DateTime? lastActionAt;
   final String? lastActionType;
   final DateTime? finishedAt;
+  final String? endReason; // حقل مضاف وموحد للانسحاب أو الخسارة بالوقت
 
   const GameModel({
     required this.id,
     required this.groupId,
     required this.gameSlot,
     this.gameType = 'guess',
+    this.playerOneName,
+    this.playerTwoName,
     required this.playerOneId,
     this.playerTwoId,
     this.playerOneCharacter,
@@ -60,14 +67,30 @@ class GameModel {
     this.lastActionAt,
     this.lastActionType,
     this.finishedAt,
+    this.endReason,
   });
 
   factory GameModel.fromMap(String id, Map<String, dynamic> map) {
+    // معالجة تحويل النصوص القادمة من الفايربيز إلى Enum الـ GameStatus بشكل آمن
+    GameStatus gameStatus = GameStatus.waitingForOpponent;
+    if (map['status'] != null) {
+      try {
+        gameStatus = GameStatus.values.firstWhere(
+          (e) => e.name == map['status'],
+          orElse: () => GameStatus.waitingForOpponent,
+        );
+      } catch (_) {
+        gameStatus = GameStatus.waitingForOpponent;
+      }
+    }
+
     return GameModel(
       id: id,
       groupId: map['groupId'] ?? '',
       gameSlot: map['gameSlot'] ?? 'game_1',
       gameType: map['gameType'] ?? 'guess',
+      playerOneName: map['playerOneName'],
+      playerTwoName: map['playerTwoName'],
       playerOneId: map['playerOneId'] ?? '',
       playerTwoId: map['playerTwoId'],
       playerOneCharacter: map['playerOneCharacter'],
@@ -81,19 +104,22 @@ class GameModel {
       usedWords: List<String>.from(map['usedWords'] ?? []),
       players: List<String>.from(map['players'] ?? []),
       currentTurnUserId: map['currentTurnUserId'],
-      status: GameStatus.fromString(map['status'] ?? 'waitingForOpponent'),
+      status: gameStatus,
       winnerUserId: map['winnerUserId'],
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
-      setupStartedAt: map['setupStartedAt'] != null
-          ? (map['setupStartedAt'] as Timestamp).toDate()
+      createdAt: map['createdAt'] != null 
+          ? (map['createdAt'] as Timestamp).toDate() 
+          : DateTime.now(),
+      setupStartedAt: map['setupStartedAt'] != null 
+          ? (map['setupStartedAt'] as Timestamp).toDate() 
           : null,
-      lastActionAt: map['lastActionAt'] != null
-          ? (map['lastActionAt'] as Timestamp).toDate()
+      lastActionAt: map['lastActionAt'] != null 
+          ? (map['lastActionAt'] as Timestamp).toDate() 
           : null,
       lastActionType: map['lastActionType'],
-      finishedAt: map['finishedAt'] != null
-          ? (map['finishedAt'] as Timestamp).toDate()
+      finishedAt: map['finishedAt'] != null 
+          ? (map['finishedAt'] as Timestamp).toDate() 
           : null,
+      endReason: map['endReason'],
     );
   }
 
@@ -102,6 +128,8 @@ class GameModel {
       'groupId': groupId,
       'gameSlot': gameSlot,
       'gameType': gameType,
+      'playerOneName': playerOneName,
+      'playerTwoName': playerTwoName,
       'playerOneId': playerOneId,
       'playerTwoId': playerTwoId,
       'playerOneCharacter': playerOneCharacter,
@@ -118,17 +146,18 @@ class GameModel {
       'status': status.name,
       'winnerUserId': winnerUserId,
       'createdAt': Timestamp.fromDate(createdAt),
-      'setupStartedAt':
-          setupStartedAt != null ? Timestamp.fromDate(setupStartedAt!) : null,
-      'lastActionAt':
-          lastActionAt != null ? Timestamp.fromDate(lastActionAt!) : null,
+      'setupStartedAt': setupStartedAt != null ? Timestamp.fromDate(setupStartedAt!) : null,
+      'lastActionAt': lastActionAt != null ? Timestamp.fromDate(lastActionAt!) : null,
       'lastActionType': lastActionType,
       'finishedAt': finishedAt != null ? Timestamp.fromDate(finishedAt!) : null,
+      'endReason': endReason,
     };
   }
 
   GameModel copyWith({
     String? gameType,
+    String? playerOneName,
+    String? playerTwoName,
     String? playerTwoId,
     String? playerOneCharacter,
     String? playerOneImage,
@@ -147,12 +176,15 @@ class GameModel {
     DateTime? lastActionAt,
     String? lastActionType,
     DateTime? finishedAt,
+    String? endReason,
   }) {
     return GameModel(
       id: id,
       groupId: groupId,
       gameSlot: gameSlot,
       gameType: gameType ?? this.gameType,
+      playerOneName: playerOneName ?? this.playerOneName,
+      playerTwoName: playerTwoName ?? this.playerTwoName,
       playerOneId: playerOneId,
       playerTwoId: playerTwoId ?? this.playerTwoId,
       playerOneCharacter: playerOneCharacter ?? this.playerOneCharacter,
@@ -173,6 +205,8 @@ class GameModel {
       lastActionAt: lastActionAt ?? this.lastActionAt,
       lastActionType: lastActionType ?? this.lastActionType,
       finishedAt: finishedAt ?? this.finishedAt,
+      endReason: endReason ?? this.endReason,
     );
   }
 }
+

@@ -59,38 +59,44 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   bool _isLoadingCharacters = false;
   bool _hasInviter = false;
 
-  // ── الشخصيات المحجوزة داخل المجموعة
+  // اشتراك الـ Stream للاستماع للشخصيات المحجوزة
+  StreamSubscription<QuerySnapshot>? _charactersSubscription;
   Set<String> _reservedCharacterNames = {};
 
   final ImagePicker _picker = ImagePicker();
 
   // ─────────────────────────────────────────────
-  // INIT - جلب الشخصيات المحجوزة
+  // INIT - الاستماع اللحظي للشخصيات المحجوزة
   // ─────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _loadReservedCharacters();
+    _initReservedCharactersStream();
   }
 
-  Future<void> _loadReservedCharacters() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection(FirestorePaths.groupCharacters(widget.group.id))
-          .get();
+  void _initReservedCharactersStream() {
+    // الاستماع الحي للمستندات، بمجرد حذف مستند الشخصية عند الطرد/المغادرة سيتم التحديث هنا فوراً
+    _charactersSubscription = FirebaseFirestore.instance
+        .collection(FirestorePaths.groupCharacters(widget.group.id))
+        .snapshots()
+        .listen((snapshot) {
       final reserved = <String>{};
       for (final doc in snapshot.docs) {
         reserved.add(doc.id); // الـ key هو _normalizeCharacterKey
       }
-      if (mounted) setState(() => _reservedCharacterNames = reserved);
-    } catch (e) {
-      debugPrint("⚠️ Failed to load reserved characters: $e");
-    }
+      if (mounted) {
+        setState(() {
+          _reservedCharacterNames = reserved;
+        });
+      }
+    }, onError: (e) {
+      debugPrint("⚠️ Stream Error (Reserved Characters): $e");
+    });
   }
 
   // ─────────────────────────────────────────────
-  // NORMALIZE KEY (نفس منطق group_join_validator)
+  // NORMALIZE KEY
   // ─────────────────────────────────────────────
 
   String _normalizeKey(String name) {
@@ -108,11 +114,12 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // DISPOSE
+  // DISPOSE - إلغاء الاشتراكات وتفريغ الذاكرة
   // ─────────────────────────────────────────────
 
   @override
   void dispose() {
+    _charactersSubscription?.cancel(); // إغلاق الـ Stream لمنع تسريب الذاكرة (Memory Leak)
     _reasonController.dispose();
     _inviterController.dispose();
     super.dispose();
@@ -162,8 +169,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content:
-                    Text('لم نجد شخصيات لهذا الأنمي، حاول لاحقاً')),
+                content: Text('لم نجد شخصيات لهذا الأنمي، حاول لاحقاً')),
           );
         }
         return;
@@ -177,7 +183,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // CHARACTER SHEET مع إظهار المحجوز
+  // CHARACTER SHEET (تتأثر تلقائياً بالـ State العام)
   // ─────────────────────────────────────────────
 
   void _showCharacterSheet(List<Map<String, dynamic>> characters) {
@@ -186,153 +192,158 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.75),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(2)),
+        // نستخدم StatefulBuilder هنا لكي نضمن تحديث الـ BottomSheet داخلياً إذا تغير الـ State الأب فجأة
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.75),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(children: [
-                  const Icon(Icons.people_alt_outlined,
-                      color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'شخصيات ${widget.group.animeName ?? "الأنمي"}',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2)),
                   ),
-                ]),
-              ),
-              const SizedBox(height: 4),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'الشخصيات الرمادية محجوزة بالفعل',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ),
-              const Divider(height: 24),
-              Flexible(
-                child: GridView.builder(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(children: [
+                      const Icon(Icons.people_alt_outlined,
+                          color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'شخصيات ${widget.group.animeName ?? "الأنمي"}',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ]),
                   ),
-                  itemCount: characters.length,
-                  itemBuilder: (context, index) {
-                    final char = characters[index];
-                    final String charName = char['name'] ?? '';
-                    final bool reserved = _isReserved(charName);
+                  const SizedBox(height: 4),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'الشخصيات الرمادية محجوزة بالفعل وتتحرر تلقائياً عند مغادرة أصحابها',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                  const Divider(height: 24),
+                  Flexible(
+                    // هنا نستخدم شجرة الـ Stream المتصلة بالـ State الأب مباشرة
+                    child: GridView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        childAspectRatio: 0.65,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemCount: characters.length,
+                      itemBuilder: (context, index) {
+                        final char = characters[index];
+                        final String charName = char['name'] ?? '';
+                        // فحص الحجز المباشر والمحدث عبر الـ Stream اللحظي
+                        final bool reserved = _isReserved(charName);
 
-                    return GestureDetector(
-                      onTap: () {
-                        if (reserved) {
-                          // ── محجوزة: أظهر رسالة فقط
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  '"$charName" محجوزة بالفعل داخل هذه المجموعة'),
-                              backgroundColor: Colors.red.shade400,
-                            ),
-                          );
-                          return;
-                        }
-                        // ── متاحة: اختر
-                        Navigator.pop(context);
-                        setState(() {
-                          _selectedCharId = char['id'];
-                          _selectedCharName = charName;
-                          _selectedCharImageUrl = char['imageUrl'];
-                          _pickedImage = null;
-                        });
-                      },
-                      child: Opacity(
-                        opacity: reserved ? 0.35 : 1.0,
-                        child: Stack(
-                          children: [
-                            Column(
+                        return GestureDetector(
+                          onTap: () {
+                            if (reserved) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      '"$charName" محجوزة بالفعل داخل هذه المجموعة'),
+                                  backgroundColor: Colors.red.shade400,
+                                ),
+                              );
+                              return;
+                            }
+                            Navigator.pop(context);
+                            setState(() {
+                              _selectedCharId = char['id'];
+                              _selectedCharName = charName;
+                              _selectedCharImageUrl = char['imageUrl'];
+                              _pickedImage = null;
+                            });
+                          },
+                          child: Opacity(
+                            opacity: reserved ? 0.35 : 1.0,
+                            child: Stack(
                               children: [
-                                Expanded(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: char['imageUrl'] != null &&
-                                            char['imageUrl']!.isNotEmpty
-                                        ? Image.network(
-                                            char['imageUrl']!,
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                              color: Colors.grey.shade300,
-                                              child: const Icon(Icons.person,
-                                                  size: 30),
-                                            ),
-                                          )
-                                        : Container(
-                                            color: Colors.grey.shade300,
-                                            child: const Icon(Icons.person,
-                                                size: 30),
-                                          ),
+                                Column(
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: char['imageUrl'] != null &&
+                                                char['imageUrl']!.isNotEmpty
+                                            ? Image.network(
+                                                char['imageUrl']!,
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                errorBuilder: (_, __, ___) =>
+                                                    Container(
+                                                  color: Colors.grey.shade300,
+                                                  child: const Icon(
+                                                      Icons.person,
+                                                      size: 30),
+                                                ),
+                                              )
+                                            : Container(
+                                                color: Colors.grey.shade300,
+                                                child: const Icon(Icons.person,
+                                                    size: 30),
+                                              ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      charName,
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold),
+                                      maxLines: 2,
+                                      textAlign: TextAlign.center,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                                if (reserved)
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Icon(Icons.lock,
+                                          size: 12, color: Colors.white),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  charName,
-                                  style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold),
-                                  maxLines: 2,
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
                               ],
                             ),
-                            // ── أيقونة القفل على المحجوزة
-                            if (reserved)
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: Container(
-                                  padding: const EdgeInsets.all(3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Icon(Icons.lock,
-                                      size: 12, color: Colors.white),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -348,15 +359,13 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
     if (_selectedCharName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content:
-                Text('الرجاء اختيار شخصيتك من قائمة الشخصيات أولاً')),
+            content: Text('الرجاء اختيار شخصيتك من قائمة الشخصيات أولاً')),
       );
       return;
     }
 
     final hasImage = _pickedImage != null ||
-        (_selectedCharImageUrl != null &&
-            _selectedCharImageUrl!.isNotEmpty);
+        (_selectedCharImageUrl != null && _selectedCharImageUrl!.isNotEmpty);
 
     try {
       setState(() => _isProcessing = true);
@@ -366,8 +375,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
       final firestore = context.read<FirestoreService>();
       final storage = context.read<StorageService>();
 
-      final inviterName =
-          _hasInviter ? _inviterController.text.trim() : null;
+      final inviterName = _hasInviter ? _inviterController.text.trim() : null;
       final reason = _reasonController.text.trim();
 
       final validator = GroupJoinValidator(firestoreService: firestore);
@@ -392,10 +400,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
           context,
           title: validation.shouldShowUpgrade ? 'ترقية الحساب' : 'تنبيه',
           content: validation.errorMessage ?? 'فشل التحقق من البيانات.',
-          confirmText:
-              validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
-          onConfirm: () =>
-              Navigator.of(context, rootNavigator: true).pop(),
+          confirmText: validation.shouldShowUpgrade ? 'ترقية الآن' : 'حسناً',
+          onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
         );
         return;
       }
@@ -469,8 +475,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
         content:
             'حدث خطأ: ${e.toString().contains('Timeout') ? 'انتهت مهلة الاتصال، حاول مجدداً' : e.toString()}',
         confirmText: 'حسناً',
-        onConfirm: () =>
-            Navigator.of(context, rootNavigator: true).pop(),
+        onConfirm: () => Navigator.of(context, rootNavigator: true).pop(),
       );
     }
   }
@@ -508,8 +513,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-
-                        // ── بانر اسم الأنمي
                         if (widget.group.type == GroupType.roleplay &&
                             widget.group.animeName != null)
                           Padding(
@@ -538,8 +541,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                               ]),
                             ),
                           ),
-
-                        // ── زر عرض الشخصيات المتاحة
                         SizedBox(
                           height: 54,
                           child: ElevatedButton.icon(
@@ -551,8 +552,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white))
+                                        strokeWidth: 2, color: Colors.white))
                                 : const Icon(Icons.people_alt_outlined),
                             label: Text(
                               _selectedCharName != null
@@ -570,8 +570,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-
-                        // ── بطاقة الشخصية المختارة
                         if (_selectedCharName != null)
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
@@ -580,7 +578,8 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                               color: AppColors.primary.withValues(alpha: 0.07),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: AppColors.primary.withValues(alpha: 0.3)),
+                                  color: AppColors.primary
+                                      .withValues(alpha: 0.3)),
                             ),
                             child: Row(children: [
                               GestureDetector(
@@ -646,31 +645,25 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                                     const Text(
                                         'اضغط على الصورة لتغييرها اختيارياً',
                                         style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey)),
+                                            fontSize: 10, color: Colors.grey)),
                                   ])),
                               const Icon(Icons.check_circle,
                                   color: Colors.green, size: 20),
                             ]),
                           ),
-
                         const SizedBox(height: 16),
-
-                        // ── هل تمت دعوتك؟
                         SwitchListTile(
                           title: const Text(
                             'هل تمت دعوتك من قبل عضو؟',
                             style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold),
+                                fontSize: 14, fontWeight: FontWeight.bold),
                           ),
                           value: _hasInviter,
                           activeColor: AppColors.primary,
                           contentPadding: EdgeInsets.zero,
                           onChanged: _isProcessing
                               ? null
-                              : (val) =>
-                                  setState(() => _hasInviter = val),
+                              : (val) => setState(() => _hasInviter = val),
                         ),
                         if (_hasInviter) ...[
                           AppTextField(
@@ -687,8 +680,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           ),
                           const SizedBox(height: 16),
                         ],
-
-                        // ── سبب الاختيار
                         AppTextField(
                           label: 'لماذا اخترت هذه الشخصية؟',
                           placeholder: 'اكتب سبب اختيارك (اختياري)',
@@ -696,8 +687,6 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                           isMultiline: true,
                         ),
                         const SizedBox(height: 24),
-
-                        // ── أزرار
                         AppButton(
                           text: 'تقديم طلب الانضمام',
                           isLoading: _isProcessing,
@@ -711,8 +700,7 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                               ? null
                               : () => Navigator.of(context).pop(false),
                           style: OutlinedButton.styleFrom(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12)),
                           ),
@@ -723,15 +711,12 @@ class _RoleplayJoinScreenState extends State<RoleplayJoinScreen> {
                     ),
                   ),
                 ),
-
                 if (_isProcessing)
                   Positioned.fill(
                     child: Container(
-                        color: Colors.black12,
-                        child: const AbsorbPointer()),
+                        color: Colors.black12, child: const AbsorbPointer()),
                   ),
               ],
-            ),
-    );
+            ));
   }
 }

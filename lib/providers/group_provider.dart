@@ -1,4 +1,5 @@
 // lib/providers/group_provider.dart
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -371,27 +372,34 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // ✅ تعديل دالة الطرد (removeMember) لتحرير الشخصية تلقائياً عند طرد العضو
   Future<void> removeMember({
     required String groupId,
     required String userId,
     String? adminId,
   }) async {
     try {
-      if (adminId != null) {
-        final targetData = await _firestore.getDocument(
-          path: FirestorePaths.groupMembers(groupId),
-          docId: userId,
-        );
+      final firestore = FirebaseFirestore.instance;
+      String? characterNameToRelease;
 
-        if (targetData != null) {
-          final targetMember = MemberModel.fromMap(targetData);
-          final adminData = await _firestore.getDocument(
-            path: FirestorePaths.groupMembers(groupId),
-            docId: adminId,
-          );
+      // 1. جلب بيانات العضو للتحقق من الصلاحيات ومعرفة ما إذا كان يملك شخصية محجوزة
+      final targetData = await firestore
+          .collection(FirestorePaths.groupMembers(groupId))
+          .doc(userId)
+          .get();
 
-          if (adminData == null) throw "خطأ في الصلاحيات.";
-          final adminMember = MemberModel.fromMap(adminData);
+      if (targetData.exists && targetData.data() != null) {
+        final targetMember = MemberModel.fromMap(targetData.data()!);
+        characterNameToRelease = targetMember.characterName;
+
+        if (adminId != null) {
+          final adminData = await firestore
+              .collection(FirestorePaths.groupMembers(groupId))
+              .doc(adminId)
+              .get();
+
+          if (!adminData.exists) throw "خطأ في الصلاحيات.";
+          final adminMember = MemberModel.fromMap(adminData.data()!);
 
           if (!RoleAssignmentLogic.canModify(
               actorRole: adminMember.role,
@@ -401,17 +409,27 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
+      // 2. حذف العضو من مستند الأعضاء
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId);
       batch.delete(memberRef);
 
-      final groupRef =
-          firestore.collection(FirestorePaths.groups).doc(groupId);
+      // 3. إنقاص عداد أعضاء المجموعة
+      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
+
+      // 4. ✅ تحرير وإلغاء قفل الشخصية إذا كان العضو المطرود مسجلاً بشخصية
+      if (characterNameToRelease != null && characterNameToRelease.isNotEmpty) {
+        final charKey = _normalizeCharacterKey(characterNameToRelease);
+        final charRef = firestore
+            .collection(FirestorePaths.groupCharacters(groupId))
+            .doc(charKey);
+        batch.delete(charRef);
+        debugPrint("♻️ Released character via Kick: $characterNameToRelease");
+      }
 
       await batch.commit();
 
@@ -423,6 +441,7 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // ✅ تعديل دالة المغادرة (leaveGroup) لضمان جلب اسم الشخصية بدقة من السيرفر وتحريرها
   Future<void> leaveGroup({
     required String groupId,
     required String userId,
@@ -430,23 +449,39 @@ class GroupProvider extends ChangeNotifier {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
+      String? finalCharacterName = characterName;
+
+      // 1. كإجراء أمان: لو الواجهة لم ترسل الاسم، نقوم بجلبه مباشرة من قاعدة البيانات
+      if (finalCharacterName == null || finalCharacterName.isEmpty) {
+        final memberDoc = await firestore
+            .collection(FirestorePaths.groupMembers(groupId))
+            .doc(userId)
+            .get();
+        if (memberDoc.exists && memberDoc.data() != null) {
+          finalCharacterName = memberDoc.data()!['characterName'];
+        }
+      }
+
       final batch = firestore.batch();
 
+      // 2. حذف مستند العضوية
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId);
       batch.delete(memberRef);
 
-      final groupRef =
-          firestore.collection(FirestorePaths.groups).doc(groupId);
+      // 3. تحديث العداد بالنقصان
+      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
-      if (characterName != null) {
-        final charKey = _normalizeCharacterKey(characterName);
+      // 4. ✅ حذف القفل وتحرير الشخصية فوراً لتصبح حرة
+      if (finalCharacterName != null && finalCharacterName.isNotEmpty) {
+        final charKey = _normalizeCharacterKey(finalCharacterName);
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
             .doc(charKey);
         batch.delete(charRef);
+        debugPrint("♻️ Released character via Leave: $finalCharacterName");
       }
 
       await batch.commit();
@@ -483,7 +518,6 @@ class GroupProvider extends ChangeNotifier {
       final groupRef =
           firestore.collection(FirestorePaths.groups).doc(group.id);
 
-      // ✅ إضافة lastMessageAt و lastMessageText عند الإنشاء
       final groupWithTimestamp = group.copyWith(
         lastMessageAt: group.createdAt,
         lastMessageText: group.description.isNotEmpty 
@@ -556,7 +590,7 @@ class GroupProvider extends ChangeNotifier {
           id: notifId,
           title: 'تم تفكيك مجموعة "$groupName" 🚩',
           body: farewellMessage != null && farewellMessage.isNotEmpty
-              ? 'رسالة المؤس: $farewellMessage'
+              ? 'رسالة المؤسس: $farewellMessage'
               : 'قام المؤسس بحذف المجموعة نهائياً.',
           type: NotificationTypes.groupDisbanded,
           refId: null,

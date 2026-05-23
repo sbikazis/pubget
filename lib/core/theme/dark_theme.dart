@@ -45,6 +45,19 @@ class DarkTheme {
     // TEXT THEME
     textTheme: AppTextTheme.darkTextTheme,
 
+    // ✅ التعديل المعماري الجديد: توحيد ألوان الـ ListTile في كامل التطبيق للوضع الداكن
+    listTileTheme: ListTileThemeData(
+      iconColor: AppColors.darkTextPrimary,
+      textColor: AppColors.darkTextPrimary,
+      titleTextStyle: AppTextTheme.darkTextTheme.bodyLarge?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: AppColors.darkTextPrimary,
+      ),
+      subtitleTextStyle: AppTextTheme.darkTextTheme.bodyMedium?.copyWith(
+        color: AppColors.darkTextSecondary,
+      ),
+    ),
+
     // APP BAR
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.darkSurface,
@@ -182,7 +195,6 @@ class DarkTheme {
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          // ✅ تم التصحيح هنا: استبدال withValues بـ withOpacity لضمان التوافق ومنع السواد المفاجئ
           return AppColors.primary.withValues(alpha: 0.4);
         }
         return AppColors.darkCard;

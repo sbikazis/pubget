@@ -67,4 +67,22 @@ class GameLogicValidator {
   static bool isPlayerInGame(String userId, GameModel game) {
     return userId == game.playerOneId || userId == game.playerTwoId;
   }
+
+  /// 7. التحقق من صحة كلمة سلسلة الأنمي (Anime Chain Validation)
+  /// تتأكد أن الكلمة تبدأ بالحرف الأخير للكلمة السابقة ولم يتم استخدامها مسبقاً
+  static bool isValidChainWord(String word, String? lastLetter, List<String> usedWords) {
+    final cleanWord = word.trim().toLowerCase();
+    if (cleanWord.isEmpty) return false;
+    
+    // إذا كانت هذه هي الكلمة الأولى في السلسلة، نعتبرها صحيحة تلقائياً
+    if (lastLetter == null || lastLetter.isEmpty) return true;
+
+    final cleanLastLetter = lastLetter.trim().toLowerCase();
+    
+    // التحقق من الحرف الأول والتحقق من عدم التكرار
+    final startsWithCorrectLetter = cleanWord.startsWith(cleanLastLetter);
+    final isNotRepeated = !usedWords.map((w) => w.trim().toLowerCase()).contains(cleanWord);
+
+    return startsWithCorrectLetter && isNotRepeated;
+  }
 }

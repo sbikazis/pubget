@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../core/theme/app_colors.dart';
 import '../services/local/local_storage_service.dart';
 
-const String _giphyApiKey = 'CoNhilLoOuTHk4KjZCBxC4kOVGTW7v5F';
+const String _giphyApiKey = 'Buupn89oQkDBfxFoGk6bmI1JGSXiI4Gj';
 
 class GifPickerSheet extends StatefulWidget {
   final Function(String gifUrl) onGifSelected;
