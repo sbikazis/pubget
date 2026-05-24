@@ -30,24 +30,33 @@
       {
         "source": "/g/**",
         "destination": "/index.html"
+      },
+      {
+        "source": "/pricing",
+        "destination": "/pages/pricing.html"
+      },
+      {
+        "source": "/terms",
+        "destination": "/pages/terms.html"
+      },
+      {
+        "source": "/privacy",
+        "destination": "/pages/privacy.html"
+      },
+      {
+        "source": "/refund",
+        "destination": "/pages/refund.html"
       }
     ],
     "headers": [
       {
-        "source": "/pricing",
-        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
-      },
-      {
-        "source": "/terms",
-        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
-      },
-      {
-        "source": "/privacy",
-        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
-      },
-      {
-        "source": "/refund",
-        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+        "source": "/pages/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
       }
     ]
   }
