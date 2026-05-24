@@ -22,7 +22,7 @@
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "/group/**",
         "destination": "/index.html"
       }
     ]
