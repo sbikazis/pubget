@@ -1,19 +1,37 @@
-name: Deploy Preview to Firebase
+name: Deploy Hosting
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'preview/**'
-      - 'firebase.json'
 
 jobs:
-  deploy:
+  build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build Flutter Web
+        run: flutter build web --release
+
+      - name: Copy static pages
+        run: |
+          cp web/pricing.html build/web/pricing.html
+          cp web/terms.html build/web/terms.html
+          cp web/privacy.html build/web/privacy.html
+          cp web/refund.html build/web/refund.html
+
+      - name: Deploy to Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
-          projectId: pubget-aaf27
           channelId: live
+          projectId: pubget-aaf27
