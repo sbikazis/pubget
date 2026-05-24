@@ -3,18 +3,17 @@
     {
       "source": "functions",
       "codebase": "default",
-      "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
+        ".local"
       ]
     }
   ],
   "hosting": {
-    "public": "preview",
+    "public": "build/web",
     "cleanUrls": true,
     "trailingSlash": false,
     "ignore": [
@@ -32,31 +31,8 @@
         "destination": "/index.html"
       },
       {
-        "source": "/pricing",
-        "destination": "/pages/pricing.html"
-      },
-      {
-        "source": "/terms",
-        "destination": "/pages/terms.html"
-      },
-      {
-        "source": "/privacy",
-        "destination": "/pages/privacy.html"
-      },
-      {
-        "source": "/refund",
-        "destination": "/pages/refund.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "/pages/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
-          }
-        ]
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }
