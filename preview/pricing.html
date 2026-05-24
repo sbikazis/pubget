@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pubget - الأسعار</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0F0F14;
+      color: #fff;
+      min-height: 100vh;
+    }
+    .header {
+      background: #1A1A22;
+      padding: 20px;
+      text-align: center;
+      border-bottom: 1px solid #2E2E38;
+    }
+    .logo {
+      font-size: 28px;
+      font-weight: 900;
+      color: #5B2EFF;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #B3B3C2;
+      margin-bottom: 40px;
+    }
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    .plan {
+      background: #1A1A22;
+      border: 1px solid #2E2E38;
+      border-radius: 16px;
+      padding: 30px;
+    }
+    .plan.featured {
+      border-color: #5B2EFF;
+      position: relative;
+    }
+    .badge {
+      position: absolute;
+      top: -12px;
+      right: 20px;
+      background: #5B2EFF;
+      color: #fff;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .plan-name {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .plan-price {
+      font-size: 36px;
+      font-weight: 900;
+      color: #5B2EFF;
+      margin-bottom: 4px;
+    }
+    .plan-period {
+      color: #7C7C8A;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .features {
+      list-style: none;
+      margin-bottom: 24px;
+    }
+    .features li {
+      padding: 8px 0;
+      border-bottom: 1px solid #2E2E38;
+      font-size: 14px;
+      color: #B3B3C2;
+    }
+    .features li:last-child { border-bottom: none; }
+    .features li::before {
+      content: '✓ ';
+      color: #5B2EFF;
+      font-weight: bold;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #5B2EFF;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn.outline {
+      background: transparent;
+      border: 2px solid #5B2EFF;
+      color: #5B2EFF;
+    }
+    .store-section {
+      background: #1A1A22;
+      border: 1px solid #2E2E38;
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    .store-title {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      color: #FFC857;
+    }
+    .store-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .store-item {
+      background: #22222B;
+      border: 1px solid #2E2E38;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .store-item-icon { font-size: 32px; margin-bottom: 10px; }
+    .store-item-name {
+      font-weight: bold;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    .store-item-desc {
+      color: #7C7C8A;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .store-item-price {
+      color: #FFC857;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    .note {
+      text-align: center;
+      color: #7C7C8A;
+      font-size: 13px;
+      padding: 20px;
+    }
+    .app-link {
+      text-align: center;
+      margin-top: 30px;
+      padding: 20px;
+      background: #1A1A22;
+      border-radius: 12px;
+    }
+    .app-link p { color: #B3B3C2; margin-bottom: 10px; }
+    .app-link a {
+      color: #5B2EFF;
+      font-weight: bold;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Pubget</div>
+</div>
+
+<div class="container">
+  <h1>اختر خطتك</h1>
+  <p class="subtitle">انضم لمجتمع الأنمي الأكبر وتمتع بتجربة لا مثيل لها</p>
+
+  <!-- الخطط -->
+  <div class="plans">
+
+    <!-- مجاني -->
+    <div class="plan">
+      <div class="plan-name">مجاني</div>
+      <div class="plan-price">$0</div>
+      <div class="plan-period">للأبد</div>
+      <ul class="features">
+        <li>إنشاء مجموعة واحدة</li>
+        <li>الانضمام لمجموعتين</li>
+        <li>100 عضو لكل مجموعة</li>
+        <li>الوصول للدردشة</li>
+      </ul>
+      <a href="#" class="btn outline">البدء مجاناً</a>
+    </div>
+
+    <!-- بريميم -->
+    <div class="plan featured">
+      <div class="badge">⭐ الأكثر شعبية</div>
+      <div class="plan-name">💎 بريميم</div>
+      <div class="plan-price">$1.99</div>
+      <div class="plan-period">شهرياً · يتجدد تلقائياً · يمكن إلغاؤه في أي وقت</div>
+      <ul class="features">
+        <li>تجربة بدون إعلانات</li>
+        <li>شارة التميز 💎</li>
+        <li>أولوية في طلبات الانضمام</li>
+        <li>كل مميزات النسخة المجانية</li>
+      </ul>
+      <a href="https://pubget-app.web.app/checkout/premium" class="btn">اشترك الآن</a>
+    </div>
+
+  </div>
+
+  <!-- متجر التوسعات -->
+  <div class="store-section">
+    <div class="store-title">🏪 متجر التوسعات</div>
+    <p style="color:#B3B3C2; font-size:14px; margin-bottom:20px;">
+      شراء مرة واحدة، تبقى معك للأبد حتى بعد إلغاء البريميم
+    </p>
+    <div class="store-items">
+      <div class="store-item">
+        <div class="store-item-icon">👥</div>
+        <div class="store-item-name">توسعة الانضمام</div>
+        <div class="store-item-desc">انضم لـ 7 مجموعات بدل 2</div>
+        <div class="store-item-price">$0.99</div>
+      </div>
+      <div class="store-item">
+        <div class="store-item-icon">🏰</div>
+        <div class="store-item-name">توسعة الإنشاء</div>
+        <div class="store-item-desc">أنشئ 3 مجموعات بدل 1</div>
+        <div class="store-item-price">$0.99</div>
+      </div>
+      <div class="store-item">
+        <div class="store-item-icon">📈</div>
+        <div class="store-item-name">توسعة الأعضاء</div>
+        <div class="store-item-desc">ارفع حد مجموعتك لـ 350 عضو</div>
+        <div class="store-item-price">$0.99</div>
+      </div>
+      <div class="store-item">
+        <div class="store-item-icon">📢</div>
+        <div class="store-item-name">ترويج المجموعة</div>
+        <div class="store-item-desc">7 أيام في الصفحة الرئيسية</div>
+        <div class="store-item-price">$0.99</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    جميع المدفوعات آمنة ومشفرة عبر Paddle<br>
+    للدعم: support@pubget.app
+  </p>
+
+  <div class="app-link">
+    <p>لتفعيل اشتراكك بعد الدفع، افتح تطبيق Pubget وأدخل كود التفعيل</p>
+    <a href="https://play.google.com/store/apps/details?id=com.pubget.app">تحميل تطبيق Pubget ←</a>
+  </div>
+
+</div>
+
+</body>
+</html>
