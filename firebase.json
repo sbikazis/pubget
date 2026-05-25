@@ -3,24 +3,33 @@
     {
       "source": "functions",
       "codebase": "default",
-      "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
+        ".local"
       ]
     }
   ],
   "hosting": {
-    "public": "preview",
+    "public": "build/web",
+    "cleanUrls": true,
+    "trailingSlash": false,
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/group/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/g/**",
+        "destination": "/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
