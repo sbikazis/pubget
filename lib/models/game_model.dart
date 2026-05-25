@@ -27,7 +27,8 @@ class GameModel {
   final String? currentWord;
   final String? lastLetter;
   final List<String> usedWords;
-  final List<String> players; // معرفات اللاعبين المشاركين بالترتيب
+  final List<String> players;
+  final String? pendingStartWord; // ← جديد
 
   // --- حقول مشتركة ---
   final String? currentTurnUserId;
@@ -38,7 +39,7 @@ class GameModel {
   final DateTime? lastActionAt;
   final String? lastActionType;
   final DateTime? finishedAt;
-  final String? endReason; // حقل مضاف وموحد للانسحاب أو الخسارة بالوقت
+  final String? endReason;
 
   const GameModel({
     required this.id,
@@ -59,6 +60,7 @@ class GameModel {
     this.lastLetter,
     this.usedWords = const [],
     this.players = const [],
+    this.pendingStartWord, // ← جديد
     this.currentTurnUserId,
     required this.status,
     this.winnerUserId,
@@ -71,7 +73,6 @@ class GameModel {
   });
 
   factory GameModel.fromMap(String id, Map<String, dynamic> map) {
-    // معالجة تحويل النصوص القادمة من الفايربيز إلى Enum الـ GameStatus بشكل آمن
     GameStatus gameStatus = GameStatus.waitingForOpponent;
     if (map['status'] != null) {
       try {
@@ -103,6 +104,7 @@ class GameModel {
       lastLetter: map['lastLetter'],
       usedWords: List<String>.from(map['usedWords'] ?? []),
       players: List<String>.from(map['players'] ?? []),
+      pendingStartWord: map['pendingStartWord'], // ← جديد
       currentTurnUserId: map['currentTurnUserId'],
       status: gameStatus,
       winnerUserId: map['winnerUserId'],
@@ -142,6 +144,7 @@ class GameModel {
       'lastLetter': lastLetter,
       'usedWords': usedWords,
       'players': players,
+      'pendingStartWord': pendingStartWord, // ← جديد
       'currentTurnUserId': currentTurnUserId,
       'status': status.name,
       'winnerUserId': winnerUserId,
@@ -169,6 +172,7 @@ class GameModel {
     String? lastLetter,
     List<String>? usedWords,
     List<String>? players,
+    String? pendingStartWord, // ← جديد
     String? currentTurnUserId,
     GameStatus? status,
     String? winnerUserId,
@@ -197,6 +201,7 @@ class GameModel {
       lastLetter: lastLetter ?? this.lastLetter,
       usedWords: usedWords ?? this.usedWords,
       players: players ?? this.players,
+      pendingStartWord: pendingStartWord ?? this.pendingStartWord, // ← جديد
       currentTurnUserId: currentTurnUserId ?? this.currentTurnUserId,
       status: status ?? this.status,
       winnerUserId: winnerUserId ?? this.winnerUserId,
@@ -209,4 +214,3 @@ class GameModel {
     );
   }
 }
-

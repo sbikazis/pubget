@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../models/message_model.dart';
 import '../models/member_model.dart';
 import '../providers/game_provider.dart';
 import '../core/constants/game_status.dart';
+import '../core/utils/time_utils.dart'; // استيراد المساعد لتنسيق وقت إرسال الرسالة
 import 'game_info_dialog.dart';
 
 class GameMessageBubble extends StatelessWidget {
@@ -18,8 +20,24 @@ class GameMessageBubble extends StatelessWidget {
     required this.groupId,
   });
 
+  // =========================================================
+  // دالة تحديد لون مؤشر حالة الرسالة (صح مفرد) متوافقة مع بقية الشات
+  // =========================================================
+  Color _getStatusColor() {
+    if (message.isRead) {
+      return Colors.green; // قرأها 🟢
+    } else if (message.isDelivered) {
+      return Colors.yellow; // وصلت ولم تُقرأ 🟡
+    } else {
+      return Colors.red; // لم تصل للهاتف الآخر 🔴
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // تحديد إذا كنت أنا من أرسل هذا الحدث أم لاعب آخر لتحديد ظهور الصح المفرد
+    final bool isMe = message.senderId == currentMember.userId;
+
     // تحديد اللون بناءً على الـ Slot
     final bool isSlotOne = message.gameSlot == 'game_1';
     final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0); // ذهبي أو فضي
@@ -30,7 +48,7 @@ class GameMessageBubble extends StatelessWidget {
       stream: context.read<GameProvider>().streamCurrentGame(groupId, message.gameId ?? ''),
       builder: (context, snapshot) {
         final game = snapshot.data;
-       
+        
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           padding: const EdgeInsets.all(12),
@@ -83,6 +101,34 @@ class GameMessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
+
+              const SizedBox(height: 8),
+
+              // ── شريط التوقيت والحالة (أسفل يمين الحاوية) ──
+              Align(
+                alignment: Alignment.bottomLeft, // تظهر بالأسفل جهة اليسار/اليمين بالتناسق مع النصوص
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      TimeUtils.formatChatTime(message.createdAt),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black54, // لون داكن مناسب للقراءة فوق الخلفيات الفاتحة
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.done, // أيقونة الصح المفردة الديناميكية الملونة
+                        size: 15,
+                        color: _getStatusColor(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -129,7 +175,7 @@ class GameMessageBubble extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 14, height: 1.4),
+            style: const TextStyle(fontSize: 14, height: 1.4, color: Colors.black87),
           ),
         ),
       ],

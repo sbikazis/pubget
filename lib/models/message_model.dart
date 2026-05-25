@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/roles.dart';
 
-enum MessageType { text, media, gameEvent }
+enum MessageType { text, media, gameEvent, gameInvite }
 
 class MessageModel {
   final String id;
@@ -22,10 +22,11 @@ class MessageModel {
   final Map<String, String>? reactions;
   final DateTime createdAt;
   final bool isRead;
+  final bool isDelivered; // الحقل الجديد المضاف للتحقق من وصول الرسالة
   final int? audioDuration;
   final String? editThumbnail;
   final String? editAnimeTitle;
-  final String? editId; // ← جديد
+  final String? editId;
 
   const MessageModel({
     required this.id,
@@ -46,10 +47,11 @@ class MessageModel {
     this.reactions,
     required this.createdAt,
     this.isRead = false,
+    this.isDelivered = false, // القيمة الافتراضية عند الإرسال هي false (أحمر) لحين تأكيد الوصول (أصفر)
     this.audioDuration,
     this.editThumbnail,
     this.editAnimeTitle,
-    this.editId, // ← جديد
+    this.editId,
   });
 
   factory MessageModel.fromMap(String id, Map<String, dynamic> map) {
@@ -82,10 +84,11 @@ class MessageModel {
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
       isRead: map['isRead'] ?? false,
+      isDelivered: map['isDelivered'] ?? false, // جلب حالة الوصول من فستور
       audioDuration: map['audioDuration'],
       editThumbnail: map['editThumbnail'],
       editAnimeTitle: map['editAnimeTitle'],
-      editId: map['editId'], // ← جديد
+      editId: map['editId'],
     );
   }
 
@@ -108,10 +111,11 @@ class MessageModel {
       'reactions': reactions,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
+      'isDelivered': isDelivered, // حفظ حالة الوصول في فستور
       'audioDuration': audioDuration,
       'editThumbnail': editThumbnail,
       'editAnimeTitle': editAnimeTitle,
-      'editId': editId, // ← جديد
+      'editId': editId,
     };
   }
 
@@ -127,10 +131,11 @@ class MessageModel {
     String? gameAction,
     Map<String, String>? reactions,
     bool? isRead,
+    bool? isDelivered, // تحديث دالة copyWith لدعم الحقل الجديد برمجياً
     int? audioDuration,
     String? editThumbnail,
     String? editAnimeTitle,
-    String? editId, // ← جديد
+    String? editId,
   }) {
     return MessageModel(
       id: id,
@@ -151,10 +156,11 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
+      isDelivered: isDelivered ?? this.isDelivered,
       audioDuration: audioDuration ?? this.audioDuration,
       editThumbnail: editThumbnail ?? this.editThumbnail,
       editAnimeTitle: editAnimeTitle ?? this.editAnimeTitle,
-      editId: editId ?? this.editId, // ← جديد
+      editId: editId ?? this.editId,
     );
   }
 }

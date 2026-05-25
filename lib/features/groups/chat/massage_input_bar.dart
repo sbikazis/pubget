@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
@@ -44,9 +45,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
   final TextEditingController _controller = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AudioRecorder _recorder = AudioRecorder();
+  final FocusNode _focusNode = FocusNode();
 
   bool _isSending = false;
   bool _isRecording = false;
+  bool _showEmojiPicker = false;
   String? _recordingPath;
   Timer? _recordTimer;
   int _recordSeconds = 0;
@@ -56,31 +59,53 @@ class _MessageInputBarState extends State<MessageInputBar> {
     _controller.dispose();
     _recorder.dispose();
     _recordTimer?.cancel();
+    _focusNode.dispose();
     super.dispose();
   }
 
   Future<void> _pickAndSendImage() async {
+    if (_isSending) return;
     try {
       final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
       if (image == null) return;
+
       setState(() => _isSending = true);
       await widget.onSendImage(File(image.path), widget.replyingMessage);
+      
       if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل معالجة الصورة.")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("فشل معالجة أو إرسال الصورة.")),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
   }
 
   void _openGifPicker() {
+    // التحقق الفوري قبل فتح الواجهة لمنع أي تعليق أو انهيار
+    if (widget.onSendGif == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("ميزة الصور المتحركة GIF غير مدعومة هنا.")),
+      );
+      return;
+    }
+
+    // إغلاق الكيبورد لتهيئة المساحة للـ Sheet
+    FocusScope.of(context).unfocus();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => GifPickerSheet(
         onGifSelected: (gifUrl) async {
-          if (widget.onSendGif != null) {
+          // إغلاق الـ Bottom Sheet عند الاختيار
+          Navigator.pop(context);
+          
+          if (widget.onSendGif != null && !_isSending) {
             setState(() => _isSending = true);
             try {
               await widget.onSendGif!(gifUrl, widget.replyingMessage);
@@ -88,7 +113,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("فشل إرسال GIF.")));
+                  const SnackBar(content: Text("فشل إرسال GIF.")),
+                );
               }
             } finally {
               if (mounted) setState(() => _isSending = false);
@@ -100,25 +126,37 @@ class _MessageInputBarState extends State<MessageInputBar> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isSending) return;
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
     if (text.length > Limits.maxMessageLength) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("الرسالة طويلة جداً")));
       return;
     }
+
     setState(() => _isSending = true);
     try {
       await widget.onSendText(text, widget.replyingMessage);
       _controller.clear();
       if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل إرسال الرسالة.")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل إرسال الرسالة.")));
+      }
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
   }
 
   Future<void> _startRecording() async {
+    if (widget.onSendAudio == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("ميزة الرسائل الصوتية غير مدعومة هنا.")),
+      );
+      return;
+    }
+
     try {
       final hasPermission = await _recorder.hasPermission();
       if (!hasPermission) {
@@ -129,17 +167,21 @@ class _MessageInputBarState extends State<MessageInputBar> {
         }
         return;
       }
+
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      
       await _recorder.start(
         const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100),
         path: path,
       );
+
       setState(() {
         _isRecording = true;
         _recordingPath = path;
         _recordSeconds = 0;
       });
+
       _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() => _recordSeconds++);
       });
@@ -154,13 +196,16 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Future<void> _stopAndSendRecording() async {
     if (!_isRecording) return;
+    _recordTimer?.cancel();
+
     try {
       final path = await _recorder.stop();
-      _recordTimer?.cancel();
       setState(() => _isRecording = false);
+
       if (path == null || widget.onSendAudio == null) return;
       final file = File(path);
       if (!await file.exists()) return;
+
       setState(() => _isSending = true);
       await widget.onSendAudio!(file, widget.replyingMessage, _recordSeconds);
       if (widget.onCancelReply != null) widget.onCancelReply!();
@@ -187,6 +232,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
         if (await file.exists()) await file.delete();
       }
     } catch (_) {}
+
     if (mounted) {
       setState(() {
         _isRecording = false;
@@ -196,7 +242,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
-  void _handleGamePressed() async {
+  void _handleGamePressed() {
+    FocusScope.of(context).unfocus();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -205,6 +252,17 @@ class _MessageInputBarState extends State<MessageInputBar> {
         currentMember: widget.currentMember,
       ),
     );
+  }
+
+  void _toggleEmojiPicker() {
+    if (_showEmojiPicker) {
+      _focusNode.requestFocus();
+    } else {
+      FocusScope.of(context).unfocus();
+    }
+    setState(() {
+      _showEmojiPicker = !_showEmojiPicker;
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────
@@ -216,7 +274,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       child: IconButton(
         padding: EdgeInsets.zero,
         icon: Icon(icon, size: 22),
-        color: color ?? Colors.grey[600], // لون الأيقونات رمادي مثل واتساب تماماً
+        color: color ?? Colors.grey[600],
         onPressed: onTap,
       ),
     );
@@ -224,27 +282,36 @@ class _MessageInputBarState extends State<MessageInputBar> {
 
   Widget _circleBtn(IconData? icon, Color color, {bool isLoading = false}) {
     return Container(
-      width: 44, // تكبير زر الميكروفون/الإرسال الدائري ليصبح متناسقاً وبارزاً
+      width: 44,
       height: 44,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: color, 
+        shape: BoxShape.circle,
+      ),
       child: Center(
         child: isLoading
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFFFD700)),
               )
-            : Icon(icon, color: Colors.white, size: 22),
+            : Icon(
+                icon, 
+                color: const Color(0xFFFFD700), 
+                size: 22,
+              ),
       ),
     );
   }
 
   Widget _buildSendButton(bool showMic) {
+    const darkPurpleColor = Color(0xFF30013B);
+
     if (showMic) {
       return GestureDetector(
         onLongPress: _isSending ? null : _startRecording,
         onLongPressEnd: (_) => _stopAndSendRecording(),
-        child: _circleBtn(Icons.mic_rounded, const Color(0xFF00A884)), // لون أخضر واتساب الافتراضي
+        child: _circleBtn(Icons.mic_rounded, darkPurpleColor),
       );
     }
     if (_isRecording) {
@@ -257,7 +324,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       onTap: _isSending ? null : _sendMessage,
       child: _circleBtn(
         _isSending ? null : Icons.send_rounded,
-        const Color(0xFF00A884),
+        darkPurpleColor,
         isLoading: _isSending,
       ),
     );
@@ -270,12 +337,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    // إزالة الخلفية البيضاء للشريط السفلي بالكامل وجعله شفافاً ليظهر فوق خلفية المحادثة
-    final containerBackground = Colors.transparent;
-    
-    // لون إطار حقل النص (داكن لواتساب المظلم، أو رمادي خفيف للمضيء)
+    const containerBackground = Colors.transparent;
     final inputFillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
-
     final bool showMic = _controller.text.trim().isEmpty && !_isRecording;
 
     return SafeArea(
@@ -292,11 +355,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // 1. زر الميكروفون أو الإرسال على اليمين تماماً (تم قلبه ليتوافق مع الواجهة العربية لواتساب)
                 _buildSendButton(showMic),
                 const SizedBox(width: 6),
-                
-                // 2. إطار حقل النص وبداخله أزرار الملحقات والألعاب (مثل تصميم واتساب المطور)
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -313,7 +373,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        // أزرار الملحقات على اليسار داخل نفس الإطار
                         if (!_isRecording) ...[
                           const SizedBox(width: 8),
                           _buildIconBtn(Icons.attach_file_rounded, _isSending ? null : _pickAndSendImage),
@@ -329,13 +388,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
                           _buildIconBtn(Icons.delete_outline_rounded, _cancelRecording, color: Colors.red),
                           const SizedBox(width: 4),
                         ],
-                        
-                        // حقل إدخال النص الممتد
                         Expanded(
                           child: _isRecording
                               ? const SizedBox.shrink()
                               : TextField(
                                   controller: _controller,
+                                  focusNode: _focusNode,
                                   keyboardType: TextInputType.multiline,
                                   textInputAction: TextInputAction.newline,
                                   minLines: 1,
@@ -350,22 +408,35 @@ class _MessageInputBarState extends State<MessageInputBar> {
                                     color: isDark ? Colors.white : Colors.black,
                                   ),
                                   decoration: const InputDecoration(
-                                    hintText: "مراسلة", // تغييرها لـ "مراسلة" لتطابق واتساب الجديد بالكامل
+                                    hintText: "مراسلة", 
                                     counterText: "",
-                                    filled: false, // إلغاء الـ fill الداخلي للاعتماد على الحاوية الخارجية
+                                    filled: false, 
                                     contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                                     border: InputBorder.none,
                                     enabledBorder: InputBorder.none,
                                     focusedBorder: InputBorder.none,
                                   ),
+                                  onTap: () {
+                                    if (_showEmojiPicker) {
+                                      setState(() {
+                                        _showEmojiPicker = false;
+                                      });
+                                    }
+                                  },
                                 ),
                         ),
-                        
-                        // أيقونة إضافية على اليمين داخل حقل النص (اختياري، مثل شكل الـ Emoji الفيس في واتساب)
                         if (!_isRecording) ...[
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6, right: 8, left: 4),
-                            child: Icon(Icons.sentiment_satisfied_alt_rounded, color: Colors.grey[500], size: 24),
+                          IconButton(
+                            padding: const EdgeInsets.only(bottom: 4, right: 4, left: 4),
+                            constraints: const BoxConstraints(),
+                            icon: Icon(
+                              _showEmojiPicker 
+                                  ? Icons.keyboard_rounded 
+                                  : Icons.sentiment_satisfied_alt_rounded,
+                              color: Colors.grey[500],
+                              size: 24,
+                            ),
+                            onPressed: _toggleEmojiPicker,
                           ),
                         ],
                       ],
@@ -376,6 +447,45 @@ class _MessageInputBarState extends State<MessageInputBar> {
               ],
             ),
           ),
+          
+          if (_showEmojiPicker)
+            SizedBox(
+              height: 250,
+              child: EmojiPicker(
+                onEmojiSelected: (category, emoji) {
+                  _controller.text = _controller.text + emoji.emoji;
+                  setState(() {});
+                },
+                config: Config(
+                  height: 250,
+                  checkPlatformCompatibility: true,
+                  emojiViewConfig: EmojiViewConfig(
+                    columns: 7,
+                    emojiSizeMax: 28.0,
+                    verticalSpacing: 0,
+                    horizontalSpacing: 0,
+                    gridPadding: EdgeInsets.zero,
+                    backgroundColor: isDark ? const Color(0xFF1F2C34) : Colors.grey[100]!,
+                    noRecents: const Text(
+                      'لا توجد إيموجيات مستخدمة مؤخراً',
+                      style: TextStyle(fontSize: 14, color: Colors.black26),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  categoryViewConfig: CategoryViewConfig(
+                    initCategory: Category.RECENT,
+                    indicatorColor: const Color(0xFF30013B),
+                    iconColor: Colors.grey,
+                    iconColorSelected: const Color(0xFFFFD700),
+                    backspaceColor: const Color(0xFFFFD700),
+                    backgroundColor: isDark ? const Color(0xFF1F2C34) : Colors.grey[200]!,
+                  ),
+                  bottomActionBarConfig: const BottomActionBarConfig(
+                    enabled: false,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

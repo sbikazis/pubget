@@ -253,22 +253,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _scrollToBottom(force: true);
   }
 
+  // ✅ تعديل الدالة لتقوم باستدعاء الدالة المخصصة للـ GIF من الـ Provider مباشرة بدلاً من دالة الملفات
   Future<void> _handleSendGif(String gifUrl, MessageModel? replyTo) async {
     if (_currentMember == null) return;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    await chatProvider.sendMediaMessage(
+    
+    await chatProvider.sendGifMessage(
       groupId: widget.groupId,
       messageId: _uuid.v4(),
       sender: _currentMember!,
-      file: File(''), // Not used for gif url directly in sendMediaMessage usually, keeping pattern
-      mediaType: 'gif',
-      userAvatar: userProvider.currentUser?.avatarUrl,
+      gifUrl: gifUrl,
       replyToId: replyTo?.id,
       replyText: replyTo?.text ??
           (replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null),
     );
-    // Note: Adjusted slightly to leverage correct setup if your chatProvider handles it differently.
+
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
@@ -300,7 +300,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ✅ بناء طبقة الخلفية مع الـ Overlay وبدون أي هوامش (Zero Margins)
   Widget _buildBackground(String? backgroundUrl) {
     if (backgroundUrl == null || backgroundUrl.isEmpty) {
       return const SizedBox.shrink();
@@ -308,19 +307,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     return Positioned.fill(
       child: Container(
-        margin: EdgeInsets.zero, // تأكيد إزالة أي هوامش افتراضية لعدم ترك فراغ
+        margin: EdgeInsets.zero,
         padding: EdgeInsets.zero,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // صورة الخلفية
             Image.network(
               backgroundUrl,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) =>
                   const SizedBox.shrink(),
             ),
-            // Overlay شفاف لضمان وضوح عناصر الدردشة
             Container(
               color: Colors.black.withOpacity(0.38),
             ),
@@ -353,14 +350,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             return true;
           },
           child: Scaffold(
-            resizeToAvoidBottomInset: true, // ✅ حماية العناصر من الاختفاء عند ظهور لوحة المفاتيح
+            resizeToAvoidBottomInset: true,
             appBar: AppBar(title: Text(groupName), centerTitle: true),
             body: Stack(
               children: [
-                // الطبقة السفلى: صورة الخلفية + Overlay
                 _buildBackground(backgroundUrl),
-
-                // الطبقة العليا: محتوى الدردشة
                 Column(
                   children: [
                     Expanded(
@@ -409,7 +403,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           return ListView.builder(
                             controller: _scrollController,
                             reverse: true,
-                            padding: EdgeInsets.zero, // ✅ إزالة الـ Padding بالكامل لمنع ظهور الفراغات البيضاء
+                            padding: EdgeInsets.zero,
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
                               final message = messages[index];
@@ -517,12 +511,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             }
                           }
 
+                          // ✅ تم ربط المعامل onSendGif هنا بالدالة المحدثة _handleSendGif
                           return MessageInputBar(
                             groupId: widget.groupId,
                             currentMember: _currentMember!,
                             onSendText: _handleSendText,
                             onSendImage: _handleSendImage,
-                            onSendGif: _handleSendGif,
+                            onSendGif: _handleSendGif, 
                             onSendAudio: _handleSendAudio,
                             replyingMessage: _replyingMessage,
                             onCancelReply: _onCancelReply,
@@ -532,8 +527,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ),
                   ],
                 ),
-
-                // زر التمرير للأسفل
                 Positioned(
                   bottom: 80,
                   right: 16,
