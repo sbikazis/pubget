@@ -17,7 +17,9 @@ class GameTimerManager {
     return isTimeUp(setupStartedAt, GameConstants.characterSelectionDuration);
   }
 
-  static bool hasTurnTimeout(DateTime lastActionAt) {
+  // ✅ التعديل - يقبل null وما يحسبش الوقت إلا بدات اللعبة
+  static bool hasTurnTimeout(DateTime? lastActionAt) {
+    if (lastActionAt == null) return false; // ما بداتش اللعبة
     return isTimeUp(lastActionAt, GameConstants.turnDuration);
   }
 

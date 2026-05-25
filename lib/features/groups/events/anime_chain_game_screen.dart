@@ -67,6 +67,8 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
   }
 
   Widget _buildSetupScaffold(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
       appBar: AppBar(title: const Text('إنشاء سلسلة أنمي جديدة'), centerTitle: true),
       body: Center(
@@ -87,12 +89,18 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
                   TextField(
                     controller: _startWordController,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyLarge?.color, // ✅ يتبدل مع الدارك
+                    ),
                     decoration: InputDecoration(
                       labelText: 'كلمة البداية (مثال: Luffy)',
                       hintText: 'اكتب الكلمة الأولى لانطلاق السلسلة',
                       alignLabelWithHint: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true, // ✅
+                      fillColor: theme.cardColor, // ✅ يتبدل مع الدارك
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -121,7 +129,8 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
         : (game.playerOneName ?? 'المستضيف');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && game.status == GameStatus.guessing) {
+      // ✅ التعديل - ما نخدموش التايمر إلا إلا دخل الخصم
+      if (mounted && game.status == GameStatus.guessing && game.playerTwoId != null) {
         context.read<GameProvider>().processAutoJudge(widget.groupId, game);
       }
     });
@@ -215,7 +224,6 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
         firstWord: startWord,
       );
 
-      // إرسال دعوة تفاعلية مباشرة
       final inviteId = DateTime.now().millisecondsSinceEpoch.toString();
       final invite = MessageModel(
         id: inviteId,

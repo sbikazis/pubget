@@ -5,7 +5,7 @@ import '../models/message_model.dart';
 import '../models/member_model.dart';
 import '../providers/game_provider.dart';
 import '../core/constants/game_status.dart';
-import '../core/utils/time_utils.dart'; // استيراد المساعد لتنسيق وقت إرسال الرسالة
+import '../core/utils/time_utils.dart';
 import 'game_info_dialog.dart';
 
 class GameMessageBubble extends StatelessWidget {
@@ -20,31 +20,24 @@ class GameMessageBubble extends StatelessWidget {
     required this.groupId,
   });
 
-  // =========================================================
-  // دالة تحديد لون مؤشر حالة الرسالة (صح مفرد) متوافقة مع بقية الشات
-  // =========================================================
   Color _getStatusColor() {
     if (message.isRead) {
-      return Colors.green; // قرأها 🟢
+      return Colors.green;
     } else if (message.isDelivered) {
-      return Colors.yellow; // وصلت ولم تُقرأ 🟡
+      return Colors.yellow;
     } else {
-      return Colors.red; // لم تصل للهاتف الآخر 🔴
+      return Colors.red;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // تحديد إذا كنت أنا من أرسل هذا الحدث أم لاعب آخر لتحديد ظهور الصح المفرد
     final bool isMe = message.senderId == currentMember.userId;
-
-    // تحديد اللون بناءً على الـ Slot
     final bool isSlotOne = message.gameSlot == 'game_1';
-    final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0); // ذهبي أو فضي
+    final Color gameColor = isSlotOne ? const Color(0xFFFFD700) : const Color(0xFFC0C0C0);
     final Color textColor = Colors.black87;
 
     return StreamBuilder(
-      // مراقبة حالة هذه اللعبة تحديداً لتحديث الأزرار برمجياً
       stream: context.read<GameProvider>().streamCurrentGame(groupId, message.gameId ?? ''),
       builder: (context, snapshot) {
         final game = snapshot.data;
@@ -63,7 +56,6 @@ class GameMessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // الرأس: أيقونة اللعبة + اسم المرسل
               Row(
                 children: [
                   Icon(Icons.stars, color: gameColor, size: 20),
@@ -81,11 +73,13 @@ class GameMessageBubble extends StatelessWidget {
               ),
               const Divider(height: 20),
 
-              // المحتوى: نص الحدث (إعلان، فوز، انضمام)
               _buildMessageContent(message, gameColor),
 
-              // الأزرار التفاعلية (تظهر فقط إذا كانت اللعبة تنتظر خصماً)
-              if (message.gameAction == 'challenge' && game != null && game.status == GameStatus.waitingForOpponent)
+              // ✅ التعديل الجديد - الزر يختفي إلا كانت الغرفة خاوية
+              if (message.gameAction == 'challenge' && 
+                  game != null && 
+                  game.status.canAcceptOpponent && 
+                  game.playerTwoId == null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: SizedBox(
@@ -104,9 +98,8 @@ class GameMessageBubble extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // ── شريط التوقيت والحالة (أسفل يمين الحاوية) ──
               Align(
-                alignment: Alignment.bottomLeft, // تظهر بالأسفل جهة اليسار/اليمين بالتناسق مع النصوص
+                alignment: Alignment.bottomLeft,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -115,13 +108,13 @@ class GameMessageBubble extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: Colors.black54, // لون داكن مناسب للقراءة فوق الخلفيات الفاتحة
+                        color: Colors.black54,
                       ),
                     ),
                     if (isMe) ...[
                       const SizedBox(width: 4),
                       Icon(
-                        Icons.done, // أيقونة الصح المفردة الديناميكية الملونة
+                        Icons.done,
                         size: 15,
                         color: _getStatusColor(),
                       ),
@@ -136,9 +129,6 @@ class GameMessageBubble extends StatelessWidget {
     );
   }
 
-  // ==========================================
-  // 💬 بناء نص الرسالة بناءً على نوع الحدث
-  // ==========================================
   Widget _buildMessageContent(MessageModel msg, Color accentColor) {
     String text = "";
     IconData icon = Icons.info;
@@ -195,7 +185,7 @@ class GameMessageBubble extends StatelessWidget {
       builder: (context) => GameInfoDialog(
         groupId: groupId,
         currentMember: currentMember,
-        gameId: message.gameId, // تمرير الـ ID يحول الديالوج لوضع الانضمام
+        gameId: message.gameId,
       ),
     );
   }

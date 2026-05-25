@@ -1,116 +1,29 @@
-<!DOCTYPE html><html><head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="$FLUTTER_BASE_HREF">
-
-  <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="pubget">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png">
-
-  <title>pubget</title>
-  <link rel="manifest" href="manifest.json">
-  <style id="splash-screen-style">
-    html {
-      height: 100%
-    }
-
-    body {
-      margin: 0;
-      min-height: 100%;
-      background-color: #ffffff;
-          background-size: 100% 100%;
-    }
-
-    .center {
-      margin: 0;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
-    }
-
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
-    }
-
-    .stretch {
-      display:block;
-      width:100%; height:100%;
-    }
-
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
-    }
-
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
-    }
-
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-    }
-
-    .bottomRight {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-    }
-  </style>
-  <script id="splash-screen-script">
-    function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
-    }
-  </script>
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-</head>
-<body>
-  <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
-  </picture>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
-  <script src="flutter_bootstrap.js" async=""></script>
-
-
-</body></html>
+<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>Pubget</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>body{font-family:sans-serif;background:#0f0f0f;color:#fff;text-align:center;padding:40px}img{width:110px;height:110px;border-radius:20px;object-fit:cover;background:#222} .btn{display:block;margin:14px auto;padding:14px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;max-width:320px}</style>
+</head><body>
+<img id="img"><h2 id="name">...</h2><p id="desc"></p>
+<a id="open" class="btn">افتح في التطبيق</a>
+<a href="https://play.google.com/store/apps/details?id=com.sbikazis.pubget" class="btn" style="background:#222">حمّل التطبيق</a>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAB0_LHzrG8A8NVg8l-SgdySHJM4KkE8",
+  authDomain: "pubget-aaf27.firebaseapp.com",
+  projectId: "pubget-aaf27",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const id = location.pathname.split('/g/')[1] || location.pathname.split('/').pop();
+document.getElementById('open').href = `intent://g/${id}#Intent;scheme=https;host=pubget-aaf27.web.app;package=com.sbikazis.pubget;end`;
+db.collection('groups').doc(id).get().then(d=>{
+  if(d.exists){
+    const g=d.data();
+    document.getElementById('name').textContent=g.name||'مجموعة';
+    document.getElementById('desc').textContent=g.slogan||g.description||'';
+    document.getElementById('img').src=g.imageUrl||'';
+    document.title=g.name;
+  }
+}).catch(e=>console.error(e));
+</script></body></html>

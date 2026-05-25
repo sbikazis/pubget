@@ -30,17 +30,17 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final snapshot = await FirebaseFirestore.instance
-         .collection(FirestorePaths.groupGames(groupId))
-         .get();
+        .collection(FirestorePaths.groupGames(groupId))
+        .get();
       final activeGames = snapshot.docs
-         .map((doc) => GameModel.fromMap(doc.id, doc.data()))
-         .where((g) =>!g.status.isOver && g.gameType == 'guess')
-         .toList();
+        .map((doc) => GameModel.fromMap(doc.id, doc.data()))
+        .where((g) =>!g.status.isOver && g.gameType == 'guess')
+        .toList();
       if (!GameLogicValidator.canCreateNewGame(activeGames)) {
         throw Exception("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً.");
       }
       String assignedSlot = activeGames.any((g) => g.gameSlot == 'game_1')
-         ? 'game_2'
+        ? 'game_2'
           : 'game_1';
       final gameId = _uuid.v4();
       final game = GameModel(
@@ -71,7 +71,7 @@ class GameProvider extends ChangeNotifier {
     required String groupId,
     required String creatorUserId,
     String? creatorName,
-    required String firstWord, // جديد
+    required String firstWord,
   }) async {
     _isLoading = true;
     notifyListeners();
@@ -88,7 +88,7 @@ class GameProvider extends ChangeNotifier {
         status: GameStatus.waitingForOpponent,
         createdAt: DateTime.now(),
         players: [creatorUserId],
-        pendingStartWord: cleanWord, // نخزن الكلمة هنا
+        pendingStartWord: cleanWord,
       );
       await _firestore.createDocument(
         path: FirestorePaths.groupGames(groupId),
@@ -110,8 +110,8 @@ class GameProvider extends ChangeNotifier {
     String? userName,
   }) async {
     final ref = FirebaseFirestore.instance
-       .collection(FirestorePaths.groupGames(groupId))
-       .doc(gameId);
+      .collection(FirestorePaths.groupGames(groupId))
+      .doc(gameId);
     return FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
       if (!snap.exists) return false;
@@ -180,7 +180,7 @@ class GameProvider extends ChangeNotifier {
         final startWord = game.pendingStartWord?? '';
         startWordToAnnounce = startWord;
         updates['status'] = GameStatus.guessing.name;
-        updates['currentTurnUserId'] = userId; // الخصم يبدأ
+        updates['currentTurnUserId'] = userId;
         updates['currentWord'] = startWord;
         updates['lastLetter'] = startWord.isNotEmpty? startWord.substring(startWord.length - 1) : '';
         updates['usedWords'] = [startWord];
@@ -206,10 +206,9 @@ class GameProvider extends ChangeNotifier {
     return gameSlot;
   }
 
-  // باقي الدوال تبقى كما هي...
   Future<void> setCharacter({required String groupId, required String gameId, required String userId, required List<int> animeIds, required String characterName, String? validatedName, String? validatedImageUrl}) async {
     final charData = (validatedName!= null && validatedImageUrl!= null)
-       ? {'name': validatedName, 'imageUrl': validatedImageUrl}
+      ? {'name': validatedName, 'imageUrl': validatedImageUrl}
         : await AnimeApiService.getCharacterDetails(animeIds: animeIds, characterName: characterName);
     if (charData == null) throw Exception("هذه الشخصية غير موجودة.");
     final gameRef = FirebaseFirestore.instance.collection(FirestorePaths.groupGames(groupId)).doc(gameId);
@@ -325,6 +324,10 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> processAutoJudge(String groupId, GameModel game) async {
+    // ✅ التعديل الجديد - لا تحكم على غرفة فارغة
+    if (game.status == GameStatus.waitingForOpponent) return;
+    if (game.playerTwoId == null) return; // ما كاين حتى خصم
+
     final timeoutType = GameAutoJudge.checkTimeout(game);
     if (timeoutType == TimeoutType.none) return;
     String? timedOutPlayerId = GameAutoJudge.getTimedOutPlayerId(game);

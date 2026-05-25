@@ -437,6 +437,37 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
+  // ✅ تحديث حالة الوصول
+  // =========================================================
+  Future<void> markAsDelivered({
+    required String groupId,
+    required String messageId,
+  }) async {
+    await _firestore.updateDocument(
+      path: FirestorePaths.groupMessages(groupId),
+      docId: messageId,
+      data: {'isDelivered': true},
+    );
+  }
+
+  // =========================================================
+  // ✅ تحديث حالة القراءة
+  // =========================================================
+  Future<void> markAsRead({
+    required String groupId,
+    required String messageId,
+  }) async {
+    await _firestore.updateDocument(
+      path: FirestorePaths.groupMessages(groupId),
+      docId: messageId,
+      data: {
+        'isRead': true,
+        'isDelivered': true, // إلا تقرات راها وصلات بالضرورة
+      },
+    );
+  }
+
+  // =========================================================
   // TOGGLE REACTION
   // =========================================================
   Future<void> toggleReaction({
