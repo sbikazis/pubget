@@ -41,7 +41,7 @@ class PrivateChatProvider extends ChangeNotifier {
     if (chatDoc == null) return;
 
     final String fieldName =
-        chatDoc['userA'] == userId ? 'lastReadUserA' : 'lastReadUserB';
+        chatDoc['userA'] == userId? 'lastReadUserA' : 'lastReadUserB';
 
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
@@ -62,16 +62,16 @@ class PrivateChatProvider extends ChangeNotifier {
     final path = FirestorePaths.privateMessages(chatId);
 
     return _firestore
-        .streamDocument(path: FirestorePaths.privateChats, docId: chatId)
-        .switchMap((chatSnap) {
+       .streamDocument(path: FirestorePaths.privateChats, docId: chatId)
+       .switchMap((chatSnap) {
       if (!chatSnap.exists) return Stream.value(0);
 
       final data = chatSnap.data() as Map<String, dynamic>;
       final isUserA = data['userA'] == userId;
       final Timestamp? lastRead =
-          isUserA ? data['lastReadUserA'] : data['lastReadUserB'];
+          isUserA? data['lastReadUserA'] : data['lastReadUserB'];
 
-      final compareDate = lastRead ?? Timestamp.fromDate(DateTime(2000));
+      final compareDate = lastRead?? Timestamp.fromDate(DateTime(2000));
 
       final query = _firestore.buildQuery(
         path: path,
@@ -81,11 +81,11 @@ class PrivateChatProvider extends ChangeNotifier {
       );
 
       return _firestore
-          .streamCollection(path: path, query: query)
-          .map((snap) {
+         .streamCollection(path: path, query: query)
+         .map((snap) {
             return snap.docs.where((doc) {
               final msgData = doc.data() as Map<String, dynamic>;
-              return msgData['senderId'] != userId;
+              return msgData['senderId']!= userId;
             }).length;
           });
     }).distinct();
@@ -133,7 +133,7 @@ class PrivateChatProvider extends ChangeNotifier {
       docId: chatId,
     );
 
-    if (existing != null) return;
+    if (existing!= null) return;
 
     await _firestore.createDocument(
       path: FirestorePaths.privateChats,
@@ -164,11 +164,11 @@ class PrivateChatProvider extends ChangeNotifier {
     );
 
     return _firestore
-        .streamCollection(path: path, query: query)
-        .map((snapshot) {
+       .streamCollection(path: path, query: query)
+       .map((snapshot) {
       return snapshot.docs
-          .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-          .toList();
+         .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+         .toList();
     });
   }
 
@@ -200,6 +200,7 @@ class PrivateChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -248,6 +249,7 @@ class PrivateChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -261,7 +263,7 @@ class PrivateChatProvider extends ChangeNotifier {
       docId: chatId,
       data: {
         "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": mediaType == 'image' ? '📷 صورة' : '🎥 فيديو',
+        "lastMessageText": mediaType == 'image'? '📷 صورة' : '🎥 فيديو',
       },
     );
   }
@@ -289,6 +291,7 @@ class PrivateChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -308,58 +311,85 @@ class PrivateChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
-// ✅ SEND AUDIO MESSAGE
-// =========================================================
-Future<void> sendAudioMessage({
-  required String chatId,
-  required String messageId,
-  required UserModel sender,
-  required File audioFile,
-  required int durationSeconds, // ← أضفنا هذا
-  String? replyToId,
-  String? replyText,
-}) async {
-  // 1. رفع الملف إلى Storage
-  final audioUrl = await _storage.uploadPrivateChatMedia(
-    chatId: chatId,
-    messageId: messageId,
-    file: audioFile,
-  );
+  // ✅ SEND AUDIO MESSAGE
+  // =========================================================
+  Future<void> sendAudioMessage({
+    required String chatId,
+    required String messageId,
+    required UserModel sender,
+    required File audioFile,
+    required int durationSeconds,
+    String? replyToId,
+    String? replyText,
+  }) async {
+    final audioUrl = await _storage.uploadPrivateChatMedia(
+      chatId: chatId,
+      messageId: messageId,
+      file: audioFile,
+    );
 
-  // 2. إنشاء MessageModel بـ mediaType: 'audio'
-  final message = MessageModel(
-    id: messageId,
-    senderId: sender.id,
-    senderName: sender.username,
-    senderAvatar: sender.avatarUrl,
-    senderIsPremium: sender.isPremium,
-    senderRole: null,
-    mediaUrl: audioUrl,
-    mediaType: 'audio',
-    audioDuration: durationSeconds, // ← هنا نحفظ المدة
-    replyToId: replyToId,
-    replyText: replyText,
-    createdAt: DateTime.now(),
-  );
+    final message = MessageModel(
+      id: messageId,
+      senderId: sender.id,
+      senderName: sender.username,
+      senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium,
+      senderRole: null,
+      mediaUrl: audioUrl,
+      mediaType: 'audio',
+      audioDuration: durationSeconds,
+      replyToId: replyToId,
+      replyText: replyText,
+      createdAt: DateTime.now(),
+      isDelivered: true, // ✅
+    );
 
-  // 3. حفظه في Firestore
-  await _firestore.createDocument(
-    path: FirestorePaths.privateMessages(chatId),
-    docId: messageId,
-    data: message.toMap(),
-  );
+    await _firestore.createDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: message.toMap(),
+    );
 
-  // 4. تحديث آخر رسالة في المحادثة
-  await _firestore.updateDocument(
-    path: FirestorePaths.privateChats,
-    docId: chatId,
-    data: {
-      "lastMessageAt": FieldValue.serverTimestamp(),
-      "lastMessageText": '🎤 رسالة صوتية',
-    },
-  );
-}
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateChats,
+      docId: chatId,
+      data: {
+        "lastMessageAt": FieldValue.serverTimestamp(),
+        "lastMessageText": '🎤 رسالة صوتية',
+      },
+    );
+  }
 
+  // =========================================================
+  // ✅ تحديث حالة الوصول (جديد)
+  // =========================================================
+  Future<void> markAsDelivered({
+    required String chatId,
+    required String messageId,
+  }) async {
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: {'isDelivered': true},
+    );
+  }
+
+  // =========================================================
+  // ✅ تحديث حالة القراءة (جديد)
+  // =========================================================
+  Future<void> markAsRead({
+    required String chatId,
+    required String messageId,
+  }) async {
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: {
+        'isRead': true,
+        'isDelivered': true,
+      },
+    );
+  }
 
   // =========================================================
   // TOGGLE REACTION
@@ -379,8 +409,8 @@ Future<void> sendAudioMessage({
 
     if (messageData == null) return;
 
-    final Map<String, String> currentReactions = messageData['reactions'] != null
-        ? Map<String, String>.from(messageData['reactions'])
+    final Map<String, String> currentReactions = messageData['reactions']!= null
+       ? Map<String, String>.from(messageData['reactions'])
         : {};
 
     if (currentReactions[userId] == emoji) {
@@ -434,18 +464,18 @@ Future<void> sendAudioMessage({
       _firestore.getCollection(path: FirestorePaths.privateChats, query: queryB),
     ]);
 
-    final allDocs = [...results[0].docs, ...results[1].docs];
+    final allDocs = [...results[0].docs,...results[1].docs];
 
     allDocs.sort((a, b) {
-      final aTime = (a.data()['lastMessageAt'] as Timestamp?) ?? Timestamp.now();
-      final bTime = (b.data()['lastMessageAt'] as Timestamp?) ?? Timestamp.now();
+      final aTime = (a.data()['lastMessageAt'] as Timestamp?)?? Timestamp.now();
+      final bTime = (b.data()['lastMessageAt'] as Timestamp?)?? Timestamp.now();
       return bTime.compareTo(aTime);
     });
 
     return allDocs.map((doc) {
       return {
         "chatId": doc.id,
-        ...doc.data() as Map<String, dynamic>,
+       ...doc.data() as Map<String, dynamic>,
       };
     }).toList();
   }
@@ -496,7 +526,7 @@ Future<void> sendAudioMessage({
 
     final Map<String, Map<String, dynamic>> chatMap = {};
     for (var chat in existingChats) {
-      final otherId = chat['userA'] == userId ? chat['userB'] : chat['userA'];
+      final otherId = chat['userA'] == userId? chat['userB'] : chat['userA'];
       chatMap[otherId] = chat;
     }
 
@@ -531,11 +561,11 @@ Future<void> sendAudioMessage({
     );
 
     return snapshot.docs
-        .map((doc) => FanModel.fromMap(
+       .map((doc) => FanModel.fromMap(
               doc.data() as Map<String, dynamic>,
               doc.id,
             ))
-        .toList();
+       .toList();
   }
 
   // =========================================================

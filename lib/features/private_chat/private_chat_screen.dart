@@ -51,13 +51,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   void initState() {
     super.initState();
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
-        .streamMessages(chatId: widget.chatId);
+       .streamMessages(chatId: widget.chatId);
 
     _scrollController.addListener(_scrollListener);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updatePrivateReadStatus();
-      // ✅ تحميل الخلفية المحفوظة محلياً لهذه المحادثة
       context.read<ChatBackgroundProvider>().loadPrivateBackground(
             chatId: widget.chatId,
           );
@@ -69,7 +68,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.offset;
     final show = (maxScroll - currentScroll) > 200;
-    if (show != _showScrollDown) {
+    if (show!= _showScrollDown) {
       setState(() => _showScrollDown = show);
     }
   }
@@ -90,7 +89,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           Provider.of<PrivateChatProvider>(context, listen: false);
       final currentUserId = userProvider.currentUser?.id;
 
-      if (currentUserId != null) {
+      if (currentUserId!= null) {
         privateChatProvider.updatePrivateLastRead(
           chatId: widget.chatId,
           userId: currentUserId,
@@ -112,7 +111,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _scrollToMessage(String messageId) {
     final index = _currentMessages.indexWhere((m) => m.id == messageId);
-    if (index != -1) {
+    if (index!= -1) {
       double targetOffset = index * 80.0;
       if (targetOffset > _scrollController.position.maxScrollExtent) {
         targetOffset = _scrollController.position.maxScrollExtent;
@@ -125,7 +124,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // ✅ فتح شيت اختيار الخلفية الشخصية
   void _openBackgroundPicker() {
     showModalBottomSheet(
       context: context,
@@ -152,13 +150,13 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         text: text,
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
+        replyText: replyTo?.text??
             (replyTo?.mediaType == 'image'
-                ? "صورة 🖼️"
+               ? "صورة 🖼️"
                 : replyTo?.mediaType == 'gif'
-                    ? "GIF 🎞️"
+                   ? "GIF 🎞️"
                     : replyTo?.mediaType == 'audio'
-                        ? "🎙️ تسجيل صوتي"
+                       ? "🎙️ تسجيل صوتي"
                         : null),
       );
       _updatePrivateReadStatus();
@@ -186,8 +184,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         file: file,
         mediaType: 'image',
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
-            (replyTo?.mediaType == 'image' ? "صورة 🖼️" : null),
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -213,7 +211,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         gifUrl: gifUrl,
         replyToId: replyTo?.id,
-        replyText: replyTo?.mediaType == 'gif' ? "GIF 🎞️" : null,
+        replyText: replyTo?.mediaType == 'gif'? "GIF 🎞️" : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -241,8 +239,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         audioFile: audioFile,
         durationSeconds: duration,
         replyToId: replyTo?.id,
-        replyText: replyTo?.text ??
-            (replyTo?.mediaType == 'audio' ? "🎙️ تسجيل صوتي" : null),
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'audio'? "🎙️ تسجيل صوتي" : null),
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -258,7 +256,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (mounted) setState(() => _replyingMessage = null);
   }
 
-  // ✅ بناء طبقة الخلفية مع Overlay
   Widget _buildBackground(String? backgroundPath) {
     if (backgroundPath == null || backgroundPath.isEmpty) {
       return const SizedBox.shrink();
@@ -270,11 +267,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // صورة الخلفية (محلية أو من الشبكة)
           isNetwork
-              ? Image.network(backgroundPath, fit: BoxFit.cover)
+             ? Image.network(backgroundPath, fit: BoxFit.cover)
               : Image.file(File(backgroundPath), fit: BoxFit.cover),
-          // ✅ Overlay شفاف لضمان وضوح عناصر الدردشة
           Container(
             color: Colors.black.withValues(alpha: 0.38),
           ),
@@ -286,16 +281,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUser = context.watch<UserProvider>().currentUser;
+    final privateChatProvider = context.read<PrivateChatProvider>();
 
     if (currentUser == null) {
       return const Scaffold(body: LoadingWidget());
     }
 
-    // ✅ الاستماع للخلفية من ChatBackgroundProvider
     final backgroundPath =
         context.watch<ChatBackgroundProvider>().privateBackgroundPath;
     final bool hasBackground =
-        backgroundPath != null && backgroundPath.isNotEmpty;
+        backgroundPath!= null && backgroundPath.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -310,37 +305,32 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             Text(widget.otherUser.username),
           ],
         ),
-        // ✅ زر اختيار الخلفية في الـ AppBar
         actions: [
-  PopupMenuButton<String>(
-    icon: const Icon(Icons.more_vert),
-    onSelected: (value) {
-      if (value == 'background') {
-        _openBackgroundPicker();
-      }
-    },
-    itemBuilder: (context) => [
-      const PopupMenuItem(
-        value: 'background',
-        child: Row(
-          children: [
-            Icon(Icons.wallpaper_outlined),
-            SizedBox(width: 12),
-            Text('خلفية الدردشة'),
-          ],
-        ),
-      ),
-      // هنا تضيف أي خيارات مستقبلية
-    ],
-  ),
-],
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'background') {
+                _openBackgroundPicker();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'background',
+                child: Row(
+                  children: [
+                    Icon(Icons.wallpaper_outlined),
+                    SizedBox(width: 12),
+                    Text('خلفية الدردشة'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          // ✅ الطبقة السفلى: صورة الخلفية + Overlay
           _buildBackground(backgroundPath),
-
-          // الطبقة العليا: محتوى الدردشة
           Column(
             children: [
               Expanded(
@@ -354,10 +344,29 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
                     if (snapshot.hasData) {
                       final newMessages = snapshot.data!;
+
+                      // ✅✅✅ التعديل الجديد - تحديث حالة الوصول والقراءة
+                      for (final msg in newMessages) {
+                        if (msg.senderId!= currentUser.id) {
+                          if (!msg.isDelivered) {
+                            privateChatProvider.markAsDelivered(
+                              chatId: widget.chatId,
+                              messageId: msg.id,
+                            );
+                          }
+                          if (!msg.isRead) {
+                            privateChatProvider.markAsRead(
+                              chatId: widget.chatId,
+                              messageId: msg.id,
+                            );
+                          }
+                        }
+                      }
+
                       if (newMessages.length > _currentMessages.length) {
                         Future.microtask(() => _updatePrivateReadStatus());
                         WidgetsBinding.instance
-                            .addPostFrameCallback((_) => _scrollToBottom());
+                           .addPostFrameCallback((_) => _scrollToBottom());
                       }
                       _currentMessages = newMessages;
                     }
@@ -381,7 +390,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         final sender = MemberModel(
                           userId: message.senderId,
                           groupId: 'private',
-                          role: message.senderRole ?? Roles.member,
+                          role: message.senderRole?? Roles.member,
                           joinedAt: DateTime.now(),
                           displayName: message.senderName,
                           characterImageUrl: message.senderAvatar,
@@ -393,7 +402,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                           sender: sender,
                           isMe: isMe,
                           groupId: widget.chatId,
-                          // ✅ تمرير حالة الخلفية لـ MessageBubble
                           hasBackground: hasBackground,
                           onReply: (msg) =>
                               setState(() => _replyingMessage = msg),
@@ -423,16 +431,14 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               ),
             ],
           ),
-
-          // زر التمرير للأسفل
           Positioned(
             bottom: 80,
             right: 16,
             child: AnimatedOpacity(
-              opacity: _showScrollDown ? 1.0 : 0.0,
+              opacity: _showScrollDown? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: _showScrollDown
-                  ? FloatingActionButton.small(
+                 ? FloatingActionButton.small(
                       backgroundColor: Theme.of(context).primaryColor,
                       onPressed: _scrollToBottom,
                       child: const Icon(Icons.arrow_downward,

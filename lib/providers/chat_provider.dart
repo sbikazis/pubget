@@ -38,7 +38,7 @@ class ChatProvider extends ChangeNotifier {
       docId: userId,
       data: {
         'lastReadAt': readUpTo!= null
-           ? Timestamp.fromDate(readUpTo)
+          ? Timestamp.fromDate(readUpTo)
             : FieldValue.serverTimestamp(),
       },
     );
@@ -90,11 +90,11 @@ class ChatProvider extends ChangeNotifier {
 
     final streams = groups.map((group) {
       return _firestore
-         .streamDocument(
+        .streamDocument(
             path: FirestorePaths.groupMembers(group.id),
             docId: userId,
           )
-         .asyncExpand((memberDoc) {
+        .asyncExpand((memberDoc) {
         if (!memberDoc.exists) return Stream.value(0);
         final lastReadAt = memberDoc.data()?['lastReadAt'];
 
@@ -127,8 +127,8 @@ class ChatProvider extends ChangeNotifier {
 
     return _firestore.streamCollection(path: path, query: query).map((snapshot) {
       return snapshot.docs
-         .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-         .toList();
+        .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+        .toList();
     });
   }
 
@@ -154,9 +154,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('users')
-         .doc(sender.userId)
-         .get();
+        .collection('users')
+        .doc(sender.userId)
+        .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -189,6 +189,7 @@ class ChatProvider extends ChangeNotifier {
       gameId: gameId,
       gameSlot: gameSlot,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅ الرسالة وصلات للسيرفر مباشرة
     );
 
     await _firestore.createDocument(
@@ -197,7 +198,6 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
 
-    // ✅ تحديث آخر رسالة في المجموعة
     final preview = text.trim().length > 80? text.trim().substring(0, 80) : text.trim();
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
@@ -234,9 +234,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('users')
-         .doc(sender.userId)
-         .get();
+        .collection('users')
+        .doc(sender.userId)
+        .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -268,6 +268,7 @@ class ChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -276,7 +277,6 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
 
-    // ✅ تحديث آخر رسالة
     final preview = mediaType == 'image'? '📷 صورة' : mediaType == 'video'? '🎥 فيديو' : '📎 ملف';
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
@@ -305,9 +305,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('users')
-         .doc(sender.userId)
-         .get();
+        .collection('users')
+        .doc(sender.userId)
+        .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -339,6 +339,7 @@ class ChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -347,7 +348,6 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
 
-    // ✅ تحديث آخر رسالة
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
@@ -382,9 +382,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('users')
-         .doc(sender.userId)
-         .get();
+        .collection('users')
+        .doc(sender.userId)
+        .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -417,6 +417,7 @@ class ChatProvider extends ChangeNotifier {
       replyToId: replyToId,
       replyText: replyText,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -425,7 +426,6 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
 
-    // ✅ تحديث آخر رسالة
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
@@ -462,7 +462,7 @@ class ChatProvider extends ChangeNotifier {
       docId: messageId,
       data: {
         'isRead': true,
-        'isDelivered': true, // إلا تقرات راها وصلات بالضرورة
+        'isDelivered': true,
       },
     );
   }
@@ -513,9 +513,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final userDoc = await FirebaseFirestore.instance
-         .collection('users')
-         .doc(sender.userId)
-         .get();
+        .collection('users')
+        .doc(sender.userId)
+        .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -544,6 +544,7 @@ class ChatProvider extends ChangeNotifier {
       gameSlot: gameSlot,
       gameAction: gameAction,
       createdAt: DateTime.now(),
+      isDelivered: true, // ✅
     );
 
     await _firestore.createDocument(
@@ -552,7 +553,6 @@ class ChatProvider extends ChangeNotifier {
       data: message.toMap(),
     );
 
-    // ✅ تحديث آخر رسالة
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
@@ -607,7 +607,7 @@ class ChatProvider extends ChangeNotifier {
     );
     final snapshot = await _firestore.getCollection(path: path, query: query);
     return snapshot.docs
-       .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-       .toList();
+      .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+      .toList();
   }
 }
