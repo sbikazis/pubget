@@ -1,6 +1,5 @@
 // lib/services/monetization/ad_service.dart
-
-import 'dart:async'; 
+import 'dart:async';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../../core/utils/time_utils.dart';
 import '../local/local_storage_service.dart';
@@ -15,10 +14,7 @@ class AdService {
   // ==========================================
   // 🆔 معرفات الوحدات الإعلانية (Ad Units IDs)
   // ==========================================
-  // الإعلان البيني القديم (مستمر للمجموعات)
   static const String _interstitialId = 'ca-app-pub-3303379299409244/1725699149';
-  
-  // 🎯 إعلان المكافأة الحصري الجديد المضاف والمفعل لحزمة كسب العملات
   static const String _rewardedAdId = 'ca-app-pub-3303379299409244/3412540085';
 
   // ==========================================
@@ -29,34 +25,31 @@ class AdService {
   int _groupAdsShownToday = 0;
   bool _isInitialized = false;
 
-  // خزنة إعلانات المكافأة المسبقة الشحن (تتسع لـ 3 إعلانات متتالية)
   final List<RewardedAd> _preloadedRewardedPool = [];
   bool _isRewardedPoolLoading = false;
   static const int maxBundleSize = 3;
 
-  /// دالة التهيئة الشاملة لتطبيقك لشحن الذاكرة مسبقاً
+  /// دالة التهيئة الشاملة
   Future<void> init() async {
     if (_isInitialized) {
-      _fillRewardedPool(); // تأكيد امتلاء الخزنة دائماً عند الاستدعاء المتكرر
+      _fillRewardedPool();
       return;
     }
     await _localStorage.init();
-    
+
     _groupAdsShownToday = _localStorage.getAdsCountToday();
     _isInitialized = true;
-    
-    // شحن الأنواع بالتوازي في الخلفية دون تعطيل واجهة المستخدم
+
     _loadInterstitial();
     _fillRewardedPool();
-    
+
     debugPrint("✅ AdService Initialized. Interstitial & Rewarded Pool ready.");
   }
 
   // =========================================================================
-  // 🎁 نظام حزمة إعلانات المكافأة المتتالية (Rewarded Ad Bundle)
+  // 🎁 نظام حزمة إعلانات المكافأة
   // =========================================================================
 
-  /// دالة ذكية لتعبئة خزنة المكافآت تلقائياً في الخلفية حتى تصل لـ 3 إعلانات جاهزة 100%
   Future<void> _fillRewardedPool() async {
     if (_isRewardedPoolLoading || _preloadedRewardedPool.length >= maxBundleSize) return;
 
@@ -85,7 +78,40 @@ class AdService {
     );
   }
 
-  /// 🔥 تشغيل حزمة الـ 3 إعلانات المتتالية دون تقطيع (0 ثانية انتظار بين الإعلان والآخر)
+  /// ✅ دالة جديدة: تشغيل إعلان مكافأة واحد فقط
+  Future<bool> showSingleRewardedAd({required VoidCallback onReward}) async {
+    await init();
+    if (_preloadedRewardedPool.isEmpty) {
+      debugPrint("⚠️ Rewarded Pool empty. Triggering fill...");
+      _fillRewardedPool();
+      return false; // غير جاهز
+    }
+
+    final ad = _preloadedRewardedPool.removeAt(0);
+    bool rewarded = false;
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (a) {
+        a.dispose();
+        _fillRewardedPool(); // عبي الخزنة بعد كل مشاهدة
+      },
+      onAdFailedToShowFullScreenContent: (a, e) {
+        a.dispose();
+        _fillRewardedPool();
+        debugPrint("❌ Failed to show Rewarded Ad: $e");
+      },
+    );
+
+    ad.show(onUserEarnedReward: (_, __) {
+      rewarded = true;
+      onReward();
+      debugPrint("💎 User earned reward for single ad");
+    });
+
+    return true;
+  }
+
+  /// 🔥 تشغيل حزمة الـ 3 إعلانات المتتالية
   Future<bool> showRewardedAdBundle({
     required VoidCallback onSingleAdFinished,
     required VoidCallback onAllAdsCompleted,
@@ -93,14 +119,12 @@ class AdService {
   }) async {
     await init();
 
-    // التحقق الصارم من اكتمال الشحن للحزمة لضمان تجربة مستخدم خالية من تجميد الشاشة
     if (_preloadedRewardedPool.length < maxBundleSize) {
       debugPrint("⚠️ Rewarded Pool not ready yet. Available: ${_preloadedRewardedPool.length}/$maxBundleSize");
-      _fillRewardedPool(); 
+      _fillRewardedPool();
       return false;
     }
 
-    // سحب الإعلانات الثلاثة المستقرة فوراً وحجزها للعرض المتتالي
     final List<RewardedAd> adsToBrief = List.from(_preloadedRewardedPool.take(maxBundleSize));
     _preloadedRewardedPool.removeRange(0, maxBundleSize);
 
@@ -109,7 +133,7 @@ class AdService {
     void showNextRewarded() {
       if (currentAdIndex >= adsToBrief.length) {
         debugPrint("🎉 Success: All 3 bundled Rewarded Ads finished successfully!");
-        _fillRewardedPool(); // إعادة تعبئة الخزنة في الخلفية فوراً للمرة القادمة
+        _fillRewardedPool();
         onAllAdsCompleted();
         return;
       }
@@ -119,9 +143,9 @@ class AdService {
       ad.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (dismissedAd) {
           dismissedAd.dispose();
-          onSingleAdFinished(); // تحديث العداد المرحلي للإعلانات المشاهدة
+          onSingleAdFinished();
           currentAdIndex++;
-          showNextRewarded(); // 🔁 الانتقال الفوري والمباشر للإعلان التالي في المصفوفة
+          showNextRewarded();
         },
         onAdFailedToShowFullScreenContent: (failedAd, error) {
           failedAd.dispose();
@@ -131,23 +155,21 @@ class AdService {
         },
       );
 
-      // تشغيل الإعلان مع دعم دالة استحقاق الجائزة الرسمية من جوجل أدExternal
       ad.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
         debugPrint("💎 User verified for single ad reward by Admob backend.");
       });
     }
 
-    // إطلاق الشرارة للإعلان الأول
     showNextRewarded();
     return true;
   }
 
   // =========================================================================
-  // 🔒 نظام الإعلانات البينية (Interstitial) القديم - مستقر ومحمي دون أدنى تغيير
+  // 🔒 نظام الإعلانات البينية (Interstitial)
   // =========================================================================
 
   Future<void> _loadInterstitial() async {
-    if (_isInterstitialLoading || _interstitialAd != null) return;
+    if (_isInterstitialLoading || _interstitialAd!= null) return;
     _isInterstitialLoading = true;
 
     await InterstitialAd.load(
@@ -193,13 +215,13 @@ class AdService {
 
     final lastAdTime = _localStorage.getLastAdTime();
 
-    if (lastAdTime != null && TimeUtils.isNewDay(lastAdTime)) {
+    if (lastAdTime!= null && TimeUtils.isNewDay(lastAdTime)) {
       _groupAdsShownToday = 0;
       await _localStorage.saveAdsCountToday(0);
     }
 
     if (_groupAdsShownToday >= 2) return false;
-    if (lastAdTime != null && !TimeUtils.hasMinutesPassed(lastAdTime, 10)) return false;
+    if (lastAdTime!= null &&!TimeUtils.hasMinutesPassed(lastAdTime, 10)) return false;
 
     if (_interstitialAd == null) {
       await _loadInterstitial();
@@ -224,4 +246,3 @@ class AdService {
     await _localStorage.saveAdsCountToday(_groupAdsShownToday);
   }
 }
-

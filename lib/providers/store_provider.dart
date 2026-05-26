@@ -14,6 +14,13 @@ class StoreProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   int get currentCoins => _userProvider.currentUser?.coinsBalance ?? 0;
 
+  /// ✅ جديد: عدد الثواني المتبقية قبل السماح بإعلان جديد
+  int get adCooldownSeconds {
+    if (_lastAdWatchedTime == null) return 0;
+    final diff = DateTime.now().difference(_lastAdWatchedTime!).inSeconds;
+    return diff < 30 ? 30 - diff : 0;
+  }
+
   bool _canAffordAndDeduct(int price) {
     final user = _userProvider.currentUser;
     if (user == null) return false;
@@ -79,7 +86,6 @@ class StoreProvider extends ChangeNotifier {
       autoRenewPremium: true,
       updatedAt: now,
     );
-    // لا نلمس أي customMax هنا - Premium مفصول تماماً
     await _userProvider.updateUser(updatedUser);
     _isLoading = false; notifyListeners();
     return true;
@@ -111,8 +117,11 @@ class StoreProvider extends ChangeNotifier {
 
   Future<bool> rewardForWatchingAd() async {
     final now = DateTime.now();
-    if (_lastAdWatchedTime != null && now.difference(_lastAdWatchedTime!).inSeconds < 30) return false;
+    if (_lastAdWatchedTime != null && now.difference(_lastAdWatchedTime!).inSeconds < 30) {
+      return false;
+    }
     _lastAdWatchedTime = now;
+    notifyListeners(); // ✅ تحديث الواجهة فوراً عشان يظهر الكولداون
     await _addRewardCoins(StoreConstants.rewardWatchAd);
     return true;
   }
