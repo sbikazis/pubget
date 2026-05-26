@@ -10,6 +10,7 @@ import '../../providers/user_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/private_chat_provider.dart';
 import '../../providers/notifications_provider.dart';
+import '../../providers/store_provider.dart'; // 🟢 تم إضافة مستودع المتجر
 import '../../models/notification_model.dart';
 import '../../widgets/loading_widget.dart';
 import '../home/promoted_groups_section.dart';
@@ -27,6 +28,11 @@ import '../settings/settings_screen.dart';
 import 'package:pubget/models/user_model.dart';
 import '../../core/constants/limits.dart';
 import 'package:pubget/features/settings/premium_details_screen.dart';
+
+// 🟢 استيراد شاشات وعناصر المتجر بحسب مساراتها المرفقة
+import 'package:pubget/features/store/screens/store_screen.dart';
+import 'package:pubget/features/store/screens/earn_coins_screen.dart';
+import 'package:pubget/features/store/widgets/coin_counter_with_add.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -117,6 +123,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openSuggested() => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const SearchScreen()),
+      );
+
+  // 🟢 دالة فتح شاشة المتجر الرئيسي
+  void _openStore() => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StoreScreen()),
+      );
+
+  // 🟢 دالة فتح شاشة كسب العملات
+  void _openEarnCoins() => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const EarnCoinsScreen()),
       );
 
   void _openPremiumDetails() {
@@ -227,6 +245,15 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () {
                 Navigator.of(context).pop();
                 _openSuggested();
+              },
+            ),
+            // 🟢 إدخال المتجر في القائمة الجانبية أيضاً لسهولة الوصول
+            ListTile(
+              leading: const Icon(Icons.storefront_rounded, color: Color(0xFF00FF87)),
+              title: const Text('متجر التنين'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _openStore();
               },
             ),
             const Divider(),
@@ -427,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
       drawer: _buildDrawer(context),
       appBar: AppBar(
         title: const Text('Pubget'),
-        centerTitle: true,
+        centerTitle: false, // 🟢 تم جعله false لإعطاء مساحة كافية للأزرار الجديدة في اليمين
         elevation: 0,
         leading: Builder(
           builder: (BuildContext context) {
@@ -440,6 +467,27 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         actions: [
+          // 🟢 1. حقن عداد العملات التفاعلي مع الاستماع المباشر للرصيد
+          if (user != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10.0),
+              child: Consumer<StoreProvider>(
+                builder: (context, storeProvider, child) {
+                  return CoinCounterWithAddWidget(
+                    coinsBalance: storeProvider.currentCoins,
+                    onAddTap: _openEarnCoins, // ينقله لصفحة كسب العملات
+                  );
+                },
+              ),
+            ),
+
+          // 🟢 2. زر دخول المتجر الأنيق بجانب العملات
+          IconButton(
+            icon: const Icon(Icons.storefront_rounded, color: Color(0xFF00FF87)),
+            onPressed: _openStore, // ينقله لمتجر التنين الرئيسي
+            tooltip: 'متجر التنين',
+          ),
+
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: _openSearch,
@@ -506,7 +554,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       const MyGroupsSection(
                           showJoinedOnly: true),
                       const PrivateChatsListScreen(),
-                      // ← التعديل: EditsScreen تُبنى فقط عند تحديد تبويب الإيديتات
                       _selectedIndex == 4
                           ? const EditsScreen()
                           : const SizedBox.shrink(),
