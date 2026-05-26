@@ -8,12 +8,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/edits_model.dart';
 import '../services/firebase/edits_service.dart';
 import '../services/firebase/feed_service.dart';
-import '../services/monetization/coin_service.dart'; // <-- جديد
+import '../services/monetization/coin_service.dart';
 
 class EditsProvider extends ChangeNotifier {
   final EditsService _service = EditsService();
   final FeedService _feedService = FeedService();
-  final CoinService _coinService = CoinService(); // <-- جديد
+  final CoinService _coinService = CoinService();
   final Map<String, EditModel> _editsMap = {};
   final Map<String, Set<String>> _pendingLikeUpdates = {};
   final Set<String> _seenIds = {};
@@ -38,10 +38,6 @@ class EditsProvider extends ChangeNotifier {
   EditModel? get lastUploadedEdit => _lastUploadedEdit;
   bool get allUnseenWatched => _sessionFeed.isEmpty;
   EditModel? getEditById(String id) => _editsMap[id];
-
-  // ══════════════════════════════════════════════
-  // ── الـ Seen System
-  // ══════════════════════════════════════════════
 
   Future<void> loadSeenIds() async {
     final prefs = await SharedPreferences.getInstance();
@@ -71,50 +67,35 @@ class EditsProvider extends ChangeNotifier {
       await _feedService.clearSeenIds(userId);
     }
     _sessionFeed = _editsMap.values.toList()
-     ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+    ..sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     notifyListeners();
   }
-
-  // ══════════════════════════════════════════════
-  // ── جلب الـ Feed الذكي
-  // ══════════════════════════════════════════════
 
   Future<void> loadSmartFeed(String userId) async {
     if (_skipNextLoad) {
       _skipNextLoad = false;
       return;
     }
-
     _isLoading = true;
     notifyListeners();
-
     await loadSeenIds();
     final firestoreSeen = await _feedService.getSeenIds(userId);
     _seenIds.addAll(firestoreSeen);
-
-    final feed = await _feedService.fetchSmartFeed(
-      userId: userId,
-      seenIds: _seenIds.toList(),
-    );
-
+    final feed = await _feedService.fetchSmartFeed(userId: userId, seenIds: _seenIds.toList());
     _sessionFeed = feed;
     _editsMap.clear();
     for (final e in feed) {
       _editsMap[e.id] = e;
     }
-
     _isLoading = false;
     notifyListeners();
-
     if (!_isListening) listenToEdits();
   }
 
   Future<void> listenToEdits() async {
     if (_isListening) return;
     _isListening = true;
-
     await _editsSubscription?.cancel();
-
     _editsSubscription = _service.getEdits().listen(
       (incoming) {
         _mergeIncomingEdits(incoming);
@@ -129,10 +110,8 @@ class EditsProvider extends ChangeNotifier {
 
   void _mergeIncomingEdits(List<EditModel> incoming) {
     bool hasNewEdit = false;
-
     for (final edit in incoming) {
       final existing = _editsMap[edit.id];
-
       if (existing == null) {
         _editsMap[edit.id] = edit;
         if (!_seenIds.contains(edit.id)) {
@@ -141,69 +120,46 @@ class EditsProvider extends ChangeNotifier {
         }
         continue;
       }
-
       final merged = _mergeEdit(existing, edit);
       _editsMap[edit.id] = merged;
       final idx = _sessionFeed.indexWhere((e) => e.id == edit.id);
       if (idx!= -1) _sessionFeed[idx] = merged;
     }
-
     if (hasNewEdit) {
-      _sessionFeed
-       .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+      _sessionFeed.sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     }
   }
 
   EditModel _mergeEdit(EditModel local, EditModel remote) {
     final pending = _pendingLikeUpdates[local.id];
     if (pending == null) return remote;
-
     final remoteSet = remote.likes.toSet();
-    if (remoteSet.length == pending.length &&
-        remoteSet.containsAll(pending)) {
+    if (remoteSet.length == pending.length && remoteSet.containsAll(pending)) {
       _pendingLikeUpdates.remove(local.id);
       return remote;
     }
     return remote.copyWith(likes: pending.toList());
   }
 
-  // ══════════════════════════════════════════════
-  // ── التفاعلات
-  // ══════════════════════════════════════════════
-
-  Future<void> recordWatchTime({
-    required String editId,
-    required String userId,
-    required int watchSeconds,
-    required double watchPercent,
-  }) async {
+  Future<void> recordWatchTime({required String editId, required String userId, required int watchSeconds, required double watchPercent}) async {
     if (watchSeconds <= 0) return;
     try {
-      await _service.recordWatchTime(
-        editId: editId,
-        userId: userId,
-        watchSeconds: watchSeconds,
-        watchPercent: watchPercent,
-      );
+      await _service.recordWatchTime(editId: editId, userId: userId, watchSeconds: watchSeconds, watchPercent: watchPercent);
     } catch (_) {}
   }
 
   Future<void> toggleLike(String editId, String userId) async {
     final existing = _editsMap[editId];
     if (existing == null) return;
-
     final wasLiked = existing.likes.contains(userId);
     final updatedLikes = List<String>.from(existing.likes);
     wasLiked? updatedLikes.remove(userId) : updatedLikes.add(userId);
-
     _pendingLikeUpdates[editId] = updatedLikes.toSet();
     final updatedEdit = existing.copyWith(likes: updatedLikes);
     _editsMap[editId] = updatedEdit;
-
     final idx = _sessionFeed.indexWhere((e) => e.id == editId);
     if (idx!= -1) _sessionFeed[idx] = updatedEdit;
     notifyListeners();
-
     try {
       await _service.toggleLike(editId, userId, wasLiked);
     } catch (_) {
@@ -219,27 +175,12 @@ class EditsProvider extends ChangeNotifier {
     await _service.incrementViews(editId, userId);
   }
 
-  Future<String?> addComment({
-    required String editId,
-    required String userId,
-    required String username,
-    required String userAvatar,
-    required String text,
-  }) async {
+  Future<String?> addComment({required String editId, required String userId, required String username, required String userAvatar, required String text}) async {
     try {
-      final commentId = await _service.addComment(
-        editId: editId,
-        userId: userId,
-        username: username,
-        userAvatar: userAvatar,
-        text: text,
-      );
-
+      final commentId = await _service.addComment(editId: editId, userId: userId, username: username, userAvatar: userAvatar, text: text);
       final existing = _editsMap[editId];
       if (existing!= null) {
-        final updated = existing.copyWith(
-          commentsCount: existing.commentsCount + 1,
-        );
+        final updated = existing.copyWith(commentsCount: existing.commentsCount + 1);
         _editsMap[editId] = updated;
         final idx = _sessionFeed.indexWhere((e) => e.id == editId);
         if (idx!= -1) _sessionFeed[idx] = updated;
@@ -259,10 +200,7 @@ class EditsProvider extends ChangeNotifier {
       for (final c in comments) {
         if (c.userAvatar.isEmpty) {
           try {
-            final userDoc = await FirebaseFirestore.instance
-             .collection('Users')
-             .doc(c.userId)
-             .get();
+            final userDoc = await FirebaseFirestore.instance.collection('Users').doc(c.userId).get();
             final data = userDoc.data();
             final avatar = data?['avatarUrl']?? '';
             final name = data?['username']?? c.userName;
@@ -278,10 +216,7 @@ class EditsProvider extends ChangeNotifier {
     });
   }
 
-  // ══════════════════════════════════════════════
-  // ── الرفع في الخلفية
-  // ══════════════════════════════════════════════
-
+  // ✅ تم التعديل: onComplete يرجع bool
   void uploadEditInBackground({
     required File videoFile,
     required File thumbnailFile,
@@ -290,13 +225,12 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
-    void Function(EditModel)? onComplete,
+    void Function(EditModel, bool)? onComplete, // <-- تغيير هنا
     void Function(String)? onFailed,
   }) {
     if (_isUploading) return;
     _isUploading = true;
     notifyListeners();
-
     _runUpload(
       videoFile: videoFile,
       thumbnailFile: thumbnailFile,
@@ -318,15 +252,14 @@ class EditsProvider extends ChangeNotifier {
     required String uploaderAvatar,
     required String animeTitle,
     required String caption,
-    void Function(EditModel)? onComplete,
+    void Function(EditModel, bool)? onComplete, // <-- تغيير هنا
     void Function(String)? onFailed,
   }) async {
+    bool rewarded = false; // <-- متغير جديد
     try {
-      final urls = await _service.uploadVideoAndThumbnail(
-          videoFile, thumbnailFile, userId);
+      final urls = await _service.uploadVideoAndThumbnail(videoFile, thumbnailFile, userId);
       final videoUrl = urls[0];
       final thumbnailUrl = urls[1];
-
       final edit = EditModel(
         id: '',
         uploaderId: userId,
@@ -341,13 +274,11 @@ class EditsProvider extends ChangeNotifier {
         views: 0,
         createdAt: DateTime.now(),
       );
-
       final docId = await _service.postEdit(edit);
       final uploadedEdit = edit.copyWith(id: docId);
 
-      // ✅ مكافأة النشر بعد الرفع الناجح - مرة واحدة يومياً
       try {
-        final rewarded = await _coinService.rewardForPublishingEdit(userId: userId);
+        rewarded = await _coinService.rewardForPublishingEdit(userId: userId);
         if (rewarded) {
           debugPrint('✅ تمت مكافأة نشر الإديت +10');
         } else {
@@ -359,11 +290,10 @@ class EditsProvider extends ChangeNotifier {
 
       _lastUploadedEdit = uploadedEdit;
       _skipNextLoad = true;
-
       _isUploading = false;
       notifyListeners();
       uploadCompletedNotifier.value = uploadedEdit;
-      onComplete?.call(uploadedEdit);
+      onComplete?.call(uploadedEdit, rewarded); // <-- تمرير النتيجة
     } catch (e) {
       _error = e.toString();
       _isUploading = false;
@@ -375,10 +305,6 @@ class EditsProvider extends ChangeNotifier {
   void setSkipNextLoad() {
     _skipNextLoad = true;
   }
-
-  // ══════════════════════════════════════════════
-  // ── أدوات مساعدة
-  // ══════════════════════════════
 
   void prependEdit(EditModel edit) {
     _editsMap[edit.id] = edit;
@@ -398,8 +324,7 @@ class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream<List<EditModel>> getUserEdits(String userId) =>
-      _service.getUserEdits(userId);
+  Stream<List<EditModel>> getUserEdits(String userId) => _service.getUserEdits(userId);
 
   Future<EditModel?> fetchEditById(String editId) async {
     if (_editsMap.containsKey(editId)) return _editsMap[editId];

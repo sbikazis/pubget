@@ -1,5 +1,4 @@
 // lib/providers/store_provider.dart
-
 import 'package:flutter/material.dart';
 import '../core/constants/store_constants.dart';
 import '../core/constants/subscription_type.dart';
@@ -8,7 +7,6 @@ import 'user_provider.dart';
 class StoreProvider extends ChangeNotifier {
   final UserProvider _userProvider;
   bool _isLoading = false;
-
   DateTime? _lastAdWatchedTime;
 
   StoreProvider({required UserProvider userProvider}) : _userProvider = userProvider;
@@ -16,74 +14,51 @@ class StoreProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   int get currentCoins => _userProvider.currentUser?.coinsBalance ?? 0;
 
-  // =========================================================
-  // نظام الخصم والشراء الصارم
-  // =========================================================
-
   bool _canAffordAndDeduct(int price) {
     final user = _userProvider.currentUser;
     if (user == null) return false;
-    
-    if (user.coinsBalance < price) {
-      return false;
-    }
-    return true;
+    return user.coinsBalance >= price;
   }
 
   Future<bool> purchaseGroupMembersExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
-
-    _isLoading = true;
-    notifyListeners();
-
+    _isLoading = true; notifyListeners();
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
       customMaxMembersLimit: StoreConstants.expandedGroupMembersLimit,
       updatedAt: DateTime.now(),
     );
-
     await _userProvider.updateUser(updatedUser);
-    _isLoading = false;
-    notifyListeners();
+    _isLoading = false; notifyListeners();
     return true;
   }
 
   Future<bool> purchaseJoinedGroupsExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
-
-    _isLoading = true;
-    notifyListeners();
-
+    _isLoading = true; notifyListeners();
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
       customMaxJoinedGroupsLimit: StoreConstants.expandedJoinedGroupsLimit,
       updatedAt: DateTime.now(),
     );
-
     await _userProvider.updateUser(updatedUser);
-    _isLoading = false;
-    notifyListeners();
+    _isLoading = false; notifyListeners();
     return true;
   }
 
   Future<bool> purchaseCreatedGroupsExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
-
-    _isLoading = true;
-    notifyListeners();
-
+    _isLoading = true; notifyListeners();
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
       customMaxCreatedGroupsLimit: StoreConstants.expandedCreatedGroupsLimit,
       updatedAt: DateTime.now(),
     );
-
     await _userProvider.updateUser(updatedUser);
-    _isLoading = false;
-    notifyListeners();
+    _isLoading = false; notifyListeners();
     return true;
   }
 
@@ -91,84 +66,67 @@ class StoreProvider extends ChangeNotifier {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.premiumSubscriptionPrice)) return false;
 
-    _isLoading = true;
-    notifyListeners();
+    _isLoading = true; notifyListeners();
+
+    final now = DateTime.now();
+    final expires = now.add(Duration(days: StoreConstants.premiumDurationDays));
 
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.premiumSubscriptionPrice,
       subscriptionType: SubscriptionType.premium,
-      premiumSince: DateTime.now(),
-      updatedAt: DateTime.now(),
+      premiumSince: now,
+      premiumExpiresAt: expires,
+      autoRenewPremium: true,
+      updatedAt: now,
     );
-
+    // لا نلمس أي customMax هنا - Premium مفصول تماماً
     await _userProvider.updateUser(updatedUser);
-    _isLoading = false;
-    notifyListeners();
+    _isLoading = false; notifyListeners();
     return true;
   }
 
   Future<bool> purchaseGroupPromotion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.groupPromotionPrice)) return false;
-
-    _isLoading = true;
-    notifyListeners();
-
+    _isLoading = true; notifyListeners();
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.groupPromotionPrice,
       updatedAt: DateTime.now(),
     );
-
     await _userProvider.updateUser(updatedUser);
-    _isLoading = false;
-    notifyListeners();
+    _isLoading = false; notifyListeners();
     return true;
   }
-
-  // =========================================================
-  // نظام كسب المكافآت
-  // =========================================================
 
   Future<void> _addRewardCoins(int amount) async {
     final user = _userProvider.currentUser;
     if (user == null) return;
-
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance + amount,
       updatedAt: DateTime.now(),
     );
-
     await _userProvider.updateUser(updatedUser);
     notifyListeners();
   }
 
   Future<bool> rewardForWatchingAd() async {
     final now = DateTime.now();
-    if (_lastAdWatchedTime != null && now.difference(_lastAdWatchedTime!).inSeconds < 30) {
-      return false; 
-    }
-
+    if (_lastAdWatchedTime != null && now.difference(_lastAdWatchedTime!).inSeconds < 30) return false;
     _lastAdWatchedTime = now;
     await _addRewardCoins(StoreConstants.rewardWatchAd);
     return true;
   }
 
-  /// تم تعطيل هذه الدالة عمداً - المكافأة تتم الآن فقط عبر CoinService عند الفوز الحقيقي
   Future<void> rewardForEventWin() async {
-    debugPrint('⚠️ rewardForEventWin تم تعطيلها - استخدم CoinService');
-    return;
+    debugPrint('⚠️ rewardForEventWin معطلة - استخدم CoinService');
   }
 
-  // ✅ تم تعطيلها - المكافأة تتم فقط بعد الرفع الفعلي عبر CoinService
   Future<void> rewardForPublishingEdit() async {
-    debugPrint('⚠️ rewardForPublishingEdit معطلة - المكافأة بعد الرفع فقط عبر CoinService');
-    return;
+    debugPrint('⚠️ rewardForPublishingEdit معطلة');
   }
 
-  // ✅ تم إلغاؤها نهائياً - مخالفة لسياسة Google Play و Instagram/TikTok
   Future<void> rewardForFollowingAccount() async {
-    debugPrint('⚠️ rewardForFollowingAccount ملغاة - ممنوع إعطاء عملات مقابل متابعة (مخالفة Google Play)');
-    return;
+    debugPrint('⚠️ ملغاة - مخالفة Google Play');
   }
 
   Future<void> rewardForInvitingFriend() async {

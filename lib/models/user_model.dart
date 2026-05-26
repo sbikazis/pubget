@@ -1,5 +1,4 @@
 // lib/models/user_model.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/subscription_type.dart';
 
@@ -15,6 +14,8 @@ class UserModel {
   final String? country;
   final SubscriptionType subscriptionType;
   final DateTime? premiumSince;
+  final DateTime? premiumExpiresAt;
+  final bool autoRenewPremium;
   final String? nameColor;
   final int totalRespect;
   final int fansCount;
@@ -22,14 +23,10 @@ class UserModel {
   final bool isBanned;
   final DateTime createdAt;
   final DateTime updatedAt;
-
-  // 🔥 نظام العملات
   final int coinsBalance;
   final int customMaxMembersLimit;
   final int customMaxJoinedGroupsLimit;
   final int customMaxCreatedGroupsLimit;
-
-  // ✅ نظام الدعوة - جديد
   final String? invitedBy;
   final bool hasClaimedReferral;
 
@@ -45,6 +42,8 @@ class UserModel {
     this.country,
     required this.subscriptionType,
     this.premiumSince,
+    this.premiumExpiresAt,
+    this.autoRenewPremium = true,
     this.nameColor,
     required this.totalRespect,
     required this.fansCount,
@@ -56,27 +55,28 @@ class UserModel {
     this.customMaxMembersLimit = 0,
     this.customMaxJoinedGroupsLimit = 0,
     this.customMaxCreatedGroupsLimit = 0,
-    this.invitedBy, // <-- جديد
-    this.hasClaimedReferral = false, // <-- جديد
+    this.invitedBy,
+    this.hasClaimedReferral = false,
   });
 
-  bool get isPremium => subscriptionType == SubscriptionType.premium;
+  bool get isPremium => subscriptionType == SubscriptionType.premium && 
+                       (premiumExpiresAt?.isAfter(DateTime.now()) ?? false);
 
   factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
-    final String rawAvatar = map['avatarUrl'] ?? '';
-
     return UserModel(
       id: documentId,
       email: map['email'] ?? '',
       username: map['username'] ?? '',
       nickname: map['nickname'],
-      avatarUrl: rawAvatar, 
+      avatarUrl: map['avatarUrl'] ?? '',
       bio: map['bio'] ?? '',
       favoriteAnimes: List<String>.from(map['favoriteAnimes'] ?? []),
       age: map['age'],
       country: map['country'],
       subscriptionType: SubscriptionType.fromString(map['subscriptionType'] ?? 'free'),
       premiumSince: map['premiumSince'] != null ? _toDateTime(map['premiumSince']) : null,
+      premiumExpiresAt: map['premiumExpiresAt'] != null ? _toDateTime(map['premiumExpiresAt']) : null,
+      autoRenewPremium: map['autoRenewPremium'] ?? true,
       nameColor: map['nameColor'],
       totalRespect: map['totalRespect'] ?? 0,
       fansCount: map['fansCount'] ?? 0,
@@ -88,8 +88,8 @@ class UserModel {
       customMaxMembersLimit: map['customMaxMembersLimit'] ?? 0,
       customMaxJoinedGroupsLimit: map['customMaxJoinedGroupsLimit'] ?? 0,
       customMaxCreatedGroupsLimit: map['customMaxCreatedGroupsLimit'] ?? 0,
-      invitedBy: map['invitedBy'], // <-- جديد
-      hasClaimedReferral: map['hasClaimedReferral'] ?? false, // <-- جديد
+      invitedBy: map['invitedBy'],
+      hasClaimedReferral: map['hasClaimedReferral'] ?? false,
     );
   }
 
@@ -105,6 +105,8 @@ class UserModel {
       'country': country,
       'subscriptionType': subscriptionType.name,
       'premiumSince': premiumSince,
+      'premiumExpiresAt': premiumExpiresAt,
+      'autoRenewPremium': autoRenewPremium,
       'nameColor': nameColor,
       'totalRespect': totalRespect,
       'fansCount': fansCount,
@@ -116,8 +118,8 @@ class UserModel {
       'customMaxMembersLimit': customMaxMembersLimit,
       'customMaxJoinedGroupsLimit': customMaxJoinedGroupsLimit,
       'customMaxCreatedGroupsLimit': customMaxCreatedGroupsLimit,
-      'invitedBy': invitedBy, // <-- جديد
-      'hasClaimedReferral': hasClaimedReferral, // <-- جديد
+      'invitedBy': invitedBy,
+      'hasClaimedReferral': hasClaimedReferral,
     };
   }
 
@@ -131,6 +133,8 @@ class UserModel {
     String? country,
     SubscriptionType? subscriptionType,
     DateTime? premiumSince,
+    DateTime? premiumExpiresAt,
+    bool? autoRenewPremium,
     String? nameColor,
     int? totalRespect,
     int? fansCount,
@@ -141,8 +145,8 @@ class UserModel {
     int? customMaxMembersLimit,
     int? customMaxJoinedGroupsLimit,
     int? customMaxCreatedGroupsLimit,
-    String? invitedBy, // <-- جديد
-    bool? hasClaimedReferral, // <-- جديد
+    String? invitedBy,
+    bool? hasClaimedReferral,
   }) {
     return UserModel(
       id: id,
@@ -156,6 +160,8 @@ class UserModel {
       country: country ?? this.country,
       subscriptionType: subscriptionType ?? this.subscriptionType,
       premiumSince: premiumSince ?? this.premiumSince,
+      premiumExpiresAt: premiumExpiresAt ?? this.premiumExpiresAt,
+      autoRenewPremium: autoRenewPremium ?? this.autoRenewPremium,
       nameColor: nameColor ?? this.nameColor,
       totalRespect: totalRespect ?? this.totalRespect,
       fansCount: fansCount ?? this.fansCount,
@@ -167,8 +173,8 @@ class UserModel {
       customMaxMembersLimit: customMaxMembersLimit ?? this.customMaxMembersLimit,
       customMaxJoinedGroupsLimit: customMaxJoinedGroupsLimit ?? this.customMaxJoinedGroupsLimit,
       customMaxCreatedGroupsLimit: customMaxCreatedGroupsLimit ?? this.customMaxCreatedGroupsLimit,
-      invitedBy: invitedBy ?? this.invitedBy, // <-- جديد
-      hasClaimedReferral: hasClaimedReferral ?? this.hasClaimedReferral, // <-- جديد
+      invitedBy: invitedBy ?? this.invitedBy,
+      hasClaimedReferral: hasClaimedReferral ?? this.hasClaimedReferral,
     );
   }
 

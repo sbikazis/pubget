@@ -1,12 +1,11 @@
 // lib/core/logic/subscription_limits_logic.dart
-
 import '../constants/limits.dart';
 import '../../models/user_model.dart';
 
 class SubscriptionLimitsResult {
   final bool isAllowed;
   final String? message;
-  final bool shouldShowUpgrade; 
+  final bool shouldShowUpgrade;
 
   const SubscriptionLimitsResult({
     required this.isAllowed,
@@ -22,7 +21,7 @@ class SubscriptionLimitsResult {
     return SubscriptionLimitsResult(
       isAllowed: false,
       message: message,
-      shouldShowUpgrade: showUpgrade, 
+      shouldShowUpgrade: showUpgrade,
     );
   }
 }
@@ -30,61 +29,46 @@ class SubscriptionLimitsResult {
 class SubscriptionLimitsLogic {
   SubscriptionLimitsLogic._();
 
-  /// التحقق من صلاحية إنشاء مجموعة جديدة (توسعة المجال 3)
+  /// التحقق من إنشاء مجموعة - Premium لا يعطي شيء
   static SubscriptionLimitsResult canCreateGroup(UserModel user, int currentOwnedCount) {
-    // 🛡️ فحص أولاً: هل يمتلك المستخدم توسعة مجال مشتراة من المتجر لإنشاء مجموعات أكثر؟
-    int limit = user.customMaxCreatedGroupsLimit;
-
-    // إذا لم يشتري توسعة مخصصة بعد، نعود للمنطق الافتراضي (بريميوم أو مجاني)
-    if (limit <= 0) {
-      limit = user.isPremium ? Limits.maxGroupsPremium : Limits.maxGroupsFree;
-    }
+    // ✅ Premium مفصول تماماً - فقط التوسعة المشتراة
+    int limit = user.customMaxCreatedGroupsLimit > 0 
+        ? user.customMaxCreatedGroupsLimit 
+        : Limits.maxGroupsFree; // دائماً 1
 
     if (currentOwnedCount >= limit) {
       return SubscriptionLimitsResult.denied(
-        user.isPremium 
-          ? "لقد استنفدت الحد الأقصى لإنشاء المجموعات (الحد الحالي: $limit)." 
-          : "وصلت للحد الأقصى للنسخة المجانية. يمكنك امتلاك مجموعة واحدة فقط أو شراء توسعة المجال من المتجر.",
-        showUpgrade: true, // تفعيل التوجيه للمتجر لشراء التوسعة التقنية
-      );
-    }
-    return SubscriptionLimitsResult.allowed();
-  }
-
-  /// التحقق من صلاحية الانضمام لمجموعة جديدة (توسعة المجال 2)
-  static SubscriptionLimitsResult canJoinGroup(UserModel user, int currentJoinedCount) {
-    // 🛡️ فحص أولاً: هل يمتلك المستخدم توسعة مجال مشتراة لانضمامات أكثر؟
-    int limit = user.customMaxJoinedGroupsLimit;
-
-    if (limit <= 0) {
-      limit = user.isPremium ? Limits.maxJoinedPremium : Limits.maxJoinedFree;
-    }
-
-    if (currentJoinedCount >= limit) {
-      return SubscriptionLimitsResult.denied(
-        user.isPremium
-          ? "لقد وصلت للحد الأقصى للانضمامات ($limit مجموعات)."
-          : "لا يمكنك الانضمام لأكثر من مجموعتين في النسخة المجانية. احصل على التوسعة التقنية لفتح المجال لـ 7 مجموعات!",
+        "وصلت للحد الأقصى ($limit مجموعة). اشترِ توسعة إنشاء المجموعات من المتجر لفتح 3 مجموعات.",
         showUpgrade: true,
       );
     }
     return SubscriptionLimitsResult.allowed();
   }
 
-  /// التحقق من سعة المجموعة عند قبول عضو جديد (توسعة المجال 1 - منطق الشوغو)
-  static SubscriptionLimitsResult canAcceptNewMember(UserModel adminUser, int currentMembersCount) {
-    // 🛡️ فحص أولاً: هل يمتلك منشئ المجموعة (الآدمين) توسعة مخصصة لعدد الأعضاء؟
-    int limit = adminUser.customMaxMembersLimit;
+  /// التحقق من الانضمام - Premium لا يعطي شيء
+  static SubscriptionLimitsResult canJoinGroup(UserModel user, int currentJoinedCount) {
+    int limit = user.customMaxJoinedGroupsLimit > 0
+        ? user.customMaxJoinedGroupsLimit
+        : Limits.maxJoinedFree; // دائماً 2
 
-    if (limit <= 0) {
-      limit = adminUser.isPremium ? Limits.maxMembersPremium : Limits.maxMembersFree;
+    if (currentJoinedCount >= limit) {
+      return SubscriptionLimitsResult.denied(
+        "لا يمكنك الانضمام لأكثر من $limit مجموعات. اشترِ توسعة الانضمام من المتجر لفتح 7 مجموعات.",
+        showUpgrade: true,
+      );
     }
+    return SubscriptionLimitsResult.allowed();
+  }
+
+  /// التحقق من سعة الأعضاء - Premium لا يعطي شيء
+  static SubscriptionLimitsResult canAcceptNewMember(UserModel adminUser, int currentMembersCount) {
+    int limit = adminUser.customMaxMembersLimit > 0
+        ? adminUser.customMaxMembersLimit
+        : Limits.maxMembersFree; // دائماً 100
 
     if (currentMembersCount >= limit) {
       return SubscriptionLimitsResult.denied(
-        adminUser.isPremium
-          ? "وصلت المجموعة لأقصى سعة مسموحة حالياً ($limit عضو)."
-          : "وصلت المجموعة للحد الأقصى للنسخة المجانية (100 عضو). قم بزيارة المتجر لفتح السعة إلى 350 عضو.",
+        "وصلت المجموعة للحد الأقصى ($limit عضو). اشترِ توسعة الأعضاء من المتجر لفتح 350 عضو.",
         showUpgrade: true,
       );
     }
