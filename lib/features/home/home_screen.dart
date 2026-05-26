@@ -32,7 +32,7 @@ import 'package:pubget/features/settings/premium_details_screen.dart';
 // 🟢 استيراد شاشات وعناصر المتجر بحسب مساراتها المرفقة
 import 'package:pubget/features/store/screens/store_screen.dart';
 import 'package:pubget/features/store/screens/earn_coins_screen.dart';
-import 'package:pubget/features/store/widgets/coin_counter_with_add.dart';
+import 'package:pubget/widgets/coin_counter_with_add.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
