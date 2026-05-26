@@ -5,10 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase/auth_service.dart';
 import '../models/user_model.dart';
 import '../providers/user_provider.dart';
+import '../services/local/local_storage_service.dart'; // <-- جديد
+import '../services/monetization/coin_service.dart'; // <-- جديد
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
   final UserProvider _userProvider;
+  final CoinService _coinService = CoinService(); // <-- جديد
 
   AuthProvider(this._authService, this._userProvider) {
     listenToAuthState();
@@ -51,7 +54,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // REGISTER (تم تحديثها لتمرير معرف الداعي)
+  // REGISTER
   // =========================================================
   Future<void> register({
     required String email,
@@ -62,15 +65,29 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(true);
       _error = null;
 
+      // ✅ جلب الداعي المحفوظ تلقائياً من التثبيت
+      final pending = referrerId ?? LocalStorageService.instance.getPendingInviter();
+
       final user = await _authService.register(
         email: email, 
         password: password,
-        referrerId: referrerId,
+        referrerId: pending,
       );
       _user = user;
 
       if (user != null) {
         await _userProvider.loadUser(user.id);
+        
+        // ✅ مكافأة الدعوة بعد التسجيل الناجح
+        if (pending != null && pending.isNotEmpty && pending != user.id) {
+          try {
+            await _coinService.rewardReferral(inviterId: pending, newUserId: user.id);
+            await LocalStorageService.instance.clearPendingInviter();
+            debugPrint("✅ تمت مكافأة الدعوة: $pending -> ${user.id}");
+          } catch (e) {
+            debugPrint("⚠️ فشل مكافأة الدعوة: $e");
+          }
+        }
       }
 
       notifyListeners();
@@ -83,18 +100,29 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GOOGLE LOGIN (تم تحديثها لتمرير معرف الداعي)
+  // GOOGLE LOGIN
   // =========================================================
   Future<void> signInWithGoogle({String? referrerId}) async {
     try {
       _setLoading(true);
       _error = null;
 
-      final user = await _authService.signInWithGoogle(referrerId: referrerId);
+      final pending = referrerId ?? LocalStorageService.instance.getPendingInviter();
+
+      final user = await _authService.signInWithGoogle(referrerId: pending);
       _user = user;
 
       if (user != null) {
         await _userProvider.loadUser(user.id);
+        
+        if (pending != null && pending.isNotEmpty && pending != user.id) {
+          try {
+            await _coinService.rewardReferral(inviterId: pending, newUserId: user.id);
+            await LocalStorageService.instance.clearPendingInviter();
+          } catch (e) {
+            debugPrint("⚠️ فشل مكافأة الدعوة Google: $e");
+          }
+        }
       }
 
       notifyListeners();

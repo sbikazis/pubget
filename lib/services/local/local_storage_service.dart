@@ -9,6 +9,7 @@ class LocalStorageService {
   static const String _lastAdDateKey = 'last_ad_date_string';
   static const String _darkModeKey = 'dark_mode';
   static const String _savedGifsKey = 'saved_gifs';
+  static const String _pendingInviterKey = 'pending_inviter'; // <-- جديد
 
   // Singleton instance
   LocalStorageService._privateConstructor();
@@ -20,6 +21,16 @@ class LocalStorageService {
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
   }
+
+  // =========================
+  // ✅ وظائف الدعوة والإحالة - جديد
+  // =========================
+
+  Future<void> savePendingInviter(String id) => saveString(_pendingInviterKey, id);
+  
+  String? getPendingInviter() => getString(_pendingInviterKey);
+  
+  Future<void> clearPendingInviter() => remove(_pendingInviterKey);
 
   // =========================
   // ✅ وظائف الإعلان

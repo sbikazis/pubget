@@ -15,13 +15,19 @@ class CoinCounterWithAddWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.only(right: 4, left: 10, top: 4, bottom: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
+        // 🛠️ التعديل: خلفية ديناميكية شبه شفافة تتكيف مع طبيعة الوضع الحالي لضمان التباين الرائع
+        color: isDarkMode 
+            ? Colors.black.withOpacity(0.4) 
+            : theme.colorScheme.surfaceVariant.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFF00FF87).withOpacity(0.3),
+          color: const Color(0xFF00FF87).withOpacity(0.4),
           width: 1,
         ),
       ),
@@ -47,8 +53,9 @@ class CoinCounterWithAddWidget extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             '$coinsBalance',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              // 🛠️ التعديل: النص يقرأ الآن من لون المحتوى المتوفر على السطح ليتغير بين الأبيض والأسود تلقائياً
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.bold,
               fontSize: 13,
             ),

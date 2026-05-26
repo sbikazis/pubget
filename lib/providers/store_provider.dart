@@ -9,7 +9,6 @@ class StoreProvider extends ChangeNotifier {
   final UserProvider _userProvider;
   bool _isLoading = false;
 
-  // آلية صارمة ضد الغش: حفظ طابع زمني محلي لآخر إعلان اختياري تمت مشاهدته لمنع استدعاء الدالة بشكل متكرر عبر الهندسة العكسية
   DateTime? _lastAdWatchedTime;
 
   StoreProvider({required UserProvider userProvider}) : _userProvider = userProvider;
@@ -18,21 +17,19 @@ class StoreProvider extends ChangeNotifier {
   int get currentCoins => _userProvider.currentUser?.coinsBalance ?? 0;
 
   // =========================================================
-  // نظام الخصم والشراء الصارم (Purchase Operations)
+  // نظام الخصم والشراء الصارم
   // =========================================================
 
-  /// دالة عامة موحدة لفحص الرصيد وخصم العملات برمجياً لمنع التلاعب
   bool _canAffordAndDeduct(int price) {
     final user = _userProvider.currentUser;
     if (user == null) return false;
     
     if (user.coinsBalance < price) {
-      return false; // رصيد غير كافٍ، ترفض العملية فوراً
+      return false;
     }
     return true;
   }
 
-  /// 1. شراء ميزة توسيع حد أعضاء المجموعة (200 عملة)
   Future<bool> purchaseGroupMembersExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
@@ -42,7 +39,7 @@ class StoreProvider extends ChangeNotifier {
 
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
-      customMaxMembersLimit: StoreConstants.expandedGroupMembersLimit, // رفع الحد إلى 350
+      customMaxMembersLimit: StoreConstants.expandedGroupMembersLimit,
       updatedAt: DateTime.now(),
     );
 
@@ -52,7 +49,6 @@ class StoreProvider extends ChangeNotifier {
     return true;
   }
 
-  /// 2. شراء ميزة توسيع نطاق الانضمام للمجموعات (200 عملة)
   Future<bool> purchaseJoinedGroupsExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
@@ -62,7 +58,7 @@ class StoreProvider extends ChangeNotifier {
 
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
-      customMaxJoinedGroupsLimit: StoreConstants.expandedJoinedGroupsLimit, // رفع الحد إلى 7 مجموعات
+      customMaxJoinedGroupsLimit: StoreConstants.expandedJoinedGroupsLimit,
       updatedAt: DateTime.now(),
     );
 
@@ -72,7 +68,6 @@ class StoreProvider extends ChangeNotifier {
     return true;
   }
 
-  /// 3. شراء ميزة تأسيس إمبراطوريات جديدة وإنشاء مجموعات أكثر (200 عملة)
   Future<bool> purchaseCreatedGroupsExpansion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.domainExpansionPrice)) return false;
@@ -82,7 +77,7 @@ class StoreProvider extends ChangeNotifier {
 
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.domainExpansionPrice,
-      customMaxCreatedGroupsLimit: StoreConstants.expandedCreatedGroupsLimit, // رفع حد الإنشاء إلى 3 مجموعات
+      customMaxCreatedGroupsLimit: StoreConstants.expandedCreatedGroupsLimit,
       updatedAt: DateTime.now(),
     );
 
@@ -92,7 +87,6 @@ class StoreProvider extends ChangeNotifier {
     return true;
   }
 
-  /// 4. شراء اشتراك بريميوم الحصري (500 عملة)
   Future<bool> purchasePremiumSubscription() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.premiumSubscriptionPrice)) return false;
@@ -113,7 +107,6 @@ class StoreProvider extends ChangeNotifier {
     return true;
   }
 
-  /// 5. شراء ترويج للمجموعة الحالية (150 عملة)
   Future<bool> purchaseGroupPromotion() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.groupPromotionPrice)) return false;
@@ -133,10 +126,9 @@ class StoreProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // نظام كسب ومكافآت العملات (Reward Operations) + جدار الحماية ضد الغش
+  // نظام كسب المكافآت
   // =========================================================
 
-  /// دالة إضافة المكافآت العامة
   Future<void> _addRewardCoins(int amount) async {
     final user = _userProvider.currentUser;
     if (user == null) return;
@@ -150,10 +142,8 @@ class StoreProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 1. مكافأة الإعلان الاختياري (+20) مع جدار حماية زمني صارم لمنع الغش بالتكرار المتتالي
   Future<bool> rewardForWatchingAd() async {
     final now = DateTime.now();
-    // جدار حماية: منع تشغيل أو احتساب إعلانين في غضون أقل من 30 ثانية (حماية من ثغرات استدعاء الدالة المباشر)
     if (_lastAdWatchedTime != null && now.difference(_lastAdWatchedTime!).inSeconds < 30) {
       return false; 
     }
@@ -163,22 +153,24 @@ class StoreProvider extends ChangeNotifier {
     return true;
   }
 
-  /// 2. مكافأة الفوز في الفعالية (+10)
+  /// تم تعطيل هذه الدالة عمداً - المكافأة تتم الآن فقط عبر CoinService عند الفوز الحقيقي
   Future<void> rewardForEventWin() async {
-    await _addRewardCoins(StoreConstants.rewardEventWin);
+    debugPrint('⚠️ rewardForEventWin تم تعطيلها - استخدم CoinService');
+    return;
   }
 
-  /// 3. مكافأة نشر مقطع إديت إبداعي جديد (+10)
+  // ✅ تم تعطيلها - المكافأة تتم فقط بعد الرفع الفعلي عبر CoinService
   Future<void> rewardForPublishingEdit() async {
-    await _addRewardCoins(StoreConstants.rewardPublishEdit);
+    debugPrint('⚠️ rewardForPublishingEdit معطلة - المكافأة بعد الرفع فقط عبر CoinService');
+    return;
   }
 
-  /// 4. مكافأة متابعة حساب التطبيق الرسمي (+50)
+  // ✅ تم إلغاؤها نهائياً - مخالفة لسياسة Google Play و Instagram/TikTok
   Future<void> rewardForFollowingAccount() async {
-    await _addRewardCoins(StoreConstants.rewardFollowAccount);
+    debugPrint('⚠️ rewardForFollowingAccount ملغاة - ممنوع إعطاء عملات مقابل متابعة (مخالفة Google Play)');
+    return;
   }
 
-  /// 5. مكافأة نظام الإحالة ودعوة الأصدقاء (70 لك و 30 للصديق المسجل)
   Future<void> rewardForInvitingFriend() async {
     await _addRewardCoins(StoreConstants.rewardInviter);
   }

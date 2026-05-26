@@ -7,11 +7,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/edits_model.dart';
 import '../services/firebase/edits_service.dart';
-import 'package:pubget/services/firebase/feed_service.dart';
+import '../services/firebase/feed_service.dart';
+import '../services/monetization/coin_service.dart'; // <-- جديد
 
 class EditsProvider extends ChangeNotifier {
   final EditsService _service = EditsService();
   final FeedService _feedService = FeedService();
+  final CoinService _coinService = CoinService(); // <-- جديد
   final Map<String, EditModel> _editsMap = {};
   final Map<String, Set<String>> _pendingLikeUpdates = {};
   final Set<String> _seenIds = {};
@@ -148,7 +150,7 @@ class EditsProvider extends ChangeNotifier {
 
     if (hasNewEdit) {
       _sessionFeed
-         .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
+       .sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     }
   }
 
@@ -217,7 +219,6 @@ class EditsProvider extends ChangeNotifier {
     await _service.incrementViews(editId, userId);
   }
 
-  // ── تم التعديل: يرجع ID التعليق
   Future<String?> addComment({
     required String editId,
     required String userId,
@@ -252,7 +253,6 @@ class EditsProvider extends ChangeNotifier {
     }
   }
 
-  // ── دالة جديدة: stream التعليقات مع جلب صور المستخدمين
   Stream<List<CommentModel>> streamComments(String editId) {
     return _service.streamComments(editId).asyncMap((comments) async {
       final enriched = <CommentModel>[];
@@ -260,9 +260,9 @@ class EditsProvider extends ChangeNotifier {
         if (c.userAvatar.isEmpty) {
           try {
             final userDoc = await FirebaseFirestore.instance
-               .collection('Users')
-               .doc(c.userId)
-               .get();
+             .collection('Users')
+             .doc(c.userId)
+             .get();
             final data = userDoc.data();
             final avatar = data?['avatarUrl']?? '';
             final name = data?['username']?? c.userName;
@@ -344,6 +344,18 @@ class EditsProvider extends ChangeNotifier {
 
       final docId = await _service.postEdit(edit);
       final uploadedEdit = edit.copyWith(id: docId);
+
+      // ✅ مكافأة النشر بعد الرفع الناجح - مرة واحدة يومياً
+      try {
+        final rewarded = await _coinService.rewardForPublishingEdit(userId: userId);
+        if (rewarded) {
+          debugPrint('✅ تمت مكافأة نشر الإديت +10');
+        } else {
+          debugPrint('⚠️ وصلت للحد اليومي لنشر الإديت');
+        }
+      } catch (e) {
+        debugPrint('⚠️ فشل مكافأة الإديت: $e');
+      }
 
       _lastUploadedEdit = uploadedEdit;
       _skipNextLoad = true;

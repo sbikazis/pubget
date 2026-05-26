@@ -113,14 +113,14 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
   Future<void> _disposeVideoController() async {
     final controller = _videoController;
     _videoController = null;
-    if (controller != null) {
+    if (controller!= null) {
       await controller.dispose();
     }
   }
 
   void _togglePlayPause() {
     final controller = _videoController;
-    if (controller == null || !_videoInitialized) return;
+    if (controller == null ||!_videoInitialized) return;
 
     if (controller.value.isPlaying) {
       controller.pause();
@@ -160,7 +160,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       return;
     }
 
-    if (_videoController != null && _videoController!.value.isPlaying) {
+    if (_videoController!= null && _videoController!.value.isPlaying) {
       await _videoController!.pause();
     }
 
@@ -178,6 +178,14 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       caption: _captionController.text.trim(),
       onComplete: (_) {
         if (!mounted) return;
+        // ✅ إشعار النجاح مع المكافأة
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم النشر بنجاح! حصلت على +10 عملات مشعة'),
+            backgroundColor: Color(0xFF00C851),
+            duration: Duration(seconds: 3),
+          )
+        );
         Navigator.pop(context);
       },
       onFailed: (error) {
@@ -203,7 +211,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       );
     }
 
-    if (_videoInitialized && _videoController != null) {
+    if (_videoInitialized && _videoController!= null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Stack(
@@ -227,7 +235,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
               ),
               child: Icon(
                 _videoController!.value.isPlaying
-                    ? Icons.pause
+                   ? Icons.pause
                     : Icons.play_arrow,
                 color: Colors.white,
                 size: 36,
@@ -305,40 +313,40 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
         title: const Text('نشر إيديت'),
         actions: [
           Padding(
-  padding: const EdgeInsets.only(left: 8, right: 8),
-  child: TextButton(
-    onPressed: _isSubmitting ? null : _submitUpload,
-    style: TextButton.styleFrom(
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.4),
-      disabledForegroundColor: Colors.white54,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 8,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-    ),
-    child: _isSubmitting
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.white,
-            ),
-          )
-        : const Text(
-            'نشر',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
+            padding: const EdgeInsets.only(left: 8, right: 8),
+            child: TextButton(
+              onPressed: _isSubmitting? null : _submitUpload,
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.4),
+                disabledForegroundColor: Colors.white54,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: _isSubmitting
+                 ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'نشر',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
             ),
           ),
-  ),
-),
         ],
       ),
       body: SingleChildScrollView(
@@ -347,7 +355,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
-              onTap: _videoInitialized ? _togglePlayPause : _pickVideo,
+              onTap: _videoInitialized? _togglePlayPause : _pickVideo,
               child: Container(
                 height: 260,
                 width: double.infinity,

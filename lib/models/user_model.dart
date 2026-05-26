@@ -23,11 +23,15 @@ class UserModel {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  // 🔥 الحقول المضافة حديثاً لإدارة نظام العملات والتوسعات التقنية الثلاثة
-  final int coinsBalance;              // رصيد المحفظة الحالي للعملات المشعة
-  final int customMaxMembersLimit;     // التوسعة 1: حد أعضاء المجموعة المخصص المشتري بـ 200 عملة
-  final int customMaxJoinedGroupsLimit;// التوسعة 2: حد المجموعات المسموح الانضمام لها
-  final int customMaxCreatedGroupsLimit;// التوسعة 3: حد المجموعات المسموح بإنشائها
+  // 🔥 نظام العملات
+  final int coinsBalance;
+  final int customMaxMembersLimit;
+  final int customMaxJoinedGroupsLimit;
+  final int customMaxCreatedGroupsLimit;
+
+  // ✅ نظام الدعوة - جديد
+  final String? invitedBy;
+  final bool hasClaimedReferral;
 
   const UserModel({
     required this.id,
@@ -48,11 +52,12 @@ class UserModel {
     required this.isBanned,
     required this.createdAt,
     required this.updatedAt,
-    // قيم افتراضية للحقول الجديدة لعدم كسر الحسابات القديمة
     this.coinsBalance = 0,
     this.customMaxMembersLimit = 0,
     this.customMaxJoinedGroupsLimit = 0,
     this.customMaxCreatedGroupsLimit = 0,
+    this.invitedBy, // <-- جديد
+    this.hasClaimedReferral = false, // <-- جديد
   });
 
   bool get isPremium => subscriptionType == SubscriptionType.premium;
@@ -79,11 +84,12 @@ class UserModel {
       isBanned: map['isBanned'] ?? false,
       createdAt: _toDateTime(map['createdAt']),
       updatedAt: _toDateTime(map['updatedAt']),
-      // قراءة الحقول الجديدة من الخريطة بسلاسة
       coinsBalance: map['coinsBalance'] ?? 0,
       customMaxMembersLimit: map['customMaxMembersLimit'] ?? 0,
       customMaxJoinedGroupsLimit: map['customMaxJoinedGroupsLimit'] ?? 0,
       customMaxCreatedGroupsLimit: map['customMaxCreatedGroupsLimit'] ?? 0,
+      invitedBy: map['invitedBy'], // <-- جديد
+      hasClaimedReferral: map['hasClaimedReferral'] ?? false, // <-- جديد
     );
   }
 
@@ -106,11 +112,12 @@ class UserModel {
       'isBanned': isBanned,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
-      // حفظ البيانات المضافة حديثاً
       'coinsBalance': coinsBalance,
       'customMaxMembersLimit': customMaxMembersLimit,
       'customMaxJoinedGroupsLimit': customMaxJoinedGroupsLimit,
       'customMaxCreatedGroupsLimit': customMaxCreatedGroupsLimit,
+      'invitedBy': invitedBy, // <-- جديد
+      'hasClaimedReferral': hasClaimedReferral, // <-- جديد
     };
   }
 
@@ -130,11 +137,12 @@ class UserModel {
     bool? isProfileCompleted,
     bool? isBanned,
     DateTime? updatedAt,
-    // دعم نسخ الحقول الجديدة
     int? coinsBalance,
     int? customMaxMembersLimit,
     int? customMaxJoinedGroupsLimit,
     int? customMaxCreatedGroupsLimit,
+    String? invitedBy, // <-- جديد
+    bool? hasClaimedReferral, // <-- جديد
   }) {
     return UserModel(
       id: id,
@@ -159,6 +167,8 @@ class UserModel {
       customMaxMembersLimit: customMaxMembersLimit ?? this.customMaxMembersLimit,
       customMaxJoinedGroupsLimit: customMaxJoinedGroupsLimit ?? this.customMaxJoinedGroupsLimit,
       customMaxCreatedGroupsLimit: customMaxCreatedGroupsLimit ?? this.customMaxCreatedGroupsLimit,
+      invitedBy: invitedBy ?? this.invitedBy, // <-- جديد
+      hasClaimedReferral: hasClaimedReferral ?? this.hasClaimedReferral, // <-- جديد
     );
   }
 

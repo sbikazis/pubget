@@ -4,6 +4,7 @@ import '../models/game_model.dart';
 import '../models/message_model.dart';
 import '../services/firebase/firestore_service.dart';
 import '../services/api/anime_api_service.dart';
+import '../services/monetization/coin_service.dart'; // <-- جديد
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/game_status.dart';
 import '../core/logic/game_logic_validator.dart';
@@ -14,6 +15,7 @@ import 'package:flutter/foundation.dart';
 class GameProvider extends ChangeNotifier {
   final FirestoreService _firestore;
   final Uuid _uuid = const Uuid();
+  final CoinService _coinService = CoinService(); // <-- جديد
 
   GameProvider({FirestoreService? firestore})
       : _firestore = firestore?? FirestoreService();
@@ -30,17 +32,17 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final snapshot = await FirebaseFirestore.instance
-        .collection(FirestorePaths.groupGames(groupId))
-        .get();
+       .collection(FirestorePaths.groupGames(groupId))
+       .get();
       final activeGames = snapshot.docs
-        .map((doc) => GameModel.fromMap(doc.id, doc.data()))
-        .where((g) =>!g.status.isOver && g.gameType == 'guess')
-        .toList();
+       .map((doc) => GameModel.fromMap(doc.id, doc.data()))
+       .where((g) =>!g.status.isOver && g.gameType == 'guess')
+       .toList();
       if (!GameLogicValidator.canCreateNewGame(activeGames)) {
         throw Exception("المجموعة ممتلئة، هناك لعبتان قيد التنفيذ حالياً.");
       }
       String assignedSlot = activeGames.any((g) => g.gameSlot == 'game_1')
-        ? 'game_2'
+       ? 'game_2'
           : 'game_1';
       final gameId = _uuid.v4();
       final game = GameModel(
@@ -110,8 +112,8 @@ class GameProvider extends ChangeNotifier {
     String? userName,
   }) async {
     final ref = FirebaseFirestore.instance
-      .collection(FirestorePaths.groupGames(groupId))
-      .doc(gameId);
+     .collection(FirestorePaths.groupGames(groupId))
+     .doc(gameId);
     return FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
       if (!snap.exists) return false;
@@ -208,7 +210,7 @@ class GameProvider extends ChangeNotifier {
 
   Future<void> setCharacter({required String groupId, required String gameId, required String userId, required List<int> animeIds, required String characterName, String? validatedName, String? validatedImageUrl}) async {
     final charData = (validatedName!= null && validatedImageUrl!= null)
-      ? {'name': validatedName, 'imageUrl': validatedImageUrl}
+     ? {'name': validatedName, 'imageUrl': validatedImageUrl}
         : await AnimeApiService.getCharacterDetails(animeIds: animeIds, characterName: characterName);
     if (charData == null) throw Exception("هذه الشخصية غير موجودة.");
     final gameRef = FirebaseFirestore.instance.collection(FirestorePaths.groupGames(groupId)).doc(gameId);
@@ -286,6 +288,16 @@ class GameProvider extends ChangeNotifier {
     final game = GameModel.fromMap(gameId, snapshot.data()!);
     if (game.status.isOver) return;
     await gameRef.update({'status': isCancelled? GameStatus.cancelled.name : GameStatus.finished.name, 'winnerUserId': winnerId, 'finishedAt': FieldValue.serverTimestamp(), 'endReason': reason});
+
+    // مكافأة الفائز الحقيقي فقط - مع حماية ضد الغش
+    if (!isCancelled && winnerId!= null) {
+      try {
+        await _coinService.rewardEventWin(userId: winnerId, gameId: gameId);
+      } catch (e) {
+        debugPrint('Failed to reward coins: $e');
+      }
+    }
+
     String resolvedLoserName = loserName?? "الخصم";
     if (loserName == null) {
       final loserId = winnerId == game.playerOneId? game.playerTwoId : game.playerOneId;
@@ -324,9 +336,8 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> processAutoJudge(String groupId, GameModel game) async {
-    // ✅ التعديل الجديد - لا تحكم على غرفة فارغة
     if (game.status == GameStatus.waitingForOpponent) return;
-    if (game.playerTwoId == null) return; // ما كاين حتى خصم
+    if (game.playerTwoId == null) return;
 
     final timeoutType = GameAutoJudge.checkTimeout(game);
     if (timeoutType == TimeoutType.none) return;

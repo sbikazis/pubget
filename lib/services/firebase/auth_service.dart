@@ -28,7 +28,7 @@ class AuthService {
       final firebaseUser = userCredential.user;
 
       if (firebaseUser == null) {
-        throw Exception('فشل تسجيل الدخول عن طريق حساب جوجل / Google sign-in failed');
+        throw Exception('فشل تسجيل الدخول عن طريق حساب جوجل');
       }
 
       final existingDoc = await _firestore.getDocument(
@@ -40,12 +40,11 @@ class AuthService {
         final user = UserModel.fromMap(existingDoc, firebaseUser.uid);
         if (user.isBanned) {
           await logout();
-          throw Exception('المستخدم محظور / User is banned');
+          throw Exception('المستخدم محظور');
         }
         return user;
       }
 
-      // إذا كان مستخدم جديد، نقوم بإنشاء مستنده والتحقق من كود الداعي عبر الـ Transaction
       return await _createInitialUserData(firebaseUser, referrerId: referrerId);
     } catch (e) {
       rethrow;
@@ -53,7 +52,7 @@ class AuthService {
   }
 
   // =========================================================
-  // REGISTER (Email & Password)
+  // REGISTER
   // =========================================================
   Future<UserModel> register({
     required String email,
@@ -66,13 +65,13 @@ class AuthService {
     );
 
     final firebaseUser = credential.user;
-    if (firebaseUser == null) throw Exception('فشل إنشاء الحساب / Register failed');
+    if (firebaseUser == null) throw Exception('فشل إنشاء الحساب');
 
     return await _createInitialUserData(firebaseUser, referrerId: referrerId);
   }
 
   // =========================================================
-  // LOGIN (Email & Password)
+  // LOGIN
   // =========================================================
   Future<UserModel> login({
     required String email,
@@ -84,18 +83,18 @@ class AuthService {
     );
 
     final firebaseUser = credential.user;
-    if (firebaseUser == null) throw Exception('فشل تسجيل الدخول / Login failed');
+    if (firebaseUser == null) throw Exception('فشل تسجيل الدخول');
 
     final doc = await _firestore.getDocument(
       path: FirestorePaths.users,
       docId: firebaseUser.uid,
     );
-    if (doc == null) throw Exception('تعذر إيجاد بيانات المستخدم / User data not found');
+    if (doc == null) throw Exception('تعذر إيجاد بيانات المستخدم');
 
     final user = UserModel.fromMap(doc, firebaseUser.uid);
     if (user.isBanned) {
       await logout();
-      throw Exception('المستخدم محظور / User is banned');
+      throw Exception('المستخدم محظور');
     }
 
     return user;
@@ -109,10 +108,15 @@ class AuthService {
   }
 
   // =========================================================
-  // CREATE INITIAL USER DOCUMENT (مع معالجة الإحالة الصارمة)
+  // CREATE INITIAL USER
   // =========================================================
   Future<UserModel> _createInitialUserData(User firebaseUser, {String? referrerId}) async {
     final now = DateTime.now();
+
+    // منع الدعوة الذاتية
+    final validReferrer = (referrerId != null && referrerId.isNotEmpty && referrerId != firebaseUser.uid) 
+        ? referrerId 
+        : null;
 
     final user = UserModel(
       id: firebaseUser.uid,
@@ -131,59 +135,22 @@ class AuthService {
       isBanned: false,
       createdAt: now,
       updatedAt: now,
+      coinsBalance: 0,
+      invitedBy: validReferrer, // <-- حفظ الداعي
+      hasClaimedReferral: false, // <-- لم يأخذ المكافأة بعد
     );
 
-    // التحقق الفني لمنع المستخدم من إحالة نفسه أو إذا كان كود الداعي فارغاً
-    if (referrerId == null || referrerId.isEmpty || referrerId == firebaseUser.uid) {
-      await _firestore.createDocument(
-        path: FirestorePaths.users,
-        docId: firebaseUser.uid,
-        data: user.toMap(),
-      );
-      return user;
-    }
-
-    // 🛡️ تفعيل المعاملة الذرية (Firestore Transaction) لحقن المكافآت بالتزامن
-    await _db.runTransaction((transaction) async {
-      final referrerDocRef = _db.collection(FirestorePaths.users).doc(referrerId);
-      final newUserDocRef = _db.collection(FirestorePaths.users).doc(firebaseUser.uid);
-
-      final referrerSnapshot = await transaction.get(referrerDocRef);
-
-      if (referrerSnapshot.exists) {
-        final userData = user.toMap();
-        userData['coins'] = (userData['coins'] ?? 0) + 30; // منح المدعو 30 عملة
-        userData['referredBy'] = referrerId;
-        
-        transaction.set(newUserDocRef, userData);
-
-        final currentReferrerCoins = referrerSnapshot.data()?['coins'] ?? 0;
-        transaction.update(referrerDocRef, {
-          'coins': currentReferrerCoins + 70, // منح الداعي 70 عملة بالتزامن
-        });
-
-        // توثيق العملية مالياً في مستندات الـ Transactions لمنع التلاعب
-        final transactionDocRef = _db.collection('wallet_transactions').doc();
-        transaction.set(transactionDocRef, {
-          'id': transactionDocRef.id,
-          'type': 'referral_reward',
-          'amount': 70,
-          'userId': referrerId,
-          'receiverId': firebaseUser.uid,
-          'timestamp': FieldValue.serverTimestamp(),
-          'description': '🎯 مكافأة دعوة مستخدم جديد للتطبيق بنجاح',
-        });
-      } else {
-        // في حال عدم وجود مستند حقيقي للداعي يتم إنشاء مستند المدعو العادي
-        transaction.set(newUserDocRef, user.toMap());
-      }
-    });
+    await _firestore.createDocument(
+      path: FirestorePaths.users,
+      docId: firebaseUser.uid,
+      data: user.toMap(),
+    );
 
     return user;
   }
 
   // =========================================================
-  // GET CURRENT USER (AUTO LOGIN)
+  // GET CURRENT USER
   // =========================================================
   Future<UserModel?> getCurrentUser() async {
     final firebaseUser = _auth.currentUser;
