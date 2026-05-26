@@ -1,40 +1,40 @@
 // lib/models/user_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/subscription_type.dart';
 
 class UserModel {
   final String id;
   final String email;
-
   final String username;
   final String? nickname;
-
-  final String avatarUrl; // ✅ أعدناها String (بدون ?) لإزالة الأخطاء الحمراء
+  final String avatarUrl;
   final String bio;
   final List<String> favoriteAnimes;
-
   final int? age;
   final String? country;
-
   final SubscriptionType subscriptionType;
   final DateTime? premiumSince;
   final String? nameColor;
-
   final int totalRespect;
   final int fansCount;
-
   final bool isProfileCompleted;
   final bool isBanned;
-
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  // 🔥 الحقول المضافة حديثاً لإدارة نظام العملات والتوسعات التقنية الثلاثة
+  final int coinsBalance;              // رصيد المحفظة الحالي للعملات المشعة
+  final int customMaxMembersLimit;     // التوسعة 1: حد أعضاء المجموعة المخصص المشتري بـ 200 عملة
+  final int customMaxJoinedGroupsLimit;// التوسعة 2: حد المجموعات المسموح الانضمام لها
+  final int customMaxCreatedGroupsLimit;// التوسعة 3: حد المجموعات المسموح بإنشائها
 
   const UserModel({
     required this.id,
     required this.email,
     required this.username,
     this.nickname,
-    required this.avatarUrl, // ✅ أعدناها required
+    required this.avatarUrl,
     required this.bio,
     required this.favoriteAnimes,
     this.age,
@@ -48,20 +48,16 @@ class UserModel {
     required this.isBanned,
     required this.createdAt,
     required this.updatedAt,
+    // قيم افتراضية للحقول الجديدة لعدم كسر الحسابات القديمة
+    this.coinsBalance = 0,
+    this.customMaxMembersLimit = 0,
+    this.customMaxJoinedGroupsLimit = 0,
+    this.customMaxCreatedGroupsLimit = 0,
   });
 
   bool get isPremium => subscriptionType == SubscriptionType.premium;
 
-  // =========================================================
-  // From Firestore
-  // =========================================================
-  factory UserModel.fromMap(
-    Map<String, dynamic> map,
-    String documentId,
-  ) {
-    // 🔍 الخدعة هنا: نتحقق من القيمة قبل وضعها في الموديل
-    // إذا كانت القيمة في Firestore فارغة أو غير موجودة، نضع نصاً خاصاً "no_image"
-    // أو نتركها فارغة ولكن بحذر.
+  factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
     final String rawAvatar = map['avatarUrl'] ?? '';
 
     return UserModel(
@@ -69,11 +65,7 @@ class UserModel {
       email: map['email'] ?? '',
       username: map['username'] ?? '',
       nickname: map['nickname'],
-      
-      // ✅ التعديل: إذا كان الرابط فارغاً، نمرر نصاً فارغاً
-      // لكننا سنعتمد على منطق الـ Provider والـ MemberModel لفلترته
       avatarUrl: rawAvatar, 
-      
       bio: map['bio'] ?? '',
       favoriteAnimes: List<String>.from(map['favoriteAnimes'] ?? []),
       age: map['age'],
@@ -87,6 +79,11 @@ class UserModel {
       isBanned: map['isBanned'] ?? false,
       createdAt: _toDateTime(map['createdAt']),
       updatedAt: _toDateTime(map['updatedAt']),
+      // قراءة الحقول الجديدة من الخريطة بسلاسة
+      coinsBalance: map['coinsBalance'] ?? 0,
+      customMaxMembersLimit: map['customMaxMembersLimit'] ?? 0,
+      customMaxJoinedGroupsLimit: map['customMaxJoinedGroupsLimit'] ?? 0,
+      customMaxCreatedGroupsLimit: map['customMaxCreatedGroupsLimit'] ?? 0,
     );
   }
 
@@ -109,6 +106,11 @@ class UserModel {
       'isBanned': isBanned,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
+      // حفظ البيانات المضافة حديثاً
+      'coinsBalance': coinsBalance,
+      'customMaxMembersLimit': customMaxMembersLimit,
+      'customMaxJoinedGroupsLimit': customMaxJoinedGroupsLimit,
+      'customMaxCreatedGroupsLimit': customMaxCreatedGroupsLimit,
     };
   }
 
@@ -128,6 +130,11 @@ class UserModel {
     bool? isProfileCompleted,
     bool? isBanned,
     DateTime? updatedAt,
+    // دعم نسخ الحقول الجديدة
+    int? coinsBalance,
+    int? customMaxMembersLimit,
+    int? customMaxJoinedGroupsLimit,
+    int? customMaxCreatedGroupsLimit,
   }) {
     return UserModel(
       id: id,
@@ -148,6 +155,10 @@ class UserModel {
       isBanned: isBanned ?? this.isBanned,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      coinsBalance: coinsBalance ?? this.coinsBalance,
+      customMaxMembersLimit: customMaxMembersLimit ?? this.customMaxMembersLimit,
+      customMaxJoinedGroupsLimit: customMaxJoinedGroupsLimit ?? this.customMaxJoinedGroupsLimit,
+      customMaxCreatedGroupsLimit: customMaxCreatedGroupsLimit ?? this.customMaxCreatedGroupsLimit,
     );
   }
 

@@ -4,7 +4,8 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_theme.dart';
 import 'app_button.dart';
 import 'app_textfield.dart'; 
-import 'package:pubget/features/settings/premium_details_screen.dart'; 
+import 'package:pubget/widgets/shiny_coin_widget.dart';
+import 'package:pubget/features/store/screens/store_screen.dart';
 
 /// A reusable dialog widget for Pubget
 class AppDialog extends StatelessWidget {
@@ -17,6 +18,7 @@ class AppDialog extends StatelessWidget {
   final bool isLoading;
   final bool barrierDismissible;
   final Widget? extraContent; 
+  final Widget? icon; // إضافة دعم الأيقونات العلوية الفخمة
 
   const AppDialog({
     super.key,
@@ -29,6 +31,7 @@ class AppDialog extends StatelessWidget {
     this.isLoading = false,
     this.barrierDismissible = true,
     this.extraContent,
+    this.icon,
   });
 
   /// Show the dialog easily from anywhere
@@ -91,29 +94,52 @@ class AppDialog extends StatelessWidget {
     );
   }
 
-  /// ✅ الإصلاح الجذري: إظهار ديالوج الوصول للحدود مع تفعيل الزر المركزي
-  /// أضفت [customContent] لكي يعرض الرسالة القادمة من الـ Logic (مثل رسالة الـ 101 عضو)
-  static Future<void> showLimitReachedDialog(BuildContext context, {String? customContent}) {
+  /// ✅ التطوير الشامل: إظهار ديالوج الوصول للحدود ونقص العملات والتوجيه للمتجر
+  /// [isLimitExceeded] يحدد ما إذا كان التنبيه بسبب قفل المجال (true) أو نقص رصيد العملات (false)
+  static Future<void> showLimitReachedDialog(
+    BuildContext context, {
+    String? customTitle,
+    String? customContent,
+    bool isLimitExceeded = true,
+  }) {
     return showDialog(
       context: context,
-      builder: (dialogContext) => AppDialog(
-        title: "💎 وصلت للحد الأقصى",
-        content: customContent ?? "لقد وصلت للحد المسموح به في النسخة المجانية. هل ترغب في الترقية لزيادة حدودك والتمتع بميزات حصرية؟",
-        confirmText: "ترقية الآن",
-        onConfirm: () {
-          // 1. إغلاق الديالوج أولاً
-          Navigator.pop(dialogContext); 
-          
-          // 2. فتح صفحة الترقية فوراً
-          showModalBottomSheet(
+      builder: (dialogContext) {
+        return AppDialog(
+          title: customTitle ?? (isLimitExceeded ? "⚠️ تخطي قفل المجال التقني" : "💎 رصيد عملات غير كافٍ"),
+          content: customContent ?? (isLimitExceeded 
+              ? "لقد وصلت للحد المسموح به في نسختك الحالية. تفضل بزيارة المتجر لتوسيع المجال ورفع القيود!"
+              : "لا تملك رصيداً كافياً من العملات المشعة لإتمام هذه العملية. توجه لشحن العملات الآن!"),
+          confirmText: isLimitExceeded ? "زيارة المتجر" : "شحن العملات",
+          icon: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isLimitExceeded 
+                  ? Colors.amber.withOpacity(0.1) 
+                  : const Color(0xFFB800FF).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: isLimitExceeded 
+                ? const Icon(Icons.gpp_maybe_rounded, color: Colors.amber, size: 40)
+                : const ShinyCoinWidget(size: 40),
+          ),
+          onConfirm: () {
+            // 1. إغلاق الديالوج
+            Navigator.pop(dialogContext); 
+            
+            // 2. التوجيه الذكي إلى صفحة المتجر الشاملة (أو صفحة كسب العملات)
+            // سيتم استخدام هذا المسار الموحد عند بناء واجهة المتجر في المرحلة القادمة
+            showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (context) => const PremiumDetailsScreen(),
+            builder: (context) => const StoreScreen(),
           );
-        },
-        cancelText: "ربما لاحقاً",
-      ),
+          },
+          cancelText: "ربما لاحقاً",
+        );
+      },
     );
   }
 
@@ -129,7 +155,7 @@ class AppDialog extends StatelessWidget {
           ? AppColors.darkSurface
           : AppColors.lightSurface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24), // تعديل الحواف لتصبح ناعمة ومتناسقة
         side: isDark 
             ? BorderSide(color: AppColors.primary.withValues(alpha: 0.15), width: 0.8)
             : BorderSide.none,
@@ -137,10 +163,13 @@ class AppDialog extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // عرض الأيقونة العلوية البراقة إن وجدت
+              if (icon != null) icon!,
+              
               if (title != null)
                 Text(
                   title!,
@@ -150,7 +179,7 @@ class AppDialog extends StatelessWidget {
                       ?.copyWith(
                     color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
                     fontWeight: FontWeight.bold,
-                    fontSize: 20, 
+                    fontSize: 18, 
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -164,6 +193,7 @@ class AppDialog extends StatelessWidget {
                       ?.copyWith(
                     color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                     height: 1.5, 
+                    fontSize: 13,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -182,7 +212,7 @@ class AppDialog extends StatelessWidget {
                         child: AppButton(
                           text: cancelText!,
                           onPressed: onCancel ?? () => Navigator.pop(context),
-                          expand: false,
+                          expand: true, // تفعيل التمدد المتناسق داخل السطر
                         ),
                       ),
                     ),
@@ -193,7 +223,7 @@ class AppDialog extends StatelessWidget {
                         text: confirmText,
                         onPressed: onConfirm,
                         isLoading: isLoading,
-                        expand: false,
+                        expand: true,
                       ),
                     ),
                   ),

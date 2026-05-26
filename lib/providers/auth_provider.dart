@@ -1,7 +1,7 @@
 // lib/providers/auth_provider.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
 import '../services/firebase/auth_service.dart';
 import '../models/user_model.dart';
 import '../providers/user_provider.dart';
@@ -51,17 +51,22 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // REGISTER
+  // REGISTER (تم تحديثها لتمرير معرف الداعي)
   // =========================================================
   Future<void> register({
     required String email,
     required String password,
+    String? referrerId,
   }) async {
     try {
       _setLoading(true);
       _error = null;
 
-      final user = await _authService.register(email: email, password: password);
+      final user = await _authService.register(
+        email: email, 
+        password: password,
+        referrerId: referrerId,
+      );
       _user = user;
 
       if (user != null) {
@@ -78,14 +83,14 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // GOOGLE LOGIN
+  // GOOGLE LOGIN (تم تحديثها لتمرير معرف الداعي)
   // =========================================================
-  Future<void> signInWithGoogle() async {
+  Future<void> signInWithGoogle({String? referrerId}) async {
     try {
       _setLoading(true);
       _error = null;
 
-      final user = await _authService.signInWithGoogle();
+      final user = await _authService.signInWithGoogle(referrerId: referrerId);
       _user = user;
 
       if (user != null) {

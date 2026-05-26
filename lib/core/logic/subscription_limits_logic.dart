@@ -1,4 +1,5 @@
 // lib/core/logic/subscription_limits_logic.dart
+
 import '../constants/limits.dart';
 import '../../models/user_model.dart';
 
@@ -18,7 +19,6 @@ class SubscriptionLimitsResult {
   }
 
   factory SubscriptionLimitsResult.denied(String message, {bool showUpgrade = true}) {
-    // ✅ التصحيح: تم التأكد من استخدام النقطتين الرأسيتين (:) لتمرير القيم للمعاملات المسماة
     return SubscriptionLimitsResult(
       isAllowed: false,
       message: message,
@@ -30,49 +30,62 @@ class SubscriptionLimitsResult {
 class SubscriptionLimitsLogic {
   SubscriptionLimitsLogic._();
 
-  /// التحقق من صلاحية إنشاء مجموعة جديدة
+  /// التحقق من صلاحية إنشاء مجموعة جديدة (توسعة المجال 3)
   static SubscriptionLimitsResult canCreateGroup(UserModel user, int currentOwnedCount) {
-    final bool isPremium = user.isPremium;
-    final int limit = isPremium ? Limits.maxGroupsPremium : Limits.maxGroupsFree;
+    // 🛡️ فحص أولاً: هل يمتلك المستخدم توسعة مجال مشتراة من المتجر لإنشاء مجموعات أكثر؟
+    int limit = user.customMaxCreatedGroupsLimit;
+
+    // إذا لم يشتري توسعة مخصصة بعد، نعود للمنطق الافتراضي (بريميوم أو مجاني)
+    if (limit <= 0) {
+      limit = user.isPremium ? Limits.maxGroupsPremium : Limits.maxGroupsFree;
+    }
 
     if (currentOwnedCount >= limit) {
       return SubscriptionLimitsResult.denied(
-        isPremium 
-          ? "لقد استنفدت الحد الأقصى لإنشاء المجموعات (الحد: $limit)." 
-          : "وصلت للحد الأقصى للنسخة المجانية. يمكنك إنشاء مجموعة واحدة فقط.",
-        showUpgrade: !isPremium,
+        user.isPremium 
+          ? "لقد استنفدت الحد الأقصى لإنشاء المجموعات (الحد الحالي: $limit)." 
+          : "وصلت للحد الأقصى للنسخة المجانية. يمكنك امتلاك مجموعة واحدة فقط أو شراء توسعة المجال من المتجر.",
+        showUpgrade: true, // تفعيل التوجيه للمتجر لشراء التوسعة التقنية
       );
     }
     return SubscriptionLimitsResult.allowed();
   }
 
-  /// التحقق من صلاحية الانضمام لمجموعة جديدة
+  /// التحقق من صلاحية الانضمام لمجموعة جديدة (توسعة المجال 2)
   static SubscriptionLimitsResult canJoinGroup(UserModel user, int currentJoinedCount) {
-    final bool isPremium = user.isPremium;
-    final int limit = isPremium ? Limits.maxJoinedPremium : Limits.maxJoinedFree;
+    // 🛡️ فحص أولاً: هل يمتلك المستخدم توسعة مجال مشتراة لانضمامات أكثر؟
+    int limit = user.customMaxJoinedGroupsLimit;
+
+    if (limit <= 0) {
+      limit = user.isPremium ? Limits.maxJoinedPremium : Limits.maxJoinedFree;
+    }
 
     if (currentJoinedCount >= limit) {
       return SubscriptionLimitsResult.denied(
-        isPremium
+        user.isPremium
           ? "لقد وصلت للحد الأقصى للانضمامات ($limit مجموعات)."
-          : "لا يمكنك الانضمام لأكثر من مجموعتين في النسخة المجانية.",
-        showUpgrade: !isPremium,
+          : "لا يمكنك الانضمام لأكثر من مجموعتين في النسخة المجانية. احصل على التوسعة التقنية لفتح المجال لـ 7 مجموعات!",
+        showUpgrade: true,
       );
     }
     return SubscriptionLimitsResult.allowed();
   }
 
-  /// التحقق من سعة المجموعة عند قبول عضو جديد (منطق الشوغو)
+  /// التحقق من سعة المجموعة عند قبول عضو جديد (توسعة المجال 1 - منطق الشوغو)
   static SubscriptionLimitsResult canAcceptNewMember(UserModel adminUser, int currentMembersCount) {
-    final bool isPremium = adminUser.isPremium;
-    final int limit = isPremium ? Limits.maxMembersPremium : Limits.maxMembersFree;
+    // 🛡️ فحص أولاً: هل يمتلك منشئ المجموعة (الآدمين) توسعة مخصصة لعدد الأعضاء؟
+    int limit = adminUser.customMaxMembersLimit;
+
+    if (limit <= 0) {
+      limit = adminUser.isPremium ? Limits.maxMembersPremium : Limits.maxMembersFree;
+    }
 
     if (currentMembersCount >= limit) {
       return SubscriptionLimitsResult.denied(
-        isPremium
-          ? "وصلت المجموعة لأقصى سعة مسموحة ($limit عضو)."
-          : "وصلت المجموعة للحد الأقصى (100 عضو). قم بالترقية لفتح السعة إلى 350 عضو.",
-        showUpgrade: !isPremium,
+        adminUser.isPremium
+          ? "وصلت المجموعة لأقصى سعة مسموحة حالياً ($limit عضو)."
+          : "وصلت المجموعة للحد الأقصى للنسخة المجانية (100 عضو). قم بزيارة المتجر لفتح السعة إلى 350 عضو.",
+        showUpgrade: true,
       );
     }
     return SubscriptionLimitsResult.allowed();

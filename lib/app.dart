@@ -14,6 +14,7 @@ import 'providers/notifications_provider.dart';
 import 'providers/edits_provider.dart';
 import 'providers/chat_background_provider.dart';
 import 'providers/deep_link_provider.dart';
+import 'providers/store_provider.dart';
 
 import 'services/firebase/auth_service.dart';
 import 'services/firebase/firestore_service.dart';
@@ -72,9 +73,13 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(create: (context) => ProfileProvider(context.read<FirestoreService>(), context.read<StorageService>())),
         ChangeNotifierProvider(create: (context) => PrivateChatProvider(firestoreService: context.read<FirestoreService>(), storageService: context.read<StorageService>())),
         ChangeNotifierProvider(create: (context) => NotificationsProvider(firestoreService: context.read<FirestoreService>())),
+        ChangeNotifierProxyProvider<UserProvider, StoreProvider>(
+  create: (context) => StoreProvider(userProvider: Provider.of<UserProvider>(context, listen: false)),
+  update: (context, userProvider, storeProvider) => StoreProvider(userProvider: userProvider),
+),
         ChangeNotifierProvider(create: (_) => EditsProvider()),
         ChangeNotifierProvider(create: (_) => ChatBackgroundProvider()),
-        ChangeNotifierProvider(create: (_) => DeepLinkProvider()..init()),
+        ChangeNotifierProvider(create: (_) => DeepLinkProvider()),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
