@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../providers/edits_provider.dart';
@@ -13,167 +12,7 @@ import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 import 'edits_comments_sheet.dart';
-
-// ─────────────────────────────────────────────────────────────
-// _AdEditWidget — مع إصلاح مشكلة السكرول قبل التحميل
-// ─────────────────────────────────────────────────────────────
-class _AdEditWidget extends StatefulWidget {
-  final VoidCallback onAdFinished;
-  const _AdEditWidget({required this.onAdFinished});
-
-  @override
-  State<_AdEditWidget> createState() => _AdEditWidgetState();
-}
-
-class _AdEditWidgetState extends State<_AdEditWidget> {
-  NativeAd? _nativeAd;
-  bool _adLoaded = false;
-  bool _countdownStarted = false;
-  int _secondsLeft = 5;
-
-  // ✅ إصلاح: عداد محاولات إعادة التحميل (حد أقصى 2)
-  int _retryCount = 0;
-  static const int _maxRetries = 2;
-
-  // ✅ إصلاح: مدة انتظار قبل إنهاء الإعلان عند الفشل (3 ثواني)
-  static const int _failWaitSeconds = 3;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAd();
-  }
-
-  void _loadAd() {
-    _nativeAd?.dispose();
-    _nativeAd = NativeAd(
-      adUnitId: 'ca-app-pub-3303379299409244/3972031025',
-      request: const AdRequest(),
-      nativeTemplateStyle:
-          NativeTemplateStyle(templateType: TemplateType.medium),
-      listener: NativeAdListener(
-        onAdLoaded: (_) {
-          if (!mounted) return;
-          setState(() => _adLoaded = true);
-          if (!_countdownStarted) {
-            _countdownStarted = true;
-            _startCountdown();
-          }
-        },
-        onAdFailedToLoad: (_, error) {
-          if (!mounted) return;
-          debugPrint('❌ Native Ad failed (retry $_retryCount): $error');
-
-          if (_retryCount < _maxRetries) {
-            // ✅ إصلاح: إعادة المحاولة بعد ثانيتين
-            _retryCount++;
-            Future.delayed(const Duration(seconds: 2), () {
-              if (!mounted) return;
-              _loadAd();
-            });
-          } else {
-            // ✅ إصلاح: انتظر 3 ثواني قبل الإنهاء حتى لا يكون السكرول فورياً
-            Future.delayed(const Duration(seconds: _failWaitSeconds), () {
-              if (!mounted) return;
-              widget.onAdFinished();
-            });
-          }
-        },
-      ),
-    )..load();
-  }
-
-  void _startCountdown() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
-      setState(() => _secondsLeft--);
-      if (_secondsLeft <= 0) {
-        widget.onAdFinished();
-        return false;
-      }
-      return true;
-    });
-  }
-
-  @override
-  void dispose() {
-    _nativeAd?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          color: Colors.black,
-          child: _adLoaded
-              ? AdWidget(ad: _nativeAd!)
-              : const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(color: Colors.white54),
-                      SizedBox(height: 16),
-                      Text(
-                        'جاري تحميل الإعلان...',
-                        style:
-                            TextStyle(color: Colors.white54, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
-
-        // شارة "إعلان"
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 12,
-          left: 16,
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-                color: Colors.amber,
-                borderRadius: BorderRadius.circular(6)),
-            child: const Text(
-              'إعلان',
-              style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
-
-        // عداد التنازلي — فقط بعد تحميل الإعلان
-        if (_adLoaded)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            right: 16,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text(
-                '$_secondsLeft ث',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
-
-        // ✅ إصلاح جوهري: AbsorbPointer يمنع أي تفاعل أثناء الإعلان
-        // بما فيه محاولة السكرول عبر اللمس
-        const Positioned.fill(child: AbsorbPointer()),
-      ],
-    );
-  }
-}
+import 'ad_edit_widget.dart'; // ← استدعاء الويدجت الموحد
 
 // ─────────────────────────────────────────────────────────────
 // EditsScreen
@@ -201,7 +40,7 @@ class _EditsScreenState extends State<EditsScreen>
   late final PageController _pageController;
   int _currentIndex = 0;
 
-  // ✅ إصلاح: نتحكم بالسكرول عبر متغير منفصل لا يعتمد على _currentIndex وحده
+  // نتحكم بالسكرول عبر متغير منفصل
   bool _isAdCurrentlyShowing = false;
 
   bool _initialized = false;
@@ -478,8 +317,7 @@ class _EditsScreenState extends State<EditsScreen>
               scrollDirection: Axis.vertical,
               itemCount: totalCount,
 
-              // ✅ إصلاح جوهري: السكرول يُمنع بناءً على _isAdCurrentlyShowing
-              // وليس فقط على _currentIndex الذي قد يتأخر في التحديث
+              // السكرول يُمنع بناءً على _isAdCurrentlyShowing
               physics: _isAdCurrentlyShowing
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
@@ -506,7 +344,6 @@ class _EditsScreenState extends State<EditsScreen>
 
                 setState(() {
                   _currentIndex = index;
-                  // ✅ إصلاح: نُفعّل قفل السكرول فوراً عند الوصول لـ slot
                   if (!isPremium &&
                       _isAdSlot(index) &&
                       !_finishedAdIndexes.contains(index)) {
@@ -532,14 +369,14 @@ class _EditsScreenState extends State<EditsScreen>
                     return const SizedBox.shrink();
                   }
 
-                  return _AdEditWidget(
+                  // ← هنا نستخدم الويدجت الموحد
+                  return AdEditWidget(
                     onAdFinished: () {
                       if (!mounted) return;
                       if (_finishedAdIndexes.contains(index)) return;
 
                       setState(() {
                         _finishedAdIndexes.add(index);
-                        // ✅ إصلاح: رفع قفل السكرول عند انتهاء الإعلان
                         _isAdCurrentlyShowing = false;
                       });
 

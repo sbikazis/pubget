@@ -2,7 +2,7 @@ name: pubget
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+12
+version: 1.0.0+13
 
 environment:
   sdk: ^3.11.0
@@ -44,6 +44,9 @@ dependencies:
   font_awesome_flutter: ^11.0.0
   flutter_staggered_animations: ^1.1.1
   url_launcher: ^6.2.5
+  firebase_remote_config: ^6.5.1
+  package_info_plus: ^10.1.0
+  pub_semver: ^2.2.0
 
   # Networking & API
   http: ^1.6.0

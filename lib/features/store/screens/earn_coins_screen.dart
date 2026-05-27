@@ -161,6 +161,93 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
             ])));
   }
 
+  Widget _buildSkeletonCard(bool isDark) {
+    final cardColor = isDark ? AppColors.darkCard : AppColors.lightSurface;
+    final shimmerColor =
+        isDark ? AppColors.darkBorder : AppColors.lightBorder;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: shimmerColor)),
+      child: Row(children: [
+        Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+                color: shimmerColor, shape: BoxShape.circle)),
+        const SizedBox(width: 14),
+        Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              Container(
+                  height: 13,
+                  width: 120,
+                  decoration: BoxDecoration(
+                      color: shimmerColor,
+                      borderRadius: BorderRadius.circular(6))),
+              const SizedBox(height: 8),
+              Container(
+                  height: 11,
+                  width: 80,
+                  decoration: BoxDecoration(
+                      color: shimmerColor,
+                      borderRadius: BorderRadius.circular(6))),
+            ])),
+        const SizedBox(width: 8),
+        Container(
+            width: 72,
+            height: 36,
+            decoration: BoxDecoration(
+                color: shimmerColor,
+                borderRadius: BorderRadius.circular(10))),
+      ]),
+    );
+  }
+
+  // ✅ دالة منفصلة لمنطق الإعلان — أوضح وأسهل للصيانة
+  Future<void> _handleWatchAd(BuildContext context) async {
+    setState(() => _isAdLoading = true);
+
+    // ✅ capture providers قبل أي await لتجنب مشكلة context بعد dismiss الإعلان
+    final adService = context.read<AdService>();
+    final storeProvider = context.read<StoreProvider>();
+    final userProvider = context.read<UserProvider>();
+
+    bool rewardGranted = false;
+
+    final bool adShown = await adService.showSingleRewardedAd(
+      // ✅ التعديل الجوهري: المكافأة تُمنح هنا فقط — بعد مشاهدة الإعلان فعلاً
+      onReward: () async {
+        final success = await storeProvider.rewardForWatchingAd();
+        if (success) {
+          await userProvider.reloadUser();
+          rewardGranted = true;
+        }
+      },
+    );
+
+    if (!mounted) return;
+
+    if (!adShown) {
+      // الإعلان لم يُعرض (timeout أو فشل التحميل)
+      _showErrorSnackBar(context, 'تعذر تحميل الإعلان، حاول مجدداً');
+    } else if (rewardGranted) {
+      // ✅ الإعلان عُرض والمستخدم شاهده حتى النهاية
+      _showRewardSnackBar(context, 20);
+    } else if (adShown && !rewardGranted) {
+      // الإعلان عُرض لكن المستخدم أغلقه قبل الحصول على المكافأة
+      // أو cooldown نشط
+      _showErrorSnackBar(context, 'انتظر 30 ثانية قبل مشاهدة إعلان آخر');
+    }
+
+    if (mounted) setState(() => _isAdLoading = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -168,7 +255,6 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
     final userId = context.read<UserProvider>().currentUser?.id ?? '';
     final isDark = theme.brightness == Brightness.dark;
 
-    // ✅ ألوان صريحة حسب الثيم — لا اعتماد على theme.colorScheme المجهول
     final bgColor =
         isDark ? AppColors.darkBackground : AppColors.lightBackground;
     final surfaceColor =
@@ -234,6 +320,7 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
               child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
+
                 // 1- إعلان
                 _buildTaskCard(
                   context,
@@ -241,38 +328,16 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                   textPrimary: textPrimary,
                   textSecondary: textSecondary,
                   title: 'مشاهدة إعلان مكافأة',
-                  subtitle: 'شاهد إعلاناً قصيراً',
+                  subtitle: _isAdLoading
+                      ? 'جاري تحميل الإعلان...'
+                      : 'شاهد إعلاناً قصيراً واربح',
                   reward: '+20',
                   icon: Icons.play_circle_filled_rounded,
                   isAd: true,
+                  // ✅ النص يعكس الحالة: تحميل أو مشاهدة
                   actionText: _isAdLoading ? 'جاري التحميل...' : 'مشاهدة',
                   enabled: !_isAdLoading,
-                  onTap: () async {
-                    setState(() => _isAdLoading = true);
-                    final adService = context.read<AdService>();
-                    bool adShown =
-                        await adService.showSingleRewardedAd(onReward: () {});
-                    if (adShown) {
-                      bool success = await context
-                          .read<StoreProvider>()
-                          .rewardForWatchingAd();
-                      if (success) {
-                        await context.read<UserProvider>().reloadUser();
-                        if (mounted) _showRewardSnackBar(context, 20);
-                      } else {
-                        if (mounted) {
-                          _showErrorSnackBar(
-                              context, 'انتظر 30 ثانية قبل مشاهدة إعلان آخر');
-                        }
-                      }
-                    } else {
-                      if (mounted) {
-                        _showErrorSnackBar(
-                            context, 'تعذر تحميل الإعلان، حاول مجدداً');
-                      }
-                    }
-                    if (mounted) setState(() => _isAdLoading = false);
-                  },
+                  onTap: () => _handleWatchAd(context),
                 ),
 
                 // 2- دعوة
@@ -292,11 +357,14 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                 // 3- فعالية
                 FutureBuilder<int>(
                     future: _getEventWinsToday(userId),
-                    builder: (ctx, snap) {
+                    builder: (_, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return _buildSkeletonCard(isDark);
+                      }
                       final wins = snap.data ?? 0;
                       final canPlay = wins < 3;
                       return _buildTaskCard(
-                        ctx,
+                        context,
                         isDark: isDark,
                         textPrimary: textPrimary,
                         textSecondary: textSecondary,
@@ -312,18 +380,22 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                                     .read<GroupProvider>()
                                     .getUserGroups(userId: userId);
                                 if (groups.isEmpty) {
-                                  _showErrorSnackBar(
-                                      context, 'انضم لمجموعة أولاً');
+                                  if (mounted) {
+                                    _showErrorSnackBar(
+                                        context, 'انضم لمجموعة أولاً');
+                                  }
                                   return;
                                 }
                                 final randomGroup =
                                     groups[Random().nextInt(groups.length)];
-                                Navigator.push(
-                                    ctx,
-                                    MaterialPageRoute(
-                                        builder: (_) => ChatScreen(
-                                            groupId: randomGroup.id,
-                                            openEventsOnStart: true)));
+                                if (mounted) {
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => ChatScreen(
+                                              groupId: randomGroup.id,
+                                              openEventsOnStart: true)));
+                                }
                               }
                             : null,
                       );
@@ -332,10 +404,13 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                 // 4- إديت
                 FutureBuilder<bool>(
                     future: _canEarnEditToday(userId),
-                    builder: (ctx, snap) {
+                    builder: (_, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return _buildSkeletonCard(isDark);
+                      }
                       final canEarn = snap.data ?? true;
                       return _buildTaskCard(
-                        ctx,
+                        context,
                         isDark: isDark,
                         textPrimary: textPrimary,
                         textSecondary: textSecondary,
@@ -349,7 +424,7 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                         enabled: canEarn,
                         onTap: canEarn
                             ? () => Navigator.push(
-                                ctx,
+                                context,
                                 MaterialPageRoute(
                                     builder: (_) =>
                                         const UploadEditScreen()))
@@ -392,7 +467,6 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
     bool enabled = true,
     VoidCallback? onTap,
   }) {
-    // ✅ الإصلاح الجذري: ألوان صريحة 100% — لا withOpacity على theme مجهول
     final cardColor = isDark ? AppColors.darkCard : AppColors.lightSurface;
     final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
 
@@ -407,11 +481,8 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
             color: cardColor,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-                color: isAd
-                    ? adGreen.withOpacity(0.4)
-                    : borderColor)),
+                color: isAd ? adGreen.withOpacity(0.4) : borderColor)),
         child: Row(children: [
-          // أيقونة
           Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -422,40 +493,38 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
               child: Icon(icon,
                   color: isAd ? adGreen : purpleAccent, size: 24)),
           const SizedBox(width: 14),
-
-          // النصوص
           Expanded(
-              child:
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                style: TextStyle(
-                    color: textPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14)),
-            const SizedBox(height: 4),
-            Text(subtitle,
-                style: TextStyle(color: textSecondary, fontSize: 12)),
-            if (reward.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Row(children: [
-                Text(reward,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
                     style: TextStyle(
-                        color: isAd ? adGreen : rewardPurple,
+                        color: textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 13)),
-                const SizedBox(width: 4),
-                const ShinyCoinWidget(size: 13)
-              ])
-            ]
-          ])),
+                        fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(subtitle,
+                    style: TextStyle(color: textSecondary, fontSize: 12)),
+                if (reward.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Text(reward,
+                        style: TextStyle(
+                            color: isAd ? adGreen : rewardPurple,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(width: 4),
+                    const ShinyCoinWidget(size: 13)
+                  ])
+                ]
+              ])),
           const SizedBox(width: 8),
-
-          // زر
           ElevatedButton(
               onPressed: enabled ? onTap : null,
               style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      enabled ? (isAd ? adGreen : purpleAccent) : Colors.grey.shade700,
+                  backgroundColor: enabled
+                      ? (isAd ? adGreen : purpleAccent)
+                      : Colors.grey.shade700,
                   foregroundColor: isAd ? Colors.black : Colors.white,
                   disabledBackgroundColor: isDark
                       ? Colors.grey.shade800
@@ -463,8 +532,8 @@ class _EarnCoinsScreenState extends State<EarnCoinsScreen> {
                   disabledForegroundColor: isDark
                       ? Colors.grey.shade500
                       : Colors.grey.shade600,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),

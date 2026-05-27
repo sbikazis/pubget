@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -14,20 +15,41 @@ class _AdEditWidgetState extends State<AdEditWidget> {
   NativeAd? _nativeAd;
   bool _adLoaded = false;
   int _secondsLeft = 5;
+  int _retryCount = 0;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadAd();
-    _startCountdown();
+    _loadAd(); // فقط تحميل، لا نبدأ العداد هنا
   }
 
   void _loadAd() {
+    _nativeAd?.dispose();
+    
     _nativeAd = NativeAd(
-      adUnitId: 'ca-app-pub-3303379299409244/9117104001', // ← ID الخاص بك
+      adUnitId: 'ca-app-pub-3303379299409244/3972031025', // ← تم التصحيح
       listener: NativeAdListener(
-        onAdLoaded: (_) => setState(() => _adLoaded = true),
-        onAdFailedToLoad: (_, __) => widget.onAdFinished(),
+        onAdLoaded: (ad) {
+          if (!mounted) return;
+          setState(() => _adLoaded = true);
+          _startCountdown(); // ← العداد يبدأ هنا فقط
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          if (!mounted) return;
+
+          if (_retryCount < 1) {
+            // محاولة مرة واحدة
+            _retryCount++;
+            Future.delayed(const Duration(seconds: 1), _loadAd);
+          } else {
+            // فشل نهائي → انتظر 3 ثواني ثم أنهِ
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) widget.onAdFinished();
+            });
+          }
+        },
       ),
       request: const AdRequest(),
       nativeTemplateStyle: NativeTemplateStyle(
@@ -37,20 +59,26 @@ class _AdEditWidgetState extends State<AdEditWidget> {
   }
 
   void _startCountdown() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
-      setState(() => _secondsLeft--);
-      if (_secondsLeft <= 0) {
-        widget.onAdFinished();
-        return false;
+    _countdownTimer?.cancel();
+    setState(() => _secondsLeft = 5);
+    
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
       }
-      return true;
+      setState(() => _secondsLeft--);
+      
+      if (_secondsLeft <= 0) {
+        timer.cancel();
+        widget.onAdFinished();
+      }
     });
   }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _nativeAd?.dispose();
     super.dispose();
   }
@@ -59,7 +87,7 @@ class _AdEditWidgetState extends State<AdEditWidget> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // ── خلفية سوداء مع الإعلان
+        // خلفية سوداء مع الإعلان
         Container(
           color: Colors.black,
           child: _adLoaded
@@ -69,7 +97,7 @@ class _AdEditWidgetState extends State<AdEditWidget> {
                 ),
         ),
 
-        // ── شارة "إعلان"
+        // شارة "إعلان"
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
@@ -90,7 +118,7 @@ class _AdEditWidgetState extends State<AdEditWidget> {
           ),
         ),
 
-        // ── عداد تنازلي (لا يمكن تخطيه)
+        // عداد تنازلي
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           right: 16,
@@ -111,10 +139,10 @@ class _AdEditWidgetState extends State<AdEditWidget> {
           ),
         ),
 
-        // ── طبقة شفافة تمنع أي تفاعل أثناء الإعلان
+        // منع التفاعل أثناء العد
         Positioned.fill(
           child: AbsorbPointer(
-            absorbing: _secondsLeft > 0,
+            absorbing: _secondsLeft > 0 || !_adLoaded,
             child: const SizedBox.shrink(),
           ),
         ),

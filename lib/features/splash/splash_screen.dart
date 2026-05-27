@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/local/local_storage_service.dart';
+import 'package:pubget/widgets/forece_update_service.dart'; // ✅ إضافة
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -31,6 +32,12 @@ class _SplashScreenState extends State<SplashScreen> {
           .timeout(const Duration(seconds: 5));
       debugPrint("✅ LocalStorage initialized");
 
+      if (!mounted) return;
+
+      // ✅ 2. فحص التحديث الإجباري من Firebase
+      await ForceUpdateService.check(context);
+      if (!mounted) return; // لو تم التحويل لشاشة التحديث، نوقف هنا
+
       // تأخير بسيط لإعطاء هيبة لشعار البوابة اليابانية ⛩️
       await Future.delayed(const Duration(seconds: 2));
 
@@ -39,13 +46,13 @@ class _SplashScreenState extends State<SplashScreen> {
       final authProvider = context.read<AuthProvider>();
       final userProvider = context.read<UserProvider>();
 
-      // 2. التحقق من حالة المستخدم (جلسة العمل)
+      // 3. التحقق من حالة المستخدم (جلسة العمل)
       debugPrint("🔹 Splash: Checking auth state...");
       await authProvider.checkAuthState();
 
       if (!mounted) return;
 
-      // 3. إذا كان المستخدم مسجلاً، نقوم بتحميل بياناته كاملة قبل الدخول
+      // 4. إذا كان المستخدم مسجلاً، نقوم بتحميل بياناته كاملة قبل الدخول
       if (authProvider.isLoggedIn && authProvider.user != null) {
         try {
           final userId = authProvider.user!.id;

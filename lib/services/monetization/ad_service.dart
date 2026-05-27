@@ -28,11 +28,13 @@ class AdService {
   bool _isInitialized = false;
 
   final List<RewardedAd> _preloadedRewardedPool = [];
-
-  // ✅ إصلاح #3: الآن يُضبط true قبل بدء التحميل ويُعاد false عند الانتهاء
   bool _isRewardedPoolLoading = false;
 
+  // ✅ Completer لإشعار أي منتظر عند وصول إعلان للـ pool
+  Completer<void>? _poolReadyCompleter;
+
   static const int maxBundleSize = 3;
+  static const Duration _adLoadTimeout = Duration(seconds: 15);
 
   // ==========================================
   // 🔧 التهيئة
@@ -54,28 +56,21 @@ class AdService {
   // 🎁 Rewarded Pool
   // =========================================================================
 
-  // ✅ إصلاح #3: وضع _isRewardedPoolLoading = true فور الدخول
   Future<void> _fillRewardedPool() async {
     if (_isRewardedPoolLoading ||
         _preloadedRewardedPool.length >= maxBundleSize) return;
 
     _isRewardedPoolLoading = true;
-    final int needsToLoad =
-        maxBundleSize - _preloadedRewardedPool.length;
-    debugPrint(
-        '🔄 Rewarded Pool missing $needsToLoad ads. Preloading...');
-
-    int loadedCount = 0;
+    final int needsToLoad = maxBundleSize - _preloadedRewardedPool.length;
+    debugPrint('🔄 Rewarded Pool missing $needsToLoad ads. Preloading...');
 
     for (int i = 0; i < needsToLoad; i++) {
       await _loadSingleRewardedAdToPool();
-      loadedCount++;
       if (_preloadedRewardedPool.length >= maxBundleSize) break;
     }
 
     _isRewardedPoolLoading = false;
-    debugPrint(
-        '✅ Pool fill complete. Size: ${_preloadedRewardedPool.length}');
+    debugPrint('✅ Pool fill complete. Size: ${_preloadedRewardedPool.length}');
   }
 
   Future<void> _loadSingleRewardedAdToPool() async {
@@ -90,8 +85,14 @@ class AdService {
             _preloadedRewardedPool.add(ad);
             debugPrint(
                 '🎁 Rewarded pooled. Size: ${_preloadedRewardedPool.length}');
+
+            // ✅ أشعر أي منتظر أن الـ pool أصبح فيه إعلان
+            if (_poolReadyCompleter != null &&
+                !_poolReadyCompleter!.isCompleted) {
+              _poolReadyCompleter!.complete();
+            }
           } else {
-            ad.dispose(); // تجاهل الزائد
+            ad.dispose();
           }
           if (!completer.isCompleted) completer.complete();
         },
@@ -105,15 +106,43 @@ class AdService {
     return completer.future;
   }
 
-  /// تشغيل إعلان مكافأة واحد (صفحة كسب العملات)
-  Future<bool> showSingleRewardedAd(
-      {required VoidCallback onReward}) async {
+  // ✅ ينتظر حتى يصبح في الـ pool إعلان واحد على الأقل — مع timeout
+  Future<bool> _waitForPoolReady() async {
+    if (_preloadedRewardedPool.isNotEmpty) return true;
+
+    debugPrint('⏳ Waiting for rewarded pool (max ${_adLoadTimeout.inSeconds}s)...');
+
+    // أنشئ completer جديد فقط إذا لم يكن هناك واحد نشط
+    if (_poolReadyCompleter == null || _poolReadyCompleter!.isCompleted) {
+      _poolReadyCompleter = Completer<void>();
+    }
+
+    // ابدأ التحميل إذا لم يكن جارياً
+    if (!_isRewardedPoolLoading) {
+      _fillRewardedPool();
+    }
+
+    try {
+      await _poolReadyCompleter!.future.timeout(_adLoadTimeout);
+      debugPrint('✅ Pool ready after waiting.');
+      return _preloadedRewardedPool.isNotEmpty;
+    } on TimeoutException {
+      debugPrint('⏰ Timeout: rewarded pool did not load in time.');
+      return false;
+    }
+  }
+
+  /// ✅ تشغيل إعلان مكافأة واحد — ينتظر التحميل بدل الرفض الفوري
+  Future<bool> showSingleRewardedAd({required VoidCallback onReward}) async {
     await init();
 
+    // ✅ إذا الـ pool فارغ: انتظر حتى 15 ثانية
     if (_preloadedRewardedPool.isEmpty) {
-      debugPrint('⚠️ Rewarded Pool empty.');
-      _fillRewardedPool();
-      return false;
+      final ready = await _waitForPoolReady();
+      if (!ready) {
+        debugPrint('❌ showSingleRewardedAd: pool still empty after timeout.');
+        return false;
+      }
     }
 
     final ad = _preloadedRewardedPool.removeAt(0);
@@ -237,9 +266,7 @@ class AdService {
     return true;
   }
 
-  // ✅ إصلاح #1 + #2: دالة إنشاء المجموعة — بدون حد يومي، تعمل مع await
   Future<bool> showCreateGroupAd({required bool isPremium}) async {
-    // ✅ إصلاح #4: استخدام AdDisplayLogic
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
       decision: const AdDisplayDecision(shouldShow: true, reason: 'create_group'),
@@ -252,7 +279,7 @@ class AdService {
     await init();
 
     if (_interstitialAd == null) {
-      _loadInterstitial(); // تحميل للمرة القادمة
+      _loadInterstitial();
       debugPrint('📢 Create Group Ad: not ready');
       return false;
     }
@@ -261,9 +288,7 @@ class AdService {
     return _showInterstitialNow();
   }
 
-  // ✅ إصلاح #1: دالة منفصلة لدخول المجموعة — مع حد يومي و10 دقائق
   Future<bool> showGroupEntryAd({required bool isPremium}) async {
-    // ✅ إصلاح #4: استخدام AdDisplayLogic للـ premium check
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
       decision: const AdDisplayDecision(shouldShow: true, reason: 'group_entry'),
@@ -277,23 +302,18 @@ class AdService {
 
     final lastAdTime = _localStorage.getLastAdTime();
 
-    // ✅ إصلاح #4: استخدام AdDisplayLogic لفحص اليوم الجديد
     if (lastAdTime != null && TimeUtils.isNewDay(lastAdTime)) {
       _groupAdsShownToday = 0;
       await _localStorage.saveAdsCountToday(0);
     }
 
-    // ✅ إصلاح #4: استخدام AdDisplayLogic للحد اليومي
-    final dailyCheck =
-        AdDisplayLogic.checkDailyLimit(_groupAdsShownToday);
+    final dailyCheck = AdDisplayLogic.checkDailyLimit(_groupAdsShownToday);
     if (!dailyCheck.shouldShow) {
       debugPrint('📢 Group Entry Ad: ${dailyCheck.reason}');
       return false;
     }
 
-    // ✅ إصلاح #4: استخدام AdDisplayLogic لقاعدة 10 دقائق
-    final cooldownCheck =
-        AdDisplayLogic.checkTenMinutesRule(lastAdTime);
+    final cooldownCheck = AdDisplayLogic.checkTenMinutesRule(lastAdTime);
     if (!cooldownCheck.shouldShow) {
       debugPrint('📢 Group Entry Ad: ${cooldownCheck.reason}');
       return false;
@@ -311,7 +331,6 @@ class AdService {
     return shown;
   }
 
-  // باقي للتوافق مع الكود القديم إذا كان هناك استدعاء لها في مكان آخر
   Future<bool> showGroupClickAd({required bool isPremium}) =>
       showGroupEntryAd(isPremium: isPremium);
 
