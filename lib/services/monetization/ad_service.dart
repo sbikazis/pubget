@@ -2,23 +2,25 @@
 import 'dart:async';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../../core/utils/time_utils.dart';
+import '../../core/logic/ad_display_logic.dart';
 import '../local/local_storage_service.dart';
 import 'package:flutter/foundation.dart';
 
-/// AdService - AdMob Real Dual Implementation (Interstitial + Rewarded Tri-Bundle)
 class AdService {
   final LocalStorageService _localStorage;
 
   AdService(this._localStorage);
 
   // ==========================================
-  // 🆔 معرفات الوحدات الإعلانية (Ad Units IDs)
+  // 🆔 Ad Unit IDs
   // ==========================================
-  static const String _interstitialId = 'ca-app-pub-3303379299409244/1725699149';
-  static const String _rewardedAdId = 'ca-app-pub-3303379299409244/3412540085';
+  static const String _interstitialId =
+      'ca-app-pub-3303379299409244/1725699149';
+  static const String _rewardedAdId =
+      'ca-app-pub-3303379299409244/3412540085';
 
   // ==========================================
-  // 💾 إدارة حالات الإعلانات (State Management)
+  // 💾 State Management
   // ==========================================
   InterstitialAd? _interstitialAd;
   bool _isInterstitialLoading = false;
@@ -26,92 +28,117 @@ class AdService {
   bool _isInitialized = false;
 
   final List<RewardedAd> _preloadedRewardedPool = [];
+
+  // ✅ إصلاح #3: الآن يُضبط true قبل بدء التحميل ويُعاد false عند الانتهاء
   bool _isRewardedPoolLoading = false;
+
   static const int maxBundleSize = 3;
 
-  /// دالة التهيئة الشاملة
+  // ==========================================
+  // 🔧 التهيئة
+  // ==========================================
   Future<void> init() async {
     if (_isInitialized) {
       _fillRewardedPool();
       return;
     }
     await _localStorage.init();
-
     _groupAdsShownToday = _localStorage.getAdsCountToday();
     _isInitialized = true;
-
     _loadInterstitial();
     _fillRewardedPool();
-
-    debugPrint("✅ AdService Initialized. Interstitial & Rewarded Pool ready.");
+    debugPrint('✅ AdService Initialized.');
   }
 
   // =========================================================================
-  // 🎁 نظام حزمة إعلانات المكافأة
+  // 🎁 Rewarded Pool
   // =========================================================================
 
+  // ✅ إصلاح #3: وضع _isRewardedPoolLoading = true فور الدخول
   Future<void> _fillRewardedPool() async {
-    if (_isRewardedPoolLoading || _preloadedRewardedPool.length >= maxBundleSize) return;
+    if (_isRewardedPoolLoading ||
+        _preloadedRewardedPool.length >= maxBundleSize) return;
 
-    int needsToLoad = maxBundleSize - _preloadedRewardedPool.length;
-    debugPrint("🔄 Rewarded Pool missing $needsToLoad ads. Preloading dynamically...");
+    _isRewardedPoolLoading = true;
+    final int needsToLoad =
+        maxBundleSize - _preloadedRewardedPool.length;
+    debugPrint(
+        '🔄 Rewarded Pool missing $needsToLoad ads. Preloading...');
+
+    int loadedCount = 0;
 
     for (int i = 0; i < needsToLoad; i++) {
-      _loadSingleRewardedAdToPool();
+      await _loadSingleRewardedAdToPool();
+      loadedCount++;
+      if (_preloadedRewardedPool.length >= maxBundleSize) break;
     }
+
+    _isRewardedPoolLoading = false;
+    debugPrint(
+        '✅ Pool fill complete. Size: ${_preloadedRewardedPool.length}');
   }
 
-  void _loadSingleRewardedAdToPool() {
+  Future<void> _loadSingleRewardedAdToPool() async {
+    final completer = Completer<void>();
+
     RewardedAd.load(
       adUnitId: _rewardedAdId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _preloadedRewardedPool.add(ad);
-          debugPrint("🎁 Rewarded Ad loaded and pooled. Current Size: ${_preloadedRewardedPool.length}");
+          if (_preloadedRewardedPool.length < maxBundleSize) {
+            _preloadedRewardedPool.add(ad);
+            debugPrint(
+                '🎁 Rewarded pooled. Size: ${_preloadedRewardedPool.length}');
+          } else {
+            ad.dispose(); // تجاهل الزائد
+          }
+          if (!completer.isCompleted) completer.complete();
         },
         onAdFailedToLoad: (error) {
-          debugPrint("❌ Single Rewarded Ad failed to load: $error. Retrying in background...");
-          Future.delayed(const Duration(seconds: 5), () => _loadSingleRewardedAdToPool());
+          debugPrint('❌ Rewarded failed: $error');
+          if (!completer.isCompleted) completer.complete();
         },
       ),
     );
+
+    return completer.future;
   }
 
-  /// ✅ دالة جديدة: تشغيل إعلان مكافأة واحد فقط
-  Future<bool> showSingleRewardedAd({required VoidCallback onReward}) async {
+  /// تشغيل إعلان مكافأة واحد (صفحة كسب العملات)
+  Future<bool> showSingleRewardedAd(
+      {required VoidCallback onReward}) async {
     await init();
+
     if (_preloadedRewardedPool.isEmpty) {
-      debugPrint("⚠️ Rewarded Pool empty. Triggering fill...");
+      debugPrint('⚠️ Rewarded Pool empty.');
       _fillRewardedPool();
-      return false; // غير جاهز
+      return false;
     }
 
     final ad = _preloadedRewardedPool.removeAt(0);
-    bool rewarded = false;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (a) {
         a.dispose();
-        _fillRewardedPool(); // عبي الخزنة بعد كل مشاهدة
+        _fillRewardedPool();
       },
       onAdFailedToShowFullScreenContent: (a, e) {
         a.dispose();
         _fillRewardedPool();
-        debugPrint("❌ Failed to show Rewarded Ad: $e");
+        debugPrint('❌ Failed to show Rewarded: $e');
       },
     );
 
     ad.show(onUserEarnedReward: (_, __) {
-      rewarded = true;
       onReward();
-      debugPrint("💎 User earned reward for single ad");
+      debugPrint('💎 User earned reward');
     });
 
     return true;
   }
 
-  /// 🔥 تشغيل حزمة الـ 3 إعلانات المتتالية
+  /// تشغيل حزمة 3 إعلانات متتالية
   Future<bool> showRewardedAdBundle({
     required VoidCallback onSingleAdFinished,
     required VoidCallback onAllAdsCompleted,
@@ -120,56 +147,56 @@ class AdService {
     await init();
 
     if (_preloadedRewardedPool.length < maxBundleSize) {
-      debugPrint("⚠️ Rewarded Pool not ready yet. Available: ${_preloadedRewardedPool.length}/$maxBundleSize");
+      debugPrint(
+          '⚠️ Pool not ready: ${_preloadedRewardedPool.length}/$maxBundleSize');
       _fillRewardedPool();
       return false;
     }
 
-    final List<RewardedAd> adsToBrief = List.from(_preloadedRewardedPool.take(maxBundleSize));
+    final List<RewardedAd> bundle =
+        List.from(_preloadedRewardedPool.take(maxBundleSize));
     _preloadedRewardedPool.removeRange(0, maxBundleSize);
 
-    int currentAdIndex = 0;
+    int index = 0;
 
-    void showNextRewarded() {
-      if (currentAdIndex >= adsToBrief.length) {
-        debugPrint("🎉 Success: All 3 bundled Rewarded Ads finished successfully!");
+    void showNext() {
+      if (index >= bundle.length) {
+        debugPrint('🎉 All 3 bundled ads done!');
         _fillRewardedPool();
         onAllAdsCompleted();
         return;
       }
 
-      final ad = adsToBrief[currentAdIndex];
-
+      final ad = bundle[index];
       ad.fullScreenContentCallback = FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (dismissedAd) {
-          dismissedAd.dispose();
+        onAdDismissedFullScreenContent: (a) {
+          a.dispose();
           onSingleAdFinished();
-          currentAdIndex++;
-          showNextRewarded();
+          index++;
+          showNext();
         },
-        onAdFailedToShowFullScreenContent: (failedAd, error) {
-          failedAd.dispose();
-          debugPrint("❌ Failed to show Rewarded Ad at index $currentAdIndex: $error");
+        onAdFailedToShowFullScreenContent: (a, e) {
+          a.dispose();
+          debugPrint('❌ Bundle ad $index failed: $e');
           _fillRewardedPool();
           onFailed();
         },
       );
-
-      ad.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-        debugPrint("💎 User verified for single ad reward by Admob backend.");
+      ad.show(onUserEarnedReward: (_, __) {
+        debugPrint('💎 Bundle reward #$index verified');
       });
     }
 
-    showNextRewarded();
+    showNext();
     return true;
   }
 
   // =========================================================================
-  // 🔒 نظام الإعلانات البينية (Interstitial)
+  // 🔒 Interstitial
   // =========================================================================
 
   Future<void> _loadInterstitial() async {
-    if (_isInterstitialLoading || _interstitialAd!= null) return;
+    if (_isInterstitialLoading || _interstitialAd != null) return;
     _isInterstitialLoading = true;
 
     await InterstitialAd.load(
@@ -179,29 +206,30 @@ class AdService {
         onAdLoaded: (ad) {
           _interstitialAd = ad;
           _isInterstitialLoading = false;
-          debugPrint("📢 Interstitial loaded");
+          debugPrint('📢 Interstitial loaded');
         },
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
           _isInterstitialLoading = false;
-          debugPrint("❌ Interstitial failed: $error");
+          debugPrint('❌ Interstitial failed: $error');
         },
       ),
     );
   }
 
-  Future<bool> showCreateGroupAd({required bool isPremium}) async {
-    if (isPremium) return false;
-    await init();
-
-    if (_interstitialAd == null) {
-      await _loadInterstitial();
-      return false;
-    }
+  bool _showInterstitialNow() {
+    if (_interstitialAd == null) return false;
 
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) { ad.dispose(); _loadInterstitial(); },
-      onAdFailedToShowFullScreenContent: (ad, error) { ad.dispose(); _loadInterstitial(); },
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _loadInterstitial();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _loadInterstitial();
+        debugPrint('❌ Interstitial show failed: $error');
+      },
     );
 
     _interstitialAd!.show();
@@ -209,36 +237,83 @@ class AdService {
     return true;
   }
 
-  Future<bool> showGroupClickAd({required bool isPremium}) async {
-    if (isPremium) return false;
+  // ✅ إصلاح #1 + #2: دالة إنشاء المجموعة — بدون حد يومي، تعمل مع await
+  Future<bool> showCreateGroupAd({required bool isPremium}) async {
+    // ✅ إصلاح #4: استخدام AdDisplayLogic
+    final premiumCheck = AdDisplayLogic.checkIfPremium(
+      isPremium: isPremium,
+      decision: const AdDisplayDecision(shouldShow: true, reason: 'create_group'),
+    );
+    if (!premiumCheck.shouldShow) {
+      debugPrint('📢 Create Group Ad: blocked — ${premiumCheck.reason}');
+      return false;
+    }
+
+    await init();
+
+    if (_interstitialAd == null) {
+      _loadInterstitial(); // تحميل للمرة القادمة
+      debugPrint('📢 Create Group Ad: not ready');
+      return false;
+    }
+
+    debugPrint('📢 Showing Create Group Interstitial...');
+    return _showInterstitialNow();
+  }
+
+  // ✅ إصلاح #1: دالة منفصلة لدخول المجموعة — مع حد يومي و10 دقائق
+  Future<bool> showGroupEntryAd({required bool isPremium}) async {
+    // ✅ إصلاح #4: استخدام AdDisplayLogic للـ premium check
+    final premiumCheck = AdDisplayLogic.checkIfPremium(
+      isPremium: isPremium,
+      decision: const AdDisplayDecision(shouldShow: true, reason: 'group_entry'),
+    );
+    if (!premiumCheck.shouldShow) {
+      debugPrint('📢 Group Entry Ad: blocked — ${premiumCheck.reason}');
+      return false;
+    }
+
     await init();
 
     final lastAdTime = _localStorage.getLastAdTime();
 
-    if (lastAdTime!= null && TimeUtils.isNewDay(lastAdTime)) {
+    // ✅ إصلاح #4: استخدام AdDisplayLogic لفحص اليوم الجديد
+    if (lastAdTime != null && TimeUtils.isNewDay(lastAdTime)) {
       _groupAdsShownToday = 0;
       await _localStorage.saveAdsCountToday(0);
     }
 
-    if (_groupAdsShownToday >= 2) return false;
-    if (lastAdTime!= null &&!TimeUtils.hasMinutesPassed(lastAdTime, 10)) return false;
-
-    if (_interstitialAd == null) {
-      await _loadInterstitial();
+    // ✅ إصلاح #4: استخدام AdDisplayLogic للحد اليومي
+    final dailyCheck =
+        AdDisplayLogic.checkDailyLimit(_groupAdsShownToday);
+    if (!dailyCheck.shouldShow) {
+      debugPrint('📢 Group Entry Ad: ${dailyCheck.reason}');
       return false;
     }
 
-    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) { ad.dispose(); _loadInterstitial(); },
-      onAdFailedToShowFullScreenContent: (ad, error) { ad.dispose(); _loadInterstitial(); },
-    );
+    // ✅ إصلاح #4: استخدام AdDisplayLogic لقاعدة 10 دقائق
+    final cooldownCheck =
+        AdDisplayLogic.checkTenMinutesRule(lastAdTime);
+    if (!cooldownCheck.shouldShow) {
+      debugPrint('📢 Group Entry Ad: ${cooldownCheck.reason}');
+      return false;
+    }
 
-    _interstitialAd!.show();
-    _interstitialAd = null;
+    if (_interstitialAd == null) {
+      _loadInterstitial();
+      debugPrint('📢 Group Entry Ad: not ready');
+      return false;
+    }
 
-    await _updateGroupAdStats();
-    return true;
+    debugPrint('📢 Showing Group Entry Interstitial...');
+    final shown = _showInterstitialNow();
+    if (shown) await _updateGroupAdStats();
+    return shown;
   }
+
+  // باقي للتوافق مع الكود القديم إذا كان هناك استدعاء لها في مكان آخر
+  Future<bool> showGroupClickAd({required bool isPremium}) =>
+      showGroupEntryAd(isPremium: isPremium);
 
   Future<void> _updateGroupAdStats() async {
     _groupAdsShownToday++;

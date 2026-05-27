@@ -4,14 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-// Imports
 import '../../widgets/app_textfield.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/loading_widget.dart';
-import '../../widgets/app_dialog.dart'; // تم إضافة استيراد الديالوج
+import '../../widgets/app_dialog.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/home_provider.dart'; // تم إضافة الهوم بروفايدر لفحص العدد الفعلي
+import '../../providers/home_provider.dart';
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
 import '../../core/constants/group_type.dart';
@@ -19,12 +18,8 @@ import '../../core/constants/limits.dart';
 import '../../core/theme/app_colors.dart';
 import 'package:pubget/core/constants/roles.dart';
 import '../../services/firebase/storage_service.dart';
-import '../../core/logic/subscription_limits_logic.dart'; // تم إضافة منطق الحدود
-
-// ✅ استيراد خدمة الإعلانات لتفعيل منطق الأشباح
+import '../../core/logic/subscription_limits_logic.dart';
 import '../../services/monetization/ad_service.dart';
-
-// استيراد شاشة تقمص الأدوار التي كانت معزولة
 import 'create_roleplay_group_screen.dart';
 
 class CreateGroupScreen extends StatefulWidget {
@@ -35,10 +30,9 @@ class CreateGroupScreen extends StatefulWidget {
 }
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
-  // متغير للتحكم في ما إذا كان المستخدم اختار نوع المجموعة أم لا
   GroupType? _selectedType;
 
-  // ✅ التعديل المركزي: استخدام الدالة الموحدة لضمان عمل زر الترقية
+  // ✅ فحص الحد — بدون تغيير، يبقى sync
   void _checkLimitAndProceed(VoidCallback onAllowed) {
     final authProvider = context.read<AuthProvider>();
     final homeProvider = context.read<HomeProvider>();
@@ -46,7 +40,6 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
     if (user == null) return;
 
-    // فحص المنطق: هل يسمح للمستخدم بإنشاء مجموعة أخرى؟
     final result = SubscriptionLimitsLogic.canCreateGroup(
       user,
       homeProvider.myGroups.length,
@@ -55,27 +48,22 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     if (result.isAllowed) {
       onAllowed();
     } else {
-      // ✅ استدعاء الدالة الموحدة التي أصلحناها في AppDialog
       if (result.shouldShowUpgrade) {
         AppDialog.showLimitReachedDialog(
           context,
           customContent: result.message,
         );
       } else {
-        // في حال كان هناك سبب منع آخر لا يتطلب ترقية
-        AppDialog.show(
-          context,
-          title: 'تنبيه',
-          content: result.message?? '',
-          confirmText: 'حسناً',
-        );
-      }
+  AppDialog.showMaxLimitDialog(
+    context,
+    customContent: result.message,
+  );
+}
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // إذا لم يختار المستخدم نوعاً بعد، نعرض له خيارات الاختيار (البوابة)
     if (_selectedType == null) {
       return Scaffold(
         appBar: AppBar(
@@ -88,38 +76,56 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildTypeSelectionCard(
-                title: "مجموعة عامة",
+                title: 'مجموعة عامة',
                 description: GroupType.public.description,
                 icon: Icons.public,
                 color: AppColors.primary,
+                // ✅ إصلاح: async + await قبل الانتقال
                 onTap: () {
-                  _checkLimitAndProceed(() {
+                  _checkLimitAndProceed(() async {
                     final adService = context.read<AdService>();
-                    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
-                    adService.showCreateGroupAd(isPremium: isPremium);
+                    final isPremium =
+                        context.read<AuthProvider>().user?.isPremium ??
+                            false;
+
+                    // ✅ ننتظر انتهاء الإعلان (أو رفضه) قبل الانتقال
+                    await adService.showCreateGroupAd(
+                        isPremium: isPremium);
+
+                    if (!mounted) return;
                     setState(() => _selectedType = GroupType.public);
                   });
                 },
               ),
               const SizedBox(height: 20),
               _buildTypeSelectionCard(
-                title: "تقمص أدوار (Roleplay)",
+                title: 'تقمص أدوار (Roleplay)',
                 description: GroupType.roleplay.description,
                 icon: Icons.theater_comedy,
-                color: Colors.amber[700]!, // لون ذهبي للفخامة
+                color: Colors.amber[700]!,
+                // ✅ إصلاح: async + await قبل الانتقال
                 onTap: () {
-                  _checkLimitAndProceed(() {
+                  _checkLimitAndProceed(() async {
                     final adService = context.read<AdService>();
-                    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
-                    adService.showCreateGroupAd(isPremium: isPremium);
-                    // نتوجه مباشرة للشاشة الجاهزة التي لديك
-                    Navigator.push(
+                    final isPremium =
+                        context.read<AuthProvider>().user?.isPremium ??
+                            false;
+
+                    // ✅ ننتظر انتهاء الإعلان (أو رفضه) قبل الانتقال
+                    await adService.showCreateGroupAd(
+                        isPremium: isPremium);
+
+                    if (!mounted) return;
+                    await Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const CreateRoleplayGroupScreen()),
-                    ).then((value) {
-                      // إذا عاد المستخدم ولم ينشئ، نصفر الاختيار
-                      if (value == null) setState(() => _selectedType = null);
-                    });
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              const CreateRoleplayGroupScreen()),
+                    );
+
+                    if (!mounted) return;
+                    // إذا عاد المستخدم نصفر الاختيار
+                    setState(() => _selectedType = null);
                   });
                 },
               ),
@@ -129,8 +135,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       );
     }
 
-    // إذا اختار "عامة"، نعرض له النموذج الأصلي (الموجود بالأسفل)
-    return GeneralGroupForm(onBack: () => setState(() => _selectedType = null));
+    return GeneralGroupForm(
+        onBack: () => setState(() => _selectedType = null));
   }
 
   Widget _buildTypeSelectionCard({
@@ -149,7 +155,10 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
           boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5)),
+            BoxShadow(
+                color: color.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 5)),
           ],
         ),
         child: Row(
@@ -160,9 +169,13 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
-                  Text(description, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                  Text(description,
+                      style: const TextStyle(
+                          fontSize: 13, color: Colors.grey)),
                 ],
               ),
             ),
@@ -174,6 +187,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// GeneralGroupForm — بدون أي تغيير
+// ─────────────────────────────────────────────────────────────
 class GeneralGroupForm extends StatefulWidget {
   final VoidCallback onBack;
   const GeneralGroupForm({Key? key, required this.onBack}) : super(key: key);
@@ -194,7 +210,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked!= null) setState(() => _selectedImage = File(picked.path));
+    if (picked != null) setState(() => _selectedImage = File(picked.path));
   }
 
   Future<void> _createGroup() async {
@@ -216,14 +232,15 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     try {
       String imageUrl = '';
-      if (_selectedImage!= null) {
+      if (_selectedImage != null) {
         imageUrl = await storageService.uploadGroupImage(
           groupId: DateTime.now().millisecondsSinceEpoch.toString(),
           file: _selectedImage!,
         );
       }
 
-      final groupId = DateTime.now().millisecondsSinceEpoch.toString();
+      final groupId =
+          DateTime.now().millisecondsSinceEpoch.toString();
       final group = GroupModel(
         id: groupId,
         name: _nameController.text.trim(),
@@ -235,7 +252,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         founderId: user.id,
         membersCount: 1,
         maxMembers: user.isPremium
-           ? Limits.maxMembersPremium
+            ? Limits.maxMembersPremium
             : Limits.maxMembersFree,
         isPromoted: false,
         promotionExpiresAt: null,
@@ -250,7 +267,8 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         displayName: user.username,
       );
 
-      await groupProvider.createGroup(group: group, founderMember: founderMember);
+      await groupProvider.createGroup(
+          group: group, founderMember: founderMember);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -259,9 +277,11 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         Navigator.pop(context);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء الإنشاء: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء الإنشاء: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -286,7 +306,7 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         ),
       ),
       body: _isLoading
-         ? const LoadingWidget(message: 'جاري إنشاء المجموعة...')
+          ? const LoadingWidget(message: 'جاري إنشاء المجموعة...')
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Form(
@@ -297,10 +317,12 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       onTap: _pickImage,
                       child: CircleAvatar(
                         radius: 50,
-                        backgroundImage: _selectedImage!= null? FileImage(_selectedImage!) : null,
+                        backgroundImage: _selectedImage != null
+                            ? FileImage(_selectedImage!)
+                            : null,
                         backgroundColor: AppColors.lightCard,
                         child: _selectedImage == null
-                           ? const Icon(Icons.camera_alt, size: 32)
+                            ? const Icon(Icons.camera_alt, size: 32)
                             : null,
                       ),
                     ),
@@ -309,7 +331,8 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       label: 'اسم المجموعة',
                       controller: _nameController,
                       maxLength: Limits.maxGroupNameLength,
-                      validator: (v) => v == null || v.isEmpty? 'الاسم مطلوب' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'الاسم مطلوب' : null,
                     ),
                     const SizedBox(height: 12),
                     AppTextField(
@@ -317,14 +340,16 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
                       controller: _descriptionController,
                       isMultiline: true,
                       maxLength: Limits.maxGroupDescriptionLength,
-                      validator: (v) => v == null || v.isEmpty? 'الوصف مطلوب' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'الوصف مطلوب' : null,
                     ),
                     const SizedBox(height: 12),
                     AppTextField(
                       label: 'الشعار (3-4 كلمات)',
                       controller: _sloganController,
                       maxLength: Limits.maxGroupSloganLength,
-                      validator: (v) => v == null || v.isEmpty? 'الشعار مطلوب' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'الشعار مطلوب' : null,
                     ),
                     const SizedBox(height: 24),
                     AppButton(

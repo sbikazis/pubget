@@ -12,11 +12,15 @@ import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
-import 'edits_comments_sheet.dart'; // ← مضاف
+import 'edits_comments_sheet.dart';
 
+// ─────────────────────────────────────────────────────────────
+// _AdEditWidget — مع إصلاح مشكلة السكرول قبل التحميل
+// ─────────────────────────────────────────────────────────────
 class _AdEditWidget extends StatefulWidget {
   final VoidCallback onAdFinished;
   const _AdEditWidget({required this.onAdFinished});
+
   @override
   State<_AdEditWidget> createState() => _AdEditWidgetState();
 }
@@ -27,6 +31,13 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   bool _countdownStarted = false;
   int _secondsLeft = 5;
 
+  // ✅ إصلاح: عداد محاولات إعادة التحميل (حد أقصى 2)
+  int _retryCount = 0;
+  static const int _maxRetries = 2;
+
+  // ✅ إصلاح: مدة انتظار قبل إنهاء الإعلان عند الفشل (3 ثواني)
+  static const int _failWaitSeconds = 3;
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +45,7 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
   }
 
   void _loadAd() {
+    _nativeAd?.dispose();
     _nativeAd = NativeAd(
       adUnitId: 'ca-app-pub-3303379299409244/3972031025',
       request: const AdRequest(),
@@ -48,9 +60,24 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
             _startCountdown();
           }
         },
-        onAdFailedToLoad: (_, __) {
+        onAdFailedToLoad: (_, error) {
           if (!mounted) return;
-          widget.onAdFinished();
+          debugPrint('❌ Native Ad failed (retry $_retryCount): $error');
+
+          if (_retryCount < _maxRetries) {
+            // ✅ إصلاح: إعادة المحاولة بعد ثانيتين
+            _retryCount++;
+            Future.delayed(const Duration(seconds: 2), () {
+              if (!mounted) return;
+              _loadAd();
+            });
+          } else {
+            // ✅ إصلاح: انتظر 3 ثواني قبل الإنهاء حتى لا يكون السكرول فورياً
+            Future.delayed(const Duration(seconds: _failWaitSeconds), () {
+              if (!mounted) return;
+              widget.onAdFinished();
+            });
+          }
         },
       ),
     )..load();
@@ -82,35 +109,44 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
         Container(
           color: Colors.black,
           child: _adLoaded
-         ? AdWidget(ad: _nativeAd!)
+              ? AdWidget(ad: _nativeAd!)
               : const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       CircularProgressIndicator(color: Colors.white54),
                       SizedBox(height: 16),
-                      Text('جاري تحميل الإعلان...',
-                          style: TextStyle(
-                              color: Colors.white54, fontSize: 13)),
+                      Text(
+                        'جاري تحميل الإعلان...',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
                     ],
                   ),
                 ),
         ),
+
+        // شارة "إعلان"
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           left: 16,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
                 color: Colors.amber,
                 borderRadius: BorderRadius.circular(6)),
-            child: const Text('إعلان',
-                style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold)),
+            child: const Text(
+              'إعلان',
+              style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold),
+            ),
           ),
         ),
+
+        // عداد التنازلي — فقط بعد تحميل الإعلان
         if (_adLoaded)
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
@@ -121,24 +157,32 @@ class _AdEditWidgetState extends State<_AdEditWidget> {
               decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20)),
-              child: Text('$_secondsLeft ث',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold)),
+              child: Text(
+                '$_secondsLeft ث',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold),
+              ),
             ),
           ),
+
+        // ✅ إصلاح جوهري: AbsorbPointer يمنع أي تفاعل أثناء الإعلان
+        // بما فيه محاولة السكرول عبر اللمس
         const Positioned.fill(child: AbsorbPointer()),
       ],
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// EditsScreen
+// ─────────────────────────────────────────────────────────────
 class EditsScreen extends StatefulWidget {
   final int startIndex;
   final String? initialEditId;
-  final String? initialCommentId; // ← جديد
-  final bool autoOpenComments; // ← جديد
+  final String? initialCommentId;
+  final bool autoOpenComments;
 
   const EditsScreen({
     super.key,
@@ -156,6 +200,10 @@ class _EditsScreenState extends State<EditsScreen>
     with AutomaticKeepAliveClientMixin {
   late final PageController _pageController;
   int _currentIndex = 0;
+
+  // ✅ إصلاح: نتحكم بالسكرول عبر متغير منفصل لا يعتمد على _currentIndex وحده
+  bool _isAdCurrentlyShowing = false;
+
   bool _initialized = false;
   bool _endDialogShown = false;
   static const int _adInterval = 5;
@@ -171,15 +219,16 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
-    if (widget.initialEditId!= null) {
+    if (widget.initialEditId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final provider = context.read<EditsProvider>();
 
-        EditModel? targetEdit = provider.getEditById(widget.initialEditId!);
-        targetEdit??= await provider.fetchEditById(widget.initialEditId!);
+        EditModel? targetEdit =
+            provider.getEditById(widget.initialEditId!);
+        targetEdit ??= await provider.fetchEditById(widget.initialEditId!);
 
-        if (targetEdit!= null && mounted) {
+        if (targetEdit != null && mounted) {
           provider.prependEdit(targetEdit);
 
           await Future.delayed(const Duration(milliseconds: 100));
@@ -190,11 +239,12 @@ class _EditsScreenState extends State<EditsScreen>
             setState(() => _currentIndex = 0);
           }
 
-          // ← فتح التعليقات تلقائياً
-          if (widget.autoOpenComments || widget.initialCommentId!= null) {
+          if (widget.autoOpenComments ||
+              widget.initialCommentId != null) {
             await Future.delayed(const Duration(milliseconds: 400));
             if (mounted) {
-              _openComments(targetEdit.id, commentId: widget.initialCommentId);
+              _openComments(targetEdit.id,
+                  commentId: widget.initialCommentId);
             }
           }
         }
@@ -209,7 +259,7 @@ class _EditsScreenState extends State<EditsScreen>
     _initialized = true;
 
     if (widget.initialEditId == null) {
-      final userId = FirebaseAuth.instance.currentUser?.uid?? '';
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
       context.read<EditsProvider>().loadSmartFeed(userId);
     }
   }
@@ -243,7 +293,8 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   void _openComments(String editId, {String? commentId}) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
+    final currentUserId =
+        FirebaseAuth.instance.currentUser?.uid ?? '';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -265,23 +316,27 @@ class _EditsScreenState extends State<EditsScreen>
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('🎌', style: TextStyle(fontSize: 40)),
               const SizedBox(height: 12),
-              const Text('هذا كل شيء حالياً!',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
+              const Text(
+                'هذا كل شيء حالياً!',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               const Text(
                 'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 13),
+                style:
+                    TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 20),
               Row(
@@ -293,8 +348,11 @@ class _EditsScreenState extends State<EditsScreen>
                         setState(() => _endDialogShown = false);
                         context.read<EditsProvider>().resetSeen();
                         final uid =
-                            FirebaseAuth.instance.currentUser?.uid?? '';
-                        context.read<EditsProvider>().loadSmartFeed(uid);
+                            FirebaseAuth.instance.currentUser?.uid ??
+                                '';
+                        context
+                            .read<EditsProvider>()
+                            .loadSmartFeed(uid);
                       },
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.white24),
@@ -313,7 +371,8 @@ class _EditsScreenState extends State<EditsScreen>
                         Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const UploadEditScreen()));
+                                builder: (_) =>
+                                    const UploadEditScreen()));
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepPurple,
@@ -352,11 +411,13 @@ class _EditsScreenState extends State<EditsScreen>
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid?? '';
-    final isPremium = userProvider.currentUser?.isPremium?? false;
+    final currentUserId =
+        FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isPremium =
+        userProvider.currentUser?.isPremium ?? false;
     final edits = editsProvider.sessionFeed;
     final totalCount =
-        isPremium? edits.length : _totalVisualCount(edits.length);
+        isPremium ? edits.length : _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -365,7 +426,7 @@ class _EditsScreenState extends State<EditsScreen>
           if (editsProvider.isLoading && edits.isEmpty)
             const Center(child: CircularProgressIndicator()),
 
-          if (!editsProvider.isLoading && editsProvider.error!= null)
+          if (!editsProvider.isLoading && editsProvider.error != null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -373,16 +434,18 @@ class _EditsScreenState extends State<EditsScreen>
                   const Icon(Icons.error_outline,
                       color: Colors.red, size: 50),
                   const SizedBox(height: 12),
-                  Text('حدث خطأ:\n${editsProvider.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 13)),
+                  Text(
+                    'حدث خطأ:\n${editsProvider.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 13),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
                       editsProvider.resetError();
                       final uid =
-                          FirebaseAuth.instance.currentUser?.uid?? '';
+                          FirebaseAuth.instance.currentUser?.uid ?? '';
                       editsProvider.loadSmartFeed(uid);
                     },
                     child: const Text('إعادة المحاولة'),
@@ -391,7 +454,7 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          if (edits.isEmpty &&!editsProvider.isLoading)
+          if (edits.isEmpty && !editsProvider.isLoading)
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -399,10 +462,12 @@ class _EditsScreenState extends State<EditsScreen>
                   Icon(Icons.movie_creation_outlined,
                       color: Colors.white54, size: 60),
                   SizedBox(height: 16),
-                  Text('لا يوجد إيديتات بعد\nكن أول من ينشر!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Colors.white54, fontSize: 16)),
+                  Text(
+                    'لا يوجد إيديتات بعد\nكن أول من ينشر!',
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(color: Colors.white54, fontSize: 16),
+                  ),
                 ],
               ),
             ),
@@ -412,17 +477,19 @@ class _EditsScreenState extends State<EditsScreen>
               controller: _pageController,
               scrollDirection: Axis.vertical,
               itemCount: totalCount,
-              physics:!isPremium &&
-                      _isAdSlot(_currentIndex) &&
-                 !_finishedAdIndexes.contains(_currentIndex)
-             ? const NeverScrollableScrollPhysics()
+
+              // ✅ إصلاح جوهري: السكرول يُمنع بناءً على _isAdCurrentlyShowing
+              // وليس فقط على _currentIndex الذي قد يتأخر في التحديث
+              physics: _isAdCurrentlyShowing
+                  ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
+
               onPageChanged: (index) {
                 final entryTime = _pageEntryTime;
-                if (entryTime!= null) {
+                if (entryTime != null) {
                   final secondsSpent =
                       DateTime.now().difference(entryTime).inSeconds;
-                  if (secondsSpent < 3 &&!_isAdSlot(_currentIndex)) {
+                  if (secondsSpent < 3 && !_isAdSlot(_currentIndex)) {
                     final prevRealIndex =
                         _realEditIndex(_currentIndex, isPremium);
                     if (prevRealIndex < edits.length) {
@@ -437,16 +504,28 @@ class _EditsScreenState extends State<EditsScreen>
                 }
                 _pageEntryTime = DateTime.now();
 
-                setState(() => _currentIndex = index);
+                setState(() {
+                  _currentIndex = index;
+                  // ✅ إصلاح: نُفعّل قفل السكرول فوراً عند الوصول لـ slot
+                  if (!isPremium &&
+                      _isAdSlot(index) &&
+                      !_finishedAdIndexes.contains(index)) {
+                    _isAdCurrentlyShowing = true;
+                  } else {
+                    _isAdCurrentlyShowing = false;
+                  }
+                });
+
                 if (!isPremium && _isAdSlot(index)) return;
                 final realIndex = _realEditIndex(index, isPremium);
                 if (realIndex >= edits.length) return;
                 final edit =
-                    editsProvider.getEditById(edits[realIndex].id)??
+                    editsProvider.getEditById(edits[realIndex].id) ??
                         edits[realIndex];
                 editsProvider.incrementViews(edit.id, currentUserId);
                 _checkEndOfFeed(edits, index, isPremium);
               },
+
               itemBuilder: (context, index) {
                 if (!isPremium && _isAdSlot(index)) {
                   if (_finishedAdIndexes.contains(index)) {
@@ -458,9 +537,14 @@ class _EditsScreenState extends State<EditsScreen>
                       if (!mounted) return;
                       if (_finishedAdIndexes.contains(index)) return;
 
-                      setState(() => _finishedAdIndexes.add(index));
+                      setState(() {
+                        _finishedAdIndexes.add(index);
+                        // ✅ إصلاح: رفع قفل السكرول عند انتهاء الإعلان
+                        _isAdCurrentlyShowing = false;
+                      });
 
-                      if (_currentIndex == index && _pageController.hasClients) {
+                      if (_currentIndex == index &&
+                          _pageController.hasClients) {
                         _pageController.nextPage(
                           duration: const Duration(milliseconds: 350),
                           curve: Curves.easeInOut,
@@ -471,10 +555,12 @@ class _EditsScreenState extends State<EditsScreen>
                 }
 
                 final realIndex = _realEditIndex(index, isPremium);
-                if (realIndex >= edits.length) return const SizedBox.shrink();
+                if (realIndex >= edits.length) {
+                  return const SizedBox.shrink();
+                }
 
                 final edit =
-                    editsProvider.getEditById(edits[realIndex].id)??
+                    editsProvider.getEditById(edits[realIndex].id) ??
                         edits[realIndex];
 
                 return Stack(
@@ -501,25 +587,30 @@ class _EditsScreenState extends State<EditsScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onTap: () => _openProfile(edit.uploaderId),
+                            onTap: () =>
+                                _openProfile(edit.uploaderId),
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 18,
                                   backgroundImage:
                                       edit.uploaderAvatar.isNotEmpty
-                                     ? NetworkImage(edit.uploaderAvatar)
+                                          ? NetworkImage(
+                                              edit.uploaderAvatar)
                                           : null,
                                   child: edit.uploaderAvatar.isEmpty
-                                 ? const Icon(Icons.person, size: 18)
+                                      ? const Icon(Icons.person,
+                                          size: 18)
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(edit.uploaderName,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15)),
+                                Text(
+                                  edit.uploaderName,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15),
+                                ),
                               ],
                             ),
                           ),
@@ -531,17 +622,21 @@ class _EditsScreenState extends State<EditsScreen>
                               color: Colors.white12,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text('🎌 ${edit.animeTitle}',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 13)),
+                            child: Text(
+                              '🎌 ${edit.animeTitle}',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 13),
+                            ),
                           ),
                           const SizedBox(height: 6),
                           if (edit.caption.isNotEmpty)
-                            Text(edit.caption,
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis),
+                            Text(
+                              edit.caption,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 13),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                         ],
                       ),
                     ),
@@ -559,7 +654,8 @@ class _EditsScreenState extends State<EditsScreen>
                             context: context,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
-                            builder: (_) => EditShareSheet(edit: edit),
+                            builder: (_) =>
+                                EditShareSheet(edit: edit),
                           );
                         },
                       ),
@@ -583,7 +679,8 @@ class _EditsScreenState extends State<EditsScreen>
                   color: Colors.white12,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child: const Icon(Icons.add,
+                    color: Colors.white, size: 28),
               ),
             ),
           ),
