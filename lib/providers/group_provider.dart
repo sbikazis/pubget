@@ -17,6 +17,7 @@ import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
 import 'package:pubget/services/monetization/promotion_service.dart';
 import 'package:pubget/core/constants/roles.dart';
+import 'package:pubget/providers/store_provider.dart'; // ✅ إضافة
 
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -37,10 +38,19 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
+  // ✅ تعديل: إضافة storeProvider للتحقق من الرصيد وخصم العملات قبل الترويج
   Future<void> promoteGroup({
     required String groupId,
     required String userId,
+    required StoreProvider storeProvider,
   }) async {
+    // 1. التحقق من الرصيد وخصم العملات أولاً
+    final purchased = await storeProvider.purchaseGroupPromotion();
+    if (!purchased) {
+      throw "رصيدك غير كافٍ. تحتاج إلى 150 عملة لترويج المجموعة.";
+    }
+
+    // 2. تنفيذ الترويج بعد نجاح الخصم
     final promotionService = PromotionService(_firestore);
     try {
       await promotionService.promoteGroup(
@@ -372,7 +382,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ تعديل دالة الطرد (removeMember) لتحرير الشخصية تلقائياً عند طرد العضو
   Future<void> removeMember({
     required String groupId,
     required String userId,
@@ -382,7 +391,6 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       String? characterNameToRelease;
 
-      // 1. جلب بيانات العضو للتحقق من الصلاحيات ومعرفة ما إذا كان يملك شخصية محجوزة
       final targetData = await firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId)
@@ -411,17 +419,14 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // 2. حذف العضو من مستند الأعضاء
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId);
       batch.delete(memberRef);
 
-      // 3. إنقاص عداد أعضاء المجموعة
       final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
-      // 4. ✅ تحرير وإلغاء قفل الشخصية إذا كان العضو المطرود مسجلاً بشخصية
       if (characterNameToRelease != null && characterNameToRelease.isNotEmpty) {
         final charKey = _normalizeCharacterKey(characterNameToRelease);
         final charRef = firestore
@@ -441,7 +446,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ تعديل دالة المغادرة (leaveGroup) لضمان جلب اسم الشخصية بدقة من السيرفر وتحريرها
   Future<void> leaveGroup({
     required String groupId,
     required String userId,
@@ -451,7 +455,6 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
       String? finalCharacterName = characterName;
 
-      // 1. كإجراء أمان: لو الواجهة لم ترسل الاسم، نقوم بجلبه مباشرة من قاعدة البيانات
       if (finalCharacterName == null || finalCharacterName.isEmpty) {
         final memberDoc = await firestore
             .collection(FirestorePaths.groupMembers(groupId))
@@ -464,17 +467,14 @@ class GroupProvider extends ChangeNotifier {
 
       final batch = firestore.batch();
 
-      // 2. حذف مستند العضوية
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
           .doc(userId);
       batch.delete(memberRef);
 
-      // 3. تحديث العداد بالنقصان
       final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
-      // 4. ✅ حذف القفل وتحرير الشخصية فوراً لتصبح حرة
       if (finalCharacterName != null && finalCharacterName.isNotEmpty) {
         final charKey = _normalizeCharacterKey(finalCharacterName);
         final charRef = firestore
@@ -520,8 +520,8 @@ class GroupProvider extends ChangeNotifier {
 
       final groupWithTimestamp = group.copyWith(
         lastMessageAt: group.createdAt,
-        lastMessageText: group.description.isNotEmpty 
-            ? group.description 
+        lastMessageText: group.description.isNotEmpty
+            ? group.description
             : 'تم إنشاء المجموعة',
       );
 

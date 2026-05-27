@@ -1,3 +1,5 @@
+// lib/services/monetization/promotion_service.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:pubget/services/firebase/firestore_service.dart';
@@ -16,7 +18,7 @@ class PromotionService {
   Future<void> promoteGroup({
     required String groupId,
     required String promoterUserId,
-    int durationInDays = 3,
+    int durationInDays = 7, // ✅ تصحيح: 7 أيام بدلاً من 3
   }) async {
     final now = DateTime.now();
     final expiresAt = now.add(Duration(days: durationInDays));
@@ -26,7 +28,6 @@ class PromotionService {
     await _firestore.runBatch((batch) async {
       final firestoreInstance = FirebaseFirestore.instance;
 
-      //  Create promotion record
       final promotionRef = firestoreInstance
           .collection(FirestorePaths.promotions)
           .doc(promotionId);
@@ -39,7 +40,6 @@ class PromotionService {
         'createdAt': now,
       });
 
-      //  Update group promotion status
       final groupRef = firestoreInstance
           .collection(FirestorePaths.groups)
           .doc(groupId);

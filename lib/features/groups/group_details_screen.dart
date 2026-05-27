@@ -18,6 +18,7 @@ import '../../models/member_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/store_provider.dart'; // ✅ إضافة
 import 'package:pubget/models/user_model.dart';
 
 import '../groups/group_members_screen.dart';
@@ -28,8 +29,6 @@ import '../../services/firebase/firestore_service.dart';
 import '../../core/logic/group_join_validator.dart';
 import 'package:pubget/services/monetization/promotion_dayalog.dart';
 import '../../core/logic/subscription_limits_logic.dart';
-
-// ✅ استيراد AdService
 import '../../services/monetization/ad_service.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
@@ -51,7 +50,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ عرض الإعلان فور فتح الصفحة
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _tryShowEntryAd();
     });
@@ -65,11 +63,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _homeProvider = context.read<HomeProvider>();
   }
 
-  // ✅ دالة عرض الإعلان عند فتح الصفحة
   Future<void> _tryShowEntryAd() async {
     if (!mounted) return;
-    final isPremium =
-        context.read<AuthProvider>().user?.isPremium ?? false;
+    final isPremium = context.read<AuthProvider>().user?.isPremium ?? false;
     final adService = context.read<AdService>();
     await adService.showGroupEntryAd(isPremium: isPremium);
   }
@@ -99,8 +95,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 title: const Text('نعم، دعاني صديق'),
                 value: hasInviter,
                 activeColor: AppColors.primary,
-                onChanged: (val) =>
-                    setDialogState(() => hasInviter = val!),
+                onChanged: (val) => setDialogState(() => hasInviter = val!),
               ),
               if (hasInviter)
                 AppTextField(
@@ -117,8 +112,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final inviterName =
-                    hasInviter ? controller.text.trim() : null;
+                final inviterName = hasInviter ? controller.text.trim() : null;
                 Navigator.pop(context);
                 _processJoin(group, user, inviterName);
               },
@@ -157,11 +151,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               customContent: validation.errorMessage,
             );
           } else {
-  AppDialog.showMaxLimitDialog(
-    context,
-    customContent: validation.errorMessage,
-  );
-}
+            AppDialog.showMaxLimitDialog(
+              context,
+              customContent: validation.errorMessage,
+            );
+          }
         }
         return;
       }
@@ -177,11 +171,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               customContent: limitResult.message,
             );
           } else {
-  AppDialog.showMaxLimitDialog(
-    context,
-    customContent: limitResult.message,
-  );
-}
+            AppDialog.showMaxLimitDialog(
+              context,
+              customContent: limitResult.message,
+            );
+          }
         },
       );
 
@@ -193,8 +187,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('تم إرسال طلب الانضمام بنجاح')));
+              const SnackBar(content: Text('تم إرسال طلب الانضمام بنجاح')));
         }
       }
     } finally {
@@ -209,8 +202,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     if (group.type.isRoleplay) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-            builder: (_) => RoleplayJoinScreen(group: group)),
+        MaterialPageRoute(builder: (_) => RoleplayJoinScreen(group: group)),
       );
     } else {
       _showInviterDialog(group, user);
@@ -224,8 +216,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -237,13 +228,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               children: [
                 const Text(
                   'نظام ترقية الأعضاء النشطين',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 Text(
                   'ادعُ أصدقاءك للانضمام وارتقِ تلقائياً إلى رتبة سينباي أو هاكوشو أو سينسي!',
-                  style:
-                      TextStyle(fontSize: 11, color: Colors.grey[700]),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
                 ),
               ],
             ),
@@ -290,16 +279,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     onPressed: (_isProcessing || hasRequest)
                         ? null
                         : () => _onJoin(group),
-                    icon: Icon(hasRequest
-                        ? Icons.hourglass_top
-                        : Icons.group_add),
+                    icon: Icon(hasRequest ? Icons.hourglass_top : Icons.group_add),
                     label: _isProcessing
                         ? const SizedBox(
                             height: 18,
                             width: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white),
+                                strokeWidth: 2, color: Colors.white),
                           )
                         : Text(hasRequest
                             ? 'بانتظار الموافقة'
@@ -307,10 +293,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                 ? 'انضم كتقمص دور'
                                 : 'انضم للمجموعة')),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          hasRequest ? Colors.grey : AppColors.primary,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: hasRequest ? Colors.grey : AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
@@ -327,7 +311,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  // ✅ زر الشات — بدون تغيير، الإعلان يُعرض عند فتح الصفحة وليس هنا
   Widget _buildChatButton(String groupId) {
     return Expanded(
       child: ElevatedButton.icon(
@@ -337,8 +320,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
@@ -350,28 +333,25 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         tooltip: 'الأعضاء',
       );
 
-  Widget _buildGroupOptionsButton(GroupModel group, bool isFounder,
-          MemberModel? currentMember) =>
+  Widget _buildGroupOptionsButton(
+          GroupModel group, bool isFounder, MemberModel? currentMember) =>
       IconButton(
         onPressed: () {
           showModalBottomSheet(
             context: context,
             shape: const RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             builder: (_) =>
                 _buildOptionsSheet(group, isFounder, currentMember),
           );
         },
-        icon: Icon(
-            isFounder ? Icons.admin_panel_settings : Icons.more_vert),
-        tooltip:
-            isFounder ? 'أدوات المؤسس' : 'خيارات المجموعة',
+        icon: Icon(isFounder ? Icons.admin_panel_settings : Icons.more_vert),
+        tooltip: isFounder ? 'أدوات المؤسس' : 'خيارات المجموعة',
       );
 
-  Widget _buildOptionsSheet(GroupModel group, bool isFounder,
-      MemberModel? currentMember) {
+  Widget _buildOptionsSheet(
+      GroupModel group, bool isFounder, MemberModel? currentMember) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -387,13 +367,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) =>
-                              EditGroupScreen(group: group)));
+                          builder: (_) => EditGroupScreen(group: group)));
                 },
               ),
               ListTile(
-                leading:
-                    const Icon(Icons.campaign, color: Colors.amber),
+                leading: const Icon(Icons.campaign, color: Colors.amber),
                 title: const Text('ترويج المجموعة'),
                 onTap: () {
                   Navigator.of(context).pop();
@@ -401,16 +379,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_forever,
-                    color: Colors.red),
+                leading:
+                    const Icon(Icons.delete_forever, color: Colors.red),
                 title: const Text('تفكيك المجموعة (حذف نهائي)',
                     style: TextStyle(color: Colors.red)),
                 onTap: () => _handleDisbandGroup(group),
               ),
             ] else if (currentMember != null) ...[
               ListTile(
-                leading:
-                    const Icon(Icons.exit_to_app, color: Colors.red),
+                leading: const Icon(Icons.exit_to_app, color: Colors.red),
                 title: const Text('خروج من المجموعة',
                     style: TextStyle(color: Colors.red)),
                 onTap: () => _handleLeaveGroup(group, currentMember),
@@ -436,8 +413,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               child: const Text('إلغاء')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('مغادرة',
-                style: TextStyle(color: Colors.red)),
+            child: const Text('مغادرة', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -511,13 +487,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         if (mounted) {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'تم تفكيك المجموعة وإرسال رسائل الوداع')));
+              content: Text('تم تفكيك المجموعة وإرسال رسائل الوداع')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('خطأ أثناء الحذف: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('خطأ أثناء الحذف: $e')));
         }
       } finally {
         if (mounted) setState(() => _isProcessing = false);
@@ -525,6 +500,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
+  // ✅ التعديل الجوهري: تمرير storeProvider لدالة promoteGroup
   void _showPromotionDialog(GroupModel group) {
     showModalBottomSheet(
       context: context,
@@ -534,25 +510,34 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         groupName: group.name,
         onConfirm: () async {
           Navigator.pop(context);
+          setState(() => _isProcessing = true);
           try {
             await _groupProvider.promoteGroup(
-                groupId: group.id,
-                userId: _authProvider.user!.id);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('تم ترويج مجموعتك بنجاح!')));
+              groupId: group.id,
+              userId: _authProvider.user!.id,
+              storeProvider: context.read<StoreProvider>(), // ✅ تمرير StoreProvider
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم ترويج مجموعتك بنجاح! 🎉')),
+              );
+            }
           } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('خطأ في الترويج: $e')));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$e')),
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _isProcessing = false);
           }
         },
       ),
     );
   }
 
-  void _openMembers(String groupId) => Navigator.push(
-      context,
-      MaterialPageRoute(
-          builder: (_) => GroupMembersScreen(groupId: groupId)));
+  void _openMembers(String groupId) => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => GroupMembersScreen(groupId: groupId)));
 
   void _openChat(String groupId) => Navigator.push(context,
       MaterialPageRoute(builder: (_) => ChatScreen(groupId: groupId)));
@@ -571,9 +556,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-              body: Center(
-                  child:
-                      LoadingWidget(message: 'جاري التحميل...')));
+              body: Center(child: LoadingWidget(message: 'جاري التحميل...')));
         }
 
         final group = snapshot.data;
@@ -612,8 +595,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _buildHeader(group),
                         const SizedBox(height: 20),
@@ -630,8 +612,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           group.description.isNotEmpty
                               ? group.description
                               : 'لا يوجد وصف متاح لهذه المجموعة.',
-                          style: const TextStyle(
-                              fontSize: 15, height: 1.5),
+                          style:
+                              const TextStyle(fontSize: 15, height: 1.5),
                         ),
                       ],
                     ),
@@ -667,12 +649,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ),
         const SizedBox(height: 12),
         Text(group.name,
-            style: const TextStyle(
-                fontSize: 22, fontWeight: FontWeight.bold)),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         Text(group.type.label,
             style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600)),
+                color: AppColors.primary, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Row(
           children: [
