@@ -19,34 +19,54 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDisabled = onPressed == null || isLoading;
+    final bool isDisabled =
+        onPressed == null || isLoading;
 
-    final button = ElevatedButton(
+    final Widget button = ElevatedButton(
       onPressed: isDisabled ? null : onPressed,
+
       style: ElevatedButton.styleFrom(
         elevation: 0,
-        backgroundColor:
-            isDisabled ? AppColors.disabled : AppColors.primary,
+
+        backgroundColor: isDisabled
+            ? AppColors.disabled
+            : AppColors.primary,
+
         foregroundColor: Colors.white,
-        disabledBackgroundColor: AppColors.disabled,
-        disabledForegroundColor: Colors.white70,
+
+        disabledBackgroundColor:
+            AppColors.disabled,
+
+        disabledForegroundColor:
+            Colors.white70,
+
+        // ✅ إصلاح مشاكل الـ constraints
+        // ومنع الـ infinite width conflicts
+        minimumSize: const Size(0, 50),
+
         padding: const EdgeInsets.symmetric(
           vertical: 16,
           horizontal: 20,
         ),
+
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius:
+              BorderRadius.circular(14),
         ),
+
+        tapTargetSize:
+            MaterialTapTargetSize.shrinkWrap,
       ),
+
       child: _buildContent(),
     );
 
-    // ✅ التعديل المعتمد: استخدام ConstrainedBox بدلاً من SizedBox العادي
-    // هذا يسمح للزر بالتمدد فقط في حدود ما يسمح به الأب (Parent Constraints)
-    // ويمنع حدوث خطأ Infinite Width داخل الـ Rows
+    // ✅ الإصلاح الحقيقي
+    // عدم استخدام ConstrainedBox مع infinity
+    // لأنه يسبب انهيارات Layout داخل Row
     if (expand) {
-      return ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: double.infinity),
+      return SizedBox(
+        width: double.infinity,
         child: button,
       );
     }
@@ -55,6 +75,9 @@ class AppButton extends StatelessWidget {
   }
 
   Widget _buildContent() {
+    // =========================
+    // LOADING STATE
+    // =========================
     if (isLoading) {
       return const SizedBox(
         width: 20,
@@ -66,26 +89,45 @@ class AppButton extends StatelessWidget {
       );
     }
 
+    // =========================
+    // BUTTON WITH ICON
+    // =========================
     if (icon != null) {
       return Row(
-        mainAxisSize: MainAxisSize.min, // أضفنا هذا لضمان عدم تمدد الـ Row داخلياً للمالانهاية
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment:
+            MainAxisAlignment.center,
+
         children: [
-          Icon(icon, size: 20),
+          Icon(
+            icon,
+            size: 20,
+          ),
+
           const SizedBox(width: 8),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
       );
     }
 
+    // =========================
+    // TEXT ONLY BUTTON
+    // =========================
     return Text(
       text,
+      overflow: TextOverflow.ellipsis,
+
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
