@@ -69,7 +69,13 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(create: (context) => HomeProvider(firestore: context.read<FirestoreService>(), promotionService: context.read<PromotionService>(), adService: context.read<AdService>(), joinValidator: context.read<GroupJoinValidator>())),
         ChangeNotifierProvider(create: (context) => GroupProvider(firestoreService: context.read<FirestoreService>())),
         ChangeNotifierProvider(create: (context) => ChatProvider(firestoreService: context.read<FirestoreService>(), storageService: context.read<StorageService>())),
-        ChangeNotifierProvider(create: (context) => GameProvider(firestore: context.read<FirestoreService>())),
+        ChangeNotifierProxyProvider<UserProvider, GameProvider>(
+  create: (ctx) => GameProvider(
+    userProvider: ctx.read<UserProvider>(),
+  ),
+  update: (ctx, userProvider, previous) =>
+      previous!..updateUserProvider(userProvider),
+)
         ChangeNotifierProvider(create: (context) => ProfileProvider(context.read<FirestoreService>(), context.read<StorageService>())),
         ChangeNotifierProvider(create: (context) => PrivateChatProvider(firestoreService: context.read<FirestoreService>(), storageService: context.read<StorageService>())),
         ChangeNotifierProvider(create: (context) => NotificationsProvider(firestoreService: context.read<FirestoreService>())),
