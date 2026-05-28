@@ -30,18 +30,46 @@ class GuessCharacterGameScreen extends StatefulWidget {
       _GuessCharacterGameScreenState();
 }
 
-class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
-  final TextEditingController _searchController = TextEditingController();
+class _GuessCharacterGameScreenState
+    extends State<GuessCharacterGameScreen> {
+  final TextEditingController _searchController =
+      TextEditingController();
 
   Map<String, String>? _selectedCharacter;
+
   bool _isSearching = false;
   bool _isConfirming = false;
   bool _timeoutCalled = false;
-  bool _popCalled = false; // ✅ منع تكرار الـ pop
+  bool _popCalled = false;
 
-  void _handleTimeout(GameModel game) {
+  void _handleTimeout(
+    GameModel game,
+    String? currentUserId,
+  ) {
     if (!mounted) return;
-    context.read<GameProvider>().processAutoJudge(widget.groupId, game);
+
+    final gameProvider =
+        context.read<GameProvider>();
+
+    final winnerId =
+        currentUserId == game.playerOneId
+            ? game.playerTwoId
+            : game.playerOneId;
+
+    final winnerName =
+        winnerId == game.playerOneId
+            ? game.playerOneName
+            : game.playerTwoName;
+
+    gameProvider.finishGame(
+      widget.groupId,
+      widget.gameId,
+      isCancelled: true,
+      winnerId: winnerId,
+      winnerName: winnerName,
+      reason:
+          "انتهى وقت ${currentUserId == game.playerOneId ? game.playerOneName : game.playerTwoName}",
+    );
   }
 
   @override
@@ -51,12 +79,17 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   }
 
   Future<void> _onSearch() async {
-    final query = _searchController.text.trim();
+    final query =
+        _searchController.text.trim();
+
     if (query.isEmpty) return;
 
     setState(() => _isSearching = true);
+
     try {
-      final results = await AnimeApiService.searchCharacterMultiple(
+      final results =
+          await AnimeApiService
+              .searchCharacterMultiple(
         animeIds: widget.animeIds,
         characterName: query,
       );
@@ -65,117 +98,228 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
         setState(() => _isSearching = false);
 
         if (results.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
             const SnackBar(
-              content: Text("لم يتم العثور على الشخصية. يرجى التأكد من كتابة الاسم الإنجليزي تماماً كما في MAL."),
+              content: Text(
+                "لم يتم العثور على الشخصية. يرجى التأكد من كتابة الاسم الإنجليزي تماماً كما في MAL.",
+              ),
               backgroundColor: Colors.orange,
             ),
           );
+
           return;
         }
 
-        _showCharacterSelectionSheet(results);
+        _showCharacterSelectionSheet(
+            results);
       }
     } catch (e) {
-      if (mounted) setState(() => _isSearching = false);
+      if (mounted) {
+        setState(() => _isSearching = false);
+      }
     }
   }
 
-  void _showCharacterSelectionSheet(List<Map<String, String>> characters) {
+  void _showCharacterSelectionSheet(
+    List<Map<String, String>> characters,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor:
+          Colors.transparent,
       builder: (context) {
         return Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight:
+                MediaQuery.of(context)
+                        .size
+                        .height *
+                    0.7,
           ),
           decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            color: Theme.of(context)
+                .scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize:
+                MainAxisSize.min,
             children: [
               const SizedBox(height: 12),
+
               Container(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2),
+                  color:
+                      Colors.grey.shade400,
+                  borderRadius:
+                      BorderRadius.circular(
+                          2),
                 ),
               ),
+
               const SizedBox(height: 16),
+
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding:
+                    EdgeInsets.symmetric(
+                        horizontal: 16),
                 child: Row(
                   children: [
-                    Icon(Icons.person_search, color: Colors.indigo),
+                    Icon(
+                      Icons.person_search,
+                      color: Colors.indigo,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'اختر الشخصية الصحيحة',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 8),
+
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding:
+                    EdgeInsets.symmetric(
+                        horizontal: 16),
                 child: Text(
                   'وجدنا عدة شخصيات بهذا الاسم، اختر الشخصية التي تريدها',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
                 ),
               ),
+
               const Divider(height: 24),
+
               Flexible(
-                child: ListView.separated(
+                child:
+                    ListView.separated(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: characters.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final char = characters[index];
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
+                    horizontal: 16,
+                  ),
+                  itemCount:
+                      characters.length,
+                  separatorBuilder:
+                      (_, __) =>
+                          const Divider(
+                    height: 1,
+                  ),
+                  itemBuilder:
+                      (context, index) {
+                    final char =
+                        characters[index];
+
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 4),
+                      contentPadding:
+                          const EdgeInsets
+                              .symmetric(
+                        vertical: 8,
+                        horizontal: 4,
+                      ),
                       leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: char['imageUrl'] != null &&
-                                char['imageUrl']!.isNotEmpty
-                            ? Image.network(
-                                char['imageUrl']!,
-                                width: 50,
-                                height: 60,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  width: 50,
-                                  height: 60,
-                                  color: Colors.grey.shade300,
-                                  child: const Icon(Icons.person),
-                                ),
-                              )
-                            : Container(
-                                width: 50,
-                                height: 60,
-                                color: Colors.grey.shade300,
-                                child: const Icon(Icons.person),
-                              ),
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                                    8),
+                        child:
+                            char['imageUrl'] !=
+                                        null &&
+                                    char[
+                                            'imageUrl']!
+                                        .isNotEmpty
+                                ? Image.network(
+                                    char[
+                                        'imageUrl']!,
+                                    width:
+                                        50,
+                                    height:
+                                        60,
+                                    fit: BoxFit
+                                        .cover,
+                                    errorBuilder:
+                                        (
+                                      _,
+                                      __,
+                                      ___,
+                                    ) =>
+                                            Container(
+                                      width:
+                                          50,
+                                      height:
+                                          60,
+                                      color: Colors
+                                          .grey
+                                          .shade300,
+                                      child:
+                                          const Icon(
+                                        Icons
+                                            .person,
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    width:
+                                        50,
+                                    height:
+                                        60,
+                                    color: Colors
+                                        .grey
+                                        .shade300,
+                                    child:
+                                        const Icon(
+                                      Icons
+                                          .person,
+                                    ),
+                                  ),
                       ),
                       title: Text(
-                        char['name'] ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        char['name'] ??
+                            '',
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight
+                                  .bold,
+                        ),
                       ),
-                      trailing: const Icon(Icons.check_circle_outline,
-                          color: Colors.indigo),
+                      trailing:
+                          const Icon(
+                        Icons
+                            .check_circle_outline,
+                        color:
+                            Colors.indigo,
+                      ),
                       onTap: () {
-                        Navigator.pop(context);
+                        Navigator.pop(
+                            context);
+
                         setState(() {
-                          _selectedCharacter = {
-                            'name': char['name'] ?? '',
-                            'imageUrl': char['imageUrl'] ?? '',
+                          _selectedCharacter =
+                              {
+                            'name':
+                                char['name'] ??
+                                    '',
+                            'imageUrl':
+                                char['imageUrl'] ??
+                                    '',
                           };
                         });
                       },
@@ -183,6 +327,7 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                   },
                 ),
               ),
+
               const SizedBox(height: 16),
             ],
           ),
@@ -192,24 +337,46 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
   }
 
   Future<void> _handleStart() async {
-    if (_selectedCharacter == null) return;
+    if (_selectedCharacter == null) {
+      return;
+    }
 
-    final gameProvider = Provider.of<GameProvider>(context, listen: false);
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final userId = userProvider.currentUser?.id;
+    final gameProvider =
+        Provider.of<GameProvider>(
+      context,
+      listen: false,
+    );
+
+    final userProvider =
+        Provider.of<UserProvider>(
+      context,
+      listen: false,
+    );
+
+    final userId =
+        userProvider.currentUser?.id;
 
     if (userId == null) return;
 
-    setState(() => _isConfirming = true);
+    setState(
+        () => _isConfirming = true);
+
     try {
       await gameProvider.setCharacter(
         groupId: widget.groupId,
         gameId: widget.gameId,
         userId: userId,
-        animeIds: widget.animeIds ?? [],
-        characterName: _selectedCharacter!['name']!,
-        validatedName: _selectedCharacter!['name'],
-        validatedImageUrl: _selectedCharacter!['imageUrl'],
+        animeIds:
+            widget.animeIds ?? [],
+        characterName:
+            _selectedCharacter![
+                'name']!,
+        validatedName:
+            _selectedCharacter![
+                'name'],
+        validatedImageUrl:
+            _selectedCharacter![
+                'imageUrl'],
       );
 
       await gameProvider.toggleReady(
@@ -219,72 +386,160 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
       );
     } catch (e) {
       if (mounted) {
-        setState(() => _isConfirming = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())));
+        setState(() {
+          _isConfirming = false;
+        });
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content:
+                Text(e.toString()),
+          ),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final gameProvider = Provider.of<GameProvider>(context);
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final currentUserId = userProvider.currentUser?.id;
+    final gameProvider =
+        Provider.of<GameProvider>(
+            context);
+
+    final userProvider =
+        Provider.of<UserProvider>(
+      context,
+      listen: false,
+    );
+
+    final currentUserId =
+        userProvider.currentUser?.id;
 
     return StreamBuilder<GameModel?>(
-      stream: gameProvider.streamCurrentGame(widget.groupId, widget.gameId),
+      stream:
+          gameProvider.streamCurrentGame(
+        widget.groupId,
+        widget.gameId,
+      ),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting ||
+        if (snapshot.connectionState ==
+                ConnectionState.waiting ||
             !snapshot.hasData) {
           return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+            body: Center(
+              child:
+                  CircularProgressIndicator(),
+            ),
+          );
         }
 
         final game = snapshot.data!;
 
-        // 🛡️ اللعبة انتهت — اخرج فوراً
         if (game.status.isOver) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-          });
+          WidgetsBinding.instance
+              .addPostFrameCallback(
+            (_) {
+              if (mounted &&
+                  Navigator.canPop(
+                      context)) {
+                Navigator.pop(context);
+              }
+            },
+          );
+
           return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+            body: Center(
+              child:
+                  CircularProgressIndicator(),
+            ),
+          );
         }
 
-        // شاشة انتظار للمنشئ
-        if (game.status == GameStatus.waitingForOpponent &&
-            currentUserId == game.playerOneId) {
+        if (game.status ==
+                GameStatus
+                    .waitingForOpponent &&
+            currentUserId ==
+                game.playerOneId) {
           return Scaffold(
             appBar: AppBar(
-              title: const Text("بانتظار خصم"),
-              automaticallyImplyLeading: false,
+              title:
+                  const Text("بانتظار خصم"),
+              automaticallyImplyLeading:
+                  false,
             ),
             body: Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment:
+                    MainAxisAlignment
+                        .center,
                 children: [
                   const CircularProgressIndicator(),
-                  const SizedBox(height: 24),
+
+                  const SizedBox(
+                      height: 24),
+
                   const Text(
                     "تم إرسال طلب التحدي!",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
                   ),
+
                   const SizedBox(height: 8),
+
                   const Text(
                     "بانتظار انضمام خصم للمباراة...",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 40),
-                  TextButton(
-                    onPressed: () => gameProvider.finishGame(
-                      widget.groupId,
-                      widget.gameId,
-                      isCancelled: true,
-                      reason: "إلغاء الطلب من المنشئ",
+                    style: TextStyle(
+                      color: Colors.grey,
                     ),
-                    child: const Text("إلغاء الطلب",
-                        style: TextStyle(color: Colors.red)),
+                  ),
+
+                  const SizedBox(
+                      height: 40),
+
+                  TextButton(
+                    onPressed: () {
+                      final winnerId =
+                          currentUserId ==
+                                  game
+                                      .playerOneId
+                              ? game
+                                  .playerTwoId
+                              : game
+                                  .playerOneId;
+
+                      final winnerName =
+                          winnerId ==
+                                  game
+                                      .playerOneId
+                              ? game
+                                  .playerOneName
+                              : game
+                                  .playerTwoName;
+
+                      gameProvider
+                          .finishGame(
+                        widget.groupId,
+                        widget.gameId,
+                        isCancelled:
+                            true,
+                        winnerId:
+                            winnerId,
+                        winnerName:
+                            winnerName,
+                        reason:
+                            "انسحاب ${currentUserId == game.playerOneId ? game.playerOneName : game.playerTwoName}",
+                      );
+                    },
+                    child: const Text(
+                      "إلغاء الطلب",
+                      style: TextStyle(
+                        color: Colors.red,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -292,55 +547,107 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
           );
         }
 
-        // ✅ الانتقال عند جاهزية الطرفين — مرة واحدة فقط بدون delay
-        if (game.status == GameStatus.guessing &&
+        if (game.status ==
+                GameStatus.guessing &&
             game.isPlayerOneReady &&
             game.isPlayerTwoReady &&
             !_popCalled) {
           _popCalled = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-          });
+
+          WidgetsBinding.instance
+              .addPostFrameCallback(
+            (_) {
+              if (mounted &&
+                  Navigator.canPop(
+                      context)) {
+                Navigator.pop(context);
+              }
+            },
+          );
         }
 
-        final bool isMeP1 = currentUserId == game.playerOneId;
+        final bool isMeP1 =
+            currentUserId ==
+                game.playerOneId;
+
         final bool iAmReady =
-            isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
+            isMeP1
+                ? game.isPlayerOneReady
+                : game.isPlayerTwoReady;
+
         final bool opponentReady =
-            isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
+            isMeP1
+                ? game.isPlayerTwoReady
+                : game.isPlayerOneReady;
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text("تجهيز الشخصية السرية"),
-            automaticallyImplyLeading: false,
+            title: const Text(
+              "تجهيز الشخصية السرية",
+            ),
+            automaticallyImplyLeading:
+                false,
             actions: [
               Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: StreamBuilder<int>(
-                    stream: GameTimerManager.startSyncedCountdown(
-                      game.setupStartedAt ?? game.createdAt,
-                      GameConstants.characterSelectionDuration,
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
+                    horizontal: 16,
+                  ),
+                  child:
+                      StreamBuilder<int>(
+                    stream:
+                        GameTimerManager
+                            .startSyncedCountdown(
+                      game.setupStartedAt ??
+                          game.createdAt,
+                      GameConstants
+                          .characterSelectionDuration,
                     ),
-                    builder: (context, timerSnapshot) {
-                      final seconds = timerSnapshot.data ??
-                          GameConstants.characterSelectionDuration;
+                    builder: (
+                      context,
+                      timerSnapshot,
+                    ) {
+                      final seconds =
+                          timerSnapshot
+                                  .data ??
+                              GameConstants
+                                  .characterSelectionDuration;
 
                       if (seconds <= 0 &&
-                          game.status.isInSetup &&
+                          game.status
+                              .isInSetup &&
                           !_timeoutCalled) {
-                        _timeoutCalled = true;
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _handleTimeout(game);
-                        });
+                        _timeoutCalled =
+                            true;
+
+                        WidgetsBinding
+                            .instance
+                            .addPostFrameCallback(
+                          (_) {
+                            _handleTimeout(
+                              game,
+                              currentUserId,
+                            );
+                          },
+                        );
                       }
 
                       return Text(
                         "$seconds",
                         style: TextStyle(
                           fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: seconds < 10 ? Colors.red : Colors.blue,
+                          fontWeight:
+                              FontWeight
+                                  .bold,
+                          color:
+                              seconds <
+                                      10
+                                  ? Colors
+                                      .red
+                                  : Colors
+                                      .blue,
                         ),
                       );
                     },
@@ -350,66 +657,131 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
             ],
           ),
           body: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding:
+                const EdgeInsets.all(
+                    20),
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  mainAxisAlignment:
+                      MainAxisAlignment
+                          .spaceAround,
                   children: [
-                    _buildPlayerStatus("أنت", iAmReady),
-                    const Icon(Icons.bolt, size: 40, color: Colors.grey),
-                    _buildPlayerStatus("الخصم", opponentReady),
+                    _buildPlayerStatus(
+                      "أنت",
+                      iAmReady,
+                    ),
+                    const Icon(
+                      Icons.bolt,
+                      size: 40,
+                      color: Colors.grey,
+                    ),
+                    _buildPlayerStatus(
+                      "الخصم",
+                      opponentReady,
+                    ),
                   ],
                 ),
-                const Divider(height: 40),
+
+                const Divider(
+                    height: 40),
 
                 if (!iAmReady) ...[
                   const Text(
                     "اختر شخصيتك السرية:",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                  const SizedBox(height: 8),
+
+                  const SizedBox(
+                      height: 8),
+
                   const Text(
                     "تنبيه: يجب كتابة اسم الشخصية بالإنجليزية تماماً كما في MAL لضمان التحقق.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    textAlign:
+                        TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
                   ),
-                  const SizedBox(height: 20),
+
+                  const SizedBox(
+                      height: 20),
+
                   Row(
                     children: [
                       Expanded(
-                        child: AppTextField(
-                          controller: _searchController,
-                          label: "اسم الشخصية (مثال: Levi Ackerman)",
+                        child:
+                            AppTextField(
+                          controller:
+                              _searchController,
+                          label:
+                              "اسم الشخصية (مثال: Levi Ackerman)",
                         ),
                       ),
-                      const SizedBox(width: 10),
+
+                      const SizedBox(
+                          width: 10),
+
                       IconButton.filled(
-                        onPressed: _isSearching ? null : _onSearch,
-                        icon: _isSearching
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Icon(Icons.search),
+                        onPressed:
+                            _isSearching
+                                ? null
+                                : _onSearch,
+                        icon:
+                            _isSearching
+                                ? const SizedBox(
+                                    width:
+                                        20,
+                                    height:
+                                        20,
+                                    child:
+                                        CircularProgressIndicator(
+                                      color:
+                                          Colors.white,
+                                      strokeWidth:
+                                          2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons
+                                        .search,
+                                  ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  if (_selectedCharacter != null) _buildSelectedCard(),
+
+                  const SizedBox(
+                      height: 20),
+
+                  if (_selectedCharacter !=
+                      null)
+                    _buildSelectedCard(),
                 ] else
                   const Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .center,
                       children: [
-                        LoadingWidget(message: "تم حفظ الشخصية بنجاح.."),
-                        SizedBox(height: 10),
+                        LoadingWidget(
+                          message:
+                              "تم حفظ الشخصية بنجاح..",
+                        ),
+                        SizedBox(
+                            height: 10),
                         Text(
                           "بانتظار أن ينهي الخصم اختياره لدخول عالم التخمين..",
-                          style: TextStyle(color: Colors.grey),
-                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color:
+                                Colors.grey,
+                          ),
+                          textAlign:
+                              TextAlign.center,
                         ),
                       ],
                     ),
@@ -420,21 +792,58 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
                 if (!iAmReady)
                   AppButton(
                     text: "بدأ اللعبة",
-                    isLoading: _isConfirming,
+                    isLoading:
+                        _isConfirming,
                     onPressed:
-                        _selectedCharacter == null ? null : _handleStart,
+                        _selectedCharacter ==
+                                null
+                            ? null
+                            : _handleStart,
                   ),
 
-                const SizedBox(height: 10),
+                const SizedBox(
+                    height: 10),
+
                 TextButton(
-                  onPressed: () => gameProvider.finishGame(
-                    widget.groupId,
-                    widget.gameId,
-                    isCancelled: true,
-                    reason: "انسحاب أحد اللاعبين أثناء التجهيز",
+                  onPressed: () {
+                    final winnerId =
+                        currentUserId ==
+                                game
+                                    .playerOneId
+                            ? game
+                                .playerTwoId
+                            : game
+                                .playerOneId;
+
+                    final winnerName =
+                        winnerId ==
+                                game
+                                    .playerOneId
+                            ? game
+                                .playerOneName
+                            : game
+                                .playerTwoName;
+
+                    gameProvider
+                        .finishGame(
+                      widget.groupId,
+                      widget.gameId,
+                      isCancelled:
+                          true,
+                      winnerId:
+                          winnerId,
+                      winnerName:
+                          winnerName,
+                      reason:
+                          "انسحاب ${currentUserId == game.playerOneId ? game.playerOneName : game.playerTwoName}",
+                    );
+                  },
+                  child: const Text(
+                    "انسحاب وإلغاء اللعبة",
+                    style: TextStyle(
+                      color: Colors.red,
+                    ),
                   ),
-                  child: const Text("انسحاب وإلغاء اللعبة",
-                      style: TextStyle(color: Colors.red)),
                 ),
               ],
             ),
@@ -444,20 +853,38 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     );
   }
 
-  Widget _buildPlayerStatus(String label, bool ready) {
+  Widget _buildPlayerStatus(
+    String label,
+    bool ready,
+  ) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 8),
         Icon(
-          ready ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: ready ? Colors.green : Colors.grey,
+          ready
+              ? Icons.check_circle
+              : Icons
+                  .radio_button_unchecked,
+          color: ready
+              ? Colors.green
+              : Colors.grey,
           size: 30,
         ),
         Text(
           ready ? "جاهز" : "يختار...",
           style: TextStyle(
-              fontSize: 12, color: ready ? Colors.green : Colors.grey),
+            fontSize: 12,
+            color: ready
+                ? Colors.green
+                : Colors.grey,
+          ),
         ),
       ],
     );
@@ -467,39 +894,75 @@ class _GuessCharacterGameScreenState extends State<GuessCharacterGameScreen> {
     return Card(
       elevation: 4,
       shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(
+                15),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding:
+            const EdgeInsets.all(
+                12),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius:
+                  BorderRadius.circular(
+                      10),
               child: Image.network(
-                _selectedCharacter!['imageUrl']!,
+                _selectedCharacter![
+                    'imageUrl']!,
                 width: 60,
                 height: 80,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.person, size: 50),
+                errorBuilder: (
+                  context,
+                  error,
+                  stackTrace,
+                ) =>
+                    const Icon(
+                  Icons.person,
+                  size: 50,
+                ),
               ),
             ),
+
             const SizedBox(width: 15),
+
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
-                    _selectedCharacter!['name']!,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                    _selectedCharacter![
+                        'name']!,
+                    style:
+                        const TextStyle(
+                      fontSize: 18,
+                      fontWeight:
+                          FontWeight
+                              .bold,
+                    ),
                   ),
-                  const Text("تم التحقق من الشخصية",
-                      style:
-                          TextStyle(color: Colors.blue, fontSize: 12)),
+
+                  const Text(
+                    "تم التحقق من الشخصية",
+                    style: TextStyle(
+                      color:
+                          Colors.blue,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.verified, color: Colors.blue),
+
+            const Icon(
+              Icons.verified,
+              color: Colors.blue,
+            ),
           ],
         ),
       ),

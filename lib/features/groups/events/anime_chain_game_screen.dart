@@ -96,7 +96,7 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
                     ),
                     decoration: InputDecoration(
                       labelText: 'كلمة البداية (مثال: Luffy)',
-                      hintText: 'اكتب الكلمة الأولى لانطلاق السلسلة',
+                      hintText: 'اكتب الإسم الأول لانطلاق السلسلة',
                       alignLabelWithHint: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true, // ✅
@@ -182,7 +182,7 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
         const SizedBox(height: 24),
         const Text('تم نشر الدعوة في الشات... 📣', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text('الكلمة الأولى: ${game.pendingStartWord ?? ''}', style: const TextStyle(color: Colors.blueAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+        Text('الإسم الأول: ${game.pendingStartWord ?? ''}', style: const TextStyle(color: Colors.blueAccent, fontSize: 14, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Text('كود الغرفة: ${game.id.substring(0, 8).toUpperCase()}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
       ]),
@@ -194,15 +194,15 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const Text('آخِر كَلِمَة تَمَّ قَبُولُهَا', style: TextStyle(fontSize: 13, color: Colors.grey, letterSpacing: 1.1)),
+        const Text('آخِر إسم تَمَّ قبوله', style: TextStyle(fontSize: 13, color: Colors.grey, letterSpacing: 1.1)),
         const SizedBox(height: 8),
         Text(game.currentWord ?? '—', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.blueAccent)),
         const SizedBox(height: 32),
-        const Text('الحرف المطلوب للكلمة القادمة هو:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        const Text('الحرف المطلوب للإسم القادم هو:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         const SizedBox(height: 16),
         Container(width: 90, height: 90, decoration: BoxDecoration(color: isMyTurn ? Colors.green : Colors.grey[300], shape: BoxShape.circle, boxShadow: [BoxShadow(color: (isMyTurn ? Colors.green : Colors.grey).withOpacity(0.3), blurRadius: 12, spreadRadius: 4)]), child: Center(child: Text(game.lastLetter?.toUpperCase() ?? '?', style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: isMyTurn ? Colors.white : Colors.black87)))),
         const SizedBox(height: 24),
-        Text(isMyTurn ? 'أسرع! دورك الآن لرمي الكلمة التالية ⚔️' : 'الخصم يفكر الآن في كلمة مناسبة... ⏳', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, fontWeight: isMyTurn ? FontWeight.bold : FontWeight.normal, color: isMyTurn ? Colors.green[700] : Colors.grey[700])),
+        Text(isMyTurn ? 'أسرع! دورك الآن لرمي الإسم التالي ⚔️' : 'الخصم يفكر الآن في الإسم المناسب... ⏳', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, fontWeight: isMyTurn ? FontWeight.bold : FontWeight.normal, color: isMyTurn ? Colors.green[700] : Colors.grey[700])),
       ]),
     );
   }
@@ -210,7 +210,7 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
   void _handleCreateGame() async {
     final startWord = _startWordController.text.trim();
     if (startWord.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب كلمة البداية!'), backgroundColor: Colors.orange));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب إسم البداية!'), backgroundColor: Colors.orange));
       return;
     }
     setState(() => _isCreating = true);

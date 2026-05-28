@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../../providers/game_provider.dart';
 import '../../../providers/chat_provider.dart';
+
 import '../../../models/game_model.dart';
 import '../../../models/member_model.dart';
+
 import '../../../core/constants/game_status.dart';
 import '../../../core/constants/game_constants.dart';
 import '../../../core/logic/game_logic_validator.dart';
 import '../../../core/utils/game_timer_manager.dart';
+
+
 import 'guess_character_dialog.dart';
 
 class GameBottomBar extends StatefulWidget {
@@ -28,52 +33,82 @@ class GameBottomBar extends StatefulWidget {
 
 class _GameBottomBarState extends State<GameBottomBar> {
   final TextEditingController _controller = TextEditingController();
+
   bool _turnTimeoutCalled = false;
 
   bool get isMyTurn =>
       widget.game.currentTurnUserId == widget.currentMember.userId;
 
-  // حقول خاصة بلعبة التخمين التقليدية
+  // لعبة التخمين التقليدية
   bool get isAnswerPhase =>
       widget.game.lastActionType == 'question' && isMyTurn;
 
   bool get isQuestionPhase =>
       widget.game.lastActionType != 'question' && isMyTurn;
 
-  bool get isAnimeChain => widget.game.gameType == 'anime_chain';
+  // لعبة سلسلة الأنمي
+  bool get isAnimeChain =>
+      widget.game.gameType == 'anime_chain';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     if (!isMyTurn) {
       return _buildWaitingBar();
     }
+
     return _buildActionBar();
   }
 
+  // ─────────────────────────────────────────────
+  // ACTION BAR
+  // ─────────────────────────────────────────────
+
   Widget _buildActionBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        border: const Border(top: BorderSide(color: Colors.black12)),
+        border: const Border(
+          top: BorderSide(color: Colors.black12),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildTimerProgress(),
+
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // زر الانسحاب
               IconButton(
-                icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-                onPressed: () => _handleQuit(),
+                icon: const Icon(
+                  Icons.exit_to_app,
+                  color: Colors.redAccent,
+                ),
+                onPressed: _handleQuit,
               ),
-              // إخفاء زر التخمين المباشر إذا كنا في لعبة السلسلة
+
+              // زر التخمين المباشر
               if (!isAnimeChain && isQuestionPhase)
                 IconButton(
-                  icon: const Icon(Icons.ads_click, color: Colors.amber),
-                  onPressed: () => _showGuessDialog(),
+                  icon: const Icon(
+                    Icons.ads_click,
+                    color: Colors.amber,
+                  ),
+                  onPressed: _showGuessDialog,
                 ),
+
+              // حقل الكتابة
               Expanded(
                 child: TextField(
                   controller: _controller,
@@ -83,14 +118,22 @@ class _GameBottomBarState extends State<GameBottomBar> {
                   maxLines: 6,
                   textAlign: TextAlign.right,
                   textDirection: TextDirection.rtl,
-                  style: const TextStyle(fontSize: 15.5, height: 1.4),
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    height: 1.4,
+                  ),
                   decoration: InputDecoration(
                     hintText: isAnimeChain
-                        ? "اكتب كلمة تبدأ بحرف: (${widget.game.lastLetter?.toUpperCase() ?? 'أي حرف'})"
-                        : (isQuestionPhase
-                            ? "اسأل سؤالاً (إجابته نعم/لا)..."
-                            : "أجب بـ (نعم) أو (لا) فقط..."),
-                    hintStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ? "اكتب إسم يبدأ بحرف: (${widget.game.lastLetter?.toUpperCase() ?? 'أي حرف'})"
+                        : (
+                            isQuestionPhase
+                                ? "اسأل سؤالاً (إجابته نعم/لا)..."
+                                : "أجب بـ (نعم) أو (لا) فقط..."
+                          ),
+                    hintStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                       borderSide: BorderSide.none,
@@ -98,13 +141,20 @@ class _GameBottomBarState extends State<GameBottomBar> {
                     fillColor: Colors.grey[200],
                     filled: true,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 15, vertical: 10),
+                      horizontal: 15,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ),
+
+              // زر الإرسال
               IconButton(
-                icon: const Icon(Icons.send, color: Colors.blue),
-                onPressed: () => _handleSend(),
+                icon: const Icon(
+                  Icons.send,
+                  color: Colors.blue,
+                ),
+                onPressed: _handleSend,
               ),
             ],
           ),
@@ -113,6 +163,10 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // TIMER
+  // ─────────────────────────────────────────────
+
   Widget _buildTimerProgress() {
     return StreamBuilder<int>(
       stream: GameTimerManager.startSyncedCountdown(
@@ -120,31 +174,46 @@ class _GameBottomBarState extends State<GameBottomBar> {
         GameConstants.turnDuration,
       ),
       builder: (context, snapshot) {
-        final seconds = snapshot.data ?? GameConstants.turnDuration;
-        final percent =
-            (seconds / GameConstants.turnDuration).clamp(0.0, 1.0);
+        final seconds =
+            snapshot.data ?? GameConstants.turnDuration;
 
+        final percent =
+            (seconds / GameConstants.turnDuration)
+                .clamp(0.0, 1.0);
+
+        // انتهاء الوقت
         if (seconds <= 0 &&
             isMyTurn &&
             widget.game.status == GameStatus.guessing &&
             !_turnTimeoutCalled) {
+
           _turnTimeoutCalled = true;
+
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               context
                   .read<GameProvider>()
-                  .processAutoJudge(widget.groupId, widget.game);
+                  .processAutoJudge(
+                    widget.groupId,
+                    widget.game,
+                  );
             }
           });
         }
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8.0, left: 10, right: 10),
+          padding: const EdgeInsets.only(
+            bottom: 8,
+            left: 10,
+            right: 10,
+          ),
           child: LinearProgressIndicator(
             value: percent,
             backgroundColor: Colors.grey[300],
             valueColor: AlwaysStoppedAnimation<Color>(
-              seconds < 10 ? Colors.red : Colors.green,
+              seconds < 10
+                  ? Colors.red
+                  : Colors.green,
             ),
             minHeight: 2,
           ),
@@ -152,6 +221,10 @@ class _GameBottomBarState extends State<GameBottomBar> {
       },
     );
   }
+
+  // ─────────────────────────────────────────────
+  // WAITING BAR
+  // ─────────────────────────────────────────────
 
   Widget _buildWaitingBar() {
     return Container(
@@ -161,6 +234,7 @@ class _GameBottomBarState extends State<GameBottomBar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildTimerProgress(),
+
           Row(
             children: [
               const Expanded(
@@ -168,12 +242,18 @@ class _GameBottomBarState extends State<GameBottomBar> {
                   "بانتظار حركة الخصم... ⏳",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontStyle: FontStyle.italic, color: Colors.grey),
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey,
+                  ),
                 ),
               ),
+
               IconButton(
-                icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-                onPressed: () => _handleQuit(),
+                icon: const Icon(
+                  Icons.exit_to_app,
+                  color: Colors.redAccent,
+                ),
+                onPressed: _handleQuit,
               ),
             ],
           ),
@@ -182,84 +262,135 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // SEND MESSAGE / MOVE
+  // ─────────────────────────────────────────────
+
   void _handleSend() async {
     final text = _controller.text.trim();
+
     if (text.isEmpty) return;
 
-    // 1. منطق معالجة الإرسال الخاص بلعبة سلسلة الأنمي
+    // ───────── لعبة سلسلة الأنمي ─────────
+
     if (isAnimeChain) {
-      if (!GameLogicValidator.isValidChainWord(text, widget.game.lastLetter, widget.game.usedWords)) {
+
+      final isValid =
+          GameLogicValidator.isValidChainWord(
+        text,
+        widget.game.lastLetter,
+        widget.game.usedWords,
+      );
+
+      if (!isValid) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              widget.game.usedWords.contains(text.toLowerCase())
-                  ? "هذه الكلمة تم استخدامها من قبل في هذه السلسلة!"
-                  : "خطأ! الكلمة يجب أن تبدأ بحرف (${widget.game.lastLetter?.toUpperCase()}) ولم تستخدم سابقاً.",
+              widget.game.usedWords.contains(
+                      text.toLowerCase())
+                  ? "هذا الإسم تم إستخدامه من قبل في هذه السلسلة!"
+                  : "خطأ! الإسم يجب أن يبدأ بحرف (${widget.game.lastLetter?.toUpperCase()}) ولم تستخدم سابقاً.",
             ),
             backgroundColor: Colors.redAccent,
           ),
         );
+
         return;
       }
 
-      // إرسال الحركة عبر الـ Provider المحدث الذي يعكس الدور تلقائياً
-      final success = await context.read<GameProvider>().submitChainWord(
-            groupId: widget.groupId,
-            gameId: widget.game.id,
-            word: text,
-            userId: widget.currentMember.userId,
-            userName: widget.currentMember.displayName,
-          );
+      final success =
+          await context.read<GameProvider>()
+              .submitChainWord(
+                groupId: widget.groupId,
+                gameId: widget.game.id,
+                word: text,
+                userId: widget.currentMember.userId,
+                userName:
+                    widget.currentMember.displayName,
+              );
 
       if (success) {
         _controller.clear();
+
         setState(() {
-          _turnTimeoutCalled = false; // إعادة تهيئة العداد للدور الجديد
+          _turnTimeoutCalled = false;
         });
       }
+
       return;
     }
 
-    // 2. منطق معالجة الإرسال التقليدي للعبة التخمين
+    // ───────── لعبة التخمين ─────────
+
     if (isAnswerPhase) {
-      if (!GameLogicValidator.isValidGameAnswer(text)) {
+
+      final isValidAnswer =
+          GameLogicValidator.isValidGameAnswer(text);
+
+      if (!isValidAnswer) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("عذراً، يجب أن تكون الإجابة نعم أو لا فقط!"),
+            content: Text(
+              "عذراً، يجب أن تكون الإجابة نعم أو لا فقط!",
+            ),
             backgroundColor: Colors.orange,
           ),
         );
+
         return;
       }
     }
 
-    await context.read<ChatProvider>().sendTextMessage(
-      groupId: widget.groupId,
-      messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-      sender: widget.currentMember,
-      text: text,
-      gameId: widget.game.id,
-      gameSlot: widget.game.gameSlot,
-    );
+    // إرسال الرسالة
+    await context.read<ChatProvider>()
+        .sendTextMessage(
+          groupId: widget.groupId,
+          messageId:
+              DateTime.now()
+                  .millisecondsSinceEpoch
+                  .toString(),
+          sender: widget.currentMember,
+          text: text,
+          gameId: widget.game.id,
+          gameSlot: widget.game.gameSlot,
+        );
 
+    // تبديل الدور
     if (isQuestionPhase) {
-      await context
-          .read<GameProvider>()
-          .updateLastAction(widget.groupId, widget.game.id, 'question');
-      await context
-          .read<GameProvider>()
-          .switchTurn(widget.groupId, widget.game.id);
+
+      await context.read<GameProvider>()
+          .updateLastAction(
+            widget.groupId,
+            widget.game.id,
+            'question',
+          );
+
+      await context.read<GameProvider>()
+          .switchTurn(
+            widget.groupId,
+            widget.game.id,
+          );
+
     } else {
-      await context
-          .read<GameProvider>()
-          .updateLastAction(widget.groupId, widget.game.id, null);
+
+      await context.read<GameProvider>()
+          .updateLastAction(
+            widget.groupId,
+            widget.game.id,
+            null,
+          );
     }
 
     _controller.clear();
+
     setState(() {
       _turnTimeoutCalled = false;
     });
   }
+
+  // ─────────────────────────────────────────────
+  // GUESS DIALOG
+  // ─────────────────────────────────────────────
 
   void _showGuessDialog() {
     showDialog(
@@ -272,33 +403,64 @@ class _GameBottomBarState extends State<GameBottomBar> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // QUIT GAME
+  // ─────────────────────────────────────────────
+
   void _handleQuit() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("انسحاب"),
+
         content: const Text(
-            "هل أنت متأكد من الانسحاب؟ ستعتبر خاسراً في هذه اللعبة."),
+          "هل أنت متأكد من الانسحاب؟ ستعتبر خاسراً في هذه اللعبة.",
+        ),
+
         actions: [
+
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("إلغاء")),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("إلغاء"),
+          ),
+
           TextButton(
             onPressed: () {
-              context.read<GameProvider>().finishGame(
+
+              // تحديد الفائز
+              final winnerId =
+                  widget.game.playerOneId ==
+                          widget.currentMember.userId
+                      ? widget.game.playerTwoId
+                      : widget.game.playerOneId;
+
+              // تحديد اسم الفائز
+              final winnerName =
+                  winnerId == widget.game.playerOneId
+                      ? widget.game.playerOneName
+                      : widget.game.playerTwoName;
+
+              // إنهاء اللعبة
+              context.read<GameProvider>()
+                  .finishGame(
                     widget.groupId,
                     widget.game.id,
-                    winnerId:
-                        widget.game.playerOneId == widget.currentMember.userId
-                            ? widget.game.playerTwoId
-                            : widget.game.playerOneId,
+
+                    winnerId: winnerId,
+                    winnerName: winnerName,
+
                     isCancelled: true,
+
                     reason:
                         "انسحاب اللاعب ${widget.currentMember.displayName}",
                   );
+
               Navigator.pop(ctx);
             },
-            child: const Text("انسحاب", style: TextStyle(color: Colors.red)),
+            child: const Text(
+              "انسحاب",
+              style: TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
