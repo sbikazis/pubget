@@ -40,25 +40,37 @@ class _CreateRoleplayGroupScreenState
   final TextEditingController _animeCtrl = TextEditingController();
   final TextEditingController _charReasonCtrl = TextEditingController();
 
+  // ── حقل البحث اليدوي (للتقمص المفتوح فقط)
+  final TextEditingController _openCharSearchCtrl = TextEditingController();
+
   GroupType _selectedGroupType = GroupType.roleplay;
 
   File? _pickedImage;
   File? _charPickedImage;
   bool _isLoading = false;
 
+  // ── بيانات الأنمي المحدد
   bool _isVerifyingAnime = false;
   String? _confirmedAnimeName;
   String? _confirmedAnimeImage;
   dynamic _confirmedAnimeId;
   List<Map<String, dynamic>> _confirmedFranchiseData = [];
 
+  // ── بيانات الشخصية المختارة (مشترك بين النظامين)
   int? _confirmedCharId;
   String? _confirmedCharName;
   String? _confirmedCharImage;
 
+  // ── بيانات خاصة بالتقمص المفتوح
+  bool _isSearchingChar = false;
+  List<Map<String, String>> _openCharSearchResults = [];
+
   bool _isLoadingCharacters = false;
 
   final ImagePicker _picker = ImagePicker();
+
+  // ── هل النوع المحدد تقمص مفتوح؟
+  bool get _isOpenRoleplay => _selectedGroupType == GroupType.openRoleplay;
 
   // ─────────────────────────────────────────────
   // PICK IMAGES
@@ -69,7 +81,6 @@ class _CreateRoleplayGroupScreenState
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
 
-    // ✅ نسخ الصورة من cache إلى مجلد ثابت
     final appDir = await getApplicationDocumentsDirectory();
     final savedFile = await File(file.path).copy(
       '${appDir.path}/group_img_${DateTime.now().millisecondsSinceEpoch}.jpg',
@@ -82,7 +93,6 @@ class _CreateRoleplayGroupScreenState
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file == null) return;
 
-    // ✅ نسخ الصورة من cache إلى مجلد ثابت
     final appDir = await getApplicationDocumentsDirectory();
     final savedFile = await File(file.path).copy(
       '${appDir.path}/char_img_${DateTime.now().millisecondsSinceEpoch}.jpg',
@@ -91,7 +101,7 @@ class _CreateRoleplayGroupScreenState
   }
 
   // ─────────────────────────────────────────────
-  // VERIFY ANIME
+  // VERIFY ANIME (للأنمي المحدد فقط)
   // ─────────────────────────────────────────────
 
   Future<void> _verifyAnime() async {
@@ -144,7 +154,7 @@ class _CreateRoleplayGroupScreenState
   }
 
   // ─────────────────────────────────────────────
-  // SHOW ANIME CHARACTERS
+  // SHOW ANIME CHARACTERS (للأنمي المحدد فقط)
   // ─────────────────────────────────────────────
 
   Future<void> _showAnimeCharacters() async {
@@ -188,7 +198,55 @@ class _CreateRoleplayGroupScreenState
   }
 
   // ─────────────────────────────────────────────
-  // CHARACTER SELECTION BOTTOM SHEET
+  // SEARCH OPEN CHARACTER (للتقمص المفتوح فقط)
+  // ─────────────────────────────────────────────
+
+  Future<void> _searchOpenCharacter() async {
+    final query = _openCharSearchCtrl.text.trim();
+    if (query.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء كتابة اسم الشخصية للبحث')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSearchingChar = true;
+      _openCharSearchResults = [];
+      // مسح الاختيار السابق عند بحث جديد
+      _confirmedCharId = null;
+      _confirmedCharName = null;
+      _confirmedCharImage = null;
+      _charPickedImage = null;
+    });
+
+    try {
+      // بحث عالمي بدون تقييد بأنمي محدد
+      final results = await AnimeApiService.searchCharacterMultiple(
+        characterName: query,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isSearchingChar = false;
+          _openCharSearchResults = results;
+        });
+      }
+
+      if (results.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('لم نجد شخصية بهذا الاسم، حاول باسم مختلف')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error searching character: $e");
+      if (mounted) setState(() => _isSearchingChar = false);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // CHARACTER SELECTION BOTTOM SHEET (للأنمي المحدد)
   // ─────────────────────────────────────────────
 
   void _showCharacterSelectionSheet(List<Map<String, dynamic>> characters) {
@@ -364,8 +422,10 @@ class _CreateRoleplayGroupScreenState
     if (!_formKey.currentState!.validate()) return;
 
     if (_confirmedCharName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('الرجاء اختيار شخصيتك من القائمة أولاً')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isOpenRoleplay
+              ? 'الرجاء البحث واختيار شخصيتك أولاً'
+              : 'الرجاء اختيار شخصيتك من القائمة أولاً')));
       return;
     }
 
@@ -392,14 +452,13 @@ class _CreateRoleplayGroupScreenState
       final groupId = DateTime.now().millisecondsSinceEpoch.toString();
       String groupImageUrl = '';
 
-      // ✅ فحص exists() قبل رفع صورة المجموعة
       if (_pickedImage != null && await _pickedImage!.exists()) {
         groupImageUrl = await storage.uploadGroupImage(
             groupId: groupId, file: _pickedImage!);
       }
 
+      // في التقمص المفتوح: الصورة من API أو من المعرض (اختيارية)
       String finalCharImageUrl = _confirmedCharImage ?? '';
-      // ✅ فحص exists() قبل رفع صورة الشخصية
       if (_charPickedImage != null && await _charPickedImage!.exists()) {
         finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
             groupId: groupId,
@@ -407,8 +466,9 @@ class _CreateRoleplayGroupScreenState
             file: _charPickedImage!);
       }
 
-      final List<int> franchiseIds =
-          _confirmedFranchiseData.map((item) => item['id'] as int).toList();
+      final List<int> franchiseIds = _isOpenRoleplay
+          ? []
+          : _confirmedFranchiseData.map((item) => item['id'] as int).toList();
 
       final group = GroupModel(
         id: groupId,
@@ -417,14 +477,9 @@ class _CreateRoleplayGroupScreenState
         slogan: _sloganCtrl.text.trim(),
         imageUrl: groupImageUrl,
         type: _selectedGroupType,
-        animeName: _selectedGroupType == GroupType.roleplay
-            ? _confirmedAnimeName
-            : null,
-        animeId: _selectedGroupType == GroupType.roleplay
-            ? _confirmedAnimeId
-            : null,
-        franchiseIds:
-            _selectedGroupType == GroupType.roleplay ? franchiseIds : [],
+        animeName: _isOpenRoleplay ? null : _confirmedAnimeName,
+        animeId: _isOpenRoleplay ? null : _confirmedAnimeId,
+        franchiseIds: franchiseIds,
         founderId: currentUser.id,
         membersCount: 1,
         maxMembers: currentUser.isPremium
@@ -442,7 +497,7 @@ class _CreateRoleplayGroupScreenState
         joinedAt: DateTime.now(),
         displayName: _confirmedCharName,
         characterName: _confirmedCharName,
-        characterImageUrl: finalCharImageUrl,
+        characterImageUrl: finalCharImageUrl.isNotEmpty ? finalCharImageUrl : null,
         characterReason: _charReasonCtrl.text.trim(),
         realUserName: currentUser.username,
         realUserImageUrl: currentUser.avatarUrl,
@@ -478,17 +533,17 @@ class _CreateRoleplayGroupScreenState
     _descriptionCtrl.dispose();
     _animeCtrl.dispose();
     _charReasonCtrl.dispose();
-    // ✅ حذف الملفات المؤقتة عند الخروج
+    _openCharSearchCtrl.dispose();
     _pickedImage?.delete().catchError((_) {});
     _charPickedImage?.delete().catchError((_) {});
     super.dispose();
   }
 
   // ─────────────────────────────────────────────
-  // WIDGETS
+  // WIDGET: بطاقة الشخصية المختارة (مشترك)
   // ─────────────────────────────────────────────
 
-  Widget _buildSimpleTile(String title, String? imageUrl, bool isDark) {
+  Widget _buildSelectedCharTile(bool isDark) {
     return GestureDetector(
       onTap: _pickCharImage,
       child: Container(
@@ -506,11 +561,20 @@ class _CreateRoleplayGroupScreenState
                 child: _charPickedImage != null
                     ? Image.file(_charPickedImage!,
                         width: 45, height: 45, fit: BoxFit.cover)
-                    : (imageUrl != null && imageUrl.isNotEmpty
-                        ? Image.network(imageUrl,
-                            width: 45, height: 45, fit: BoxFit.cover)
+                    : (_confirmedCharImage != null &&
+                            _confirmedCharImage!.isNotEmpty
+                        ? Image.network(_confirmedCharImage!,
+                            width: 45, height: 45, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.grey,
+                                  width: 45,
+                                  height: 45,
+                                  child: const Icon(Icons.person),
+                                ))
                         : Container(
-                            color: Colors.grey, width: 45, height: 45))),
+                            color: Colors.grey, width: 45, height: 45,
+                            child: const Icon(Icons.person, color: Colors.white),
+                          ))),
             Positioned(
                 bottom: 0,
                 right: 0,
@@ -526,10 +590,14 @@ class _CreateRoleplayGroupScreenState
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text(title,
+                Text(_confirmedCharName!,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Text('اضغط على الصورة لتغييرها اختيارياً',
-                    style: TextStyle(fontSize: 10, color: Colors.grey))
+                Text(
+                  _isOpenRoleplay
+                      ? 'اضغط على الصورة لرفع صورة مخصصة (اختياري)'
+                      : 'اضغط على الصورة لتغييرها اختيارياً',
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
               ])),
           const Icon(Icons.check_circle, color: Colors.green, size: 20),
         ]),
@@ -555,6 +623,242 @@ class _CreateRoleplayGroupScreenState
             textAlign: TextAlign.center,
             overflow: TextOverflow.ellipsis),
       ]),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // WIDGET: قسم شخصية المؤسس - التقمص المفتوح
+  // ─────────────────────────────────────────────
+
+  Widget _buildOpenRoleplayCharSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── إشعار نوع المجموعة
+        Container(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+          ),
+          child: const Row(children: [
+            Icon(Icons.public, color: Colors.orange, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'تقمص مفتوح — يمكنك اختيار أي شخصية من عالم الأنمي',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.orange),
+              ),
+            ),
+          ]),
+        ),
+
+        // ── حقل البحث + زر
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: AppTextField(
+                controller: _openCharSearchCtrl,
+                label: 'اسم الشخصية',
+                placeholder: 'مثال: Naruto Uzumaki',
+                prefixIcon: Icons.person_search,
+                onChanged: (_) {
+                  // مسح الاختيار السابق عند التعديل
+                  if (_confirmedCharName != null) {
+                    setState(() {
+                      _confirmedCharName = null;
+                      _confirmedCharImage = null;
+                      _confirmedCharId = null;
+                      _charPickedImage = null;
+                      _openCharSearchResults = [];
+                    });
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: SizedBox(
+                height: 54,
+                width: 80,
+                child: ElevatedButton(
+                  onPressed: _isSearchingChar ? null : _searchOpenCharacter,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: _isSearchingChar
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('بحث', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // ── نتائج البحث
+        if (_openCharSearchResults.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text(
+            'اختر شخصيتك من النتائج:',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 130,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _openCharSearchResults.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final char = _openCharSearchResults[index];
+                final String charName = char['name'] ?? '';
+                final String charImage = char['imageUrl'] ?? '';
+                final bool isSelected = _confirmedCharName == charName;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _confirmedCharId = null;
+                      _confirmedCharName = charName;
+                      _confirmedCharImage =
+                          charImage.isNotEmpty ? charImage : null;
+                      _charPickedImage = null;
+                    });
+                  },
+                  child: Container(
+                    width: 80,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.primary
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: charImage.isNotEmpty
+                              ? Image.network(
+                                  charImage,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Colors.grey.shade300,
+                                    child:
+                                        const Icon(Icons.person, size: 28),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.grey.shade300,
+                                  child:
+                                      const Icon(Icons.person, size: 28),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        charName,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? AppColors.primary : null,
+                        ),
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ]),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // WIDGET: قسم شخصية المؤسس - الأنمي المحدد
+  // ─────────────────────────────────────────────
+
+  Widget _buildSpecificAnimeCharSection() {
+    return FormField<String>(
+      validator: (_) => _validateCharacter(null),
+      builder: (state) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 54,
+            child: ElevatedButton.icon(
+              onPressed:
+                  _isLoadingCharacters || _confirmedAnimeName == null
+                      ? null
+                      : _showAnimeCharacters,
+              icon: _isLoadingCharacters
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.people_alt_outlined),
+              label: Text(
+                _confirmedCharName != null
+                    ? 'تغيير الشخصية'
+                    : 'عرض شخصيات الأنمي',
+                style: const TextStyle(fontSize: 14),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _confirmedAnimeName == null
+                    ? Colors.grey
+                    : AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          if (state.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, right: 8),
+              child: Text(state.errorText!,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error)),
+            ),
+          if (_confirmedAnimeName == null)
+            const Padding(
+              padding: EdgeInsets.only(top: 6, right: 4),
+              child: Text(
+                'تحقق من الأنمي أولاً لتتمكن من عرض الشخصيات',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -598,24 +902,29 @@ class _CreateRoleplayGroupScreenState
                                     _confirmedCharName = null;
                                     _confirmedCharImage = null;
                                     _charPickedImage = null;
+                                    _openCharSearchResults = [];
+                                    _openCharSearchCtrl.clear();
                                   });
                               })),
                       const SizedBox(width: 8),
                       Expanded(
                           child: ChoiceChip(
-                              label:
-                                  const Center(child: Text('تقمص مفتوح')),
-                              selected: _selectedGroupType ==
-                                  GroupType.openRoleplay,
+                              label: const Center(child: Text('تقمص مفتوح')),
+                              selected:
+                                  _selectedGroupType == GroupType.openRoleplay,
                               onSelected: (val) {
                                 if (val)
                                   setState(() {
-                                    _selectedGroupType =
-                                        GroupType.openRoleplay;
+                                    _selectedGroupType = GroupType.openRoleplay;
                                     _confirmedCharId = null;
                                     _confirmedCharName = null;
                                     _confirmedCharImage = null;
                                     _charPickedImage = null;
+                                    _confirmedAnimeName = null;
+                                    _confirmedAnimeId = null;
+                                    _confirmedFranchiseData = [];
+                                    _openCharSearchResults = [];
+                                    _animeCtrl.clear();
                                   });
                               })),
                     ]),
@@ -633,8 +942,7 @@ class _CreateRoleplayGroupScreenState
                                       color: isDark
                                           ? AppColors.darkCard
                                           : AppColors.lightCard,
-                                      borderRadius:
-                                          BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
                                           color: isDark
                                               ? AppColors.darkBorder
@@ -649,14 +957,11 @@ class _CreateRoleplayGroupScreenState
                                   width: 120,
                                   height: 120,
                                   decoration: BoxDecoration(
-                                      borderRadius:
-                                          BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                          color: AppColors.primary,
-                                          width: 2)),
+                                          color: AppColors.primary, width: 2)),
                                   child: ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(10),
                                       child: Image.file(_pickedImage!,
                                           fit: BoxFit.cover)))),
                     ),
@@ -682,13 +987,12 @@ class _CreateRoleplayGroupScreenState
                     AppTextField(
                         controller: _descriptionCtrl,
                         label: 'وصف المجموعة',
-                        placeholder:
-                            'أضف وصفاً مختصراً للمجموعة وقوانينها',
+                        placeholder: 'أضف وصفاً مختصراً للمجموعة وقوانينها',
                         isMultiline: true,
                         maxLength: Limits.maxGroupDescriptionLength,
                         validator: _validateDescription),
 
-                    // ── قسم الأنمي (فقط لـ roleplay)
+                    // ── قسم الأنمي (فقط لـ roleplay المحدد)
                     if (_selectedGroupType == GroupType.roleplay) ...[
                       const SizedBox(height: 12),
                       Row(
@@ -724,14 +1028,12 @@ class _CreateRoleplayGroupScreenState
                                             ? null
                                             : _verifyAnime,
                                         style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppColors.primary,
+                                            backgroundColor: AppColors.primary,
                                             foregroundColor: Colors.white,
                                             elevation: 0,
                                             shape: RoundedRectangleBorder(
                                                 borderRadius:
-                                                    BorderRadius.circular(
-                                                        10)),
+                                                    BorderRadius.circular(10)),
                                             padding: EdgeInsets.zero),
                                         child: _isVerifyingAnime
                                             ? const SizedBox(
@@ -772,8 +1074,7 @@ class _CreateRoleplayGroupScreenState
                                   height: 90,
                                   child: ListView.builder(
                                       scrollDirection: Axis.horizontal,
-                                      itemCount:
-                                          _confirmedFranchiseData.length,
+                                      itemCount: _confirmedFranchiseData.length,
                                       itemBuilder: (context, index) {
                                         final item =
                                             _confirmedFranchiseData[index];
@@ -795,69 +1096,10 @@ class _CreateRoleplayGroupScreenState
                             color: AppColors.primary)),
                     const SizedBox(height: 12),
 
-                    if (_selectedGroupType == GroupType.roleplay) ...[
-                      FormField<String>(
-                        validator: (_) => _validateCharacter(null),
-                        builder: (state) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SizedBox(
-                              height: 54,
-                              child: ElevatedButton.icon(
-                                onPressed: _isLoadingCharacters ||
-                                        _confirmedAnimeName == null
-                                    ? null
-                                    : _showAnimeCharacters,
-                                icon: _isLoadingCharacters
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white))
-                                    : const Icon(Icons.people_alt_outlined),
-                                label: Text(
-                                  _confirmedCharName != null
-                                      ? 'تغيير الشخصية'
-                                      : 'عرض شخصيات الأنمي',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _confirmedAnimeName == null
-                                      ? Colors.grey
-                                      : AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(12)),
-                                ),
-                              ),
-                            ),
-                            if (state.hasError)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    top: 6, right: 8),
-                                child: Text(state.errorText!,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .error)),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (_confirmedAnimeName == null)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 6, right: 4),
-                          child: Text(
-                            'تحقق من الأنمي أولاً لتتمكن من عرض الشخصيات',
-                            style:
-                                TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        ),
-                    ],
+                    // ── اختيار الشخصية (يتغير حسب النوع)
+                    _isOpenRoleplay
+                        ? _buildOpenRoleplayCharSection()
+                        : _buildSpecificAnimeCharSection(),
 
                     const SizedBox(height: 12),
 
@@ -865,15 +1107,13 @@ class _CreateRoleplayGroupScreenState
                     AppTextField(
                         controller: _charReasonCtrl,
                         label: 'لماذا اخترت هذه الشخصية؟',
-                        placeholder:
-                            'اختياري: اكتب سبب تقمصك لهذه الشخصية',
+                        placeholder: 'اختياري: اكتب سبب تقمصك لهذه الشخصية',
                         isMultiline: true,
                         maxLength: 150),
 
                     // ── بطاقة الشخصية المختارة
                     if (_confirmedCharName != null)
-                      _buildSimpleTile(
-                          _confirmedCharName!, _confirmedCharImage, isDark),
+                      _buildSelectedCharTile(isDark),
 
                     const SizedBox(height: 32),
                     AppButton(
