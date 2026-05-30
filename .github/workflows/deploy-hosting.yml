@@ -28,6 +28,7 @@ jobs:
           cp web/privacy.html build/web/privacy.html
           cp web/refund.html build/web/refund.html
           cp web/index.html build/web/index.html
+          cp web/presentation.html build/web/presentation.html
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
