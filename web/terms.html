@@ -1,76 +1,269 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pubget - شروط الخدمة</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #0F0F14;
-      color: #fff;
-      line-height: 1.8;
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
     }
-    .header {
-      background: #1A1A22;
-      padding: 20px;
-      text-align: center;
-      border-bottom: 1px solid #2E2E38;
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      p.timestamp = message.timestamp;
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
     }
-    .logo { font-size: 28px; font-weight: 900; color: #5B2EFF; }
-    .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
-    h1 { font-size: 28px; margin-bottom: 10px; }
-    .date { color: #7C7C8A; font-size: 13px; margin-bottom: 30px; }
-    h2 { font-size: 18px; color: #5B2EFF; margin: 30px 0 10px; }
-    p { color: #B3B3C2; margin-bottom: 12px; font-size: 15px; }
-    ul { color: #B3B3C2; padding-right: 20px; margin-bottom: 12px; }
-    li { margin-bottom: 8px; font-size: 15px; }
-  </style>
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
+(function() {
+  if (window.__playableTouchPatchInstalled) return;
+  window.__playableTouchPatchInstalled = true;
+  var origAdd = EventTarget.prototype.addEventListener;
+  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (blockedTypes[type]) {
+      if (options === undefined || options === null) {
+        options = { passive: true };
+      } else if (typeof options === 'boolean') {
+        options = { capture: options, passive: true };
+      } else {
+        options = Object.assign({}, options, { passive: true });
+      }
+    }
+    return origAdd.call(this, type, listener, options);
+  };
+})();
+</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pubget – شروط الاستخدام</title>
+<style>
+body{font-family:'Cairo',system-ui,Arial,sans-serif;background:#fff;color:#111;line-height:1.8;margin:0}
+.container{max-width:820px;margin:auto;padding:32px 20px}
+h1{font-size:28px}
+h2{font-size:20px;margin-top:28px;border-bottom:1px solid #eee;padding-bottom:6px}
+.sub{color:#666;font-size:14px}
+ul{padding-right:20px}
+.note{background:#f7f7f9;padding:12px;border-radius:8px;font-size:14px;margin-top:24px}
+</style>
 </head>
 <body>
-
-<div class="header">
-  <div class="logo">Pubget</div>
-</div>
-
 <div class="container">
-  <h1>شروط الخدمة</h1>
-  <p class="date">آخر تحديث: مايو 2026</p>
+<h1>Pubget – شروط الاستخدام</h1>
+<div class="sub">Terms of Service | آخر تحديث: 29 مايو 2026</div>
 
-  <h2>1. القبول بالشروط</h2>
-  <p>باستخدامك لتطبيق Pubget أو موقعنا الإلكتروني، فأنت توافق على الالتزام بهذه الشروط والأحكام.</p>
+<p>مرحباً بك في Pubget. باستخدامك التطبيق، أنت توافق على هذه الشروط. المشغّل الحالي: Zakaria Sbika :zakariasbika253@gmail.com</p>
 
-  <h2>2. وصف الخدمة</h2>
-  <p>Pubget هو تطبيق اجتماعي يتيح للمستخدمين إنشاء والانضمام لمجموعات الأنمي، والتواصل مع المجتمع.</p>
+<h2>1. الأهلية</h2>
+<p>يجب أن يكون عمرك 13 سنة أو أكثر. باستخدامك Pubget، تؤكد أنك تستوفي هذا الشرط وأنك تملك إذن ولي الأمر إذا كان مطلوباً قانوناً في بلدك.</p>
 
-  <h2>3. الاشتراكات والمدفوعات</h2>
-  <p>نقدم خططاً مدفوعة تشمل:</p>
-  <ul>
-    <li>اشتراك بريميم شهري بسعر $1.99 يتجدد تلقائياً</li>
-    <li>توسعات دائمة بسعر $0.99 لكل توسعة</li>
-    <li>ترويج المجموعات بسعر $0.99 لمدة 7 أيام</li>
-  </ul>
-  <p>تتم معالجة جميع المدفوعات بشكل آمن عبر Paddle.</p>
+<h2>2. الحساب</h2>
+<ul>
+<li>تسجّل باسمك وبريدك الحقيقي.</li>
+<li>أنت مسؤول عن نشاط حسابك والحفاظ على سريته.</li>
+<li>يحق لنا تعليق الحسابات المسيئة أو المزيفة.</li>
+</ul>
 
-  <h2>4. سياسة الإلغاء</h2>
-  <p>يمكنك إلغاء اشتراكك في أي وقت. يستمر الاشتراك حتى نهاية فترة الفوترة الحالية.</p>
+<h2>3. المحتوى والمجتمعات</h2>
+<ul>
+<li>Pubget منصة لمجتمعات الأنمي: مجموعات، Roleplay، وفيديوهات قصيرة.</li>
+<li>أنت تملك المحتوى الذي تنشره، وتمنح Pubget ترخيصاً غير حصري لعرضه داخل التطبيق فقط.</li>
+<li>ممنوع: محتوى إباحي، كراهية، تحريض، انتحال شخصيات حقيقية، أو انتهاك حقوق نشر.</li>
+<li><strong>حقوق الأنمي:</strong> الشخصيات (Luffy, Demon Slayer...) مملوكة لأصحابها. نحن لا ندّعي ملكيتها. يُمنع رفع صور رسمية محمية بحقوق نشر في المتجر أو التسويق.</li>
+</ul>
 
-  <h2>5. قواعد الاستخدام</h2>
-  <p>يُحظر على المستخدمين:</p>
-  <ul>
-    <li>نشر محتوى مسيء أو غير لائق</li>
-    <li>انتهاك خصوصية المستخدمين الآخرين</li>
-    <li>استخدام التطبيق لأغراض غير قانونية</li>
-    <li>إنشاء حسابات متعددة للتحايل على القيود</li>
-  </ul>
+<h2>4. العملات والمتجر</h2>
+<ul>
+<li>النظام الحالي يستخدم عملات داخلية (مثلاً 200 عملة للتوسعة). هذه العملات لا قيمة نقدية خارج التطبيق.</li>
+<li>بسبب عدم توفر Google Play Billing في المغرب حالياً، لا توجد مدفوعات حقيقية في النسخة التجريبية. عند تفعيل الدفع، ستُطبق سياسات الاسترجاع الخاصة بالمتجر.</li>
+<li>Premium في البيتا هو للاختبار فقط.</li>
+</ul>
 
-  <h2>6. إنهاء الحساب</h2>
-  <p>نحتفظ بالحق في إيقاف أي حساب يخالف هذه الشروط دون إشعار مسبق.</p>
+<h2>5. السلوك داخل Roleplay</h2>
+<p>حجز الشخصية مؤقت ويرتبط بعضويتك في المجموعة. عند المغادرة تُحرَّر الشخصية تلقائياً. لا يُسمح ببيع أو تداول الشخصيات خارج النظام.</p>
 
-  <h2>7. تواصل معنا</h2>
-  <p>للاستفسارات: support@pubget.app</p>
-</div>
+<h2>6. الإنهاء</h2>
+<p>يمكنك حذف حسابك في أي وقت عبر الإعدادات أو عبر البريد. نحتفظ بالحق في إنهاء الوصول عند خرق الشروط.</p>
 
-</body>
-</html>
+<h2>7. حدود المسؤولية</h2>
+<p>إلى أقصى حد يسمح به القانون المغربي، Pubget غير مسؤول عن أضرار غير مباشرة أو فقدان أرباح ناتجة عن استخدامك للتطبيق.</p>
+
+<h2>8. التواصل</h2>
+<p>للاستفسارات القانونية أو طلبات الحذف: zakariasbika253@gmail.com</p>

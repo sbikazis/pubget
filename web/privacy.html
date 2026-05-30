@@ -1,81 +1,314 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pubget - سياسة الخصوصية</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #0F0F14;
-      color: #fff;
-      line-height: 1.8;
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
     }
-    .header {
-      background: #1A1A22;
-      padding: 20px;
-      text-align: center;
-      border-bottom: 1px solid #2E2E38;
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      p.timestamp = message.timestamp;
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
     }
-    .logo { font-size: 28px; font-weight: 900; color: #5B2EFF; }
-    .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
-    h1 { font-size: 28px; margin-bottom: 10px; }
-    .date { color: #7C7C8A; font-size: 13px; margin-bottom: 30px; }
-    h2 { font-size: 18px; color: #5B2EFF; margin: 30px 0 10px; }
-    p { color: #B3B3C2; margin-bottom: 12px; font-size: 15px; }
-    ul { color: #B3B3C2; padding-right: 20px; margin-bottom: 12px; }
-    li { margin-bottom: 8px; font-size: 15px; }
-  </style>
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
+(function() {
+  if (window.__playableTouchPatchInstalled) return;
+  window.__playableTouchPatchInstalled = true;
+  var origAdd = EventTarget.prototype.addEventListener;
+  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (blockedTypes[type]) {
+      if (options === undefined || options === null) {
+        options = { passive: true };
+      } else if (typeof options === 'boolean') {
+        options = { capture: options, passive: true };
+      } else {
+        options = Object.assign({}, options, { passive: true });
+      }
+    }
+    return origAdd.call(this, type, listener, options);
+  };
+})();
+</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pubget – سياسة الخصوصية</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{font-family:'Cairo',system-ui,Arial,sans-serif;background:#fff;color:#111;line-height:1.9;margin:0;padding:0}
+.container{max-width:820px;margin:auto;padding:32px 20px}
+h1{font-size:28px;margin-bottom:8px;font-weight:700}
+h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eee;padding-bottom:6px;font-weight:600}
+h3{font-size:17px;margin:18px 0 8px;color:#333}
+.sub{color:#666;font-size:14px;margin-bottom:20px}
+ul{padding-right:20px}
+li{margin-bottom:6px}
+a{color:#0b57d0;text-decoration:none}
+a:hover{text-decoration:underline}
+.note{background:#f7f7f9;padding:14px;border-radius:8px;font-size:14px;margin-top:28px}
+footer{margin-top:48px;font-size:13px;color:#777;text-align:center}
+</style>
 </head>
 <body>
-
-<div class="header">
-  <div class="logo">Pubget</div>
-</div>
-
 <div class="container">
-  <h1>سياسة الخصوصية</h1>
-  <p class="date">آخر تحديث: مايو 2026</p>
+<h1>Pubget – سياسة الخصوصية</h1>
+<div class="sub">Privacy Policy | آخر تحديث: 30 مايو 2026</div>
 
-  <h2>1. المعلومات التي نجمعها</h2>
-  <p>نجمع المعلومات التالية عند استخدامك للتطبيق:</p>
-  <ul>
-    <li>البريد الإلكتروني واسم المستخدم</li>
-    <li>الصورة الشخصية (اختياري)</li>
-    <li>بيانات الاستخدام والتفاعل</li>
-    <li>معلومات الجهاز ونظام التشغيل</li>
-  </ul>
+<p>مرحباً بك في <strong>Pubget</strong>. خصوصيتك مهمة بالنسبة لنا. توضح سياسة الخصوصية هذه كيف نجمع معلوماتك ونستخدمها ونحميها عند استخدامك لتطبيقنا.</p>
 
-  <h2>2. كيف نستخدم معلوماتك</h2>
-  <ul>
-    <li>تشغيل وتحسين خدماتنا</li>
-    <li>التواصل معك بشأن حسابك</li>
-    <li>معالجة المدفوعات والاشتراكات</li>
-    <li>منع الاحتيال وضمان الأمان</li>
-  </ul>
+<h2>1. المعلومات التي نجمعها</h2>
+<h3>أ) معلومات تقدمها أنت:</h3>
+<ul>
+<li>عنوان البريد الإلكتروني</li>
+<li>اسم المستخدم</li>
+<li>العمر (اختياري)</li>
+<li>معلومات الملف الشخصي: النبذة التعريفية (Bio)، الأنمي المفضل، صورة الملف الشخصي، البلد</li>
+</ul>
 
-  <h2>3. مشاركة المعلومات</h2>
-  <p>لا نبيع معلوماتك الشخصية لأطراف ثالثة. نشارك البيانات فقط مع:</p>
-  <ul>
-    <li>Firebase (Google) لتخزين البيانات</li>
-    <li>Paddle لمعالجة المدفوعات</li>
-    <li>AdMob لعرض الإعلانات للمستخدمين المجانيين</li>
-  </ul>
+<h3>ب) بيانات تُجمع تلقائياً:</h3>
+<ul>
+<li>معلومات الجهاز (الموديل، إصدار نظام التشغيل)</li>
+<li>بيانات استخدام التطبيق وتقارير الأعطال</li>
+<li>معرّف الإعلانات في أندرويد (AAID)</li>
+<li>عنوان IP</li>
+</ul>
 
-  <h2>4. أمان البيانات</h2>
-  <p>نستخدم تشفير SSL وبروتوكولات أمان Firebase لحماية بياناتك.</p>
+<h2>2. كيف نستخدم معلوماتك</h2>
+<ul>
+<li>إنشاء حسابك وإدارته</li>
+<li>تفعيل الدردشة والمجموعات</li>
+<li>تخصيص تجربتك داخل التطبيق</li>
+<li>تحسين أداء التطبيق وإصلاح المشاكل</li>
+<li>عرض الإعلانات للحفاظ على التطبيق مجانياً</li>
+<li>منع الاحتيال وإساءة الاستخدام</li>
+</ul>
 
-  <h2>5. حقوقك</h2>
-  <ul>
-    <li>طلب الوصول لبياناتك</li>
-    <li>طلب تصحيح أو حذف بياناتك</li>
-    <li>إلغاء الاشتراك من الإشعارات</li>
-  </ul>
+<h2>3. الإعلانات</h2>
+<p>يستخدم Pubget خدمة <strong>Google AdMob</strong> لعرض الإعلانات.</p>
+<p>قد تجمع AdMob:</p>
+<ul>
+<li>معرّف الإعلانات (Android Advertising ID)</li>
+<li>معلومات الجهاز</li>
+<li>تفاعلك مع الإعلانات</li>
+<li>الموقع التقريبي</li>
+</ul>
+<p>يمكنك إيقاف تخصيص الإعلانات من إعدادات أندرويد: <br>الإعدادات → Google → الإعلانات → إلغاء الاشتراك في تخصيص الإعلانات.</p>
+<p>سياسة خصوصية Google: <a href="https://policies.google.com/privacy" target="_blank">https://policies.google.com/privacy</a></p>
 
-  <h2>6. تواصل معنا</h2>
-  <p>لأي استفسار حول خصوصيتك: support@pubget.app</p>
+<h2>4. خدمات الطرف الثالث</h2>
+<ul>
+<li>Google Firebase (المصادقة، Firestore، التخزين، Analytics)</li>
+<li>Google Play Services</li>
+<li>Google AdMob</li>
+</ul>
+
+<h2>5. مشاركة البيانات</h2>
+<p>نحن لا نبيع بياناتك. تتم مشاركة البيانات فقط مع خدمات Google المذكورة أعلاه لتوفير وظائف التطبيق والإعلانات.</p>
+
+<h2>6. أمان البيانات</h2>
+<p>نستخدم مصادقة Firebase الآمنة ونقل البيانات بشكل مشفّر (HTTPS) لحماية معلوماتك.</p>
+
+<h2>7. حقوقك</h2>
+<p>يمكنك الوصول إلى بياناتك أو تعديلها أو حذفها في أي وقت من داخل التطبيق، أو عبر مراسلتنا على البريد الإلكتروني.</p>
+
+<h2>8. خصوصية الأطفال</h2>
+<p>تطبيق Pubget غير مخصص للأطفال دون سن <strong>13 سنة</strong>. لا نجمع عمداً بيانات من هم أقل من 13.</p>
+
+<h2>9. التغييرات على السياسة</h2>
+<p>قد نقوم بتحديث هذه الصفحة عند الحاجة. سيتم عرض تاريخ "آخر تحديث" في الأعلى.</p>
+
+<h2>10. تواصل معنا</h2>
+<p>لأي استفسار حول الخصوصية: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
+
+<h2>11. الموافقة</h2>
+<p>باستخدامك لتطبيق Pubget، فإنك توافق على هذه السياسة، بما في ذلك معالجة البيانات المتعلقة بالإعلانات.</p>
+
+<div class="note">
+<strong>ملاحظة:</strong> هذه الصفحة مطابقة للنص الذي ستقدمه لـ Google Play Console في قسم "Privacy Policy".
 </div>
 
+<footer>© 2026 Pubget</footer>
+</div>
 </body>
 </html>
