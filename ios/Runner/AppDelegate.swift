@@ -10,7 +10,7 @@ import GoogleMobileAds
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     FirebaseApp.configure()
-    GADMobileAds.sharedInstance().start(completionHandler: nil)
+    MobileAds.shared.start()
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
