@@ -17,7 +17,7 @@ workflows:
           pod install --repo-update
 
       - name: Build iOS (no codesign)
-        script: flutter build ios --release --no-codesign
+        script: flutter build ios --release --no-codesign --no-swift-package-manager
 
     artifacts:
       - build/ios/iphoneos/Runner.app
