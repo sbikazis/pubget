@@ -60,7 +60,7 @@ dependencies:
   uuid: ^4.5.3
 
   # Monetization
-  google_mobile_ads: ^5.3.1
+  google_mobile_ads: ^8.0.0
   in_app_purchase: ^3.2.3
 
   # Other
