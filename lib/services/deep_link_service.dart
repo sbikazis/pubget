@@ -1,6 +1,5 @@
-// lib/services/deep_link_service.dart
+import 'dart:io';
 import 'package:app_links/app_links.dart';
-import 'package:android_play_install_referrer/android_play_install_referrer.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/app_links.dart';
 
@@ -23,17 +22,13 @@ class DeepLinkService {
 
   /// 🔍 دالة فحص وتتبع التثبيت المؤجل القادم من متجر جوجل بلاي (مستخدمين جدد)
   Future<String?> getDeferredReferrerId() async {
-    // تعمل فقط على أجهزة الأندرويد الحقيقية وتتجاهل الويب والمحاكيات لتجنب الأخطاء
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
+    // تعمل فقط على أندرويد
+    if (kIsWeb || !Platform.isAndroid) return null;
 
     try {
-      ReferrerDetails details = await AndroidPlayInstallReferrer.installReferrer;
-      String? referrerUrl = details.installReferrer;
-      
-      if (referrerUrl != null && referrerUrl.contains('referrer_id=')) {
-        final uri = Uri.parse('https://dummy.com?$referrerUrl');
-        return uri.queryParameters['referrer_id'];
-      }
+      // android_play_install_referrer أُزيل من pubspec
+      // هذه الدالة معطلة مؤقتاً للتوافق مع iOS
+      debugPrint('ℹ️ getDeferredReferrerId: غير متاح حالياً');
     } catch (e) {
       debugPrint('❌ فشل قراءة الإحالة من متجر قوقل: $e');
     }
