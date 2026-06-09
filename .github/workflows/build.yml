@@ -43,3 +43,36 @@ jobs:
         with:
           name: pubget-aab
           path: build/app/outputs/bundle/release/*.aab
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Add GoogleService-Info.plist
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 -d > ios/Runner/GoogleService-Info.plist
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload IPA folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: pubget-ios
+          path: build/ios/iphoneos/Runner.app
