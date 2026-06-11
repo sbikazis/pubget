@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
+import '../../../models/sticker_model.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/role_colors.dart';
@@ -17,6 +18,7 @@ import 'package:pubget/models/edits_model.dart';
 import 'package:pubget/providers/user_provider.dart';
 import 'package:pubget/providers/chat_provider.dart';
 import 'package:pubget/providers/private_chat_provider.dart';
+import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/providers/edits_provider.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
@@ -48,15 +50,10 @@ class MessageBubble extends StatelessWidget {
     this.hasBackground = false,
   });
 
-  // 1. الدالة المساعدة لتحديد لون مؤشر حالة الرسالة (صح مفرد)
   Color _getStatusColor() {
-    if (message.isRead) {
-      return Colors.green; // قرأها 🟢
-    } else if (message.isDelivered) {
-      return Colors.yellow; // وصلت ولم تُقرأ 🟡
-    } else {
-      return Colors.red; // لم تصل للهاتف الآخر 🔴
-    }
+    if (message.isRead) return Colors.green;
+    if (message.isDelivered) return Colors.yellow;
+    return Colors.red;
   }
 
   @override
@@ -65,13 +62,20 @@ class MessageBubble extends StatelessWidget {
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
     final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
 
-    final bool isGameMessage = message.gameId != null && message.type != MessageType.gameInvite;
+    final bool isGameMessage =
+        message.gameId != null && message.type != MessageType.gameInvite;
     Color? gameAccentColor;
-    
     if (isGameMessage) {
       gameAccentColor = message.gameSlot == 'game_1'
           ? const Color(0xFFFFD700)
           : const Color(0xFFC0C0C0);
+    }
+
+    // ── الملصق يُعرض بدون فقاعة ─────────────────────────────
+    final bool isSticker = message.mediaType == 'sticker' &&
+        message.mediaUrl != null;
+    if (isSticker) {
+      return _buildStickerRow(context, isDark);
     }
 
     final Color bubbleColor;
@@ -108,7 +112,9 @@ class MessageBubble extends StatelessWidget {
     if (isMe && !isGameMessage) {
       timeColor = Colors.white.withOpacity(0.85);
     } else if (hasBackground) {
-      timeColor = isDark ? Colors.white.withOpacity(0.80) : Colors.black.withOpacity(0.70);
+      timeColor = isDark
+          ? Colors.white.withOpacity(0.80)
+          : Colors.black.withOpacity(0.70);
     } else {
       timeColor = isDark ? Colors.white70 : Colors.black54;
     }
@@ -133,26 +139,31 @@ class MessageBubble extends StatelessWidget {
         onLongPress: () => _showOptionsSheet(context),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
             if (!isMe) const SizedBox(width: 8),
             Flexible(
               child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  if (message.reactions != null && message.reactions!.isNotEmpty)
+                  if (message.reactions != null &&
+                      message.reactions!.isNotEmpty)
                     _buildReactionsRow(),
                   Container(
                     margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: bubbleColor,
                       borderRadius: borderRadius,
                       border: isGameMessage
                           ? Border.all(color: gameAccentColor!, width: 1.2)
                           : (isPremiumUser
-                              ? Border.all(color: const Color(0xFFFFD700), width: 1.0)
+                              ? Border.all(
+                                  color: const Color(0xFFFFD700), width: 1.0)
                               : null),
                       boxShadow: hasBackground
                           ? [
@@ -172,7 +183,8 @@ class MessageBubble extends StatelessWidget {
                           _buildNameRow(roleColor, isPremiumUser),
                           const SizedBox(height: 4),
                         ],
-                        if (message.replyText != null) _buildReplyPreview(isDark),
+                        if (message.replyText != null)
+                          _buildReplyPreview(isDark),
                         _buildMessageContent(context, textColor),
                         const SizedBox(height: 6),
                         Row(
@@ -189,7 +201,6 @@ class MessageBubble extends StatelessWidget {
                             ),
                             if (isMe) ...[
                               const SizedBox(width: 4),
-                              // 2. استبدال الأيقونة لتصبح صح مفرد وتمرير اللون الديناميكي
                               Icon(
                                 Icons.done,
                                 size: 15,
@@ -212,6 +223,154 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ══════════════════════════════════════════════════════════
+  // ✅ صف الملصق — بدون فقاعة مثل واتساب
+  // ══════════════════════════════════════════════════════════
+  Widget _buildStickerRow(BuildContext context, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isMe) _buildAvatar(context),
+          if (!isMe) const SizedBox(width: 8),
+          GestureDetector(
+            onLongPress: () => _showStickerSaveSheet(context),
+            child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                // ── الملصق ──────────────────────────────────
+                Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.goldAccent.withOpacity(0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: Image.network(
+                      message.mediaUrl!,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          color: isDark
+                              ? const Color(0xFF2A2A3E)
+                              : Colors.grey.shade100,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2),
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.grey,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // ── الوقت تحت الملصق ────────────────────────
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      TimeUtils.formatChatTime(message.createdAt),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isDark ? Colors.white38 : Colors.black38,
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.done,
+                        size: 13,
+                        color: _getStatusColor(),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (isMe) const SizedBox(width: 8),
+          if (isMe) _buildAvatar(context),
+        ],
+      ),
+    );
+  }
+
+  // ── حفظ الملصق عند الضغط المطوّل (للمستقبِل فقط) ──────────
+  void _showStickerSaveSheet(BuildContext context) {
+    if (isMe) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).scaffoldBackgroundColor,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bookmark_add_outlined,
+                  color: AppColors.goldAccent),
+              title: const Text('حفظ الملصق',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final userId = Provider.of<UserProvider>(context,
+                        listen: false)
+                    .currentUser
+                    ?.id;
+                if (userId == null) return;
+
+                final sticker = StickerModel(
+                  id: message.id,
+                  creatorId: message.senderId,
+                  imageUrl: message.mediaUrl!,
+                  createdAt: message.createdAt,
+                );
+
+                await Provider.of<StickerProvider>(context, listen: false)
+                    .saveReceivedSticker(userId: userId, sticker: sticker);
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم حفظ الملصق ✅'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
   void _showOptionsSheet(BuildContext context) {
     final bool isPrivate = sender.groupId == 'private';
     showModalBottomSheet(
@@ -220,7 +379,8 @@ class MessageBubble extends StatelessWidget {
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
@@ -233,16 +393,22 @@ class MessageBubble extends StatelessWidget {
                 children: ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
                   return TextButton(
                     onPressed: () {
-                      final userId = Provider.of<UserProvider>(context, listen: false).currentUser!.id;
+                      final userId =
+                          Provider.of<UserProvider>(context, listen: false)
+                              .currentUser!
+                              .id;
                       if (isPrivate) {
-                        Provider.of<PrivateChatProvider>(context, listen: false).toggleReaction(
+                        Provider.of<PrivateChatProvider>(context,
+                                listen: false)
+                            .toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
                           userId: userId,
                           emoji: emoji,
                         );
                       } else {
-                        Provider.of<ChatProvider>(context, listen: false).toggleReaction(
+                        Provider.of<ChatProvider>(context, listen: false)
+                            .toggleReaction(
                           groupId: groupId,
                           messageId: message.id,
                           userId: userId,
@@ -251,7 +417,8 @@ class MessageBubble extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                    child:
+                        Text(emoji, style: const TextStyle(fontSize: 28)),
                   );
                 }).toList(),
               ),
@@ -259,7 +426,8 @@ class MessageBubble extends StatelessWidget {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.reply, color: AppColors.primary),
-              title: const Text('رد', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text('رد',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.pop(context);
                 if (onReply != null) onReply!(message);
@@ -267,28 +435,36 @@ class MessageBubble extends StatelessWidget {
             ),
             if (message.text != null && message.text!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.copy, color: AppColors.primary),
-                title: const Text('نسخ', style: TextStyle(fontWeight: FontWeight.bold)),
+                leading:
+                    const Icon(Icons.copy, color: AppColors.primary),
+                title: const Text('نسخ',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
                   Clipboard.setData(ClipboardData(text: message.text!));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تم نسخ الرسالة'), duration: Duration(seconds: 1)),
+                    const SnackBar(
+                        content: Text('تم نسخ الرسالة'),
+                        duration: Duration(seconds: 1)),
                   );
                 },
               ),
             if (isMe)
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('حذف الرسالة', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                title: const Text('حذف الرسالة',
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.bold)),
                 onTap: () {
                   if (isPrivate) {
-                    Provider.of<PrivateChatProvider>(context, listen: false).deleteMessage(
+                    Provider.of<PrivateChatProvider>(context, listen: false)
+                        .deleteMessage(
                       chatId: groupId,
                       messageId: message.id,
                     );
                   } else {
-                    Provider.of<ChatProvider>(context, listen: false).deleteMessage(
+                    Provider.of<ChatProvider>(context, listen: false)
+                        .deleteMessage(
                       groupId: groupId,
                       messageId: message.id,
                     );
@@ -298,13 +474,17 @@ class MessageBubble extends StatelessWidget {
               )
             else
               ListTile(
-                leading: const Icon(Icons.person_outline, color: Color(0xFFFFD700)),
-                title: const Text('الملف الشخصي', style: TextStyle(fontWeight: FontWeight.bold)),
+                leading: const Icon(Icons.person_outline,
+                    color: Color(0xFFFFD700)),
+                title: const Text('الملف الشخصي',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => ProfileScreen(userId: message.senderId)),
+                    MaterialPageRoute(
+                        builder: (_) =>
+                            ProfileScreen(userId: message.senderId)),
                   );
                 },
               ),
@@ -324,11 +504,17 @@ class MessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06),
+          color: isDark
+              ? Colors.white.withOpacity(0.08)
+              : Colors.black.withOpacity(0.06),
           borderRadius: BorderRadius.circular(8),
           border: Border(
-            left: isMe ? BorderSide.none : const BorderSide(color: AppColors.primary, width: 4),
-            right: isMe ? const BorderSide(color: AppColors.primary, width: 4) : BorderSide.none,
+            left: isMe
+                ? BorderSide.none
+                : const BorderSide(color: AppColors.primary, width: 4),
+            right: isMe
+                ? const BorderSide(color: AppColors.primary, width: 4)
+                : BorderSide.none,
           ),
         ),
         child: ClipRRect(
@@ -378,26 +564,33 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(BuildContext context, [bool isGame = false, Color? gameColor]) {
-    final String? avatarUrl = sender.displayImageUrl ?? (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
+  Widget _buildAvatar(BuildContext context,
+      [bool isGame = false, Color? gameColor]) {
+    final String? avatarUrl = sender.displayImageUrl ??
+        (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
     return GestureDetector(
       onTap: () async {
         if (isMe) return;
-        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        final userProvider =
+            Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
-        final targetUser = await userProvider.getUserById(message.senderId);
+        final targetUser =
+            await userProvider.getUserById(message.senderId);
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) => RespectModal(targetUser: targetUser, currentUserId: myId),
+            builder: (_) =>
+                RespectModal(targetUser: targetUser, currentUserId: myId),
           );
         }
       },
       child: CircleAvatar(
         radius: 18,
-        backgroundColor: isGame ? gameColor!.withOpacity(0.2) : AppColors.primary.withOpacity(0.1),
+        backgroundColor: isGame
+            ? gameColor!.withOpacity(0.2)
+            : AppColors.primary.withOpacity(0.1),
         child: ClipOval(
           child: isGame
               ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
@@ -407,9 +600,12 @@ class MessageBubble extends StatelessWidget {
                       width: 36,
                       height: 36,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 20, color: AppColors.primary),
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.person,
+                              size: 20, color: AppColors.primary),
                     )
-                  : const Icon(Icons.person, size: 20, color: AppColors.primary)),
+                  : const Icon(Icons.person,
+                      size: 20, color: AppColors.primary)),
         ),
       ),
     );
@@ -424,7 +620,10 @@ class MessageBubble extends StatelessWidget {
           child: Text(
             sender.effectiveName,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: roleColor),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: roleColor),
           ),
         ),
         if (isPremiumUser) ...[
@@ -438,7 +637,8 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(BuildContext context, Color textColor) {
-    if (message.type == MessageType.gameInvite && message.gameId != null) {
+    if (message.type == MessageType.gameInvite &&
+        message.gameId != null) {
       return _buildGameInvite(context, textColor);
     }
     if (message.mediaType == 'edit_share' && message.mediaUrl != null) {
@@ -453,40 +653,51 @@ class MessageBubble extends StatelessWidget {
             saved.insert(0, url);
             await LocalStorageService.instance.saveGifs(saved);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم حفظ GIF في المحفوظات ⭐'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                  content: Text('تم حفظ GIF في المحفوظات ⭐'),
+                  duration: Duration(seconds: 1)),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('GIF محفوظ مسبقاً'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                  content: Text('GIF محفوظ مسبقاً'),
+                  duration: Duration(seconds: 1)),
             );
           }
         },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.network(message.mediaUrl!, width: 200, fit: BoxFit.cover),
+          child: Image.network(message.mediaUrl!,
+              width: 200, fit: BoxFit.cover),
         ),
       );
     }
     if (message.text != null) {
       return Text(
         message.text!,
-        style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500, color: textColor, height: 1.3),
+        style: TextStyle(
+            fontSize: 15.5,
+            fontWeight: FontWeight.w500,
+            color: textColor,
+            height: 1.3),
       );
     }
     if (message.mediaUrl != null && message.mediaType == 'image') {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(message.mediaUrl!, width: 220, fit: BoxFit.cover),
+        child: Image.network(message.mediaUrl!,
+            width: 220, fit: BoxFit.cover),
       );
     }
     if (message.mediaType == 'audio' && message.mediaUrl != null) {
-      return AudioBubble(message: message, isMe: isMe,);
+      return AudioBubble(message: message, isMe: isMe);
     }
     return const SizedBox();
   }
 
   Widget _buildGameInvite(BuildContext context, Color textColor) {
-    final user = Provider.of<UserProvider>(context, listen: false).currentUser;
+    final user =
+        Provider.of<UserProvider>(context, listen: false).currentUser;
     return Container(
       width: 240,
       padding: const EdgeInsets.all(12),
@@ -500,26 +711,33 @@ class MessageBubble extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.sports_esports, color: AppColors.primary, size: 20),
+              const Icon(Icons.sports_esports,
+                  color: AppColors.primary, size: 20),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   'سلسلة أنمي',
-                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15),
+                  style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(message.text ?? 'دعوة للعبة', style: TextStyle(color: textColor.withOpacity(0.9), fontSize: 13.5)),
+          Text(message.text ?? 'دعوة للعبة',
+              style: TextStyle(
+                  color: textColor.withOpacity(0.9), fontSize: 13.5)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white),
               onPressed: () {
                 if (user == null) return;
-                
                 final tempMember = MemberModel(
                   userId: user.id,
                   displayName: user.nickname ?? user.username,
@@ -527,7 +745,6 @@ class MessageBubble extends StatelessWidget {
                   role: Roles.member,
                   joinedAt: DateTime.now(),
                 );
-                
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -539,7 +756,8 @@ class MessageBubble extends StatelessWidget {
                   ),
                 );
               },
-              child: const Text('انضم الآن ⚔️', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('انضم الآن ⚔️',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -548,10 +766,13 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// _EditShareBubble — بدون تعديل
+// ══════════════════════════════════════════════════════════════
 class _EditShareBubble extends StatefulWidget {
   final MessageModel message;
   const _EditShareBubble({required this.message});
-  
+
   @override
   State<_EditShareBubble> createState() => _EditShareBubbleState();
 }
@@ -569,7 +790,8 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
 
   Future<void> _initVideo() async {
     if (widget.message.mediaUrl == null) return;
-    final controller = VideoPlayerController.networkUrl(Uri.parse(widget.message.mediaUrl!));
+    final controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.message.mediaUrl!));
     await controller.initialize();
     controller.setLooping(true);
     if (mounted) {
@@ -628,7 +850,8 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
           GestureDetector(
             onTap: _togglePlay,
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
               child: SizedBox(
                 width: 220,
                 height: 140,
@@ -646,12 +869,16 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                           ),
                         ),
                       )
-                    else if (widget.message.editThumbnail != null && widget.message.editThumbnail!.isNotEmpty)
-                      Image.network(widget.message.editThumbnail!, width: 220, height: 140, fit: BoxFit.cover)
+                    else if (widget.message.editThumbnail != null &&
+                        widget.message.editThumbnail!.isNotEmpty)
+                      Image.network(widget.message.editThumbnail!,
+                          width: 220, height: 140, fit: BoxFit.cover)
                     else
                       Container(color: Colors.grey[900]),
                     Icon(
-                      _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                      _isPlaying
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_fill,
                       color: Colors.white70,
                       size: 44,
                     ),
@@ -661,7 +888,8 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                       child: GestureDetector(
                         onTap: () => _openInEditsScreen(context),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.black54,
                             borderRadius: BorderRadius.circular(20),
@@ -669,35 +897,45 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.open_in_full, color: Colors.white, size: 12),
+                              Icon(Icons.open_in_full,
+                                  color: Colors.white, size: 12),
                               SizedBox(width: 4),
-                              Text('عرض', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              Text('عرض',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               children: [
                 const Text('🎌 ', style: TextStyle(fontSize: 13)),
                 Expanded(
                   child: Text(
                     widget.message.editAnimeTitle ?? 'إيديت',
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 GestureDetector(
                   onTap: () => _openInEditsScreen(context),
-                  child: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 14),
+                  child: const Icon(Icons.arrow_forward_ios,
+                      color: Colors.white54, size: 14),
                 ),
               ],
             ),

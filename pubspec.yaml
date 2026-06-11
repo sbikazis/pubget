@@ -41,6 +41,7 @@ dependencies:
   # UI & Images
   cached_network_image: ^3.4.1
   image_picker: ^1.2.1
+  image_cropper: ^12.2.1
   flutter_svg: ^2.2.4
   google_fonts: ^8.0.2
   font_awesome_flutter: ^11.0.0

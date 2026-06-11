@@ -562,6 +562,74 @@ class ChatProvider extends ChangeNotifier {
       },
     );
   }
+  // =========================================================
+  // SEND STICKER MESSAGE
+  // =========================================================
+  Future<void> sendStickerMessage({
+    required String groupId,
+    required String messageId,
+    required MemberModel sender,
+    required String stickerUrl,
+    String? replyToId,
+    String? replyText,
+  }) async {
+    String? freshRealAvatar = sender.realUserImageUrl;
+    String freshRealName = sender.realUserName ?? '';
+    bool freshPremiumStatus = sender.isPremium;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(sender.userId)
+          .get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        freshRealAvatar = userData?['avatarUrl'];
+        freshRealName = userData?['username'] ?? freshRealName;
+        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
+      }
+    } catch (e) {
+      debugPrint("⚠️ Error fetching live user data for sticker: $e");
+    }
+
+    final updatedSender = sender.copyWith(
+      realUserImageUrl: freshRealAvatar,
+      realUserName: freshRealName,
+      isPremium: freshPremiumStatus,
+    );
+
+    final finalAvatar = updatedSender.displayImageUrl ?? '';
+
+    final message = MessageModel(
+      id: messageId,
+      senderId: updatedSender.userId,
+      senderName: updatedSender.effectiveName,
+      senderAvatar: finalAvatar,
+      senderRole: updatedSender.role,
+      senderIsPremium: updatedSender.isPremium,
+      mediaUrl: stickerUrl,
+      mediaType: 'sticker',
+      replyToId: replyToId,
+      replyText: replyText,
+      createdAt: DateTime.now(),
+      isDelivered: true,
+    );
+
+    await _firestore.createDocument(
+      path: FirestorePaths.groupMessages(groupId),
+      docId: messageId,
+      data: message.toMap(),
+    );
+
+    await _firestore.updateDocument(
+      path: FirestorePaths.groups,
+      docId: groupId,
+      data: {
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageText': '🏷️ ملصق',
+      },
+    );
+  }
 
   // =========================================================
   // DELETE MESSAGE

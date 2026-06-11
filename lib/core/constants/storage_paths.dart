@@ -7,6 +7,10 @@ class StoragePaths {
   static String userAvatar(String userId) =>
       'users/$userId/avatar.jpg';
 
+  /// users/{userId}/stickers/{stickerId}.png
+  static String userSticker(String userId, String stickerId) =>
+      'users/$userId/stickers/$stickerId.png';
+
   // GROUP STORAGE
 
   /// groups/{groupId}/group_image.jpg

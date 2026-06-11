@@ -56,6 +56,12 @@ class FirestorePaths {
 
   static String userNotificationDoc(String userId, String notifId) =>
       '$users/$userId/notifications/$notifId';
+  
+  static String userStickers(String userId) =>
+      '$users/$userId/stickers';
+
+  static String userStickerDoc(String userId, String stickerId) =>
+      '$users/$userId/stickers/$stickerId';
 
 
   // PRIVATE CHAT SUBCOLLECTIONS

@@ -8,8 +8,13 @@ const String _giphyApiKey = 'Buupn89oQkDBfxFoGk6bmI1JGSXiI4Gj';
 
 class GifPickerSheet extends StatefulWidget {
   final Function(String gifUrl) onGifSelected;
+  final bool embedded; // ✅ جديد
 
-  const GifPickerSheet({super.key, required this.onGifSelected});
+  const GifPickerSheet({
+    super.key,
+    required this.onGifSelected,
+    this.embedded = false, // افتراضياً false للاستخدام القديم
+  });
 
   @override
   State<GifPickerSheet> createState() => _GifPickerSheetState();
@@ -32,7 +37,7 @@ class _GifPickerSheetState extends State<GifPickerSheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadSaved(); // ✅ حمّل المحفوظات بعد التهيئة
+    _loadSaved();
     _loadTrending();
   }
 
@@ -53,53 +58,56 @@ class _GifPickerSheetState extends State<GifPickerSheet>
   }
 
   Future<void> _loadTrending() async {
-  setState(() => _isLoadingTrending = true);
-  try {
-    final res = await http.get(Uri.parse(
-        'https://api.giphy.com/v1/gifs/trending?api_key=$_giphyApiKey&limit=30&rating=g'));
-    if (res.statusCode == 200) {
-      final data = json.decode(res.body);
-      final List gifs = data['data'];
-      if (mounted) {
-        setState(() {
-          _trendingGifs = gifs
-              .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
+    setState(() => _isLoadingTrending = true);
+    try {
+      final res = await http.get(Uri.parse(
+          'https://api.giphy.com/v1/gifs/trending?api_key=$_giphyApiKey&limit=30&rating=g'));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final List gifs = data['data'];
+        if (mounted) {
+          setState(() {
+            _trendingGifs = gifs
+               .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
               .where((url) => url.isNotEmpty)
               .toList();
-        });
+          });
+        }
       }
-    }
-  } catch (_) {}
-  if (mounted) setState(() => _isLoadingTrending = false);
-}
+    } catch (_) {}
+    if (mounted) setState(() => _isLoadingTrending = false);
+  }
 
-Future<void> _search(String query) async {
-  if (query.trim().isEmpty) return;
-  if (query == _lastQuery) return;
-  _lastQuery = query;
-  setState(() => _isSearching = true);
-  try {
-    final res = await http.get(Uri.parse(
-        'https://api.giphy.com/v1/gifs/search?api_key=$_giphyApiKey&q=${Uri.encodeComponent(query)}&limit=30&rating=g'));
-    if (res.statusCode == 200) {
-      final data = json.decode(res.body);
-      final List gifs = data['data'];
-      if (mounted) {
-        setState(() {
-          _searchResults = gifs
-              .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
+  Future<void> _search(String query) async {
+    if (query.trim().isEmpty) return;
+    if (query == _lastQuery) return;
+    _lastQuery = query;
+    setState(() => _isSearching = true);
+    try {
+      final res = await http.get(Uri.parse(
+          'https://api.giphy.com/v1/gifs/search?api_key=$_giphyApiKey&q=${Uri.encodeComponent(query)}&limit=30&rating=g'));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final List gifs = data['data'];
+        if (mounted) {
+          setState(() {
+            _searchResults = gifs
+               .map<String>((g) => g['images']['fixed_height_small']['url'] as String? ?? '')
               .where((url) => url.isNotEmpty)
               .toList();
-        });
+          });
+        }
       }
-    }
-  } catch (_) {}
-  if (mounted) setState(() => _isSearching = false);
-}
+    } catch (_) {}
+    if (mounted) setState(() => _isSearching = false);
+  }
 
   void _onGifTap(String url) {
     widget.onGifSelected(url);
-    Navigator.pop(context);
+    // ✅ لا تعمل pop إذا كان مضمن
+    if (!widget.embedded) {
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _toggleSave(String url) async {
@@ -108,7 +116,7 @@ Future<void> _search(String query) async {
       if (_savedGifs.contains(url)) {
         _savedGifs.remove(url);
       } else {
-        _savedGifs.insert(0, url); // الأحدث أولاً
+        _savedGifs.insert(0, url);
       }
     });
     await LocalStorageService.instance.saveGifs(_savedGifs);
@@ -118,14 +126,11 @@ Future<void> _search(String query) async {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: BoxDecoration(
-        color: isDark? AppColors.darkSurface : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
+    // المحتوى المشترك
+    final content = Column(
+      children: [
+        // ✅ يظهر فقط في الوضع المنفصل
+        if (!widget.embedded)...[
           Container(
             margin: const EdgeInsets.only(top: 12, bottom: 8),
             width: 40,
@@ -149,86 +154,91 @@ Future<void> _search(String query) async {
             ),
           ),
           const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _searchController,
-              textDirection: TextDirection.rtl,
-              decoration: InputDecoration(
-                hintText: 'ابحث عن GIF...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                   ? IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchResults = [];
-                            _lastQuery = '';
-                          });
-                          _tabController.animateTo(0);
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: isDark? AppColors.darkCard : Colors.grey.shade100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        ],
+
+        // البحث
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            controller: _searchController,
+            textDirection: TextDirection.rtl,
+            decoration: InputDecoration(
+              hintText: 'ابحث عن GIF...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isNotEmpty
+                 ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchResults = [];
+                          _lastQuery = '';
+                        });
+                        _tabController.animateTo(0);
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: isDark? AppColors.darkCard : Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
               ),
-              onSubmitted: (q) {
-                if (q.trim().isNotEmpty) {
-                  _tabController.animateTo(1);
-                  _search(q);
-                }
-              },
-              onChanged: (q) {
-                setState(() {});
-                if (q.trim().isNotEmpty) {
-                  _tabController.animateTo(1);
-                  _search(q);
-                }
-              },
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             ),
+            onSubmitted: (q) {
+              if (q.trim().isNotEmpty) {
+                _tabController.animateTo(1);
+                _search(q);
+              }
+            },
+            onChanged: (q) {
+              setState(() {});
+              if (q.trim().isNotEmpty) {
+                _tabController.animateTo(1);
+                _search(q);
+              }
+            },
           ),
-          const SizedBox(height: 8),
-          TabBar(
+        ),
+        const SizedBox(height: 8),
+        TabBar(
+          controller: _tabController,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: AppColors.primary,
+          tabs: const [
+            Tab(text: '🔥 الأبرز'),
+            Tab(text: '🔍 نتائج'),
+            Tab(text: '⭐ محفوظة'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
             controller: _tabController,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: AppColors.primary,
-            tabs: const [
-              Tab(text: '🔥 الأبرز'),
-              Tab(text: '🔍 نتائج'),
-              Tab(text: '⭐ محفوظة'),
+            children: [
+              _buildGifGrid(
+                gifs: _trendingGifs,
+                isLoading: _isLoadingTrending,
+                emptyMessage: 'لا يوجد GIFs',
+              ),
+              _buildGifGrid(
+                gifs: _searchResults,
+                isLoading: _isSearching,
+                emptyMessage: _lastQuery.isEmpty
+                   ? 'ابحث عن GIF أعلاه'
+                    : 'لا توجد نتائج لـ "$_lastQuery"',
+              ),
+              _buildGifGrid(
+                gifs: _savedGifs,
+                isLoading: false,
+                emptyMessage: 'لا توجد GIFs محفوظة\nاضغط مطولاً على أي GIF لحفظه',
+              ),
             ],
           ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildGifGrid(
-                  gifs: _trendingGifs,
-                  isLoading: _isLoadingTrending,
-                  emptyMessage: 'لا يوجد GIFs',
-                ),
-                _buildGifGrid(
-                  gifs: _searchResults,
-                  isLoading: _isSearching,
-                  emptyMessage: _lastQuery.isEmpty
-                     ? 'ابحث عن GIF أعلاه'
-                      : 'لا توجد نتائج لـ "$_lastQuery"',
-                ),
-                _buildGifGrid(
-                  gifs: _savedGifs,
-                  isLoading: false,
-                  emptyMessage: 'لا توجد GIFs محفوظة\nاضغط مطولاً على أي GIF لحفظه',
-                ),
-              ],
-            ),
-          ),
+        ),
+        // ✅ يظهر فقط في الوضع المنفصل
+        if (!widget.embedded)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
@@ -240,8 +250,22 @@ Future<void> _search(String query) async {
               ),
             ),
           ),
-        ],
+      ],
+    );
+
+    // ✅ إذا كان مضمن، ارجع المحتوى فقط
+    if (widget.embedded) {
+      return content;
+    }
+
+    // الوضع القديم (bottom sheet كامل)
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: BoxDecoration(
+        color: isDark? AppColors.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      child: content,
     );
   }
 

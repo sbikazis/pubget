@@ -21,6 +21,7 @@ import '../groups/chat/massage_input_bar.dart';
 import '../groups/chat/chat_background_picker_sheet.dart';
 
 import '../../core/constants/roles.dart';
+import 'package:pubget/models/sticker_model.dart';
 
 class PrivateChatScreen extends StatefulWidget {
   final String chatId;
@@ -251,6 +252,32 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       );
     }
   }
+  Future<void> _handleSendSticker(
+      StickerModel sticker, MessageModel? replyTo) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final privateChatProvider =
+        Provider.of<PrivateChatProvider>(context, listen: false);
+    final currentUser = userProvider.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      await privateChatProvider.sendStickerMessage(
+        chatId: widget.chatId,
+        messageId: _uuid.v4(),
+        sender: currentUser,
+        stickerUrl: sticker.imageUrl,
+        replyToId: replyTo?.id,
+        replyText: replyTo?.mediaType == 'sticker' ? "ملصق 🏷️" : null,
+      );
+      _updatePrivateReadStatus();
+      _onCancelReply();
+      _scrollToBottom();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("فشل إرسال الملصق")),
+      );
+    }
+  }
 
   void _onCancelReply() {
     if (mounted) setState(() => _replyingMessage = null);
@@ -425,6 +452,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 onSendImage: _handleSendImage,
                 onSendGif: _handleSendGif,
                 onSendAudio: _handleSendAudio,
+                onSendSticker: _handleSendSticker, // ✅ جديد
                 replyingMessage: _replyingMessage,
                 onCancelReply: _onCancelReply,
                 isPrivate: true,

@@ -359,6 +359,47 @@ class PrivateChatProvider extends ChangeNotifier {
       },
     );
   }
+  // =========================================================
+  // SEND STICKER MESSAGE
+  // =========================================================
+  Future<void> sendStickerMessage({
+    required String chatId,
+    required String messageId,
+    required UserModel sender,
+    required String stickerUrl,
+    String? replyToId,
+    String? replyText,
+  }) async {
+    final message = MessageModel(
+      id: messageId,
+      senderId: sender.id,
+      senderName: sender.username,
+      senderAvatar: sender.avatarUrl,
+      senderIsPremium: sender.isPremium,
+      senderRole: null,
+      mediaUrl: stickerUrl,
+      mediaType: 'sticker',
+      replyToId: replyToId,
+      replyText: replyText,
+      createdAt: DateTime.now(),
+      isDelivered: true,
+    );
+
+    await _firestore.createDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: message.toMap(),
+    );
+
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateChats,
+      docId: chatId,
+      data: {
+        "lastMessageAt": FieldValue.serverTimestamp(),
+        "lastMessageText": '🏷️ ملصق',
+      },
+    );
+  }
 
   // =========================================================
   // ✅ تحديث حالة الوصول (جديد)

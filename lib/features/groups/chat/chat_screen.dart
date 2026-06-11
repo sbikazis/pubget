@@ -27,6 +27,7 @@ import '../../../widgets/game_message_bubble.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../events/guess_character_game_screen.dart';
 import 'package:pubget/widgets/game_events_sheet.dart'; // <-- جديد
+import 'package:pubget/models/sticker_model.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -317,6 +318,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
     }
   }
+  Future<void> _handleSendSticker(
+      StickerModel sticker, MessageModel? replyTo) async {
+    if (_currentMember == null) return;
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    await chatProvider.sendStickerMessage(
+      groupId: widget.groupId,
+      messageId: _uuid.v4(),
+      sender: _currentMember!,
+      stickerUrl: sticker.imageUrl,
+      replyToId: replyTo?.id,
+      replyText: replyTo?.mediaType == 'sticker' ? "ملصق 🏷️" : null,
+    );
+    _onCancelReply();
+    _scrollToBottom(force: true);
+    final userId = userProvider.currentUser?.id;
+    if (userId != null && _cachedMessages.isNotEmpty) {
+      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+    }
+  }
 
   Widget _buildBackground(String? backgroundUrl) {
     if (backgroundUrl == null || backgroundUrl.isEmpty) {
@@ -556,6 +577,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             onSendImage: _handleSendImage,
                             onSendGif: _handleSendGif,
                             onSendAudio: _handleSendAudio,
+                            onSendSticker: _handleSendSticker, // ✅ جديد
                             replyingMessage: _replyingMessage,
                             onCancelReply: _onCancelReply,
                             isPrivate: false,

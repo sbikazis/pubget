@@ -85,6 +85,9 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(create: (_) => EditsProvider()),
         ChangeNotifierProvider(create: (_) => ChatBackgroundProvider()),
         ChangeNotifierProvider(create: (_) => DeepLinkProvider()),
+        ChangeNotifierProvider(
+  create: (_) => StickerProvider(StickerService()),
+),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
