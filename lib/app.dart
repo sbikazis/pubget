@@ -36,6 +36,8 @@ import 'features/home/home_screen.dart';
 import 'features/edits/edits_screen.dart';
 import 'features/groups/group_details_screen.dart';
 import 'services/deep_link_service.dart';
+import 'package:pubget/providers/sticker_provider.dart';
+import 'package:pubget/services/firebase/sticker_service.dart';
 
 class PubgetApp extends StatefulWidget {
   const PubgetApp({super.key});
@@ -62,40 +64,88 @@ class _PubgetAppState extends State<PubgetApp> {
         Provider(create: (_) => AuthService(firestore: firestore)),
         Provider(create: (_) => PromotionService(firestore)),
         Provider(create: (_) => AdService(localStorage)),
-        Provider(create: (_) => GroupJoinValidator(firestoreService: firestore)),
-        ChangeNotifierProvider(create: (context) => UserProvider(firestoreService: context.read<FirestoreService>())),
-        ChangeNotifierProvider(create: (context) => AuthProvider(context.read<AuthService>(), context.read<UserProvider>())),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()..loadSettings()),
-        ChangeNotifierProvider(create: (context) => HomeProvider(firestore: context.read<FirestoreService>(), promotionService: context.read<PromotionService>(), adService: context.read<AdService>(), joinValidator: context.read<GroupJoinValidator>())),
-        ChangeNotifierProvider(create: (context) => GroupProvider(firestoreService: context.read<FirestoreService>())),
-        ChangeNotifierProvider(create: (context) => ChatProvider(firestoreService: context.read<FirestoreService>(), storageService: context.read<StorageService>())),
+        Provider(
+          create: (_) => GroupJoinValidator(firestoreService: firestore),
+        ),
         ChangeNotifierProvider(
-  create: (context) => GameProvider(
-    firestore: context.read<FirestoreService>(),
-    userProvider: context.read<UserProvider>(),
-  ),
-),
-        ChangeNotifierProvider(create: (context) => ProfileProvider(context.read<FirestoreService>(), context.read<StorageService>())),
-        ChangeNotifierProvider(create: (context) => PrivateChatProvider(firestoreService: context.read<FirestoreService>(), storageService: context.read<StorageService>())),
-        ChangeNotifierProvider(create: (context) => NotificationsProvider(firestoreService: context.read<FirestoreService>())),
+          create: (context) =>
+              UserProvider(firestoreService: context.read<FirestoreService>()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => AuthProvider(
+            context.read<AuthService>(),
+            context.read<UserProvider>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => SettingsProvider()..loadSettings(),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => HomeProvider(
+            firestore: context.read<FirestoreService>(),
+            promotionService: context.read<PromotionService>(),
+            adService: context.read<AdService>(),
+            joinValidator: context.read<GroupJoinValidator>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) =>
+              GroupProvider(firestoreService: context.read<FirestoreService>()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ChatProvider(
+            firestoreService: context.read<FirestoreService>(),
+            storageService: context.read<StorageService>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => GameProvider(
+            firestore: context.read<FirestoreService>(),
+            userProvider: context.read<UserProvider>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ProfileProvider(
+            context.read<FirestoreService>(),
+            context.read<StorageService>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => PrivateChatProvider(
+            firestoreService: context.read<FirestoreService>(),
+            storageService: context.read<StorageService>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => NotificationsProvider(
+            firestoreService: context.read<FirestoreService>(),
+          ),
+        ),
         ChangeNotifierProxyProvider<UserProvider, StoreProvider>(
-  create: (context) => StoreProvider(userProvider: Provider.of<UserProvider>(context, listen: false)),
-  update: (context, userProvider, storeProvider) => StoreProvider(userProvider: userProvider),
-),
+          create: (context) => StoreProvider(
+            userProvider: Provider.of<UserProvider>(context, listen: false),
+          ),
+          update: (context, userProvider, storeProvider) =>
+              StoreProvider(userProvider: userProvider),
+        ),
         ChangeNotifierProvider(create: (_) => EditsProvider()),
         ChangeNotifierProvider(create: (_) => ChatBackgroundProvider()),
         ChangeNotifierProvider(create: (_) => DeepLinkProvider()),
         ChangeNotifierProvider(
-  create: (_) => StickerProvider(StickerService()),
-),
+          create: (_) => StickerProvider(StickerService()),
+        ),
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
-          if (auth.isLoggedIn && auth.user != null && _lastRegisteredUserId != auth.user!.id) {
+          if (auth.isLoggedIn &&
+              auth.user != null &&
+              _lastRegisteredUserId != auth.user!.id) {
             _lastRegisteredUserId = auth.user!.id;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Future.delayed(const Duration(seconds: 3), () {
-                context.read<NotificationsProvider>().registerToken(auth.user!.id);
+                context.read<NotificationsProvider>().registerToken(
+                  auth.user!.id,
+                );
               });
               context.read<EditsProvider>().loadSeenIds();
             });
@@ -117,7 +167,10 @@ class _PubgetAppState extends State<PubgetApp> {
               '/home': (_) => const HomeScreen(),
             },
             builder: (context, child) {
-              return _GlobalAppOverlay(navigatorKey: _navigatorKey, child: child!);
+              return _GlobalAppOverlay(
+                navigatorKey: _navigatorKey,
+                child: child!,
+              );
             },
           );
         },
@@ -128,7 +181,9 @@ class _PubgetAppState extends State<PubgetApp> {
   Widget _getHome(AuthProvider auth) {
     if (auth.isLoading) return const SplashScreen();
     if (auth.isLoggedIn) {
-      return (auth.user?.isProfileCompleted == true) ? const HomeScreen() : const UserInfoScreen();
+      return (auth.user?.isProfileCompleted == true)
+          ? const HomeScreen()
+          : const UserInfoScreen();
     }
     return const LoginScreen();
   }
@@ -151,7 +206,9 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EditsProvider>().uploadCompletedNotifier.addListener(_handleUploadCompleted);
+      context.read<EditsProvider>().uploadCompletedNotifier.addListener(
+        _handleUploadCompleted,
+      );
       context.read<DeepLinkProvider>().addListener(_handleDeepLink);
       // ✅ نسمع للـ Auth أيضاً عشان نعيد المحاولة بعد تسجيل الدخول
       context.read<AuthProvider>().addListener(_handleDeepLink);
@@ -160,7 +217,9 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
 
   @override
   void dispose() {
-    context.read<EditsProvider>().uploadCompletedNotifier.removeListener(_handleUploadCompleted);
+    context.read<EditsProvider>().uploadCompletedNotifier.removeListener(
+      _handleUploadCompleted,
+    );
     context.read<DeepLinkProvider>().removeListener(_handleDeepLink);
     context.read<AuthProvider>().removeListener(_handleDeepLink);
     super.dispose();
@@ -181,7 +240,9 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
       if (!mounted) return;
       if (pending.type == DeepLinkType.group) {
         widget.navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: pending.id)),
+          MaterialPageRoute(
+            builder: (_) => GroupDetailsScreen(groupId: pending.id),
+          ),
         );
       }
     });
@@ -199,19 +260,66 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
     editsProvider.setSkipNextLoad();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await widget.navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const EditsScreen(startIndex: 0)));
+      await widget.navigatorKey.currentState?.push(
+        MaterialPageRoute(builder: (_) => const EditsScreen(startIndex: 0)),
+      );
       if (mounted) _isNavigating = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<EditsProvider>(builder: (context, editsProvider, _) {
-      return Stack(children: [
-        widget.child,
-        if (editsProvider.isUploading)
-          Positioned(top: 0, left: 0, right: 0, child: Material(color: Colors.transparent, child: SafeArea(bottom: false, child: Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)), child: const Row(children: [SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)), SizedBox(width: 12), Text('جاري نشر الإيديت...', style: TextStyle(color: Colors.white, fontSize: 13))])))))
-      ]);
-    });
+    return Consumer<EditsProvider>(
+      builder: (context, editsProvider, _) {
+        return Stack(
+          children: [
+            widget.child,
+            if (editsProvider.isUploading)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  color: Colors.transparent,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'جاري نشر الإيديت...',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
