@@ -16,7 +16,7 @@ class AdService {
   // ==========================================
   static const String _interstitialId =
       'ca-app-pub-3303379299409244/1725699149';
-  static const String _appOpenAdId =
+  static const String _rewardedId =
       'ca-app-pub-3303379299409244/3412540085';
 
   // ==========================================
@@ -24,188 +24,108 @@ class AdService {
   // ==========================================
   InterstitialAd? _interstitialAd;
   bool _isInterstitialLoading = false;
+
+  RewardedAd? _rewardedAd;
+  bool _isRewardedLoading = false;
+
   int _groupAdsShownToday = 0;
   bool _isInitialized = false;
 
-  final List<AppOpenAd> _preloadedAppOpenPool = [];
-  bool _isAppOpenPoolLoading = false;
-
-  Completer<void>? _poolReadyCompleter;
-
-  static const int maxBundleSize = 3;
   static const Duration _adLoadTimeout = Duration(seconds: 15);
 
   // ==========================================
   // 🔧 التهيئة
   // ==========================================
   Future<void> init() async {
-    if (_isInitialized) {
-      _fillAppOpenPool();
-      return;
-    }
+    if (_isInitialized) return;
     await _localStorage.init();
     _groupAdsShownToday = _localStorage.getAdsCountToday();
     _isInitialized = true;
     _loadInterstitial();
-    _fillAppOpenPool();
+    _loadRewarded();
     debugPrint('✅ AdService Initialized.');
   }
 
   // =========================================================================
-  // 🎁 App Open Pool
+  // 🎁 Rewarded Ad
   // =========================================================================
 
-  Future<void> _fillAppOpenPool() async {
-    if (_isAppOpenPoolLoading ||
-        _preloadedAppOpenPool.length >= maxBundleSize) return;
+  Future<void> _loadRewarded() async {
+    if (_isRewardedLoading || _rewardedAd != null) return;
+    _isRewardedLoading = true;
 
-    _isAppOpenPoolLoading = true;
-    final int needsToLoad = maxBundleSize - _preloadedAppOpenPool.length;
-    debugPrint('🔄 AppOpen Pool missing $needsToLoad ads. Preloading...');
-
-    for (int i = 0; i < needsToLoad; i++) {
-      await _loadSingleAppOpenAdToPool();
-      if (_preloadedAppOpenPool.length >= maxBundleSize) break;
-    }
-
-    _isAppOpenPoolLoading = false;
-    debugPrint('✅ Pool fill complete. Size: ${_preloadedAppOpenPool.length}');
-  }
-
-  Future<void> _loadSingleAppOpenAdToPool() async {
-    final completer = Completer<void>();
-
-    AppOpenAd.load(
-      adUnitId: _appOpenAdId,
+    RewardedAd.load(
+      adUnitId: _rewardedId,
       request: const AdRequest(),
-      adLoadCallback: AppOpenAdLoadCallback(
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          if (_preloadedAppOpenPool.length < maxBundleSize) {
-            _preloadedAppOpenPool.add(ad);
-            debugPrint(
-                '🎁 AppOpen pooled. Size: ${_preloadedAppOpenPool.length}');
-
-            if (_poolReadyCompleter != null &&
-                !_poolReadyCompleter!.isCompleted) {
-              _poolReadyCompleter!.complete();
-            }
-          } else {
-            ad.dispose();
-          }
-          if (!completer.isCompleted) completer.complete();
+          _rewardedAd = ad;
+          _isRewardedLoading = false;
+          debugPrint('🎁 RewardedAd loaded');
         },
         onAdFailedToLoad: (error) {
-          debugPrint('❌ AppOpen failed: $error');
-          if (!completer.isCompleted) completer.complete();
+          _rewardedAd = null;
+          _isRewardedLoading = false;
+          debugPrint('❌ RewardedAd failed: $error');
         },
       ),
     );
-
-    return completer.future;
   }
 
-  Future<bool> _waitForPoolReady() async {
-    if (_preloadedAppOpenPool.isNotEmpty) return true;
-
-    debugPrint('⏳ Waiting for AppOpen pool (max ${_adLoadTimeout.inSeconds}s)...');
-
-    if (_poolReadyCompleter == null || _poolReadyCompleter!.isCompleted) {
-      _poolReadyCompleter = Completer<void>();
-    }
-
-    if (!_isAppOpenPoolLoading) {
-      _fillAppOpenPool();
-    }
-
-    try {
-      await _poolReadyCompleter!.future.timeout(_adLoadTimeout);
-      debugPrint('✅ Pool ready after waiting.');
-      return _preloadedAppOpenPool.isNotEmpty;
-    } on TimeoutException {
-      debugPrint('⏰ Timeout: AppOpen pool did not load in time.');
-      return false;
-    }
-  }
-
-  /// تشغيل إعلان AppOpen واحد
-  Future<bool> showSingleRewardedAd({required VoidCallback onReward}) async {
+  /// تشغيل إعلان مكافأة واحد — يُستخدم في EarnCoinsScreen
+  Future<bool> showSingleRewardedAd({
+    required VoidCallback onReward,
+  }) async {
     await init();
 
-    if (_preloadedAppOpenPool.isEmpty) {
-      final ready = await _waitForPoolReady();
-      if (!ready) {
-        debugPrint('❌ showSingleAppOpenAd: pool still empty after timeout.');
+    // إذا لم يكن محملاً، ابدأ التحميل وانتظر
+    if (_rewardedAd == null) {
+      _loadRewarded();
+      debugPrint('⏳ RewardedAd not ready, waiting...');
+
+      final completer = Completer<void>();
+      int waited = 0;
+      const checkInterval = Duration(milliseconds: 500);
+
+      while (_rewardedAd == null && waited < _adLoadTimeout.inMilliseconds) {
+        await Future.delayed(checkInterval);
+        waited += checkInterval.inMilliseconds;
+      }
+
+      if (_rewardedAd == null) {
+        debugPrint('⏰ RewardedAd timeout');
         return false;
       }
     }
 
-    final ad = _preloadedAppOpenPool.removeAt(0);
+    final ad = _rewardedAd!;
+    _rewardedAd = null;
+
+    bool rewardEarned = false;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (a) {
         a.dispose();
-        onReward(); // ✅ يُستدعى عند إغلاق الإعلان
-        _fillAppOpenPool();
+        _loadRewarded(); // preload next
+        if (rewardEarned) {
+          onReward(); // ✅ فقط إذا شاهد الإعلان كاملاً
+        }
+        debugPrint('📢 RewardedAd dismissed. Reward earned: $rewardEarned');
       },
       onAdFailedToShowFullScreenContent: (a, e) {
         a.dispose();
-        _fillAppOpenPool();
-        debugPrint('❌ Failed to show AppOpen: $e');
+        _loadRewarded();
+        debugPrint('❌ RewardedAd show failed: $e');
       },
     );
 
-    ad.show();
-    return true;
-  }
+    ad.show(
+      onUserEarnedReward: (_, reward) {
+        rewardEarned = true;
+        debugPrint('✅ User earned reward: ${reward.amount} ${reward.type}');
+      },
+    );
 
-  /// تشغيل حزمة 3 إعلانات AppOpen متتالية
-  Future<bool> showRewardedAdBundle({
-    required VoidCallback onSingleAdFinished,
-    required VoidCallback onAllAdsCompleted,
-    required VoidCallback onFailed,
-  }) async {
-    await init();
-
-    if (_preloadedAppOpenPool.length < maxBundleSize) {
-      debugPrint(
-          '⚠️ Pool not ready: ${_preloadedAppOpenPool.length}/$maxBundleSize');
-      _fillAppOpenPool();
-      return false;
-    }
-
-    final List<AppOpenAd> bundle =
-        List.from(_preloadedAppOpenPool.take(maxBundleSize));
-    _preloadedAppOpenPool.removeRange(0, maxBundleSize);
-
-    int index = 0;
-
-    void showNext() {
-      if (index >= bundle.length) {
-        debugPrint('🎉 All 3 bundled AppOpen ads done!');
-        _fillAppOpenPool();
-        onAllAdsCompleted();
-        return;
-      }
-
-      final ad = bundle[index];
-      ad.fullScreenContentCallback = FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (a) {
-          a.dispose();
-          onSingleAdFinished();
-          index++;
-          showNext();
-        },
-        onAdFailedToShowFullScreenContent: (a, e) {
-          a.dispose();
-          debugPrint('❌ Bundle AppOpen ad $index failed: $e');
-          _fillAppOpenPool();
-          onFailed();
-        },
-      );
-      ad.show();
-    }
-
-    showNext();
     return true;
   }
 
@@ -258,7 +178,8 @@ class AdService {
   Future<bool> showCreateGroupAd({required bool isPremium}) async {
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
-      decision: const AdDisplayDecision(shouldShow: true, reason: 'create_group'),
+      decision: const AdDisplayDecision(
+          shouldShow: true, reason: 'create_group'),
     );
     if (!premiumCheck.shouldShow) {
       debugPrint('📢 Create Group Ad: blocked — ${premiumCheck.reason}');
@@ -280,7 +201,8 @@ class AdService {
   Future<bool> showGroupEntryAd({required bool isPremium}) async {
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
-      decision: const AdDisplayDecision(shouldShow: true, reason: 'group_entry'),
+      decision: const AdDisplayDecision(
+          shouldShow: true, reason: 'group_entry'),
     );
     if (!premiumCheck.shouldShow) {
       debugPrint('📢 Group Entry Ad: blocked — ${premiumCheck.reason}');

@@ -63,7 +63,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Timer? _recordTimer;
   int _recordSeconds = 0;
 
-  // تبويب الـ sheet النشط: 0=إيموجي، 1=GIF، 2=ملصقات
+  // تبويب الـ sheet النشط: 0=ملصقات، 1=GIF، 2=إيموجي
   int _activeTab = 0;
 
   @override
@@ -101,7 +101,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     setState(() => _isSending = true);
     try {
       await widget.onSendSticker!(sticker, widget.replyingMessage);
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,7 +120,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     setState(() => _isSending = true);
     try {
       await widget.onSendGif!(gifUrl, widget.replyingMessage);
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +140,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       if (image == null) return;
       setState(() => _isSending = true);
       await widget.onSendImage(File(image.path), widget.replyingMessage);
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -165,7 +165,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     try {
       await widget.onSendText(text, widget.replyingMessage);
       _controller.clear();
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -231,7 +231,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       if (!await file.exists()) return;
       setState(() => _isSending = true);
       await widget.onSendAudio!(file, widget.replyingMessage, _recordSeconds);
-      if (widget.onCancelReply != null) widget.onCancelReply!();
+      if (widget.onCancelReply!= null) widget.onCancelReply!();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -250,7 +250,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     try {
       await _recorder.stop();
       _recordTimer?.cancel();
-      if (_recordingPath != null) {
+      if (_recordingPath!= null) {
         final file = File(_recordingPath!);
         if (await file.exists()) await file.delete();
       }
@@ -285,7 +285,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       child: IconButton(
         padding: EdgeInsets.zero,
         icon: Icon(icon, size: 22),
-        color: color ?? Colors.grey[600],
+        color: color?? Colors.grey[600],
         onPressed: onTap,
       ),
     );
@@ -298,7 +298,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Center(
         child: isLoading
-            ? const SizedBox(
+           ? const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
@@ -313,7 +313,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     const darkPurpleColor = Color(0xFF30013B);
     if (showMic) {
       return GestureDetector(
-        onLongPress: _isSending ? null : _startRecording,
+        onLongPress: _isSending? null : _startRecording,
         onLongPressEnd: (_) => _stopAndSendRecording(),
         child: _circleBtn(Icons.mic_rounded, darkPurpleColor),
       );
@@ -325,9 +325,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
       );
     }
     return GestureDetector(
-      onTap: _isSending ? null : _sendMessage,
+      onTap: _isSending? null : _sendMessage,
       child: _circleBtn(
-        _isSending ? null : Icons.send_rounded,
+        _isSending? null : Icons.send_rounded,
         darkPurpleColor,
         isLoading: _isSending,
       ),
@@ -339,8 +339,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inputFillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
-    final bool showMic = _controller.text.trim().isEmpty && !_isRecording;
+    final inputFillColor = isDark? const Color(0xFF1F2C34) : Colors.white;
+    final bool showMic = _controller.text.trim().isEmpty &&!_isRecording;
 
     return SafeArea(
       top: false,
@@ -348,7 +348,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.replyingMessage != null) _buildReplyPreview(isDark),
+          if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
           if (_isRecording) _buildRecordingIndicator(isDark),
 
           // ── شريط الإدخال ────────────────────────────────────
@@ -374,11 +374,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (!_isRecording) ...[
+                        if (!_isRecording)...[
                           const SizedBox(width: 8),
                           _buildIconBtn(
                             Icons.attach_file_rounded,
-                            _isSending ? null : _pickAndSendImage,
+                            _isSending? null : _pickAndSendImage,
                           ),
                           const SizedBox(width: 4),
                           if (!widget.isPrivate)
@@ -389,7 +389,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                             ),
                           const SizedBox(width: 4),
                         ],
-                        if (_isRecording) ...[
+                        if (_isRecording)...[
                           const SizedBox(width: 8),
                           _buildIconBtn(
                             Icons.delete_outline_rounded,
@@ -400,7 +400,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                         ],
                         Expanded(
                           child: _isRecording
-                              ? const SizedBox.shrink()
+                             ? const SizedBox.shrink()
                               : TextField(
                                   controller: _controller,
                                   focusNode: _focusNode,
@@ -415,7 +415,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                                   style: TextStyle(
                                     fontSize: 16,
                                     height: 1.3,
-                                    color: isDark ? Colors.white : Colors.black,
+                                    color: isDark? Colors.white : Colors.black,
                                   ),
                                   decoration: const InputDecoration(
                                     hintText: "مراسلة",
@@ -434,7 +434,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                                   },
                                 ),
                         ),
-                        if (!_isRecording) ...[
+                        if (!_isRecording)...[
                           // ✅ زر واحد يفتح sheet موحد
                           IconButton(
                             padding: const EdgeInsets.only(
@@ -442,8 +442,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
                             constraints: const BoxConstraints(),
                             icon: Icon(
                               _showEmojiPicker
-                                  ? Icons.keyboard_rounded
-                                  : Icons.sentiment_satisfied_alt_rounded,
+                                 ? Icons.keyboard_rounded
+                                  : Icons.mood_rounded, // ← وجه مبتسم مع لسان
                               color: Colors.grey[500],
                               size: 24,
                             ),
@@ -471,9 +471,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
   // ── الـ Sheet الموحد ──────────────────────────────────────────
   Widget _buildUnifiedSheet(bool isDark) {
     final sheetBg =
-        isDark ? const Color(0xFF1F2C34) : Colors.grey[100]!;
+        isDark? const Color(0xFF1F2C34) : Colors.grey[100]!;
     final tabBg =
-        isDark ? const Color(0xFF2A3540) : Colors.grey[200]!;
+        isDark? const Color(0xFF2A3540) : Colors.grey[200]!;
 
     return Container(
       height: 300,
@@ -487,11 +487,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
-                _buildTab(0, '😊', 'إيموجي', isDark),
+                _buildTab(0, '🏷️', 'ملصقات', isDark),
                 const SizedBox(width: 8),
                 _buildTab(1, 'GIF', 'GIF', isDark),
                 const SizedBox(width: 8),
-                _buildTab(2, '🏷️', 'ملصقات', isDark),
+                _buildTab(2, '😊', 'إيموجي', isDark),
               ],
             ),
           ),
@@ -499,10 +499,10 @@ class _MessageInputBarState extends State<MessageInputBar> {
           // ── محتوى التبويب ────────────────────────────────────
           Expanded(
             child: _activeTab == 0
-                ? _buildEmojiTab(isDark, sheetBg)
+               ? _buildStickerTab(isDark)
                 : _activeTab == 1
-                    ? _buildGifTab()
-                    : _buildStickerTab(isDark),
+                   ? _buildGifTab()
+                    : _buildEmojiTab(isDark, sheetBg),
           ),
         ],
       ),
@@ -518,18 +518,18 @@ class _MessageInputBarState extends State<MessageInputBar> {
         padding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isActive ? AppColors.primary : Colors.transparent,
+          color: isActive? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          icon == 'GIF' ? 'GIF' : '$icon $label',
+          icon == 'GIF'? 'GIF' : '$icon $label',
           style: TextStyle(
             fontSize: 13,
             fontWeight:
-                isActive ? FontWeight.bold : FontWeight.normal,
+                isActive? FontWeight.bold : FontWeight.normal,
             color: isActive
-                ? Colors.white
-                : (isDark ? Colors.white60 : Colors.black54),
+               ? Colors.white
+                : (isDark? Colors.white60 : Colors.black54),
           ),
         ),
       ),
@@ -566,7 +566,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
           iconColorSelected: const Color(0xFFFFD700),
           backspaceColor: const Color(0xFFFFD700),
           backgroundColor:
-              isDark ? const Color(0xFF1F2C34) : Colors.grey[200]!,
+              isDark? const Color(0xFF1F2C34) : Colors.grey[200]!,
         ),
         bottomActionBarConfig:
             const BottomActionBarConfig(enabled: false),
@@ -578,7 +578,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget _buildGifTab() {
     return GifPickerSheet(
       onGifSelected: _handleGifSelected,
-      embedded: true, // ← نمرر هذا حتى لا يفتح كـ sheet منفصل
+      embedded: true,
     );
   }
 
@@ -600,7 +600,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white70 : Colors.black87,
+                  color: isDark? Colors.white70 : Colors.black87,
                 ),
               ),
               const Spacer(),
@@ -650,7 +650,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
         Expanded(
           child: Consumer<StickerProvider>(
             builder: (context, provider, _) {
-              if (userId != null && provider.stickers.isEmpty && !provider.isLoading) {
+              if (userId!= null && provider.stickers.isEmpty &&!provider.isLoading) {
                 provider.loadStickers(userId);
               }
 
@@ -663,7 +663,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                   child: Text(
                     'لا توجد ملصقات — اضغط "إنشاء"',
                     style: TextStyle(
-                      color: isDark ? Colors.white38 : Colors.black38,
+                      color: isDark? Colors.white38 : Colors.black38,
                       fontSize: 13,
                     ),
                   ),
@@ -708,7 +708,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Widget _buildRecordingIndicator(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: isDark ? Colors.grey[900] : Colors.grey[100],
+      color: isDark? Colors.grey[900] : Colors.grey[100],
       child: Row(
         children: [
           const Icon(Icons.mic, color: Colors.red, size: 18),
@@ -731,7 +731,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
             "اضغط ■ للإرسال أو 🗑 للإلغاء",
             style: TextStyle(
                 fontSize: 11,
-                color: isDark ? Colors.white54 : Colors.black45),
+                color: isDark? Colors.white54 : Colors.black45),
           ),
         ],
       ),
@@ -742,7 +742,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.grey[200],
+        color: isDark? Colors.grey[900] : Colors.grey[200],
         border: const Border(
             right: BorderSide(color: Color(0xFF00A884), width: 4)),
       ),
@@ -762,19 +762,19 @@ class _MessageInputBarState extends State<MessageInputBar> {
                       fontSize: 12),
                 ),
                 Text(
-                  widget.replyingMessage!.text ??
+                  widget.replyingMessage!.text??
                       (widget.replyingMessage!.mediaType == 'image'
-                          ? "صورة 🖼️"
+                         ? "صورة 🖼️"
                           : widget.replyingMessage!.mediaType == 'gif'
-                              ? "GIF 🎞️"
+                             ? "GIF 🎞️"
                               : widget.replyingMessage!.mediaType == 'sticker'
-                                  ? "ملصق 🏷️"
+                                 ? "ملصق 🏷️"
                                   : "رسالة وسائط"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 13,
-                      color: isDark ? Colors.white70 : Colors.black87),
+                      color: isDark? Colors.white70 : Colors.black87),
                 ),
               ],
             ),

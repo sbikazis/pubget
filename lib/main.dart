@@ -7,8 +7,8 @@ import 'package:pubget/core/utils/notification_service.dart';
 import 'package:pubget/app.dart';
 import 'package:pubget/services/deep_link_service.dart';
 import 'package:pubget/services/local/local_storage_service.dart';
-import 'package:pubget/services/monetization/subscription_service.dart'; // ✅ أضف
-import 'package:pubget/services/firebase/firestore_service.dart'; // ✅ أضف
+import 'package:pubget/services/monetization/subscription_service.dart';
+import 'package:pubget/services/firebase/firestore_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -22,12 +22,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
 }
 
-// ✅ متغير عام للوصول للتجديد
 late final SubscriptionService globalSubscriptionService;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Firebase
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -38,14 +38,12 @@ Future<void> main() async {
       ),
     );
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
-    // ✅ تهيئة خدمة الاشتراك
     globalSubscriptionService = SubscriptionService(FirestoreService());
-    
   } catch (e) {
-    debugPrint("🔥 Firebase init error: $e");
+    debugPrint('🔥 Firebase init error: $e');
   }
 
+  // 2. Local storage + deep link
   try {
     await LocalStorageService.instance.init();
     final deepLinkService = DeepLinkService();
@@ -54,12 +52,25 @@ Future<void> main() async {
       await LocalStorageService.instance.saveString('pending_inviter', referrerId);
     }
   } catch (e) {
-    debugPrint("⚠️ خطأ في التقاط الدعوة: $e");
+    debugPrint('⚠️ خطأ في التقاط الدعوة: $e');
   }
 
+  // 3. AdMob — قبل runApp
+  try {
+    await MobileAds.instance.initialize();
+    debugPrint('✅ MobileAds initialized');
+  } catch (e) {
+    debugPrint('⚠️ MobileAds init error: $e');
+  }
+
+  // 4. اتجاه الشاشة
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // 5. تشغيل التطبيق
   runApp(const PubgetApp());
 
-  NotificationService.instance.initialize().catchError((e) {});
-  MobileAds.instance.initialize();
+  // 6. الإشعارات — بعد runApp (لا تحتاج context فوري)
+  NotificationService.instance.initialize().catchError((e) {
+    debugPrint('⚠️ NotificationService init error: $e');
+  });
 }
