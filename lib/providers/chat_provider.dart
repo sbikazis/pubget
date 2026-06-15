@@ -23,39 +23,30 @@ class ChatProvider extends ChangeNotifier {
   }) : _firestore = firestoreService,
         _storage = storageService;
 
-  // =========================================================
-  // ✅ تحديث وقت القراءة
-  // =========================================================
   Future<void> updateLastRead({
     required String groupId,
     required String userId,
     DateTime? readUpTo,
   }) async {
     final path = FirestorePaths.groupMembers(groupId);
-
     await _firestore.updateDocument(
       path: path,
       docId: userId,
       data: {
         'lastReadAt': readUpTo!= null
-          ? Timestamp.fromDate(readUpTo)
+           ? Timestamp.fromDate(readUpTo)
             : FieldValue.serverTimestamp(),
       },
     );
   }
 
-  // =========================================================
-  // ✅ استبعاد رسائل المستخدم الحالي من العداد
-  // =========================================================
   Stream<int> streamUnreadCount({
     required String groupId,
     required String userId,
     required dynamic lastReadAt,
   }) {
     final path = FirestorePaths.groupMessages(groupId);
-
     Timestamp compareTimestamp;
-
     if (lastReadAt is Timestamp) {
       compareTimestamp = lastReadAt;
     } else if (lastReadAt is DateTime) {
@@ -63,41 +54,31 @@ class ChatProvider extends ChangeNotifier {
     } else {
       compareTimestamp = Timestamp.fromDate(DateTime(2000));
     }
-
     final query = _firestore.buildQuery(
       path: path,
       conditions: [
-        QueryCondition(
-          field: 'createdAt',
-          isGreaterThan: compareTimestamp,
-        ),
+        QueryCondition(field: 'createdAt', isGreaterThan: compareTimestamp),
       ],
     );
-
     return _firestore.streamCollection(path: path, query: query).map((snap) {
       return snap.docs.where((doc) => doc.data()['senderId']!= userId).length;
     });
   }
 
-  // =========================================================
-  // ✅ تمرير userId لضمان دقة مراقب المجموعات
-  // =========================================================
   Stream<int> streamTotalGroupsUnreadCount({
     required String userId,
     required List<GroupModel> groups,
   }) {
     if (groups.isEmpty) return Stream.value(0);
-
     final streams = groups.map((group) {
       return _firestore
-        .streamDocument(
+         .streamDocument(
             path: FirestorePaths.groupMembers(group.id),
             docId: userId,
           )
-        .asyncExpand((memberDoc) {
+         .asyncExpand((memberDoc) {
         if (!memberDoc.exists) return Stream.value(0);
         final lastReadAt = memberDoc.data()?['lastReadAt'];
-
         return streamUnreadCount(
           groupId: group.id,
           userId: userId,
@@ -105,36 +86,26 @@ class ChatProvider extends ChangeNotifier {
         );
       });
     }).toList();
-
     return Rx.combineLatestList(streams).map((counts) {
       return counts.fold<int>(0, (sum, count) => sum + count);
     });
   }
 
-  // =========================================================
-  // STREAM MESSAGES
-  // =========================================================
-  Stream<List<MessageModel>> streamMessages({
-    required String groupId,
-  }) {
+  Stream<List<MessageModel>> streamMessages({required String groupId}) {
     final path = FirestorePaths.groupMessages(groupId);
-
     final query = _firestore.buildQuery(
       path: path,
       orderBy: 'createdAt',
       descending: false,
     );
-
     return _firestore.streamCollection(path: path, query: query).map((snapshot) {
       return snapshot.docs
-        .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-        .toList();
+         .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
+         .toList();
     });
   }
 
-  // =========================================================
-  // SEND TEXT MESSAGE
-  // =========================================================
+  // ✅ SEND TEXT
   Future<void> sendTextMessage({
     required String groupId,
     required String messageId,
@@ -143,61 +114,35 @@ class ChatProvider extends ChangeNotifier {
     String? userAvatar,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
     String? gameId,
     String? gameSlot,
   }) async {
     if (text.trim().isEmpty) return;
-
-    String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName?? '';
-    bool freshPremiumStatus = sender.isPremium;
-
-    try {
-      final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(sender.userId)
-        .get();
-
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username']?? freshRealName;
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Warning: Live sync failed, using fallback: $e");
-    }
-
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      realUserName: freshRealName,
-      isPremium: freshPremiumStatus,
-    );
-
-    final finalAvatar = updatedSender.displayImageUrl?? userAvatar?? '';
-
+    final finalAvatar = sender.displayImageUrl?? userAvatar?? '';
     final message = MessageModel(
       id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
+      senderId: sender.userId,
+      senderName: sender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
+      senderRole: sender.role,
+      senderIsPremium: sender.isPremium,
       text: text.trim(),
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       gameId: gameId,
       gameSlot: gameSlot,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅ الرسالة وصلات للسيرفر مباشرة
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
     );
-
     final preview = text.trim().length > 80? text.trim().substring(0, 80) : text.trim();
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
@@ -209,9 +154,7 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // SEND MEDIA MESSAGE
-  // =========================================================
+  // ✅ SEND MEDIA
   Future<void> sendMediaMessage({
     required String groupId,
     required String messageId,
@@ -221,23 +164,19 @@ class ChatProvider extends ChangeNotifier {
     String? userAvatar,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
     final mediaUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: file,
     );
-
     String? freshRealAvatar = sender.realUserImageUrl;
     String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
-
     try {
-      final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(sender.userId)
-        .get();
-
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(sender.userId).get();
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
@@ -247,15 +186,12 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("⚠️ Error fetching live user data for media: $e");
     }
-
     final updatedSender = sender.copyWith(
       realUserImageUrl: freshRealAvatar,
       realUserName: freshRealName,
       isPremium: freshPremiumStatus,
     );
-
     final finalAvatar = updatedSender.displayImageUrl?? userAvatar?? '';
-
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -267,30 +203,25 @@ class ChatProvider extends ChangeNotifier {
       mediaType: mediaType,
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
     );
-
     final preview = mediaType == 'image'? '📷 صورة' : mediaType == 'video'? '🎥 فيديو' : '📎 ملف';
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': preview,
-      },
+      data: {'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageText': preview},
     );
   }
 
-  // =========================================================
-  // SEND GIF MESSAGE
-  // =========================================================
+  // ✅ SEND GIF
   Future<void> sendGifMessage({
     required String groupId,
     required String messageId,
@@ -298,69 +229,39 @@ class ChatProvider extends ChangeNotifier {
     required String gifUrl,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
-    String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName?? '';
-    bool freshPremiumStatus = sender.isPremium;
-
-    try {
-      final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(sender.userId)
-        .get();
-
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username']?? freshRealName;
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error fetching live user data for gif: $e");
-    }
-
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      realUserName: freshRealName,
-      isPremium: freshPremiumStatus,
-    );
-
-    final finalAvatar = updatedSender.displayImageUrl?? '';
-
+    final finalAvatar = sender.displayImageUrl?? '';
     final message = MessageModel(
       id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
+      senderId: sender.userId,
+      senderName: sender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
+      senderRole: sender.role,
+      senderIsPremium: sender.isPremium,
       mediaUrl: gifUrl,
       mediaType: 'gif',
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': 'GIF',
-      },
+      data: {'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageText': 'GIF'},
     );
   }
 
-  // =========================================================
-  // SEND AUDIO MESSAGE
-  // =========================================================
+  // ✅ SEND AUDIO
   Future<void> sendAudioMessage({
     required String groupId,
     required String messageId,
@@ -369,23 +270,19 @@ class ChatProvider extends ChangeNotifier {
     required int durationSeconds,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
     final audioUrl = await _storage.uploadGroupChatMedia(
       groupId: groupId,
       messageId: messageId,
       file: audioFile,
     );
-
     String? freshRealAvatar = sender.realUserImageUrl;
     String freshRealName = sender.realUserName?? '';
     bool freshPremiumStatus = sender.isPremium;
-
     try {
-      final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(sender.userId)
-        .get();
-
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(sender.userId).get();
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
@@ -395,15 +292,12 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("⚠️ Error fetching live user data for audio: $e");
     }
-
     final updatedSender = sender.copyWith(
       realUserImageUrl: freshRealAvatar,
       realUserName: freshRealName,
       isPremium: freshPremiumStatus,
     );
-
     final finalAvatar = updatedSender.displayImageUrl?? '';
-
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -416,33 +310,24 @@ class ChatProvider extends ChangeNotifier {
       audioDuration: durationSeconds,
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': '🎤 رسالة صوتية',
-      },
+      data: {'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageText': '🎤 رسالة صوتية'},
     );
   }
 
-  // =========================================================
-  // ✅ تحديث حالة الوصول
-  // =========================================================
-  Future<void> markAsDelivered({
-    required String groupId,
-    required String messageId,
-  }) async {
+  Future<void> markAsDelivered({required String groupId, required String messageId}) async {
     await _firestore.updateDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
@@ -450,26 +335,14 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // ✅ تحديث حالة القراءة
-  // =========================================================
-  Future<void> markAsRead({
-    required String groupId,
-    required String messageId,
-  }) async {
+  Future<void> markAsRead({required String groupId, required String messageId}) async {
     await _firestore.updateDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
-      data: {
-        'isRead': true,
-        'isDelivered': true,
-      },
+      data: {'isRead': true, 'isDelivered': true},
     );
   }
 
-  // =========================================================
-  // TOGGLE REACTION
-  // =========================================================
   Future<void> toggleReaction({
     required String groupId,
     required String messageId,
@@ -477,29 +350,18 @@ class ChatProvider extends ChangeNotifier {
     required String emoji,
   }) async {
     final path = FirestorePaths.groupMessages(groupId);
-
     final doc = await _firestore.getDocument(path: path, docId: messageId);
     if (doc == null) return;
-
     final message = MessageModel.fromMap(messageId, doc);
     Map<String, String> updatedReactions = Map.from(message.reactions?? {});
-
     if (updatedReactions[userId] == emoji) {
       updatedReactions.remove(userId);
     } else {
       updatedReactions[userId] = emoji;
     }
-
-    await _firestore.updateDocument(
-      path: path,
-      docId: messageId,
-      data: {'reactions': updatedReactions},
-    );
+    await _firestore.updateDocument(path: path, docId: messageId, data: {'reactions': updatedReactions});
   }
 
-  // =========================================================
-  // SEND GAME MESSAGE
-  // =========================================================
   Future<void> sendGameMessage({
     required String groupId,
     required String messageId,
@@ -510,13 +372,8 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     String? freshRealAvatar = sender.realUserImageUrl;
     bool freshPremiumStatus = sender.isPremium;
-
     try {
-      final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(sender.userId)
-        .get();
-
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(sender.userId).get();
       if (userDoc.exists) {
         final userData = userDoc.data();
         freshRealAvatar = userData?['avatarUrl'];
@@ -525,14 +382,8 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("⚠️ Error fetching live user data for game: $e");
     }
-
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      isPremium: freshPremiumStatus,
-    );
-
+    final updatedSender = sender.copyWith(realUserImageUrl: freshRealAvatar, isPremium: freshPremiumStatus);
     final finalAvatar = updatedSender.displayImageUrl?? '';
-
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -544,27 +395,17 @@ class ChatProvider extends ChangeNotifier {
       gameSlot: gameSlot,
       gameAction: gameAction,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
-    await _firestore.createDocument(
-      path: FirestorePaths.groupMessages(groupId),
-      docId: messageId,
-      data: message.toMap(),
-    );
-
+    await _firestore.createDocument(path: FirestorePaths.groupMessages(groupId), docId: messageId, data: message.toMap());
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': '🎮 لعبة',
-      },
+      data: {'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageText': '🎮 لعبة'},
     );
   }
-  // =========================================================
-  // SEND STICKER MESSAGE
-  // =========================================================
+
+  // ✅ SEND STICKER
   Future<void> sendStickerMessage({
     required String groupId,
     required String messageId,
@@ -572,110 +413,52 @@ class ChatProvider extends ChangeNotifier {
     required String stickerUrl,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
-    String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
-    bool freshPremiumStatus = sender.isPremium;
-
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error fetching live user data for sticker: $e");
-    }
-
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      realUserName: freshRealName,
-      isPremium: freshPremiumStatus,
-    );
-
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
-
+    final finalAvatar = sender.displayImageUrl?? '';
     final message = MessageModel(
       id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
+      senderId: sender.userId,
+      senderName: sender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
+      senderRole: sender.role,
+      senderIsPremium: sender.isPremium,
       mediaUrl: stickerUrl,
       mediaType: 'sticker',
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
       isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.groups,
       docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': '🏷️ ملصق',
-      },
+      data: {'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageText': '🏷️ ملصق'},
     );
   }
 
-  // =========================================================
-  // DELETE MESSAGE
-  // =========================================================
-  Future<void> deleteMessage({
-    required String groupId,
-    required String messageId,
-  }) async {
-    await _firestore.deleteDocument(
-      path: FirestorePaths.groupMessages(groupId),
-      docId: messageId,
-    );
+  Future<void> deleteMessage({required String groupId, required String messageId}) async {
+    await _firestore.deleteDocument(path: FirestorePaths.groupMessages(groupId), docId: messageId);
   }
 
-  // =========================================================
-  // GET MEMBER
-  // =========================================================
-  Future<MemberModel?> getMember({
-    required String groupId,
-    required String userId,
-  }) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.groupMembers(groupId),
-      docId: userId,
-    );
+  Future<MemberModel?> getMember({required String groupId, required String userId}) async {
+    final data = await _firestore.getDocument(path: FirestorePaths.groupMembers(groupId), docId: userId);
     if (data == null) return null;
     return MemberModel.fromMap(data);
   }
 
-  // =========================================================
-  // LOAD RECENT MESSAGES
-  // =========================================================
-  Future<List<MessageModel>> getRecentMessages({
-    required String groupId,
-    int limit = 50,
-  }) async {
+  Future<List<MessageModel>> getRecentMessages({required String groupId, int limit = 50}) async {
     final path = FirestorePaths.groupMessages(groupId);
-    final query = _firestore.buildQuery(
-      path: path,
-      orderBy: 'createdAt',
-      descending: true,
-      limit: limit,
-    );
+    final query = _firestore.buildQuery(path: path, orderBy: 'createdAt', descending: true, limit: limit);
     final snapshot = await _firestore.getCollection(path: path, query: query);
-    return snapshot.docs
-      .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-      .toList();
+    return snapshot.docs.map((doc) => MessageModel.fromMap(doc.id, doc.data())).toList();
   }
 }

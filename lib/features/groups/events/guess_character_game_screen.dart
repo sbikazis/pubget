@@ -42,33 +42,39 @@ class _GuessCharacterGameScreenState
   bool _timeoutCalled = false;
   bool _popCalled = false;
 
+  // ✅ الإصلاح: فقط اللاعب الجاهز يُرسل طلب الفوز
   void _handleTimeout(
     GameModel game,
     String? currentUserId,
   ) {
     if (!mounted) return;
+    if (_timeoutCalled) return;
 
-    final gameProvider =
-        context.read<GameProvider>();
+    final gameProvider = context.read<GameProvider>();
 
-    final winnerId =
-        currentUserId == game.playerOneId
-            ? game.playerTwoId
-            : game.playerOneId;
+    final bool isMeP1 = currentUserId == game.playerOneId;
+    final bool iAmReady =
+        isMeP1 ? game.isPlayerOneReady : game.isPlayerTwoReady;
+    final bool opponentReady =
+        isMeP1 ? game.isPlayerTwoReady : game.isPlayerOneReady;
 
-    final winnerName =
-        winnerId == game.playerOneId
-            ? game.playerOneName
-            : game.playerTwoName;
+    // إذا كلاهما في نفس الحالة — لا تتدخل
+    if (iAmReady == opponentReady) return;
+
+    // أنا غير جاهز = أنا الخاسر، لا أرسل أي طلب
+    if (!iAmReady) return;
+
+    // أنا جاهز والخصم لم يجهّز = أنا الفائز
+    final String loserName =
+        isMeP1 ? (game.playerTwoName ?? '') : (game.playerOneName ?? '');
 
     gameProvider.finishGame(
       widget.groupId,
       widget.gameId,
-      isCancelled: true,
-      winnerId: winnerId,
-      winnerName: winnerName,
-      reason:
-          "انتهى وقت ${currentUserId == game.playerOneId ? game.playerOneName : game.playerTwoName}",
+      isCancelled: false,
+      winnerId: currentUserId,
+      winnerName: isMeP1 ? game.playerOneName : game.playerTwoName,
+      reason: "انتهى وقت $loserName ولم يختر شخصيته",
     );
   }
 

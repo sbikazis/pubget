@@ -52,7 +52,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   void initState() {
     super.initState();
     _messageStream = Provider.of<PrivateChatProvider>(context, listen: false)
-       .streamMessages(chatId: widget.chatId);
+      .streamMessages(chatId: widget.chatId);
 
     _scrollController.addListener(_scrollListener);
 
@@ -153,12 +153,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         replyToId: replyTo?.id,
         replyText: replyTo?.text??
             (replyTo?.mediaType == 'image'
-               ? "صورة 🖼️"
+              ? "صورة 🖼️"
                 : replyTo?.mediaType == 'gif'
-                   ? "GIF 🎞️"
+                  ? "GIF 🎞️"
                     : replyTo?.mediaType == 'audio'
-                       ? "🎙️ تسجيل صوتي"
-                        : null),
+                      ? "🎙️ تسجيل صوتي"
+                        : replyTo?.mediaType == 'sticker'
+                          ? "ملصق 🏷️"
+                            : null),
+        replyToSenderName: replyTo?.senderName,
+        replyToMediaUrl: (replyTo?.mediaType == 'image' || replyTo?.mediaType == 'gif')
+          ? replyTo?.mediaUrl
+            : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -186,7 +192,19 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         mediaType: 'image',
         replyToId: replyTo?.id,
         replyText: replyTo?.text??
-            (replyTo?.mediaType == 'image'? "صورة 🖼️" : null),
+            (replyTo?.mediaType == 'image'
+              ? "صورة 🖼️"
+                : replyTo?.mediaType == 'gif'
+                  ? "GIF 🎞️"
+                    : replyTo?.mediaType == 'audio'
+                      ? "🎙️ تسجيل صوتي"
+                        : replyTo?.mediaType == 'sticker'
+                          ? "ملصق 🏷️"
+                            : null),
+        replyToSenderName: replyTo?.senderName,
+        replyToMediaUrl: (replyTo?.mediaType == 'image' || replyTo?.mediaType == 'gif')
+          ? replyTo?.mediaUrl
+            : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -212,7 +230,20 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         gifUrl: gifUrl,
         replyToId: replyTo?.id,
-        replyText: replyTo?.mediaType == 'gif'? "GIF 🎞️" : null,
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'image'
+              ? "صورة 🖼️"
+                : replyTo?.mediaType == 'gif'
+                  ? "GIF 🎞️"
+                    : replyTo?.mediaType == 'audio'
+                      ? "🎙️ تسجيل صوتي"
+                        : replyTo?.mediaType == 'sticker'
+                          ? "ملصق 🏷️"
+                            : null),
+        replyToSenderName: replyTo?.senderName,
+        replyToMediaUrl: (replyTo?.mediaType == 'image' || replyTo?.mediaType == 'gif')
+          ? replyTo?.mediaUrl
+            : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -241,7 +272,19 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         durationSeconds: duration,
         replyToId: replyTo?.id,
         replyText: replyTo?.text??
-            (replyTo?.mediaType == 'audio'? "🎙️ تسجيل صوتي" : null),
+            (replyTo?.mediaType == 'image'
+              ? "صورة 🖼️"
+                : replyTo?.mediaType == 'gif'
+                  ? "GIF 🎞️"
+                    : replyTo?.mediaType == 'audio'
+                      ? "🎙️ تسجيل صوتي"
+                        : replyTo?.mediaType == 'sticker'
+                          ? "ملصق 🏷️"
+                            : null),
+        replyToSenderName: replyTo?.senderName,
+        replyToMediaUrl: (replyTo?.mediaType == 'image' || replyTo?.mediaType == 'gif')
+          ? replyTo?.mediaUrl
+            : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -252,6 +295,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       );
     }
   }
+
   Future<void> _handleSendSticker(
       StickerModel sticker, MessageModel? replyTo) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -267,7 +311,20 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         sender: currentUser,
         stickerUrl: sticker.imageUrl,
         replyToId: replyTo?.id,
-        replyText: replyTo?.mediaType == 'sticker' ? "ملصق 🏷️" : null,
+        replyText: replyTo?.text??
+            (replyTo?.mediaType == 'image'
+              ? "صورة 🖼️"
+                : replyTo?.mediaType == 'gif'
+                  ? "GIF 🎞️"
+                    : replyTo?.mediaType == 'audio'
+                      ? "🎙️ تسجيل صوتي"
+                        : replyTo?.mediaType == 'sticker'
+                          ? "ملصق 🏷️"
+                            : null),
+        replyToSenderName: replyTo?.senderName,
+        replyToMediaUrl: (replyTo?.mediaType == 'image' || replyTo?.mediaType == 'gif')
+          ? replyTo?.mediaUrl
+            : null,
       );
       _updatePrivateReadStatus();
       _onCancelReply();
@@ -295,7 +352,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         fit: StackFit.expand,
         children: [
           isNetwork
-             ? Image.network(backgroundPath, fit: BoxFit.cover)
+            ? Image.network(backgroundPath, fit: BoxFit.cover)
               : Image.file(File(backgroundPath), fit: BoxFit.cover),
           Container(
             color: Colors.black.withValues(alpha: 0.38),
@@ -372,7 +429,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     if (snapshot.hasData) {
                       final newMessages = snapshot.data!;
 
-                      // ✅✅✅ التعديل الجديد - تحديث حالة الوصول والقراءة
                       for (final msg in newMessages) {
                         if (msg.senderId!= currentUser.id) {
                           if (!msg.isDelivered) {
@@ -393,7 +449,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       if (newMessages.length > _currentMessages.length) {
                         Future.microtask(() => _updatePrivateReadStatus());
                         WidgetsBinding.instance
-                           .addPostFrameCallback((_) => _scrollToBottom());
+                          .addPostFrameCallback((_) => _scrollToBottom());
                       }
                       _currentMessages = newMessages;
                     }
@@ -452,7 +508,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 onSendImage: _handleSendImage,
                 onSendGif: _handleSendGif,
                 onSendAudio: _handleSendAudio,
-                onSendSticker: _handleSendSticker, // ✅ جديد
+                onSendSticker: _handleSendSticker,
                 replyingMessage: _replyingMessage,
                 onCancelReply: _onCancelReply,
                 isPrivate: true,
@@ -466,7 +522,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               opacity: _showScrollDown? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: _showScrollDown
-                 ? FloatingActionButton.small(
+                ? FloatingActionButton.small(
                       backgroundColor: Theme.of(context).primaryColor,
                       onPressed: _scrollToBottom,
                       child: const Icon(Icons.arrow_downward,

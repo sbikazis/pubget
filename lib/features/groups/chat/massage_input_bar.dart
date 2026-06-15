@@ -63,7 +63,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
   Timer? _recordTimer;
   int _recordSeconds = 0;
 
-  // تبويب الـ sheet النشط: 0=ملصقات، 1=GIF، 2=إيموجي
   int _activeTab = 0;
 
   @override
@@ -75,7 +74,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     super.dispose();
   }
 
-  // ── فتح الـ Sheet الموحد ─────────────────────────────────────
   void _openEmojiSheet() {
     FocusScope.of(context).unfocus();
     setState(() => _showEmojiPicker = true);
@@ -94,42 +92,18 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
-  // ── إرسال الملصق ─────────────────────────────────────────────
   Future<void> _handleStickerSelected(StickerModel sticker) async {
     setState(() => _showEmojiPicker = false);
-    if (widget.onSendSticker == null || _isSending) return;
-    setState(() => _isSending = true);
-    try {
-      await widget.onSendSticker!(sticker, widget.replyingMessage);
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("فشل إرسال الملصق.")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
+    if (widget.onSendSticker == null) return;
+    if (widget.onCancelReply!= null) widget.onCancelReply!();
+    widget.onSendSticker!(sticker, widget.replyingMessage);
   }
 
-  // ── إرسال GIF ────────────────────────────────────────────────
   Future<void> _handleGifSelected(String gifUrl) async {
     setState(() => _showEmojiPicker = false);
-    if (widget.onSendGif == null || _isSending) return;
-    setState(() => _isSending = true);
-    try {
-      await widget.onSendGif!(gifUrl, widget.replyingMessage);
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("فشل إرسال GIF.")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
+    if (widget.onSendGif == null) return;
+    if (widget.onCancelReply!= null) widget.onCancelReply!();
+    widget.onSendGif!(gifUrl, widget.replyingMessage);
   }
 
   Future<void> _pickAndSendImage() async {
@@ -153,7 +127,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
   }
 
   Future<void> _sendMessage() async {
-    if (_isSending) return;
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     if (text.length > Limits.maxMessageLength) {
@@ -161,19 +134,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
           const SnackBar(content: Text("الرسالة طويلة جداً")));
       return;
     }
-    setState(() => _isSending = true);
-    try {
-      await widget.onSendText(text, widget.replyingMessage);
-      _controller.clear();
-      if (widget.onCancelReply!= null) widget.onCancelReply!();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("فشل إرسال الرسالة.")));
-      }
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
+
+    _controller.clear();
+    setState(() {});
+    if (widget.onCancelReply!= null) widget.onCancelReply!();
+
+    widget.onSendText(text, widget.replyingMessage);
   }
 
   Future<void> _startRecording() async {
@@ -276,8 +242,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────
-
   Widget _buildIconBtn(IconData icon, VoidCallback? onTap, {Color? color}) {
     return SizedBox(
       width: 28,
@@ -298,7 +262,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Center(
         child: isLoading
-           ? const SizedBox(
+          ? const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
@@ -334,8 +298,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -350,8 +312,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
         children: [
           if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
           if (_isRecording) _buildRecordingIndicator(isDark),
-
-          // ── شريط الإدخال ────────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             color: Colors.transparent,
@@ -400,7 +360,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                         ],
                         Expanded(
                           child: _isRecording
-                             ? const SizedBox.shrink()
+                            ? const SizedBox.shrink()
                               : TextField(
                                   controller: _controller,
                                   focusNode: _focusNode,
@@ -435,15 +395,14 @@ class _MessageInputBarState extends State<MessageInputBar> {
                                 ),
                         ),
                         if (!_isRecording)...[
-                          // ✅ زر واحد يفتح sheet موحد
                           IconButton(
                             padding: const EdgeInsets.only(
                                 bottom: 4, right: 4, left: 4),
                             constraints: const BoxConstraints(),
                             icon: Icon(
                               _showEmojiPicker
-                                 ? Icons.keyboard_rounded
-                                  : Icons.mood_rounded, // ← وجه مبتسم مع لسان
+                                ? Icons.keyboard_rounded
+                                  : Icons.mood_rounded,
                               color: Colors.grey[500],
                               size: 24,
                             ),
@@ -459,32 +418,24 @@ class _MessageInputBarState extends State<MessageInputBar> {
               ],
             ),
           ),
-
-          // ── Sheet الموحد (إيموجي / GIF / ملصقات) ───────────
-          if (_showEmojiPicker)
-            _buildUnifiedSheet(isDark),
+          if (_showEmojiPicker) _buildUnifiedSheet(isDark),
         ],
       ),
     );
   }
 
-  // ── الـ Sheet الموحد ──────────────────────────────────────────
   Widget _buildUnifiedSheet(bool isDark) {
-    final sheetBg =
-        isDark? const Color(0xFF1F2C34) : Colors.grey[100]!;
-    final tabBg =
-        isDark? const Color(0xFF2A3540) : Colors.grey[200]!;
+    final sheetBg = isDark? const Color(0xFF1F2C34) : Colors.grey[100]!;
+    final tabBg = isDark? const Color(0xFF2A3540) : Colors.grey[200]!;
 
     return Container(
       height: 300,
       color: sheetBg,
       child: Column(
         children: [
-          // ── تبويبات ──────────────────────────────────────────
           Container(
             color: tabBg,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
                 _buildTab(0, '🏷️', 'ملصقات', isDark),
@@ -495,13 +446,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
               ],
             ),
           ),
-
-          // ── محتوى التبويب ────────────────────────────────────
           Expanded(
             child: _activeTab == 0
-               ? _buildStickerTab(isDark)
+              ? _buildStickerTab(isDark)
                 : _activeTab == 1
-                   ? _buildGifTab()
+                  ? _buildGifTab()
                     : _buildEmojiTab(isDark, sheetBg),
           ),
         ],
@@ -515,8 +464,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       onTap: () => setState(() => _activeTab = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isActive? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
@@ -525,10 +473,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
           icon == 'GIF'? 'GIF' : '$icon $label',
           style: TextStyle(
             fontSize: 13,
-            fontWeight:
-                isActive? FontWeight.bold : FontWeight.normal,
+            fontWeight: isActive? FontWeight.bold : FontWeight.normal,
             color: isActive
-               ? Colors.white
+              ? Colors.white
                 : (isDark? Colors.white60 : Colors.black54),
           ),
         ),
@@ -536,7 +483,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── تبويب الإيموجي ───────────────────────────────────────────
   Widget _buildEmojiTab(bool isDark, Color bg) {
     return EmojiPicker(
       onEmojiSelected: (category, emoji) {
@@ -565,16 +511,13 @@ class _MessageInputBarState extends State<MessageInputBar> {
           iconColor: Colors.grey,
           iconColorSelected: const Color(0xFFFFD700),
           backspaceColor: const Color(0xFFFFD700),
-          backgroundColor:
-              isDark? const Color(0xFF1F2C34) : Colors.grey[200]!,
+          backgroundColor: isDark? const Color(0xFF1F2C34) : Colors.grey[200]!,
         ),
-        bottomActionBarConfig:
-            const BottomActionBarConfig(enabled: false),
+        bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
       ),
     );
   }
 
-  // ── تبويب GIF ────────────────────────────────────────────────
   Widget _buildGifTab() {
     return GifPickerSheet(
       onGifSelected: _handleGifSelected,
@@ -582,17 +525,13 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── تبويب الملصقات ───────────────────────────────────────────
   Widget _buildStickerTab(bool isDark) {
-    final userId =
-        context.read<UserProvider>().currentUser?.id;
+    final userId = context.read<UserProvider>().currentUser?.id;
 
     return Column(
       children: [
-        // ── Header: زر إنشاء ─────────────────────────────────
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               Text(
@@ -619,8 +558,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(16),
@@ -645,8 +583,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
             ],
           ),
         ),
-
-        // ── Grid ─────────────────────────────────────────────
         Expanded(
           child: Consumer<StickerProvider>(
             builder: (context, provider, _) {
@@ -671,10 +607,8 @@ class _MessageInputBarState extends State<MessageInputBar> {
               }
 
               return GridView.builder(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 4,
                   crossAxisSpacing: 6,
                   mainAxisSpacing: 6,
@@ -716,31 +650,32 @@ class _MessageInputBarState extends State<MessageInputBar> {
           Text(
             "${_recordSeconds ~/ 60}:${(_recordSeconds % 60).toString().padLeft(2, '0')}",
             style: const TextStyle(
-                color: Colors.red,
-                fontSize: 13,
-                fontWeight: FontWeight.bold),
+                color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
           ),
           const SizedBox(width: 8),
           const Text("جارٍ التسجيل...",
               style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
+                  color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500)),
           const Spacer(),
           Text(
             "اضغط ■ للإرسال أو 🗑 للإلغاء",
             style: TextStyle(
-                fontSize: 11,
-                color: isDark? Colors.white54 : Colors.black45),
+                fontSize: 11, color: isDark? Colors.white54 : Colors.black45),
           ),
         ],
       ),
     );
   }
 
+  // ── ✅ النسخة الجديدة مع thumbnail ──────────────────────────
   Widget _buildReplyPreview(bool isDark) {
+    final reply = widget.replyingMessage!;
+    final bool hasMedia = reply.mediaUrl!= null &&
+        reply.mediaUrl!.isNotEmpty &&
+        (reply.mediaType == 'image' || reply.mediaType == 'gif');
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: isDark? Colors.grey[900] : Colors.grey[200],
         border: const Border(
@@ -749,42 +684,105 @@ class _MessageInputBarState extends State<MessageInputBar> {
       child: Row(
         children: [
           const Icon(Icons.reply, size: 20, color: Color(0xFF00A884)),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.replyingMessage!.senderName,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00A884),
-                      fontSize: 12),
-                ),
-                Text(
-                  widget.replyingMessage!.text??
-                      (widget.replyingMessage!.mediaType == 'image'
-                         ? "صورة 🖼️"
-                          : widget.replyingMessage!.mediaType == 'gif'
-                             ? "GIF 🎞️"
-                              : widget.replyingMessage!.mediaType == 'sticker'
-                                 ? "ملصق 🏷️"
-                                  : "رسالة وسائط"),
+                  reply.senderName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: isDark? Colors.white70 : Colors.black87),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF00A884),
+                    fontSize: 12,
+                  ),
                 ),
+                const SizedBox(height: 2),
+                _buildReplyContentPreview(reply, isDark),
               ],
             ),
           ),
+          if (hasMedia)...[
+            const SizedBox(width: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Image.network(
+                reply.mediaUrl!,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 40,
+                  height: 40,
+                  color: isDark? Colors.white10 : Colors.black12,
+                  child: const Icon(Icons.broken_image_outlined,
+                      size: 16, color: Colors.grey),
+                ),
+              ),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.close, size: 18),
             onPressed: widget.onCancelReply,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReplyContentPreview(MessageModel reply, bool isDark) {
+    final color = isDark? Colors.white70 : Colors.black87;
+    final style = TextStyle(fontSize: 13, color: color);
+
+    if (reply.mediaType == 'audio') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.mic, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text('تسجيل صوتي', style: style),
+        ],
+      );
+    }
+    if (reply.mediaType == 'sticker') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.sticky_note_2_outlined, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text('ملصق', style: style),
+        ],
+      );
+    }
+    if (reply.mediaType == 'gif') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.gif_box_outlined, size: 15, color: color),
+          const SizedBox(width: 4),
+          Text('GIF', style: style),
+        ],
+      );
+    }
+    if (reply.mediaType == 'image') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.image_outlined, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text('صورة', style: style),
+        ],
+      );
+    }
+    return Text(
+      reply.text?? '',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
     );
   }
 }

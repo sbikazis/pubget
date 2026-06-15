@@ -1,4 +1,3 @@
-// lib/providers/private_chat_provider.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,74 +25,38 @@ class PrivateChatProvider extends ChangeNotifier {
   }) : _firestore = firestoreService,
         _storage = storageService;
 
-  // =========================================================
-  // ✅ تحديث وقت القراءة للطرفين (تصفير عداد الخاص)
-  // =========================================================
-  Future<void> updatePrivateLastRead({
-    required String chatId,
-    required String userId,
-  }) async {
-    final chatDoc = await _firestore.getDocument(
-      path: FirestorePaths.privateChats,
-      docId: chatId,
-    );
-
+  Future<void> updatePrivateLastRead({required String chatId, required String userId}) async {
+    final chatDoc = await _firestore.getDocument(path: FirestorePaths.privateChats, docId: chatId);
     if (chatDoc == null) return;
-
-    final String fieldName =
-        chatDoc['userA'] == userId? 'lastReadUserA' : 'lastReadUserB';
-
+    final String fieldName = chatDoc['userA'] == userId? 'lastReadUserA' : 'lastReadUserB';
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
-      data: {
-        fieldName: FieldValue.serverTimestamp(),
-      },
+      data: {fieldName: FieldValue.serverTimestamp()},
     );
   }
 
-  // =========================================================
-  // ✅ مراقبة الرسائل غير المقروءة مع استبعاد "أنا المرسل"
-  // =========================================================
-  Stream<int> streamPrivateUnreadCount({
-    required String chatId,
-    required String userId,
-  }) {
+  Stream<int> streamPrivateUnreadCount({required String chatId, required String userId}) {
     final path = FirestorePaths.privateMessages(chatId);
-
-    return _firestore
-       .streamDocument(path: FirestorePaths.privateChats, docId: chatId)
-       .switchMap((chatSnap) {
+    return _firestore.streamDocument(path: FirestorePaths.privateChats, docId: chatId).switchMap((chatSnap) {
       if (!chatSnap.exists) return Stream.value(0);
-
       final data = chatSnap.data() as Map<String, dynamic>;
       final isUserA = data['userA'] == userId;
-      final Timestamp? lastRead =
-          isUserA? data['lastReadUserA'] : data['lastReadUserB'];
-
+      final Timestamp? lastRead = isUserA? data['lastReadUserA'] : data['lastReadUserB'];
       final compareDate = lastRead?? Timestamp.fromDate(DateTime(2000));
-
       final query = _firestore.buildQuery(
         path: path,
-        conditions: [
-          QueryCondition(field: 'createdAt', isGreaterThan: compareDate),
-        ],
+        conditions: [QueryCondition(field: 'createdAt', isGreaterThan: compareDate)],
       );
-
-      return _firestore
-         .streamCollection(path: path, query: query)
-         .map((snap) {
-            return snap.docs.where((doc) {
-              final msgData = doc.data() as Map<String, dynamic>;
-              return msgData['senderId']!= userId;
-            }).length;
-          });
+      return _firestore.streamCollection(path: path, query: query).map((snap) {
+        return snap.docs.where((doc) {
+          final msgData = doc.data() as Map<String, dynamic>;
+          return msgData['senderId']!= userId;
+        }).length;
+      });
     }).distinct();
   }
 
-  // =========================================================
-  // ✅ مراقبة "إجمالي" الرسائل غير المقروءة لكل الدردشات الخاصة
-  // =========================================================
   Stream<int> streamAllPrivateUnreadCount(String userId) {
     final queryA = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
@@ -103,38 +66,23 @@ class PrivateChatProvider extends ChangeNotifier {
       path: FirestorePaths.privateChats,
       conditions: [QueryCondition(field: "userB", isEqualTo: userId)],
     );
-
     return StreamGroup.merge([
       _firestore.streamCollection(path: FirestorePaths.privateChats, query: queryA),
       _firestore.streamCollection(path: FirestorePaths.privateChats, query: queryB),
     ]).switchMap((snapshot) {
       if (snapshot.docs.isEmpty) return Stream.value(0);
-
       final List<Stream<int>> unreadStreams = snapshot.docs.map((doc) {
         return streamPrivateUnreadCount(chatId: doc.id, userId: userId);
       }).toList();
-
       return Rx.combineLatestList(unreadStreams).map((counts) {
         return counts.fold<int>(0, (sum, count) => sum + count);
       });
     }).distinct();
   }
 
-  // =========================================================
-  // CREATE CHAT IF NOT EXISTS
-  // =========================================================
-  Future<void> createPrivateChat({
-    required String chatId,
-    required String userA,
-    required String userB,
-  }) async {
-    final existing = await _firestore.getDocument(
-      path: FirestorePaths.privateChats,
-      docId: chatId,
-    );
-
+  Future<void> createPrivateChat({required String chatId, required String userA, required String userB}) async {
+    final existing = await _firestore.getDocument(path: FirestorePaths.privateChats, docId: chatId);
     if (existing!= null) return;
-
     await _firestore.createDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
@@ -149,32 +97,15 @@ class PrivateChatProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // STREAM PRIVATE MESSAGES
-  // =========================================================
-  Stream<List<MessageModel>> streamMessages({
-    required String chatId,
-  }) {
+  Stream<List<MessageModel>> streamMessages({required String chatId}) {
     final path = FirestorePaths.privateMessages(chatId);
-
-    final query = _firestore.buildQuery(
-      path: path,
-      orderBy: "createdAt",
-      descending: false,
-    );
-
-    return _firestore
-       .streamCollection(path: path, query: query)
-       .map((snapshot) {
-      return snapshot.docs
-         .map((doc) => MessageModel.fromMap(doc.id, doc.data()))
-         .toList();
+    final query = _firestore.buildQuery(path: path, orderBy: "createdAt", descending: false);
+    return _firestore.streamCollection(path: path, query: query).map((snapshot) {
+      return snapshot.docs.map((doc) => MessageModel.fromMap(doc.id, doc.data())).toList();
     });
   }
 
-  // =========================================================
-  // SEND TEXT MESSAGE
-  // =========================================================
+  // ✅ SEND TEXT
   Future<void> sendTextMessage({
     required String chatId,
     required String messageId,
@@ -182,13 +113,11 @@ class PrivateChatProvider extends ChangeNotifier {
     required String text,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
     if (text.trim().isEmpty) return;
-
-    if (text.length > Limits.maxMessageLength) {
-      throw Exception("Message too long");
-    }
-
+    if (text.length > Limits.maxMessageLength) throw Exception("Message too long");
     final message = MessageModel(
       id: messageId,
       senderId: sender.id,
@@ -199,29 +128,24 @@ class PrivateChatProvider extends ChangeNotifier {
       text: text.trim(),
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
-      data: {
-        "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": text.trim(),
-      },
+      data: {"lastMessageAt": FieldValue.serverTimestamp(), "lastMessageText": text.trim()},
     );
   }
 
-  // =========================================================
-  // SEND MEDIA MESSAGE
-  // =========================================================
+  // ✅ SEND MEDIA
   Future<void> sendMediaMessage({
     required String chatId,
     required String messageId,
@@ -230,13 +154,10 @@ class PrivateChatProvider extends ChangeNotifier {
     required String mediaType,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
-    final mediaUrl = await _storage.uploadPrivateChatMedia(
-      chatId: chatId,
-      messageId: messageId,
-      file: file,
-    );
-
+    final mediaUrl = await _storage.uploadPrivateChatMedia(chatId: chatId, messageId: messageId, file: file);
     final message = MessageModel(
       id: messageId,
       senderId: sender.id,
@@ -248,16 +169,16 @@ class PrivateChatProvider extends ChangeNotifier {
       mediaType: mediaType,
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
@@ -268,9 +189,7 @@ class PrivateChatProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // SEND GIF MESSAGE
-  // =========================================================
+  // ✅ SEND GIF
   Future<void> sendGifMessage({
     required String chatId,
     required String messageId,
@@ -278,6 +197,8 @@ class PrivateChatProvider extends ChangeNotifier {
     required String gifUrl,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
     final message = MessageModel(
       id: messageId,
@@ -290,29 +211,24 @@ class PrivateChatProvider extends ChangeNotifier {
       mediaType: 'gif',
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
-      data: {
-        "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": 'GIF 🎞️',
-      },
+      data: {"lastMessageAt": FieldValue.serverTimestamp(), "lastMessageText": 'GIF 🎞️'},
     );
   }
 
-  // =========================================================
-  // ✅ SEND AUDIO MESSAGE
-  // =========================================================
+  // ✅ SEND AUDIO
   Future<void> sendAudioMessage({
     required String chatId,
     required String messageId,
@@ -321,13 +237,10 @@ class PrivateChatProvider extends ChangeNotifier {
     required int durationSeconds,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
-    final audioUrl = await _storage.uploadPrivateChatMedia(
-      chatId: chatId,
-      messageId: messageId,
-      file: audioFile,
-    );
-
+    final audioUrl = await _storage.uploadPrivateChatMedia(chatId: chatId, messageId: messageId, file: audioFile);
     final message = MessageModel(
       id: messageId,
       senderId: sender.id,
@@ -340,28 +253,24 @@ class PrivateChatProvider extends ChangeNotifier {
       audioDuration: durationSeconds,
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
-      isDelivered: true, // ✅
+      isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
-      data: {
-        "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": '🎤 رسالة صوتية',
-      },
+      data: {"lastMessageAt": FieldValue.serverTimestamp(), "lastMessageText": '🎤 رسالة صوتية'},
     );
   }
-  // =========================================================
-  // SEND STICKER MESSAGE
-  // =========================================================
+
+  // ✅ SEND STICKER
   Future<void> sendStickerMessage({
     required String chatId,
     required String messageId,
@@ -369,6 +278,8 @@ class PrivateChatProvider extends ChangeNotifier {
     required String stickerUrl,
     String? replyToId,
     String? replyText,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
   }) async {
     final message = MessageModel(
       id: messageId,
@@ -381,33 +292,24 @@ class PrivateChatProvider extends ChangeNotifier {
       mediaType: 'sticker',
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       createdAt: DateTime.now(),
       isDelivered: true,
     );
-
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
       data: message.toMap(),
     );
-
     await _firestore.updateDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
-      data: {
-        "lastMessageAt": FieldValue.serverTimestamp(),
-        "lastMessageText": '🏷️ ملصق',
-      },
+      data: {"lastMessageAt": FieldValue.serverTimestamp(), "lastMessageText": '🏷️ ملصق'},
     );
   }
 
-  // =========================================================
-  // ✅ تحديث حالة الوصول (جديد)
-  // =========================================================
-  Future<void> markAsDelivered({
-    required String chatId,
-    required String messageId,
-  }) async {
+  Future<void> markAsDelivered({required String chatId, required String messageId}) async {
     await _firestore.updateDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
@@ -415,26 +317,14 @@ class PrivateChatProvider extends ChangeNotifier {
     );
   }
 
-  // =========================================================
-  // ✅ تحديث حالة القراءة (جديد)
-  // =========================================================
-  Future<void> markAsRead({
-    required String chatId,
-    required String messageId,
-  }) async {
+  Future<void> markAsRead({required String chatId, required String messageId}) async {
     await _firestore.updateDocument(
       path: FirestorePaths.privateMessages(chatId),
       docId: messageId,
-      data: {
-        'isRead': true,
-        'isDelivered': true,
-      },
+      data: {'isRead': true, 'isDelivered': true},
     );
   }
 
-  // =========================================================
-  // TOGGLE REACTION
-  // =========================================================
   Future<void> toggleReaction({
     required String chatId,
     required String messageId,
@@ -442,184 +332,97 @@ class PrivateChatProvider extends ChangeNotifier {
     required String emoji,
   }) async {
     final path = FirestorePaths.privateMessages(chatId);
-
-    final messageData = await _firestore.getDocument(
-      path: path,
-      docId: messageId,
-    );
-
+    final messageData = await _firestore.getDocument(path: path, docId: messageId);
     if (messageData == null) return;
-
     final Map<String, String> currentReactions = messageData['reactions']!= null
        ? Map<String, String>.from(messageData['reactions'])
         : {};
-
     if (currentReactions[userId] == emoji) {
       currentReactions.remove(userId);
     } else {
       currentReactions[userId] = emoji;
     }
-
-    await _firestore.updateDocument(
-      path: path,
-      docId: messageId,
-      data: {'reactions': currentReactions},
-    );
+    await _firestore.updateDocument(path: path, docId: messageId, data: {'reactions': currentReactions});
   }
 
-  // =========================================================
-  // DELETE MESSAGE
-  // =========================================================
-  Future<void> deleteMessage({
-    required String chatId,
-    required String messageId,
-  }) async {
-    await _firestore.deleteDocument(
-      path: FirestorePaths.privateMessages(chatId),
-      docId: messageId,
-    );
+  Future<void> deleteMessage({required String chatId, required String messageId}) async {
+    await _firestore.deleteDocument(path: FirestorePaths.privateMessages(chatId), docId: messageId);
   }
 
-  // =========================================================
-  // GET USER CHATS
-  // =========================================================
-  Future<List<Map<String, dynamic>>> getUserChats({
-    required String userId,
-  }) async {
+  Future<List<Map<String, dynamic>>> getUserChats({required String userId}) async {
     final queryA = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
-      conditions: [
-        QueryCondition(field: "userA", isEqualTo: userId),
-      ],
+      conditions: [QueryCondition(field: "userA", isEqualTo: userId)],
     );
-
     final queryB = _firestore.buildQuery(
       path: FirestorePaths.privateChats,
-      conditions: [
-        QueryCondition(field: "userB", isEqualTo: userId),
-      ],
+      conditions: [QueryCondition(field: "userB", isEqualTo: userId)],
     );
-
     final results = await Future.wait([
       _firestore.getCollection(path: FirestorePaths.privateChats, query: queryA),
       _firestore.getCollection(path: FirestorePaths.privateChats, query: queryB),
     ]);
-
     final allDocs = [...results[0].docs,...results[1].docs];
-
     allDocs.sort((a, b) {
       final aTime = (a.data()['lastMessageAt'] as Timestamp?)?? Timestamp.now();
       final bTime = (b.data()['lastMessageAt'] as Timestamp?)?? Timestamp.now();
       return bTime.compareTo(aTime);
     });
-
-    return allDocs.map((doc) {
-      return {
-        "chatId": doc.id,
-       ...doc.data() as Map<String, dynamic>,
-      };
-    }).toList();
+    return allDocs.map((doc) => {"chatId": doc.id,...doc.data() as Map<String, dynamic>}).toList();
   }
 
-  // =========================================================
-  // GET AVAILABLE PRIVATE CHATS
-  // =========================================================
-  Future<List<Map<String, dynamic>>> getAvailablePrivateChats({
-    required String userId,
-  }) async {
+  Future<List<Map<String, dynamic>>> getAvailablePrivateChats({required String userId}) async {
     final fanOfQuery = _firestore.buildQuery(
       path: FirestorePaths.fans,
-      conditions: [
-        QueryCondition(field: "fanUserId", isEqualTo: userId),
-      ],
+      conditions: [QueryCondition(field: "fanUserId", isEqualTo: userId)],
     );
-
     final myFansQuery = _firestore.buildQuery(
       path: FirestorePaths.fans,
-      conditions: [
-        QueryCondition(field: "targetUserId", isEqualTo: userId),
-      ],
+      conditions: [QueryCondition(field: "targetUserId", isEqualTo: userId)],
     );
-
     final results = await Future.wait([
       _firestore.getCollection(path: FirestorePaths.fans, query: fanOfQuery),
       _firestore.getCollection(path: FirestorePaths.fans, query: myFansQuery),
       getUserChats(userId: userId),
     ]);
-
     final fanOfDocs = (results[0] as QuerySnapshot).docs;
     final myFansDocs = (results[1] as QuerySnapshot).docs;
     final existingChats = results[2] as List<Map<String, dynamic>>;
-
     final Set<String> eligibleUserIds = {};
-
     for (var doc in fanOfDocs) {
       final data = doc.data() as Map<String, dynamic>;
       eligibleUserIds.add(data['targetUserId']);
     }
-
     for (var doc in myFansDocs) {
       final data = doc.data() as Map<String, dynamic>;
       eligibleUserIds.add(data['fanUserId']);
     }
-
     final List<Map<String, dynamic>> finalAvailableChats = [];
-
     final Map<String, Map<String, dynamic>> chatMap = {};
     for (var chat in existingChats) {
       final otherId = chat['userA'] == userId? chat['userB'] : chat['userA'];
       chatMap[otherId] = chat;
     }
-
     for (String otherUserId in eligibleUserIds) {
       if (chatMap.containsKey(otherUserId)) {
         finalAvailableChats.add(chatMap[otherUserId]!);
       }
     }
-
     return finalAvailableChats;
   }
 
-  // =========================================================
-  // GET USER FANS
-  // =========================================================
-  Future<List<FanModel>> getUserFans({
-    required String userId,
-  }) async {
+  Future<List<FanModel>> getUserFans({required String userId}) async {
     final query = _firestore.buildQuery(
       path: FirestorePaths.fans,
-      conditions: [
-        QueryCondition(
-          field: "targetUserId",
-          isEqualTo: userId,
-        ),
-      ],
+      conditions: [QueryCondition(field: "targetUserId", isEqualTo: userId)],
     );
-
-    final snapshot = await _firestore.getCollection(
-      path: FirestorePaths.fans,
-      query: query,
-    );
-
-    return snapshot.docs
-       .map((doc) => FanModel.fromMap(
-              doc.data() as Map<String, dynamic>,
-              doc.id,
-            ))
-       .toList();
+    final snapshot = await _firestore.getCollection(path: FirestorePaths.fans, query: query);
+    return snapshot.docs.map((doc) => FanModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
   }
 
-  // =========================================================
-  // GET USER BY ID
-  // =========================================================
   Future<UserModel?> getUserById(String userId) async {
-    final data = await _firestore.getDocument(
-      path: FirestorePaths.users,
-      docId: userId,
-    );
-
+    final data = await _firestore.getDocument(path: FirestorePaths.users, docId: userId);
     if (data == null) return null;
-
     return UserModel.fromMap(data, userId);
   }
 }

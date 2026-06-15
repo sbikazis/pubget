@@ -3,6 +3,8 @@ import '../../core/constants/roles.dart';
 
 enum MessageType { text, media, gameEvent, gameInvite }
 
+enum MessageStatus { sending, sent, failed }
+
 class MessageModel {
   final String id;
   final String senderId;
@@ -19,14 +21,17 @@ class MessageModel {
   final String? gameAction;
   final String? replyToId;
   final String? replyText;
+  final String? replyToSenderName; // ✅ جديد
+  final String? replyToMediaUrl;   // ✅ جديد
   final Map<String, String>? reactions;
   final DateTime createdAt;
   final bool isRead;
-  final bool isDelivered; // الحقل الجديد المضاف للتحقق من وصول الرسالة
+  final bool isDelivered;
   final int? audioDuration;
   final String? editThumbnail;
   final String? editAnimeTitle;
   final String? editId;
+  final MessageStatus status;
 
   const MessageModel({
     required this.id,
@@ -44,14 +49,17 @@ class MessageModel {
     this.gameAction,
     this.replyToId,
     this.replyText,
+    this.replyToSenderName, // ✅ جديد
+    this.replyToMediaUrl,   // ✅ جديد
     this.reactions,
     required this.createdAt,
     this.isRead = false,
-    this.isDelivered = false, // القيمة الافتراضية عند الإرسال هي false (أحمر) لحين تأكيد الوصول (أصفر)
+    this.isDelivered = false,
     this.audioDuration,
     this.editThumbnail,
     this.editAnimeTitle,
     this.editId,
+    this.status = MessageStatus.sent,
   });
 
   factory MessageModel.fromMap(String id, Map<String, dynamic> map) {
@@ -77,6 +85,8 @@ class MessageModel {
       gameAction: map['gameAction'],
       replyToId: map['replyToId'],
       replyText: map['replyText'],
+      replyToSenderName: map['replyToSenderName'], // ✅ جديد
+      replyToMediaUrl: map['replyToMediaUrl'],     // ✅ جديد
       reactions: map['reactions'] != null
           ? Map<String, String>.from(map['reactions'] as Map)
           : null,
@@ -84,11 +94,12 @@ class MessageModel {
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
       isRead: map['isRead'] ?? false,
-      isDelivered: map['isDelivered'] ?? false, // جلب حالة الوصول من فستور
+      isDelivered: map['isDelivered'] ?? false,
       audioDuration: map['audioDuration'],
       editThumbnail: map['editThumbnail'],
       editAnimeTitle: map['editAnimeTitle'],
       editId: map['editId'],
+      status: MessageStatus.sent,
     );
   }
 
@@ -108,14 +119,17 @@ class MessageModel {
       'gameAction': gameAction,
       'replyToId': replyToId,
       'replyText': replyText,
+      'replyToSenderName': replyToSenderName, // ✅ جديد
+      'replyToMediaUrl': replyToMediaUrl,     // ✅ جديد
       'reactions': reactions,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
-      'isDelivered': isDelivered, // حفظ حالة الوصول في فستور
+      'isDelivered': isDelivered,
       'audioDuration': audioDuration,
       'editThumbnail': editThumbnail,
       'editAnimeTitle': editAnimeTitle,
       'editId': editId,
+      // status لا يُحفظ في Firestore عمداً
     };
   }
 
@@ -131,11 +145,12 @@ class MessageModel {
     String? gameAction,
     Map<String, String>? reactions,
     bool? isRead,
-    bool? isDelivered, // تحديث دالة copyWith لدعم الحقل الجديد برمجياً
+    bool? isDelivered,
     int? audioDuration,
     String? editThumbnail,
     String? editAnimeTitle,
     String? editId,
+    MessageStatus? status,
   }) {
     return MessageModel(
       id: id,
@@ -153,6 +168,8 @@ class MessageModel {
       gameAction: gameAction ?? this.gameAction,
       replyToId: replyToId,
       replyText: replyText,
+      replyToSenderName: replyToSenderName, // ✅ يُحافظ على القيمة
+      replyToMediaUrl: replyToMediaUrl,     // ✅ يُحافظ على القيمة
       reactions: reactions ?? this.reactions,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
@@ -161,6 +178,7 @@ class MessageModel {
       editThumbnail: editThumbnail ?? this.editThumbnail,
       editAnimeTitle: editAnimeTitle ?? this.editAnimeTitle,
       editId: editId ?? this.editId,
+      status: status ?? this.status,
     );
   }
 }
