@@ -85,7 +85,8 @@ class MessageBubble extends StatelessWidget {
         return Container(
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.only(top: 12, bottom: 24),
           child: Column(
@@ -167,8 +168,116 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ══════════════════════════════════════════════════════════
+  // ✅ رسالة النظام — تصميم مركزي خاص
+  // ══════════════════════════════════════════════════════════
+  Widget _buildSystemEventBubble(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final String eventType = message.systemEventType ?? 'join';
+
+    // أيقونة ولون حسب نوع الحدث
+    IconData icon;
+    Color iconColor;
+    Color bgColor;
+
+    switch (eventType) {
+      case 'join':
+        icon = Icons.waving_hand_rounded;
+        iconColor = const Color(0xFF00C853);
+        bgColor = const Color(0xFF00C853).withOpacity(0.12);
+        break;
+      case 'leave':
+        icon = Icons.directions_walk_rounded;
+        iconColor = Colors.orange;
+        bgColor = Colors.orange.withOpacity(0.10);
+        break;
+      case 'kick':
+        icon = Icons.gavel_rounded;
+        iconColor = Colors.red;
+        bgColor = Colors.red.withOpacity(0.10);
+        break;
+      case 'roleAssign':
+        icon = Icons.military_tech_rounded;
+        iconColor = const Color(0xFFFFD700);
+        bgColor = const Color(0xFFFFD700).withOpacity(0.12);
+        break;
+      default:
+        icon = Icons.info_outline_rounded;
+        iconColor = AppColors.primary;
+        bgColor = AppColors.primary.withOpacity(0.10);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+      child: Row(
+        children: [
+          // ── خط فاصل يسار ────────────────────────────────
+          Expanded(
+            child: Divider(
+              color: isDark ? Colors.white12 : Colors.black12,
+              thickness: 1,
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // ── محتوى الرسالة ────────────────────────────────
+          Container(
+            constraints: const BoxConstraints(maxWidth: 260),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? bgColor.withOpacity(0.18)
+                  : bgColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: iconColor.withOpacity(0.25),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: iconColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    message.text ?? '',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? Colors.white70
+                          : Colors.black54,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+          // ── خط فاصل يمين ────────────────────────────────
+          Expanded(
+            child: Divider(
+              color: isDark ? Colors.white12 : Colors.black12,
+              thickness: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // ✅ رسائل النظام تُعرض بشكل مختلف كلياً
+    if (message.type == MessageType.systemEvent) {
+      return _buildSystemEventBubble(context);
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final roleColor = RoleColors.getColor(sender.role, isDark: isDark);
     final bool isPremiumUser = message.senderIsPremium || sender.isPremium;
@@ -245,8 +354,6 @@ class MessageBubble extends StatelessWidget {
 
     final hasReactions =
         message.reactions != null && message.reactions!.isNotEmpty;
-
-    // ── الشرط: عرض الـ reply preview إذا replyToId موجود
     final bool hasReply = message.replyToId != null;
 
     return Padding(
@@ -296,9 +403,7 @@ class MessageBubble extends StatelessWidget {
                           _buildNameRow(roleColor, isPremiumUser),
                           const SizedBox(height: 4),
                         ],
-                        // ✅ التعديل: استخدام replyToId بدل replyText فقط
-                        if (hasReply)
-                          _buildReplyPreview(isDark),
+                        if (hasReply) _buildReplyPreview(isDark),
                         _buildMessageContent(context, textColor),
                         const SizedBox(height: 6),
                         Row(
@@ -354,7 +459,8 @@ class MessageBubble extends StatelessWidget {
           final emoji = entry.key;
           final count = entry.value.length;
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: isDark
                   ? const Color(0xFF2A2A3E)
@@ -439,7 +545,8 @@ class MessageBubble extends StatelessWidget {
                             child: SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
                             ),
                           ),
                         );
@@ -487,7 +594,8 @@ class MessageBubble extends StatelessWidget {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: Theme.of(ctx).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Column(
@@ -530,6 +638,9 @@ class MessageBubble extends StatelessWidget {
   }
 
   void _showOptionsSheet(BuildContext context) {
+    // ✅ رسائل النظام لا تملك خيارات
+    if (message.type == MessageType.systemEvent) return;
+
     final bool isPrivate = sender.groupId == 'private';
     showModalBottomSheet(
       context: context,
@@ -537,7 +648,8 @@ class MessageBubble extends StatelessWidget {
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
@@ -547,7 +659,8 @@ class MessageBubble extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
+                children:
+                    ['❤️', '😂', '🔥', '😮', '😢', '👍'].map((emoji) {
                   return TextButton(
                     onPressed: () {
                       final userId =
@@ -555,7 +668,8 @@ class MessageBubble extends StatelessWidget {
                               .currentUser!
                               .id;
                       if (isPrivate) {
-                        Provider.of<PrivateChatProvider>(context, listen: false)
+                        Provider.of<PrivateChatProvider>(context,
+                                listen: false)
                             .toggleReaction(
                           chatId: groupId,
                           messageId: message.id,
@@ -573,7 +687,8 @@ class MessageBubble extends StatelessWidget {
                       }
                       Navigator.pop(context);
                     },
-                    child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                    child:
+                        Text(emoji, style: const TextStyle(fontSize: 28)),
                   );
                 }).toList(),
               ),
@@ -581,8 +696,8 @@ class MessageBubble extends StatelessWidget {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.reply, color: AppColors.primary),
-              title:
-                  const Text('رد', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text('رد',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.pop(context);
                 if (onReply != null) onReply!(message);
@@ -590,7 +705,8 @@ class MessageBubble extends StatelessWidget {
             ),
             if (message.text != null && message.text!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.copy, color: AppColors.primary),
+                leading:
+                    const Icon(Icons.copy, color: AppColors.primary),
                 title: const Text('نسخ',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
@@ -605,8 +721,7 @@ class MessageBubble extends StatelessWidget {
               ),
             if (isMe)
               ListTile(
-                leading:
-                    const Icon(Icons.delete_outline, color: Colors.red),
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('حذف الرسالة',
                     style: TextStyle(
                         color: Colors.red, fontWeight: FontWeight.bold)),
@@ -650,11 +765,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ _buildReplyPreview — النسخة الجديدة مثل واتساب
-  // ══════════════════════════════════════════════════════════
   Widget _buildReplyPreview(bool isDark) {
-    // تحديد نوع المحتوى المردود عليه
     final String? mediaType = message.replyText == null
         ? null
         : (message.replyText == '🎙️ تسجيل صوتي'
@@ -669,10 +780,6 @@ class MessageBubble extends StatelessWidget {
 
     final bool hasMedia = message.replyToMediaUrl != null &&
         message.replyToMediaUrl!.isNotEmpty;
-
-    final String senderName =
-        message.replyToSenderName ?? message.replyText ?? '';
-    final String previewText = message.replyText ?? '';
 
     return GestureDetector(
       onTap: () {
@@ -701,7 +808,6 @@ class MessageBubble extends StatelessWidget {
           child: IntrinsicHeight(
             child: Row(
               children: [
-                // ── المحتوى النصي ────────────────────────
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -710,7 +816,6 @@ class MessageBubble extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // اسم المُرسَل إليه
                         Text(
                           message.replyToSenderName ?? '',
                           maxLines: 1,
@@ -722,15 +827,15 @@ class MessageBubble extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 3),
-                        // محتوى الرد
                         _buildReplyContent(isDark, mediaType),
                       ],
                     ),
                   ),
                 ),
-                // ── Thumbnail على اليمين (صورة أو GIF) ──
                 if (hasMedia &&
-                    (mediaType == 'image' || mediaType == 'gif' || mediaType == null))
+                    (mediaType == 'image' ||
+                        mediaType == 'gif' ||
+                        mediaType == null))
                   ClipRRect(
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(8),
@@ -744,9 +849,7 @@ class MessageBubble extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Container(
                         width: 52,
                         height: 52,
-                        color: isDark
-                            ? Colors.white10
-                            : Colors.black12,
+                        color: isDark ? Colors.white10 : Colors.black12,
                         child: const Icon(Icons.broken_image_outlined,
                             size: 20, color: Colors.grey),
                       ),
@@ -760,7 +863,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ── محتوى الرد حسب النوع ──────────────────────────────────
   Widget _buildReplyContent(bool isDark, String? mediaType) {
     final textStyle = TextStyle(
       fontSize: 12,
@@ -771,51 +873,46 @@ class MessageBubble extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.mic, size: 14,
-              color: isDark ? Colors.white60 : Colors.black54),
+          Icon(Icons.mic,
+              size: 14, color: isDark ? Colors.white60 : Colors.black54),
           const SizedBox(width: 4),
           Text('تسجيل صوتي', style: textStyle),
         ],
       );
     }
-
     if (mediaType == 'sticker') {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.sticky_note_2_outlined, size: 14,
-              color: isDark ? Colors.white60 : Colors.black54),
+          Icon(Icons.sticky_note_2_outlined,
+              size: 14, color: isDark ? Colors.white60 : Colors.black54),
           const SizedBox(width: 4),
           Text('ملصق', style: textStyle),
         ],
       );
     }
-
     if (mediaType == 'gif') {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.gif_box_outlined, size: 16,
-              color: isDark ? Colors.white60 : Colors.black54),
+          Icon(Icons.gif_box_outlined,
+              size: 16, color: isDark ? Colors.white60 : Colors.black54),
           const SizedBox(width: 4),
           Text('GIF', style: textStyle),
         ],
       );
     }
-
     if (mediaType == 'image') {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.image_outlined, size: 14,
-              color: isDark ? Colors.white60 : Colors.black54),
+          Icon(Icons.image_outlined,
+              size: 14, color: isDark ? Colors.white60 : Colors.black54),
           const SizedBox(width: 4),
           Text('صورة', style: textStyle),
         ],
       );
     }
-
-    // نص عادي
     return Text(
       message.replyText ?? '',
       maxLines: 2,
@@ -834,14 +931,15 @@ class MessageBubble extends StatelessWidget {
         final userProvider =
             Provider.of<UserProvider>(context, listen: false);
         final myId = userProvider.currentUser?.id;
-        final targetUser = await userProvider.getUserById(message.senderId);
+        final targetUser =
+            await userProvider.getUserById(message.senderId);
         if (targetUser != null && myId != null) {
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) =>
-                RespectModal(targetUser: targetUser, currentUserId: myId),
+            builder: (_) => RespectModal(
+                targetUser: targetUser, currentUserId: myId),
           );
         }
       },
@@ -859,10 +957,9 @@ class MessageBubble extends StatelessWidget {
                       width: 36,
                       height: 36,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                          Icons.person,
-                          size: 20,
-                          color: AppColors.primary),
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.person,
+                              size: 20, color: AppColors.primary),
                     )
                   : const Icon(Icons.person,
                       size: 20, color: AppColors.primary)),
@@ -926,7 +1023,8 @@ class MessageBubble extends StatelessWidget {
         },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.network(message.mediaUrl!, width: 200, fit: BoxFit.cover),
+          child: Image.network(message.mediaUrl!,
+              width: 200, fit: BoxFit.cover),
         ),
       );
     }
@@ -943,7 +1041,8 @@ class MessageBubble extends StatelessWidget {
     if (message.mediaUrl != null && message.mediaType == 'image') {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(message.mediaUrl!, width: 220, fit: BoxFit.cover),
+        child: Image.network(message.mediaUrl!,
+            width: 220, fit: BoxFit.cover),
       );
     }
     if (message.mediaType == 'audio' && message.mediaUrl != null) {
@@ -984,8 +1083,8 @@ class MessageBubble extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(message.text ?? 'دعوة للعبة',
-              style:
-                  TextStyle(color: textColor.withOpacity(0.9), fontSize: 13.5)),
+              style: TextStyle(
+                  color: textColor.withOpacity(0.9), fontSize: 13.5)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -1046,7 +1145,9 @@ class _ReactionTabChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: isSelected
             ? AppColors.primary
-            : (isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF0F0F5)),
+            : (isDark
+                ? const Color(0xFF2A2A3E)
+                : const Color(0xFFF0F0F5)),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isSelected
@@ -1122,10 +1223,12 @@ class _ReactionUserTile extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+                    color:
+                        isDark ? const Color(0xFF1E1E2E) : Colors.white,
                     shape: BoxShape.circle,
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 14)),
+                  child:
+                      Text(emoji, style: const TextStyle(fontSize: 14)),
                 ),
               ),
             ],
@@ -1177,8 +1280,8 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
 
   Future<void> _initVideo() async {
     if (widget.message.mediaUrl == null) return;
-    final controller =
-        VideoPlayerController.networkUrl(Uri.parse(widget.message.mediaUrl!));
+    final controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.message.mediaUrl!));
     await controller.initialize();
     controller.setLooping(true);
     if (mounted) {
@@ -1303,7 +1406,8 @@ class _EditShareBubbleState extends State<_EditShareBubble> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               children: [
                 const Text('🎌 ', style: TextStyle(fontSize: 13)),

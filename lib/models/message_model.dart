@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/roles.dart';
 
-enum MessageType { text, media, gameEvent, gameInvite }
+enum MessageType { text, media, gameEvent, gameInvite, systemEvent } // ✅ إضافة systemEvent
 
 enum MessageStatus { sending, sent, failed }
 
@@ -19,10 +19,11 @@ class MessageModel {
   final String? gameId;
   final String? gameSlot;
   final String? gameAction;
+  final String? systemEventType; // ✅ جديد: join / leave / kick / roleAssign
   final String? replyToId;
   final String? replyText;
-  final String? replyToSenderName; // ✅ جديد
-  final String? replyToMediaUrl;   // ✅ جديد
+  final String? replyToSenderName;
+  final String? replyToMediaUrl;
   final Map<String, String>? reactions;
   final DateTime createdAt;
   final bool isRead;
@@ -47,10 +48,11 @@ class MessageModel {
     this.gameId,
     this.gameSlot,
     this.gameAction,
+    this.systemEventType, // ✅ جديد
     this.replyToId,
     this.replyText,
-    this.replyToSenderName, // ✅ جديد
-    this.replyToMediaUrl,   // ✅ جديد
+    this.replyToSenderName,
+    this.replyToMediaUrl,
     this.reactions,
     required this.createdAt,
     this.isRead = false,
@@ -83,10 +85,11 @@ class MessageModel {
       gameId: map['gameId'],
       gameSlot: map['gameSlot'],
       gameAction: map['gameAction'],
+      systemEventType: map['systemEventType'], // ✅ جديد
       replyToId: map['replyToId'],
       replyText: map['replyText'],
-      replyToSenderName: map['replyToSenderName'], // ✅ جديد
-      replyToMediaUrl: map['replyToMediaUrl'],     // ✅ جديد
+      replyToSenderName: map['replyToSenderName'],
+      replyToMediaUrl: map['replyToMediaUrl'],
       reactions: map['reactions'] != null
           ? Map<String, String>.from(map['reactions'] as Map)
           : null,
@@ -117,10 +120,11 @@ class MessageModel {
       'gameId': gameId,
       'gameSlot': gameSlot,
       'gameAction': gameAction,
+      'systemEventType': systemEventType, // ✅ جديد
       'replyToId': replyToId,
       'replyText': replyText,
-      'replyToSenderName': replyToSenderName, // ✅ جديد
-      'replyToMediaUrl': replyToMediaUrl,     // ✅ جديد
+      'replyToSenderName': replyToSenderName,
+      'replyToMediaUrl': replyToMediaUrl,
       'reactions': reactions,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
@@ -143,6 +147,7 @@ class MessageModel {
     String? gameId,
     String? gameSlot,
     String? gameAction,
+    String? systemEventType, // ✅ جديد
     Map<String, String>? reactions,
     bool? isRead,
     bool? isDelivered,
@@ -166,10 +171,11 @@ class MessageModel {
       gameId: gameId ?? this.gameId,
       gameSlot: gameSlot ?? this.gameSlot,
       gameAction: gameAction ?? this.gameAction,
+      systemEventType: systemEventType ?? this.systemEventType, // ✅ جديد
       replyToId: replyToId,
       replyText: replyText,
-      replyToSenderName: replyToSenderName, // ✅ يُحافظ على القيمة
-      replyToMediaUrl: replyToMediaUrl,     // ✅ يُحافظ على القيمة
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
       reactions: reactions ?? this.reactions,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,

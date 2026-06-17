@@ -15,9 +15,11 @@ import '../services/firebase/firestore_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/logic/role_assignment_logic.dart';
 import '../core/logic/invite_ranking_logic.dart';
+import '../core/logic/system_message_builder.dart'; // ✅ جديد
 import 'package:pubget/services/monetization/promotion_service.dart';
 import 'package:pubget/core/constants/roles.dart';
-import 'package:pubget/providers/store_provider.dart'; // ✅ إضافة
+import 'package:pubget/providers/store_provider.dart';
+import 'package:pubget/providers/chat_provider.dart'; // ✅ جديد
 
 class GroupProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -38,19 +40,15 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تعديل: إضافة storeProvider للتحقق من الرصيد وخصم العملات قبل الترويج
   Future<void> promoteGroup({
     required String groupId,
     required String userId,
     required StoreProvider storeProvider,
   }) async {
-    // 1. التحقق من الرصيد وخصم العملات أولاً
     final purchased = await storeProvider.purchaseGroupPromotion();
     if (!purchased) {
       throw "رصيدك غير كافٍ. تحتاج إلى 150 عملة لترويج المجموعة.";
     }
-
-    // 2. تنفيذ الترويج بعد نجاح الخصم
     final promotionService = PromotionService(_firestore);
     try {
       await promotionService.promoteGroup(
@@ -110,7 +108,6 @@ class GroupProvider extends ChangeNotifier {
       batch.set(notifRef, notification.toMap());
 
       await batch.commit();
-
       notifyListeners();
     } catch (e) {
       debugPrint("❌ Error sending join request with notification: $e");
@@ -118,10 +115,14 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // =========================================================
+  // ✅ تعديل: إضافة chatProvider لإرسال رسالة ترحيب بالعضو الجديد
+  // =========================================================
   Future<void> acceptJoinRequest({
     required String groupId,
     required String groupName,
     required MemberModel requestMember,
+    ChatProvider? chatProvider, // ✅ جديد
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
@@ -176,6 +177,15 @@ class GroupProvider extends ChangeNotifier {
           return;
         }
       }
+
+      // جلب بيانات المجموعة لمعرفة نوعها
+      final groupDoc = await firestore
+          .collection(FirestorePaths.groups)
+          .doc(groupId)
+          .get();
+      final groupData = groupDoc.data();
+      final bool isRoleplay = groupData?['isRoleplay'] ?? false;
+      final String groupType = groupData?['groupType'] ?? 'general';
 
       final batch = firestore.batch();
 
@@ -239,6 +249,23 @@ class GroupProvider extends ChangeNotifier {
 
       await batch.commit();
 
+      // ✅ رسالة ترحيب بالعضو الجديد
+      if (chatProvider != null) {
+        final welcomeText = SystemMessageBuilder.buildText(
+          eventType: 'join',
+          memberName: freshUsername ?? newMember.effectiveName,
+          characterName: newMember.characterName,
+          roleName: finalRole,
+          isRoleplay: isRoleplay,
+          groupType: groupType,
+        );
+        await chatProvider.sendSystemMessage(
+          groupId: groupId,
+          systemEventType: 'join',
+          text: welcomeText,
+        );
+      }
+
       await Future.delayed(const Duration(milliseconds: 500));
       await InviteRankingLogic.refreshRanks(groupId: groupId);
 
@@ -249,6 +276,7 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // =========================================================
   Future<void> rejectJoinRequest({
     required String groupId,
     required String groupName,
@@ -283,7 +311,6 @@ class GroupProvider extends ChangeNotifier {
       batch.set(notifRef, notification.toMap());
 
       await batch.commit();
-
       notifyListeners();
     } catch (e) {
       debugPrint("Error rejecting request: $e");
@@ -298,16 +325,13 @@ class GroupProvider extends ChangeNotifier {
       List<MemberModel> members = [];
       for (var doc in snapshot.docs) {
         var member = MemberModel.fromMap(doc.data());
-
         try {
           final userData = await FirebaseFirestore.instance
               .collection('users')
               .doc(member.userId.trim())
               .get();
-
           if (userData.exists && userData.data() != null) {
             final user = UserModel.fromMap(userData.data()!, userData.id);
-
             member = member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
@@ -320,29 +344,31 @@ class GroupProvider extends ChangeNotifier {
         }
         members.add(member);
       }
-
       members.sort((a, b) {
         if (a.isPremium && !b.isPremium) return -1;
         if (!a.isPremium && b.isPremium) return 1;
         return b.joinedAt.compareTo(a.joinedAt);
       });
-
       return members;
     });
   }
 
   // =========================================================
+  // ✅ تعديل: إضافة chatProvider لإرسال رسالة تعيين رتبة
+  // =========================================================
   Future<void> addMember({
     required MemberModel member,
     String? adminId,
+    ChatProvider? chatProvider, // ✅ جديد
   }) async {
     try {
+      String? oldRole;
+
       if (adminId != null) {
         final adminData = await _firestore.getDocument(
           path: FirestorePaths.groupMembers(member.groupId),
           docId: adminId,
         );
-
         if (adminData == null) throw "خطأ: لم يتم العثور على بيانات المسؤول.";
         final adminMember = MemberModel.fromMap(adminData);
 
@@ -353,6 +379,7 @@ class GroupProvider extends ChangeNotifier {
 
         if (currentTargetData != null) {
           final currentTargetMember = MemberModel.fromMap(currentTargetData);
+          oldRole = currentTargetMember.role.name;
 
           if (!RoleAssignmentLogic.canModify(
             actorRole: adminMember.role,
@@ -374,6 +401,34 @@ class GroupProvider extends ChangeNotifier {
         data: updatedMember.toMap(),
       );
 
+      // ✅ رسالة تعيين رتبة — فقط إذا تغيرت الرتبة فعلاً
+      if (chatProvider != null &&
+          oldRole != null &&
+          oldRole != member.role.name) {
+        // جلب نوع المجموعة
+        final groupDoc = await FirebaseFirestore.instance
+            .collection(FirestorePaths.groups)
+            .doc(updatedMember.groupId)
+            .get();
+        final groupData = groupDoc.data();
+        final bool isRoleplay = groupData?['isRoleplay'] ?? false;
+        final String groupType = groupData?['groupType'] ?? 'general';
+
+        final roleText = SystemMessageBuilder.buildText(
+          eventType: 'roleAssign',
+          memberName: updatedMember.effectiveName,
+          characterName: updatedMember.characterName,
+          roleName: member.role.name,
+          isRoleplay: isRoleplay,
+          groupType: groupType,
+        );
+        await chatProvider.sendSystemMessage(
+          groupId: updatedMember.groupId,
+          systemEventType: 'roleAssign',
+          text: roleText,
+        );
+      }
+
       await InviteRankingLogic.refreshRanks(groupId: updatedMember.groupId);
       notifyListeners();
     } catch (e) {
@@ -382,37 +437,103 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  // =========================================================
+  // ✅ تعديل: إضافة chatProvider لإرسال رسالة طرد
+  // =========================================================
   Future<void> removeMember({
+  required String groupId,
+  required String userId,
+  String? adminId,
+  ChatProvider? chatProvider, // ✅ جديد
+}) async {
+  try {
+    final firestore = FirebaseFirestore.instance;
+    String? characterNameToRelease;
+    String? kickedMemberName;
+
+    final memberRef = firestore
+        .collection(FirestorePaths.groupMembers(groupId))
+        .doc(userId);
+
+    final targetData = await memberRef.get();
+
+    if (targetData.exists && targetData.data() != null) {
+      final targetMember = MemberModel.fromMap(targetData.data()!);
+      characterNameToRelease = targetMember.characterName;
+      kickedMemberName = targetMember.effectiveName;
+    } // <-- هنا كان خاصك تسد الـ if
+
+    // 1. حذف العضو من المجموعة
+    await memberRef.delete();
+
+    // 2. تحرير الشخصية إذا كانت roleplay
+    if (characterNameToRelease != null && characterNameToRelease.isNotEmpty) {
+      await firestore
+          .collection(FirestorePaths.groupCharacters(groupId))
+          .doc(characterNameToRelease)
+          .update({'takenBy': null});
+    }
+
+    // 3. ✅ رسالة طرد
+    if (chatProvider != null && kickedMemberName != null) {
+      final groupDoc = await firestore
+          .collection(FirestorePaths.groups)
+          .doc(groupId)
+          .get();
+      final groupData = groupDoc.data();
+      final bool isRoleplay = groupData?['isRoleplay'] ?? false;
+      final String groupType = groupData?['groupType'] ?? 'general';
+
+      final kickText = SystemMessageBuilder.buildText(
+        eventType: 'kick',
+        memberName: kickedMemberName,
+        characterName: characterNameToRelease,
+        roleName: null,
+        isRoleplay: isRoleplay,
+        groupType: groupType,
+      );
+
+      await chatProvider.sendSystemMessage(
+        groupId: groupId,
+        systemEventType: 'kick',
+        text: kickText,
+      );
+    }
+
+    await InviteRankingLogic.refreshRanks(groupId: groupId);
+    notifyListeners();
+  } catch (e) {
+    debugPrint('❌ Error removing member: $e');
+    rethrow;
+  }
+}
+
+  // =========================================================
+  // ✅ تعديل: إضافة chatProvider لإرسال رسالة مغادرة
+  // =========================================================
+  Future<void> leaveGroup({
     required String groupId,
     required String userId,
-    String? adminId,
+    String? characterName,
+    String? memberName, // ✅ جديد: اسم العضو المغادر
+    ChatProvider? chatProvider, // ✅ جديد
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
-      String? characterNameToRelease;
+      String? finalCharacterName = characterName;
+      String? finalMemberName = memberName;
 
-      final targetData = await firestore
-          .collection(FirestorePaths.groupMembers(groupId))
-          .doc(userId)
-          .get();
-
-      if (targetData.exists && targetData.data() != null) {
-        final targetMember = MemberModel.fromMap(targetData.data()!);
-        characterNameToRelease = targetMember.characterName;
-
-        if (adminId != null) {
-          final adminData = await firestore
-              .collection(FirestorePaths.groupMembers(groupId))
-              .doc(adminId)
-              .get();
-
-          if (!adminData.exists) throw "خطأ في الصلاحيات.";
-          final adminMember = MemberModel.fromMap(adminData.data()!);
-
-          if (!RoleAssignmentLogic.canModify(
-              actorRole: adminMember.role,
-              targetRole: targetMember.role)) {
-            throw "لا تملك الصلاحية لطرد هذا العضو.";
+      if (finalCharacterName == null || finalCharacterName.isEmpty) {
+        final memberDoc = await firestore
+            .collection(FirestorePaths.groupMembers(groupId))
+            .doc(userId)
+            .get();
+        if (memberDoc.exists && memberDoc.data() != null) {
+          finalCharacterName = memberDoc.data()!['characterName'];
+          // جلب اسم العضو إذا لم يُمرَّر
+          if (finalMemberName == null) {
+            final member = MemberModel.fromMap(memberDoc.data()!);
+            finalMemberName = member.effectiveName;
           }
         }
       }
@@ -424,55 +545,8 @@ class GroupProvider extends ChangeNotifier {
           .doc(userId);
       batch.delete(memberRef);
 
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
-      batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
-
-      if (characterNameToRelease != null && characterNameToRelease.isNotEmpty) {
-        final charKey = _normalizeCharacterKey(characterNameToRelease);
-        final charRef = firestore
-            .collection(FirestorePaths.groupCharacters(groupId))
-            .doc(charKey);
-        batch.delete(charRef);
-        debugPrint("♻️ Released character via Kick: $characterNameToRelease");
-      }
-
-      await batch.commit();
-
-      await InviteRankingLogic.refreshRanks(groupId: groupId);
-      notifyListeners();
-    } catch (e) {
-      debugPrint("❌ Error removing member: $e");
-      rethrow;
-    }
-  }
-
-  Future<void> leaveGroup({
-    required String groupId,
-    required String userId,
-    String? characterName,
-  }) async {
-    try {
-      final firestore = FirebaseFirestore.instance;
-      String? finalCharacterName = characterName;
-
-      if (finalCharacterName == null || finalCharacterName.isEmpty) {
-        final memberDoc = await firestore
-            .collection(FirestorePaths.groupMembers(groupId))
-            .doc(userId)
-            .get();
-        if (memberDoc.exists && memberDoc.data() != null) {
-          finalCharacterName = memberDoc.data()!['characterName'];
-        }
-      }
-
-      final batch = firestore.batch();
-
-      final memberRef = firestore
-          .collection(FirestorePaths.groupMembers(groupId))
-          .doc(userId);
-      batch.delete(memberRef);
-
-      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      final groupRef =
+          firestore.collection(FirestorePaths.groups).doc(groupId);
       batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
 
       if (finalCharacterName != null && finalCharacterName.isNotEmpty) {
@@ -485,6 +559,31 @@ class GroupProvider extends ChangeNotifier {
       }
 
       await batch.commit();
+
+      // ✅ رسالة مغادرة
+      if (chatProvider != null) {
+        final groupDoc = await firestore
+            .collection(FirestorePaths.groups)
+            .doc(groupId)
+            .get();
+        final groupData = groupDoc.data();
+        final bool isRoleplay = groupData?['isRoleplay'] ?? false;
+        final String groupType = groupData?['groupType'] ?? 'general';
+
+        final leaveText = SystemMessageBuilder.buildText(
+          eventType: 'leave',
+          memberName: finalMemberName ?? 'عضو',
+          characterName: finalCharacterName,
+          roleName: null,
+          isRoleplay: isRoleplay,
+          groupType: groupType,
+        );
+        await chatProvider.sendSystemMessage(
+          groupId: groupId,
+          systemEventType: 'leave',
+          text: leaveText,
+        );
+      }
 
       await InviteRankingLogic.refreshRanks(groupId: groupId);
       notifyListeners();
@@ -537,7 +636,6 @@ class GroupProvider extends ChangeNotifier {
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(group.id))
             .doc(charKey);
-
         batch.set(charRef, {
           'userId': founder.userId,
           'characterName': founder.characterName,
@@ -602,7 +700,6 @@ class GroupProvider extends ChangeNotifier {
             .collection(FirestorePaths.userNotifications(memberId))
             .doc(notifId);
         batch.set(notifRef, notification.toMap());
-
         batch.delete(doc.reference);
       }
 
@@ -665,7 +762,6 @@ class GroupProvider extends ChangeNotifier {
             .map((userDoc) {
           if (userDoc.exists && userDoc.data() != null) {
             final user = UserModel.fromMap(userDoc.data()!, userDoc.id);
-
             return member.copyWith(
               realUserName: user.username,
               realUserImageUrl: user.avatarUrl,
@@ -736,7 +832,6 @@ class GroupProvider extends ChangeNotifier {
           path: FirestorePaths.groupMembers(doc.id),
           docId: userId,
         );
-
         if (memberDoc != null) {
           userGroups.add(GroupModel.fromMap(doc.id, doc.data()));
         }
