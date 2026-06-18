@@ -1,5 +1,8 @@
+\/ lib/app.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/user_provider.dart';
@@ -26,6 +29,8 @@ import 'services/monetization/promotion_service.dart';
 import 'core/logic/group_join_validator.dart';
 import 'core/theme/light_theme.dart';
 import 'core/theme/dark_theme.dart';
+import 'core/utils/notification_service.dart';
+import 'core/constants/notification_channels.dart';
 
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -35,6 +40,11 @@ import 'features/auth/terms_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/edits/edits_screen.dart';
 import 'features/groups/group_details_screen.dart';
+import 'features/groups/chat/chat_screen.dart';
+import 'features/groups/join_requests_screen.dart';
+import 'features/private_chat/private_chat_screen.dart';
+import 'models/member_model.dart';
+import 'models/user_model.dart';
 import 'services/deep_link_service.dart';
 import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/services/firebase/sticker_service.dart';
@@ -49,6 +59,9 @@ class PubgetApp extends StatefulWidget {
 class _PubgetAppState extends State<PubgetApp> {
   String? _lastRegisteredUserId;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  // ✅ تسجيل الـ callbacks مرة واحدة فقط
+  bool _notificationCallbacksRegistered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -137,17 +150,28 @@ class _PubgetAppState extends State<PubgetApp> {
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
+          // ✅ تسجيل FCM Token عند تسجيل الدخول
           if (auth.isLoggedIn &&
               auth.user != null &&
               _lastRegisteredUserId != auth.user!.id) {
             _lastRegisteredUserId = auth.user!.id;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Future.delayed(const Duration(seconds: 3), () {
-                context.read<NotificationsProvider>().registerToken(
-                  auth.user!.id,
-                );
+                if (mounted) {
+                  context
+                      .read<NotificationsProvider>()
+                      .registerToken(auth.user!.id);
+                }
               });
               context.read<EditsProvider>().loadSeenIds();
+            });
+          }
+
+          // ✅ تسجيل Notification Callbacks مرة واحدة فقط
+          if (!_notificationCallbacksRegistered) {
+            _notificationCallbacksRegistered = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _registerNotificationCallbacks(context);
             });
           }
 
@@ -157,7 +181,8 @@ class _PubgetAppState extends State<PubgetApp> {
             title: 'Pubget',
             theme: LightTheme.theme,
             darkTheme: DarkTheme.theme,
-            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode:
+                settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: _getHome(auth),
             routes: {
               '/login': (_) => const LoginScreen(),
@@ -178,6 +203,210 @@ class _PubgetAppState extends State<PubgetApp> {
     );
   }
 
+  // ══════════════════════════════════════════════════════════
+  // ✅ تسجيل Callbacks للإشعارات
+  // ══════════════════════════════════════════════════════════
+  void _registerNotificationCallbacks(BuildContext context) {
+    NotificationService.instance.registerCallbacks(
+      // ── الضغط على الإشعار → التنقل ──────────────────────
+      onTap: (navData) => _handleNotificationNav(context, navData),
+
+      // ── الرد المباشر من الإشعار ──────────────────────────
+      onReply: ({
+        required NotificationNavType type,
+        required String refId,
+        required String replyText,
+      }) =>
+          _handleNotificationReply(
+            context,
+            type: type,
+            refId: refId,
+            replyText: replyText,
+          ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ✅ منطق التنقل عند الضغط على الإشعار
+  // ══════════════════════════════════════════════════════════
+  void _handleNotificationNav(
+      BuildContext context, NotificationNavData navData) {
+    final auth = context.read<AuthProvider>();
+
+    // ✅ لا تنقل إذا المستخدم غير مسجل دخول
+    if (!auth.isLoggedIn || auth.user == null) {
+      debugPrint('⚠️ Notification tap ignored — user not logged in');
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) return;
+
+      switch (navData.type) {
+        // ── دردشة مجموعة ──────────────────────────────────
+        case NotificationNavType.groupChat:
+          if (navData.refId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(groupId: navData.refId!),
+              ),
+            );
+          }
+          break;
+
+        // ── دردشة خاصة ────────────────────────────────────
+        case NotificationNavType.privateChat:
+          if (navData.refId != null) {
+            _navigateToPrivateChat(
+              navigator: navigator,
+              context: context,
+              chatId: navData.refId!,
+              otherUserId: navData.senderId,
+              currentUser: auth.user!,
+            );
+          }
+          break;
+
+        // ── طلب انضمام ────────────────────────────────────
+        case NotificationNavType.joinRequest:
+          if (navData.refId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    JoinRequestsScreen(groupId: navData.refId!),
+              ),
+            );
+          }
+          break;
+
+        // ── قبول الطلب → تفاصيل المجموعة ──────────────────
+        case NotificationNavType.requestAccepted:
+          if (navData.refId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    GroupDetailsScreen(groupId: navData.refId!),
+              ),
+            );
+          }
+          break;
+
+        // ── تعليق على إيديت ───────────────────────────────
+        case NotificationNavType.comment:
+          if (navData.refId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => EditsScreen(
+                  initialEditId: navData.refId!,
+                  initialCommentId: navData.commentId,
+                  autoOpenComments: true,
+                ),
+              ),
+            );
+          }
+          break;
+
+        case NotificationNavType.other:
+          break;
+      }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ✅ التنقل للدردشة الخاصة مع جلب بيانات المستخدم الآخر
+  // ══════════════════════════════════════════════════════════
+  Future<void> _navigateToPrivateChat({
+    required NavigatorState navigator,
+    required BuildContext context,
+    required String chatId,
+    required String? otherUserId,
+    required dynamic currentUser,
+  }) async {
+    if (otherUserId == null || otherUserId.isEmpty) return;
+
+    try {
+      final userProvider = context.read<UserProvider>();
+      final otherUser = await userProvider.getUserById(otherUserId);
+
+      if (otherUser == null) {
+        debugPrint('⚠️ Could not fetch other user for private chat nav');
+        return;
+      }
+
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => PrivateChatScreen(
+            chatId: chatId,
+            otherUser: otherUser,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error navigating to private chat: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ✅ الرد المباشر من الإشعار بدون فتح التطبيق
+  // ══════════════════════════════════════════════════════════
+  Future<void> _handleNotificationReply(
+    BuildContext context, {
+    required NotificationNavType type,
+    required String refId,
+    required String replyText,
+  }) async {
+    final auth = context.read<AuthProvider>();
+
+    // ✅ لا ترسل إذا المستخدم غير مسجل دخول
+    if (!auth.isLoggedIn || auth.user == null) {
+      debugPrint('⚠️ Notification reply ignored — user not logged in');
+      return;
+    }
+
+    final currentUser = auth.user!;
+
+    try {
+      if (type == NotificationNavType.groupChat) {
+        // ── رد على رسالة مجموعة ───────────────────────────
+        final chatProvider = context.read<ChatProvider>();
+        final member = await chatProvider.getMember(
+          groupId: refId,
+          userId: currentUser.id,
+        );
+
+        if (member == null) {
+          debugPrint('⚠️ Reply failed — member not found in group $refId');
+          return;
+        }
+
+        await chatProvider.sendTextMessage(
+          groupId: refId,
+          messageId: const Uuid().v4(),
+          sender: member,
+          text: replyText,
+          userAvatar: currentUser.avatarUrl,
+        );
+
+        debugPrint('✅ Group reply sent from notification');
+      } else if (type == NotificationNavType.privateChat) {
+        // ── رد على رسالة خاصة ─────────────────────────────
+        final privateChatProvider = context.read<PrivateChatProvider>();
+
+        await privateChatProvider.sendTextMessage(
+          chatId: refId,
+          messageId: const Uuid().v4(),
+          sender: currentUser,
+          text: replyText,
+        );
+
+        debugPrint('✅ Private reply sent from notification');
+      }
+    } catch (e) {
+      debugPrint('❌ Error sending notification reply: $e');
+    }
+  }
+
   Widget _getHome(AuthProvider auth) {
     if (auth.isLoading) return const SplashScreen();
     if (auth.isLoggedIn) {
@@ -189,11 +418,15 @@ class _PubgetAppState extends State<PubgetApp> {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// _GlobalAppOverlay — بدون تعديل عن النسخة الأصلية
+// ══════════════════════════════════════════════════════════════
 class _GlobalAppOverlay extends StatefulWidget {
   final Widget child;
   final GlobalKey<NavigatorState> navigatorKey;
 
-  const _GlobalAppOverlay({required this.child, required this.navigatorKey});
+  const _GlobalAppOverlay(
+      {required this.child, required this.navigatorKey});
 
   @override
   State<_GlobalAppOverlay> createState() => _GlobalAppOverlayState();
@@ -206,20 +439,21 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EditsProvider>().uploadCompletedNotifier.addListener(
-        _handleUploadCompleted,
-      );
+      context
+          .read<EditsProvider>()
+          .uploadCompletedNotifier
+          .addListener(_handleUploadCompleted);
       context.read<DeepLinkProvider>().addListener(_handleDeepLink);
-      // ✅ نسمع للـ Auth أيضاً عشان نعيد المحاولة بعد تسجيل الدخول
       context.read<AuthProvider>().addListener(_handleDeepLink);
     });
   }
 
   @override
   void dispose() {
-    context.read<EditsProvider>().uploadCompletedNotifier.removeListener(
-      _handleUploadCompleted,
-    );
+    context
+        .read<EditsProvider>()
+        .uploadCompletedNotifier
+        .removeListener(_handleUploadCompleted);
     context.read<DeepLinkProvider>().removeListener(_handleDeepLink);
     context.read<AuthProvider>().removeListener(_handleDeepLink);
     super.dispose();
@@ -231,7 +465,6 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
     if (pending == null) return;
 
     final auth = context.read<AuthProvider>();
-    // ✅ انتظر لين يخلص التحميل ويسجل دخول
     if (auth.isLoading || !auth.isLoggedIn) return;
 
     deepLinkProvider.clearPendingLink();
@@ -261,7 +494,8 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await widget.navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const EditsScreen(startIndex: 0)),
+        MaterialPageRoute(
+            builder: (_) => const EditsScreen(startIndex: 0)),
       );
       if (mounted) _isNavigating = false;
     });
@@ -285,13 +519,9 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
                     bottom: false,
                     child: Container(
                       margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
+                          horizontal: 16, vertical: 8),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
+                          horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.black87,
                         borderRadius: BorderRadius.circular(12),
@@ -309,7 +539,8 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
                           SizedBox(width: 12),
                           Text(
                             'جاري نشر الإيديت...',
-                            style: TextStyle(color: Colors.white, fontSize: 13),
+                            style: TextStyle(
+                                color: Colors.white, fontSize: 13),
                           ),
                         ],
                       ),
