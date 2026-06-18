@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../models/notification_model.dart';
+import '../models/notification_model.dart' hide NotificationTypes;
 import '../services/firebase/firestore_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/notification_channels.dart';

@@ -1,6 +1,7 @@
 // lib/core/utils/notification_service.dart
 
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -124,7 +125,7 @@ class NotificationService {
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _localNotifications.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: _onLocalNotificationResponse,
       onDidReceiveBackgroundNotificationResponse:
           _onBackgroundLocalNotificationResponse,
@@ -263,22 +264,21 @@ class NotificationService {
                 label: 'اكتب ردك...',
                 allowFreeFormInput: true,
                 choices: [],
-                allowGeneratedReplies: false,
               ),
             ],
             showsUserInterface: false,
             cancelNotification: true,
           ),
         ],
-        // ✅ payload يحمل بيانات التنقل
-        additionalFlags: Int32List.fromList([4]), // FLAG_AUTO_CANCEL
+        // ✅ FLAG_AUTO_CANCEL
+        additionalFlags: Int32List.fromList(<int>[4]),
       );
 
       await _localNotifications.show(
-        notifId,
-        title,
-        body,
-        NotificationDetails(android: androidDetails),
+        id: notifId,
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(android: androidDetails),
         payload: _buildPayload(data),
       );
     } else {
@@ -294,10 +294,10 @@ class NotificationService {
       );
 
       await _localNotifications.show(
-        notifId,
-        title,
-        body,
-        NotificationDetails(android: androidDetails),
+        id: notifId,
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(android: androidDetails),
         payload: _buildPayload(data),
       );
     }

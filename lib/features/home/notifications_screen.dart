@@ -12,7 +12,7 @@ import '../../providers/notifications_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 
-import '../../models/notification_model.dart';
+import '../../models/notification_model.dart' hide NotificationTypes;
 
 import '../groups/group_details_screen.dart';
 import '../groups/join_requests_screen.dart';

@@ -47,7 +47,7 @@ Future<void> _showBackgroundNotification(RemoteMessage message) async {
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
-    await plugin.initialize(initSettings);
+    await plugin.initialize(settings: initSettings);
 
     // اختيار صوت عشوائي
     final sounds = [
@@ -102,7 +102,6 @@ Future<void> _showBackgroundNotification(RemoteMessage message) async {
                 label: NotificationActions.replyHint,
                 allowFreeFormInput: true,
                 choices: [],
-                allowGeneratedReplies: false,
               ),
             ],
             showsUserInterface: false,
@@ -124,10 +123,10 @@ Future<void> _showBackgroundNotification(RemoteMessage message) async {
     }
 
     await plugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      message.notification?.title ?? 'Pubget',
-      message.notification?.body ?? '',
-      NotificationDetails(android: androidDetails),
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: message.notification?.title ?? 'Pubget',
+      body: message.notification?.body ?? '',
+      notificationDetails: NotificationDetails(android: androidDetails),
       payload: payload,
     );
   } catch (e) {
