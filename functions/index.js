@@ -1,12 +1,9 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { initializeApp, cert } = require("firebase-admin/app");
+const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore } = require("firebase-admin/firestore");
 
-initializeApp({
-  credential: cert(require('./serviceAccount.json')),
-  projectId: 'pubget-aaf27',
-});
+initializeApp();
 
 const sounds = [
   'an1','an2','an3','an4','an5','an6','an7',
