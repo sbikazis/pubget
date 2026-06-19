@@ -14,9 +14,12 @@
         android:fullBackupContent="false"
         android:usesCleartextTraffic="true">
 
-        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3303379299409244~9117104001"/>
-        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="pubget_main_channel" />
-        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@mipmap/ic_launcher" />
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3303379299409244~9117104001"/>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="pubget_main_channel" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
 
         <activity
             android:name=".MainActivity"
@@ -28,7 +31,8 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
 
             <!-- Launcher -->
             <intent-filter>
@@ -36,13 +40,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- ✅ الجديد: روابط Firebase Hosting -->
+            <!-- ✅ مطلوب لفتح الشاشة الصحيحة عند الضغط على الإشعار -->
+            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+
+            <!-- روابط Firebase Hosting -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="pubget-aaf27.web.app" android:pathPrefix="/g"/>
-                <data android:scheme="https" android:host="pubget-aaf27.web.app" android:pathPrefix="/open"/>
+                <data android:scheme="https"
+                    android:host="pubget-aaf27.web.app"
+                    android:pathPrefix="/g"/>
+                <data android:scheme="https"
+                    android:host="pubget-aaf27.web.app"
+                    android:pathPrefix="/open"/>
             </intent-filter>
 
             <!-- للتوافق مع القديم -->
@@ -56,12 +70,22 @@
 
         </activity>
 
-        <!-- ✅ مطلوب لـ image_cropper - يحل الكراش عند اختيار الصورة -->
+        <!-- ✅ مطلوب لزر Reply من الإشعار بدون فتح التطبيق -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dexterous.flutterlocalnotifications.ACTION_TRIGGERED"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- image_cropper -->
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
 
         <meta-data android:name="flutterEmbedding" android:value="2" />
+
     </application>
 </manifest>

@@ -209,6 +209,26 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // =========================================================
+  // ✅ EDIT TEXT MESSAGE
+  // =========================================================
+  Future<void> editMessage({
+    required String groupId,
+    required String messageId,
+    required String newText,
+  }) async {
+    final trimmed = newText.trim();
+    if (trimmed.isEmpty) return;
+    await _firestore.updateDocument(
+      path: FirestorePaths.groupMessages(groupId),
+      docId: messageId,
+      data: {
+        'text': trimmed,
+        'isEdited': true,
+      },
+    );
+  }
+
+  // =========================================================
   // ✅ SEND MEDIA
   // =========================================================
   Future<void> sendMediaMessage({

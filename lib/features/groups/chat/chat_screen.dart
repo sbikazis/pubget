@@ -48,6 +48,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   MemberModel? _currentMember;
 
   MessageModel? _replyingMessage;
+  MessageModel? _editingMessage;
   List<MessageModel> _cachedMessages = [];
   bool _isInitialLoad = true;
   final Set<String> _navigatedGameIds = {};
@@ -280,6 +281,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _onCancelReply() => setState(() => _replyingMessage = null);
+
+  // ✅ EDIT MESSAGE HANDLERS
+  void _onEditMessage(MessageModel msg) =>
+      setState(() => _editingMessage = msg);
+
+  void _onCancelEdit() => setState(() => _editingMessage = null);
+
+  Future<void> _handleEditSubmit(String newText, MessageModel original) async {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    try {
+      await chatProvider.editMessage(
+        groupId: widget.groupId,
+        messageId: original.id,
+        newText: newText,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("فشل تعديل الرسالة")),
+        );
+      }
+    }
+    if (mounted) setState(() => _editingMessage = null);
+  }
 
   Future<void> _handleSendText(String text, MessageModel? replyTo) async {
     if (_currentMember == null) return;
@@ -655,6 +680,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     setState(() => _replyingMessage = msg),
                                 onTapReply: (replyId) =>
                                     _scrollToMessage(replyId),
+                                onEdit: _onEditMessage,
                               );
                             },
                           );
@@ -728,6 +754,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             onSendSticker: _handleSendSticker,
                             replyingMessage: _replyingMessage,
                             onCancelReply: _onCancelReply,
+                            editingMessage: _editingMessage,
+                            onCancelEdit: _onCancelEdit,
+                            onEditSubmit: _handleEditSubmit,
                             isPrivate: false,
                           );
                         },

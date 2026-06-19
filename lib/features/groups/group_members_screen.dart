@@ -13,6 +13,7 @@ import '../../widgets/app_dialog.dart';
 import '../../core/logic/role_assignment_logic.dart';
 import '../../core/logic/invite_ranking_logic.dart';
 import '../../widgets/role_selector_sheet.dart';
+import 'package:pubget/providers/chat_provider.dart';
 
 class GroupMembersScreen extends StatelessWidget {
   final String groupId;
@@ -44,6 +45,7 @@ class GroupMembersScreen extends StatelessWidget {
             await groupProvider.addMember(
               member: result.updatedMember!,
               adminId: actor.userId,
+              chatProvider: context.read<ChatProvider>(),
             );
 
             await InviteRankingLogic.refreshRanks(groupId: groupId);
@@ -109,6 +111,7 @@ class GroupMembersScreen extends StatelessWidget {
                     groupId: groupId,
                     userId: target.userId,
                     adminId: actor.userId,
+                    chatProvider: context.read<ChatProvider>(),
                   );
 
                   await InviteRankingLogic.refreshRanks(groupId: groupId);

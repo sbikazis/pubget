@@ -45,6 +45,9 @@ class Limits {
   static const int maxMessageLength = 1000;
   static const int maxMediaSizeMB = 20;
 
+  // ✅ Edit Message Limits
+  static const int editMessageWindowMinutes = 10;
+
   // Game Limits
   static const int maxGameNameLength = 30;
   static const Duration maxGameDuration = Duration(minutes: 20);

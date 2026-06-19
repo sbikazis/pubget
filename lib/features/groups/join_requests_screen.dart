@@ -16,6 +16,7 @@ import '../../widgets/loading_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/premium_badge.dart';
+import 'package:pubget/providers/chat_provider.dart';
 
 class JoinRequestsScreen extends StatelessWidget {
   final String groupId;
@@ -118,6 +119,7 @@ class JoinRequestsScreen extends StatelessWidget {
         groupId: groupId,
         groupName: groupName,
         requestMember: request,
+        chatProvider: context.read<ChatProvider>(),
       );
 
       if (context.mounted) {

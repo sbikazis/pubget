@@ -32,6 +32,7 @@ class MessageModel {
   final String? editThumbnail;
   final String? editAnimeTitle;
   final String? editId;
+  final bool isEdited; // ✅ جديد: تم تعديل الرسالة أم لا
   final MessageStatus status;
 
   const MessageModel({
@@ -61,6 +62,7 @@ class MessageModel {
     this.editThumbnail,
     this.editAnimeTitle,
     this.editId,
+    this.isEdited = false, // ✅ جديد
     this.status = MessageStatus.sent,
   });
 
@@ -102,6 +104,7 @@ class MessageModel {
       editThumbnail: map['editThumbnail'],
       editAnimeTitle: map['editAnimeTitle'],
       editId: map['editId'],
+      isEdited: map['isEdited'] ?? false, // ✅ جديد
       status: MessageStatus.sent,
     );
   }
@@ -133,6 +136,7 @@ class MessageModel {
       'editThumbnail': editThumbnail,
       'editAnimeTitle': editAnimeTitle,
       'editId': editId,
+      'isEdited': isEdited, // ✅ جديد
       // status لا يُحفظ في Firestore عمداً
     };
   }
@@ -155,6 +159,7 @@ class MessageModel {
     String? editThumbnail,
     String? editAnimeTitle,
     String? editId,
+    bool? isEdited, // ✅ جديد
     MessageStatus? status,
   }) {
     return MessageModel(
@@ -184,6 +189,7 @@ class MessageModel {
       editThumbnail: editThumbnail ?? this.editThumbnail,
       editAnimeTitle: editAnimeTitle ?? this.editAnimeTitle,
       editId: editId ?? this.editId,
+      isEdited: isEdited ?? this.isEdited, // ✅ جديد
       status: status ?? this.status,
     );
   }

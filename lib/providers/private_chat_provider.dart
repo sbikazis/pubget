@@ -145,6 +145,25 @@ class PrivateChatProvider extends ChangeNotifier {
     );
   }
 
+  // ✅ EDIT TEXT MESSAGE
+  Future<void> editMessage({
+    required String chatId,
+    required String messageId,
+    required String newText,
+  }) async {
+    final trimmed = newText.trim();
+    if (trimmed.isEmpty) return;
+    if (trimmed.length > Limits.maxMessageLength) throw Exception("Message too long");
+    await _firestore.updateDocument(
+      path: FirestorePaths.privateMessages(chatId),
+      docId: messageId,
+      data: {
+        'text': trimmed,
+        'isEdited': true,
+      },
+    );
+  }
+
   // ✅ SEND MEDIA
   Future<void> sendMediaMessage({
     required String chatId,

@@ -30,6 +30,9 @@ class MessageInputBar extends StatefulWidget {
   final MemberModel currentMember;
   final MessageModel? replyingMessage;
   final VoidCallback? onCancelReply;
+  final MessageModel? editingMessage;
+  final VoidCallback? onCancelEdit;
+  final Function(String newText, MessageModel original)? onEditSubmit;
   final bool isPrivate;
 
   const MessageInputBar({
@@ -43,6 +46,9 @@ class MessageInputBar extends StatefulWidget {
     required this.currentMember,
     this.replyingMessage,
     this.onCancelReply,
+    this.editingMessage,
+    this.onCancelEdit,
+    this.onEditSubmit,
     this.isPrivate = false,
   });
 
@@ -72,6 +78,25 @@ class _MessageInputBarState extends State<MessageInputBar> {
     _recordTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageInputBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // ✅ دخول/خروج وضع التعديل
+    if (widget.editingMessage?.id != oldWidget.editingMessage?.id) {
+      if (widget.editingMessage != null) {
+        _controller.text = widget.editingMessage!.text ?? '';
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+        setState(() {});
+        _focusNode.requestFocus();
+      } else {
+        _controller.clear();
+        setState(() {});
+      }
+    }
   }
 
   void _openEmojiSheet() {
@@ -126,12 +151,29 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
+  void _handleCancelEdit() {
+    _controller.clear();
+    setState(() {});
+    if (widget.onCancelEdit != null) widget.onCancelEdit!();
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     if (text.length > Limits.maxMessageLength) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("الرسالة طويلة جداً")));
+      return;
+    }
+
+    // ✅ وضع تعديل الرسالة
+    if (widget.editingMessage != null) {
+      final original = widget.editingMessage!;
+      _controller.clear();
+      setState(() {});
+      if (widget.onEditSubmit != null) {
+        widget.onEditSubmit!(text, original);
+      }
       return;
     }
 
@@ -291,7 +333,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
     return GestureDetector(
       onTap: _isSending? null : _sendMessage,
       child: _circleBtn(
-        _isSending? null : Icons.send_rounded,
+        _isSending
+            ? null
+            : (widget.editingMessage != null
+                ? Icons.check_rounded
+                : Icons.send_rounded),
         darkPurpleColor,
         isLoading: _isSending,
       ),
@@ -310,7 +356,9 @@ class _MessageInputBarState extends State<MessageInputBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
+          if (widget.editingMessage != null)
+            _buildEditPreview(isDark)
+          else if (widget.replyingMessage!= null) _buildReplyPreview(isDark),
           if (_isRecording) _buildRecordingIndicator(isDark),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -661,6 +709,57 @@ class _MessageInputBarState extends State<MessageInputBar> {
             "اضغط ■ للإرسال أو 🗑 للإلغاء",
             style: TextStyle(
                 fontSize: 11, color: isDark? Colors.white54 : Colors.black45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── ✅ شريط تعديل الرسالة ──────────────────────────
+  Widget _buildEditPreview(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark? Colors.grey[900] : Colors.grey[200],
+        border: const Border(
+            right: BorderSide(color: AppColors.primary, width: 4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.edit_outlined, size: 18, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'تعديل الرسالة',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.editingMessage?.text ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: _handleCancelEdit,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
           ),
         ],
       ),

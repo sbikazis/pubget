@@ -13,6 +13,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/role_colors.dart';
 import '../../../core/utils/time_utils.dart';
 import '../../../core/constants/roles.dart';
+import '../../../core/constants/limits.dart';
 import 'package:pubget/models/user_model.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:pubget/providers/user_provider.dart';
@@ -37,6 +38,7 @@ class MessageBubble extends StatelessWidget {
   final String groupId;
   final Function(MessageModel)? onReply;
   final Function(String)? onTapReply;
+  final Function(MessageModel)? onEdit;
   final bool hasBackground;
 
   const MessageBubble({
@@ -47,6 +49,7 @@ class MessageBubble extends StatelessWidget {
     required this.groupId,
     this.onReply,
     this.onTapReply,
+    this.onEdit,
     this.hasBackground = false,
   });
 
@@ -55,6 +58,12 @@ class MessageBubble extends StatelessWidget {
     if (message.isDelivered) return Colors.blue;
     return Colors.grey;
   }
+
+  bool get _canEdit =>
+      isMe &&
+      message.type == MessageType.text &&
+      !TimeUtils.hasMinutesPassed(
+          message.createdAt, Limits.editMessageWindowMinutes);
 
   Map<String, List<String>> _groupReactions() {
     final map = <String, List<String>>{};
@@ -410,6 +419,17 @@ class MessageBubble extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            if (message.isEdited) ...[
+                              Text(
+                                'تم التعديل',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontStyle: FontStyle.italic,
+                                  color: timeColor.withOpacity(0.75),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                             Text(
                               TimeUtils.formatChatTime(message.createdAt),
                               style: TextStyle(
@@ -717,6 +737,17 @@ class MessageBubble extends StatelessWidget {
                         content: Text('تم نسخ الرسالة'),
                         duration: Duration(seconds: 1)),
                   );
+                },
+              ),
+            if (_canEdit)
+              ListTile(
+                leading:
+                    const Icon(Icons.edit_outlined, color: AppColors.primary),
+                title: const Text('تعديل',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (onEdit != null) onEdit!(message);
                 },
               ),
             if (isMe)

@@ -42,6 +42,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final Uuid _uuid = const Uuid();
 
   MessageModel? _replyingMessage;
+  MessageModel? _editingMessage;
 
   late Stream<List<MessageModel>> _messageStream;
   List<MessageModel> _currentMessages = [];
@@ -340,6 +341,34 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (mounted) setState(() => _replyingMessage = null);
   }
 
+  // ✅ EDIT MESSAGE HANDLERS
+  void _onEditMessage(MessageModel msg) {
+    if (mounted) setState(() => _editingMessage = msg);
+  }
+
+  void _onCancelEdit() {
+    if (mounted) setState(() => _editingMessage = null);
+  }
+
+  Future<void> _handleEditSubmit(String newText, MessageModel original) async {
+    final privateChatProvider =
+        Provider.of<PrivateChatProvider>(context, listen: false);
+    try {
+      await privateChatProvider.editMessage(
+        chatId: widget.chatId,
+        messageId: original.id,
+        newText: newText,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("فشل تعديل الرسالة")),
+        );
+      }
+    }
+    if (mounted) setState(() => _editingMessage = null);
+  }
+
   Widget _buildBackground(String? backgroundPath) {
     if (backgroundPath == null || backgroundPath.isEmpty) {
       return const SizedBox.shrink();
@@ -489,6 +518,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                           onReply: (msg) =>
                               setState(() => _replyingMessage = msg),
                           onTapReply: (replyId) => _scrollToMessage(replyId),
+                          onEdit: _onEditMessage,
                         );
                       },
                     );
@@ -511,6 +541,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 onSendSticker: _handleSendSticker,
                 replyingMessage: _replyingMessage,
                 onCancelReply: _onCancelReply,
+                editingMessage: _editingMessage,
+                onCancelEdit: _onCancelEdit,
+                onEditSubmit: _handleEditSubmit,
                 isPrivate: true,
               ),
             ],

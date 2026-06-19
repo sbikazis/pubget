@@ -30,6 +30,9 @@ import '../../core/logic/group_join_validator.dart';
 import 'package:pubget/services/monetization/promotion_dayalog.dart';
 import '../../core/logic/subscription_limits_logic.dart';
 import '../../services/monetization/ad_service.dart';
+import 'package:pubget/providers/chat_provider.dart';
+import 'package:pubget/core/logic/system_message_builder.dart';
+import 'package:pubget/providers/group_provider.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -426,6 +429,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           groupId: group.id,
           userId: member.userId,
           characterName: member.characterName,
+          chatProvider: context.read<ChatProvider>(),
+          
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
