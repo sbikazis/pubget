@@ -9,6 +9,8 @@ import '../../core/theme/app_colors.dart';
 import '../../models/group_model.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/chat_background_provider.dart';
+import '../../providers/chat_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../services/firebase/storage_service.dart';
 import '../../widgets/app_button.dart';
 import 'package:pubget/widgets/app_textfield.dart';
@@ -93,12 +95,44 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     });
   }
 
+  // ════════════════════════════════════════════════════════
+  // ✅ اسم المستخدم الحالي ليُستخدم في رسائل النظام
+  // ════════════════════════════════════════════════════════
+  String _getEditorName() {
+    final user = context.read<UserProvider>().currentUser;
+    return user?.nickname?.trim().isNotEmpty == true
+        ? user!.nickname!.trim()
+        : (user?.username ?? 'المؤسس');
+  }
+
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isUploading = true);
 
     try {
+      final chatProvider = context.read<ChatProvider>();
+      final editorName = _getEditorName();
+
+      // ════════════════════════════════════════════════════
+      // ✅ تتبع الحقول التي تغيّرت فعلياً مقارنة بالقديم
+      // ════════════════════════════════════════════════════
+      final Map<String, dynamic> changedFields = {};
+
+      final String newName = _nameController.text.trim();
+      final String newDescription = _descriptionController.text.trim();
+      final String newSlogan = _sloganController.text.trim();
+
+      if (newName != widget.group.name) {
+        changedFields['name'] = newName;
+      }
+      if (newDescription != widget.group.description) {
+        changedFields['description'] = newDescription;
+      }
+      if (newSlogan != widget.group.slogan) {
+        changedFields['slogan'] = newSlogan;
+      }
+
       String finalImageUrl = widget.group.imageUrl;
 
       // 1. رفع صورة المجموعة إن تغيرت
@@ -107,36 +141,55 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           groupId: widget.group.id,
           file: _imageFile!,
         );
+        changedFields['imageUrl'] = finalImageUrl; // ✅ تسجيل التغيير
       }
 
-      // 2. ✅ رفع خلفية الدردشة عبر ChatBackgroundProvider
+      // ════════════════════════════════════════════════════════
+      // 2. ✅ رفع/حذف خلفية الدردشة عبر ChatBackgroundProvider
+      // ── الرسالة النظامية لتغيير الخلفية تُصدَر من داخل
+      //    uploadGroupBackground/deleteGroupBackground نفسها
+      //    (عبر تمرير chatProvider + editorName هنا)
+      //    لذلك لا نُصدر أي رسالة "background" بشكل منفصل هنا
+      //    تجنباً لتكرار الرسالة.
+      // ════════════════════════════════════════════════════════
       String? finalBackgroundUrl = widget.group.chatBackgroundUrl;
 
       if (_backgroundFile != null) {
-        // خلفية جديدة مختارة → ارفعها
+        // خلفية جديدة مختارة → ارفعها (سترسل رسالة النظام داخلياً)
         finalBackgroundUrl =
             await context.read<ChatBackgroundProvider>().uploadGroupBackground(
                   groupId: widget.group.id,
                   file: _backgroundFile!,
+                  chatProvider: chatProvider,
+                  editorName: editorName,
                 );
       } else if (_backgroundPreviewUrl == null &&
           widget.group.chatBackgroundUrl != null) {
-        // المستخدم أزال الخلفية → احذفها
+        // المستخدم أزال الخلفية → احذفها (سترسل رسالة النظام داخلياً)
+        await context.read<ChatBackgroundProvider>().deleteGroupBackground(
+              groupId: widget.group.id,
+              chatProvider: chatProvider,
+              editorName: editorName,
+            );
         finalBackgroundUrl = null;
       }
 
-      // 3. تحديث Firestore
+      // 3. تحديث Firestore — التعديلات النصية/الصورة فقط
+      // (chatBackgroundUrl لا يُمرَّر هنا لأنه يُحدَّث مباشرة من
+      // chat_background_service عند الرفع/الحذف أعلاه)
       final Map<String, dynamic> updateData = {
-        'name': _nameController.text.trim(),
-        'description': _descriptionController.text.trim(),
-        'slogan': _sloganController.text.trim(),
+        'name': newName,
+        'description': newDescription,
+        'slogan': newSlogan,
         'imageUrl': finalImageUrl,
-        'chatBackgroundUrl': finalBackgroundUrl, // ✅ حفظ رابط الخلفية
       };
 
       await context.read<GroupProvider>().updateGroup(
             groupId: widget.group.id,
             data: updateData,
+            chatProvider: chatProvider,
+            editorName: editorName,
+            changedFields: changedFields, // ✅ يصدر رسالة نظام لكل حقل تغيّر
           );
 
       if (mounted) {

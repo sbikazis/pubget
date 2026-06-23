@@ -23,6 +23,7 @@ exports.onNewGroupMessage = onDocumentCreated(
   async (event) => {
     const message = event.data.data();
     const groupId = event.params.groupId;
+    const messageId = event.params.messageId; // ✅ جديد
     const db = getFirestore();
 
     if (message.type === 'systemEvent') return;
@@ -78,7 +79,7 @@ exports.onNewGroupMessage = onDocumentCreated(
       android: {
         notification: {
           sound,
-          channelId: `pubget_channel_${sound}`,
+          channelId: `pubget_reply_group`, // ✅ قناة الرد الصحيحة
         },
       },
       data: {
@@ -88,6 +89,7 @@ exports.onNewGroupMessage = onDocumentCreated(
         senderName: senderName,
         contextName: groupName,
         commentId: '',
+        messageId: messageId, // ✅ جديد
       },
     });
   }
@@ -102,6 +104,7 @@ exports.onNewPrivateMessage = onDocumentCreated(
     const message = event.data.data();
     const senderId = message.senderId;
     const chatId = event.params.chatId;
+    const messageId = event.params.messageId; // ✅ جديد
     const db = getFirestore();
 
     const chatDoc = await db.collection("privateChats").doc(chatId).get();
@@ -143,7 +146,7 @@ exports.onNewPrivateMessage = onDocumentCreated(
       android: {
         notification: {
           sound,
-          channelId: `pubget_channel_${sound}`,
+          channelId: `pubget_reply_private`, // ✅ قناة الرد الصحيحة
         },
       },
       data: {
@@ -153,6 +156,7 @@ exports.onNewPrivateMessage = onDocumentCreated(
         senderName: senderName,
         contextName: senderName,
         commentId: '',
+        messageId: messageId, // ✅ جديد
       },
     });
   }
@@ -204,6 +208,7 @@ exports.onJoinRequest = onDocumentCreated(
         senderName: requesterName,
         contextName: groupName,
         commentId: '',
+        messageId: '', // لا يوجد messageId لطلبات الانضمام
       },
     });
   }

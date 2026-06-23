@@ -1,3 +1,5 @@
+// lib/app.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -57,8 +59,6 @@ class PubgetApp extends StatefulWidget {
 class _PubgetAppState extends State<PubgetApp> {
   String? _lastRegisteredUserId;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-
-  // ✅ تسجيل الـ callbacks مرة واحدة فقط
   bool _notificationCallbacksRegistered = false;
 
   @override
@@ -79,8 +79,8 @@ class _PubgetAppState extends State<PubgetApp> {
           create: (_) => GroupJoinValidator(firestoreService: firestore),
         ),
         ChangeNotifierProvider(
-          create: (context) =>
-              UserProvider(firestoreService: context.read<FirestoreService>()),
+          create: (context) => UserProvider(
+              firestoreService: context.read<FirestoreService>()),
         ),
         ChangeNotifierProvider(
           create: (context) => AuthProvider(
@@ -100,8 +100,8 @@ class _PubgetAppState extends State<PubgetApp> {
           ),
         ),
         ChangeNotifierProvider(
-          create: (context) =>
-              GroupProvider(firestoreService: context.read<FirestoreService>()),
+          create: (context) => GroupProvider(
+              firestoreService: context.read<FirestoreService>()),
         ),
         ChangeNotifierProvider(
           create: (context) => ChatProvider(
@@ -134,7 +134,8 @@ class _PubgetAppState extends State<PubgetApp> {
         ),
         ChangeNotifierProxyProvider<UserProvider, StoreProvider>(
           create: (context) => StoreProvider(
-            userProvider: Provider.of<UserProvider>(context, listen: false),
+            userProvider:
+                Provider.of<UserProvider>(context, listen: false),
           ),
           update: (context, userProvider, storeProvider) =>
               StoreProvider(userProvider: userProvider),
@@ -148,7 +149,6 @@ class _PubgetAppState extends State<PubgetApp> {
       ],
       child: Consumer2<SettingsProvider, AuthProvider>(
         builder: (context, settings, auth, child) {
-          // ✅ تسجيل FCM Token عند تسجيل الدخول
           if (auth.isLoggedIn &&
               auth.user != null &&
               _lastRegisteredUserId != auth.user!.id) {
@@ -165,7 +165,6 @@ class _PubgetAppState extends State<PubgetApp> {
             });
           }
 
-          // ✅ تسجيل Notification Callbacks مرة واحدة فقط
           if (!_notificationCallbacksRegistered) {
             _notificationCallbacksRegistered = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -201,15 +200,9 @@ class _PubgetAppState extends State<PubgetApp> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ تسجيل Callbacks للإشعارات
-  // ══════════════════════════════════════════════════════════
   void _registerNotificationCallbacks(BuildContext context) {
     NotificationService.instance.registerCallbacks(
-      // ── الضغط على الإشعار → التنقل ──────────────────────
       onTap: (navData) => _handleNotificationNav(context, navData),
-
-      // ── الرد المباشر من الإشعار ──────────────────────────
       onReply: ({
         required NotificationNavType type,
         required String refId,
@@ -224,14 +217,10 @@ class _PubgetAppState extends State<PubgetApp> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ منطق التنقل عند الضغط على الإشعار
-  // ══════════════════════════════════════════════════════════
   void _handleNotificationNav(
       BuildContext context, NotificationNavData navData) {
     final auth = context.read<AuthProvider>();
 
-    // ✅ لا تنقل إذا المستخدم غير مسجل دخول
     if (!auth.isLoggedIn || auth.user == null) {
       debugPrint('⚠️ Notification tap ignored — user not logged in');
       return;
@@ -242,18 +231,19 @@ class _PubgetAppState extends State<PubgetApp> {
       if (navigator == null) return;
 
       switch (navData.type) {
-        // ── دردشة مجموعة ──────────────────────────────────
         case NotificationNavType.groupChat:
           if (navData.refId != null) {
             navigator.push(
               MaterialPageRoute(
-                builder: (_) => ChatScreen(groupId: navData.refId!),
+                builder: (_) => ChatScreen(
+                  groupId: navData.refId!,
+                  initialMessageId: navData.messageId, // ✅ جديد
+                ),
               ),
             );
           }
           break;
 
-        // ── دردشة خاصة ────────────────────────────────────
         case NotificationNavType.privateChat:
           if (navData.refId != null) {
             _navigateToPrivateChat(
@@ -266,7 +256,6 @@ class _PubgetAppState extends State<PubgetApp> {
           }
           break;
 
-        // ── طلب انضمام ────────────────────────────────────
         case NotificationNavType.joinRequest:
           if (navData.refId != null) {
             navigator.push(
@@ -278,7 +267,6 @@ class _PubgetAppState extends State<PubgetApp> {
           }
           break;
 
-        // ── قبول الطلب → تفاصيل المجموعة ──────────────────
         case NotificationNavType.requestAccepted:
           if (navData.refId != null) {
             navigator.push(
@@ -290,7 +278,6 @@ class _PubgetAppState extends State<PubgetApp> {
           }
           break;
 
-        // ── تعليق على إيديت ───────────────────────────────
         case NotificationNavType.comment:
           if (navData.refId != null) {
             navigator.push(
@@ -311,9 +298,6 @@ class _PubgetAppState extends State<PubgetApp> {
     });
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ التنقل للدردشة الخاصة مع جلب بيانات المستخدم الآخر
-  // ══════════════════════════════════════════════════════════
   Future<void> _navigateToPrivateChat({
     required NavigatorState navigator,
     required BuildContext context,
@@ -345,9 +329,6 @@ class _PubgetAppState extends State<PubgetApp> {
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ الرد المباشر من الإشعار بدون فتح التطبيق
-  // ══════════════════════════════════════════════════════════
   Future<void> _handleNotificationReply(
     BuildContext context, {
     required NotificationNavType type,
@@ -356,7 +337,6 @@ class _PubgetAppState extends State<PubgetApp> {
   }) async {
     final auth = context.read<AuthProvider>();
 
-    // ✅ لا ترسل إذا المستخدم غير مسجل دخول
     if (!auth.isLoggedIn || auth.user == null) {
       debugPrint('⚠️ Notification reply ignored — user not logged in');
       return;
@@ -366,7 +346,6 @@ class _PubgetAppState extends State<PubgetApp> {
 
     try {
       if (type == NotificationNavType.groupChat) {
-        // ── رد على رسالة مجموعة ───────────────────────────
         final chatProvider = context.read<ChatProvider>();
         final member = await chatProvider.getMember(
           groupId: refId,
@@ -388,7 +367,6 @@ class _PubgetAppState extends State<PubgetApp> {
 
         debugPrint('✅ Group reply sent from notification');
       } else if (type == NotificationNavType.privateChat) {
-        // ── رد على رسالة خاصة ─────────────────────────────
         final privateChatProvider = context.read<PrivateChatProvider>();
 
         await privateChatProvider.sendTextMessage(
@@ -417,7 +395,7 @@ class _PubgetAppState extends State<PubgetApp> {
 }
 
 // ══════════════════════════════════════════════════════════════
-// _GlobalAppOverlay — بدون تعديل عن النسخة الأصلية
+// _GlobalAppOverlay
 // ══════════════════════════════════════════════════════════════
 class _GlobalAppOverlay extends StatefulWidget {
   final Widget child;

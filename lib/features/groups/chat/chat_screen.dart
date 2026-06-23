@@ -31,11 +31,13 @@ import 'package:pubget/models/sticker_model.dart';
 class ChatScreen extends StatefulWidget {
   final String groupId;
   final bool openEventsOnStart;
+  final String? initialMessageId; // ✅ جديد
 
   const ChatScreen({
     super.key,
     required this.groupId,
     this.openEventsOnStart = false,
+    this.initialMessageId, // ✅ جديد
   });
 
   @override
@@ -56,8 +58,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   DateTime? _lastReadAt;
   bool _initialScrollDone = false;
   final Map<String, GlobalKey> _messageKeys = {};
-
   bool _showScrollDown = false;
+  String? _pendingScrollMessageId; // ✅ جديد
 
   @override
   void initState() {
@@ -71,6 +73,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (currentUser != null) {
         _syncPremiumStatus(currentUser);
         _loadCurrentMember(currentUser.id);
+      }
+
+      // ✅ حفظ الـ messageId القادم من الإشعار للـ scroll لاحقاً
+      if (widget.initialMessageId != null) {
+        _pendingScrollMessageId = widget.initialMessageId;
       }
     });
   }
@@ -183,6 +190,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _scrollToFirstUnread() {
+    // ✅ إذا فيه messageId من إشعار، لا تتدخل — هو يتولى الـ scroll
+    if (_pendingScrollMessageId != null) return;
     if (_initialScrollDone || !_scrollController.hasClients) return;
     if (_cachedMessages.isEmpty) return;
     _initialScrollDone = true;
@@ -229,6 +238,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final messages = _cachedMessages.reversed.toList();
     final index = messages.indexWhere((m) => m.id == messageId);
     if (index == -1) return;
+
     final existingKey = _messageKeys[messageId];
     if (existingKey?.currentContext != null) {
       await Scrollable.ensureVisible(
@@ -239,6 +249,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
       return;
     }
+
     final maxExtent = _scrollController.position.maxScrollExtent;
     await _scrollController.animateTo(
       maxExtent,
@@ -246,6 +257,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       curve: Curves.easeOut,
     );
     await Future.delayed(const Duration(milliseconds: 150));
+
     final key = _messageKeys[messageId];
     if (key?.currentContext != null) {
       await Scrollable.ensureVisible(
@@ -256,6 +268,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
       return;
     }
+
     const double estimatedItemHeight = 72.0;
     final double targetOffset =
         (messages.length - 1 - index) * estimatedItemHeight;
@@ -269,6 +282,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       curve: Curves.easeInOut,
     );
     await Future.delayed(const Duration(milliseconds: 150));
+
     final finalKey = _messageKeys[messageId];
     if (finalKey?.currentContext != null) {
       await Scrollable.ensureVisible(
@@ -281,11 +295,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _onCancelReply() => setState(() => _replyingMessage = null);
-
-  // ✅ EDIT MESSAGE HANDLERS
   void _onEditMessage(MessageModel msg) =>
       setState(() => _editingMessage = msg);
-
   void _onCancelEdit() => setState(() => _editingMessage = null);
 
   Future<void> _handleEditSubmit(String newText, MessageModel original) async {
@@ -483,21 +494,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return const SizedBox.shrink();
     }
     return Positioned.fill(
-      child: Container(
-        margin: EdgeInsets.zero,
-        padding: EdgeInsets.zero,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.network(
-              backgroundUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
-            ),
-            Container(color: Colors.black.withOpacity(0.38)),
-          ],
-        ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            backgroundUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                const SizedBox.shrink(),
+          ),
+          Container(color: Colors.black.withOpacity(0.38)),
+        ],
       ),
     );
   }
@@ -542,13 +549,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             return const Center(
                                 child: CircularProgressIndicator());
                           }
+
                           if (snapshot.hasData) {
                             final isFirstLoad = _isInitialLoad;
                             _cachedMessages = snapshot.data!;
 
+                            // ✅ scroll للرسالة القادمة من الإشعار
+                            if (_pendingScrollMessageId != null &&
+                                _cachedMessages.isNotEmpty) {
+                              final id = _pendingScrollMessageId!;
+                              _pendingScrollMessageId = null;
+                              _initialScrollDone = true;
+                              WidgetsBinding.instance
+                                  .addPostFrameCallback((_) {
+                                _scrollToMessage(id);
+                              });
+                            }
+
                             if (_currentMember != null) {
                               for (final msg in _cachedMessages) {
-                                // ✅ رسائل النظام لا تحتاج markAsRead/Delivered
                                 if (msg.type == MessageType.systemEvent) {
                                   continue;
                                 }
@@ -574,6 +593,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               WidgetsBinding.instance.addPostFrameCallback(
                                   (_) => _scrollToFirstUnread());
                             }
+
                             if (!isFirstLoad && _currentMember != null) {
                               final userProvider = Provider.of<UserProvider>(
                                   context,
@@ -614,8 +634,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               _messageKeys.putIfAbsent(
                                   message.id, () => GlobalKey());
 
-                              // ✅ رسائل النظام — تُوجَّه لـ MessageBubble مباشرة
-                              // MessageBubble تتعامل معها داخلياً عبر _buildSystemEventBubble
                               if (message.type == MessageType.systemEvent) {
                                 return MessageBubble(
                                   key: _messageKeys[message.id],
@@ -633,8 +651,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 );
                               }
 
-                              // ✅ رسائل اللعبة — يجب أن تحمل gameId وgameAction معاً
-                              // وألا تكون systemEvent (مضمون بالشرط أعلاه)
                               if (message.gameId != null &&
                                   message.gameAction != null) {
                                 return GameMessageBubble(
@@ -651,7 +667,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 );
                               }
 
-                              // باقي الرسائل العادية
                               final sender = isMe
                                   ? _currentMember!
                                   : MemberModel(

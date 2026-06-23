@@ -18,7 +18,7 @@ import '../../models/member_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/home_provider.dart';
-import '../../providers/store_provider.dart'; // ✅ إضافة
+import '../../providers/store_provider.dart';
 import 'package:pubget/models/user_model.dart';
 
 import '../groups/group_members_screen.dart';
@@ -429,8 +429,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           groupId: group.id,
           userId: member.userId,
           characterName: member.characterName,
+          memberName: member.effectiveName, // ✅ يُمرَّر صريحاً الآن
           chatProvider: context.read<ChatProvider>(),
-          
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -505,7 +505,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
-  // ✅ التعديل الجوهري: تمرير storeProvider لدالة promoteGroup
   void _showPromotionDialog(GroupModel group) {
     showModalBottomSheet(
       context: context,
@@ -520,7 +519,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             await _groupProvider.promoteGroup(
               groupId: group.id,
               userId: _authProvider.user!.id,
-              storeProvider: context.read<StoreProvider>(), // ✅ تمرير StoreProvider
+              storeProvider: context.read<StoreProvider>(),
             );
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

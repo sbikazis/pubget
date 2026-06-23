@@ -9,6 +9,13 @@ class SystemMessageBuilder {
     required String memberName,
     String? characterName,
     String? roleName,
+    int? oldRoleLevel,
+    int? newRoleLevel,
+    String? country,
+    String? editorName,
+    String? fieldName,
+    String? oldValue,
+    String? newValue,
     required bool isRoleplay,
     required String groupType,
   }) {
@@ -17,6 +24,7 @@ class SystemMessageBuilder {
         return _buildJoinText(
           memberName: memberName,
           characterName: characterName,
+          country: country,
           isRoleplay: isRoleplay,
           groupType: groupType,
         );
@@ -38,8 +46,21 @@ class SystemMessageBuilder {
         return _buildRoleAssignText(
           memberName: memberName,
           roleName: roleName,
+          oldRoleLevel: oldRoleLevel,
+          newRoleLevel: newRoleLevel,
           isRoleplay: isRoleplay,
           groupType: groupType,
+        );
+      case 'edit':
+        return _buildEditText(
+          editorName: editorName ?? 'المؤسس',
+          fieldName: fieldName ?? '',
+          oldValue: oldValue,
+          newValue: newValue,
+        );
+      case 'background':
+        return _buildBackgroundText(
+          editorName: editorName ?? 'المؤسس',
         );
       default:
         return '⚙️ حدث تحديث في المجموعة';
@@ -47,37 +68,55 @@ class SystemMessageBuilder {
   }
 
   // ══════════════════════════════════════════════════════════
-  // JOIN
+  // JOIN — بطاقة ترحيب فاخرة
   // ══════════════════════════════════════════════════════════
   static String _buildJoinText({
     required String memberName,
     String? characterName,
+    String? country,
     required bool isRoleplay,
     required String groupType,
   }) {
-    // مجموعة رولبلاي مع شخصية محددة
+    final String countryLine =
+        (country != null && country.trim().isNotEmpty)
+            ? '\n🌍 ينضم إلينا من: $country'
+            : '';
+
+    // مجموعة رولبلاي مع شخصية محددة — بطاقة تعريفية كاملة
     if (isRoleplay && characterName != null && characterName.isNotEmpty) {
-      return '🌸 أهلاً وسهلاً بـ $memberName بيننا! '
-          'لقد اختار دور $characterName وانضم إلى عالمنا. '
-          'نتمنى له رحلة ممتعة ومليئة بالمغامرات! ⚔️✨';
+      return '🌸✨ ━━━ عضو جديد في عالمنا ━━━ ✨🌸\n\n'
+          '🎭 الاسم: $memberName\n'
+          '⚔️ يتقمص شخصية: $characterName'
+          '$countryLine\n\n'
+          'أهلاً وسهلاً بك بيننا! لقد اختار $memberName دور $characterName '
+          'وانضم رسمياً إلى عالمنا.\n'
+          'نتمنى له رحلة ممتعة ومليئة بالمغامرات والذكريات الجميلة! ⚔️🔥\n\n'
+          '━━━━━━━━━━━━━━━━━━━━━';
     }
 
     // مجموعة أنمي عامة
     if (groupType == 'anime') {
-      return '🎌 مرحباً بالعضو الجديد $memberName في عائلتنا! '
-          'يسعدنا انضمامك لمجتمع الأنمي. '
-          'لا تتردد في المشاركة والتعبير عن شغفك! 🔥💫';
+      return '🎌✨ ━━━ مرحباً بالعضو الجديد ━━━ ✨🎌\n\n'
+          '👤 $memberName$countryLine\n\n'
+          'يسعدنا انضمامك لمجتمع الأنمي لدينا.\n'
+          'لا تتردد في المشاركة والتعبير عن شغفك! 🔥💫\n\n'
+          '━━━━━━━━━━━━━━━━━━━━━';
     }
 
     // مجموعة رولبلاي بدون شخصية (عام)
     if (isRoleplay) {
-      return '🎭 انضم $memberName إلى مسرحنا! '
-          'يسعدنا وجودك بيننا، اختر دورك وابدأ مغامرتك! ✨';
+      return '🎭✨ ━━━ وافد جديد إلى المسرح ━━━ ✨🎭\n\n'
+          '👤 $memberName$countryLine\n\n'
+          'يسعدنا وجودك بيننا، اختر دورك وابدأ مغامرتك! ✨\n\n'
+          '━━━━━━━━━━━━━━━━━━━━━';
     }
 
     // مجموعة عامة
-    return '👋 مرحباً بـ $memberName في المجموعة! '
-        'يسعدنا انضمامك، نتمنى لك وقتاً ممتعاً معنا! 🎉';
+    return '👋✨ ━━━ عضو جديد ━━━ ✨👋\n\n'
+        '👤 $memberName$countryLine\n\n'
+        'مرحباً بك في المجموعة! يسعدنا انضمامك، '
+        'نتمنى لك وقتاً ممتعاً معنا! 🎉\n\n'
+        '━━━━━━━━━━━━━━━━━━━━━';
   }
 
   // ══════════════════════════════════════════════════════════
@@ -145,33 +184,126 @@ class SystemMessageBuilder {
   }
 
   // ══════════════════════════════════════════════════════════
-  // ROLE ASSIGN
+  // ROLE ASSIGN — ذكي: يميز بين ترقية وتخفيض وتعديل بلا تغيير
   // ══════════════════════════════════════════════════════════
   static String _buildRoleAssignText({
     required String memberName,
     String? roleName,
+    int? oldRoleLevel,
+    int? newRoleLevel,
     required bool isRoleplay,
     required String groupType,
   }) {
     final String localizedRole = _localizeRole(roleName ?? 'member');
 
-    // رولبلاي
+    // إذا لم تُمرَّر المستويات (حالة قديمة/احتياطية) نفترض ترقية كما كان سابقاً
+    final int oldLevel = oldRoleLevel ?? 0;
+    final int newLevel = newRoleLevel ?? (oldLevel + 1);
+
+    if (newLevel > oldLevel) {
+      return _buildPromotionText(
+        memberName: memberName,
+        localizedRole: localizedRole,
+        isRoleplay: isRoleplay,
+        groupType: groupType,
+      );
+    } else if (newLevel < oldLevel) {
+      return _buildDemotionText(
+        memberName: memberName,
+        localizedRole: localizedRole,
+        isRoleplay: isRoleplay,
+        groupType: groupType,
+      );
+    } else {
+      return _buildNeutralRoleChangeText(
+        memberName: memberName,
+        localizedRole: localizedRole,
+      );
+    }
+  }
+
+  // ── ترقية ─────────────────────────────────────────────────
+  static String _buildPromotionText({
+    required String memberName,
+    required String localizedRole,
+    required bool isRoleplay,
+    required String groupType,
+  }) {
     if (isRoleplay) {
       return '🏅 تهانينا لـ $memberName! '
           'تم ترقيته إلى رتبة "$localizedRole" في عالمنا. '
           'استحق هذا الشرف بجدارة! ⚔️✨';
     }
 
-    // مجموعة أنمي
     if (groupType == 'anime') {
       return '🎖️ مبروك لـ $memberName على حصوله على رتبة "$localizedRole"! '
           'شكراً لتميزك ومساهمتك في مجتمعنا! 🎌🔥';
     }
 
-    // عام
     return '⭐ تهانينا لـ $memberName! '
-        'تم تعيينه بمنصب "$localizedRole" في المجموعة. '
+        'تم ترقيته إلى منصب "$localizedRole" في المجموعة. '
         'نثق بك وبقيادتك! 💪';
+  }
+
+  // ── تخفيض ─────────────────────────────────────────────────
+  static String _buildDemotionText({
+    required String memberName,
+    required String localizedRole,
+    required bool isRoleplay,
+    required String groupType,
+  }) {
+    if (isRoleplay) {
+      return '📉 تم تخفيض رتبة $memberName إلى "$localizedRole" '
+          'بقرار من الإدارة.';
+    }
+
+    if (groupType == 'anime') {
+      return '📉 تم تعديل رتبة $memberName إلى "$localizedRole" '
+          'بقرار إداري.';
+    }
+
+    return '📉 تم تخفيض رتبة $memberName إلى "$localizedRole" '
+        'بقرار من إدارة المجموعة.';
+  }
+
+  // ── تعديل بدون تغيير مستوى (نادر) ───────────────────────────
+  static String _buildNeutralRoleChangeText({
+    required String memberName,
+    required String localizedRole,
+  }) {
+    return 'ℹ️ تم تعديل صلاحيات $memberName إلى "$localizedRole".';
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // EDIT — تعديل بيانات المجموعة (الاسم/الوصف/الصورة)
+  // ══════════════════════════════════════════════════════════
+  static String _buildEditText({
+    required String editorName,
+    required String fieldName,
+    String? oldValue,
+    String? newValue,
+  }) {
+    switch (fieldName) {
+      case 'name':
+        return '✏️ قام $editorName بتغيير اسم المجموعة إلى "$newValue".';
+      case 'description':
+        return '📝 قام $editorName بتحديث وصف المجموعة.';
+      case 'imageUrl':
+        return '🖼️ قام $editorName بتغيير صورة المجموعة.';
+      case 'slogan':
+        return '🪶 قام $editorName بتحديث شعار المجموعة.';
+      default:
+        return '⚙️ قام $editorName بتعديل بيانات المجموعة.';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BACKGROUND — تغيير خلفية الدردشة
+  // ══════════════════════════════════════════════════════════
+  static String _buildBackgroundText({
+    required String editorName,
+  }) {
+    return '🖼️ قام $editorName بتغيير خلفية الدردشة.';
   }
 
   // ══════════════════════════════════════════════════════════
@@ -180,13 +312,13 @@ class SystemMessageBuilder {
   static String _localizeRole(String role) {
     switch (role.toLowerCase()) {
       case 'founder':
-        return 'المؤسس';
-      case 'shogun':
         return 'الشوغن';
-      case 'samurai':
-        return 'الساموراي';
-      case 'ronin':
-        return 'الرونين';
+      case 'sensei':
+        return 'سينسي';
+      case 'hakusho':
+        return 'هاكوشو';
+      case 'senpai':
+        return 'سينباي';
       case 'member':
         return 'عضو';
       case 'moderator':

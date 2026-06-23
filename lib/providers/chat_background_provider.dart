@@ -6,9 +6,10 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../models/chat_background_model.dart';
 import 'package:pubget/services/firebase/chat_backgroud_service.dart';
-import '../services/local/chat_background_local_service.dart'; // تمت إضافته 
+import '../services/local/chat_background_local_service.dart';
 import '../core/constants/storage_paths.dart';
-
+import '../core/logic/system_message_builder.dart'; // ✅ جديد
+import 'chat_provider.dart'; // ✅ جديد
 
 class ChatBackgroundProvider extends ChangeNotifier {
   final ChatBackgroundService _firebaseService = ChatBackgroundService();
@@ -56,9 +57,19 @@ class ChatBackgroundProvider extends ChangeNotifier {
 
   /// رفع خلفية جديدة للمجموعة إلى Firebase
   /// يعود بالـ URL النهائي
+  // ════════════════════════════════════════════════════════
+  // ✅ تعديل: إضافة chatProvider و editorName اختياريين
+  // إذا تم تمريرهما، يُصدر تلقائياً رسالة نظام بتغيير الخلفية
+  // ⚠️ ملاحظة: إذا كانت الشاشة المستدعية (مثل edit_group_screen)
+  // ترسل رسالة الخلفية بنفسها بعد هذا الاستدعاء، يجب ألا تُمرَّر
+  // chatProvider هنا لتجنّب تكرار الرسالة (رسالتين بدل واحدة).
+  // الأفضل الاعتماد على نقطة واحدة فقط لإصدار رسالة الخلفية.
+  // ════════════════════════════════════════════════════════
   Future<String> uploadGroupBackground({
     required String groupId,
     required File file,
+    ChatProvider? chatProvider, // ✅ جديد
+    String? editorName, // ✅ جديد
   }) async {
     _setLoading(true);
     try {
@@ -69,6 +80,23 @@ class ChatBackgroundProvider extends ChangeNotifier {
 
       _groupBackground = ChatBackgroundModel.network(url: url);
       notifyListeners();
+
+      // ✅ إصدار رسالة نظام عند تغيير الخلفية (إن طُلب ذلك)
+      if (chatProvider != null) {
+        final backgroundText = SystemMessageBuilder.buildText(
+          eventType: 'background',
+          memberName: '',
+          editorName: editorName ?? 'المؤسس',
+          isRoleplay: false,
+          groupType: 'general',
+        );
+        await chatProvider.sendSystemMessage(
+          groupId: groupId,
+          systemEventType: 'background',
+          text: backgroundText,
+        );
+      }
+
       return url;
     } finally {
       _setLoading(false);
@@ -76,12 +104,32 @@ class ChatBackgroundProvider extends ChangeNotifier {
   }
 
   /// حذف خلفية المجموعة من Firebase
-  Future<void> deleteGroupBackground({required String groupId}) async {
+  // ✅ تعديل: دعم رسالة نظام عند الحذف أيضاً
+  Future<void> deleteGroupBackground({
+    required String groupId,
+    ChatProvider? chatProvider, // ✅ جديد
+    String? editorName, // ✅ جديد
+  }) async {
     _setLoading(true);
     try {
       await _firebaseService.deleteGroupChatBackground(groupId: groupId);
       _groupBackground = const ChatBackgroundModel.none();
       notifyListeners();
+
+      if (chatProvider != null) {
+        final backgroundText = SystemMessageBuilder.buildText(
+          eventType: 'background',
+          memberName: '',
+          editorName: editorName ?? 'المؤسس',
+          isRoleplay: false,
+          groupType: 'general',
+        );
+        await chatProvider.sendSystemMessage(
+          groupId: groupId,
+          systemEventType: 'background',
+          text: backgroundText,
+        );
+      }
     } finally {
       _setLoading(false);
     }
