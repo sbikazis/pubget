@@ -91,18 +91,20 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(
           create: (_) => SettingsProvider()..loadSettings(),
         ),
-        ChangeNotifierProvider(
-  create: (context) => HomeProvider(
-    firestore: context.read<FirestoreService>(),
-    promotionService: context.read<PromotionService>(),
-    adService: context.read<AdService>(),
-    joinValidator: context.read<GroupJoinValidator>(),
-    groupProvider: context.read<GroupProvider>(), // ✅ جديد — تأكد أن GroupProvider مُنشأ قبله
-  ),
-),
+        // ✅ تم نقل GroupProvider ليكون قبل HomeProvider مباشرة
+        // (HomeProvider يعتمد على GroupProvider عبر context.read، فيجب أن يُعرَّف أولاً)
         ChangeNotifierProvider(
           create: (context) => GroupProvider(
               firestoreService: context.read<FirestoreService>()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => HomeProvider(
+            firestore: context.read<FirestoreService>(),
+            promotionService: context.read<PromotionService>(),
+            adService: context.read<AdService>(),
+            joinValidator: context.read<GroupJoinValidator>(),
+            groupProvider: context.read<GroupProvider>(), // ✅ الآن متاح بأمان
+          ),
         ),
         ChangeNotifierProvider(
           create: (context) => ChatProvider(
@@ -238,7 +240,7 @@ class _PubgetAppState extends State<PubgetApp> {
               MaterialPageRoute(
                 builder: (_) => ChatScreen(
                   groupId: navData.refId!,
-                  initialMessageId: navData.messageId, // ✅ جديد
+                  initialMessageId: navData.messageId,
                 ),
               ),
             );
