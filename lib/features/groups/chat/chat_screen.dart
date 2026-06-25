@@ -31,13 +31,13 @@ import 'package:pubget/models/sticker_model.dart';
 class ChatScreen extends StatefulWidget {
   final String groupId;
   final bool openEventsOnStart;
-  final String? initialMessageId; // ✅ جديد
+  final String? initialMessageId;
 
   const ChatScreen({
     super.key,
     required this.groupId,
     this.openEventsOnStart = false,
-    this.initialMessageId, // ✅ جديد
+    this.initialMessageId,
   });
 
   @override
@@ -59,7 +59,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _initialScrollDone = false;
   final Map<String, GlobalKey> _messageKeys = {};
   bool _showScrollDown = false;
-  String? _pendingScrollMessageId; // ✅ جديد
+  String? _pendingScrollMessageId;
+
+  // ✅ flag يمنع _scrollToBottom التلقائي بعد _scrollToFirstUnread
+  bool _hasScrolledToUnread = false;
 
   @override
   void initState() {
@@ -74,8 +77,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _syncPremiumStatus(currentUser);
         _loadCurrentMember(currentUser.id);
       }
-
-      // ✅ حفظ الـ messageId القادم من الإشعار للـ scroll لاحقاً
       if (widget.initialMessageId != null) {
         _pendingScrollMessageId = widget.initialMessageId;
       }
@@ -190,22 +191,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _scrollToFirstUnread() {
-    // ✅ إذا فيه messageId من إشعار، لا تتدخل — هو يتولى الـ scroll
     if (_pendingScrollMessageId != null) return;
     if (_initialScrollDone || !_scrollController.hasClients) return;
     if (_cachedMessages.isEmpty) return;
     _initialScrollDone = true;
+
+    // لا توجد رسائل غير مقروءة — اذهب للأسفل (الأحدث)
     if (_lastReadAt == null) {
       _scrollController.jumpTo(0);
       return;
     }
+
     final messages = _cachedMessages.reversed.toList();
     final firstUnreadIndex =
         messages.indexWhere((m) => m.createdAt.isAfter(_lastReadAt!));
+
+    // كل الرسائل مقروءة — اذهب للأسفل
     if (firstUnreadIndex == -1) {
       _scrollController.jumpTo(0);
       return;
     }
+
+    // ✅ فيه رسائل غير مقروءة — نرفع الـ flag ونتوجه إليها
+    _hasScrolledToUnread = true;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = messages[firstUnreadIndex];
       final key = _messageKeys[target.id];
@@ -213,7 +222,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         Scrollable.ensureVisible(
           key!.currentContext!,
           duration: const Duration(milliseconds: 300),
-          alignment: 0.1,
+          alignment: 0.5,
         );
       }
     });
@@ -221,7 +230,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scrollToBottom({bool animate = true, bool force = false}) {
     if (!_scrollController.hasClients) return;
+
+    // ✅ إذا تم الـ scroll لأول رسالة غير مقروءة، لا نلغيه تلقائياً
+    // فقط نسمح بـ scrollToBottom عند إرسال رسالة (force) أو ضغط الزر
+    if (!force && _hasScrolledToUnread) return;
     if (!force && _scrollController.offset > 200) return;
+
     if (animate) {
       _scrollController.animateTo(
         0,
@@ -234,63 +248,48 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _scrollToMessage(String messageId) async {
-    if (!_scrollController.hasClients) return;
-    final messages = _cachedMessages.reversed.toList();
-    final index = messages.indexWhere((m) => m.id == messageId);
-    if (index == -1) return;
-
-    final existingKey = _messageKeys[messageId];
-    if (existingKey?.currentContext != null) {
-      await Scrollable.ensureVisible(
-        existingKey!.currentContext!,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        alignment: 0.3,
-      );
-      return;
-    }
-
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    await _scrollController.animateTo(
-      maxExtent,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-    await Future.delayed(const Duration(milliseconds: 150));
+    if (!mounted || !_scrollController.hasClients) return;
 
     final key = _messageKeys[messageId];
     if (key?.currentContext != null) {
       await Scrollable.ensureVisible(
         key!.currentContext!,
-        duration: const Duration(milliseconds: 400),
+        duration: const Duration(milliseconds: 350),
         curve: Curves.easeInOut,
-        alignment: 0.3,
+        alignment: 0.5,
       );
       return;
     }
 
-    const double estimatedItemHeight = 72.0;
-    final double targetOffset =
-        (messages.length - 1 - index) * estimatedItemHeight;
-    final double clampedOffset = targetOffset.clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
+    final position = _scrollController.position;
     await _scrollController.animateTo(
-      clampedOffset,
+      position.maxScrollExtent,
       duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
+      curve: Curves.easeOut,
     );
-    await Future.delayed(const Duration(milliseconds: 150));
 
-    final finalKey = _messageKeys[messageId];
-    if (finalKey?.currentContext != null) {
-      await Scrollable.ensureVisible(
-        finalKey!.currentContext!,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        alignment: 0.3,
-      );
+    for (int attempt = 0; attempt < 3; attempt++) {
+      await Future.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+
+      final retryKey = _messageKeys[messageId];
+      if (retryKey?.currentContext != null) {
+        await Scrollable.ensureVisible(
+          retryKey!.currentContext!,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: 0.5,
+        );
+        return;
+      }
+
+      if (attempt == 1 && _scrollController.hasClients) {
+        await _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     }
   }
 
@@ -319,6 +318,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _handleSendText(String text, MessageModel? replyTo) async {
     if (_currentMember == null) return;
+    // ✅ عند الإرسال نسمح بـ scrollToBottom ونلغي الـ flag
+    _hasScrolledToUnread = false;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     await chatProvider.sendTextMessage(
@@ -354,6 +355,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _handleSendImage(File file, MessageModel? replyTo) async {
     if (_currentMember == null) return;
+    _hasScrolledToUnread = false;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     await chatProvider.sendMediaMessage(
@@ -386,6 +388,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _handleSendGif(String gifUrl, MessageModel? replyTo) async {
     if (_currentMember == null) return;
+    _hasScrolledToUnread = false;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     await chatProvider.sendGifMessage(
@@ -421,6 +424,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _handleSendAudio(
       File audioFile, MessageModel? replyTo, int duration) async {
     if (_currentMember == null) return;
+    _hasScrolledToUnread = false;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     await chatProvider.sendAudioMessage(
@@ -457,6 +461,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _handleSendSticker(
       StickerModel sticker, MessageModel? replyTo) async {
     if (_currentMember == null) return;
+    _hasScrolledToUnread = false;
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     await chatProvider.sendStickerMessage(
@@ -554,7 +559,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             final isFirstLoad = _isInitialLoad;
                             _cachedMessages = snapshot.data!;
 
-                            // ✅ scroll للرسالة القادمة من الإشعار
                             if (_pendingScrollMessageId != null &&
                                 _cachedMessages.isNotEmpty) {
                               final id = _pendingScrollMessageId!;
@@ -594,6 +598,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   (_) => _scrollToFirstUnread());
                             }
 
+                            // ✅ رسائل جديدة بعد الفتح — scroll للأسفل فقط
+                            // إذا لم يكن المستخدم عند رسالة غير مقروءة
                             if (!isFirstLoad && _currentMember != null) {
                               final userProvider = Provider.of<UserProvider>(
                                   context,
@@ -606,6 +612,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   _updateReadStatus(userId,
                                       readUpTo:
                                           _cachedMessages.last.createdAt);
+                                  // ✅ scroll للأسفل فقط إذا لم يكن هناك unread scroll جارٍ
+                                  if (!_hasScrolledToUnread) {
+                                    _scrollToBottom();
+                                  }
                                 });
                               }
                             }
@@ -787,7 +797,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     child: _showScrollDown
                         ? FloatingActionButton.small(
                             backgroundColor: Theme.of(context).primaryColor,
-                            onPressed: () => _scrollToBottom(force: true),
+                            // ✅ زر الأسفل اليدوي يلغي الـ flag دائماً
+                            onPressed: () {
+                              _hasScrolledToUnread = false;
+                              _scrollToBottom(force: true);
+                            },
                             child: const Icon(Icons.arrow_downward,
                                 color: Colors.white),
                           )

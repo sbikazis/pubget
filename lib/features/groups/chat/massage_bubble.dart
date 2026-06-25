@@ -1,4 +1,4 @@
-// lib/features/groups/chat/message_bubble.dart
+// lib/features/groups/chat/massage_bubble.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,10 +53,17 @@ class MessageBubble extends StatelessWidget {
     this.hasBackground = false,
   });
 
+  // ✅ اللون حسب حالة التسليم
   Color _getStatusColor() {
     if (message.isRead) return Colors.green;
-    if (message.isDelivered) return Colors.blue;
-    return Colors.grey;
+    if (message.isDelivered) return Colors.amber;
+    return Colors.red;
+  }
+
+  // ✅ الأيقونة حسب حالة التسليم
+  IconData _getStatusIcon() {
+    if (message.isRead) return Icons.done_all;
+    return Icons.done;
   }
 
   bool get _canEdit =>
@@ -177,14 +184,10 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ رسالة النظام — تصميم مركزي خاص
-  // ══════════════════════════════════════════════════════════
   Widget _buildSystemEventBubble(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final String eventType = message.systemEventType ?? 'join';
 
-    // أيقونة ولون حسب نوع الحدث
     IconData icon;
     Color iconColor;
     Color bgColor;
@@ -220,7 +223,6 @@ class MessageBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
       child: Row(
         children: [
-          // ── خط فاصل يسار ────────────────────────────────
           Expanded(
             child: Divider(
               color: isDark ? Colors.white12 : Colors.black12,
@@ -228,16 +230,12 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-
-          // ── محتوى الرسالة ────────────────────────────────
           Container(
             constraints: const BoxConstraints(maxWidth: 260),
             padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: isDark
-                  ? bgColor.withOpacity(0.18)
-                  : bgColor,
+              color: isDark ? bgColor.withOpacity(0.18) : bgColor,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: iconColor.withOpacity(0.25),
@@ -256,9 +254,7 @@ class MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? Colors.white70
-                          : Colors.black54,
+                      color: isDark ? Colors.white70 : Colors.black54,
                       height: 1.4,
                     ),
                   ),
@@ -266,9 +262,7 @@ class MessageBubble extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 10),
-          // ── خط فاصل يمين ────────────────────────────────
           Expanded(
             child: Divider(
               color: isDark ? Colors.white12 : Colors.black12,
@@ -282,7 +276,6 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ رسائل النظام تُعرض بشكل مختلف كلياً
     if (message.type == MessageType.systemEvent) {
       return _buildSystemEventBubble(context);
     }
@@ -367,100 +360,107 @@ class MessageBubble extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-      child: GestureDetector(
-        onLongPress: () => _showOptionsSheet(context),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment:
-              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
-            if (!isMe) const SizedBox(width: 8),
-            Flexible(
-              child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: bubbleColor,
-                      borderRadius: borderRadius,
-                      border: isGameMessage
-                          ? Border.all(color: gameAccentColor!, width: 1.2)
-                          : (isPremiumUser
-                              ? Border.all(
-                                  color: const Color(0xFFFFD700), width: 1.0)
-                              : null),
-                      boxShadow: hasBackground
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.25),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              )
-                            ]
-                          : null,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!isMe) ...[
-                          _buildNameRow(roleColor, isPremiumUser),
-                          const SizedBox(height: 4),
-                        ],
-                        if (hasReply) _buildReplyPreview(isDark),
-                        _buildMessageContent(context, textColor),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (message.isEdited) ...[
+      child: _SwipeToReplyWrapper(
+        isMe: isMe,
+        onReplyTriggered: () {
+          if (onReply != null) onReply!(message);
+        },
+        child: GestureDetector(
+          onLongPress: () => _showOptionsSheet(context),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
+              if (!isMe) const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment:
+                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: bubbleColor,
+                        borderRadius: borderRadius,
+                        border: isGameMessage
+                            ? Border.all(color: gameAccentColor!, width: 1.2)
+                            : (isPremiumUser
+                                ? Border.all(
+                                    color: const Color(0xFFFFD700), width: 1.0)
+                                : null),
+                        boxShadow: hasBackground
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.25),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isMe) ...[
+                            _buildNameRow(roleColor, isPremiumUser),
+                            const SizedBox(height: 4),
+                          ],
+                          if (hasReply) _buildReplyPreview(isDark),
+                          _buildMessageContent(context, textColor),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (message.isEdited) ...[
+                                Text(
+                                  'تم التعديل',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontStyle: FontStyle.italic,
+                                    color: timeColor.withOpacity(0.75),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
                               Text(
-                                'تم التعديل',
+                                TimeUtils.formatChatTime(message.createdAt),
                                 style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontStyle: FontStyle.italic,
-                                  color: timeColor.withOpacity(0.75),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: timeColor,
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              if (isMe) ...[
+                                const SizedBox(width: 4),
+                                // ✅ أيقونة + لون ديناميكي حسب حالة التسليم
+                                Icon(
+                                  _getStatusIcon(),
+                                  size: 15,
+                                  color: _getStatusColor(),
+                                ),
+                              ],
                             ],
-                            Text(
-                              TimeUtils.formatChatTime(message.createdAt),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: timeColor,
-                              ),
-                            ),
-                            if (isMe) ...[
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.done,
-                                size: 15,
-                                color: _getStatusColor(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (hasReactions) ...[
-                    const SizedBox(height: 4),
-                    _buildReactionsRow(context),
+                    if (hasReactions) ...[
+                      const SizedBox(height: 4),
+                      _buildReactionsRow(context),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (isMe) const SizedBox(width: 8),
-            if (isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
-          ],
+              if (isMe) const SizedBox(width: 8),
+              if (isMe) _buildAvatar(context, isGameMessage, gameAccentColor),
+            ],
+          ),
         ),
       ),
     );
@@ -592,7 +592,12 @@ class MessageBubble extends StatelessWidget {
                     ),
                     if (isMe) ...[
                       const SizedBox(width: 4),
-                      Icon(Icons.done, size: 13, color: _getStatusColor()),
+                      // ✅ نفس المنطق في الـ sticker
+                      Icon(
+                        _getStatusIcon(),
+                        size: 13,
+                        color: _getStatusColor(),
+                      ),
                     ],
                   ],
                 ),
@@ -658,7 +663,6 @@ class MessageBubble extends StatelessWidget {
   }
 
   void _showOptionsSheet(BuildContext context) {
-    // ✅ رسائل النظام لا تملك خيارات
     if (message.type == MessageType.systemEvent) return;
 
     final bool isPrivate = sender.groupId == 'private';
@@ -741,8 +745,8 @@ class MessageBubble extends StatelessWidget {
               ),
             if (_canEdit)
               ListTile(
-                leading:
-                    const Icon(Icons.edit_outlined, color: AppColors.primary),
+                leading: const Icon(Icons.edit_outlined,
+                    color: AppColors.primary),
                 title: const Text('تعديل',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
@@ -752,7 +756,8 @@ class MessageBubble extends StatelessWidget {
               ),
             if (isMe)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                leading:
+                    const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('حذف الرسالة',
                     style: TextStyle(
                         color: Colors.red, fontWeight: FontWeight.bold)),
@@ -1146,6 +1151,86 @@ class MessageBubble extends StatelessWidget {
               child: const Text('انضم الآن ⚔️',
                   style: TextStyle(fontWeight: FontWeight.bold)),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// _SwipeToReplyWrapper
+// ══════════════════════════════════════════════════════════════
+class _SwipeToReplyWrapper extends StatefulWidget {
+  final Widget child;
+  final bool isMe;
+  final VoidCallback onReplyTriggered;
+
+  const _SwipeToReplyWrapper({
+    required this.child,
+    required this.isMe,
+    required this.onReplyTriggered,
+  });
+
+  @override
+  State<_SwipeToReplyWrapper> createState() => _SwipeToReplyWrapperState();
+}
+
+class _SwipeToReplyWrapperState extends State<_SwipeToReplyWrapper> {
+  double _dragExtent = 0;
+  static const double _maxDrag = 70;
+  static const double _triggerThreshold = 55;
+  bool _triggered = false;
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragExtent += details.delta.dx;
+      if (_dragExtent < 0) _dragExtent = 0;
+      if (_dragExtent > _maxDrag) _dragExtent = _maxDrag;
+    });
+
+    if (!_triggered && _dragExtent >= _triggerThreshold) {
+      _triggered = true;
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    if (_dragExtent >= _triggerThreshold) {
+      widget.onReplyTriggered();
+    }
+    setState(() {
+      _dragExtent = 0;
+      _triggered = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double opacity = (_dragExtent / _triggerThreshold).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      onHorizontalDragUpdate: _handleDragUpdate,
+      onHorizontalDragEnd: _handleDragEnd,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.centerLeft,
+        children: [
+          if (_dragExtent > 0)
+            Positioned(
+              left: 4,
+              child: Opacity(
+                opacity: opacity,
+                child: Icon(
+                  Icons.reply,
+                  color: AppColors.primary,
+                  size: 22 + (opacity * 4),
+                ),
+              ),
+            ),
+          Transform.translate(
+            offset: Offset(_dragExtent, 0),
+            child: widget.child,
           ),
         ],
       ),
