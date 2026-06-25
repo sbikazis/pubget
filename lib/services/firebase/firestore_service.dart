@@ -87,6 +87,22 @@ class FirestoreService {
   }
 
   // ==============================
+  // STREAM COLLECTION GROUP (✅ جديد)
+  // ==============================
+  // يستخدم للبحث عبر sub-collections بنفس الاسم تحت كل الوثائق
+  // (مثال: groups/*/members حيث userId == X)
+  Stream<QuerySnapshot<Map<String, dynamic>>> streamCollectionGroup({
+    required String collectionId,
+    required String field,
+    required dynamic isEqualTo,
+  }) {
+    return _firestore
+        .collectionGroup(collectionId)
+        .where(field, isEqualTo: isEqualTo)
+        .snapshots();
+  }
+
+  // ==============================
   // GET COLLECTION ONCE
   // ==============================
 
@@ -188,19 +204,4 @@ class QueryCondition {
     this.isGreaterThanOrEqualTo,
     this.arrayContains,
   });
-// ==============================
-  // STREAM COLLECTION GROUP (✅ جديد)
-  // ==============================
-  // يستخدم للبحث عبر sub-collections بنفس الاسم تحت كل الوثائق
-  // (مثال: groups/*/members حيث userId == X)
-  Stream<QuerySnapshot<Map<String, dynamic>>> streamCollectionGroup({
-    required String collectionId,
-    required String field,
-    required dynamic isEqualTo,
-  }) {
-    return _firestore
-        .collectionGroup(collectionId)
-        .where(field, isEqualTo: isEqualTo)
-        .snapshots();
-  }          
 }
