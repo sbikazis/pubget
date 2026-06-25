@@ -92,13 +92,14 @@ class _PubgetAppState extends State<PubgetApp> {
           create: (_) => SettingsProvider()..loadSettings(),
         ),
         ChangeNotifierProvider(
-          create: (context) => HomeProvider(
-            firestore: context.read<FirestoreService>(),
-            promotionService: context.read<PromotionService>(),
-            adService: context.read<AdService>(),
-            joinValidator: context.read<GroupJoinValidator>(),
-          ),
-        ),
+  create: (context) => HomeProvider(
+    firestore: context.read<FirestoreService>(),
+    promotionService: context.read<PromotionService>(),
+    adService: context.read<AdService>(),
+    joinValidator: context.read<GroupJoinValidator>(),
+    groupProvider: context.read<GroupProvider>(), // ✅ جديد — تأكد أن GroupProvider مُنشأ قبله
+  ),
+),
         ChangeNotifierProvider(
           create: (context) => GroupProvider(
               firestoreService: context.read<FirestoreService>()),

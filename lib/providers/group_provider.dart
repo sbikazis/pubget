@@ -134,7 +134,7 @@ class GroupProvider extends ChangeNotifier {
       bool currentPremiumStatus = false;
       String? freshAvatar;
       String? freshUsername;
-      String? freshCountry; // ✅ جديد
+      String? freshCountry;
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -142,7 +142,7 @@ class GroupProvider extends ChangeNotifier {
         currentPremiumStatus = user.isPremium;
         freshAvatar = user.avatarUrl;
         freshUsername = user.username;
-        freshCountry = user.country; // ✅ جديد
+        freshCountry = user.country;
       }
 
       if (requestMember.characterName != null) {
@@ -180,7 +180,6 @@ class GroupProvider extends ChangeNotifier {
         }
       }
 
-      // جلب بيانات المجموعة لمعرفة نوعها
       final groupDoc = await firestore
           .collection(FirestorePaths.groups)
           .doc(groupId)
@@ -251,14 +250,13 @@ class GroupProvider extends ChangeNotifier {
 
       await batch.commit();
 
-      // ✅ رسالة ترحيب فاخرة بالعضو الجديد — تتضمن البلد الآن
       if (chatProvider != null) {
         final welcomeText = SystemMessageBuilder.buildText(
           eventType: 'join',
           memberName: freshUsername ?? newMember.effectiveName,
           characterName: newMember.characterName,
           roleName: finalRole,
-          country: freshCountry, // ✅ جديد
+          country: freshCountry,
           isRoleplay: isRoleplay,
           groupType: groupType,
         );
@@ -357,16 +355,13 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تعديل جوهري: تمرير oldRoleLevel/newRoleLevel بدل الاعتماد على نص الرتبة فقط
-  // هذا يحل مشكلة "ترقية" تُقال عند التخفيض
-  // =========================================================
   Future<void> addMember({
     required MemberModel member,
     String? adminId,
     ChatProvider? chatProvider,
   }) async {
     try {
-      Roles? oldRoleEnum; // ✅ نحتفظ بالـ enum كامل بدل الاسم فقط
+      Roles? oldRoleEnum;
 
       if (adminId != null) {
         final adminData = await _firestore.getDocument(
@@ -383,7 +378,7 @@ class GroupProvider extends ChangeNotifier {
 
         if (currentTargetData != null) {
           final currentTargetMember = MemberModel.fromMap(currentTargetData);
-          oldRoleEnum = currentTargetMember.role; // ✅ enum كامل
+          oldRoleEnum = currentTargetMember.role;
 
           if (!RoleAssignmentLogic.canModify(
             actorRole: adminMember.role,
@@ -405,8 +400,6 @@ class GroupProvider extends ChangeNotifier {
         data: updatedMember.toMap(),
       );
 
-      // ✅ رسالة تعيين رتبة — فقط إذا تغيرت الرتبة فعلاً
-      // ونمرر rankLevel القديم والجديد كي يحدد البناء (ترقية/تخفيض) تلقائياً
       if (chatProvider != null &&
           oldRoleEnum != null &&
           oldRoleEnum != member.role) {
@@ -423,8 +416,8 @@ class GroupProvider extends ChangeNotifier {
           memberName: updatedMember.effectiveName,
           characterName: updatedMember.characterName,
           roleName: member.role.name,
-          oldRoleLevel: oldRoleEnum.rankLevel, // ✅ جديد
-          newRoleLevel: member.role.rankLevel, // ✅ جديد
+          oldRoleLevel: oldRoleEnum.rankLevel,
+          newRoleLevel: member.role.rankLevel,
           isRoleplay: isRoleplay,
           groupType: groupType,
         );
@@ -443,8 +436,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // ✅ تعديل: إضافة chatProvider لإرسال رسالة طرد
   // =========================================================
   Future<void> removeMember({
     required String groupId,
@@ -469,10 +460,8 @@ class GroupProvider extends ChangeNotifier {
         kickedMemberName = targetMember.effectiveName;
       }
 
-      // 1. حذف العضو من المجموعة
       await memberRef.delete();
 
-      // 2. تحرير الشخصية إذا كانت roleplay
       if (characterNameToRelease != null &&
           characterNameToRelease.isNotEmpty) {
         await firestore
@@ -481,7 +470,6 @@ class GroupProvider extends ChangeNotifier {
             .update({'takenBy': null});
       }
 
-      // 3. ✅ رسالة طرد
       if (chatProvider != null && kickedMemberName != null) {
         final groupDoc = await firestore
             .collection(FirestorePaths.groups)
@@ -515,10 +503,6 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
-  // =========================================================
-  // ✅ تعديل: إضافة chatProvider لإرسال رسالة مغادرة
-  // memberName يُمرَّر دوماً من الشاشة المستدعية (group_details_screen)
-  // ومع ذلك يبقى fallback آمن في حال لم يُمرَّر
   // =========================================================
   Future<void> leaveGroup({
     required String groupId,
@@ -568,7 +552,6 @@ class GroupProvider extends ChangeNotifier {
 
       await batch.commit();
 
-      // ✅ رسالة مغادرة
       if (chatProvider != null) {
         final groupDoc = await firestore
             .collection(FirestorePaths.groups)
@@ -661,10 +644,6 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تعديل جوهري: دعم إرسال رسائل نظام عند تعديل بيانات المجموعة
-  // changedFields: Map بالحقول التي تغيّرت فعلياً { 'name': newValue, ... }
-  // editorName: اسم من قام بالتعديل (المؤسس عادة)
-  // =========================================================
   Future<void> updateGroup({
     required String groupId,
     required Map<String, dynamic> data,
@@ -678,14 +657,13 @@ class GroupProvider extends ChangeNotifier {
       data: data,
     );
 
-    // ✅ إصدار رسالة نظام لكل حقل تغيّر فعلياً
     if (chatProvider != null &&
         changedFields != null &&
         changedFields.isNotEmpty) {
       for (final entry in changedFields.entries) {
         final editText = SystemMessageBuilder.buildText(
           eventType: 'edit',
-          memberName: '', // غير مستخدم في رسائل edit
+          memberName: '',
           editorName: editorName ?? 'المؤسس',
           fieldName: entry.key,
           newValue: entry.value?.toString(),
@@ -882,4 +860,100 @@ class GroupProvider extends ChangeNotifier {
       return [];
     }
   }
+
+  // =========================================================
+  // ✅✅✅ جديد: الحل الجوهري للترتيب الحي + التحديث الفوري
+  // =========================================================
+  //
+  // يرجع Stream موحّد يحتوي كل مجموعات المستخدم (التي أنشأها + انضم لها)
+  // مرتبة دائماً حسب آخر رسالة، ويُعاد بناؤه فوراً عند:
+  //  - استلام/إرسال رسالة جديدة في أي مجموعة (lastMessageAt يتغير)
+  //  - الانضمام لمجموعة جديدة (وثيقة members جديدة تُكتب)
+  //  - مغادرة/طرد من مجموعة (وثيقة members تُحذف)
+  //  - حذف/تفكيك مجموعة (وثيقة group تُحذف بالكامل)
+  //
+  // ملاحظة: يتطلب composite index على collection group "members"
+  // بالحقل userId (Firebase Console سيعرض رابط جاهز لإنشائه عند أول تشغيل
+  // إذا لم يكن موجوداً، فقط افتح الرابط من الـ console/logs واضغط Create Index).
+  Stream<List<GroupModel>> streamUserGroups({required String userId}) {
+    // Stream 1: المجموعات التي أنشأها المستخدم (مباشر وسهل)
+    final foundedQuery = _firestore.buildQuery(
+      path: FirestorePaths.groups,
+      conditions: [QueryCondition(field: 'founderId', isEqualTo: userId)],
+    );
+    final foundedStream =
+        _firestore.streamCollection(path: FirestorePaths.groups, query: foundedQuery);
+
+    // Stream 2: قائمة groupIds التي المستخدم عضو فيها (عبر collectionGroup)
+    final memberDocsStream = _firestore.streamCollectionGroup(
+      collectionId: 'members',
+      field: 'userId',
+      isEqualTo: userId,
+    );
+
+    // نحوّل Stream 2 إلى Stream من مجموعات GroupModel الفعلية،
+    // عبر الاستماع المباشر لكل وثيقة مجموعة بالـ id المستخرج من المسار.
+    final joinedGroupsStream = memberDocsStream.switchMap((memberSnap) {
+      // استخراج groupId من مسار كل وثيقة member: groups/{groupId}/members/{userId}
+      final groupIds = memberSnap.docs
+          .map((doc) => doc.reference.parent.parent?.id)
+          .whereType<String>()
+          .toSet()
+          .toList();
+
+      if (groupIds.isEmpty) return Stream.value(<GroupModel>[]);
+
+      final groupStreams = groupIds.map((gId) {
+        return _firestore
+            .streamDocument(path: FirestorePaths.groups, docId: gId)
+            .map((snap) {
+          if (!snap.exists || snap.data() == null) return null;
+          return GroupModel.fromMap(snap.id, snap.data()!);
+        });
+      }).toList();
+
+      return Rx.combineLatestList(groupStreams).map(
+        (groups) => groups.whereType<GroupModel>().toList(),
+      );
+    });
+
+    // دمج الستريمين: founded + joined → نتيجة واحدة محدّثة لحظياً
+    return Rx.combineLatest2<QuerySnapshot<Map<String, dynamic>>,
+        List<GroupModel>, List<GroupModel>>(
+      foundedStream,
+      joinedGroupsStream,
+      (foundedSnap, joinedGroups) {
+        final founded = foundedSnap.docs
+            .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
+            .toList();
+
+        // دمج وإزالة التكرار (المؤسس لا يُحسب أيضاً كـ "منضم" حتى لو كان عضواً)
+        final foundedIds = founded.map((g) => g.id).toSet();
+        final joined =
+            joinedGroups.where((g) => !foundedIds.contains(g.id)).toList();
+
+        final all = [...founded, ...joined];
+
+        // ✅ الترتيب الحي حسب آخر رسالة — هذا يحل مشكلة الترتيب الثابت نهائياً
+        all.sort((a, b) {
+          final aTime = a.lastMessageAt ?? a.createdAt;
+          final bTime = b.lastMessageAt ?? b.createdAt;
+          return bTime.compareTo(aTime);
+        });
+
+        return all;
+      },
+    ).handleError((error) {
+      debugPrint("❌ Error in streamUserGroups: $error");
+      return <GroupModel>[];
+    });
+  }
+
+  // مساعد: يرجع فقط المجموعات التي أنشأها المستخدم من القائمة الموحدة
+  List<GroupModel> filterFounded(List<GroupModel> all, String userId) =>
+      all.where((g) => g.founderId == userId).toList();
+
+  // مساعد: يرجع فقط المجموعات التي انضم لها (وليس مؤسسها)
+  List<GroupModel> filterJoined(List<GroupModel> all, String userId) =>
+      all.where((g) => g.founderId != userId).toList();
 }

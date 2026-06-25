@@ -1,3 +1,9 @@
+
+
+Zakaria Sbika
+4:21 PM (13 minutes ago)
+to me
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -14,22 +20,26 @@ import '../core/constants/firestore_paths.dart';
 import '../core/constants/roles.dart';
 import '../core/logic/group_join_validator.dart';
 import '../core/logic/subscription_limits_logic.dart';
+import 'group_provider.dart'; // ✅ جديد: نحتاجه لاستدعاء streamUserGroups
 
 class HomeProvider extends ChangeNotifier {
   final FirestoreService _firestore;
   final PromotionService _promotionService;
   final AdService _adService;
   final GroupJoinValidator _joinValidator;
+  final GroupProvider _groupProvider; // ✅ جديد
 
   HomeProvider({
     required FirestoreService firestore,
     required PromotionService promotionService,
     required AdService adService,
     required GroupJoinValidator joinValidator,
-  }) : _firestore = firestore,
+    required GroupProvider groupProvider, // ✅ جديد
+  })  : _firestore = firestore,
         _promotionService = promotionService,
         _adService = adService,
-        _joinValidator = joinValidator;
+        _joinValidator = joinValidator,
+        _groupProvider = groupProvider;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -42,6 +52,9 @@ class HomeProvider extends ChangeNotifier {
 
   List<GroupModel> _suggestedGroups = [];
   List<GroupModel> get suggestedGroups => _suggestedGroups;
+
+  // ✅ القائمة الموحدة الخام القادمة من الـ Stream الحي (founded + joined)
+  List<GroupModel> _allUserGroups = [];
 
   List<GroupModel> _myGroups = [];
   List<GroupModel> get myGroups => _myGroups;
@@ -56,6 +69,7 @@ class HomeProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
 
   StreamSubscription? _promotedSub;
+  StreamSubscription<List<GroupModel>>? _userGroupsSub; // ✅ جديد
 
   Future<void> initialize({required UserModel currentUser}) async {
     _setLoading(true);
@@ -66,11 +80,32 @@ class HomeProvider extends ChangeNotifier {
       await _loadPromotedGroupsAndWait();
 
       _setLoading(false);
-      _loadUserGroups(currentUser.id);
+
+      // ✅✅✅ الفرق الجوهري: بدل _loadUserGroups() (قراءة واحدة)
+      // نشترك بالـ Stream الحي مرة واحدة فقط ونتركه يحدّث القوائم تلقائياً للأبد
+      _listenToUserGroups(currentUser.id);
     } catch (e) {
       debugPrint("Initialization error: $e");
       _setLoading(false);
     }
+  }
+
+  // ✅✅✅ جديد: الاشتراك الدائم في تدفق المجموعات الحي
+  void _listenToUserGroups(String userId) {
+    _userGroupsSub?.cancel(); // تجنب الاشتراك المزدوج عند استدعاء initialize مرة أخرى
+
+    _userGroupsSub =
+        _groupProvider.streamUserGroups(userId: userId).listen((allGroups) {
+      _allUserGroups = allGroups;
+
+      // ✅ الترتيب جاهز بالفعل من GroupProvider، فقط نفصل founded عن joined
+      _myGroups = _groupProvider.filterFounded(allGroups, userId);
+      _joinedGroups = _groupProvider.filterJoined(allGroups, userId);
+
+      notifyListeners();
+    }, onError: (e) {
+      debugPrint("❌ Error listening to user groups stream: $e");
+    });
   }
 
   Future<void> _loadPromotedGroupsAndWait() async {
@@ -124,63 +159,6 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint("Error loading suggested groups: $e");
-    }
-  }
-
-  Future<void> _loadUserGroups(String userId) async {
-    try {
-      // ✅ المجموعات التي أنشأتها - بدون orderBy لتجنب مشكلة الـ index
-      final myGroupsQuery = await _firestore.getCollection(
-        path: FirestorePaths.groups,
-        query: _firestore.buildQuery(
-          path: FirestorePaths.groups,
-          conditions: [QueryCondition(field: 'founderId', isEqualTo: userId)],
-        ),
-      );
-
-      _myGroups = myGroupsQuery.docs
-          .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
-          .toList();
-
-      // ترتيب في الذاكرة حسب آخر رسالة (أو تاريخ الإنشاء)
-      _myGroups.sort((a, b) {
-        final aTime = a.lastMessageAt ?? a.createdAt;
-        final bTime = b.lastMessageAt ?? b.createdAt;
-        return bTime.compareTo(aTime);
-      });
-      
-      notifyListeners();
-
-      // ✅ المجموعات المنضم لها
-      final List<GroupModel> joined = [];
-      final allGroupsSnapshot =
-          await _firestore.getCollection(path: FirestorePaths.groups);
-
-      for (var doc in allGroupsSnapshot.docs) {
-        if (doc.data()['founderId'] != userId) {
-          final memberDoc = await _firestore.getDocument(
-            path: FirestorePaths.groupMembers(doc.id),
-            docId: userId,
-          );
-
-          if (memberDoc != null) {
-            joined.add(GroupModel.fromMap(doc.id, doc.data()));
-          }
-        }
-      }
-
-      // ترتيب حسب آخر رسالة
-      joined.sort((a, b) {
-        final aTime = a.lastMessageAt ?? a.createdAt;
-        final bTime = b.lastMessageAt ?? b.createdAt;
-        return bTime.compareTo(aTime);
-      });
-
-      _joinedGroups = joined;
-      notifyListeners();
-
-    } catch (e) {
-      debugPrint("Error loading user groups: $e");
     }
   }
 
@@ -334,8 +312,14 @@ class HomeProvider extends ChangeNotifier {
               g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
 
+  // ✅ يبقى موجوداً فقط لتحديث promoted/suggested عند السحب اليدوي
+  // (المجموعات الخاصة بالمستخدم أصبحت تتحدث تلقائياً عبر الـ Stream، فلا حاجة لإعادة تشغيلها)
   Future<void> refresh(UserModel user) async {
-    await initialize(currentUser: user);
+    _currentUser = user;
+    await _loadSuggestedGroups(user.id);
+    await _loadPromotedGroupsAndWait();
+    // ملاحظة: لا نعيد _listenToUserGroups هنا عمداً لتجنب اشتراك مكرر؛
+    // الـ Stream القائم أصلاً محدّث لحظياً ولا يحتاج لإعادة تشغيل.
   }
 
   void _setLoading(bool value) {
@@ -346,6 +330,7 @@ class HomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _promotedSub?.cancel();
+    _userGroupsSub?.cancel(); // ✅ جديد
     super.dispose();
   }
 }
