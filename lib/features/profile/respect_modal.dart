@@ -14,11 +14,16 @@ import '../../widgets/loading_widget.dart';
 class RespectModal extends StatefulWidget {
   final UserModel targetUser;
   final String currentUserId;
+  // ✅ جديد: القيمة السابقة لو سبق ومنح currentUserId نقاط احترام لـ targetUser.
+  // null تعني "أول مرة" — أي قيمة أخرى تعني "تعديل" وتفتح الـ Modal مقفولة
+  // ومحددة على هذه القيمة.
+  final int? previousValue;
 
   const RespectModal({
     Key? key,
     required this.targetUser,
     required this.currentUserId,
+    this.previousValue,
   }) : super(key: key);
 
   @override
@@ -26,8 +31,23 @@ class RespectModal extends StatefulWidget {
 }
 
 class _RespectModalState extends State<RespectModal> {
-  int _respectValue = Limits.respectMin;
+  late int _respectValue;
   bool _isSaving = false;
+  // ✅ جديد: true يعني السلايدر مقفول (وضع العرض فقط) — يبدأ مقفولاً
+  // فقط لو كان هناك تقييم سابق؛ في حالة "أول مرة" يكون مفتوحاً من البداية.
+  late bool _isLocked;
+
+  @override
+  void initState() {
+    super.initState();
+    _respectValue = widget.previousValue ?? Limits.respectMin;
+    _isLocked = widget.previousValue != null;
+  }
+
+  // ✅ جديد: الضغط على "تعديل" يفتح السلايدر فقط، بدون أي حفظ أو اتصال بالسيرفر
+  void _unlockForEditing() {
+    setState(() => _isLocked = false);
+  }
 
   Future<void> _saveRespect() async {
     setState(() => _isSaving = true);
@@ -35,32 +55,37 @@ class _RespectModalState extends State<RespectModal> {
     final profileProvider = Provider.of<ProfileProvider>(context, listen: false);
 
     try {
-      // ✅ الاعتماد الكلي على ProfileProvider كما تم الاتفاق عليه
-      final success = await profileProvider.giveRespect(
+      // ✅✅✅ تعديل جوهري: giveRespect يرجع الآن RateUserResult بدل bool.
+      // لا يوجد سيناريو "فشل بسبب تقييم مسبق" بعد الآن — الاستبدال دائماً
+      // ينجح، فالـ catch أصبح مخصصاً فقط للأخطاء الحقيقية (مثل تقييم النفس).
+      final result = await profileProvider.giveRespect(
         fromUserId: widget.currentUserId,
         toUserId: widget.targetUser.id,
         value: _respectValue,
       );
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.primary, // لمسة أرجوانية ملكية
-            content: Text(
-              _respectValue > Limits.fanThreshold
-                  ? 'تم حفظ التقييم. لقد أصبحت الآن من المعجبين بـ ${widget.targetUser.username}! 🌟'
-                  : 'تم منح ${_respectValue} نقاط احترام بنجاح',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        );
-        Navigator.of(context).pop();
+      if (!mounted) return;
+
+      final String message;
+      if (result.becameFan) {
+        message =
+            'تم حفظ التقييم. لقد أصبحت الآن من المعجبين بـ ${widget.targetUser.username}! 🌟';
+      } else if (result.isFirstTime) {
+        message = 'تم منح $_respectValue نقاط احترام بنجاح';
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لقد قمت بتقييم هذا العضو مسبقاً')),
-        );
-        Navigator.of(context).pop();
+        message = 'تم تعديل تقييمك إلى $_respectValue نقاط احترام';
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.primary, // لمسة أرجوانية ملكية
+          content: Text(
+            message,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+      Navigator.of(context).pop();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل حفظ التقييم: ${e.toString()}')),
@@ -104,7 +129,7 @@ class _RespectModalState extends State<RespectModal> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                
+
                 // Header (User Info)
                 Row(
                   children: [
@@ -140,7 +165,8 @@ class _RespectModalState extends State<RespectModal> {
                             ),
                           ),
                           Text(
-                            "منح نقاط التقدير",
+                            // ✅ نص توضيحي يختلف حسب الحالة (أول مرة / تعديل)
+                            _isLocked ? "تقييمك السابق لهذا العضو" : "منح نقاط التقدير",
                             style: TextStyle(
                               fontSize: 13,
                               color: isDark ? Colors.white60 : Colors.black54,
@@ -152,10 +178,14 @@ class _RespectModalState extends State<RespectModal> {
                     // عرض القيمة الحالية بشكل بارز
                     Text(
                       '$_respectValue',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFFFFD700), // اللون الذهبي
+                        // ✅ اللون يصبح رمادياً في وضع القفل لتأكيد أنها قيمة
+                        // "معروضة" لا "قابلة للتعديل الفوري"
+                        color: _isLocked
+                            ? (isDark ? Colors.white38 : Colors.black26)
+                            : const Color(0xFFFFD700),
                       ),
                     ),
                   ],
@@ -175,9 +205,14 @@ class _RespectModalState extends State<RespectModal> {
                 const SizedBox(height: 10),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: AppColors.primary,
-                    inactiveTrackColor: AppColors.primary.withValues(alpha: 0.2),
-                    thumbColor: const Color(0xFFFFD700),
+                    // ✅ ألوان رمادية في وضع القفل لتوضيح أن السلايدر معطّل
+                    activeTrackColor:
+                        _isLocked ? Colors.grey.withValues(alpha: 0.4) : AppColors.primary,
+                    inactiveTrackColor: _isLocked
+                        ? Colors.grey.withValues(alpha: 0.15)
+                        : AppColors.primary.withValues(alpha: 0.2),
+                    thumbColor:
+                        _isLocked ? Colors.grey.withValues(alpha: 0.6) : const Color(0xFFFFD700),
                     overlayColor: const Color(0xFFFFD700).withValues(alpha: 0.1),
                     valueIndicatorColor: AppColors.primary,
                     valueIndicatorTextStyle: const TextStyle(color: Colors.white),
@@ -188,9 +223,14 @@ class _RespectModalState extends State<RespectModal> {
                     max: Limits.respectMax.toDouble(),
                     divisions: Limits.respectMax,
                     label: '$_respectValue',
-                    onChanged: (val) {
-                      setState(() => _respectValue = val.toInt());
-                    },
+                    // ✅✅✅ تعديل جوهري: onChanged يصبح null (يعطّل السلايدر
+                    // فعلياً ويُظهره باللون الرمادي) في وضع القفل، ويعمل
+                    // بشكل طبيعي فقط بعد الضغط على "تعديل"
+                    onChanged: _isLocked
+                        ? null
+                        : (val) {
+                            setState(() => _respectValue = val.toInt());
+                          },
                   ),
                 ),
 
@@ -227,9 +267,11 @@ class _RespectModalState extends State<RespectModal> {
                 const SizedBox(height: 24),
 
                 // Save Button (AppButton الموحد)
+                // ✅✅✅ تعديل جوهري: في وضع القفل، الزر يفتح السلايدر فقط
+                // (بدون أي اتصال بالسيرفر)؛ خارج وضع القفل، الزر يحفظ فعلياً
                 AppButton(
-                  text: 'تأكيد التقييم الملكي',
-                  onPressed: _saveRespect,
+                  text: _isLocked ? 'تعديل' : 'تأكيد التقييم الملكي',
+                  onPressed: _isLocked ? _unlockForEditing : _saveRespect,
                 ),
                 const SizedBox(height: 10),
               ],

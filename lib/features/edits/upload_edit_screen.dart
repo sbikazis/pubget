@@ -31,7 +31,6 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
 
   bool _isPreparingVideo = false;
   bool _videoInitialized = false;
-  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -97,8 +96,10 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     setState(() {});
   }
 
+  // ✅ FIX: الآن نبدأ الرفع بالخلفية ونرجع المستخدم فورًا للصفحة الرئيسية،
+  // بدل انتظاره في هذه الشاشة طول مدة الرفع. الانتقال لعرض الإيديت بعد
+  // الانتهاء يتم تلقائيًا من app.dart (uploadCompletedNotifier).
   Future<void> _submitUpload() async {
-    if (_isSubmitting) return;
     if (_videoFile == null) { _showError('اختر فيديو أولاً'); return; }
     if (_thumbnailFile == null) { _showError('فشل إنشاء الصورة'); return; }
     final animeTitle = _animeTitleController.text.trim();
@@ -106,9 +107,11 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
     final user = context.read<UserProvider>().currentUser;
     if (user == null) { _showError('يجب تسجيل الدخول أولاً'); return; }
     if (_videoController!= null && _videoController!.value.isPlaying) await _videoController!.pause();
-    setState(() => _isSubmitting = true);
 
-    context.read<EditsProvider>().uploadEditInBackground(
+    final editsProvider = context.read<EditsProvider>();
+    final userProvider = context.read<UserProvider>();
+
+    editsProvider.uploadEditInBackground(
       videoFile: _videoFile!,
       thumbnailFile: _thumbnailFile!,
       userId: user.id,
@@ -116,39 +119,23 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
       uploaderAvatar: user.avatarUrl,
       animeTitle: animeTitle,
       caption: _captionController.text.trim(),
-      // ✅ تم التعديل: يستقبل rewarded
+      // ✅ الشاشة هتكون مغلقة وقت ما يتنفذ هذا الكولباك، فقط نحدّث
+      // الرصيد بصمت بدون أي UI محلي هنا (لا SnackBar، لا Navigator).
       onComplete: (edit, rewarded) async {
-        if (!mounted) return;
-
-        // حدّث الرصيد فوراً
-        await context.read<UserProvider>().reloadUser();
-
+        await userProvider.reloadUser();
         if (rewarded) {
-          // أول مرة في اليوم
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ تم النشر! +10 عملات مشعة'),
-              backgroundColor: Color(0xFF00C851),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          debugPrint('✅ تمت مكافأة نشر الإديت +10');
         } else {
-          // مرات تالية - بدون ذكر المكافأة
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ تم النشر بنجاح'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          debugPrint('✅ تم النشر بنجاح (بدون مكافأة إضافية)');
         }
-        Navigator.pop(context);
       },
       onFailed: (error) {
-        if (!mounted) return;
-        setState(() => _isSubmitting = false);
-        _showError(error);
+        debugPrint('❌ فشل نشر الإيديت: $error');
       },
     );
+
+    // ✅ الرجوع الفوري للصفحة الرئيسية بعد بدء الرفع، دون انتظار اكتماله
+    if (mounted) Navigator.pop(context);
   }
 
   void _showError(String message) {
@@ -186,9 +173,9 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 8, right: 8),
             child: TextButton(
-              onPressed: _isSubmitting? null : _submitUpload,
-              style: TextButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.4), disabledForegroundColor: Colors.white54, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-              child: _isSubmitting? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('نشر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              onPressed: _submitUpload,
+              style: TextButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+              child: const Text('نشر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             ),
           ),
         ],
@@ -198,7 +185,7 @@ class _UploadEditScreenState extends State<UploadEditScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           GestureDetector(onTap: _videoInitialized? _togglePlayPause : _pickVideo, child: Container(height: 260, width: double.infinity, decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[700]!)), child: _buildVideoPreview())),
           const SizedBox(height: 24),
-          const Text('اسم الأنمي *', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('إسم الأنمي أو عنوان الإديت  *', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           TextField(controller: _animeTitleController, decoration: InputDecoration(hintText: 'مثال: Attack on Titan', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
           const SizedBox(height: 16),

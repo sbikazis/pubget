@@ -104,7 +104,12 @@ class GameMessageBubble extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      TimeUtils.formatChatTime(message.createdAt),
+                      // ✅✅✅ تعديل جوهري: createdAt أصبح DateTime؟ الآن.
+                      // إذا لم يصل وقت السيرفر بعد (رسالة لعبة أُرسلت توّاً)،
+                      // نعرض "الآن" مؤقتاً بدل تمرير null لدالة تتوقع DateTime.
+                      message.createdAt != null
+                          ? TimeUtils.formatChatTime(message.createdAt!)
+                          : 'الآن',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,

@@ -1,5 +1,4 @@
 // lib/app.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -91,8 +90,6 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(
           create: (_) => SettingsProvider()..loadSettings(),
         ),
-        // ✅ تم نقل GroupProvider ليكون قبل HomeProvider مباشرة
-        // (HomeProvider يعتمد على GroupProvider عبر context.read، فيجب أن يُعرَّف أولاً)
         ChangeNotifierProvider(
           create: (context) => GroupProvider(
               firestoreService: context.read<FirestoreService>()),
@@ -103,7 +100,7 @@ class _PubgetAppState extends State<PubgetApp> {
             promotionService: context.read<PromotionService>(),
             adService: context.read<AdService>(),
             joinValidator: context.read<GroupJoinValidator>(),
-            groupProvider: context.read<GroupProvider>(), // ✅ الآن متاح بأمان
+            groupProvider: context.read<GroupProvider>(),
           ),
         ),
         ChangeNotifierProvider(
@@ -137,8 +134,7 @@ class _PubgetAppState extends State<PubgetApp> {
         ),
         ChangeNotifierProxyProvider<UserProvider, StoreProvider>(
           create: (context) => StoreProvider(
-            userProvider:
-                Provider.of<UserProvider>(context, listen: false),
+            userProvider: Provider.of<UserProvider>(context, listen: false),
           ),
           update: (context, userProvider, storeProvider) =>
               StoreProvider(userProvider: userProvider),
@@ -165,6 +161,11 @@ class _PubgetAppState extends State<PubgetApp> {
                 }
               });
               context.read<EditsProvider>().loadSeenIds();
+
+              // ✅ ربط NotificationsProvider بـ EditsProvider
+              context.read<EditsProvider>().setNotificationsProvider(
+                    context.read<NotificationsProvider>(),
+                  );
             });
           }
 
@@ -293,6 +294,23 @@ class _PubgetAppState extends State<PubgetApp> {
               ),
             );
           }
+          break;
+
+        // ✅ إشعار اللايك — يفتح الإيديت مباشرة
+        case NotificationNavType.editLike:
+          if (navData.refId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => EditsScreen(
+                  initialEditId: navData.refId!,
+                ),
+              ),
+            );
+          }
+          break;
+
+        // ✅ إشعار الاحترام — لا يوجد تنقل محدد، نكتفي بفتح الصفحة الرئيسية
+        case NotificationNavType.respectReceived:
           break;
 
         case NotificationNavType.other:
@@ -484,6 +502,10 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
   Widget build(BuildContext context) {
     return Consumer<EditsProvider>(
       builder: (context, editsProvider, _) {
+        final progress = editsProvider.uploadProgress;
+        final progressPercent =
+            (progress * 100).clamp(0, 100).toStringAsFixed(0);
+
         return Stack(
           children: [
             widget.child,
@@ -505,21 +527,33 @@ class _GlobalAppOverlayState extends State<_GlobalAppOverlay> {
                         color: Colors.black87,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                          Row(
+                            children: [
+                              const Icon(Icons.upload_rounded,
+                                  color: Colors.white, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'جاري نشر الإيديت... $progressPercent%',
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 13),
+                              ),
+                            ],
                           ),
-                          SizedBox(width: 12),
-                          Text(
-                            'جاري نشر الإيديت...',
-                            style: TextStyle(
-                                color: Colors.white, fontSize: 13),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: progress > 0 ? progress : null,
+                              minHeight: 4,
+                              backgroundColor: Colors.white24,
+                              valueColor:
+                                  const AlwaysStoppedAnimation<Color>(
+                                      Color(0xFFFFD700)),
+                            ),
                           ),
                         ],
                       ),

@@ -1,24 +1,25 @@
 // lib/models/notification_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// أنواع الإشعارات التي يدعمها النظام
 class NotificationTypes {
-  static const String joinRequest = 'join_request'; // طلب انضمام جديد (يصل للشوغو)
-  static const String requestAccepted = 'request_accepted'; // تم قبولك (يصل للمستخدم)
-  static const String requestRejected = 'request_rejected'; // تم رفضك (يصل للمستخدم)
-  static const String groupDisbanded = 'group_disbanded'; // تفكيك المجموعة من قبل المؤسس
-  static const String comment = 'comment'; // تعليق جديد على إيديت
-  static const String generic = 'generic'; // إشعار عام
+  static const String joinRequest      = 'join_request';
+  static const String requestAccepted  = 'request_accepted';
+  static const String requestRejected  = 'request_rejected';
+  static const String groupDisbanded   = 'group_disbanded';
+  static const String comment          = 'comment';
+  static const String generic          = 'generic';
+  static const String editLike         = 'edit_like';         // ✅ جديد
+  static const String respectReceived  = 'respect_received';  // ✅ جديد
 }
 
 class NotificationModel {
   final String id;
   final String title;
   final String body;
-  final String type; // استخدم NotificationTypes
-  final String? refId; // غالباً سيكون الـ groupId أو editId
-  final String? senderId; // من أرسل الطلب أو من قام بالرد
-  final String? commentId; // ← جديد: ID التعليق للسكرول المباشر
+  final String type;
+  final String? refId;
+  final String? senderId;
+  final String? commentId;
   final DateTime createdAt;
   final bool isRead;
 
@@ -42,7 +43,7 @@ class NotificationModel {
       type: map['type'] ?? NotificationTypes.generic,
       refId: map['refId'],
       senderId: map['senderId'],
-      commentId: map['commentId'], // ← جديد
+      commentId: map['commentId'],
       createdAt: _toDateTime(map['createdAt']),
       isRead: map['isRead'] ?? false,
     );
@@ -55,7 +56,7 @@ class NotificationModel {
       'type': type,
       'refId': refId,
       'senderId': senderId,
-      'commentId': commentId, // ← جديد
+      'commentId': commentId,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
     };

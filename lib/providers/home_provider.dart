@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -15,21 +14,21 @@ import '../core/constants/firestore_paths.dart';
 import '../core/constants/roles.dart';
 import '../core/logic/group_join_validator.dart';
 import '../core/logic/subscription_limits_logic.dart';
-import 'group_provider.dart'; // ✅ جديد: نحتاجه لاستدعاء streamUserGroups
+import 'group_provider.dart';
 
 class HomeProvider extends ChangeNotifier {
   final FirestoreService _firestore;
   final PromotionService _promotionService;
   final AdService _adService;
   final GroupJoinValidator _joinValidator;
-  final GroupProvider _groupProvider; // ✅ جديد
+  final GroupProvider _groupProvider;
 
   HomeProvider({
     required FirestoreService firestore,
     required PromotionService promotionService,
     required AdService adService,
     required GroupJoinValidator joinValidator,
-    required GroupProvider groupProvider, // ✅ جديد
+    required GroupProvider groupProvider,
   })  : _firestore = firestore,
         _promotionService = promotionService,
         _adService = adService,
@@ -48,7 +47,6 @@ class HomeProvider extends ChangeNotifier {
   List<GroupModel> _suggestedGroups = [];
   List<GroupModel> get suggestedGroups => _suggestedGroups;
 
-  // ✅ القائمة الموحدة الخام القادمة من الـ Stream الحي (founded + joined)
   List<GroupModel> _allUserGroups = [];
 
   List<GroupModel> _myGroups = [];
@@ -64,7 +62,7 @@ class HomeProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
 
   StreamSubscription? _promotedSub;
-  StreamSubscription<List<GroupModel>>? _userGroupsSub; // ✅ جديد
+  StreamSubscription<List<GroupModel>>? _userGroupsSub;
 
   Future<void> initialize({required UserModel currentUser}) async {
     _setLoading(true);
@@ -76,8 +74,6 @@ class HomeProvider extends ChangeNotifier {
 
       _setLoading(false);
 
-      // ✅✅✅ الفرق الجوهري: بدل _loadUserGroups() (قراءة واحدة)
-      // نشترك بالـ Stream الحي مرة واحدة فقط ونتركه يحدّث القوائم تلقائياً للأبد
       _listenToUserGroups(currentUser.id);
     } catch (e) {
       debugPrint("Initialization error: $e");
@@ -85,18 +81,14 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  // ✅✅✅ جديد: الاشتراك الدائم في تدفق المجموعات الحي
   void _listenToUserGroups(String userId) {
-    _userGroupsSub?.cancel(); // تجنب الاشتراك المزدوج عند استدعاء initialize مرة أخرى
+    _userGroupsSub?.cancel();
 
     _userGroupsSub =
         _groupProvider.streamUserGroups(userId: userId).listen((allGroups) {
       _allUserGroups = allGroups;
-
-      // ✅ الترتيب جاهز بالفعل من GroupProvider، فقط نفصل founded عن joined
       _myGroups = _groupProvider.filterFounded(allGroups, userId);
       _joinedGroups = _groupProvider.filterJoined(allGroups, userId);
-
       notifyListeners();
     }, onError: (e) {
       debugPrint("❌ Error listening to user groups stream: $e");
@@ -132,20 +124,21 @@ class HomeProvider extends ChangeNotifier {
 
   Future<void> _loadSuggestedGroups(String userId) async {
     try {
+      // ✅ جلب كل المجموعات بدون range query لتجنب مشكلة Composite Index
       final snapshot = await _firestore.getCollection(
         path: FirestorePaths.groups,
         query: _firestore.buildQuery(
           path: FirestorePaths.groups,
-          conditions: [
-            QueryCondition(field: 'membersCount', isGreaterThan: 9),
-            QueryCondition(field: 'membersCount', isLessThan: 80),
-          ],
+          limit: 50,
         ),
       );
 
       final fetchedGroups = snapshot.docs
           .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
           .where((group) =>
+              // ✅ فلترة العدد في الكود بدل Firestore
+              group.membersCount > 9 &&
+              group.membersCount < 80 &&
               group.founderId != userId &&
               !_joinedGroups.any((jg) => jg.id == group.id))
           .toList();
@@ -258,10 +251,8 @@ class HomeProvider extends ChangeNotifier {
         query: _firestore.buildQuery(
           path: FirestorePaths.groups,
           conditions: [
-            QueryCondition(
-                field: 'name', isGreaterThanOrEqualTo: _searchQuery),
-            QueryCondition(
-                field: 'name', isLessThanOrEqualTo: '$_searchQuery\uf8ff'),
+            QueryCondition(field: 'name', isGreaterThanOrEqualTo: _searchQuery),
+            QueryCondition(field: 'name', isLessThanOrEqualTo: '$_searchQuery\uf8ff'),
           ],
           limit: 20,
         ),
@@ -279,10 +270,19 @@ class HomeProvider extends ChangeNotifier {
   }
 
   List<GroupModel> get allDiscoveryGroups {
-    final list = List<GroupModel>.from(_promotedGroups);
+    final now = DateTime.now();
+
+    // ✅ فقط المروجة التي لم تنته صلاحيتها
+    final activePromoted = _promotedGroups.where((g) =>
+      g.promotionExpiresAt == null || g.promotionExpiresAt!.isAfter(now)
+    ).toList();
+
+    final list = List<GroupModel>.from(activePromoted);
+
     for (var suggested in _suggestedGroups) {
       if (!list.any((g) => g.id == suggested.id)) list.add(suggested);
     }
+
     if (_searchQuery.isEmpty) return list;
     return list
         .where((g) => g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
@@ -307,14 +307,10 @@ class HomeProvider extends ChangeNotifier {
               g.name.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
 
-  // ✅ يبقى موجوداً فقط لتحديث promoted/suggested عند السحب اليدوي
-  // (المجموعات الخاصة بالمستخدم أصبحت تتحدث تلقائياً عبر الـ Stream، فلا حاجة لإعادة تشغيلها)
   Future<void> refresh(UserModel user) async {
     _currentUser = user;
     await _loadSuggestedGroups(user.id);
     await _loadPromotedGroupsAndWait();
-    // ملاحظة: لا نعيد _listenToUserGroups هنا عمداً لتجنب اشتراك مكرر؛
-    // الـ Stream القائم أصلاً محدّث لحظياً ولا يحتاج لإعادة تشغيل.
   }
 
   void _setLoading(bool value) {
@@ -325,7 +321,7 @@ class HomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _promotedSub?.cancel();
-    _userGroupsSub?.cancel(); // ✅ جديد
+    _userGroupsSub?.cancel();
     super.dispose();
   }
 }

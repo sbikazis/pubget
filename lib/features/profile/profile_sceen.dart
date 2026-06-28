@@ -94,6 +94,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ✅✅✅ تعديل جوهري: قبل فتح RespectModal، نجيب القيمة السابقة (إن وجدت)
+  // عبر ProfileProvider.getPreviousRespectValue، لكي تفتح الـ Modal بحالتها
+  // الصحيحة من البداية (مقفولة ومحددة على القيمة السابقة لو سبق التقييم،
+  // أو مفتوحة من الصفر لو أول مرة) — بدلاً من فتحها دائماً بحالة افتراضية.
+  Future<void> _openRespectModal(
+    BuildContext context,
+    UserModel targetUser,
+    String currentUserId,
+  ) async {
+    final profileProvider =
+        Provider.of<ProfileProvider>(context, listen: false);
+
+    final previousValue = await profileProvider.getPreviousRespectValue(
+      fromUserId: currentUserId,
+      toUserId: targetUser.id,
+    );
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => RespectModal(
+        targetUser: targetUser,
+        currentUserId: currentUserId,
+        previousValue: previousValue,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profileProvider = Provider.of<ProfileProvider>(context);
@@ -283,20 +314,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 16),
 
+              // ✅✅✅ تعديل جوهري: onPressed أصبح async ويستدعي _openRespectModal
+              // اللي بيجيب previousValue أولاً قبل فتح الـ Modal
               if (!isMe && currentUserId != null) ...[
                 const Divider(),
                 AppButton(
                   text: 'امنح نقاط تقدير للعضو 🌟',
                   onPressed: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => RespectModal(
-                        targetUser: user,
-                        currentUserId: currentUserId,
-                      ),
-                    ); 
+                    _openRespectModal(context, user, currentUserId);
                   },
                 ),
                 const SizedBox(height: 10),

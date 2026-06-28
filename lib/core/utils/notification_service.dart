@@ -11,6 +11,8 @@ enum NotificationNavType {
   joinRequest,
   requestAccepted,
   comment,
+  editLike,        // ✅ جديد
+  respectReceived, // ✅ جديد
   other,
 }
 
@@ -19,14 +21,14 @@ class NotificationNavData {
   final String? refId;
   final String? senderId;
   final String? commentId;
-  final String? messageId; // ✅ جديد
+  final String? messageId;
 
   const NotificationNavData({
     required this.type,
     this.refId,
     this.senderId,
     this.commentId,
-    this.messageId, // ✅ جديد
+    this.messageId,
   });
 }
 
@@ -86,7 +88,8 @@ class NotificationService {
       sound: false,
     );
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _localNotifications.initialize(
@@ -230,13 +233,12 @@ class NotificationService {
     );
   }
 
-  // ✅ payload يحتوي الآن على 5 حقول: type|refId|senderId|commentId|messageId
   String _buildPayload(Map<String, dynamic> data) {
     final type      = data['type']      ?? '';
     final refId     = data['refId']     ?? '';
     final senderId  = data['senderId']  ?? '';
     final commentId = data['commentId'] ?? '';
-    final messageId = data['messageId'] ?? ''; // ✅ جديد
+    final messageId = data['messageId'] ?? '';
     return '$type|$refId|$senderId|$commentId|$messageId';
   }
 
@@ -246,14 +248,14 @@ class NotificationService {
     final refId     = parts.length > 1 ? parts[1] : null;
     final senderId  = parts.length > 2 ? parts[2] : null;
     final commentId = parts.length > 3 ? parts[3] : null;
-    final messageId = parts.length > 4 ? parts[4] : null; // ✅ جديد
+    final messageId = parts.length > 4 ? parts[4] : null;
 
     return NotificationNavData(
       type:      _navTypeFromString(type),
       refId:     (refId?.isEmpty == true)     ? null : refId,
       senderId:  (senderId?.isEmpty == true)  ? null : senderId,
       commentId: (commentId?.isEmpty == true) ? null : commentId,
-      messageId: (messageId?.isEmpty == true) ? null : messageId, // ✅ جديد
+      messageId: (messageId?.isEmpty == true) ? null : messageId,
     );
   }
 
@@ -295,7 +297,7 @@ class NotificationService {
       refId:     message.data['refId'],
       senderId:  message.data['senderId'],
       commentId: message.data['commentId'],
-      messageId: message.data['messageId'], // ✅ جديد
+      messageId: message.data['messageId'],
     );
     _navigate(navData);
   }
@@ -308,6 +310,7 @@ class NotificationService {
     }
   }
 
+  // ✅ إضافة edit_like و respect_received
   NotificationNavType _navTypeFromString(String type) {
     switch (type) {
       case 'group_chat':       return NotificationNavType.groupChat;
@@ -315,6 +318,8 @@ class NotificationService {
       case 'join_request':     return NotificationNavType.joinRequest;
       case 'request_accepted': return NotificationNavType.requestAccepted;
       case 'comment':          return NotificationNavType.comment;
+      case 'edit_like':        return NotificationNavType.editLike;
+      case 'respect_received': return NotificationNavType.respectReceived;
       default:                 return NotificationNavType.other;
     }
   }

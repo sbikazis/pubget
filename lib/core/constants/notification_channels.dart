@@ -66,8 +66,8 @@ class NotificationActions {
 /// أنواع الإشعارات — تطابق قيم الـ type في FCM payload
 /// ══════════════════════════════════════════════════════════════
 
-class NotificationTypes {
-  NotificationTypes._();
+class AppNotificationTypes {
+  AppNotificationTypes._();
 
   // ── رسائل ──────────────────────────────────────────────
   /// رسالة في دردشة مجموعة

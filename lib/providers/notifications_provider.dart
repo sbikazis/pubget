@@ -1,10 +1,9 @@
 // lib/providers/notifications_provider.dart
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../models/notification_model.dart' hide NotificationTypes;
+import 'package:pubget/models/notification_model.dart';
 import '../services/firebase/firestore_service.dart';
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/notification_channels.dart';
@@ -20,7 +19,6 @@ class NotificationsProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  // ✅ لمنع تسجيل listenToTokenRefresh أكثر من مرة
   bool _tokenRefreshListening = false;
 
   StreamSubscription? _sub;
@@ -31,23 +29,21 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ تسجيل FCM Token — مع فحوصات صحيحة
+  // تسجيل FCM Token
   // =========================================================
   Future<void> registerToken(String userId) async {
-    // ✅ فحص: userId يجب ألا يكون فارغاً
     if (userId.trim().isEmpty) {
       debugPrint('⚠️ registerToken called with empty userId — skipped');
       return;
     }
 
     try {
-      // ✅ تسجيل listener لتحديث الـ token عند تجديده — مرة واحدة فقط
       if (!_tokenRefreshListening) {
         _tokenRefreshListening = true;
         NotificationService.instance.listenToTokenRefresh((newToken) async {
           try {
             await _firestore.updateDocument(
-              path: FirestorePaths.users, // ✅ مسار صحيح بدل 'Users'
+              path: FirestorePaths.users,
               docId: userId,
               data: {
                 'fcmToken': newToken,
@@ -61,7 +57,6 @@ class NotificationsProvider extends ChangeNotifier {
         });
       }
 
-      // ✅ محاولة جلب الـ token مع retry
       String? token;
       for (int i = 0; i < 3; i++) {
         token = await NotificationService.instance.getToken();
@@ -75,9 +70,8 @@ class NotificationsProvider extends ChangeNotifier {
         return;
       }
 
-      // ✅ حفظ الـ token في المسار الصحيح
       await _firestore.updateDocument(
-        path: FirestorePaths.users, // ✅ مسار صحيح
+        path: FirestorePaths.users,
         docId: userId,
         data: {
           'fcmToken': token,
@@ -92,7 +86,7 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ حذف FCM Token عند تسجيل الخروج
+  // حذف FCM Token عند تسجيل الخروج
   // =========================================================
   Future<void> unregisterToken(String userId) async {
     if (userId.trim().isEmpty) return;
@@ -205,7 +199,6 @@ class NotificationsProvider extends ChangeNotifier {
 
       if (unreadDocs.isEmpty) return;
 
-      // ✅ batch مباشر بدون buildQuery المعقّد
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
 
@@ -245,7 +238,7 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // إنشاء إشعار تعليق جديد
+  // إشعار تعليق جديد
   // =========================================================
   Future<void> createCommentNotification({
     required String toUserId,
@@ -255,7 +248,7 @@ class NotificationsProvider extends ChangeNotifier {
     required String commentText,
     required String commentId,
   }) async {
-    if (toUserId == fromUserId) return; // ✅ لا ترسل إشعاراً لنفسك
+    if (toUserId == fromUserId) return;
 
     try {
       final notification = NotificationModel(
@@ -271,8 +264,7 @@ class NotificationsProvider extends ChangeNotifier {
       );
 
       final path = FirestorePaths.userNotifications(toUserId);
-      final docId =
-          FirebaseFirestore.instance.collection(path).doc().id;
+      final docId = FirebaseFirestore.instance.collection(path).doc().id;
 
       await _firestore.createDocument(
         path: path,
@@ -285,7 +277,84 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ إنشاء إشعار رسالة مجموعة — يُستدعى من chat_provider
+  // ✅ إشعار إعجاب بإيديت
+  // =========================================================
+  Future<void> createLikeNotification({
+    required String toUserId,      // صاحب الإيديت
+    required String fromUserId,    // من أعجب
+    required String fromUsername,
+    required String editId,
+    required String animeTitle,    // عنوان الإيديت للسياق
+  }) async {
+    if (toUserId == fromUserId) return;
+
+    try {
+      final notification = NotificationModel(
+        id: '',
+        title: 'إعجاب جديد ❤️',
+        body: '$fromUsername أعجب بإيديتك "$animeTitle"',
+        type: NotificationTypes.editLike,
+        refId: editId,
+        senderId: fromUserId,
+        createdAt: DateTime.now(),
+        isRead: false,
+      );
+
+      final path = FirestorePaths.userNotifications(toUserId);
+      final docId = FirebaseFirestore.instance.collection(path).doc().id;
+
+      await _firestore.createDocument(
+        path: path,
+        docId: docId,
+        data: notification.toMap(),
+      );
+
+      debugPrint('✅ Like notification sent to $toUserId');
+    } catch (e) {
+      debugPrint('❌ createLikeNotification failed: $e');
+    }
+  }
+
+  // =========================================================
+  // ✅ إشعار منح نقاط احترام
+  // =========================================================
+  Future<void> createRespectNotification({
+    required String toUserId,      // من استقبل الاحترام
+    required String fromUserId,    // من منح الاحترام
+    required String fromUsername,
+    required int respectValue,
+  }) async {
+    if (toUserId == fromUserId) return;
+
+    try {
+      final notification = NotificationModel(
+        id: '',
+        title: 'نقاط احترام جديدة ⭐',
+        body: '$fromUsername منحك $respectValue نقطة احترام',
+        type: NotificationTypes.respectReceived,
+        refId: toUserId,
+        senderId: fromUserId,
+        createdAt: DateTime.now(),
+        isRead: false,
+      );
+
+      final path = FirestorePaths.userNotifications(toUserId);
+      final docId = FirebaseFirestore.instance.collection(path).doc().id;
+
+      await _firestore.createDocument(
+        path: path,
+        docId: docId,
+        data: notification.toMap(),
+      );
+
+      debugPrint('✅ Respect notification sent to $toUserId');
+    } catch (e) {
+      debugPrint('❌ createRespectNotification failed: $e');
+    }
+  }
+
+  // =========================================================
+  // إشعار رسالة مجموعة
   // =========================================================
   Future<void> createGroupMessageNotification({
     required String toUserId,
@@ -302,7 +371,7 @@ class NotificationsProvider extends ChangeNotifier {
         id: '',
         title: groupName,
         body: '$fromUsername: $messageText',
-        type: NotificationTypes.groupChat,
+        type: AppNotificationTypes.groupChat,
         refId: groupId,
         senderId: fromUserId,
         createdAt: DateTime.now(),
@@ -310,8 +379,7 @@ class NotificationsProvider extends ChangeNotifier {
       );
 
       final path = FirestorePaths.userNotifications(toUserId);
-      final docId =
-          FirebaseFirestore.instance.collection(path).doc().id;
+      final docId = FirebaseFirestore.instance.collection(path).doc().id;
 
       await _firestore.createDocument(
         path: path,
@@ -324,7 +392,7 @@ class NotificationsProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅ إنشاء إشعار رسالة خاصة — يُستدعى من private_chat_provider
+  // إشعار رسالة خاصة
   // =========================================================
   Future<void> createPrivateMessageNotification({
     required String toUserId,
@@ -340,7 +408,7 @@ class NotificationsProvider extends ChangeNotifier {
         id: '',
         title: fromUsername,
         body: messageText,
-        type: NotificationTypes.privateChat,
+        type: AppNotificationTypes.privateChat,
         refId: chatId,
         senderId: fromUserId,
         createdAt: DateTime.now(),
@@ -348,8 +416,7 @@ class NotificationsProvider extends ChangeNotifier {
       );
 
       final path = FirestorePaths.userNotifications(toUserId);
-      final docId =
-          FirebaseFirestore.instance.collection(path).doc().id;
+      final docId = FirebaseFirestore.instance.collection(path).doc().id;
 
       await _firestore.createDocument(
         path: path,

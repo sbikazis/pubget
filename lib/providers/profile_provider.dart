@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../core/logic/respect_logic.dart';
 
 import '../models/user_model.dart';
 import '../models/respect_model.dart';
@@ -209,7 +210,13 @@ class ProfileProvider extends ChangeNotifier {
   // GIVE RESPECT (تحديث الحالة لضمان التزامن)
   // =========================================================
 
-  Future<bool> giveRespect({
+  /// ✅✅✅ تعديل جوهري: نوع الإرجاع تغيّر من Future<bool> إلى
+  /// Future<RateUserResult>. RespectLogic.rateUser لم يعد يرفض التقييمات
+  /// المكررة بل يستبدلها، فلا يوجد سيناريو "فشل" طبيعي بعد الآن (الاستثناءات
+  /// فقط تُرمى في حالات خاطئة مثل تقييم النفس أو قيمة خارج النطاق). الناتج
+  /// يحمل القيمة الجديدة والقيمة السابقة (إن وُجدت) وحالة "أصبح معجبًا"،
+  /// لتُستخدم في RespectModal لعرض رسالة "أول مرة" أو "تم التعديل" بدقة.
+  Future<RateUserResult> giveRespect({
     required String fromUserId,
     required String toUserId,
     required int value,
@@ -220,16 +227,36 @@ class ProfileProvider extends ChangeNotifier {
       respectValue: value,
     );
 
-    if (result) {
+    // ✅ لو لم تحدث أي كتابة فعلية (نفس القيمة بالضبط)، لا حاجة لإعادة
+    // جلب البروفايل أو إشعار المستمعين — لا شيء تغيّر فعليًا
+    if (!result.isNoOp) {
       // ✅ التعديل المطلوب: تحديث البيانات يدوياً لضمان الانعكاس الفوري في الواجهة
       // نقوم بجلب بيانات المستخدم المستهدف مرة أخرى للتأكد من تحديث العدادات (Respect/Fans)
-      await getUserProfile(toUserId); 
-      
+      await getUserProfile(toUserId);
+
       // إشعار التطبيق بأن البيانات تغيرت لإعادة بناء صفحة البروفايل
       notifyListeners();
     }
 
     return result;
+  }
+
+  // =========================================================
+  // GET PREVIOUS RESPECT VALUE (جديد)
+  // =========================================================
+
+  /// ✅ جديد: wrapper بسيط لجلب القيمة السابقة (إن وجدت) فقط — بدون أي
+  /// كتابة — يُستخدم قبل فتح RespectModal من massage_bubble.dart أو
+  /// profile_screen.dart لتحديد إن كان يجب فتح الـ Modal في "وضع القفل"
+  /// (سلايدر محدد على القيمة السابقة وزر "تعديل") أو في وضعه الافتراضي.
+  Future<int?> getPreviousRespectValue({
+    required String fromUserId,
+    required String toUserId,
+  }) {
+    return _respectLogic.getPreviousRespectValue(
+      fromUserId: fromUserId,
+      toUserId: toUserId,
+    );
   }
 
   // =========================================================

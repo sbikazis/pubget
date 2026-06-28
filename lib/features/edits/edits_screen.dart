@@ -1,10 +1,13 @@
+// lib/features/edits/edits_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../providers/notifications_provider.dart';
 
 import '../profile/profile_sceen.dart';
 import 'edit_player_widget.dart';
@@ -12,11 +15,8 @@ import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 import 'edits_comments_sheet.dart';
-import 'ad_edit_widget.dart'; // ← استدعاء الويدجت الموحد
+import 'ad_edit_widget.dart';
 
-// ─────────────────────────────────────────────────────────────
-// EditsScreen
-// ─────────────────────────────────────────────────────────────
 class EditsScreen extends StatefulWidget {
   final int startIndex;
   final String? initialEditId;
@@ -36,18 +36,27 @@ class EditsScreen extends StatefulWidget {
 }
 
 class _EditsScreenState extends State<EditsScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   late final PageController _pageController;
   int _currentIndex = 0;
-
-  // نتحكم بالسكرول عبر متغير منفصل
   bool _isAdCurrentlyShowing = false;
-
   bool _initialized = false;
   bool _endDialogShown = false;
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
   DateTime? _pageEntryTime;
+
+  // ── حالة الوصف المنبثق
+  bool _showCaption = false;
+
+  // ── حالة زر الاشتراك لكل إيديت (editId → subscribed)
+  final Map<String, bool> _subscribedMap = {};
+  final Map<String, bool> _subscribingMap = {};
+
+  // ── AnimationController لزر الاشتراك
+  late final AnimationController _subscribeAnimCtrl;
+  late final Animation<double> _subscribeScale;
+  late final Animation<double> _subscribeGlow;
 
   @override
   bool get wantKeepAlive => true;
@@ -58,13 +67,38 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
+    // ── إعداد أنيميشن زر الاشتراك
+    _subscribeAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _subscribeScale = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 1.35)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 40),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.35, end: 0.9)
+              .chain(CurveTween(curve: Curves.easeIn)),
+          weight: 30),
+      TweenSequenceItem(
+          tween: Tween(begin: 0.9, end: 1.0)
+              .chain(CurveTween(curve: Curves.elasticOut)),
+          weight: 30),
+    ]).animate(_subscribeAnimCtrl);
+
+    _subscribeGlow = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+          parent: _subscribeAnimCtrl,
+          curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
+    );
+
     if (widget.initialEditId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final provider = context.read<EditsProvider>();
 
-        EditModel? targetEdit =
-            provider.getEditById(widget.initialEditId!);
+        EditModel? targetEdit = provider.getEditById(widget.initialEditId!);
         targetEdit ??= await provider.fetchEditById(widget.initialEditId!);
 
         if (targetEdit != null && mounted) {
@@ -78,8 +112,7 @@ class _EditsScreenState extends State<EditsScreen>
             setState(() => _currentIndex = 0);
           }
 
-          if (widget.autoOpenComments ||
-              widget.initialCommentId != null) {
+          if (widget.autoOpenComments || widget.initialCommentId != null) {
             await Future.delayed(const Duration(milliseconds: 400));
             if (mounted) {
               _openComments(targetEdit.id,
@@ -106,7 +139,49 @@ class _EditsScreenState extends State<EditsScreen>
   @override
   void dispose() {
     _pageController.dispose();
+    _subscribeAnimCtrl.dispose();
     super.dispose();
+  }
+
+  // ── التحقق إذا كان المستخدم مشتركاً مسبقاً
+  Future<void> _checkSubscription(String uploaderId, String currentUserId) async {
+    if (_subscribedMap.containsKey(uploaderId)) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('respects')
+          .doc('${currentUserId}_$uploaderId')
+          .get();
+      if (mounted) {
+        setState(() => _subscribedMap[uploaderId] = doc.exists);
+      }
+    } catch (_) {}
+  }
+
+  // ── زر الاشتراك
+  Future<void> _onSubscribe(EditModel edit, String currentUserId) async {
+    if (_subscribingMap[edit.uploaderId] == true) return;
+    if (_subscribedMap[edit.uploaderId] == true) return;
+
+    setState(() => _subscribingMap[edit.uploaderId] = true);
+
+    // تشغيل الأنيميشن
+    _subscribeAnimCtrl.forward(from: 0.0);
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final username = currentUser?.displayName ?? 'مستخدم';
+
+    final success = await context.read<EditsProvider>().subscribeToUploader(
+          uploaderId: edit.uploaderId,
+          currentUserId: currentUserId,
+          currentUsername: username,
+        );
+
+    if (mounted) {
+      setState(() {
+        _subscribingMap[edit.uploaderId] = false;
+        if (success) _subscribedMap[edit.uploaderId] = true;
+      });
+    }
   }
 
   bool _isAdSlot(int index) {
@@ -132,8 +207,7 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   void _openComments(String editId, {String? commentId}) {
-    final currentUserId =
-        FirebaseAuth.instance.currentUser?.uid ?? '';
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -155,8 +229,7 @@ class _EditsScreenState extends State<EditsScreen>
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: Color(0xFF1A1A1A),
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -174,8 +247,7 @@ class _EditsScreenState extends State<EditsScreen>
               const Text(
                 'شاهدت جميع الإيديتات المتاحة\nسنعرض لك المزيد عندما يُضاف محتوى جديد',
                 textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: Colors.white54, fontSize: 13),
+                style: TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 20),
               Row(
@@ -187,11 +259,8 @@ class _EditsScreenState extends State<EditsScreen>
                         setState(() => _endDialogShown = false);
                         context.read<EditsProvider>().resetSeen();
                         final uid =
-                            FirebaseAuth.instance.currentUser?.uid ??
-                                '';
-                        context
-                            .read<EditsProvider>()
-                            .loadSmartFeed(uid);
+                            FirebaseAuth.instance.currentUser?.uid ?? '';
+                        context.read<EditsProvider>().loadSmartFeed(uid);
                       },
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.white24),
@@ -210,8 +279,7 @@ class _EditsScreenState extends State<EditsScreen>
                         Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) =>
-                                    const UploadEditScreen()));
+                                builder: (_) => const UploadEditScreen()));
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepPurple,
@@ -245,15 +313,239 @@ class _EditsScreenState extends State<EditsScreen>
     }
   }
 
+  // ── ويدجت معلومات الإيديت (عنوان + وصف + اشتراك)
+  Widget _buildEditInfo(EditModel edit, String currentUserId) {
+    final isOwner = edit.uploaderId == currentUserId;
+    final isSubscribed = _subscribedMap[edit.uploaderId] ?? false;
+    final isSubscribing = _subscribingMap[edit.uploaderId] ?? false;
+
+    // التحقق من الاشتراك عند أول ظهور
+    if (!_subscribedMap.containsKey(edit.uploaderId)) {
+      _checkSubscription(edit.uploaderId, currentUserId);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── صف المستخدم
+        GestureDetector(
+          onTap: () => _openProfile(edit.uploaderId),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundImage: edit.uploaderAvatar.isNotEmpty
+                    ? NetworkImage(edit.uploaderAvatar)
+                    : null,
+                child: edit.uploaderAvatar.isEmpty
+                    ? const Icon(Icons.person, size: 18)
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                edit.uploaderName,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── صف العنوان + زر الوصف
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // العنوان بدون راية — نص مباشر مع خط سفلي خفيف
+            Flexible(
+              child: Text(
+                edit.animeTitle,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black54,
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+
+            // ── زر الوصف الاختياري (يظهر فقط إذا كان هناك وصف)
+            if (edit.caption.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => setState(() => _showCaption = !_showCaption),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _showCaption
+                        ? Colors.white24
+                        : Colors.white10,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _showCaption
+                          ? Colors.white38
+                          : Colors.white12,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _showCaption
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        color: Colors.white70,
+                        size: 13,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        _showCaption ? 'إخفاء' : 'الوصف',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+
+        // ── الوصف المنبثق بأنيميشن
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _showCaption && edit.caption.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      edit.caption,
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12.5),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+
+        const SizedBox(height: 10),
+
+        // ── زر الاشتراك (لا يظهر لصاحب الإيديت)
+        if (!isOwner)
+          AnimatedBuilder(
+            animation: _subscribeAnimCtrl,
+            builder: (_, __) {
+              return Transform.scale(
+                scale: _subscribeScale.value,
+                child: GestureDetector(
+                  onTap: isSubscribed || isSubscribing
+                      ? null
+                      : () => _onSubscribe(edit, currentUserId),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: isSubscribed
+                          ? null
+                          : const LinearGradient(
+                              colors: [
+                                Color(0xFF7C3AED),
+                                Color(0xFF4F46E5),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                      color: isSubscribed ? Colors.white12 : null,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSubscribed
+                            ? Colors.white24
+                            : Colors.transparent,
+                        width: 1,
+                      ),
+                      boxShadow: isSubscribed
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: Colors.deepPurple.withOpacity(
+                                    0.45 * _subscribeGlow.value),
+                                blurRadius: 16,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                    ),
+                    child: isSubscribing
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSubscribed
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                                color: isSubscribed
+                                    ? Colors.pinkAccent
+                                    : Colors.white,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                isSubscribed ? 'مشترك ✓' : 'اشتراك',
+                                style: TextStyle(
+                                  color: isSubscribed
+                                      ? Colors.white60
+                                      : Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final editsProvider = context.watch<EditsProvider>();
     final userProvider = context.watch<UserProvider>();
-    final currentUserId =
-        FirebaseAuth.instance.currentUser?.uid ?? '';
-    final isPremium =
-        userProvider.currentUser?.isPremium ?? false;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isPremium = userProvider.currentUser?.isPremium ?? false;
     final edits = editsProvider.sessionFeed;
     final totalCount =
         isPremium ? edits.length : _totalVisualCount(edits.length);
@@ -276,8 +568,8 @@ class _EditsScreenState extends State<EditsScreen>
                   Text(
                     'حدث خطأ:\n${editsProvider.error}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 13),
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -304,8 +596,7 @@ class _EditsScreenState extends State<EditsScreen>
                   Text(
                     'لا يوجد إيديتات بعد\nكن أول من ينشر!',
                     textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: Colors.white54, fontSize: 16),
+                    style: TextStyle(color: Colors.white54, fontSize: 16),
                   ),
                 ],
               ),
@@ -316,13 +607,13 @@ class _EditsScreenState extends State<EditsScreen>
               controller: _pageController,
               scrollDirection: Axis.vertical,
               itemCount: totalCount,
-
-              // السكرول يُمنع بناءً على _isAdCurrentlyShowing
               physics: _isAdCurrentlyShowing
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
-
               onPageChanged: (index) {
+                // ── إعادة تعيين حالة الوصف عند تغيير الإيديت
+                if (_showCaption) setState(() => _showCaption = false);
+
                 final entryTime = _pageEntryTime;
                 if (entryTime != null) {
                   final secondsSpent =
@@ -362,24 +653,19 @@ class _EditsScreenState extends State<EditsScreen>
                 editsProvider.incrementViews(edit.id, currentUserId);
                 _checkEndOfFeed(edits, index, isPremium);
               },
-
               itemBuilder: (context, index) {
                 if (!isPremium && _isAdSlot(index)) {
                   if (_finishedAdIndexes.contains(index)) {
                     return const SizedBox.shrink();
                   }
-
-                  // ← هنا نستخدم الويدجت الموحد
                   return AdEditWidget(
                     onAdFinished: () {
                       if (!mounted) return;
                       if (_finishedAdIndexes.contains(index)) return;
-
                       setState(() {
                         _finishedAdIndexes.add(index);
                         _isAdCurrentlyShowing = false;
                       });
-
                       if (_currentIndex == index &&
                           _pageController.hasClients) {
                         _pageController.nextPage(
@@ -403,6 +689,7 @@ class _EditsScreenState extends State<EditsScreen>
                 return Stack(
                   key: ValueKey(edit.id),
                   children: [
+                    // ── مشغل الفيديو
                     EditPlayerWidget(
                       key: ValueKey(edit.id),
                       edit: edit,
@@ -416,83 +703,31 @@ class _EditsScreenState extends State<EditsScreen>
                         );
                       },
                     ),
+
+                    // ── معلومات الإيديت (عنوان + وصف + اشتراك)
                     Positioned(
-                      bottom: 80,
+                      bottom: 90,
                       left: 16,
-                      right: 80,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () =>
-                                _openProfile(edit.uploaderId),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundImage:
-                                      edit.uploaderAvatar.isNotEmpty
-                                          ? NetworkImage(
-                                              edit.uploaderAvatar)
-                                          : null,
-                                  child: edit.uploaderAvatar.isEmpty
-                                      ? const Icon(Icons.person,
-                                          size: 18)
-                                      : null,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  edit.uploaderName,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white12,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '🎌 ${edit.animeTitle}',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          if (edit.caption.isNotEmpty)
-                            Text(
-                              edit.caption,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 13),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      ),
+                      right: 88,
+                      child: _buildEditInfo(edit, currentUserId),
                     ),
+
+                    // ── شريط الأفعال (لايك، كومنت، شير، مشاهدات)
                     Positioned(
                       bottom: 100,
                       right: 12,
                       child: EditActionsBar(
                         edit: edit,
                         currentUserId: currentUserId,
-                        onLike: () => editsProvider.toggleLike(
-                            edit.id, currentUserId),
+                        onLike: () =>
+                            editsProvider.toggleLike(edit.id, currentUserId),
                         onComment: () => _openComments(edit.id),
                         onShare: () {
                           showModalBottomSheet(
                             context: context,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
-                            builder: (_) =>
-                                EditShareSheet(edit: edit),
+                            builder: (_) => EditShareSheet(edit: edit),
                           );
                         },
                       ),
@@ -502,6 +737,7 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
+          // ── زر إضافة إيديت
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             right: 16,
@@ -516,8 +752,7 @@ class _EditsScreenState extends State<EditsScreen>
                   color: Colors.white12,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.add,
-                    color: Colors.white, size: 28),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
           ),

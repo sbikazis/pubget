@@ -87,6 +87,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     super.dispose();
   }
 
+  // ✅ لم تحتاج تعديل جوهري — كانت تستخدم serverTimestamp() بالفعل عبر
+  // PrivateChatProvider.updatePrivateLastRead بشكل صحيح من الأساس.
   void _updatePrivateReadStatus() {
     try {
       if (!mounted) return;

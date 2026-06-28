@@ -21,6 +21,7 @@ import 'package:pubget/providers/chat_provider.dart';
 import 'package:pubget/providers/private_chat_provider.dart';
 import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/providers/edits_provider.dart';
+import 'package:pubget/providers/profile_provider.dart'; // ✅ جديد
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/edits_screen.dart';
@@ -66,11 +67,16 @@ class MessageBubble extends StatelessWidget {
     return Icons.done;
   }
 
+  // ✅✅✅ تعديل جوهري: createdAt أصبح DateTime؟ الآن.
+  // إذا لم يصل وقت السيرفر بعد (الرسالة أُرسلت منذ لحظات فقط ولم يُحدّث
+  // الـ snapshot برقم Timestamp حقيقي)، نعتبرها "حديثة جداً جداً" بالتعريف،
+  // فتبقى قابلة للتعديل دون الحاجة لحساب أي فرق وقت.
   bool get _canEdit =>
       isMe &&
       message.type == MessageType.text &&
-      !TimeUtils.hasMinutesPassed(
-          message.createdAt, Limits.editMessageWindowMinutes);
+      (message.createdAt == null ||
+          !TimeUtils.hasMinutesPassed(
+              message.createdAt!, Limits.editMessageWindowMinutes));
 
   Map<String, List<String>> _groupReactions() {
     final map = <String, List<String>>{};
@@ -429,7 +435,14 @@ class MessageBubble extends StatelessWidget {
                                 const SizedBox(width: 4),
                               ],
                               Text(
-                                TimeUtils.formatChatTime(message.createdAt),
+                                // ✅✅✅ تعديل جوهري: التعامل مع createdAt == null
+                                // (الرسالة أُرسلت توّاً ولم يصل وقت السيرفر بعد).
+                                // نعرض "الآن" مؤقتاً؛ بعد جزء من الثانية يصل
+                                // التحديث الحقيقي من Firestore ويعاد البناء فوراً.
+                                message.createdAt != null
+                                    ? TimeUtils.formatChatTime(
+                                        message.createdAt!)
+                                    : 'الآن',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
@@ -584,7 +597,10 @@ class MessageBubble extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      TimeUtils.formatChatTime(message.createdAt),
+                      // ✅✅✅ تعديل جوهري: نفس معاملة null هنا أيضاً
+                      message.createdAt != null
+                          ? TimeUtils.formatChatTime(message.createdAt!)
+                          : 'الآن',
                       style: TextStyle(
                         fontSize: 10,
                         color: isDark ? Colors.white38 : Colors.black38,
@@ -638,11 +654,14 @@ class MessageBubble extends StatelessWidget {
                         .currentUser
                         ?.id;
                 if (userId == null) return;
+                // ✅✅✅ تعديل جوهري: هذا توقيت محلي فقط لأرشفة ملصق محفوظ
+                // (لا تأثير له على ترتيب الرسائل أو حالة القراءة)، فاستخدام
+                // DateTime.now() هنا كـ fallback آمن ومقبول تماماً.
                 final sticker = StickerModel(
                   id: message.id,
                   creatorId: message.senderId,
                   imageUrl: message.mediaUrl!,
-                  createdAt: message.createdAt,
+                  createdAt: message.createdAt ?? DateTime.now(),
                 );
                 await Provider.of<StickerProvider>(context, listen: false)
                     .saveReceivedSticker(userId: userId, sticker: sticker);
@@ -658,6 +677,40 @@ class MessageBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ✅✅✅ تعديل جوهري: استبدال "الملف الشخصي" بـ "منح نقاط الاحترام 🌟"
+  // للطرف الآخر فقط. تنتقل عبر هذه الدالة كل عمليات الجلب اللازمة
+  // (previousValue من ProfileProvider + targetUser من UserProvider) قبل
+  // فتح RespectModal، بحيث تفتح الـ Modal دائماً بحالتها الصحيحة (مقفولة
+  // ومحددة على القيمة السابقة، أو مفتوحة من الصفر لو أول مرة).
+  Future<void> _openRespectModal(BuildContext context) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final profileProvider =
+        Provider.of<ProfileProvider>(context, listen: false);
+    final myId = userProvider.currentUser?.id;
+    if (myId == null) return;
+
+    final targetUser = await userProvider.getUserById(message.senderId);
+    if (targetUser == null) return;
+
+    final previousValue = await profileProvider.getPreviousRespectValue(
+      fromUserId: myId,
+      toUserId: targetUser.id,
+    );
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => RespectModal(
+        targetUser: targetUser,
+        currentUserId: myId,
+        previousValue: previousValue,
       ),
     );
   }
@@ -779,20 +832,16 @@ class MessageBubble extends StatelessWidget {
                 },
               )
             else
+              // ✅✅✅ تعديل جوهري: "الملف الشخصي" → "منح نقاط الاحترام 🌟"
+              // الانتقال للملف الشخصي أصبح من خلال الضغط على الصورة (_buildAvatar)
               ListTile(
-                leading: const Icon(Icons.person_outline,
+                leading: const Icon(Icons.star_outline,
                     color: Color(0xFFFFD700)),
-                title: const Text('الملف الشخصي',
+                title: const Text('منح نقاط الاحترام 🌟',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileScreen(userId: message.senderId),
-                    ),
-                  );
+                  _openRespectModal(context);
                 },
               ),
           ],
@@ -957,27 +1006,22 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ✅✅✅ تعديل جوهري: onTap على الصورة أصبح يفتح ProfileScreen مباشرة
+  // بدل RespectModal (عكس الأدوار المطلوب). منح نقاط الاحترام انتقل إلى
+  // _showOptionsSheet (عبر onLongPress على الرسالة بالكامل).
   Widget _buildAvatar(BuildContext context,
       [bool isGame = false, Color? gameColor]) {
     final String? avatarUrl = sender.displayImageUrl ??
         (message.senderAvatar.isNotEmpty ? message.senderAvatar : null);
     return GestureDetector(
-      onTap: () async {
+      onTap: () {
         if (isMe) return;
-        final userProvider =
-            Provider.of<UserProvider>(context, listen: false);
-        final myId = userProvider.currentUser?.id;
-        final targetUser =
-            await userProvider.getUserById(message.senderId);
-        if (targetUser != null && myId != null) {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => RespectModal(
-                targetUser: targetUser, currentUserId: myId),
-          );
-        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(userId: message.senderId),
+          ),
+        );
       },
       child: CircleAvatar(
         radius: 18,

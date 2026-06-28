@@ -12,7 +12,7 @@ import '../../providers/notifications_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 
-import '../../models/notification_model.dart' hide NotificationTypes;
+import '../../models/notification_model.dart';
 
 import '../groups/group_details_screen.dart';
 import '../groups/join_requests_screen.dart';
@@ -30,7 +30,6 @@ class NotificationsScreen extends StatelessWidget {
     final notificationsProvider = context.read<NotificationsProvider>();
     final user = authProvider.user;
 
-    // ✅ فحص تسجيل الدخول
     if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('الإشعارات')),
@@ -89,7 +88,6 @@ class NotificationsScreen extends StatelessWidget {
                 notification: n,
                 userId: user.id,
                 onTap: () async {
-                  // ✅ تمييز كمقروء أولاً
                   if (!n.isRead) {
                     await notificationsProvider.markAsRead(
                       userId: user.id,
@@ -112,17 +110,13 @@ class NotificationsScreen extends StatelessWidget {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ منطق التنقل — موحَّد مع NotificationTypes الجديد
-  // ══════════════════════════════════════════════════════════
   void _handleNotificationTap(
     BuildContext context, {
     required NotificationModel notification,
   }) {
     switch (notification.type) {
 
-      // ── دردشة مجموعة ────────────────────────────────────
-      case NotificationTypes.groupChat:
+      case AppNotificationTypes.groupChat:
         if (notification.refId != null) {
           Navigator.push(
             context,
@@ -133,8 +127,7 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ── دردشة خاصة ──────────────────────────────────────
-      case NotificationTypes.privateChat:
+      case AppNotificationTypes.privateChat:
         if (notification.refId != null) {
           _navigateToPrivateChat(
             context,
@@ -144,7 +137,6 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ── قبول طلب الانضمام → تفاصيل المجموعة ────────────
       case NotificationTypes.requestAccepted:
         if (notification.refId != null) {
           Navigator.push(
@@ -157,11 +149,9 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ── رفض الطلب — لا يوجد تنقل ───────────────────────
       case NotificationTypes.requestRejected:
         break;
 
-      // ── طلب انضمام → شاشة الطلبات ───────────────────────
       case NotificationTypes.joinRequest:
         if (notification.refId != null) {
           Navigator.push(
@@ -174,11 +164,9 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ── تفكيك المجموعة — لا يوجد تنقل ──────────────────
       case NotificationTypes.groupDisbanded:
         break;
 
-      // ── تعليق على إيديت ─────────────────────────────────
       case NotificationTypes.comment:
         if (notification.refId != null) {
           Navigator.push(
@@ -194,7 +182,24 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ── ترويج / مقترحات → البحث ─────────────────────────
+      // ✅ إعجاب بإيديت — يفتح الإيديت مباشرة
+      case NotificationTypes.editLike:
+        if (notification.refId != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditsScreen(
+                initialEditId: notification.refId!,
+              ),
+            ),
+          );
+        }
+        break;
+
+      // ✅ نقاط احترام — لا يوجد تنقل محدد
+      case NotificationTypes.respectReceived:
+        break;
+
       case 'promotion':
       case 'suggested':
         Navigator.push(
@@ -208,9 +213,6 @@ class NotificationsScreen extends StatelessWidget {
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // ✅ التنقل للدردشة الخاصة مع جلب المستخدم الآخر
-  // ══════════════════════════════════════════════════════════
   Future<void> _navigateToPrivateChat(
     BuildContext context, {
     required String chatId,
@@ -240,7 +242,7 @@ class NotificationsScreen extends StatelessWidget {
           MaterialPageRoute(
             builder: (_) => PrivateChatScreen(
               chatId: chatId,
-              otherUser: otherUser, // ✅ المستخدم الآخر الحقيقي
+              otherUser: otherUser,
             ),
           ),
         );
@@ -252,7 +254,7 @@ class NotificationsScreen extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ✅ Widget منفصل لكل إشعار — أنظف وأسهل للصيانة
+// _NotificationTile
 // ══════════════════════════════════════════════════════════════
 class _NotificationTile extends StatelessWidget {
   final NotificationModel notification;
@@ -303,7 +305,6 @@ class _NotificationTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          // ✅ وقت الإشعار
           Text(
             _formatTime(n.createdAt),
             style: TextStyle(
@@ -321,14 +322,11 @@ class _NotificationTile extends StatelessWidget {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // أيقونة حسب نوع الإشعار
-  // ══════════════════════════════════════════════════════════
   IconData _iconForType(String type) {
     switch (type) {
-      case NotificationTypes.groupChat:
+      case AppNotificationTypes.groupChat:
         return Icons.groups_outlined;
-      case NotificationTypes.privateChat:
+      case AppNotificationTypes.privateChat:
         return Icons.chat_bubble_outline;
       case NotificationTypes.requestAccepted:
         return Icons.verified_user_outlined;
@@ -340,6 +338,12 @@ class _NotificationTile extends StatelessWidget {
         return Icons.group_off_outlined;
       case NotificationTypes.comment:
         return Icons.comment_outlined;
+      // ✅ أيقونة اللايك
+      case NotificationTypes.editLike:
+        return Icons.favorite_outline;
+      // ✅ أيقونة الاحترام
+      case NotificationTypes.respectReceived:
+        return Icons.star_outline;
       case 'promotion':
         return Icons.campaign_outlined;
       default:
@@ -347,9 +351,6 @@ class _NotificationTile extends StatelessWidget {
     }
   }
 
-  // ══════════════════════════════════════════════════════════
-  // تنسيق الوقت
-  // ══════════════════════════════════════════════════════════
   String _formatTime(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);

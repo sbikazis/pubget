@@ -437,6 +437,21 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
+  // ✅✅✅ تعديل جوهري: حل مشكلة "الشخصية تبقى مقفولة للأبد بعد الطرد"
+  //
+  // السبب الجذري السابق (خطآن مجتمعان):
+  //  1. كانت تستخدم characterNameToRelease كـ docId مباشرة بدون أي تطبيع،
+  //     بينما الوثيقة الفعلية محفوظة بمفتاح مُطبَّع عبر _normalizeCharacterKey
+  //     (الكلمات أبجدياً، بدون رموز/مسافات) — فالمسار كان خاطئاً تماماً
+  //     ولم يكن يصل أبداً للوثيقة الصحيحة.
+  //  2. كانت تستخدم .update({'takenBy': null}) بينما حقل الحجز الحقيقي
+  //     اسمه 'userId' (راجع reserveCharacter / acceptJoinRequest) — فالوثيقة
+  //     كانت تبقى موجودة بالكامل، و isCharacterReserved تفحص فقط "هل الوثيقة
+  //     موجودة؟" فتستمر بإرجاع true للأبد.
+  //
+  // الحل: استخدام نفس منطق leaveGroup بالضبط — حساب المفتاح المُطبَّع،
+  // وحذف الوثيقة بالكامل (delete) بدل تحديث حقل غير موجود.
+  // =========================================================
   Future<void> removeMember({
     required String groupId,
     required String userId,
@@ -462,12 +477,16 @@ class GroupProvider extends ChangeNotifier {
 
       await memberRef.delete();
 
+      // ✅✅✅ التصحيح الجوهري هنا
       if (characterNameToRelease != null &&
           characterNameToRelease.isNotEmpty) {
-        await firestore
+        final charKey = _normalizeCharacterKey(characterNameToRelease);
+        final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
-            .doc(characterNameToRelease)
-            .update({'takenBy': null});
+            .doc(charKey);
+        await charRef.delete();
+        debugPrint(
+            "♻️ Released character via Kick (fixed): $characterNameToRelease");
       }
 
       if (chatProvider != null && kickedMemberName != null) {
@@ -862,21 +881,7 @@ class GroupProvider extends ChangeNotifier {
   }
 
   // =========================================================
-  // ✅✅✅ جديد: الحل الجوهري للترتيب الحي + التحديث الفوري
-  // =========================================================
-  //
-  // يرجع Stream موحّد يحتوي كل مجموعات المستخدم (التي أنشأها + انضم لها)
-  // مرتبة دائماً حسب آخر رسالة، ويُعاد بناؤه فوراً عند:
-  //  - استلام/إرسال رسالة جديدة في أي مجموعة (lastMessageAt يتغير)
-  //  - الانضمام لمجموعة جديدة (وثيقة members جديدة تُكتب)
-  //  - مغادرة/طرد من مجموعة (وثيقة members تُحذف)
-  //  - حذف/تفكيك مجموعة (وثيقة group تُحذف بالكامل)
-  //
-  // ملاحظة: يتطلب composite index على collection group "members"
-  // بالحقل userId (Firebase Console سيعرض رابط جاهز لإنشائه عند أول تشغيل
-  // إذا لم يكن موجوداً، فقط افتح الرابط من الـ console/logs واضغط Create Index).
   Stream<List<GroupModel>> streamUserGroups({required String userId}) {
-    // Stream 1: المجموعات التي أنشأها المستخدم (مباشر وسهل)
     final foundedQuery = _firestore.buildQuery(
       path: FirestorePaths.groups,
       conditions: [QueryCondition(field: 'founderId', isEqualTo: userId)],
@@ -884,17 +889,13 @@ class GroupProvider extends ChangeNotifier {
     final foundedStream =
         _firestore.streamCollection(path: FirestorePaths.groups, query: foundedQuery);
 
-    // Stream 2: قائمة groupIds التي المستخدم عضو فيها (عبر collectionGroup)
     final memberDocsStream = _firestore.streamCollectionGroup(
       collectionId: 'members',
       field: 'userId',
       isEqualTo: userId,
     );
 
-    // نحوّل Stream 2 إلى Stream من مجموعات GroupModel الفعلية،
-    // عبر الاستماع المباشر لكل وثيقة مجموعة بالـ id المستخرج من المسار.
     final joinedGroupsStream = memberDocsStream.switchMap((memberSnap) {
-      // استخراج groupId من مسار كل وثيقة member: groups/{groupId}/members/{userId}
       final groupIds = memberSnap.docs
           .map((doc) => doc.reference.parent.parent?.id)
           .whereType<String>()
@@ -917,7 +918,6 @@ class GroupProvider extends ChangeNotifier {
       );
     });
 
-    // دمج الستريمين: founded + joined → نتيجة واحدة محدّثة لحظياً
     return Rx.combineLatest2<QuerySnapshot<Map<String, dynamic>>,
         List<GroupModel>, List<GroupModel>>(
       foundedStream,
@@ -927,14 +927,12 @@ class GroupProvider extends ChangeNotifier {
             .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
             .toList();
 
-        // دمج وإزالة التكرار (المؤسس لا يُحسب أيضاً كـ "منضم" حتى لو كان عضواً)
         final foundedIds = founded.map((g) => g.id).toSet();
         final joined =
             joinedGroups.where((g) => !foundedIds.contains(g.id)).toList();
 
         final all = [...founded, ...joined];
 
-        // ✅ الترتيب الحي حسب آخر رسالة — هذا يحل مشكلة الترتيب الثابت نهائياً
         all.sort((a, b) {
           final aTime = a.lastMessageAt ?? a.createdAt;
           final bTime = b.lastMessageAt ?? b.createdAt;
@@ -949,11 +947,9 @@ class GroupProvider extends ChangeNotifier {
     });
   }
 
-  // مساعد: يرجع فقط المجموعات التي أنشأها المستخدم من القائمة الموحدة
   List<GroupModel> filterFounded(List<GroupModel> all, String userId) =>
       all.where((g) => g.founderId == userId).toList();
 
-  // مساعد: يرجع فقط المجموعات التي انضم لها (وليس مؤسسها)
   List<GroupModel> filterJoined(List<GroupModel> all, String userId) =>
       all.where((g) => g.founderId != userId).toList();
 }

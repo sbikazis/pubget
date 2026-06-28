@@ -25,7 +25,13 @@ class MessageModel {
   final String? replyToSenderName;
   final String? replyToMediaUrl;
   final Map<String, String>? reactions;
-  final DateTime createdAt;
+
+  // ✅✅✅ تعديل جوهري: أصبح nullable
+  // null يعني: السيرفر لم يكتب الوقت الحقيقي بعد (لحظة الإرسال نفسها قبل المزامنة).
+  // هذا يحل مشكلة "اختلاف الساعة بين الأجهزة" (Clock Skew) نهائياً،
+  // لأننا لا نعتمد إطلاقاً على ساعة أي جهاز محلي، بل فقط على وقت سيرفر فايرستور.
+  final DateTime? createdAt;
+
   final bool isRead;
   final bool isDelivered;
   final int? audioDuration;
@@ -55,7 +61,7 @@ class MessageModel {
     this.replyToSenderName,
     this.replyToMediaUrl,
     this.reactions,
-    required this.createdAt,
+    this.createdAt, // ✅ لم يعد required — يبدأ null دائماً عند الإنشاء المحلي
     this.isRead = false,
     this.isDelivered = false,
     this.audioDuration,
@@ -65,6 +71,10 @@ class MessageModel {
     this.isEdited = false, // ✅ جديد
     this.status = MessageStatus.sent,
   });
+
+  // ✅ مساعد: هل وقت هذه الرسالة مؤكَّد من السيرفر بالفعل؟
+  // مفيد لأي واجهة تريد إظهار "⏳ جاري الإرسال" أو ساعة رمادية مؤقتة بدل وقت حقيقي.
+  bool get isTimestampPending => createdAt == null;
 
   factory MessageModel.fromMap(String id, Map<String, dynamic> map) {
     return MessageModel(
@@ -95,9 +105,13 @@ class MessageModel {
       reactions: map['reactions'] != null
           ? Map<String, String>.from(map['reactions'] as Map)
           : null,
+      // ✅✅✅ تعديل جوهري: إذا كان createdAt لا يزال null في فايرستور
+      // (وثيقة كُتبت بـ serverTimestamp() ولم يصلنا التحديث المُحدَّث منه بعد)،
+      // نُرجع null بصراحة بدل DateTime.now() — أي قيمة محلية بديلة كانت
+      // هي بالضبط السبب الجذري لمشكلة اختلاط ترتيب الرسائل سابقاً.
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
+          : null,
       isRead: map['isRead'] ?? false,
       isDelivered: map['isDelivered'] ?? false,
       audioDuration: map['audioDuration'],
@@ -109,7 +123,11 @@ class MessageModel {
     );
   }
 
-  Map<String, dynamic> toMap() {
+  // ✅✅✅ تعديل جوهري: useServerTimestamp (افتراضي true)
+  // عند الإرسال الأولي للرسالة، نريد أن يكتب فايرستور نفسه الوقت الحقيقي.
+  // عند استخدامات أخرى (نادرة، مثل ترحيل بيانات قديمة بوقت معروف مسبقاً)
+  // يمكن تمرير useServerTimestamp: false لإرسال وقت محدد صريح.
+  Map<String, dynamic> toMap({bool useServerTimestamp = true}) {
     return {
       'senderId': senderId,
       'senderName': senderName,
@@ -129,7 +147,15 @@ class MessageModel {
       'replyToSenderName': replyToSenderName,
       'replyToMediaUrl': replyToMediaUrl,
       'reactions': reactions,
-      'createdAt': Timestamp.fromDate(createdAt),
+      // ✅✅✅ تعديل جوهري: بدل Timestamp.fromDate(createdAt) الذي يعتمد
+      // على ساعة الجهاز المحلية وقت الإنشاء (سبب مشكلة Clock Skew بالكامل)،
+      // نكتب الآن FieldValue.serverTimestamp() ليكتب فايرستور الوقت
+      // الحقيقي الموحّد لحظة استلام الكتابة على السيرفر.
+      // إذا useServerTimestamp == false (حالة استثنائية فقط) نستخدم
+      // createdAt المُمرَّر يدوياً، أو الوقت الحالي إذا كان null.
+      'createdAt': useServerTimestamp
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(createdAt ?? DateTime.now()),
       'isRead': isRead,
       'isDelivered': isDelivered,
       'audioDuration': audioDuration,
@@ -153,6 +179,7 @@ class MessageModel {
     String? gameAction,
     String? systemEventType, // ✅ جديد
     Map<String, String>? reactions,
+    DateTime? createdAt, // ✅ جديد: لإمكانية تثبيت الوقت بعد وصوله من السيرفر إن احتاج الأمر
     bool? isRead,
     bool? isDelivered,
     int? audioDuration,
@@ -182,7 +209,7 @@ class MessageModel {
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
       reactions: reactions ?? this.reactions,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt, // ✅ تعديل
       isRead: isRead ?? this.isRead,
       isDelivered: isDelivered ?? this.isDelivered,
       audioDuration: audioDuration ?? this.audioDuration,

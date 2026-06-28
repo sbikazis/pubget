@@ -96,8 +96,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final userId = userProvider.currentUser?.id;
+      // ✅✅✅ تعديل جوهري: حذف تمرير readUpTo بالكامل.
+      // updateLastRead الآن يكتب serverTimestamp() دائماً بدون أي اعتماد
+      // على وقت محلي من الجهاز (هذا هو حل مشكلة "الرسائل تبقى غير مقروءة
+      // حتى يحين توقيت كتبته الرسالة بساعة جهاز مختلفة").
       if (userId != null && _cachedMessages.isNotEmpty) {
-        _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+        _updateReadStatus(userId);
       }
     }
   }
@@ -127,12 +131,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _updateReadStatus(String userId, {DateTime? readUpTo}) {
+  // ✅✅✅ تعديل جوهري: حذف باراميتر readUpTo بالكامل.
+  // ChatProvider.updateLastRead لم يعد يقبل أي وقت محلي — فقط serverTimestamp().
+  void _updateReadStatus(String userId) {
     try {
       if (!mounted) return;
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      chatProvider.updateLastRead(
-          groupId: widget.groupId, userId: userId, readUpTo: readUpTo);
+      chatProvider.updateLastRead(groupId: widget.groupId, userId: userId);
     } catch (e) {
       debugPrint("Update status failed: $e");
     }
@@ -142,11 +147,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final userId = userProvider.currentUser?.id;
+      // ✅ تعديل جوهري: حذف readUpTo
       if (userId != null && _cachedMessages.isNotEmpty) {
         await Provider.of<ChatProvider>(context, listen: false).updateLastRead(
           groupId: widget.groupId,
           userId: userId,
-          readUpTo: _cachedMessages.last.createdAt,
         );
       }
     } catch (e) {
@@ -179,8 +184,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
 
+      // ✅ تعديل جوهري: حذف readUpTo
       if (_cachedMessages.isNotEmpty) {
-        _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+        _updateReadStatus(userId);
       }
 
       WidgetsBinding.instance
@@ -203,8 +209,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final messages = _cachedMessages.reversed.toList();
-    final firstUnreadIndex =
-        messages.indexWhere((m) => m.createdAt.isAfter(_lastReadAt!));
+    // ✅✅✅ تعديل جوهري: createdAt أصبح DateTime؟ — رسالة بدون وقت مؤكد بعد
+    // (لسه السيرفر يكتب وقتها) تُعامل كـ "الأحدث دائماً" (غير مقروءة بالتأكيد)،
+    // لأنها بالتعريف أحدث من أي رسالة وصلها وقتها فعلياً.
+    final firstUnreadIndex = messages.indexWhere(
+        (m) => m.createdAt == null || m.createdAt!.isAfter(_lastReadAt!));
 
     // كل الرسائل مقروءة — اذهب للأسفل
     if (firstUnreadIndex == -1) {
@@ -348,8 +357,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
+    // ✅ تعديل جوهري: حذف readUpTo
     if (userId != null && _cachedMessages.isNotEmpty) {
-      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+      _updateReadStatus(userId);
     }
   }
 
@@ -416,8 +426,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
+    // ✅ تعديل جوهري: حذف readUpTo
     if (userId != null && _cachedMessages.isNotEmpty) {
-      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+      _updateReadStatus(userId);
     }
   }
 
@@ -453,8 +464,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
+    // ✅ تعديل جوهري: حذف readUpTo
     if (userId != null && _cachedMessages.isNotEmpty) {
-      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+      _updateReadStatus(userId);
     }
   }
 
@@ -489,8 +501,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _onCancelReply();
     _scrollToBottom(force: true);
     final userId = userProvider.currentUser?.id;
+    // ✅ تعديل جوهري: حذف readUpTo
     if (userId != null && _cachedMessages.isNotEmpty) {
-      _updateReadStatus(userId, readUpTo: _cachedMessages.last.createdAt);
+      _updateReadStatus(userId);
     }
   }
 
@@ -609,9 +622,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   _cachedMessages.isNotEmpty) {
                                 WidgetsBinding.instance
                                     .addPostFrameCallback((_) {
-                                  _updateReadStatus(userId,
-                                      readUpTo:
-                                          _cachedMessages.last.createdAt);
+                                  // ✅ تعديل جوهري: حذف readUpTo
+                                  _updateReadStatus(userId);
                                   // ✅ scroll للأسفل فقط إذا لم يكن هناك unread scroll جارٍ
                                   if (!_hasScrolledToUnread) {
                                     _scrollToBottom();

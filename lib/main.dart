@@ -69,8 +69,8 @@ Future<void> _showBackgroundNotification(RemoteMessage message) async {
         '$senderId${NotificationPayloadKeys.separator}'
         '$commentId';
 
-    final bool isGroupChat   = type == NotificationTypes.groupChat;
-    final bool isPrivateChat = type == NotificationTypes.privateChat;
+    final bool isGroupChat   = type == AppNotificationTypes.groupChat;
+    final bool isPrivateChat = type == AppNotificationTypes.privateChat;
 
     AndroidNotificationDetails androidDetails;
 

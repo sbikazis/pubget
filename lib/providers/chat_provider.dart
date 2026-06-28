@@ -24,19 +24,21 @@ class ChatProvider extends ChangeNotifier {
   }) : _firestore = firestoreService,
         _storage = storageService;
 
+  // ✅✅✅ تعديل جوهري: حذفنا تماماً إمكانية تمرير readUpTo محلي (DateTime)
+  // السبب: أي DateTime قادم من جهاز المستخدم يحمل نفس مشكلة Clock Skew
+  // التي تسببت بمشكلة "الرسائل تبقى غير مقروءة حتى يحين توقيتها".
+  // الآن updateLastRead يستخدم دائماً وبدون أي استثناء FieldValue.serverTimestamp()،
+  // بحيث "وقت القراءة" يُكتب أيضاً بساعة سيرفر فايرستور الموحّدة لكل المستخدمين.
   Future<void> updateLastRead({
     required String groupId,
     required String userId,
-    DateTime? readUpTo,
   }) async {
     final path = FirestorePaths.groupMembers(groupId);
     await _firestore.updateDocument(
       path: path,
       docId: userId,
       data: {
-        'lastReadAt': readUpTo != null
-            ? Timestamp.fromDate(readUpTo)
-            : FieldValue.serverTimestamp(),
+        'lastReadAt': FieldValue.serverTimestamp(),
       },
     );
   }
@@ -121,6 +123,9 @@ class ChatProvider extends ChangeNotifier {
     try {
       final messageId = const Uuid().v4();
 
+      // ✅✅✅ تعديل جوهري: createdAt لم يُمرَّر هنا إطلاقاً (يبقى null محلياً).
+      // toMap() الافتراضي (useServerTimestamp: true) سيكتب FieldValue.serverTimestamp()
+      // تلقائياً، فلا حاجة لأي DateTime.now() من جهاز العميل بعد الآن.
       final message = MessageModel(
         id: messageId,
         senderId: 'system',
@@ -131,7 +136,6 @@ class ChatProvider extends ChangeNotifier {
         text: text,
         type: MessageType.systemEvent,
         systemEventType: systemEventType,
-        createdAt: DateTime.now(),
         isDelivered: true,
         isRead: true, // رسائل النظام تُعتبر مقروءة دائماً
       );
@@ -173,6 +177,8 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     if (text.trim().isEmpty) return;
     final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+    // ✅✅✅ تعديل جوهري: لا يوجد createdAt: DateTime.now() بعد الآن.
+    // toMap() سيكتب وقت السيرفر الحقيقي تلقائياً عبر FieldValue.serverTimestamp().
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -187,7 +193,6 @@ class ChatProvider extends ChangeNotifier {
       replyToMediaUrl: replyToMediaUrl,
       gameId: gameId,
       gameSlot: gameSlot,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(
@@ -271,6 +276,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
     final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
+    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -284,7 +290,6 @@ class ChatProvider extends ChangeNotifier {
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(
@@ -321,6 +326,7 @@ class ChatProvider extends ChangeNotifier {
     String? replyToMediaUrl,
   }) async {
     final finalAvatar = sender.displayImageUrl ?? '';
+    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -334,7 +340,6 @@ class ChatProvider extends ChangeNotifier {
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(
@@ -394,6 +399,7 @@ class ChatProvider extends ChangeNotifier {
       isPremium: freshPremiumStatus,
     );
     final finalAvatar = updatedSender.displayImageUrl ?? '';
+    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -408,7 +414,6 @@ class ChatProvider extends ChangeNotifier {
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(
@@ -497,6 +502,7 @@ class ChatProvider extends ChangeNotifier {
     final updatedSender = sender.copyWith(
         realUserImageUrl: freshRealAvatar, isPremium: freshPremiumStatus);
     final finalAvatar = updatedSender.displayImageUrl ?? '';
+    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
       senderId: updatedSender.userId,
@@ -507,7 +513,6 @@ class ChatProvider extends ChangeNotifier {
       gameId: gameId,
       gameSlot: gameSlot,
       gameAction: gameAction,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(
@@ -538,6 +543,7 @@ class ChatProvider extends ChangeNotifier {
     String? replyToMediaUrl,
   }) async {
     final finalAvatar = sender.displayImageUrl ?? '';
+    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
       senderId: sender.userId,
@@ -551,7 +557,6 @@ class ChatProvider extends ChangeNotifier {
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      createdAt: DateTime.now(),
       isDelivered: true,
     );
     await _firestore.createDocument(

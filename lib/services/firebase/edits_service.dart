@@ -8,35 +8,32 @@ class EditsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // ── Stream للتحديثات الصغيرة فقط (لايك، كومنت)
   Stream<List<EditModel>> getEdits() {
     return _firestore
-      .collection('edits')
-      .orderBy('createdAt', descending: true)
-      .limit(50)
-      .snapshots()
-      .map((snap) =>
+        .collection('edits')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map((snap) =>
             snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList());
   }
 
-  // ── جلب الـ Feed الذكي مرة واحدة عند بدء الجلسة
   Future<List<EditModel>> fetchSmartFeed({
     required String userId,
     required List<String> seenIds,
   }) async {
     final snap = await _firestore
-      .collection('edits')
-      .orderBy('createdAt', descending: true)
-      .limit(50)
-      .get();
+        .collection('edits')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .get();
 
     final all = snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList();
-    final unseen = all.where((e) =>!seenIds.contains(e.id)).toList();
+    final unseen = all.where((e) => !seenIds.contains(e.id)).toList();
     unseen.sort((a, b) => b.computeScore().compareTo(a.computeScore()));
     return unseen;
   }
 
-  // ── تسجيل وقت المشاهدة
   Future<void> recordWatchTime({
     required String editId,
     required String userId,
@@ -62,10 +59,10 @@ class EditsService {
 
   Stream<List<EditModel>> getUserEdits(String userId) {
     return _firestore
-      .collection('edits')
-      .where('uploaderId', isEqualTo: userId)
-      .snapshots()
-      .map((snap) {
+        .collection('edits')
+        .where('uploaderId', isEqualTo: userId)
+        .snapshots()
+        .map((snap) {
       final list =
           snap.docs.map((doc) => EditModel.fromFirestore(doc)).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -73,24 +70,61 @@ class EditsService {
     });
   }
 
-  // ── رفع الفيديو والـ thumbnail
   Future<List<String>> uploadVideoAndThumbnail(
-      File videoFile, File thumbnailFile, String userId) async {
+    File videoFile,
+    File thumbnailFile,
+    String userId, {
+    void Function(double progress)? onProgress,
+  }) async {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final videoRef = _storage.ref().child('edits/$userId/v_$timestamp.mp4');
     final thumbRef = _storage.ref().child('edits/$userId/t_$timestamp.jpg');
 
-    final results = await Future.wait([
-      videoRef
-        .putFile(videoFile, SettableMetadata(contentType: 'video/mp4'))
-        .then((_) => videoRef.getDownloadURL()),
-      thumbRef
-        .putFile(thumbnailFile,
-              SettableMetadata(contentType: 'image/jpeg'))
-        .then((_) => thumbRef.getDownloadURL()),
-    ]);
+    double videoProgress = 0.0;
+    double thumbProgress = 0.0;
 
-    return results;
+    void reportCombinedProgress() {
+      final combined = (videoProgress * 0.9) + (thumbProgress * 0.1);
+      onProgress?.call(combined.clamp(0.0, 1.0));
+    }
+
+    final videoTask = videoRef.putFile(
+      videoFile,
+      SettableMetadata(contentType: 'video/mp4'),
+    );
+    final videoSub = videoTask.snapshotEvents.listen((snapshot) {
+      if (snapshot.totalBytes > 0) {
+        videoProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+        reportCombinedProgress();
+      }
+    });
+
+    final thumbTask = thumbRef.putFile(
+      thumbnailFile,
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    final thumbSub = thumbTask.snapshotEvents.listen((snapshot) {
+      if (snapshot.totalBytes > 0) {
+        thumbProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+        reportCombinedProgress();
+      }
+    });
+
+    try {
+      final results = await Future.wait([
+        videoTask.then((_) => videoRef.getDownloadURL()),
+        thumbTask.then((_) => thumbRef.getDownloadURL()),
+      ]);
+
+      videoProgress = 1.0;
+      thumbProgress = 1.0;
+      reportCombinedProgress();
+
+      return results;
+    } finally {
+      await videoSub.cancel();
+      await thumbSub.cancel();
+    }
   }
 
   Future<String> uploadVideo(File file, String userId) async {
@@ -117,32 +151,30 @@ class EditsService {
     final ref = _firestore.collection('edits').doc(editId);
     await ref.update({
       'likes': isCurrentlyLiked
-        ? FieldValue.arrayRemove([userId])
+          ? FieldValue.arrayRemove([userId])
           : FieldValue.arrayUnion([userId]),
     });
   }
 
   Future<void> incrementViews(String editId, String userId) async {
     final viewerRef = _firestore
-      .collection('edits')
-      .doc(editId)
-      .collection('viewers')
-      .doc(userId);
+        .collection('edits')
+        .doc(editId)
+        .collection('viewers')
+        .doc(userId);
     final existing = await viewerRef.get();
     if (existing.exists) return;
     await viewerRef.set({'viewedAt': FieldValue.serverTimestamp()});
     await _firestore
-      .collection('edits')
-      .doc(editId)
-      .update({'views': FieldValue.increment(1)});
+        .collection('edits')
+        .doc(editId)
+        .update({'views': FieldValue.increment(1)});
   }
 
   Future<EditModel?> getEditById(String editId) async {
     try {
-      final doc = await _firestore
-        .collection('edits')
-        .doc(editId)
-        .get();
+      final doc =
+          await _firestore.collection('edits').doc(editId).get();
       if (!doc.exists) return null;
       return EditModel.fromFirestore(doc);
     } catch (_) {
@@ -150,7 +182,8 @@ class EditsService {
     }
   }
 
-  // ── إضافة تعليق جديد - يرجع ID
+  // ✅ الإصلاح: حذف FieldValue.increment من هنا — التحديث المحلي في الـ provider يكفي
+  // وعند sync الـ stream سيأتي الرقم الصحيح من Firestore تلقائياً
   Future<String> addComment({
     required String editId,
     required String userId,
@@ -159,9 +192,9 @@ class EditsService {
     required String text,
   }) async {
     final commentsRef = _firestore
-      .collection('edits')
-      .doc(editId)
-      .collection('comments');
+        .collection('edits')
+        .doc(editId)
+        .collection('comments');
 
     final docRef = await commentsRef.add({
       'userId': userId,
@@ -172,23 +205,21 @@ class EditsService {
       'likes': [],
     });
 
-    await _firestore.collection('edits').doc(editId).update({
-      'commentsCount': FieldValue.increment(1),
-    });
+    // ✅ تم حذف FieldValue.increment(1) من هنا لمنع الازدواجية مع التحديث المحلي في الـ provider
+    // الـ stream سيجلب العدد الصحيح من Firestore عند أي sync قادم
 
-    return docRef.id; // ← مهم للإشعار
+    return docRef.id;
   }
 
-  // ── Stream التعليقات الجديد
   Stream<List<CommentModel>> streamComments(String editId) {
     return _firestore
-      .collection('edits')
-      .doc(editId)
-      .collection('comments')
-      .orderBy('createdAt', descending: false)
-      .snapshots()
-      .map((snap) =>
-           snap.docs.map((doc) => CommentModel.fromFirestore(doc)).toList());
+        .collection('edits')
+        .doc(editId)
+        .collection('comments')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((doc) => CommentModel.fromFirestore(doc)).toList());
   }
 
   Future<void> deleteEdit(EditModel edit) async {
