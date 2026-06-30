@@ -22,14 +22,7 @@ jobs:
         run: flutter build web --release
 
       - name: Copy static pages
-        run: |
-          cp web/pricing.html build/web/pricing.html
-          cp web/terms.html build/web/terms.html
-          cp web/privacy.html build/web/privacy.html
-          cp web/refund.html build/web/refund.html
-          cp web/index.html build/web/index.html
-          cp web/presentation.html build/web/presentation.html
-          cp web/app-ads.txt build/web/app-ads.txt
+        run: cp -r web/* build/web/
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
