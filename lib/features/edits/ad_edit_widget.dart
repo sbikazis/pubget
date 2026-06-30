@@ -1,3 +1,4 @@
+// lib/features/edits/ad_edit_widget.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -18,6 +19,10 @@ class _AdEditWidgetState extends State<AdEditWidget> {
   int _retryCount = 0;
   Timer? _countdownTimer;
 
+  // ✅ زيادة عدد المحاولات من 1 إلى 3 — مع Liftoff كمصدر إضافي الآن،
+  // كل محاولة قد تصل لمصدر مختلف (AdMob أو Liftoff)، فيستحق وقتاً أطول
+  static const int _maxRetries = 3;
+
   @override
   void initState() {
     super.initState();
@@ -26,7 +31,7 @@ class _AdEditWidgetState extends State<AdEditWidget> {
 
   void _loadAd() {
     _nativeAd?.dispose();
-    
+
     _nativeAd = NativeAd(
       adUnitId: 'ca-app-pub-3303379299409244/3972031025', // ← تم التصحيح
       listener: NativeAdListener(
@@ -39,13 +44,15 @@ class _AdEditWidgetState extends State<AdEditWidget> {
           ad.dispose();
           if (!mounted) return;
 
-          if (_retryCount < 1) {
-            // محاولة مرة واحدة
+          if (_retryCount < _maxRetries) {
+            // ✅ حتى 3 محاولات بدل محاولة واحدة فقط
             _retryCount++;
-            Future.delayed(const Duration(seconds: 1), _loadAd);
+            // ✅ تأخير متصاعد بسيط بين المحاولات (1s, 2s, 3s) بدل ثابت
+            Future.delayed(Duration(seconds: _retryCount), _loadAd);
           } else {
-            // فشل نهائي → انتظر 3 ثواني ثم أنهِ
-            Future.delayed(const Duration(seconds: 3), () {
+            // ✅ فشل نهائي → انتظر 8 ثوانٍ بدل 3 قبل الإنهاء
+            // (وقت إضافي يعطي فرصة أكبر لمصدر Liftoff البديل)
+            Future.delayed(const Duration(seconds: 8), () {
               if (mounted) widget.onAdFinished();
             });
           }
@@ -61,14 +68,14 @@ class _AdEditWidgetState extends State<AdEditWidget> {
   void _startCountdown() {
     _countdownTimer?.cancel();
     setState(() => _secondsLeft = 5);
-    
+
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
       setState(() => _secondsLeft--);
-      
+
       if (_secondsLeft <= 0) {
         timer.cancel();
         widget.onAdFinished();

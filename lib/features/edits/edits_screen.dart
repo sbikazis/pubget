@@ -46,14 +46,11 @@ class _EditsScreenState extends State<EditsScreen>
   final Set<int> _finishedAdIndexes = {};
   DateTime? _pageEntryTime;
 
-  // ── حالة الوصف المنبثق
   bool _showCaption = false;
 
-  // ── حالة زر الاشتراك لكل إيديت (editId → subscribed)
   final Map<String, bool> _subscribedMap = {};
   final Map<String, bool> _subscribingMap = {};
 
-  // ── AnimationController لزر الاشتراك
   late final AnimationController _subscribeAnimCtrl;
   late final Animation<double> _subscribeScale;
   late final Animation<double> _subscribeGlow;
@@ -67,7 +64,6 @@ class _EditsScreenState extends State<EditsScreen>
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
 
-    // ── إعداد أنيميشن زر الاشتراك
     _subscribeAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -115,8 +111,7 @@ class _EditsScreenState extends State<EditsScreen>
           if (widget.autoOpenComments || widget.initialCommentId != null) {
             await Future.delayed(const Duration(milliseconds: 400));
             if (mounted) {
-              _openComments(targetEdit.id,
-                  commentId: widget.initialCommentId);
+              _openComments(targetEdit.id, commentId: widget.initialCommentId);
             }
           }
         }
@@ -143,28 +138,28 @@ class _EditsScreenState extends State<EditsScreen>
     super.dispose();
   }
 
-  // ── التحقق إذا كان المستخدم مشتركاً مسبقاً
-  Future<void> _checkSubscription(String uploaderId, String currentUserId) async {
+  // ✅ التحقق بـ query بدل doc ID ثابت
+  Future<void> _checkSubscription(
+      String uploaderId, String currentUserId) async {
     if (_subscribedMap.containsKey(uploaderId)) return;
     try {
-      final doc = await FirebaseFirestore.instance
+      final query = await FirebaseFirestore.instance
           .collection('respects')
-          .doc('${currentUserId}_$uploaderId')
+          .where('fromUserId', isEqualTo: currentUserId)
+          .where('toUserId', isEqualTo: uploaderId)
+          .limit(1)
           .get();
       if (mounted) {
-        setState(() => _subscribedMap[uploaderId] = doc.exists);
+        setState(() => _subscribedMap[uploaderId] = query.docs.isNotEmpty);
       }
     } catch (_) {}
   }
 
-  // ── زر الاشتراك
   Future<void> _onSubscribe(EditModel edit, String currentUserId) async {
     if (_subscribingMap[edit.uploaderId] == true) return;
     if (_subscribedMap[edit.uploaderId] == true) return;
 
     setState(() => _subscribingMap[edit.uploaderId] = true);
-
-    // تشغيل الأنيميشن
     _subscribeAnimCtrl.forward(from: 0.0);
 
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -313,13 +308,11 @@ class _EditsScreenState extends State<EditsScreen>
     }
   }
 
-  // ── ويدجت معلومات الإيديت (عنوان + وصف + اشتراك)
   Widget _buildEditInfo(EditModel edit, String currentUserId) {
     final isOwner = edit.uploaderId == currentUserId;
     final isSubscribed = _subscribedMap[edit.uploaderId] ?? false;
     final isSubscribing = _subscribingMap[edit.uploaderId] ?? false;
 
-    // التحقق من الاشتراك عند أول ظهور
     if (!_subscribedMap.containsKey(edit.uploaderId)) {
       _checkSubscription(edit.uploaderId, currentUserId);
     }
@@ -327,7 +320,6 @@ class _EditsScreenState extends State<EditsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── صف المستخدم
         GestureDetector(
           onTap: () => _openProfile(edit.uploaderId),
           child: Row(
@@ -355,11 +347,9 @@ class _EditsScreenState extends State<EditsScreen>
 
         const SizedBox(height: 8),
 
-        // ── صف العنوان + زر الوصف
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // العنوان بدون راية — نص مباشر مع خط سفلي خفيف
             Flexible(
               child: Text(
                 edit.animeTitle,
@@ -380,8 +370,6 @@ class _EditsScreenState extends State<EditsScreen>
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-
-            // ── زر الوصف الاختياري (يظهر فقط إذا كان هناك وصف)
             if (edit.caption.isNotEmpty) ...[
               const SizedBox(width: 6),
               GestureDetector(
@@ -391,14 +379,11 @@ class _EditsScreenState extends State<EditsScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: _showCaption
-                        ? Colors.white24
-                        : Colors.white10,
+                    color: _showCaption ? Colors.white24 : Colors.white10,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: _showCaption
-                          ? Colors.white38
-                          : Colors.white12,
+                      color:
+                          _showCaption ? Colors.white38 : Colors.white12,
                       width: 0.8,
                     ),
                   ),
@@ -426,7 +411,6 @@ class _EditsScreenState extends State<EditsScreen>
           ],
         ),
 
-        // ── الوصف المنبثق بأنيميشن
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
@@ -452,7 +436,6 @@ class _EditsScreenState extends State<EditsScreen>
 
         const SizedBox(height: 10),
 
-        // ── زر الاشتراك (لا يظهر لصاحب الإيديت)
         if (!isOwner)
           AnimatedBuilder(
             animation: _subscribeAnimCtrl,
@@ -489,8 +472,8 @@ class _EditsScreenState extends State<EditsScreen>
                           ? []
                           : [
                               BoxShadow(
-                                color: Colors.deepPurple.withOpacity(
-                                    0.45 * _subscribeGlow.value),
+                                color: Colors.deepPurple.withValues(
+                                    alpha: 0.45 * _subscribeGlow.value),
                                 blurRadius: 16,
                                 spreadRadius: 2,
                               ),
@@ -562,8 +545,7 @@ class _EditsScreenState extends State<EditsScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.red, size: 50),
+                  const Icon(Icons.error_outline, color: Colors.red, size: 50),
                   const SizedBox(height: 12),
                   Text(
                     'حدث خطأ:\n${editsProvider.error}',
@@ -611,7 +593,6 @@ class _EditsScreenState extends State<EditsScreen>
                   ? const NeverScrollableScrollPhysics()
                   : const BouncingScrollPhysics(),
               onPageChanged: (index) {
-                // ── إعادة تعيين حالة الوصف عند تغيير الإيديت
                 if (_showCaption) setState(() => _showCaption = false);
 
                 final entryTime = _pageEntryTime;
@@ -689,7 +670,6 @@ class _EditsScreenState extends State<EditsScreen>
                 return Stack(
                   key: ValueKey(edit.id),
                   children: [
-                    // ── مشغل الفيديو
                     EditPlayerWidget(
                       key: ValueKey(edit.id),
                       edit: edit,
@@ -703,16 +683,12 @@ class _EditsScreenState extends State<EditsScreen>
                         );
                       },
                     ),
-
-                    // ── معلومات الإيديت (عنوان + وصف + اشتراك)
                     Positioned(
                       bottom: 90,
                       left: 16,
                       right: 88,
                       child: _buildEditInfo(edit, currentUserId),
                     ),
-
-                    // ── شريط الأفعال (لايك، كومنت، شير، مشاهدات)
                     Positioned(
                       bottom: 100,
                       right: 12,
@@ -737,22 +713,20 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          // ── زر إضافة إيديت
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             right: 16,
             child: GestureDetector(
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const UploadEditScreen())),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const UploadEditScreen())),
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white12,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child:
+                    const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
           ),

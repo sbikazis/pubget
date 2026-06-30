@@ -6,6 +6,7 @@ import '../../../core/constants/store_constants.dart';
 import '../../../providers/store_provider.dart';
 import '../../../providers/user_provider.dart';
 import 'package:pubget/widgets/shiny_coin_widget.dart';
+import 'package:pubget/features/store/screens/physical_products_section.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({Key? key}) : super(key: key);
@@ -84,12 +85,8 @@ class _StoreScreenState extends State<StoreScreen> with SingleTickerProviderStat
             subtitle: 'انتظر إطارات التنين الأسطورية، الهالات المشعة، والملصقات المتحركة قريباً!',
             textSecondary: textSecondary,
           ),
-          _buildComingSoonTab(
-            icon: Icons.shopping_bag_outlined,
-            title: 'سوق الأنمي الواقعي 🎒',
-            subtitle: 'تجهّز لاقتناء مجسمات حصرية وملابس بطابع ياباني!',
-            textSecondary: textSecondary,
-          ),
+          // ✅ معدّل: التبويب الثالث أصبح يعرض المنتجات الفيزيائية الحقيقية من Firestore
+          const PhysicalProductsSection(),
         ],
       ),
     );

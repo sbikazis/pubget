@@ -115,7 +115,6 @@ class NotificationsScreen extends StatelessWidget {
     required NotificationModel notification,
   }) {
     switch (notification.type) {
-
       case AppNotificationTypes.groupChat:
         if (notification.refId != null) {
           Navigator.push(
@@ -182,7 +181,6 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ✅ إعجاب بإيديت — يفتح الإيديت مباشرة
       case NotificationTypes.editLike:
         if (notification.refId != null) {
           Navigator.push(
@@ -196,7 +194,6 @@ class NotificationsScreen extends StatelessWidget {
         }
         break;
 
-      // ✅ نقاط احترام — لا يوجد تنقل محدد
       case NotificationTypes.respectReceived:
         break;
 
@@ -273,24 +270,33 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final n = notification;
     final bool isUnread = !n.isRead;
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
       tileColor: isUnread
-          ? AppColors.primary.withOpacity(0.05)
+          ? AppColors.primary.withValues(alpha: 0.08)
           : null,
       leading: CircleAvatar(
-        backgroundColor:
-            isUnread ? AppColors.primary : AppColors.primary.withOpacity(0.12),
+        backgroundColor: isUnread
+            ? AppColors.primary
+            : AppColors.primary.withValues(alpha: 0.15),
         child: Icon(
           _iconForType(n.type),
-          color: isUnread ? Colors.white : Colors.black54,
+          // ✅ بدل Colors.white/Colors.black54 الثابتة — تتكيف مع الثيم
+          color: isUnread
+              ? Colors.white
+              : (isDark ? Colors.white60 : Colors.black54),
           size: 22,
         ),
       ),
       title: Text(
         n.title,
-        style: TextStyle(
+        style: textTheme.bodyLarge?.copyWith(
           fontWeight: isUnread ? FontWeight.bold : FontWeight.w500,
+          // ✅ يرث لون النص من الثيم تلقائياً
+          color: colorScheme.onSurface,
         ),
       ),
       subtitle: Column(
@@ -300,23 +306,32 @@ class _NotificationTile extends StatelessWidget {
             n.body,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isUnread ? Colors.black87 : Colors.black54,
+            style: textTheme.bodyMedium?.copyWith(
+              // ✅ بدل Colors.black87/Colors.black54 الثابتة
+              color: isUnread
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(height: 2),
           Text(
             _formatTime(n.createdAt),
-            style: TextStyle(
+            style: textTheme.bodySmall?.copyWith(
               fontSize: 11,
-              color: Colors.grey[500],
+              // ✅ لون الوقت يتكيف مع الثيم
+              color: colorScheme.onSurface.withValues(alpha: 0.45),
             ),
           ),
         ],
       ),
       onTap: onTap,
       trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, size: 20, color: Colors.grey),
+        icon: Icon(
+          Icons.delete_outline,
+          size: 20,
+          // ✅ لون أيقونة الحذف يتكيف مع الثيم
+          color: colorScheme.onSurface.withValues(alpha: 0.4),
+        ),
         onPressed: onDelete,
       ),
     );
@@ -338,10 +353,8 @@ class _NotificationTile extends StatelessWidget {
         return Icons.group_off_outlined;
       case NotificationTypes.comment:
         return Icons.comment_outlined;
-      // ✅ أيقونة اللايك
       case NotificationTypes.editLike:
         return Icons.favorite_outline;
-      // ✅ أيقونة الاحترام
       case NotificationTypes.respectReceived:
         return Icons.star_outline;
       case 'promotion':

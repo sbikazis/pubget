@@ -1,24 +1,69 @@
 // lib/providers/store_provider.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/constants/store_constants.dart';
 import '../core/constants/subscription_type.dart';
+import '../models/physical_product_model.dart';
+import '../services/firebase/firestore_service.dart';
 import 'user_provider.dart';
 
 class StoreProvider extends ChangeNotifier {
   final UserProvider _userProvider;
+  final FirestoreService _firestoreService;
+
   bool _isLoading = false;
   DateTime? _lastAdWatchedTime;
 
-  StoreProvider({required UserProvider userProvider}) : _userProvider = userProvider;
+  // ✅ جديد: حالة المنتجات الفيزيائية
+  List<PhysicalProductModel> _physicalProducts = [];
+  bool _isLoadingPhysicalProducts = true;
+  StreamSubscription? _physicalProductsSubscription;
+
+  StoreProvider({
+    required UserProvider userProvider,
+    FirestoreService? firestoreService,
+  })  : _userProvider = userProvider,
+        _firestoreService = firestoreService ?? FirestoreService() {
+    _listenToPhysicalProducts();
+  }
 
   bool get isLoading => _isLoading;
   int get currentCoins => _userProvider.currentUser?.coinsBalance ?? 0;
+
+  // ✅ جديد: getters المنتجات الفيزيائية
+  List<PhysicalProductModel> get physicalProducts => _physicalProducts;
+  bool get isLoadingPhysicalProducts => _isLoadingPhysicalProducts;
 
   /// ✅ جديد: عدد الثواني المتبقية قبل السماح بإعلان جديد
   int get adCooldownSeconds {
     if (_lastAdWatchedTime == null) return 0;
     final diff = DateTime.now().difference(_lastAdWatchedTime!).inSeconds;
     return diff < 30 ? 30 - diff : 0;
+  }
+
+  // ==============================
+  // ✅ جديد: الاستماع لمنتجات المتجر الفيزيائي من Firestore
+  // ==============================
+  void _listenToPhysicalProducts() {
+    final query = _firestoreService.buildQuery(
+      path: 'physical_products',
+      conditions: [QueryCondition(field: 'isActive', isEqualTo: true)],
+      orderBy: 'order',
+    );
+
+    _physicalProductsSubscription = _firestoreService
+        .streamCollection(path: 'physical_products', query: query)
+        .listen((snapshot) {
+      _physicalProducts = snapshot.docs
+          .map((doc) => PhysicalProductModel.fromMap(doc.id, doc.data()))
+          .toList();
+      _isLoadingPhysicalProducts = false;
+      notifyListeners();
+    }, onError: (error) {
+      debugPrint('⚠️ خطأ في تحميل المنتجات الفيزيائية: $error');
+      _isLoadingPhysicalProducts = false;
+      notifyListeners();
+    });
   }
 
   bool _canAffordAndDeduct(int price) {
@@ -140,5 +185,11 @@ class StoreProvider extends ChangeNotifier {
 
   Future<void> rewardForInvitingFriend() async {
     await _addRewardCoins(StoreConstants.rewardInviter);
+  }
+
+  @override
+  void dispose() {
+    _physicalProductsSubscription?.cancel();
+    super.dispose();
   }
 }

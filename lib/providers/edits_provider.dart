@@ -280,14 +280,24 @@ class EditsProvider extends ChangeNotifier {
   }) async {
     if (uploaderId == currentUserId) return false;
     try {
-      final respectRef = FirebaseFirestore.instance
+      // ✅ FIX: البحث بـ query على الحقول (fromUserId + toUserId) بدل
+      // الاعتماد على doc ID ثابت بصيغة "${currentUserId}_$uploaderId".
+      // المستندات الفعلية في الكولكشن تُكتب بـ auto-generated ID، فكان
+      // البحث القديم لا يجدها أبداً ويعتقد دائماً أن الاشتراك غير موجود.
+      final existing = await FirebaseFirestore.instance
           .collection('respects')
-          .doc('${currentUserId}_$uploaderId');
+          .where('fromUserId', isEqualTo: currentUserId)
+          .where('toUserId', isEqualTo: uploaderId)
+          .limit(1)
+          .get();
 
-      final existing = await respectRef.get();
-      if (existing.exists) return false;
+      if (existing.docs.isNotEmpty) return false;
 
       final batch = FirebaseFirestore.instance.batch();
+
+      // ✅ FIX: doc() عشوائي بدل doc('${currentUserId}_$uploaderId')
+      final respectRef =
+          FirebaseFirestore.instance.collection('respects').doc();
 
       batch.set(respectRef, {
         'fromUserId': currentUserId,
