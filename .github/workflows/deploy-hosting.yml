@@ -1,4 +1,4 @@
-Name: Deploy Hosting
+name: Deploy Hosting
 on:
   push:
     branches: [ main ]
@@ -22,7 +22,7 @@ jobs:
         run: flutter build web --release
 
       - name: Copy static pages
-        run: cp -r web/* build/web/
+        run: 'cp -r web/* build/web/'
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
