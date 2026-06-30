@@ -1,4 +1,4 @@
-name: Deploy Hosting
+Name: Deploy Hosting
 on:
   push:
     branches: [ main ]
@@ -29,6 +29,7 @@ jobs:
           cp web/refund.html build/web/refund.html
           cp web/index.html build/web/index.html
           cp web/presentation.html build/web/presentation.html
+          cp web/app-ads.txt build/web/app-ads.txt
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
