@@ -14,7 +14,6 @@ class StoreProvider extends ChangeNotifier {
   bool _isLoading = false;
   DateTime? _lastAdWatchedTime;
 
-  // ✅ جديد: حالة المنتجات الفيزيائية
   List<PhysicalProductModel> _physicalProducts = [];
   bool _isLoadingPhysicalProducts = true;
   StreamSubscription? _physicalProductsSubscription;
@@ -22,41 +21,31 @@ class StoreProvider extends ChangeNotifier {
   StoreProvider({
     required UserProvider userProvider,
     FirestoreService? firestoreService,
-  })  : _userProvider = userProvider,
+  }) : _userProvider = userProvider,
         _firestoreService = firestoreService ?? FirestoreService() {
     _listenToPhysicalProducts();
   }
 
   bool get isLoading => _isLoading;
   int get currentCoins => _userProvider.currentUser?.coinsBalance ?? 0;
-
-  // ✅ جديد: getters المنتجات الفيزيائية
   List<PhysicalProductModel> get physicalProducts => _physicalProducts;
   bool get isLoadingPhysicalProducts => _isLoadingPhysicalProducts;
 
-  /// ✅ جديد: عدد الثواني المتبقية قبل السماح بإعلان جديد
   int get adCooldownSeconds {
     if (_lastAdWatchedTime == null) return 0;
     final diff = DateTime.now().difference(_lastAdWatchedTime!).inSeconds;
     return diff < 30 ? 30 - diff : 0;
   }
 
-  // ==============================
-  // ✅ جديد: الاستماع لمنتجات المتجر الفيزيائي من Firestore
-  // ==============================
   void _listenToPhysicalProducts() {
-    final query = _firestoreService.buildQuery(
-      path: 'physical_products',
-      conditions: [QueryCondition(field: 'isActive', isEqualTo: true)],
-      orderBy: 'order',
-    );
-
     _physicalProductsSubscription = _firestoreService
-        .streamCollection(path: 'physical_products', query: query)
+        .streamCollection(path: 'physical_products')
         .listen((snapshot) {
       _physicalProducts = snapshot.docs
           .map((doc) => PhysicalProductModel.fromMap(doc.id, doc.data()))
-          .toList();
+          .where((p) => p.isActive)
+          .toList()
+        ..sort((a, b) => a.order.compareTo(b.order));
       _isLoadingPhysicalProducts = false;
       notifyListeners();
     }, onError: (error) {
@@ -117,12 +106,9 @@ class StoreProvider extends ChangeNotifier {
   Future<bool> purchasePremiumSubscription() async {
     final user = _userProvider.currentUser;
     if (user == null || !_canAffordAndDeduct(StoreConstants.premiumSubscriptionPrice)) return false;
-
     _isLoading = true; notifyListeners();
-
     final now = DateTime.now();
     final expires = now.add(Duration(days: StoreConstants.premiumDurationDays));
-
     final updatedUser = user.copyWith(
       coinsBalance: user.coinsBalance - StoreConstants.premiumSubscriptionPrice,
       subscriptionType: SubscriptionType.premium,
@@ -166,7 +152,7 @@ class StoreProvider extends ChangeNotifier {
       return false;
     }
     _lastAdWatchedTime = now;
-    notifyListeners(); // ✅ تحديث الواجهة فوراً عشان يظهر الكولداون
+    notifyListeners();
     await _addRewardCoins(StoreConstants.rewardWatchAd);
     return true;
   }

@@ -10,6 +10,7 @@ import '../services/firebase/edits_service.dart';
 import '../services/firebase/feed_service.dart';
 import '../services/monetization/coin_service.dart';
 import '../providers/notifications_provider.dart';
+import '../core/constants/firestore_paths.dart'; // ✅ إضافة: للاستخدام بدل النصوص الثابتة
 
 class EditsProvider extends ChangeNotifier {
   final EditsService _service = EditsService();
@@ -254,8 +255,9 @@ class EditsProvider extends ChangeNotifier {
       for (final c in comments) {
         if (c.userAvatar.isEmpty) {
           try {
+            // ✅ FIX: 'Users' → FirestorePaths.users ('users')
             final userDoc = await FirebaseFirestore.instance
-                .collection('Users')
+                .collection(FirestorePaths.users)
                 .doc(c.userId)
                 .get();
             final data = userDoc.data();
@@ -285,7 +287,7 @@ class EditsProvider extends ChangeNotifier {
       // المستندات الفعلية في الكولكشن تُكتب بـ auto-generated ID، فكان
       // البحث القديم لا يجدها أبداً ويعتقد دائماً أن الاشتراك غير موجود.
       final existing = await FirebaseFirestore.instance
-          .collection('respects')
+          .collection(FirestorePaths.respects) // ✅ FIX: نص ثابت → ثابت موحّد
           .where('fromUserId', isEqualTo: currentUserId)
           .where('toUserId', isEqualTo: uploaderId)
           .limit(1)
@@ -296,8 +298,9 @@ class EditsProvider extends ChangeNotifier {
       final batch = FirebaseFirestore.instance.batch();
 
       // ✅ FIX: doc() عشوائي بدل doc('${currentUserId}_$uploaderId')
-      final respectRef =
-          FirebaseFirestore.instance.collection('respects').doc();
+      final respectRef = FirebaseFirestore.instance
+          .collection(FirestorePaths.respects) // ✅ FIX
+          .doc();
 
       batch.set(respectRef, {
         'fromUserId': currentUserId,
@@ -306,8 +309,15 @@ class EditsProvider extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      final userRef =
-          FirebaseFirestore.instance.collection('Users').doc(uploaderId);
+      // ✅✅ FIX الأساسي: 'Users' (حرف كبير، كولكشن غير موجود فعلياً)
+      // → FirestorePaths.users ('users' حرف صغير، الكولكشن الحقيقي).
+      // السبب في المشكلة الأصلية: batch.update() على وثيقة غير موجودة
+      // يفشل بخطأ NOT_FOUND، وبما أن العملية داخل batch فإن كل الكتابة
+      // (بما فيها وثيقة respects) تُلغى بالكامل (rollback)، فلا تُمنح
+      // أي نقاط احترام رغم أن الزر كان يدور وكأن العملية ناجحة.
+      final userRef = FirebaseFirestore.instance
+          .collection(FirestorePaths.users)
+          .doc(uploaderId);
       batch.update(userRef, {
         'totalRespect': FieldValue.increment(7),
       });

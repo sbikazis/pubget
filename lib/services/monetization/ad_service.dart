@@ -31,14 +31,11 @@ class AdService {
   int _groupAdsShownToday = 0;
   bool _isInitialized = false;
 
-  // ✅ مهلة أطول للـ Rewarded لأن fill rate منخفض حالياً
+  // ✅ مهلة للـ Rewarded فقط — لأن المستخدم يضغط زر "شاهد إعلان" ويقبل الانتظار
   static const Duration _rewardedLoadTimeout = Duration(seconds: 20);
-  // ✅ مهلة أقصر للـ Interstitial لأن المستخدم ينتظر فتح شاشة
-  static const Duration _interstitialLoadTimeout = Duration(seconds: 8);
-  // ✅ بعد كم ثانية نعيد محاولة التحميل تلقائياً بعد فشل
+  // ✅ إعادة محاولة تلقائية بعد فشل التحميل
   static const Duration _retryDelay = Duration(seconds: 30);
 
-  // ✅ لمعرفة آخر سبب فشل بدون أي جهاز/logcat
   String? lastInterstitialError;
   String? lastRewardedError;
 
@@ -78,7 +75,6 @@ class AdService {
           _isRewardedLoading = false;
           lastRewardedError = 'Code ${error.code}: ${error.message}';
           debugPrint('❌ RewardedAd failed: $lastRewardedError');
-          // ✅ إعادة محاولة تلقائية — fill rate منخفض، يستحق محاولات متكررة
           Future.delayed(_retryDelay, () {
             if (_rewardedAd == null && !_isRewardedLoading) {
               _loadRewarded();
@@ -89,13 +85,13 @@ class AdService {
     );
   }
 
-  /// تشغيل إعلان مكافأة واحد — يُستخدم في EarnCoinsScreen
+  /// تشغيل إعلان مكافأة — يُستخدم في EarnCoinsScreen
+  /// ✅ هنا الانتظار مقبول لأن المستخدم ضغط "شاهد إعلان" بنية الحصول على مكافأة
   Future<bool> showSingleRewardedAd({
     required VoidCallback onReward,
   }) async {
     await init();
 
-    // إذا لم يكن محملاً، ابدأ التحميل وانتظر
     if (_rewardedAd == null) {
       _loadRewarded();
       debugPrint('⏳ RewardedAd not ready, waiting...');
@@ -119,17 +115,15 @@ class AdService {
     _rewardedAd = null;
 
     bool rewardEarned = false;
-    // ✅ Completer لإصلاح race condition: ننتظر فعلياً إغلاق الإعلان
-    // قبل أن نرجع للمتصل، بدل الرجوع فوراً بعد ad.show()
     final completer = Completer<bool>();
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (a) {
         a.dispose();
-        _loadRewarded(); // preload next
+        _loadRewarded();
         debugPrint('📢 RewardedAd dismissed. Reward earned: $rewardEarned');
         if (rewardEarned) {
-          onReward(); // ✅ فقط إذا شاهد الإعلان كاملاً
+          onReward();
         }
         if (!completer.isCompleted) completer.complete(true);
       },
@@ -149,7 +143,6 @@ class AdService {
       },
     );
 
-    // ✅ الآن ننتظر فعلياً إغلاق الإعلان قبل الرجوع، لا نرجع true فوراً
     return completer.future;
   }
 
@@ -176,7 +169,6 @@ class AdService {
           _isInterstitialLoading = false;
           lastInterstitialError = 'Code ${error.code}: ${error.message}';
           debugPrint('❌ Interstitial failed: $lastInterstitialError');
-          // ✅ إعادة محاولة تلقائية — fill rate منخفض، يستحق محاولات متكررة
           Future.delayed(_retryDelay, () {
             if (_interstitialAd == null && !_isInterstitialLoading) {
               _loadInterstitial();
@@ -187,13 +179,14 @@ class AdService {
     );
   }
 
+  // ✅ يعرض الإعلان فقط إذا كان محمّلاً مسبقاً — بدون أي انتظار
   bool _showInterstitialNow() {
     if (_interstitialAd == null) return false;
 
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        _loadInterstitial();
+        _loadInterstitial(); // preload للمرة القادمة
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
@@ -207,24 +200,11 @@ class AdService {
     return true;
   }
 
-  // ✅ الآن ننتظر فعلياً تحميل الإعلان (8 ثوانٍ) بدل الفشل الفوري
-  Future<bool> _waitForInterstitial() async {
-    if (_interstitialAd != null) return true;
+  // =========================================================================
+  // 📢 Public — Interstitial Triggers
+  // =========================================================================
 
-    _loadInterstitial();
-
-    int waited = 0;
-    const checkInterval = Duration(milliseconds: 500);
-
-    while (_interstitialAd == null &&
-        waited < _interstitialLoadTimeout.inMilliseconds) {
-      await Future.delayed(checkInterval);
-      waited += checkInterval.inMilliseconds;
-    }
-
-    return _interstitialAd != null;
-  }
-
+  /// ✅ دخول فوري دائماً — الإعلان يظهر فقط إذا كان جاهزاً مسبقاً في الخلفية
   Future<bool> showCreateGroupAd({required bool isPremium}) async {
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
@@ -238,16 +218,15 @@ class AdService {
 
     await init();
 
-    final ready = await _waitForInterstitial();
-    if (!ready) {
-      debugPrint('📢 Create Group Ad: not ready ($lastInterstitialError)');
-      return false;
+    final shown = _showInterstitialNow();
+    if (!shown) {
+      debugPrint('📢 Create Group Ad: not ready, skipping ($lastInterstitialError)');
+      _loadInterstitial(); // preload للمرة القادمة
     }
-
-    debugPrint('📢 Showing Create Group Interstitial...');
-    return _showInterstitialNow();
+    return shown;
   }
 
+  /// ✅ دخول فوري دائماً — الإعلان يظهر فقط إذا كان جاهزاً مسبقاً في الخلفية
   Future<bool> showGroupEntryAd({required bool isPremium}) async {
     final premiumCheck = AdDisplayLogic.checkIfPremium(
       isPremium: isPremium,
@@ -280,15 +259,13 @@ class AdService {
       return false;
     }
 
-    final ready = await _waitForInterstitial();
-    if (!ready) {
-      debugPrint('📢 Group Entry Ad: not ready ($lastInterstitialError)');
-      return false;
-    }
-
-    debugPrint('📢 Showing Group Entry Interstitial...');
     final shown = _showInterstitialNow();
-    if (shown) await _updateGroupAdStats();
+    if (shown) {
+      await _updateGroupAdStats();
+    } else {
+      debugPrint('📢 Group Entry Ad: not ready, skipping ($lastInterstitialError)');
+      _loadInterstitial(); // preload للمرة القادمة
+    }
     return shown;
   }
 
