@@ -30,4 +30,4 @@ jobs:
         run: |
           echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa.json
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
-          firebase deploy --only hosting --project pubget-aaf27
+          firebase deploy --only hosting --project pubget-aaf27 --force
