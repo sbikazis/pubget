@@ -68,10 +68,16 @@ class _StoreScreenState extends State<StoreScreen> with SingleTickerProviderStat
           labelColor: const Color(0xFF00FF87),
           unselectedLabelColor: textSecondary,
           indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.developer_board_rounded, size: 22), text: 'توسعات تقنية'),
-            Tab(icon: Icon(Icons.auto_awesome_rounded, size: 22), text: 'رفاهية وزينة'),
-            Tab(icon: Icon(Icons.local_shipping_rounded, size: 22), text: 'منتجات فيزيائية'),
+          tabs: [
+            const Tab(icon: Icon(Icons.developer_board_rounded, size: 22), text: 'توسعات تقنية'),
+            Tab(
+              icon: const Icon(Icons.local_shipping_rounded, size: 22, color: Color(0xFFFFD700)),
+              child: const Text(
+                'منتجات فيزيائية',
+                style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Tab(icon: Icon(Icons.auto_awesome_rounded, size: 22), text: 'رفاهية وزينة'),
           ],
         ),
       ),
@@ -79,14 +85,26 @@ class _StoreScreenState extends State<StoreScreen> with SingleTickerProviderStat
         controller: _tabController,
         children: [
           _buildTechnicalTab(cardColor, textPrimary, textSecondary),
+          // ✅ معدّل: صار في المنتصف، مع خلفية ذهبية مميزة تفرّقه عن باقي الأقسام
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFFFFD700).withOpacity(0.08),
+                  backgroundColor,
+                ],
+              ),
+            ),
+            child: const PhysicalProductsSection(),
+          ),
           _buildComingSoonTab(
             icon: Icons.style_outlined,
             title: 'مملكة الرفاهية والزينة 🎭',
             subtitle: 'انتظر إطارات التنين الأسطورية، الهالات المشعة، والملصقات المتحركة قريباً!',
             textSecondary: textSecondary,
           ),
-          // ✅ معدّل: التبويب الثالث أصبح يعرض المنتجات الفيزيائية الحقيقية من Firestore
-          const PhysicalProductsSection(),
         ],
       ),
     );

@@ -247,10 +247,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 _openSuggested();
               },
             ),
-            // 🟢 إدخال المتجر في القائمة الجانبية أيضاً لسهولة الوصول
+            // 🟣 إدخال المتجر في القائمة الجانبية — أيقونة بنفسجية مميزة بتوهج
             ListTile(
-              leading: const Icon(Icons.storefront_rounded, color: Color(0xFF00FF87)),
-              title: const Text('متجر التنين'),
+              leading: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF8A2BE2), Color(0xFFB800FF)],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFB800FF).withOpacity(0.5),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.storefront_rounded,
+                    color: Colors.white, size: 20),
+              ),
+              title: const Text(
+                'متجر التنين',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFB800FF),
+                ),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _openStore();
@@ -481,11 +504,35 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-          // 🟢 2. زر دخول المتجر الأنيق بجانب العملات
-          IconButton(
-            icon: const Icon(Icons.storefront_rounded, color: Color(0xFF00FF87)),
-            onPressed: _openStore, // ينقله لمتجر التنين الرئيسي
-            tooltip: 'متجر التنين',
+          // 🟣 2. زر دخول المتجر — بنفسجي، أكبر، بتوهج مميز
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: GestureDetector(
+              onTap: _openStore, // ينقله لمتجر التنين الرئيسي
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF8A2BE2), Color(0xFFB800FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFB800FF).withOpacity(0.55),
+                      blurRadius: 10,
+                      spreadRadius: 1.5,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.storefront_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
           ),
 
           IconButton(

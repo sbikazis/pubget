@@ -8,6 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/notifications_provider.dart';
+// ✅ إضافة import للـ RespectModal
+import '../../providers/profile_provider.dart';
+import '../profile/respect_modal.dart';
 
 import '../profile/profile_sceen.dart';
 import 'edit_player_widget.dart';
@@ -16,6 +19,7 @@ import 'upload_edit_screen.dart';
 import 'edits_share_sheet.dart';
 import 'edits_comments_sheet.dart';
 import 'ad_edit_widget.dart';
+import 'package:pubget/models/user_model.dart';
 
 class EditsScreen extends StatefulWidget {
   final int startIndex;
@@ -48,8 +52,8 @@ class _EditsScreenState extends State<EditsScreen>
 
   bool _showCaption = false;
 
-  final Map<String, bool> _subscribedMap = {};
-  final Map<String, bool> _subscribingMap = {};
+  // ✅ _subscribedMap و_subscribingMap لم نعد نحتاجهم
+  // لأن الزر الآن يفتح RespectModal فقط بدون state خاص بالاشتراك
 
   late final AnimationController _subscribeAnimCtrl;
   late final Animation<double> _subscribeScale;
@@ -138,45 +142,67 @@ class _EditsScreenState extends State<EditsScreen>
     super.dispose();
   }
 
-  // ✅ التحقق بـ query بدل doc ID ثابت
-  Future<void> _checkSubscription(
-      String uploaderId, String currentUserId) async {
-    if (_subscribedMap.containsKey(uploaderId)) return;
-    try {
-      final query = await FirebaseFirestore.instance
-          .collection('respects')
-          .where('fromUserId', isEqualTo: currentUserId)
-          .where('toUserId', isEqualTo: uploaderId)
-          .limit(1)
-          .get();
-      if (mounted) {
-        setState(() => _subscribedMap[uploaderId] = query.docs.isNotEmpty);
-      }
-    } catch (_) {}
-  }
+  // ✅ فتح RespectModal — نفس الطريقة المستخدمة في بقية التطبيق
+  // بدون أي منطق نقاط خاص بالإيديتس
+  Future<void> _openRespectModal(EditModel edit, String currentUserId) async {
+    if (edit.uploaderId == currentUserId) return;
 
-  Future<void> _onSubscribe(EditModel edit, String currentUserId) async {
-    if (_subscribingMap[edit.uploaderId] == true) return;
-    if (_subscribedMap[edit.uploaderId] == true) return;
-
-    setState(() => _subscribingMap[edit.uploaderId] = true);
     _subscribeAnimCtrl.forward(from: 0.0);
 
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final username = currentUser?.displayName ?? 'مستخدم';
+    // جلب بيانات المستخدم المستهدف من Firestore
+    final userDoc = await FirebaseFirestore.instance
+        .collection('Users')
+        .doc(edit.uploaderId)
+        .get();
 
-    final success = await context.read<EditsProvider>().subscribeToUploader(
-          uploaderId: edit.uploaderId,
+    if (!mounted) return;
+    if (!userDoc.exists) return;
+
+    final data = userDoc.data()!;
+    final targetUser = UserModel(
+      id: edit.uploaderId,
+      username: data['username'] ?? edit.uploaderName,
+      nickname: data['nickname'],
+      avatarUrl: data['avatarUrl'] ?? edit.uploaderAvatar,
+      email: data['email'] ?? '',
+      isPremium: data['isPremium'] ?? false,
+      totalRespect: (data['totalRespect'] ?? 0).toInt(),
+      coins: (data['coinsBalance'] ?? 0).toInt(),
+    );
+
+    // ✅ جلب التقييم السابق لو موجود (نفس منطق RespectModal في profile)
+    int? previousValue;
+    try {
+      final existing = await FirebaseFirestore.instance
+          .collection('respects')
+          .where('fromUserId', isEqualTo: currentUserId)
+          .where('toUserId', isEqualTo: edit.uploaderId)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        previousValue =
+            (existing.docs.first.data()['value'] as num?)?.toInt();
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    // ✅ تأكد أن ProfileProvider موجود في الـ widget tree
+    // (غالباً مسجّل في app.dart مع باقي الـ providers)
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(
+        value: context.read<ProfileProvider>(),
+        child: RespectModal(
+          targetUser: targetUser,
           currentUserId: currentUserId,
-          currentUsername: username,
-        );
-
-    if (mounted) {
-      setState(() {
-        _subscribingMap[edit.uploaderId] = false;
-        if (success) _subscribedMap[edit.uploaderId] = true;
-      });
-    }
+          previousValue: previousValue,
+        ),
+      ),
+    );
   }
 
   bool _isAdSlot(int index) {
@@ -310,12 +336,9 @@ class _EditsScreenState extends State<EditsScreen>
 
   Widget _buildEditInfo(EditModel edit, String currentUserId) {
     final isOwner = edit.uploaderId == currentUserId;
-    final isSubscribed = _subscribedMap[edit.uploaderId] ?? false;
-    final isSubscribing = _subscribingMap[edit.uploaderId] ?? false;
 
-    if (!_subscribedMap.containsKey(edit.uploaderId)) {
-      _checkSubscription(edit.uploaderId, currentUserId);
-    }
+    // ✅ لم نعد نحتاج _subscribedMap و_subscribingMap و_checkSubscription
+    // الزر الآن يفتح RespectModal مباشرة بدون state محلي للاشتراك
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,8 +405,7 @@ class _EditsScreenState extends State<EditsScreen>
                     color: _showCaption ? Colors.white24 : Colors.white10,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color:
-                          _showCaption ? Colors.white38 : Colors.white12,
+                      color: _showCaption ? Colors.white38 : Colors.white12,
                       width: 0.8,
                     ),
                   ),
@@ -436,6 +458,7 @@ class _EditsScreenState extends State<EditsScreen>
 
         const SizedBox(height: 10),
 
+        // ✅ الزر الآن يفتح RespectModal فقط — بدون أي منطق نقاط مباشر
         if (!isOwner)
           AnimatedBuilder(
             animation: _subscribeAnimCtrl,
@@ -443,76 +466,52 @@ class _EditsScreenState extends State<EditsScreen>
               return Transform.scale(
                 scale: _subscribeScale.value,
                 child: GestureDetector(
-                  onTap: isSubscribed || isSubscribing
-                      ? null
-                      : () => _onSubscribe(edit, currentUserId),
+                  onTap: () => _openRespectModal(edit, currentUserId),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      gradient: isSubscribed
-                          ? null
-                          : const LinearGradient(
-                              colors: [
-                                Color(0xFF7C3AED),
-                                Color(0xFF4F46E5),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                      color: isSubscribed ? Colors.white12 : null,
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF7C3AED),
+                          Color(0xFF4F46E5),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isSubscribed
-                            ? Colors.white24
-                            : Colors.transparent,
+                        color: Colors.transparent,
                         width: 1,
                       ),
-                      boxShadow: isSubscribed
-                          ? []
-                          : [
-                              BoxShadow(
-                                color: Colors.deepPurple.withValues(
-                                    alpha: 0.45 * _subscribeGlow.value),
-                                blurRadius: 16,
-                                spreadRadius: 2,
-                              ),
-                            ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.deepPurple.withValues(
+                              alpha: 0.45 * _subscribeGlow.value),
+                          blurRadius: 16,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                    child: isSubscribing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isSubscribed
-                                    ? Icons.favorite_rounded
-                                    : Icons.favorite_border_rounded,
-                                color: isSubscribed
-                                    ? Colors.pinkAccent
-                                    : Colors.white,
-                                size: 13,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                isSubscribed ? 'مشترك ✓' : 'اشتراك',
-                                style: TextStyle(
-                                  color: isSubscribed
-                                      ? Colors.white60
-                                      : Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.favorite_border_rounded,
+                          color: Colors.white,
+                          size: 13,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          'احترام',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -725,8 +724,7 @@ class _EditsScreenState extends State<EditsScreen>
                   color: Colors.white12,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child:
-                    const Icon(Icons.add, color: Colors.white, size: 28),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
           ),
