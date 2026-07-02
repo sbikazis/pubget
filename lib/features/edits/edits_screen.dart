@@ -159,16 +159,9 @@ class _EditsScreenState extends State<EditsScreen>
     if (!userDoc.exists) return;
 
     final data = userDoc.data()!;
-    final targetUser = UserModel(
-      id: edit.uploaderId,
-      username: data['username'] ?? edit.uploaderName,
-      nickname: data['nickname'],
-      avatarUrl: data['avatarUrl'] ?? edit.uploaderAvatar,
-      email: data['email'] ?? '',
-      isPremium: data['isPremium'] ?? false,
-      totalRespect: (data['totalRespect'] ?? 0).toInt(),
-      coins: (data['coinsBalance'] ?? 0).toInt(),
-    );
+    // ✅ تم التصحيح: نستخدم UserModel.fromMap الجاهز بدل بناء الموديل يدوياً
+    // بأسماء باراميترات غير موجودة (isPremium/coins/email بهذا الترتيب)
+    final targetUser = UserModel.fromMap(data, edit.uploaderId);
 
     // ✅ جلب التقييم السابق لو موجود (نفس منطق RespectModal في profile)
     int? previousValue;
