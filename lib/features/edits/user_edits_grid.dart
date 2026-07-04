@@ -106,7 +106,8 @@ class UserEditsGrid extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final edit = edits[index];
                   return GestureDetector(
-                    onTap: () => _openEdit(context, edit),
+                    // ✅ نمرر القائمة كاملة والـ index الصحيح
+                    onTap: () => _openEdit(context, editsProvider, edits, index),
                     onLongPress: isMe
                         ? () => _confirmDelete(context, edit)
                         : null,
@@ -164,15 +165,22 @@ class UserEditsGrid extends StatelessWidget {
     );
   }
 
-  void _openEdit(BuildContext context, EditModel edit) {
-    final editsProvider = context.read<EditsProvider>();
-    editsProvider.prependEdit(edit);
+  // ✅ نمرر القائمة كاملة والـ index — بدون prependEdit أو loadSmartFeed
+  void _openEdit(
+    BuildContext context,
+    EditsProvider editsProvider,
+    List<EditModel> edits,
+    int index,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChangeNotifierProvider.value(
           value: editsProvider,
-          child: const EditsScreen(startIndex: 0),
+          child: EditsScreen(
+            startIndex: index,
+            userEdits: edits, // ✅ القائمة الثابتة لهذا المستخدم
+          ),
         ),
       ),
     );

@@ -5,21 +5,24 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/group_provider.dart';
-import '../../providers/profile_provider.dart'; 
+import '../../providers/profile_provider.dart';
+import '../../providers/private_chat_provider.dart';
 import '../../models/user_model.dart';
 import '../../models/group_model.dart';
 
 import '../../widgets/app_button.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/loading_widget.dart';
-import '../../widgets/premium_badge.dart'; // ✅ استيراد الشارة
+import '../../widgets/premium_badge.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/constants/limits.dart';
 import 'package:pubget/features/profile/edit_profile_screen.dart';
-import 'package:pubget/features/profile/respect_modal.dart'; 
+import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/user_edits_grid.dart';
+import 'package:pubget/features/private_chat/private_chat_screen.dart';
 
-class ProfileScreen extends StatefulWidget { 
+class ProfileScreen extends StatefulWidget {
   final String? userId;
 
   const ProfileScreen({Key? key, this.userId}) : super(key: key);
@@ -29,8 +32,9 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // ✅ نخزن قيمة الاحترام الممنوحة للشخص الآخر لتحديد إذا كان زر المراسلة مفعّلاً
+  int? _myRespectGiven;
 
-  // ✅ تعديل: استخدام ألوان السمة لضمان الوضوح في الـ Dark Mode
   Widget _buildInfoRow(BuildContext context, String label, String value) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
@@ -40,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             '$label: ',
             style: TextStyle(
-              fontWeight: FontWeight.w600, 
+              fontWeight: FontWeight.w600,
               fontSize: 14,
               color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
             ),
@@ -59,7 +63,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ تعديل: ويدجت مخصص للإحصائيات مع إضافة تمييز ذهبي لمستخدمي البريميوم
   Widget _buildStatCard(BuildContext context, String label, String value, {bool isPremium = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
@@ -68,20 +71,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: isDark ? AppColors.darkSurface : AppColors.lightCard,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          // ✅ إطار ذهبي نحيف إذا كان المستخدم بريميوم
-          color: isPremium 
-              ? const Color(0xFFD4AF37) 
+          color: isPremium
+              ? const Color(0xFFD4AF37)
               : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
           width: isPremium ? 1.2 : 0.5,
         ),
-        // ✅ ظل خفيف جداً لإبراز التميز
-        boxShadow: isPremium ? [
-          BoxShadow(
-            color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
-            blurRadius: 4,
-            spreadRadius: 1,
-          )
-        ] : null,
+        boxShadow: isPremium
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                )
+              ]
+            : null,
       ),
       child: Text(
         '$label: $value',
@@ -94,25 +97,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅✅✅ تعديل جوهري: قبل فتح RespectModal، نجيب القيمة السابقة (إن وجدت)
-  // عبر ProfileProvider.getPreviousRespectValue، لكي تفتح الـ Modal بحالتها
-  // الصحيحة من البداية (مقفولة ومحددة على القيمة السابقة لو سبق التقييم،
-  // أو مفتوحة من الصفر لو أول مرة) — بدلاً من فتحها دائماً بحالة افتراضية.
   Future<void> _openRespectModal(
     BuildContext context,
     UserModel targetUser,
     String currentUserId,
   ) async {
-    final profileProvider =
-        Provider.of<ProfileProvider>(context, listen: false);
-
+    final profileProvider = Provider.of<ProfileProvider>(context, listen: false);
     final previousValue = await profileProvider.getPreviousRespectValue(
       fromUserId: currentUserId,
       toUserId: targetUser.id,
     );
-
     if (!context.mounted) return;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -123,6 +118,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
         previousValue: previousValue,
       ),
     );
+  }
+
+  // ✅ فتح المحادثة الخاصة — ينشئها إذا لم تكن موجودة، ثم ينتقل إليها
+  Future<void> _openPrivateChat(
+    BuildContext context,
+    String myId,
+    UserModel otherUser,
+  ) async {
+    final privateChatProvider =
+        Provider.of<PrivateChatProvider>(context, listen: false);
+
+    // chatId ثابت ومتسق بين الطرفين
+    final ids = [myId, otherUser.id]..sort();
+    final chatId = ids.join('_');
+
+    await privateChatProvider.createPrivateChat(
+      chatId: chatId,
+      userA: ids[0],
+      userB: ids[1],
+    );
+
+    if (!context.mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          chatId: chatId,
+          otherUser: otherUser,
+        ),
+      ),
+    );
+  }
+
+  // ✅ تحميل نقاط الاحترام الممنوحة من المستخدم الحالي للشخص المعروض
+  Future<void> _loadMyRespectGiven(
+    String fromUserId,
+    String toUserId,
+    ProfileProvider profileProvider,
+  ) async {
+    final value = await profileProvider.getPreviousRespectValue(
+      fromUserId: fromUserId,
+      toUserId: toUserId,
+    );
+    if (mounted) setState(() => _myRespectGiven = value ?? 0);
   }
 
   @override
@@ -154,7 +193,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: LoadingWidget());
         }
-        
         if (snapshot.hasError || !snapshot.hasData) {
           return Scaffold(
             appBar: AppBar(title: const Text('الملف الشخصي')),
@@ -165,27 +203,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final user = snapshot.data!;
         final bool isMe = (user.id == myId);
 
+        // ✅ تحميل نقاط الاحترام عند أول بناء للشاشة (للشخص الآخر فقط)
+        if (!isMe && myId != null && _myRespectGiven == null) {
+          _loadMyRespectGiven(myId, user.id, profileProvider);
+        }
+
         return _buildProfileContent(
-          context, 
-          user, 
-          profileProvider, 
-          groupProvider, 
-          isMe: isMe
+          context,
+          user,
+          profileProvider,
+          groupProvider,
+          isMe: isMe,
+          myId: myId,
         );
       },
     );
   }
 
   Widget _buildProfileContent(
-    BuildContext context, 
-    UserModel user, 
-    ProfileProvider profileProvider, 
-    GroupProvider groupProvider,
-    {required bool isMe}
-  ) {
+    BuildContext context,
+    UserModel user,
+    ProfileProvider profileProvider,
+    GroupProvider groupProvider, {
+    required bool isMe,
+    String? myId,
+  }) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUserId = authProvider.user?.id;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // ✅ زر المراسلة مفعّل إذا منح المستخدم الحالي >= 5 نقاط احترام للشخص الآخر
+    final bool canMessage =
+        !isMe && (_myRespectGiven ?? 0) >= Limits.fanThreshold;
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
@@ -216,8 +265,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ================= Avatar + Username + Nickname =================
+              // ================= Avatar + Username =================
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     radius: 44,
@@ -227,11 +277,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         : null,
                     child: user.avatarUrl.isEmpty
                         ? Text(
-                            user.username.isNotEmpty ? user.username[0].toUpperCase() : '',
+                            user.username.isNotEmpty
+                                ? user.username[0].toUpperCase()
+                                : '',
                             style: TextStyle(
-                              fontSize: 28, 
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
-                              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                              color: isDark
+                                  ? AppColors.darkTextPrimary
+                                  : AppColors.lightTextPrimary,
                             ),
                           )
                         : null,
@@ -241,20 +295,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // اسم المستخدم + شارة البريميوم
                         Row(
                           children: [
                             Flexible(
                               child: Text(
                                 user.username,
                                 style: TextStyle(
-                                  fontSize: 20, 
+                                  fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                  color: isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            // ✅ إضافة شارة البريميوم بجانب الاسم إذا كان مشتركاً
                             if (user.isPremium) ...[
                               const SizedBox(width: 8),
                               const PremiumBadge(size: 18, showText: false),
@@ -267,17 +323,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Text(
                               user.nickname!,
                               style: TextStyle(
-                                fontSize: 14, 
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                fontSize: 14,
+                                color: isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary,
                               ),
                             ),
                           ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8, runSpacing: 8,
+
+                        // ✅ Stats (نصف العرض) + زر المراسلة (نصف العرض)
+                        Row(
                           children: [
-                            _buildStatCard(context, 'نقاط الاحترام', '${user.totalRespect}', isPremium: user.isPremium),
-                            _buildStatCard(context, 'المعجبون', '${user.fansCount}', isPremium: user.isPremium),
+                            // ✅ Stats تأخذ نصف العرض
+                            Expanded(
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  _buildStatCard(
+                                    context,
+                                    'الاحترام',
+                                    '${user.totalRespect}',
+                                    isPremium: user.isPremium,
+                                  ),
+                                  _buildStatCard(
+                                    context,
+                                    'المعجبون',
+                                    '${user.fansCount}',
+                                    isPremium: user.isPremium,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // ✅ زر المراسلة — يظهر فقط للآخرين
+                            if (!isMe) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Tooltip(
+                                  message: canMessage
+                                      ? 'فتح المحادثة'
+                                      : 'يجب منح ${Limits.fanThreshold} نقاط احترام أولاً',
+                                  child: ElevatedButton.icon(
+                                    onPressed: canMessage && myId != null
+                                        ? () => _openPrivateChat(context, myId, user)
+                                        : null,
+                                    icon: Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                      size: 18,
+                                      color: canMessage
+                                          ? Colors.white
+                                          : (isDark
+                                              ? AppColors.darkTextHint
+                                              : Colors.grey),
+                                    ),
+                                    label: Text(
+                                      'مراسلة',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: canMessage
+                                            ? Colors.white
+                                            : (isDark
+                                                ? AppColors.darkTextHint
+                                                : Colors.grey),
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: canMessage
+                                          ? AppColors.primary
+                                          : (isDark
+                                              ? AppColors.darkCard
+                                              : Colors.grey.shade200),
+                                      disabledBackgroundColor: isDark
+                                          ? AppColors.darkCard
+                                          : Colors.grey.shade200,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: BorderSide(
+                                          color: canMessage
+                                              ? AppColors.primary
+                                              : (isDark
+                                                  ? AppColors.darkBorder
+                                                  : Colors.grey.shade400),
+                                          width: 1,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ],
@@ -297,25 +436,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: isDark ? AppColors.darkCard : AppColors.lightCard,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: user.isPremium 
-                          ? const Color(0xFFD4AF37).withValues(alpha: 0.5) 
+                      color: user.isPremium
+                          ? const Color(0xFFD4AF37).withValues(alpha: 0.5)
                           : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       width: 0.5,
                     ),
                   ),
                   child: Text(
-                    user.bio, 
+                    user.bio,
                     style: TextStyle(
                       fontSize: 14,
-                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
                     ),
                   ),
                 ),
 
               const SizedBox(height: 16),
 
-              // ✅✅✅ تعديل جوهري: onPressed أصبح async ويستدعي _openRespectModal
-              // اللي بيجيب previousValue أولاً قبل فتح الـ Modal
+              // ================= زر منح نقاط الاحترام =================
               if (!isMe && currentUserId != null) ...[
                 const Divider(),
                 AppButton(
@@ -324,6 +464,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _openRespectModal(context, user, currentUserId);
                   },
                 ),
+                // ✅ تلميح إذا الزر معطّل
+                if (!canMessage)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'امنح ${Limits.fanThreshold} نقاط احترام لفتح المراسلة المباشرة',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? AppColors.darkTextHint
+                            : Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 10),
                 const Divider(),
               ],
@@ -331,38 +486,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 8),
 
               // ================= Personal Details =================
-              _buildInfoRow(context, 'الانضمام منذ', user.createdAt.toLocal().toString().split(' ').first),
-              if (user.age != null) _buildInfoRow(context, 'العمر', '${user.age}'),
-              if (user.country != null && user.country!.isNotEmpty) _buildInfoRow(context, 'البلد', user.country!),
+              _buildInfoRow(
+                context,
+                'الانضمام منذ',
+                user.createdAt.toLocal().toString().split(' ').first,
+              ),
+              if (user.age != null)
+                _buildInfoRow(context, 'العمر', '${user.age}'),
+              if (user.country != null && user.country!.isNotEmpty)
+                _buildInfoRow(context, 'البلد', user.country!),
 
               const SizedBox(height: 16),
 
               // ================= Favorite Animes =================
               Text(
-                'الأنميات المفضلة', 
+                'الأنميات المفضلة',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700, 
+                  fontWeight: FontWeight.w700,
                   fontSize: 16,
-                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                  color: isDark
+                      ? AppColors.darkTextPrimary
+                      : AppColors.lightTextPrimary,
                 ),
               ),
               const SizedBox(height: 8),
               if (user.favoriteAnimes.isNotEmpty)
                 Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: user.favoriteAnimes.map((anime) => Chip(
-                    label: Text(anime, style: const TextStyle(fontSize: 12)),
-                    backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-                    side: BorderSide(
-                      color: user.isPremium ? const Color(0xFFD4AF37).withValues(alpha: 0.5) : (isDark ? AppColors.darkBorder : AppColors.lightBorder)
-                    ),
-                    labelStyle: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
-                  )).toList(),
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: user.favoriteAnimes
+                      .map(
+                        (anime) => Chip(
+                          label: Text(anime,
+                              style: const TextStyle(fontSize: 12)),
+                          backgroundColor: isDark
+                              ? AppColors.darkCard
+                              : AppColors.lightCard,
+                          side: BorderSide(
+                            color: user.isPremium
+                                ? const Color(0xFFD4AF37)
+                                    .withValues(alpha: 0.5)
+                                : (isDark
+                                    ? AppColors.darkBorder
+                                    : AppColors.lightBorder),
+                          ),
+                          labelStyle: TextStyle(
+                            color: isDark
+                                ? AppColors.darkTextPrimary
+                                : AppColors.lightTextPrimary,
+                          ),
+                        ),
+                      )
+                      .toList(),
                 )
               else
                 Text(
-                  'لم يتم إضافة أنميات مفضلة بعد', 
-                  style: TextStyle(color: isDark ? AppColors.darkTextHint : Colors.grey),
+                  'لم يتم إضافة أنميات مفضلة بعد',
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkTextHint : Colors.grey,
+                  ),
                 ),
 
               const SizedBox(height: 24),
@@ -373,32 +555,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   text: 'تعديل الملف الشخصي',
                   onPressed: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)),
+                      MaterialPageRoute(
+                          builder: (_) => EditProfileScreen(user: user)),
                     );
                   },
                 ),
               if (isMe) const SizedBox(height: 12),
-              
+
               AppButton(
-                text: isMe ? 'عرض مجموعاتي' : 'عرض مجموعات ${user.username}',
+                text: isMe
+                    ? 'عرض مجموعاتي'
+                    : 'عرض مجموعات ${user.username}',
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => Scaffold(
-                        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        backgroundColor: isDark
+                            ? AppColors.darkBackground
+                            : AppColors.lightBackground,
                         appBar: AppBar(
-                          title: Text(isMe ? 'مجموعاتي' : 'مجموعات ${user.username}'),
+                          title: Text(
+                              isMe ? 'مجموعاتي' : 'مجموعات ${user.username}'),
                           centerTitle: true,
-                          backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                          backgroundColor: isDark
+                              ? AppColors.darkSurface
+                              : AppColors.lightSurface,
                         ),
                         body: FutureBuilder<List<GroupModel>>(
-                          future: groupProvider.getUserGroups(userId: user.id),
+                          future:
+                              groupProvider.getUserGroups(userId: user.id),
                           builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) return const LoadingWidget();
-                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting)
+                              return const LoadingWidget();
+                            if (!snapshot.hasData ||
+                                snapshot.data!.isEmpty) {
                               return const EmptyStateWidget(
                                 title: 'لا توجد مجموعات',
-                                subtitle: 'لم يتم الانضمام إلى أي مجموعة بعد',
+                                subtitle:
+                                    'لم يتم الانضمام إلى أي مجموعة بعد',
                                 icon: Icons.group_off,
                               );
                             }
@@ -409,27 +604,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               itemBuilder: (context, index) {
                                 final group = groups[index];
                                 return Card(
-                                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                                  margin: const EdgeInsets.symmetric(vertical: 6),
+                                  color: isDark
+                                      ? AppColors.darkCard
+                                      : AppColors.lightCard,
+                                  margin: const EdgeInsets.symmetric(
+                                      vertical: 6),
                                   child: ListTile(
                                     leading: CircleAvatar(
-                                      backgroundImage: group.imageUrl.isNotEmpty ? NetworkImage(group.imageUrl) : null,
-                                      child: group.imageUrl.isEmpty ? const Icon(Icons.groups) : null,
+                                      backgroundImage:
+                                          group.imageUrl.isNotEmpty
+                                              ? NetworkImage(group.imageUrl)
+                                              : null,
+                                      child: group.imageUrl.isEmpty
+                                          ? const Icon(Icons.groups)
+                                          : null,
                                     ),
                                     title: Text(
                                       group.name,
-                                      style: TextStyle(color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
+                                      style: TextStyle(
+                                          color: isDark
+                                              ? AppColors.darkTextPrimary
+                                              : AppColors.lightTextPrimary),
                                     ),
                                     subtitle: Text(
                                       group.description,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                      style: TextStyle(
+                                          color: isDark
+                                              ? AppColors.darkTextSecondary
+                                              : AppColors.lightTextSecondary),
                                     ),
                                     trailing: Icon(
-                                      Icons.arrow_forward_ios, 
+                                      Icons.arrow_forward_ios,
                                       size: 16,
-                                      color: isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
+                                      color: isDark
+                                          ? AppColors.darkTextHint
+                                          : AppColors.lightTextHint,
                                     ),
                                     onTap: () {},
                                   ),
@@ -443,6 +654,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
+
               const SizedBox(height: 24),
 
               // ================= Edits Grid =================

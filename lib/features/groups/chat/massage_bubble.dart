@@ -21,7 +21,7 @@ import 'package:pubget/providers/chat_provider.dart';
 import 'package:pubget/providers/private_chat_provider.dart';
 import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/providers/edits_provider.dart';
-import 'package:pubget/providers/profile_provider.dart'; // ✅ جديد
+import 'package:pubget/providers/profile_provider.dart';
 import 'package:pubget/features/profile/profile_sceen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/edits_screen.dart';
@@ -54,23 +54,17 @@ class MessageBubble extends StatelessWidget {
     this.hasBackground = false,
   });
 
-  // ✅ اللون حسب حالة التسليم
   Color _getStatusColor() {
     if (message.isRead) return Colors.green;
     if (message.isDelivered) return Colors.amber;
     return Colors.red;
   }
 
-  // ✅ الأيقونة حسب حالة التسليم
   IconData _getStatusIcon() {
     if (message.isRead) return Icons.done_all;
     return Icons.done;
   }
 
-  // ✅✅✅ تعديل جوهري: createdAt أصبح DateTime؟ الآن.
-  // إذا لم يصل وقت السيرفر بعد (الرسالة أُرسلت منذ لحظات فقط ولم يُحدّث
-  // الـ snapshot برقم Timestamp حقيقي)، نعتبرها "حديثة جداً جداً" بالتعريف،
-  // فتبقى قابلة للتعديل دون الحاجة لحساب أي فرق وقت.
   bool get _canEdit =>
       isMe &&
       message.type == MessageType.text &&
@@ -435,10 +429,6 @@ class MessageBubble extends StatelessWidget {
                                 const SizedBox(width: 4),
                               ],
                               Text(
-                                // ✅✅✅ تعديل جوهري: التعامل مع createdAt == null
-                                // (الرسالة أُرسلت توّاً ولم يصل وقت السيرفر بعد).
-                                // نعرض "الآن" مؤقتاً؛ بعد جزء من الثانية يصل
-                                // التحديث الحقيقي من Firestore ويعاد البناء فوراً.
                                 message.createdAt != null
                                     ? TimeUtils.formatChatTime(
                                         message.createdAt!)
@@ -451,7 +441,6 @@ class MessageBubble extends StatelessWidget {
                               ),
                               if (isMe) ...[
                                 const SizedBox(width: 4),
-                                // ✅ أيقونة + لون ديناميكي حسب حالة التسليم
                                 Icon(
                                   _getStatusIcon(),
                                   size: 15,
@@ -536,93 +525,123 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ✅ معاد بناؤها: SwipeToReply + reply preview + reactions
   Widget _buildStickerRow(BuildContext context, bool isDark) {
+    final hasReactions =
+        message.reactions != null && message.reactions!.isNotEmpty;
+    final bool hasReply = message.replyToId != null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          if (!isMe) _buildAvatar(context),
-          if (!isMe) const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => _showStickerSaveSheet(context),
-            onLongPress: () => _showOptionsSheet(context),
-            child: Column(
+      child: _SwipeToReplyWrapper(
+        isMe: isMe,
+        onReplyTriggered: () {
+          if (onReply != null) onReply!(message);
+        },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (!isMe) _buildAvatar(context),
+            if (!isMe) const SizedBox(width: 8),
+            Column(
               crossAxisAlignment:
                   isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.goldAccent.withOpacity(0.35),
-                      width: 1.5,
-                    ),
+                // ✅ معاينة الرد فوق الملصق
+                if (hasReply)
+                  SizedBox(
+                    width: 200,
+                    child: _buildReplyPreview(isDark),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Image.network(
-                      message.mediaUrl!,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                          color: isDark
-                              ? const Color(0xFF2A2A3E)
-                              : Colors.grey.shade100,
-                          child: const Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+
+                GestureDetector(
+                  onTap: () => _showStickerSaveSheet(context),
+                  onLongPress: () => _showOptionsSheet(context),
+                  child: Column(
+                    crossAxisAlignment: isMe
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 140,
+                        height: 140,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.goldAccent.withOpacity(0.35),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: Image.network(
+                            message.mediaUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                color: isDark
+                                    ? const Color(0xFF2A2A3E)
+                                    : Colors.grey.shade100,
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.grey,
+                              size: 40,
                             ),
                           ),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.broken_image_outlined,
-                        color: Colors.grey,
-                        size: 40,
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      // ✅✅✅ تعديل جوهري: نفس معاملة null هنا أيضاً
-                      message.createdAt != null
-                          ? TimeUtils.formatChatTime(message.createdAt!)
-                          : 'الآن',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isDark ? Colors.white38 : Colors.black38,
-                      ),
-                    ),
-                    if (isMe) ...[
-                      const SizedBox(width: 4),
-                      // ✅ نفس المنطق في الـ sticker
-                      Icon(
-                        _getStatusIcon(),
-                        size: 13,
-                        color: _getStatusColor(),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            message.createdAt != null
+                                ? TimeUtils.formatChatTime(message.createdAt!)
+                                : 'الآن',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color:
+                                  isDark ? Colors.white38 : Colors.black38,
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              _getStatusIcon(),
+                              size: 13,
+                              color: _getStatusColor(),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
-                  ],
+                  ),
                 ),
+
+                // ✅ التفاعلات تحت الملصق
+                if (hasReactions) ...[
+                  const SizedBox(height: 4),
+                  _buildReactionsRow(context),
+                ],
               ],
             ),
-          ),
-          if (isMe) const SizedBox(width: 8),
-          if (isMe) _buildAvatar(context),
-        ],
+            if (isMe) const SizedBox(width: 8),
+            if (isMe) _buildAvatar(context),
+          ],
+        ),
       ),
     );
   }
@@ -654,9 +673,6 @@ class MessageBubble extends StatelessWidget {
                         .currentUser
                         ?.id;
                 if (userId == null) return;
-                // ✅✅✅ تعديل جوهري: هذا توقيت محلي فقط لأرشفة ملصق محفوظ
-                // (لا تأثير له على ترتيب الرسائل أو حالة القراءة)، فاستخدام
-                // DateTime.now() هنا كـ fallback آمن ومقبول تماماً.
                 final sticker = StickerModel(
                   id: message.id,
                   creatorId: message.senderId,
@@ -681,11 +697,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅✅✅ تعديل جوهري: استبدال "الملف الشخصي" بـ "منح نقاط الاحترام 🌟"
-  // للطرف الآخر فقط. تنتقل عبر هذه الدالة كل عمليات الجلب اللازمة
-  // (previousValue من ProfileProvider + targetUser من UserProvider) قبل
-  // فتح RespectModal، بحيث تفتح الـ Modal دائماً بحالتها الصحيحة (مقفولة
-  // ومحددة على القيمة السابقة، أو مفتوحة من الصفر لو أول مرة).
   Future<void> _openRespectModal(BuildContext context) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final profileProvider =
@@ -832,8 +843,6 @@ class MessageBubble extends StatelessWidget {
                 },
               )
             else
-              // ✅✅✅ تعديل جوهري: "الملف الشخصي" → "منح نقاط الاحترام 🌟"
-              // الانتقال للملف الشخصي أصبح من خلال الضغط على الصورة (_buildAvatar)
               ListTile(
                 leading: const Icon(Icons.star_outline,
                     color: Color(0xFFFFD700)),
@@ -1006,9 +1015,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ✅✅✅ تعديل جوهري: onTap على الصورة أصبح يفتح ProfileScreen مباشرة
-  // بدل RespectModal (عكس الأدوار المطلوب). منح نقاط الاحترام انتقل إلى
-  // _showOptionsSheet (عبر onLongPress على الرسالة بالكامل).
   Widget _buildAvatar(BuildContext context,
       [bool isGame = false, Color? gameColor]) {
     final String? avatarUrl = sender.displayImageUrl ??
@@ -1109,8 +1115,10 @@ class MessageBubble extends StatelessWidget {
       );
     }
     if (message.text != null) {
+      // ✅ إصلاح BiDi: إجبار RTL لمنع الإيموجي وعلامات الترقيم من الذهاب لأمام النص
       return Text(
         message.text!,
+        textDirection: TextDirection.rtl,
         style: TextStyle(
             fontSize: 15.5,
             fontWeight: FontWeight.w500,

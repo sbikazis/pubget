@@ -7,11 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
-import '../../providers/notifications_provider.dart';
-// ✅ إضافة import للـ RespectModal
 import '../../providers/profile_provider.dart';
 import '../profile/respect_modal.dart';
-
 import '../profile/profile_sceen.dart';
 import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
@@ -26,6 +23,8 @@ class EditsScreen extends StatefulWidget {
   final String? initialEditId;
   final String? initialCommentId;
   final bool autoOpenComments;
+  // ✅ جديد: قائمة ثابتة من ملف المستخدم — إذا مُررت نتجاوز loadSmartFeed كلياً
+  final List<EditModel>? userEdits;
 
   const EditsScreen({
     super.key,
@@ -33,6 +32,7 @@ class EditsScreen extends StatefulWidget {
     this.initialEditId,
     this.initialCommentId,
     this.autoOpenComments = false,
+    this.userEdits,
   });
 
   @override
@@ -49,15 +49,14 @@ class _EditsScreenState extends State<EditsScreen>
   static const int _adInterval = 5;
   final Set<int> _finishedAdIndexes = {};
   DateTime? _pageEntryTime;
-
   bool _showCaption = false;
-
-  // ✅ _subscribedMap و_subscribingMap لم نعد نحتاجهم
-  // لأن الزر الآن يفتح RespectModal فقط بدون state خاص بالاشتراك
 
   late final AnimationController _subscribeAnimCtrl;
   late final Animation<double> _subscribeScale;
   late final Animation<double> _subscribeGlow;
+
+  // ✅ وضع عرض ملف المستخدم — يستخدم القائمة الممررة بدون feed منطق
+  bool get _isUserMode => widget.userEdits != null;
 
   @override
   bool get wantKeepAlive => true;
@@ -93,7 +92,8 @@ class _EditsScreenState extends State<EditsScreen>
           curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
     );
 
-    if (widget.initialEditId != null) {
+    // ✅ initialEditId — وضع الديب لينك فقط (لا علاقة بـ userMode)
+    if (widget.initialEditId != null && !_isUserMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final provider = context.read<EditsProvider>();
@@ -129,6 +129,9 @@ class _EditsScreenState extends State<EditsScreen>
     if (_initialized) return;
     _initialized = true;
 
+    // ✅ تجاوز loadSmartFeed كلياً إذا كنا في وضع ملف المستخدم
+    if (_isUserMode) return;
+
     if (widget.initialEditId == null) {
       final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
       context.read<EditsProvider>().loadSmartFeed(userId);
@@ -142,28 +145,21 @@ class _EditsScreenState extends State<EditsScreen>
     super.dispose();
   }
 
-  // ✅ فتح RespectModal — نفس الطريقة المستخدمة في بقية التطبيق
-  // بدون أي منطق نقاط خاص بالإيديتس
   Future<void> _openRespectModal(EditModel edit, String currentUserId) async {
     if (edit.uploaderId == currentUserId) return;
 
     _subscribeAnimCtrl.forward(from: 0.0);
 
-    // جلب بيانات المستخدم المستهدف من Firestore
     final userDoc = await FirebaseFirestore.instance
-        .collection('Users')
+        .collection('users')
         .doc(edit.uploaderId)
         .get();
 
     if (!mounted) return;
     if (!userDoc.exists) return;
 
-    final data = userDoc.data()!;
-    // ✅ تم التصحيح: نستخدم UserModel.fromMap الجاهز بدل بناء الموديل يدوياً
-    // بأسماء باراميترات غير موجودة (isPremium/coins/email بهذا الترتيب)
-    final targetUser = UserModel.fromMap(data, edit.uploaderId);
+    final targetUser = UserModel.fromMap(userDoc.data()!, edit.uploaderId);
 
-    // ✅ جلب التقييم السابق لو موجود (نفس منطق RespectModal في profile)
     int? previousValue;
     try {
       final existing = await FirebaseFirestore.instance
@@ -181,8 +177,6 @@ class _EditsScreenState extends State<EditsScreen>
 
     if (!mounted) return;
 
-    // ✅ تأكد أن ProfileProvider موجود في الـ widget tree
-    // (غالباً مسجّل في app.dart مع باقي الـ providers)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -199,12 +193,13 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   bool _isAdSlot(int index) {
+    if (_isUserMode) return false; // ✅ لا إعلانات في وضع ملف المستخدم
     final cycleLength = _adInterval + 1;
     return (index % cycleLength) == _adInterval;
   }
 
   int _realEditIndex(int index, bool isPremium) {
-    if (isPremium) return index;
+    if (_isUserMode || isPremium) return index;
     final cycleLength = _adInterval + 1;
     final completeCycles = index ~/ cycleLength;
     final positionInCycle = index % cycleLength;
@@ -212,6 +207,7 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   int _totalVisualCount(int editsCount) {
+    if (_isUserMode) return editsCount;
     return editsCount + (editsCount ~/ _adInterval);
   }
 
@@ -235,6 +231,7 @@ class _EditsScreenState extends State<EditsScreen>
   }
 
   void _showEndDialog() {
+    if (_isUserMode) return; // ✅ لا نعرض dialog النهاية في وضع ملف المستخدم
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -316,7 +313,7 @@ class _EditsScreenState extends State<EditsScreen>
 
   void _checkEndOfFeed(
       List<EditModel> edits, int visualIndex, bool isPremium) {
-    if (_endDialogShown) return;
+    if (_isUserMode || _endDialogShown) return;
     final realIndex = _realEditIndex(visualIndex, isPremium);
     if (realIndex >= edits.length - 1) {
       _endDialogShown = true;
@@ -329,9 +326,6 @@ class _EditsScreenState extends State<EditsScreen>
 
   Widget _buildEditInfo(EditModel edit, String currentUserId) {
     final isOwner = edit.uploaderId == currentUserId;
-
-    // ✅ لم نعد نحتاج _subscribedMap و_subscribingMap و_checkSubscription
-    // الزر الآن يفتح RespectModal مباشرة بدون state محلي للاشتراك
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,7 +445,6 @@ class _EditsScreenState extends State<EditsScreen>
 
         const SizedBox(height: 10),
 
-        // ✅ الزر الآن يفتح RespectModal فقط — بدون أي منطق نقاط مباشر
         if (!isOwner)
           AnimatedBuilder(
             animation: _subscribeAnimCtrl,
@@ -473,10 +466,6 @@ class _EditsScreenState extends State<EditsScreen>
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.transparent,
-                        width: 1,
-                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.deepPurple.withValues(
@@ -521,18 +510,22 @@ class _EditsScreenState extends State<EditsScreen>
     final userProvider = context.watch<UserProvider>();
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final isPremium = userProvider.currentUser?.isPremium ?? false;
-    final edits = editsProvider.sessionFeed;
-    final totalCount =
-        isPremium ? edits.length : _totalVisualCount(edits.length);
+
+    // ✅ في وضع userMode نستخدم القائمة الممررة مباشرة — بدون sessionFeed
+    final edits = _isUserMode ? widget.userEdits! : editsProvider.sessionFeed;
+    final totalCount = _totalVisualCount(edits.length);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          if (editsProvider.isLoading && edits.isEmpty)
+          // ✅ loading فقط في وضع الفيد العام
+          if (!_isUserMode && editsProvider.isLoading && edits.isEmpty)
             const Center(child: CircularProgressIndicator()),
 
-          if (!editsProvider.isLoading && editsProvider.error != null)
+          if (!_isUserMode &&
+              !editsProvider.isLoading &&
+              editsProvider.error != null)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -559,7 +552,7 @@ class _EditsScreenState extends State<EditsScreen>
               ),
             ),
 
-          if (edits.isEmpty && !editsProvider.isLoading)
+          if (edits.isEmpty && (_isUserMode || !editsProvider.isLoading))
             const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -588,7 +581,7 @@ class _EditsScreenState extends State<EditsScreen>
                 if (_showCaption) setState(() => _showCaption = false);
 
                 final entryTime = _pageEntryTime;
-                if (entryTime != null) {
+                if (entryTime != null && !_isUserMode) {
                   final secondsSpent =
                       DateTime.now().difference(entryTime).inSeconds;
                   if (secondsSpent < 3 && !_isAdSlot(_currentIndex)) {
@@ -608,7 +601,8 @@ class _EditsScreenState extends State<EditsScreen>
 
                 setState(() {
                   _currentIndex = index;
-                  if (!isPremium &&
+                  if (!_isUserMode &&
+                      !isPremium &&
                       _isAdSlot(index) &&
                       !_finishedAdIndexes.contains(index)) {
                     _isAdCurrentlyShowing = true;
@@ -617,17 +611,23 @@ class _EditsScreenState extends State<EditsScreen>
                   }
                 });
 
-                if (!isPremium && _isAdSlot(index)) return;
+                if (!_isUserMode && !isPremium && _isAdSlot(index)) return;
                 final realIndex = _realEditIndex(index, isPremium);
                 if (realIndex >= edits.length) return;
-                final edit =
-                    editsProvider.getEditById(edits[realIndex].id) ??
-                        edits[realIndex];
-                editsProvider.incrementViews(edit.id, currentUserId);
-                _checkEndOfFeed(edits, index, isPremium);
+
+                final edit = _isUserMode
+                    ? edits[realIndex]
+                    : (editsProvider.getEditById(edits[realIndex].id) ??
+                        edits[realIndex]);
+
+                if (!_isUserMode) {
+                  editsProvider.incrementViews(edit.id, currentUserId);
+                  _checkEndOfFeed(edits, index, isPremium);
+                }
               },
               itemBuilder: (context, index) {
-                if (!isPremium && _isAdSlot(index)) {
+                // ✅ الإعلانات فقط في وضع الفيد العام
+                if (!_isUserMode && !isPremium && _isAdSlot(index)) {
                   if (_finishedAdIndexes.contains(index)) {
                     return const SizedBox.shrink();
                   }
@@ -655,9 +655,10 @@ class _EditsScreenState extends State<EditsScreen>
                   return const SizedBox.shrink();
                 }
 
-                final edit =
-                    editsProvider.getEditById(edits[realIndex].id) ??
-                        edits[realIndex];
+                final edit = _isUserMode
+                    ? edits[realIndex]
+                    : (editsProvider.getEditById(edits[realIndex].id) ??
+                        edits[realIndex]);
 
                 return Stack(
                   key: ValueKey(edit.id),
@@ -667,12 +668,14 @@ class _EditsScreenState extends State<EditsScreen>
                       edit: edit,
                       isActive: index == _currentIndex,
                       onWatchTime: (watchSeconds, watchPercent) {
-                        editsProvider.recordWatchTime(
-                          editId: edit.id,
-                          userId: currentUserId,
-                          watchSeconds: watchSeconds,
-                          watchPercent: watchPercent,
-                        );
+                        if (!_isUserMode) {
+                          editsProvider.recordWatchTime(
+                            editId: edit.id,
+                            userId: currentUserId,
+                            watchSeconds: watchSeconds,
+                            watchPercent: watchPercent,
+                          );
+                        }
                       },
                     ),
                     Positioned(
@@ -705,22 +708,26 @@ class _EditsScreenState extends State<EditsScreen>
               },
             ),
 
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            right: 16,
-            child: GestureDetector(
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const UploadEditScreen())),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(10),
+          // ✅ زر الرفع يظهر فقط في وضع الفيد العام
+          if (!_isUserMode)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 10,
+              right: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const UploadEditScreen())),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white, size: 28),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
-          ),
         ],
       ),
     );
