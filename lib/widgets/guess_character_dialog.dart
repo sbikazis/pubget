@@ -191,16 +191,7 @@ class _GuessCharacterDialogState extends State<GuessCharacterDialog> {
       userName: widget.currentMember.effectiveName,
     );
 
-    // إرسال رسالة التخمين للدردشة
-    await context.read<ChatProvider>().sendGameMessage(
-      groupId: widget.groupId,
-      messageId: DateTime.now().millisecondsSinceEpoch.toString(),
-      sender: widget.currentMember,
-      gameId: widget.game.id,
-      gameSlot: widget.game.gameSlot,
-      gameAction: 'guess',
-    );
-
+    // المرسَل في GameProvider عبر رسالة نظام واحدة فقط.
     if (mounted) Navigator.pop(context);
   }
 

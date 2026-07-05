@@ -309,13 +309,23 @@ class _GameBottomBarState extends State<GameBottomBar> {
                     widget.currentMember.displayName,
               );
 
-      if (success) {
-        _controller.clear();
-
-        setState(() {
-          _turnTimeoutCalled = false;
-        });
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'فشل إرسال الكلمة. تأكد أنه دورك وأن الإسم يبدأ بالحرف المطلوب، ولم يُستخدم سابقاً.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
       }
+
+      _controller.clear();
+
+      setState(() {
+        _turnTimeoutCalled = false;
+      });
 
       return;
     }
@@ -372,12 +382,17 @@ class _GameBottomBarState extends State<GameBottomBar> {
           );
 
     } else {
-
       await context.read<GameProvider>()
           .updateLastAction(
             widget.groupId,
             widget.game.id,
             null,
+          );
+
+      await context.read<GameProvider>()
+          .switchTurn(
+            widget.groupId,
+            widget.game.id,
           );
     }
 

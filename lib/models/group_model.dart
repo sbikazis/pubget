@@ -31,6 +31,11 @@ class GroupModel {
   final DateTime? lastMessageAt;
   final String? lastMessageText;
 
+  // ✅ جديد: حالة لعبة المافيا داخل المجموعة
+  final String? activeGameId;
+  final String? gameStatus;
+  final bool hasRunningGame;
+
   const GroupModel({
     required this.id,
     required this.name,
@@ -50,6 +55,9 @@ class GroupModel {
     this.chatBackgroundUrl,
     this.lastMessageAt,
     this.lastMessageText,
+    this.activeGameId,
+    this.gameStatus,
+    this.hasRunningGame = false,
   });
 
   bool get isRoleplay =>
@@ -81,6 +89,9 @@ class GroupModel {
           ? (map['lastMessageAt'] as Timestamp).toDate()
           : null,
       lastMessageText: map['lastMessageText'] ?? '',
+      activeGameId: map['activeGameId'],
+      gameStatus: map['gameStatus'],
+      hasRunningGame: map['hasRunningGame'] ?? false,
     );
   }
 
@@ -103,6 +114,9 @@ class GroupModel {
       'chatBackgroundUrl': chatBackgroundUrl,
       'lastMessageAt': lastMessageAt,
       'lastMessageText': lastMessageText,
+      'activeGameId': activeGameId,
+      'gameStatus': gameStatus,
+      'hasRunningGame': hasRunningGame,
     };
   }
 
@@ -122,6 +136,9 @@ class GroupModel {
     String? chatBackgroundUrl,
     DateTime? lastMessageAt,
     String? lastMessageText,
+    String? activeGameId,
+    String? gameStatus,
+    bool? hasRunningGame,
   }) {
     return GroupModel(
       id: id,
@@ -142,6 +159,9 @@ class GroupModel {
       chatBackgroundUrl: chatBackgroundUrl ?? this.chatBackgroundUrl,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessageText: lastMessageText ?? this.lastMessageText,
+      activeGameId: activeGameId ?? this.activeGameId,
+      gameStatus: gameStatus ?? this.gameStatus,
+      hasRunningGame: hasRunningGame ?? this.hasRunningGame,
     );
   }
 }

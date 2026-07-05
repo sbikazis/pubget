@@ -36,6 +36,35 @@ class FirestorePaths {
   static String groupGames(String groupId) =>
       '$groups/$groupId/games';
 
+  // مسار الألعاب المخصصة لخاصية المافيا
+  static String mafiaGames() => 'mafia_games';
+
+  static String mafiaGameDoc(String gameId) =>
+      '${mafiaGames()}/$gameId';
+
+  static String mafiaGamePlayers(String gameId) =>
+      '${mafiaGameDoc(gameId)}/players';
+
+  static String mafiaGamePlayerDoc(String gameId, String playerId) =>
+      '${mafiaGamePlayers(gameId)}/$playerId';
+
+  static String mafiaGameNightActions(String gameId) =>
+      '${mafiaGameDoc(gameId)}/night_actions';
+
+  static String mafiaGameVotes(String gameId) =>
+      '${mafiaGameDoc(gameId)}/votes';
+
+  static String mafiaGameEvents(String gameId) =>
+      '${mafiaGameDoc(gameId)}/events';
+
+  static String mafiaGameChat(String gameId) =>
+      '${mafiaGameDoc(gameId)}/chat';
+
+  static String mafiaHistory() => 'mafia_history';
+
+  static String userMafiaHistory(String userId) =>
+      '$users/$userId/user_mafia_history';
+
   // مسار للوصول إلى مستند لعبة محددة (للتحقق السريع أو التحديث)
   static String groupGameDoc(String groupId, String gameId) =>
       '$groups/$groupId/games/$gameId';

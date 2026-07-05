@@ -9,6 +9,7 @@ import 'providers/home_provider.dart';
 import 'providers/group_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/game_provider.dart';
+import 'providers/mafia_game_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/private_chat_provider.dart';
 import 'providers/settings_provider.dart';
@@ -112,6 +113,11 @@ class _PubgetAppState extends State<PubgetApp> {
         ChangeNotifierProvider(
           create: (context) => GameProvider(
             firestore: context.read<FirestoreService>(),
+            userProvider: context.read<UserProvider>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => MafiaGameProvider(
             userProvider: context.read<UserProvider>(),
           ),
         ),

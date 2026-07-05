@@ -36,13 +36,40 @@ class _AnimeChainGameScreenState extends State<AnimeChainGameScreen> {
     _activeGameId = widget.existingGameId;
     if (_activeGameId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<GameProvider>().joinGame(
-          groupId: widget.groupId,
-          gameId: _activeGameId!,
-          userId: widget.currentMember.userId,
-          userName: widget.currentMember.displayName,
-        );
+        _attemptJoinExistingGame();
       });
+    }
+  }
+
+  Future<void> _attemptJoinExistingGame() async {
+    try {
+      final gameDoc = await FirebaseFirestore.instance
+          .collection(FirestorePaths.groupGames(widget.groupId))
+          .doc(_activeGameId)
+          .get();
+
+      if (!gameDoc.exists) return;
+
+      final game = GameModel.fromMap(gameDoc.id, gameDoc.data()!);
+
+      // إذا المستخدم هو منشئ اللعبة بالفعل أو انضم سابقاً، لا نعيد الانضمام.
+      if (game.playerOneId == widget.currentMember.userId ||
+          game.playerTwoId == widget.currentMember.userId) {
+        return;
+      }
+
+      if (game.status != GameStatus.waitingForOpponent) {
+        return;
+      }
+
+      await context.read<GameProvider>().joinGame(
+            groupId: widget.groupId,
+            gameId: _activeGameId!,
+            userId: widget.currentMember.userId,
+            userName: widget.currentMember.displayName,
+          );
+    } catch (e) {
+      debugPrint('Failed to join existing anime chain game: $e');
     }
   }
 
