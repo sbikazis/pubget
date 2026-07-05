@@ -69,7 +69,7 @@ class MafiaGameProvider extends ChangeNotifier {
         isLocked: false,
       );
 
-      final user = _userProvider.user;
+      final user = _userProvider.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }

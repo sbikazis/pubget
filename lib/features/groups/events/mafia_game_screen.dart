@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../widgets/mafia/mafia_phase_banner.dart';
-import '../../widgets/mafia/mafia_waiting_room.dart';
+import '../../../widgets/mafia/mafia_phase_banner.dart';
+import '../../../widgets/mafia/mafia_waiting_room.dart';
+import '../../../models/mafia/mafia_event_model.dart';
 import '../../../models/mafia/mafia_player_model.dart';
 import '../../../models/mafia/mafia_chat_message_model.dart';
 import '../../../providers/mafia_game_provider.dart';

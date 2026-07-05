@@ -38,4 +38,4 @@ class MafiaChatMessageModel {
 DateTime _toDateTime(dynamic value) {
   if (value is Timestamp) return value.toDate();
   if (value is DateTime) return value;
-  return DateTime.now();
+  return DateTime.now();}
