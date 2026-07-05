@@ -6,6 +6,7 @@ import '../../services/firebase/firestore_service.dart';
 import '../../providers/notifications_provider.dart';
 import '../constants/firestore_paths.dart';
 import '../constants/limits.dart';
+import '../utils/chat_id_utils.dart';
 
 /// ✅ نتيجة عملية منح/تعديل نقاط الاحترام
 /// previousValue == null  → كانت هذه أول مرة (لا يوجد تقييم سابق)
@@ -106,8 +107,8 @@ class RespectLogic {
 
     // ✅ تحديد ما إذا كانت هذه أول مرة "يعبر" فيها التقييم لعتبة المعجبين
     final bool wasFanBefore =
-        previousValue != null && previousValue > Limits.fanThreshold.toInt();
-    final bool isFanNow = respectValue > Limits.fanThreshold.toInt();
+        previousValue != null && previousValue >= Limits.fanThreshold.toInt();
+    final bool isFanNow = respectValue >= Limits.fanThreshold.toInt();
     final bool becameFanNow = isFanNow && !wasFanBefore;
 
     if (becameFanNow) {
@@ -133,9 +134,7 @@ class RespectLogic {
           'fansCount': FieldValue.increment(1),
         });
 
-        final String chatId = fromUserId.hashCode <= toUserId.hashCode
-            ? '${fromUserId}_$toUserId'
-            : '${toUserId}_$fromUserId';
+        final String chatId = buildPrivateChatId(fromUserId, toUserId);
 
         final chatRef =
             firestore.collection(FirestorePaths.privateChats).doc(chatId);

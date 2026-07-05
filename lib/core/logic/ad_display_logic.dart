@@ -42,13 +42,13 @@ class AdDisplayLogic {
         reason: "first_time",
       );
     } else {
-      // التحقق من مرور 10 دقائق
-      final passed = TimeUtils.hasMinutesPassed(lastAdTime, 10);
+      // التحقق من مرور 5 دقائق فقط
+      final passed = TimeUtils.hasMinutesPassed(lastAdTime, 5);
 
       if (passed) {
         decision = const AdDisplayDecision(
           shouldShow: true,
-          reason: "ten_minutes_passed",
+          reason: "five_minutes_passed",
         );
       } else {
         decision = const AdDisplayDecision(

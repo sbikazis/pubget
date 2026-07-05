@@ -15,7 +15,7 @@ import '../../core/theme/app_colors.dart';
 
 import '../groups/group_details_screen.dart';
 import '../groups/create_group_screen.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+import 'package:pubget/features/profile/profile_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);

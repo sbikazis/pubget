@@ -17,6 +17,7 @@ import '../../widgets/premium_badge.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/limits.dart';
+import '../../core/utils/chat_id_utils.dart';
 import 'package:pubget/features/profile/edit_profile_screen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/user_edits_grid.dart';
@@ -108,7 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       toUserId: targetUser.id,
     );
     if (!context.mounted) return;
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -118,6 +119,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         previousValue: previousValue,
       ),
     );
+    if (!context.mounted) return;
+    _loadMyRespectGiven(currentUserId, targetUser.id, profileProvider);
   }
 
   // ✅ فتح المحادثة الخاصة — ينشئها إذا لم تكن موجودة، ثم ينتقل إليها
@@ -129,11 +132,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final privateChatProvider =
         Provider.of<PrivateChatProvider>(context, listen: false);
 
-    // chatId ثابت ومتسق بين الطرفين
+    // chatId ثابت ومتسق بين الطرفين باستخدام نفس المنطق في RespectLogic
+    final chatId = buildPrivateChatId(myId, otherUser.id);
     final ids = [myId, otherUser.id]..sort();
-    final chatId = ids.join('_');
 
-    await privateChatProvider.createPrivateChat(
+    final actualChatId = await privateChatProvider.createPrivateChat(
       chatId: chatId,
       userA: ids[0],
       userB: ids[1],
@@ -144,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PrivateChatScreen(
-          chatId: chatId,
+          chatId: actualChatId,
           otherUser: otherUser,
         ),
       ),

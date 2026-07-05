@@ -19,7 +19,7 @@ import 'package:pubget/features/home/my_group_section.dart';
 import '../home/search_screen.dart';
 import 'package:pubget/features/home/notifications_screen.dart';
 import '../groups/create_group_screen.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+import 'package:pubget/features/profile/profile_screen.dart';
 import '../private_chat/private_chats_list_screen.dart';
 import '../edits/edits_screen.dart';
 import '../../providers/edits_provider.dart';

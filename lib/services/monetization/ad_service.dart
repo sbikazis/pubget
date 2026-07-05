@@ -242,17 +242,6 @@ class AdService {
 
     final lastAdTime = _localStorage.getLastAdTime();
 
-    if (lastAdTime != null && TimeUtils.isNewDay(lastAdTime)) {
-      _groupAdsShownToday = 0;
-      await _localStorage.saveAdsCountToday(0);
-    }
-
-    final dailyCheck = AdDisplayLogic.checkDailyLimit(_groupAdsShownToday);
-    if (!dailyCheck.shouldShow) {
-      debugPrint('📢 Group Entry Ad: ${dailyCheck.reason}');
-      return false;
-    }
-
     final cooldownCheck = AdDisplayLogic.checkTenMinutesRule(lastAdTime);
     if (!cooldownCheck.shouldShow) {
       debugPrint('📢 Group Entry Ad: ${cooldownCheck.reason}');

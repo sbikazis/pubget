@@ -12,8 +12,15 @@ import 'package:pubget/core/theme/app_colors.dart';
 import 'package:pubget/features/groups/group_details_screen.dart'; // استيراد صفحة التفاصيل
 import 'package:pubget/services/monetization/ad_service.dart';
 
-class PromotedGroupsSection extends StatelessWidget {
+class PromotedGroupsSection extends StatefulWidget {
   const PromotedGroupsSection({Key? key}) : super(key: key);
+
+  @override
+  State<PromotedGroupsSection> createState() => _PromotedGroupsSectionState();
+}
+
+class _PromotedGroupsSectionState extends State<PromotedGroupsSection> {
+  bool _isNavigating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +61,9 @@ class PromotedGroupsSection extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemBuilder: (context, index) {
             final group = discoveryGroups[index];
-            return _DiscoveryGroupCard(group: group);
+            return _DiscoveryGroupCard(group: group, isNavigating: _isNavigating, toggleNavigating: (value) {
+              if (mounted) setState(() => _isNavigating = value);
+            });
           },
         ),
       ],
@@ -64,8 +73,15 @@ class PromotedGroupsSection extends StatelessWidget {
 
 class _DiscoveryGroupCard extends StatelessWidget {
   final GroupModel group;
+  final bool isNavigating;
+  final void Function(bool) toggleNavigating;
 
-  const _DiscoveryGroupCard({Key? key, required this.group}) : super(key: key);
+  const _DiscoveryGroupCard({
+    Key? key,
+    required this.group,
+    required this.isNavigating,
+    required this.toggleNavigating,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -84,13 +100,19 @@ class _DiscoveryGroupCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () async {
-        final adService = Provider.of<AdService>(context, listen: false);
-        final isPremium = Provider.of<AuthProvider>(context, listen: false).user?.isPremium?? false;
-        await adService.showGroupClickAd(isPremium: isPremium);
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: group.id)),
-        );
+        if (isNavigating) return;
+        toggleNavigating(true);
+        try {
+          final adService = Provider.of<AdService>(context, listen: false);
+          final isPremium = Provider.of<AuthProvider>(context, listen: false).user?.isPremium ?? false;
+          await adService.showGroupClickAd(isPremium: isPremium);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => GroupDetailsScreen(groupId: group.id)),
+          );
+        } finally {
+          toggleNavigating(false);
+        }
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),

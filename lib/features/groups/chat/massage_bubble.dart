@@ -22,7 +22,7 @@ import 'package:pubget/providers/private_chat_provider.dart';
 import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/providers/edits_provider.dart';
 import 'package:pubget/providers/profile_provider.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+import 'package:pubget/features/profile/profile_screen.dart';
 import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/edits_screen.dart';
 import '../../../features/groups/events/anime_chain_game_screen.dart';

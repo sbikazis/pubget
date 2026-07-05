@@ -14,6 +14,7 @@ import '../services/firebase/storage_service.dart';
 
 import '../core/constants/firestore_paths.dart';
 import '../core/constants/limits.dart';
+import '../core/utils/chat_id_utils.dart';
 
 class PrivateChatProvider extends ChangeNotifier {
   final FirestoreService _firestore;
@@ -37,6 +38,54 @@ class PrivateChatProvider extends ChangeNotifier {
       docId: chatId,
       data: {fieldName: FieldValue.serverTimestamp()},
     );
+  }
+
+  Future<String?> _findExistingPrivateChatId({
+    required String userA,
+    required String userB,
+  }) async {
+    // أولاً: حاول العثور على المحادثة بنفس الـ chatId الثابت الجديد.
+    final stableChatId = buildPrivateChatId(userA, userB);
+    final existingStable = await _firestore.getDocument(
+      path: FirestorePaths.privateChats,
+      docId: stableChatId,
+    );
+    if (existingStable != null) {
+      return stableChatId;
+    }
+
+    // ثانياً: دعم حالة المحادثات القديمة التي خُزنّت تحت معرف مختلف.
+    final queryAB = _firestore.buildQuery(
+      path: FirestorePaths.privateChats,
+      conditions: [
+        QueryCondition(field: 'userA', isEqualTo: userA),
+        QueryCondition(field: 'userB', isEqualTo: userB),
+      ],
+    );
+    final resultAB = await _firestore.getCollection(
+      path: FirestorePaths.privateChats,
+      query: queryAB,
+    );
+    if (resultAB.docs.isNotEmpty) {
+      return resultAB.docs.first.id;
+    }
+
+    final queryBA = _firestore.buildQuery(
+      path: FirestorePaths.privateChats,
+      conditions: [
+        QueryCondition(field: 'userA', isEqualTo: userB),
+        QueryCondition(field: 'userB', isEqualTo: userA),
+      ],
+    );
+    final resultBA = await _firestore.getCollection(
+      path: FirestorePaths.privateChats,
+      query: queryBA,
+    );
+    if (resultBA.docs.isNotEmpty) {
+      return resultBA.docs.first.id;
+    }
+
+    return null;
   }
 
   Stream<int> streamPrivateUnreadCount(
@@ -91,25 +140,30 @@ class PrivateChatProvider extends ChangeNotifier {
     }).distinct();
   }
 
-  Future<void> createPrivateChat(
+  Future<String> createPrivateChat(
       {required String chatId,
       required String userA,
       required String userB}) async {
-    final existing = await _firestore.getDocument(
-        path: FirestorePaths.privateChats, docId: chatId);
-    if (existing != null) return;
+    final existingChatId = await _findExistingPrivateChatId(
+      userA: userA,
+      userB: userB,
+    );
+    if (existingChatId != null) return existingChatId;
+
+    final sortedUsers = [userA, userB]..sort();
     await _firestore.createDocument(
       path: FirestorePaths.privateChats,
       docId: chatId,
       data: {
-        "userA": userA,
-        "userB": userB,
+        "userA": sortedUsers[0],
+        "userB": sortedUsers[1],
         "createdAt": FieldValue.serverTimestamp(),
         "lastMessageAt": FieldValue.serverTimestamp(),
         "lastReadUserA": null,
         "lastReadUserB": null,
       },
     );
+    return chatId;
   }
 
   Stream<List<MessageModel>> streamMessages({required String chatId}) {

@@ -7,7 +7,7 @@ import '../../providers/user_provider.dart';
 import '../../providers/edits_provider.dart';
 import '../../providers/notifications_provider.dart';
 import '../../models/edits_model.dart';
-import '../profile/profile_sceen.dart';
+import '../profile/profile_screen.dart';
 
 class EditCommentsSheet extends StatefulWidget {
   final String editId;

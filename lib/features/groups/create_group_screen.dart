@@ -31,9 +31,12 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   GroupType? _selectedType;
+  bool _isProcessing = false;
 
-  // ✅ فحص الحد — بدون تغيير، يبقى sync
-  void _checkLimitAndProceed(VoidCallback onAllowed) {
+  // ✅ فحص الحد مع منع الضغط المتكرر
+  Future<void> _checkLimitAndProceed(Future<void> Function() onAllowed) async {
+    if (_isProcessing) return;
+
     final authProvider = context.read<AuthProvider>();
     final homeProvider = context.read<HomeProvider>();
     final user = authProvider.user;
@@ -46,7 +49,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
 
     if (result.isAllowed) {
-      onAllowed();
+      setState(() => _isProcessing = true);
+      try {
+        await onAllowed();
+      } finally {
+        if (mounted) setState(() => _isProcessing = false);
+      }
     } else {
       if (result.shouldShowUpgrade) {
         AppDialog.showLimitReachedDialog(
@@ -54,11 +62,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           customContent: result.message,
         );
       } else {
-  AppDialog.showMaxLimitDialog(
-    context,
-    customContent: result.message,
-  );
-}
+        AppDialog.showMaxLimitDialog(
+          context,
+          customContent: result.message,
+        );
+      }
     }
   }
 

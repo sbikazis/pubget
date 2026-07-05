@@ -9,7 +9,7 @@ import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../profile/respect_modal.dart';
-import '../profile/profile_sceen.dart';
+import '../profile/profile_screen.dart';
 import 'edit_player_widget.dart';
 import 'edit_actions_bar.dart';
 import 'upload_edit_screen.dart';

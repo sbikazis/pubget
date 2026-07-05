@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../../models/member_model.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/auth_provider.dart';
-import 'package:pubget/features/profile/profile_sceen.dart';
+import 'package:pubget/features/profile/profile_screen.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/role_colors.dart';

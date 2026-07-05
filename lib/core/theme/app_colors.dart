@@ -1,5 +1,6 @@
 //AppColors
 import 'package:flutter/material.dart';
+export 'color_extensions.dart';
 
 class AppColors {
   AppColors._();

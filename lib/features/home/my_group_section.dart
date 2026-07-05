@@ -34,12 +34,17 @@ class MyGroupsSection extends StatefulWidget {
 }
 
 class _MyGroupsSectionState extends State<MyGroupsSection> {
+  bool _isNavigating = false;
+
   Future<void> _openGroupDetails(BuildContext context, GroupModel group) async {
-    final adService = context.read<AdService>();
-    final isPremium = context.read<AuthProvider>().user?.isPremium?? false;
-    await adService.showGroupClickAd(isPremium: isPremium);
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
 
     try {
+      final adService = context.read<AdService>();
+      final isPremium = context.read<AuthProvider>().user?.isPremium ?? false;
+      await adService.showGroupClickAd(isPremium: isPremium);
+
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -49,7 +54,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
     } catch (_) {
       final groupProvider = context.read<GroupProvider>();
       final fetched = await groupProvider.getGroup(groupId: group.id);
-      if (fetched!= null && mounted) {
+      if (fetched != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => Scaffold(
@@ -62,6 +67,8 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isNavigating = false);
     }
   }
 
