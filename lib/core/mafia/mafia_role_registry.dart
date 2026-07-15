@@ -1,4 +1,6 @@
-import '../../core/constants/mafia_constants.dart';
+// lib/core/mafia/mafia_role_registry.dart
+
+import '../constants/mafia_constants.dart';
 
 typedef RoleAbilityBuilder = MafiaRoleAbility Function();
 
@@ -16,6 +18,11 @@ abstract class MafiaRoleAbility {
 class MafiaRoleRegistry {
   final Map<String, RoleAbilityBuilder> _registry = {};
 
+  // ✅ الحل: constructor صريح فارغ.
+  // بدونه، Dart يُسقط الـ constructor الافتراضي غير المسمّى بمجرد
+  // وجود أي constructor آخر معرّف في الكلاس (هنا factory .standard()).
+  MafiaRoleRegistry();
+
   void register(String roleName, RoleAbilityBuilder builder) {
     _registry[roleName] = builder;
   }
@@ -27,6 +34,32 @@ class MafiaRoleRegistry {
   }
 
   bool contains(String roleName) => _registry.containsKey(roleName);
+
+  /// أسماء كل الأدوار المسجّلة حالياً في هذا النسخة من التطبيق.
+  List<String> get registeredRoles => _registry.keys.toList(growable: false);
+
+  // ══════════════════════════════════════════════════════════
+  // ✅ التفعيل الفعلي: نسخة وحيدة (Singleton) مُهيّأة بكل الأدوار
+  // الأساسية عند أول استخدام. هذا يجعل السجل "حياً" بدل أن يكون
+  // مجرد Class مُعرَّف بلا أي Instance يستخدمه أحد.
+  //
+  // الاستخدام المستقبلي (المرحلة 4 - واجهات الليل):
+  //   final ability = MafiaRoleRegistry.instance.createAbility(player.role);
+  //   إذا null => الدور لا يملك قدرة ليلية (مواطن مثلاً).
+  // ══════════════════════════════════════════════════════════
+  static final MafiaRoleRegistry instance = MafiaRoleRegistry.standard();
+
+  factory MafiaRoleRegistry.standard() {
+    final registry = MafiaRoleRegistry();
+    registry.register(MafiaRoles.mafia, () => MafiaAbility());
+    registry.register(MafiaRoles.doctor, () => MedicAbility());
+    registry.register(MafiaRoles.detective, () => DetectiveAbility());
+    registry.register(MafiaRoles.sniper, () => SniperAbility());
+    registry.register(MafiaRoles.silencer, () => SilencerAbility());
+    registry.register(MafiaRoles.goodBoy, () => GoodBoyAbility());
+    registry.register(MafiaRoles.citizen, () => CitizenAbility());
+    return registry;
+  }
 }
 
 class MafiaAbility extends MafiaRoleAbility {
@@ -42,7 +75,9 @@ class MafiaAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور المافيا يرسل طلبه فقط.
+    // TODO(Stage 4): إرسال قرار القتل الليلي إلى night_actions.
+    // التنفيذ الفعلي (تحديد من مات) يحدث حصراً في roleAssigner/nightResolver
+    // على السيرفر — هذا الأسلوب هنا مجرد نقطة دخول لواجهة اللاعب مستقبلاً.
   }
 }
 
@@ -59,7 +94,7 @@ class MedicAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور الطبيب يرسل طلبه فقط.
+    // TODO(Stage 4): إرسال قرار الحماية الليلي إلى night_actions.
   }
 }
 
@@ -76,7 +111,7 @@ class DetectiveAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور المحقق يرسل طلبه فقط.
+    // TODO(Stage 4): إرسال قرار الفحص الليلي إلى night_actions.
   }
 }
 
@@ -93,7 +128,7 @@ class SniperAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور القناص يرسل طلبه فقط.
+    // TODO(Stage 4): إرسال قرار الرصاصة الليلية (usedBullet) إلى night_actions.
   }
 }
 
@@ -110,7 +145,7 @@ class SilencerAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور المُسكِّت يرسل طلبه فقط.
+    // TODO(Stage 4): إرسال قرار الإسكات الليلي إلى night_actions.
   }
 }
 
@@ -127,7 +162,7 @@ class GoodBoyAbility extends MafiaRoleAbility {
     required String playerId,
     String? targetId,
   }) async {
-    // دور الصديق الطيب يرسل طلبه فقط.
+    // لا قدرة ليلية فعلية — دور اجتماعي/خاص حسب قواعد اللعبة المستقبلية.
   }
 }
 

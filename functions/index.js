@@ -1,3 +1,9 @@
+// functions/index.js
+//
+// ✅ الإضافة الوحيدة: تصدير disconnectHandler، بنفس نمط الإضافات
+// السابقة تماماً — بقية الملف (الإشعارات + lobbyManager + phaseScheduler)
+// دون أي تغيير آخر.
+
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -15,15 +21,12 @@ function randomSound() {
   return sounds[Math.floor(Math.random() * sounds.length)];
 }
 
-// ══════════════════════════════════════════════════════════════
-// رسائل المجموعة
-// ══════════════════════════════════════════════════════════════
 exports.onNewGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   async (event) => {
     const message = event.data.data();
     const groupId = event.params.groupId;
-    const messageId = event.params.messageId; // ✅ جديد
+    const messageId = event.params.messageId;
     const db = getFirestore();
 
     if (message.type === 'systemEvent') return;
@@ -79,7 +82,7 @@ exports.onNewGroupMessage = onDocumentCreated(
       android: {
         notification: {
           sound,
-          channelId: `pubget_reply_group`, // ✅ قناة الرد الصحيحة
+          channelId: `pubget_reply_group`,
         },
       },
       data: {
@@ -89,22 +92,19 @@ exports.onNewGroupMessage = onDocumentCreated(
         senderName: senderName,
         contextName: groupName,
         commentId: '',
-        messageId: messageId, // ✅ جديد
+        messageId: messageId,
       },
     });
   }
 );
 
-// ══════════════════════════════════════════════════════════════
-// رسائل الدردشة الخاصة
-// ══════════════════════════════════════════════════════════════
 exports.onNewPrivateMessage = onDocumentCreated(
   "privateChats/{chatId}/messages/{messageId}",
   async (event) => {
     const message = event.data.data();
     const senderId = message.senderId;
     const chatId = event.params.chatId;
-    const messageId = event.params.messageId; // ✅ جديد
+    const messageId = event.params.messageId;
     const db = getFirestore();
 
     const chatDoc = await db.collection("privateChats").doc(chatId).get();
@@ -146,7 +146,7 @@ exports.onNewPrivateMessage = onDocumentCreated(
       android: {
         notification: {
           sound,
-          channelId: `pubget_reply_private`, // ✅ قناة الرد الصحيحة
+          channelId: `pubget_reply_private`,
         },
       },
       data: {
@@ -156,15 +156,12 @@ exports.onNewPrivateMessage = onDocumentCreated(
         senderName: senderName,
         contextName: senderName,
         commentId: '',
-        messageId: messageId, // ✅ جديد
+        messageId: messageId,
       },
     });
   }
 );
 
-// ══════════════════════════════════════════════════════════════
-// طلبات الانضمام
-// ══════════════════════════════════════════════════════════════
 exports.onJoinRequest = onDocumentCreated(
   "groups/{groupId}/requests/{requestId}",
   async (event) => {
@@ -208,8 +205,19 @@ exports.onJoinRequest = onDocumentCreated(
         senderName: requesterName,
         contextName: groupName,
         commentId: '',
-        messageId: '', // لا يوجد messageId لطلبات الانضمام
+        messageId: '',
       },
     });
   }
 );
+
+// ══════════════════════════════════════════════════════════════
+// ✅ لعبة المافيا (مجلد منفصل تماماً src/mafia/)
+// ══════════════════════════════════════════════════════════════
+const lobbyManager = require("./src/mafia/lobbyManager");
+const phaseScheduler = require("./src/mafia/phaseScheduler");
+const disconnectHandler = require("./src/mafia/disconnectHandler");
+
+exports.processExpiredLobbies = lobbyManager.processExpiredLobbies;
+exports.processPhaseTransitions = phaseScheduler.processPhaseTransitions;
+exports.markDisconnectedPlayers = disconnectHandler.markDisconnectedPlayers;

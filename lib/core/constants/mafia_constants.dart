@@ -1,3 +1,5 @@
+// lib/core/constants/mafia_constants.dart
+
 class MafiaRoles {
   MafiaRoles._();
 
@@ -48,6 +50,25 @@ class MafiaGameVersions {
     season,
     custom,
   ];
+}
+
+/// مؤقتات اللعبة بكل مراحلها.
+/// ⚠️ هذه القيم تُستخدم في مكانين فقط:
+/// 1. Flutter: لعرض تقديري فقط (لا يُكتب منها شيء على المرحلة الفعلية).
+/// 2. functions/src/mafia/phaseFlow.js: نسخة مطابقة تماماً بالثواني،
+///    وهي المصدر الحقيقي الوحيد الذي يُحدد متى تنتقل المرحلة فعلياً.
+/// أي تعديل هنا يجب أن يُرافقه نفس التعديل في phaseFlow.js يدوياً.
+class MafiaTimers {
+  MafiaTimers._();
+
+  static const int lobbyWaitSeconds = 60;
+  static const int startingCountdownSeconds = 10;
+
+  static const int nightSeconds = 45;
+  static const int daySeconds = 20;
+  static const int discussionSeconds = 90;
+  static const int votingSeconds = 45;
+  static const int executionSeconds = 15;
 }
 
 enum MafiaGameStatus {

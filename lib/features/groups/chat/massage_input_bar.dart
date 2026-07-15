@@ -8,16 +8,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-
+import '../../../core/constants/roles.dart';
+import '../../../core/constants/limits.dart';
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 import '../../../models/sticker_model.dart';
-import '../../../core/constants/limits.dart';
+import '../../../providers/mafia_game_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/gif_picker_sheet.dart';
 import '../../../widgets/game_events_sheet.dart';
+import '../../../widgets/store_entrance_button.dart';
 import '../../../providers/sticker_provider.dart';
 import '../../../providers/user_provider.dart';
+import '../events/mafia_game_screen.dart';
 import 'package:pubget/features/stickers/stiker_picker_sheet.dart';
 import '../../stickers/sticker_creator_sheet.dart';
 
@@ -308,6 +311,89 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
+  bool get _canOpenMafia {
+    return widget.currentMember.role == Roles.founder ||
+        widget.currentMember.role == Roles.sensei ||
+        widget.currentMember.role == Roles.hakusho;
+  }
+
+  Future<void> _handleMafiaPressed() async {
+    FocusScope.of(context).unfocus();
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'لعبة المافيا داخل المجموعة',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _canOpenMafia
+                    ? 'يمكنك إنشاء لعبة المافيا هنا. ستُدار الحالة من Firebase وتبقى داخل هذه المجموعة.'
+                    : 'هذه الميزة متاحة فقط لأعضاء الشوغن، السينسي، والهكشو.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _canOpenMafia ? Colors.black87 : Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton.icon(
+                onPressed: _canOpenMafia
+                    ? () async {
+                        Navigator.of(context).pop();
+                        final mafiaProvider =
+                            context.read<MafiaGameProvider>();
+                        try {
+                          final gameId = await mafiaProvider.createGame(
+                            groupId: widget.groupId,
+                            createdBy: widget.currentMember.userId,
+                          );
+                          if (!mounted) return;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MafiaGameScreen(gameId: gameId),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('حدث خطأ: $e')),
+                          );
+                        }
+                      }
+                    : null,
+                icon: const Icon(Icons.theater_comedy),
+                label: const Text('ابدأ لعبة المافيا'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('إغلاق'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildIconBtn(IconData icon, VoidCallback? onTap, {Color? color}) {
     return SizedBox(
       width: 28,
@@ -413,13 +499,19 @@ class _MessageInputBarState extends State<MessageInputBar> {
                             _isSending ? null : _pickAndSendImage,
                           ),
                           const SizedBox(width: 4),
-                          if (!widget.isPrivate)
+                          if (!widget.isPrivate) ...[
+                            StoreEntranceButton(
+                              onTap: _handleMafiaPressed,
+                              enabled: _canOpenMafia,
+                            ),
+                            const SizedBox(width: 4),
                             _buildIconBtn(
                               Icons.videogame_asset_rounded,
                               _handleGamePressed,
                               color: AppColors.goldAccent,
                             ),
-                          const SizedBox(width: 4),
+                            const SizedBox(width: 4),
+                          ],
                         ],
                         if (_isRecording) ...[
                           const SizedBox(width: 8),

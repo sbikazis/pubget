@@ -1,3 +1,8 @@
+// lib/services/mafia/mafia_firestore_service.dart
+//
+// ✅ الإضافة الوحيدة: streamVotes — بقية الملف كما هو من المرحلة 4.5
+// دون أي تغيير.
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/firestore_paths.dart';
 import '../../models/mafia/mafia_action_model.dart';
@@ -5,6 +10,7 @@ import '../../models/mafia/mafia_chat_message_model.dart';
 import '../../models/mafia/mafia_event_model.dart';
 import '../../models/mafia/mafia_game_model.dart';
 import '../../models/mafia/mafia_player_model.dart';
+import '../../models/mafia/mafia_player_private_model.dart';
 import '../../models/mafia/mafia_vote_model.dart';
 
 class MafiaFirestoreService {
@@ -25,6 +31,10 @@ class MafiaFirestoreService {
   DocumentReference<Map<String, dynamic>> mafiaGamePlayerDoc(
           String gameId, String playerId) =>
       mafiaGamePlayers(gameId).doc(playerId);
+
+  DocumentReference<Map<String, dynamic>> mafiaGamePlayerPrivateDoc(
+          String gameId, String playerId) =>
+      mafiaGamePlayerDoc(gameId, playerId).collection('private').doc('data');
 
   CollectionReference<Map<String, dynamic>> mafiaGameNightActions(
           String gameId) =>
@@ -65,6 +75,11 @@ class MafiaFirestoreService {
     return mafiaGamePlayers(gameId).snapshots();
   }
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>> streamPlayerPrivate(
+      String gameId, String playerId) {
+    return mafiaGamePlayerPrivateDoc(gameId, playerId).snapshots();
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> streamEvents(String gameId) {
     return mafiaGameEvents(gameId)
         .orderBy('createdAt', descending: false)
@@ -75,6 +90,12 @@ class MafiaFirestoreService {
     return mafiaGameChat(gameId)
         .orderBy('time', descending: false)
         .snapshots();
+  }
+
+  /// ✅ جديد: تدفّق حي لكل الأصوات — يُستخدم لعرض عدّاد تصويت حي
+  /// في الواجهة (شفاف بطبيعته في لعبة المافيا التقليدية).
+  Stream<QuerySnapshot<Map<String, dynamic>>> streamVotes(String gameId) {
+    return mafiaGameVotes(gameId).snapshots();
   }
 
   Future<void> createPlayer(
@@ -94,6 +115,26 @@ class MafiaFirestoreService {
 
   Future<void> deletePlayer(String gameId, String playerId) async {
     await mafiaGamePlayerDoc(gameId, playerId).delete();
+  }
+
+  Future<void> createPlayerPrivate(
+    String gameId,
+    String playerId,
+    MafiaPlayerPrivateModel data,
+  ) async {
+    await mafiaGamePlayerPrivateDoc(gameId, playerId).set(data.toMap());
+  }
+
+  Future<void> updatePlayerPrivate(
+    String gameId,
+    String playerId,
+    Map<String, dynamic> data,
+  ) async {
+    await mafiaGamePlayerPrivateDoc(gameId, playerId).update(data);
+  }
+
+  Future<void> deletePlayerPrivate(String gameId, String playerId) async {
+    await mafiaGamePlayerPrivateDoc(gameId, playerId).delete();
   }
 
   Future<void> createNightAction(

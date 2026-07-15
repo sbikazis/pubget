@@ -1,50 +1,90 @@
+// lib/core/mafia/mafia_game_engine.dart
+//
+// ⚠️ تغيير معماري مهم في هذه المرحلة:
+// هذا الملف لم يعد يكتب أي تحديث على مرحلة اللعبة في Firestore.
+// السبب: القاعدة الصريحة في تصميم اللعبة تنص أن لا يحق لأي Client
+// أن يغيّر المرحلة أو يحدد الفائز. السلطة الفعلية لتغيير المرحلة
+// أصبحت بالكامل في functions/src/mafia/phaseScheduler.js (سيرفر).
+//
+// دور هذا الملف الآن: توصيف تسلسل المراحل ومددها، ليُستخدم من
+// الواجهة (العدّاد، اسم المرحلة التالية المتوقعة) بدون أي كتابة فعلية.
+// هذا التسلسل مطابق حرفياً لما في functions/src/mafia/phaseFlow.js —
+// أي تعديل هنا يستوجب تعديل مطابق هناك يدوياً.
+
 import '../constants/mafia_constants.dart';
-import '../../models/mafia/mafia_game_model.dart';
-import '../../models/mafia/mafia_player_model.dart';
-import '../../services/mafia/mafia_game_repository.dart';
 
-class MafiaGameEngine {
-  final MafiaGameRepository _repository;
+class MafiaPhaseFlow {
+  MafiaPhaseFlow._();
 
-  MafiaGameEngine({MafiaGameRepository? repository})
-      : _repository = repository ?? MafiaGameRepository();
+  /// ترتيب المراحل المتكررة بعد الليلة الأولى (لا تشمل waiting/starting
+  /// لأنهما تُداران حصراً عبر lobbyManager.js، ولا finished/cancelled
+  /// لأنهما حالتا نهاية).
+  static const List<MafiaGameStatus> order = [
+    MafiaGameStatus.night,
+    MafiaGameStatus.day,
+    MafiaGameStatus.discussion,
+    MafiaGameStatus.voting,
+    MafiaGameStatus.execution,
+  ];
 
-  Future<void> startGame(MafiaGameModel game) async {
-    if (game.playersCount < game.minPlayers) {
-      throw Exception('لا يمكن بدء اللعبة قبل اكتمال العدد.');
+  /// المرحلة التالية في الدورة (تلقائياً تدور: بعد execution ترجع night).
+  static MafiaGameStatus next(MafiaGameStatus current) {
+    final idx = order.indexOf(current);
+    if (idx == -1) return MafiaGameStatus.night;
+    return order[(idx + 1) % order.length];
+  }
+
+  static int durationSeconds(MafiaGameStatus phase) {
+    switch (phase) {
+      case MafiaGameStatus.night:
+        return MafiaTimers.nightSeconds;
+      case MafiaGameStatus.day:
+        return MafiaTimers.daySeconds;
+      case MafiaGameStatus.discussion:
+        return MafiaTimers.discussionSeconds;
+      case MafiaGameStatus.voting:
+        return MafiaTimers.votingSeconds;
+      case MafiaGameStatus.execution:
+        return MafiaTimers.executionSeconds;
+      default:
+        return 0;
     }
-
-    await _repository.updateGame(game.id, {
-      'status': MafiaGameStatus.starting.name,
-      'currentPhase': MafiaGameStatus.starting.name,
-      'startedAt': DateTime.now(),
-      'phaseEndsAt': DateTime.now().add(const Duration(seconds: 60)),
-      'countdownEndsAt': DateTime.now().add(const Duration(seconds: 60)),
-      'isLocked': true,
-    });
   }
 
-  Future<void> transitionToPhase(
-    String gameId,
-    MafiaGameStatus nextPhase,
-  ) async {
-    final updateData = {
-      'status': nextPhase.name,
-      'currentPhase': nextPhase.name,
-      'phaseEndsAt': DateTime.now().add(const Duration(seconds: 90)),
-    };
-    await _repository.updateGame(gameId, updateData);
+  static String arabicLabel(MafiaGameStatus phase) {
+    switch (phase) {
+      case MafiaGameStatus.waiting:
+        return 'غرفة الانتظار';
+      case MafiaGameStatus.starting:
+        return 'بدء المباراة...';
+      case MafiaGameStatus.night:
+        return '🌙 الليل';
+      case MafiaGameStatus.day:
+        return '☀️ الصباح';
+      case MafiaGameStatus.discussion:
+        return '💬 النقاش';
+      case MafiaGameStatus.voting:
+        return '🗳️ التصويت';
+      case MafiaGameStatus.execution:
+        return '⚖️ الإعدام';
+      case MafiaGameStatus.finished:
+        return '🏁 انتهت المباراة';
+      case MafiaGameStatus.cancelled:
+        return '❌ أُلغيت المباراة';
+    }
   }
+}
 
-  Future<void> finishGame(
-    String gameId,
-    String winner,
-  ) async {
-    await _repository.updateGame(gameId, {
-      'status': MafiaGameStatus.finished.name,
-      'currentPhase': MafiaGameStatus.finished.name,
-      'winner': winner,
-      'endedAt': DateTime.now(),
-    });
-  }
+/// نسخة قراءة فقط — لا يوجد فيها أي دالة تكتب على Firestore.
+/// أُبقيت كواجهة مستقرة (Facade) لأي كود Flutter مستقبلي يحتاج معرفة
+/// اسم/مدة/تسلسل المرحلة، دون إغراء أحد بالكتابة المباشرة من العميل.
+class MafiaGameEngine {
+  const MafiaGameEngine();
+
+  MafiaGameStatus previewNextPhase(MafiaGameStatus current) =>
+      MafiaPhaseFlow.next(current);
+
+  int durationOf(MafiaGameStatus phase) => MafiaPhaseFlow.durationSeconds(phase);
+
+  String labelOf(MafiaGameStatus phase) => MafiaPhaseFlow.arabicLabel(phase);
 }

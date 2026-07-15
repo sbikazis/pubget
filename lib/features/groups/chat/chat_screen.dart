@@ -1,4 +1,12 @@
 // lib/features/groups/chat/chat_screen.dart
+//
+// ✅ الإضافة الوحيدة لهذه المرحلة: فحص group.activeGameId/hasRunningGame
+// داخل StreamBuilder<GroupModel?> الموجود أصلاً، وتوجيه تلقائي لـ
+// MafiaGameScreen عند وجود مباراة مستمرة — هذا يحقق "الحالة الثانية"
+// من التصميم الأصلي: إغلاق التطبيق ثم العودة يدخل مباشرة للمباراة
+// إن كانت مستمرة. نفس نمط _navigatedGameIds المستخدم أصلاً مع
+// GuessCharacterGameScreen، بمجموعة منفصلة خاصة بالمافيا لتفادي أي
+// تعارض بينهما.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +33,7 @@ import '../../../widgets/game_bottom_bar.dart';
 import '../../../widgets/game_message_bubble.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../events/guess_character_game_screen.dart';
+import '../events/mafia_game_screen.dart'; // ✅ جديد
 import 'package:pubget/widgets/game_events_sheet.dart';
 import 'package:pubget/models/sticker_model.dart';
 
@@ -54,6 +63,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   List<MessageModel> _cachedMessages = [];
   bool _isInitialLoad = true;
   final Set<String> _navigatedGameIds = {};
+
+  // ✅ جديد: يمنع فتح شاشة المافيا أكثر من مرة لنفس المباراة، ويسمح
+  // بإعادة الفتح تلقائياً لو المستخدم رجع من الشاشة يدوياً بينما
+  // المباراة لا تزال مستمرة (نفس فكرة _navigatedGameIds لكن منفصلة
+  // تماماً لتفادي أي تعارض مع لعبة التخمين).
+  final Set<String> _navigatedMafiaGameIds = {};
 
   DateTime? _lastReadAt;
   bool _initialScrollDone = false;
@@ -527,6 +542,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// ✅ جديد: يفتح شاشة المافيا تلقائياً إذا كانت هناك مباراة مستمرة
+  /// في هذه المجموعة ولم تُفتح بعد لهذا الـ gameId تحديداً. يُستدعى
+  /// من داخل StreamBuilder<GroupModel?> عند كل تحديث حي للمجموعة —
+  /// وهذا يغطي كل من: دخول المستخدم للمجموعة أول مرة بعد إغلاق
+  /// التطبيق (الحالة الثانية من التصميم)، وأيضاً بدء مباراة جديدة من
+  /// عضو آخر أثناء وجوده داخل شاشة الدردشة فعلاً.
+  void _maybeNavigateToMafiaGame(GroupModel group) {
+    if (!group.hasRunningGame) return;
+    final gameId = group.activeGameId;
+    if (gameId == null || gameId.isEmpty) return;
+    if (_navigatedMafiaGameIds.contains(gameId)) return;
+
+    _navigatedMafiaGameIds.add(gameId);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ModalRoute.of(context)?.isCurrent != true) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MafiaGameScreen(gameId: gameId),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatProvider = Provider.of<ChatProvider>(context);
@@ -542,6 +583,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final String? backgroundUrl = group?.chatBackgroundUrl;
         final bool hasBackground =
             backgroundUrl != null && backgroundUrl.isNotEmpty;
+
+        // ✅ فحص المباراة المستمرة عند كل تحديث حي لبيانات المجموعة
+        if (group != null) {
+          _maybeNavigateToMafiaGame(group);
+        }
 
         return WillPopScope(
           onWillPop: () async {

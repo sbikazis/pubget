@@ -1,3 +1,10 @@
+// lib/models/mafia/mafia_game_model.dart
+//
+// ✅ الإصلاح الحرج: إضافة rewardsDistributed و historyWritten بقيمة
+// افتراضية false مكتوبة دائماً في toMap()، بحيث تكون موجودة دوماً
+// على المستند من لحظة الإنشاء — هذا يمنع خطأ Firestore Rules الذي
+// كان يرفض كل تحديث للعبة لأن هذين الحقلين لم يكونا موجودين أصلاً.
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/mafia_constants.dart';
 
@@ -20,6 +27,8 @@ class MafiaGameModel {
   final bool isLocked;
   final DateTime? startedAt;
   final DateTime? endedAt;
+  final bool rewardsDistributed;
+  final bool historyWritten;
 
   const MafiaGameModel({
     required this.id,
@@ -40,6 +49,8 @@ class MafiaGameModel {
     this.isLocked = false,
     this.startedAt,
     this.endedAt,
+    this.rewardsDistributed = false,
+    this.historyWritten = false,
   });
 
   factory MafiaGameModel.fromMap(String id, Map<String, dynamic> map) {
@@ -72,6 +83,8 @@ class MafiaGameModel {
       endedAt: map['endedAt'] != null
           ? _toDateTime(map['endedAt'])
           : null,
+      rewardsDistributed: map['rewardsDistributed'] ?? false,
+      historyWritten: map['historyWritten'] ?? false,
     );
   }
 
@@ -98,6 +111,9 @@ class MafiaGameModel {
       'isLocked': isLocked,
       'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
       'endedAt': endedAt != null ? Timestamp.fromDate(endedAt!) : null,
+      // ✅ يُكتبان دائماً، حتى لا يغيبا عن المستند عند الإنشاء
+      'rewardsDistributed': rewardsDistributed,
+      'historyWritten': historyWritten,
     };
   }
 
@@ -120,6 +136,8 @@ class MafiaGameModel {
     bool? isLocked,
     DateTime? startedAt,
     DateTime? endedAt,
+    bool? rewardsDistributed,
+    bool? historyWritten,
   }) {
     return MafiaGameModel(
       id: id ?? this.id,
@@ -140,6 +158,8 @@ class MafiaGameModel {
       isLocked: isLocked ?? this.isLocked,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
+      rewardsDistributed: rewardsDistributed ?? this.rewardsDistributed,
+      historyWritten: historyWritten ?? this.historyWritten,
     );
   }
 }

@@ -24,13 +24,13 @@ import 'package:pubget/models/user_model.dart';
 import '../groups/group_members_screen.dart';
 import '../groups/roleplay_join_screen.dart';
 import '../groups/chat/chat_screen.dart';
-import '../groups/edit_group_screen.dart';import '../groups/events/mafia_game_screen.dart';import '../../services/firebase/firestore_service.dart';
+import '../groups/edit_group_screen.dart';
+import '../../services/firebase/firestore_service.dart';
 import '../../core/logic/group_join_validator.dart';
 import 'package:pubget/services/monetization/promotion_dayalog.dart';
 import '../../core/logic/subscription_limits_logic.dart';
 import '../../services/monetization/ad_service.dart';
 import 'package:pubget/providers/chat_provider.dart';
-import 'package:pubget/providers/mafia_game_provider.dart';
 import 'package:pubget/core/logic/system_message_builder.dart';
 import 'package:pubget/providers/group_provider.dart';
 
@@ -260,8 +260,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         children: [
           _buildChatButton(group.id),
           const SizedBox(width: 8),
-          _buildStartMafiaButton(group, currentMember),
-          const SizedBox(width: 8),
           _buildMembersIconButton(group.id),
           _buildGroupOptionsButton(group, isFounder, currentMember),
         ],
@@ -322,24 +320,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         onPressed: () => _openChat(groupId),
         icon: const Icon(Icons.chat),
         label: const Text('دخول للدردشة'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStartMafiaButton(GroupModel group, MemberModel? currentMember) {
-    if (currentMember == null) return const SizedBox.shrink();
-
-    return Expanded(
-      child: ElevatedButton.icon(
-        onPressed: () => _showMafiaSheet(group, currentMember),
-        icon: const Icon(Icons.theater_comedy),
-        label: const Text('لعبة المافيا'),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -467,61 +447,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
   }
 
-  void _showMafiaSheet(GroupModel group, MemberModel currentMember) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('لعبة المافيا في ${group.name}',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text(
-              'ابدأ فعالية المافيا داخل هذه المجموعة. ستستمر اللعبة داخل المجموعة دون التأثير على الدردشة الحالية.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 18),
-            ElevatedButton.icon(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                final mafiaProvider = context.read<MafiaGameProvider>();
-                final gameId = await mafiaProvider.createGame(
-                  groupId: group.id,
-                  createdBy: currentMember.userId,
-                );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('تم إنشاء غرفة المافيا')),
-                );
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => MafiaGameScreen(gameId: gameId),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('إنشاء غرفة مافيا'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Future<void> _handleDisbandGroup(GroupModel group) async {
     Navigator.of(context).pop();

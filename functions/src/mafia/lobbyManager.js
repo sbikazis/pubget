@@ -1,0 +1,112 @@
+// functions/src/mafia/lobbyManager.js
+//
+// مسؤول هذا الملف: إدارة دورة حياة غرفة الانتظار (Stage 1)
+// + استدعاء توزيع الأدوار عند اكتمال عد starting (Stage 2).
+// ✅ محوّل الآن لصيغة Firebase Functions v2 لتطابق باقي المشروع.
+
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const admin = require("firebase-admin");
+const { assignRoles } = require("./roleAssigner");
+
+const db = admin.firestore();
+
+const STATUS = {
+  WAITING: "waiting",
+  STARTING: "starting",
+  CANCELLED: "cancelled",
+};
+
+exports.processExpiredLobbies = onSchedule("every 1 minutes", async () => {
+  const now = admin.firestore.Timestamp.now();
+
+  const expiredWaiting = await db
+    .collection("mafia_games")
+    .where("status", "==", STATUS.WAITING)
+    .where("countdownEndsAt", "<=", now)
+    .get();
+
+  for (const doc of expiredWaiting.docs) {
+    await cancelLobby(doc.id, doc.data());
+  }
+
+  const expiredStarting = await db
+    .collection("mafia_games")
+    .where("status", "==", STATUS.STARTING)
+    .where("countdownEndsAt", "<=", now)
+    .get();
+
+  for (const doc of expiredStarting.docs) {
+    await beginGame(doc.id, doc.data());
+  }
+});
+
+async function cancelLobby(gameId, gameData) {
+  const gameRef = db.collection("mafia_games").doc(gameId);
+  const playersRef = gameRef.collection("players");
+  const groupRef = db.collection("groups").doc(gameData.groupId);
+
+  const playersSnap = await playersRef.get();
+
+  const batch = db.batch();
+  playersSnap.docs.forEach((playerDoc) => {
+    batch.delete(playerDoc.ref);
+  });
+  batch.delete(gameRef);
+  batch.update(groupRef, {
+    activeGameId: admin.firestore.FieldValue.delete(),
+    gameStatus: admin.firestore.FieldValue.delete(),
+    hasRunningGame: false,
+  });
+
+  await batch.commit();
+
+  await sendSystemMessage({
+    groupId: gameData.groupId,
+    text: "❌ تم إلغاء مباراة المافيا لعدم اكتمال عدد اللاعبين.",
+    systemEventType: "mafiaGameCancelled",
+    gameId,
+  });
+}
+
+async function beginGame(gameId, gameData) {
+  const gameRef = db.collection("mafia_games").doc(gameId);
+
+  await gameRef.update({
+    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await assignRoles(gameId, gameData);
+}
+
+async function sendSystemMessage({ groupId, text, systemEventType, gameId }) {
+  const messagesRef = db.collection("groups").doc(groupId).collection("messages");
+
+  await messagesRef.add({
+    senderId: "system",
+    senderName: "النظام",
+    senderAvatar: "",
+    senderIsPremium: false,
+    senderRole: null,
+    text,
+    mediaUrl: null,
+    mediaType: null,
+    type: "systemEvent",
+    gameId: gameId ?? null,
+    gameSlot: null,
+    gameAction: null,
+    systemEventType,
+    replyToId: null,
+    replyText: null,
+    replyToSenderName: null,
+    replyToMediaUrl: null,
+    reactions: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    isRead: false,
+    isDelivered: true,
+    audioDuration: null,
+    editThumbnail: null,
+    editAnimeTitle: null,
+    editId: null,
+    isEdited: false,
+  });
+}

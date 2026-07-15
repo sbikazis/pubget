@@ -1,7 +1,13 @@
+// lib/providers/mafia_game_provider.dart
+//
+// ✅ الإضافة: تشغيل/إيقاف Timer نبضة الحياة ضمن دورة حياة
+// subscribeToGame/unsubscribe نفسها — نفس نمط بقية الاشتراكات.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/mafia/mafia_game_model.dart';
 import '../models/mafia/mafia_player_model.dart';
+import '../models/mafia/mafia_player_private_model.dart';
 import '../models/mafia/mafia_event_model.dart';
 import '../models/mafia/mafia_action_model.dart';
 import '../models/mafia/mafia_chat_message_model.dart';
@@ -20,6 +26,8 @@ class MafiaGameProvider extends ChangeNotifier {
   })  : _repository = repository ?? MafiaGameRepository(),
         _userProvider = userProvider;
 
+  static const Duration _heartbeatInterval = Duration(seconds: 25);
+
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
@@ -29,6 +37,12 @@ class MafiaGameProvider extends ChangeNotifier {
   List<MafiaPlayerModel> _players = [];
   List<MafiaPlayerModel> get players => _players;
 
+  MafiaPlayerPrivateModel? _myPrivateData;
+  MafiaPlayerPrivateModel? get myPrivateData => _myPrivateData;
+
+  List<MafiaVoteModel> _votes = [];
+  List<MafiaVoteModel> get votes => _votes;
+
   List<MafiaEventModel> _events = [];
   List<MafiaEventModel> get events => _events;
 
@@ -37,8 +51,12 @@ class MafiaGameProvider extends ChangeNotifier {
 
   StreamSubscription? _gameSubscription;
   StreamSubscription? _playersSubscription;
+  StreamSubscription? _privateSubscription;
+  StreamSubscription? _votesSubscription;
   StreamSubscription? _eventsSubscription;
   StreamSubscription? _chatSubscription;
+  Timer? _heartbeatTimer;
+  String? _heartbeatGameId;
 
   void setLoading(bool value) {
     _isLoading = value;
@@ -67,6 +85,8 @@ class MafiaGameProvider extends ChangeNotifier {
         minPlayers: minPlayers,
         maxPlayers: maxPlayers,
         isLocked: false,
+        countdownEndsAt:
+            DateTime.now().add(const Duration(seconds: MafiaTimers.lobbyWaitSeconds)),
       );
 
       final user = _userProvider.currentUser;
@@ -79,8 +99,6 @@ class MafiaGameProvider extends ChangeNotifier {
         userId: user.id,
         username: user.username,
         avatar: user.avatarUrl,
-        role: MafiaRoles.citizen,
-        team: MafiaTeams.citizens,
         isAlive: true,
         isDisconnected: false,
         isMuted: false,
@@ -101,13 +119,47 @@ class MafiaGameProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> joinGame({
-    required String gameId,
-    required MafiaPlayerModel player,
-  }) async {
+  Future<void> joinCurrentUser({required String gameId}) async {
+    final user = _userProvider.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final player = MafiaPlayerModel(
+      id: user.id,
+      userId: user.id,
+      username: user.username,
+      avatar: user.avatarUrl,
+      isAlive: true,
+      isDisconnected: false,
+      isMuted: false,
+      hasLeft: false,
+      joinedAt: DateTime.now(),
+      coinsEarned: 0,
+      votesReceived: 0,
+      canSpeak: true,
+      canVote: true,
+      canUseAbility: true,
+      revealedRole: false,
+    );
+
     setLoading(true);
     try {
-      await _repository.createPlayer(gameId, player);
+      await _repository.joinGame(gameId: gameId, player: player);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  Future<void> leaveCurrentUser({required String gameId}) async {
+    final user = _userProvider.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    setLoading(true);
+    try {
+      await _repository.leaveGame(gameId: gameId, playerId: user.id);
     } finally {
       setLoading(false);
     }
@@ -116,8 +168,11 @@ class MafiaGameProvider extends ChangeNotifier {
   void subscribeToGame({required String gameId}) {
     _gameSubscription?.cancel();
     _playersSubscription?.cancel();
+    _privateSubscription?.cancel();
+    _votesSubscription?.cancel();
     _eventsSubscription?.cancel();
     _chatSubscription?.cancel();
+    _stopHeartbeat();
 
     _gameSubscription = _repository.streamGame(gameId).listen((game) {
       _currentGame = game;
@@ -126,6 +181,23 @@ class MafiaGameProvider extends ChangeNotifier {
 
     _playersSubscription = _repository.streamPlayers(gameId).listen((players) {
       _players = players;
+      notifyListeners();
+    });
+
+    final currentUserId = _userProvider.currentUser?.id;
+    if (currentUserId != null) {
+      _privateSubscription = _repository
+          .streamMyPrivateData(gameId, currentUserId)
+          .listen((privateData) {
+        _myPrivateData = privateData;
+        notifyListeners();
+      });
+
+      _startHeartbeat(gameId: gameId, playerId: currentUserId);
+    }
+
+    _votesSubscription = _repository.streamVotes(gameId).listen((votes) {
+      _votes = votes;
       notifyListeners();
     });
 
@@ -140,11 +212,31 @@ class MafiaGameProvider extends ChangeNotifier {
     });
   }
 
+  /// يبدأ إرسال نبضة حياة دورية طالما شاشة اللعبة مفتوحة. أول نبضة
+  /// تُرسل فوراً (بدون انتظار الفاصل الزمني الأول) حتى يظهر اللاعب
+  /// "متصلاً" لحظة دخوله مباشرة.
+  void _startHeartbeat({required String gameId, required String playerId}) {
+    _heartbeatGameId = gameId;
+    _repository.sendHeartbeat(gameId: gameId, playerId: playerId);
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
+      _repository.sendHeartbeat(gameId: gameId, playerId: playerId);
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _heartbeatGameId = null;
+  }
+
   void unsubscribe() {
     _gameSubscription?.cancel();
     _playersSubscription?.cancel();
+    _privateSubscription?.cancel();
+    _votesSubscription?.cancel();
     _eventsSubscription?.cancel();
     _chatSubscription?.cancel();
+    _stopHeartbeat();
   }
 
   Future<void> sendGameChatMessage({
@@ -170,11 +262,13 @@ class MafiaGameProvider extends ChangeNotifier {
     required String role,
     String? targetId,
   }) async {
+    final nightNumber = _currentGame?.currentNight ?? 0;
     final action = MafiaActionModel(
-      id: '${playerId}_${DateTime.now().millisecondsSinceEpoch}',
+      id: '${playerId}_n$nightNumber',
       playerId: playerId,
       role: role,
       targetId: targetId,
+      nightNumber: nightNumber,
       submittedAt: DateTime.now(),
       isCompleted: true,
     );
@@ -186,10 +280,12 @@ class MafiaGameProvider extends ChangeNotifier {
     required String voterId,
     required String targetId,
   }) async {
+    final dayNumber = _currentGame?.currentDay ?? 0;
     final vote = MafiaVoteModel(
-      id: '${voterId}_${DateTime.now().millisecondsSinceEpoch}',
+      id: '${voterId}_d$dayNumber',
       voterId: voterId,
       targetId: targetId,
+      dayNumber: dayNumber,
       time: DateTime.now(),
     );
     await _repository.addVote(gameId, vote);
