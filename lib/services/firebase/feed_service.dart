@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/edits_model.dart';
 import '../../models/edit_interaction_model.dart';
 import '../../core/logic/feed_ranking_logic.dart';
+import '../../core/logic/feed_recommendation_engine.dart';
 
 class FeedService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -121,13 +122,20 @@ class FeedService {
         return ranked.take(10).toList();
       }
 
-      // 5. بناء بصمة الاهتمام
-      final animeMap =
-          FeedRankingLogic.buildAnimeInterestMap(interactions);
-      final uploaderMap =
-          FeedRankingLogic.buildUploaderInterestMap(interactions);
+      // 5. إذا كان المستخدم قد تجاوز cold start، نستخدم محرك التوصية الجديد
+      // الذي يوازن بين الاهتمام طويل المدى، الجلسة الحالية، التنوع، وجودة الفيديو.
+      if (FeedRecommendationEngine.isColdStart(interactions)) {
+        final ranked = FeedRecommendationEngine.rankCandidates(
+          candidates: unseen,
+          interactions: interactions,
+          recentlySeen: seenIds.toSet(),
+        );
+        return ranked.take(20).toList();
+      }
 
-      // 6. ترتيب مخصص مع التنوع
+      // 6. ترتيب مخصص مع التنوع عبر خوارزمية legacy لتناسق البيانات الحالية
+      final animeMap = FeedRankingLogic.buildAnimeInterestMap(interactions);
+      final uploaderMap = FeedRankingLogic.buildUploaderInterestMap(interactions);
       return FeedRankingLogic.rankAndDiversify(unseen, animeMap, uploaderMap);
     } catch (e) {
       debugPrint('❌ FeedService.fetchSmartFeed: $e');

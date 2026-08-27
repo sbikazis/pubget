@@ -1,4 +1,8 @@
 // lib/core/constants/mafia_constants.dart
+//
+// ✅ التعديل الوحيد: lobbyWaitSeconds من 60 إلى 120 (دقيقتين).
+// ⚠️ تذكير: يجب تطبيق نفس القيمة يدوياً في functions/src/mafia/phaseFlow.js
+// إذا كان lobbyWaitSeconds مستخدماً هناك أيضاً — راجعه عند النشر.
 
 class MafiaRoles {
   MafiaRoles._();
@@ -52,16 +56,11 @@ class MafiaGameVersions {
   ];
 }
 
-/// مؤقتات اللعبة بكل مراحلها.
-/// ⚠️ هذه القيم تُستخدم في مكانين فقط:
-/// 1. Flutter: لعرض تقديري فقط (لا يُكتب منها شيء على المرحلة الفعلية).
-/// 2. functions/src/mafia/phaseFlow.js: نسخة مطابقة تماماً بالثواني،
-///    وهي المصدر الحقيقي الوحيد الذي يُحدد متى تنتقل المرحلة فعلياً.
-/// أي تعديل هنا يجب أن يُرافقه نفس التعديل في phaseFlow.js يدوياً.
 class MafiaTimers {
   MafiaTimers._();
 
-  static const int lobbyWaitSeconds = 60;
+  // ✅ من 60 إلى 120 ثانية (دقيقتين) بناءً على طلب المستخدم.
+  static const int lobbyWaitSeconds = 120;
   static const int startingCountdownSeconds = 10;
 
   static const int nightSeconds = 45;

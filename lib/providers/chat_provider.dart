@@ -18,6 +18,17 @@ class ChatProvider extends ChangeNotifier {
   final FirestoreService _firestore;
   final StorageService _storage;
 
+  static int normalizeBadgeCount(int count) {
+    if (count <= 0) return 0;
+    if (count > 99) return 99;
+    return count;
+  }
+
+  static List<String> deduplicateChatIds(Iterable<String> ids) {
+    final seen = <String>{};
+    return ids.where((id) => seen.add(id)).toList();
+  }
+
   ChatProvider({
     required FirestoreService firestoreService,
     required StorageService storageService,
@@ -76,8 +87,14 @@ class ChatProvider extends ChangeNotifier {
     required String userId,
     required List<GroupModel> groups,
   }) {
-    if (groups.isEmpty) return Stream.value(0);
-    final streams = groups.map((group) {
+    final uniqueGroupIds = <String>{};
+    final uniqueGroups = groups
+        .where((group) => uniqueGroupIds.add(group.id))
+        .toList();
+
+    if (uniqueGroups.isEmpty) return Stream.value(0);
+
+    final streams = uniqueGroups.map((group) {
       return _firestore
           .streamDocument(
             path: FirestorePaths.groupMembers(group.id),
@@ -93,8 +110,10 @@ class ChatProvider extends ChangeNotifier {
         );
       });
     }).toList();
+
     return Rx.combineLatestList(streams).map((counts) {
-      return counts.fold<int>(0, (sum, count) => sum + count);
+      final total = counts.fold<int>(0, (sum, count) => sum + count);
+      return normalizeBadgeCount(total);
     });
   }
 

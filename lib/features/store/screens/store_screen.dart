@@ -9,7 +9,7 @@ import 'package:pubget/widgets/shiny_coin_widget.dart';
 import 'package:pubget/features/store/screens/physical_products_section.dart';
 
 class StoreScreen extends StatefulWidget {
-  const StoreScreen({Key? key}) : super(key: key);
+  const StoreScreen({super.key});
 
   @override
   State<StoreScreen> createState() => _StoreScreenState();

@@ -1,4 +1,13 @@
 // lib/features/groups/chat/message_input_bar.dart
+//
+// ✅ الإزالة الوحيدة: زر/شرط المافيا المنفصل بالكامل
+// (_canOpenMafia، _handleMafiaPressed، StoreEntranceButton الخاص به،
+// واستيراد Roles/MafiaGameProvider/MafiaGameScreen/store_entrance_button
+// التي لم تعد مستخدمة). زر _handleGamePressed (الفعاليات العام)
+// أصبح هو نقطة الدخول الوحيدة، ويفتح GameEventsSheet الذي يحتوي
+// الآن على خيار المافيا. بقية الملف (صورة، GIF، ملصقات، تسجيل صوتي،
+// إيموجي، تعديل، رد) دون أي تغيير إطلاقاً.
+
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -8,19 +17,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../../core/constants/roles.dart';
 import '../../../core/constants/limits.dart';
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
 import '../../../models/sticker_model.dart';
-import '../../../providers/mafia_game_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../widgets/gif_picker_sheet.dart';
 import '../../../widgets/game_events_sheet.dart';
-import '../../../widgets/store_entrance_button.dart';
 import '../../../providers/sticker_provider.dart';
 import '../../../providers/user_provider.dart';
-import '../events/mafia_game_screen.dart';
 import 'package:pubget/features/stickers/stiker_picker_sheet.dart';
 import '../../stickers/sticker_creator_sheet.dart';
 
@@ -87,7 +92,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
   @override
   void didUpdateWidget(covariant MessageInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // ✅ دخول/خروج وضع التعديل
     if (widget.editingMessage?.id != oldWidget.editingMessage?.id) {
       if (widget.editingMessage != null) {
         _controller.text = widget.editingMessage!.text ?? '';
@@ -103,9 +107,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
-  // ✅ FIX: تحميل الملصقات يتم خارج دورة build() بالكامل عبر
-  // postFrameCallback، لتجنب تعارض notifyListeners() مع build()
-  // الحالي الذي كان يسبب بقاء مؤشر التحميل دائرًا للأبد.
   void _maybeLoadStickers() {
     final userId = context.read<UserProvider>().currentUser?.id;
     if (userId == null) return;
@@ -121,7 +122,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
   void _openEmojiSheet() {
     FocusScope.of(context).unfocus();
     setState(() => _showEmojiPicker = true);
-    _maybeLoadStickers(); // ✅ تحميل مسبق فور فتح الشيت بدون انتظار التبويب
+    _maybeLoadStickers();
   }
 
   void _closeEmojiSheet() {
@@ -137,22 +138,20 @@ class _MessageInputBarState extends State<MessageInputBar> {
     }
   }
 
-  // ✅ FIX: نحفظ replyingMessage في متغيّر محلي قبل استدعاء onCancelReply
-  // لتجنب فقدان بيانات الرد بسبب إعادة بناء الـ widget بعد setState في الأب.
   Future<void> _handleStickerSelected(StickerModel sticker) async {
     setState(() => _showEmojiPicker = false);
     if (widget.onSendSticker == null) return;
-    final replyTo = widget.replyingMessage; // ✅ احفظه أولاً
+    final replyTo = widget.replyingMessage;
     if (widget.onCancelReply != null) widget.onCancelReply!();
-    widget.onSendSticker!(sticker, replyTo); // ✅ استخدم النسخة المحفوظة
+    widget.onSendSticker!(sticker, replyTo);
   }
 
   Future<void> _handleGifSelected(String gifUrl) async {
     setState(() => _showEmojiPicker = false);
     if (widget.onSendGif == null) return;
-    final replyTo = widget.replyingMessage; // ✅ احفظه أولاً
+    final replyTo = widget.replyingMessage;
     if (widget.onCancelReply != null) widget.onCancelReply!();
-    widget.onSendGif!(gifUrl, replyTo); // ✅ استخدم النسخة المحفوظة
+    widget.onSendGif!(gifUrl, replyTo);
   }
 
   Future<void> _pickAndSendImage() async {
@@ -162,7 +161,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
           source: ImageSource.gallery, imageQuality: 70);
       if (image == null) return;
       setState(() => _isSending = true);
-      final replyTo = widget.replyingMessage; // ✅ احفظه أولاً
+      final replyTo = widget.replyingMessage;
       await widget.onSendImage(File(image.path), replyTo);
       if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
@@ -191,7 +190,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
       return;
     }
 
-    // ✅ وضع تعديل الرسالة
     if (widget.editingMessage != null) {
       final original = widget.editingMessage!;
       _controller.clear();
@@ -202,12 +200,12 @@ class _MessageInputBarState extends State<MessageInputBar> {
       return;
     }
 
-    final replyTo = widget.replyingMessage; // ✅ احفظه أولاً
+    final replyTo = widget.replyingMessage;
     _controller.clear();
     setState(() {});
     if (widget.onCancelReply != null) widget.onCancelReply!();
 
-    widget.onSendText(text, replyTo); // ✅ استخدم النسخة المحفوظة
+    widget.onSendText(text, replyTo);
   }
 
   Future<void> _startRecording() async {
@@ -264,7 +262,7 @@ class _MessageInputBarState extends State<MessageInputBar> {
       final file = File(path);
       if (!await file.exists()) return;
       setState(() => _isSending = true);
-      final replyTo = widget.replyingMessage; // ✅ احفظه أولاً
+      final replyTo = widget.replyingMessage;
       await widget.onSendAudio!(file, replyTo, _recordSeconds);
       if (widget.onCancelReply != null) widget.onCancelReply!();
     } catch (e) {
@@ -308,89 +306,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
         groupId: widget.groupId,
         currentMember: widget.currentMember,
       ),
-    );
-  }
-
-  bool get _canOpenMafia {
-    return widget.currentMember.role == Roles.founder ||
-        widget.currentMember.role == Roles.sensei ||
-        widget.currentMember.role == Roles.hakusho;
-  }
-
-  Future<void> _handleMafiaPressed() async {
-    FocusScope.of(context).unfocus();
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'لعبة المافيا داخل المجموعة',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _canOpenMafia
-                    ? 'يمكنك إنشاء لعبة المافيا هنا. ستُدار الحالة من Firebase وتبقى داخل هذه المجموعة.'
-                    : 'هذه الميزة متاحة فقط لأعضاء الشوغن، السينسي، والهكشو.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _canOpenMafia ? Colors.black87 : Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                onPressed: _canOpenMafia
-                    ? () async {
-                        Navigator.of(context).pop();
-                        final mafiaProvider =
-                            context.read<MafiaGameProvider>();
-                        try {
-                          final gameId = await mafiaProvider.createGame(
-                            groupId: widget.groupId,
-                            createdBy: widget.currentMember.userId,
-                          );
-                          if (!mounted) return;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => MafiaGameScreen(gameId: gameId),
-                            ),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('حدث خطأ: $e')),
-                          );
-                        }
-                      }
-                    : null,
-                icon: const Icon(Icons.theater_comedy),
-                label: const Text('ابدأ لعبة المافيا'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('إغلاق'),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -499,12 +414,11 @@ class _MessageInputBarState extends State<MessageInputBar> {
                             _isSending ? null : _pickAndSendImage,
                           ),
                           const SizedBox(width: 4),
+                          // ✅ زر واحد فقط لكل الفعاليات (بما فيها المافيا
+                          // الآن ضمن GameEventsSheet). زر المافيا المنفصل
+                          // (StoreEntranceButton + _canOpenMafia +
+                          // _handleMafiaPressed) أُزيل بالكامل من هنا.
                           if (!widget.isPrivate) ...[
-                            StoreEntranceButton(
-                              onTap: _handleMafiaPressed,
-                              enabled: _canOpenMafia,
-                            ),
-                            const SizedBox(width: 4),
                             _buildIconBtn(
                               Icons.videogame_asset_rounded,
                               _handleGamePressed,
@@ -689,9 +603,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ✅ FIX: تمت إزالة استدعاء provider.loadStickers من هنا بالكامل.
-  // التحميل الآن يحدث فقط في _maybeLoadStickers (تُستدعى عند فتح الشيت)
-  // وهذا الـ Consumer أصبح غرضه العرض فقط دون أي جانب تأثيري (side effect).
   Widget _buildStickerTab(bool isDark) {
     return Column(
       children: [
@@ -783,8 +694,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
                     onTap: () => _handleStickerSelected(sticker),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      // ✅ CachedNetworkImage بدل Image.network لتفادي
-                      // إعادة التحميل من الشبكة كل مرة يُفتح فيها التاب
                       child: CachedNetworkImage(
                         imageUrl: sticker.imageUrl,
                         fit: BoxFit.cover,
@@ -844,7 +753,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── ✅ شريط تعديل الرسالة ──────────────────────────
   Widget _buildEditPreview(bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -895,7 +803,6 @@ class _MessageInputBarState extends State<MessageInputBar> {
     );
   }
 
-  // ── ✅ النسخة الجديدة مع thumbnail ──────────────────────────
   Widget _buildReplyPreview(bool isDark) {
     final reply = widget.replyingMessage!;
     final bool hasMedia = reply.mediaUrl != null &&

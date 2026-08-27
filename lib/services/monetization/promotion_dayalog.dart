@@ -11,10 +11,10 @@ class PromotionDialog extends StatelessWidget {
   final VoidCallback onConfirm;
 
   const PromotionDialog({
-    Key? key, 
-    required this.groupName, 
-    required this.onConfirm
-  }) : super(key: key);
+    super.key,
+    required this.groupName,
+    required this.onConfirm,
+  });
 
   @override
   Widget build(BuildContext context) {

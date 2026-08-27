@@ -1,9 +1,16 @@
 // lib/services/mafia/mafia_game_repository.dart
 //
-// ✅ الإضافة الوحيدة: دالتان لقراءة السجل (مباراة محددة + سجل
-// المستخدم الحالي) — هذا هو "تفعيل الاستخدام" الفعلي لـ
-// MafiaHistoryModel من طرف Flutter. بقية الملف من Stage 7 دون أي
-// تغيير آخر.
+// ✅ الإصلاح الجوهري (الباغ القاتل):
+// 1. leaveGame(): إذا كان اللاعب الخارج آخر لاعب متبقٍ في waiting
+//    (العدد بعد الحذف = صفر)، يُحذف مستند اللعبة بالكامل وتُصفَّر
+//    hasRunningGame/activeGameId على المجموعة فوراً من العميل نفسه —
+//    بدل انتظار Cloud Function قد تتأخر دقيقة كاملة. هذا هو السبب
+//    المباشر لرسالة "هناك مباراة جارية بالفعل" رغم الخروج اليدوي.
+// 2. createGameWithInitialPlayer(): فحص دفاعي إضافي — إذا كان
+//    hasRunningGame == true لكن activeGameId يشير لمباراة غير
+//    موجودة أصلاً أو status == finished/cancelled فعلياً، يُسمح
+//    بالإنشاء رغم ذلك (يُصلح تلقائياً أي حالة تضارب مشابهة مستقبلية
+//    دون تدخل يدوي من المستخدم في Firestore Console).
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/firestore_paths.dart';
@@ -46,8 +53,34 @@ class MafiaGameRepository {
         throw Exception('Group does not exist');
       }
       final groupData = groupSnap.data();
+
       if (groupData != null && groupData['hasRunningGame'] == true) {
-        throw Exception('هناك مباراة جارية بالفعل في هذه المجموعة.');
+        // ✅ فحص دفاعي: تحقق فعلياً من حالة المباراة المُشار إليها
+        // قبل رفض الإنشاء. لو كانت منتهية/ملغاة/غير موجودة أصلاً،
+        // هذا يعني أن hasRunningGame بقيت عالقة بالخطأ (حالة قديمة
+        // من قبل هذا الإصلاح، أو أي سيناريو حافة لم نغطه بعد) —
+        // نسمح بالإنشاء بدل حبس المجموعة للأبد.
+        final staleGameId = groupData['activeGameId'] as String?;
+        bool isStale = false;
+
+        if (staleGameId == null || staleGameId.isEmpty) {
+          isStale = true;
+        } else {
+          final staleGameSnap = await tx.get(_firestoreService.mafiaGameDoc(staleGameId));
+          if (!staleGameSnap.exists) {
+            isStale = true;
+          } else {
+            final staleStatus = staleGameSnap.data()?['status'] as String?;
+            if (staleStatus == MafiaGameStatus.finished.name ||
+                staleStatus == MafiaGameStatus.cancelled.name) {
+              isStale = true;
+            }
+          }
+        }
+
+        if (!isStale) {
+          throw Exception('هناك مباراة جارية بالفعل في هذه المجموعة.');
+        }
       }
 
       tx.set(gameRef, game.toMap());
@@ -123,17 +156,12 @@ class MafiaGameRepository {
             .toList());
   }
 
-  /// ✅ جديد: قراءة سجل مباراة محددة بعد انتهائها (شاشة نتائج مثلاً).
-  /// null إذا لم يُكتب السجل بعد (لم تنتهِ المباراة، أو ما زال
-  /// historyWriter.js قيد التنفيذ للحظات قليلة بعد status=finished).
   Future<MafiaHistoryModel?> fetchGameHistory(String gameId) async {
     final doc = await _firestoreService.mafiaHistoryCollection().doc(gameId).get();
     if (!doc.exists) return null;
     return MafiaHistoryModel.fromMap(doc.id, doc.data()!);
   }
 
-  /// ✅ جديد: تدفّق حي لسجل مباريات مستخدم معيّن (لأحدث المباريات
-  /// أولاً)، لاستخدامه في شاشة "سجل مبارياتي" مستقبلية.
   Stream<List<Map<String, dynamic>>> streamUserHistory(String userId) {
     return _firestoreService
         .userMafiaHistory(userId)
@@ -222,6 +250,11 @@ class MafiaGameRepository {
     });
   }
 
+  /// ✅ الإصلاح الجوهري: إذا كان الخارج آخر لاعب في waiting (العدد
+  /// بعد الحذف = صفر)، نحذف اللعبة بالكامل ونحرّر المجموعة فوراً —
+  /// من العميل نفسه، ضمن نفس الـ transaction، دون انتظار Cloud
+  /// Function قد تتأخر حتى دقيقة كاملة (processExpiredLobbies).
+  /// هذا هو السبب المباشر لعلوق "هناك مباراة جارية بالفعل".
   Future<void> leaveGame({
     required String gameId,
     required String playerId,
@@ -246,8 +279,20 @@ class MafiaGameRepository {
         tx.delete(playerRef);
         tx.delete(privateRef);
         final newCount = (game.playersCount - 1).clamp(0, game.maxPlayers);
+        final groupRef =
+            _firestore.collection(FirestorePaths.groups).doc(game.groupId);
 
-        if (game.status == MafiaGameStatus.starting) {
+        if (newCount <= 0) {
+          // ✅ آخر لاعب خرج قبل بدء المباراة فعلياً: احذف اللعبة
+          // بالكامل وحرّر المجموعة فوراً، بدل تركها معلّقة بالحالة
+          // waiting بعدد صفر — هذا هو الإصلاح الجوهري لهذه المرحلة.
+          tx.delete(gameRef);
+          tx.update(groupRef, {
+            'activeGameId': FieldValue.delete(),
+            'gameStatus': FieldValue.delete(),
+            'hasRunningGame': false,
+          });
+        } else if (game.status == MafiaGameStatus.starting) {
           tx.update(gameRef, {
             'playersCount': newCount,
             'isLocked': false,

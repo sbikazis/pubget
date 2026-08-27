@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 class ShinyCoinWidget extends StatelessWidget {
   final double size;
 
-  const ShinyCoinWidget({Key? key, this.size = 24.0}) : super(key: key);
+  const ShinyCoinWidget({super.key, this.size = 24.0});
 
   @override
   Widget build(BuildContext context) {

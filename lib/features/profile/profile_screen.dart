@@ -26,7 +26,7 @@ import 'package:pubget/features/private_chat/private_chat_screen.dart';
 class ProfileScreen extends StatefulWidget {
   final String? userId;
 
-  const ProfileScreen({Key? key, this.userId}) : super(key: key);
+  const ProfileScreen({super.key, this.userId});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();

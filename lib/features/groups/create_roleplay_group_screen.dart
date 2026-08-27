@@ -23,7 +23,7 @@ import '../../models/member_model.dart';
 import '../../core/logic/subscription_limits_logic.dart';
 
 class CreateRoleplayGroupScreen extends StatefulWidget {
-  const CreateRoleplayGroupScreen({Key? key}) : super(key: key);
+  const CreateRoleplayGroupScreen({super.key});
 
   @override
   State<CreateRoleplayGroupScreen> createState() =>

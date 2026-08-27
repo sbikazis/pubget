@@ -20,11 +20,11 @@ class RespectModal extends StatefulWidget {
   final int? previousValue;
 
   const RespectModal({
-    Key? key,
+    super.key,
     required this.targetUser,
     required this.currentUserId,
     this.previousValue,
-  }) : super(key: key);
+  });
 
   @override
   State<RespectModal> createState() => _RespectModalState();

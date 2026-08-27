@@ -30,7 +30,6 @@ import 'core/logic/group_join_validator.dart';
 import 'core/theme/light_theme.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/utils/notification_service.dart';
-import 'core/constants/notification_channels.dart';
 
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -43,8 +42,6 @@ import 'features/groups/group_details_screen.dart';
 import 'features/groups/chat/chat_screen.dart';
 import 'features/groups/join_requests_screen.dart';
 import 'features/private_chat/private_chat_screen.dart';
-import 'models/member_model.dart';
-import 'models/user_model.dart';
 import 'services/deep_link_service.dart';
 import 'package:pubget/providers/sticker_provider.dart';
 import 'package:pubget/services/firebase/sticker_service.dart';

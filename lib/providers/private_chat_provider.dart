@@ -131,11 +131,21 @@ class PrivateChatProvider extends ChangeNotifier {
           path: FirestorePaths.privateChats, query: queryB),
     ]).switchMap((snapshot) {
       if (snapshot.docs.isEmpty) return Stream.value(0);
-      final List<Stream<int>> unreadStreams = snapshot.docs.map((doc) {
+
+      final uniqueDocIds = <String>{};
+      final uniqueDocs = snapshot.docs
+          .where((doc) => uniqueDocIds.add(doc.id))
+          .toList();
+
+      if (uniqueDocs.isEmpty) return Stream.value(0);
+
+      final List<Stream<int>> unreadStreams = uniqueDocs.map((doc) {
         return streamPrivateUnreadCount(chatId: doc.id, userId: userId);
       }).toList();
+
       return Rx.combineLatestList(unreadStreams).map((counts) {
-        return counts.fold<int>(0, (sum, count) => sum + count);
+        final total = counts.fold<int>(0, (sum, count) => sum + count);
+        return total.clamp(0, 999999);
       });
     }).distinct();
   }

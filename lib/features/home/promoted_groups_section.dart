@@ -13,7 +13,7 @@ import 'package:pubget/features/groups/group_details_screen.dart'; // استير
 import 'package:pubget/services/monetization/ad_service.dart';
 
 class PromotedGroupsSection extends StatefulWidget {
-  const PromotedGroupsSection({Key? key}) : super(key: key);
+  const PromotedGroupsSection({super.key});
 
   @override
   State<PromotedGroupsSection> createState() => _PromotedGroupsSectionState();
@@ -77,11 +77,11 @@ class _DiscoveryGroupCard extends StatelessWidget {
   final void Function(bool) toggleNavigating;
 
   const _DiscoveryGroupCard({
-    Key? key,
+    super.key,
     required this.group,
     required this.isNavigating,
     required this.toggleNavigating,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

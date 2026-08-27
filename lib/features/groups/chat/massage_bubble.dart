@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../models/message_model.dart';
 import '../../../models/member_model.dart';
@@ -27,6 +28,7 @@ import 'package:pubget/features/profile/respect_modal.dart';
 import 'package:pubget/features/edits/edits_screen.dart';
 import '../../../features/groups/events/anime_chain_game_screen.dart';
 import '../../../services/local/local_storage_service.dart';
+import '../../../core/utils/app_image_loader.dart';
 
 import 'role_badge.dart';
 import '../../../widgets/premium_badge.dart';
@@ -576,26 +578,14 @@ class MessageBubble extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(15),
-                          child: Image.network(
-                            message.mediaUrl!,
+                          child: AppImageLoader(
+                            url: message.mediaUrl!,
+                            width: 140,
+                            height: 140,
                             fit: BoxFit.cover,
-                            loadingBuilder: (context, child, progress) {
-                              if (progress == null) return child;
-                              return Container(
-                                color: isDark
-                                    ? const Color(0xFF2A2A3E)
-                                    : Colors.grey.shade100,
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) => const Icon(
+                            memCacheWidth: 280,
+                            memCacheHeight: 280,
+                            fallback: const Icon(
                               Icons.broken_image_outlined,
                               color: Colors.grey,
                               size: 40,
@@ -935,12 +925,26 @@ class MessageBubble extends StatelessWidget {
                       topRight: Radius.circular(8),
                       bottomRight: Radius.circular(8),
                     ),
-                    child: Image.network(
-                      message.replyToMediaUrl!,
+                    child: CachedNetworkImage(
+                      imageUrl: message.replyToMediaUrl!,
                       width: 52,
                       height: 52,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      memCacheWidth: 104,
+                      memCacheHeight: 104,
+                      placeholder: (_, __) => Container(
+                        width: 52,
+                        height: 52,
+                        color: isDark ? Colors.white10 : Colors.black12,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
                         width: 52,
                         height: 52,
                         color: isDark ? Colors.white10 : Colors.black12,
@@ -1038,14 +1042,25 @@ class MessageBubble extends StatelessWidget {
           child: isGame
               ? Icon(Icons.videogame_asset, size: 20, color: gameColor)
               : (avatarUrl != null && avatarUrl.isNotEmpty
-                  ? Image.network(
-                      avatarUrl,
+                  ? CachedNetworkImage(
+                      imageUrl: avatarUrl,
                       width: 36,
                       height: 36,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.person,
-                              size: 20, color: AppColors.primary),
+                      memCacheWidth: 72,
+                      memCacheHeight: 72,
+                      placeholder: (_, __) => const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => const Icon(
+                        Icons.person,
+                        size: 20,
+                        color: AppColors.primary,
+                      ),
                     )
                   : const Icon(Icons.person,
                       size: 20, color: AppColors.primary)),
@@ -1109,8 +1124,30 @@ class MessageBubble extends StatelessWidget {
         },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.network(message.mediaUrl!,
-              width: 200, fit: BoxFit.cover),
+          child: CachedNetworkImage(
+            imageUrl: message.mediaUrl!,
+            width: 200,
+            fit: BoxFit.cover,
+            memCacheWidth: 400,
+            placeholder: (_, __) => const SizedBox(
+              width: 200,
+              height: 160,
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            errorWidget: (_, __, ___) => const SizedBox(
+              width: 200,
+              height: 160,
+              child: Center(
+                child: Icon(Icons.broken_image_outlined, color: Colors.grey),
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -1129,8 +1166,30 @@ class MessageBubble extends StatelessWidget {
     if (message.mediaUrl != null && message.mediaType == 'image') {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(message.mediaUrl!,
-            width: 220, fit: BoxFit.cover),
+        child: CachedNetworkImage(
+          imageUrl: message.mediaUrl!,
+          width: 220,
+          fit: BoxFit.cover,
+          memCacheWidth: 440,
+          placeholder: (_, __) => const SizedBox(
+            width: 220,
+            height: 160,
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+          errorWidget: (_, __, ___) => const SizedBox(
+            width: 220,
+            height: 160,
+            child: Center(
+              child: Icon(Icons.broken_image_outlined, color: Colors.grey),
+            ),
+          ),
+        ),
       );
     }
     if (message.mediaType == 'audio' && message.mediaUrl != null) {

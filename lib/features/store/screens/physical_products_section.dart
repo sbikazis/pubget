@@ -6,7 +6,7 @@ import 'package:pubget/providers/store_provider.dart';
 import 'physical_product_card.dart';
 
 class PhysicalProductsSection extends StatelessWidget {
-  const PhysicalProductsSection({Key? key}) : super(key: key);
+  const PhysicalProductsSection({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -9,7 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 
 class TermsScreen extends StatefulWidget {
-  const TermsScreen({Key? key}) : super(key: key);
+  const TermsScreen({super.key});
 
   @override
   State<TermsScreen> createState() => _TermsScreenState();

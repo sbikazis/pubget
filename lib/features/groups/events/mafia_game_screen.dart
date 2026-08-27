@@ -1,17 +1,23 @@
 // lib/features/groups/events/mafia_game_screen.dart
 //
-// ✅ تلميع شامل: خلفية متدرجة، بطاقات أحداث بأيقونات حسب النوع،
-// فقاعات دردشة أنيقة، فتح تلقائي لشاشة النهاية عند status==finished.
+// ✅ إعادة هيكلة كاملة: الدردشة تملأ الشاشة تقريباً (MafiaChatBubble)،
+// شريط مرحلة مضغوط أعلى الشاشة، لاعبون/أحداث في DraggableScrollableSheet
+// طافٍ فوق الدردشة (Stack) بدل Row مقسوم بمساحات ثابتة ضيقة. اللوبي
+// (waiting/starting) لم يعد جزءاً من هذه الشاشة إطلاقاً.
+//
+// ⚠️ إضافة خارج نطاق الملفات المخطط لها صراحة: أضفت شريط إدخال
+// دردشة بسيط هنا (نص فقط) لأنه لم يكن موجوداً أصلاً لدردشة المافيا —
+// كان يوجد فقط عرض بلا إرسال فعلي بواجهة مخصصة.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../widgets/mafia/mafia_phase_banner.dart';
-import '../../../widgets/mafia/mafia_waiting_room.dart';
+import '../../../widgets/mafia/mafia_chat_bubble.dart';
+import '../../../widgets/mafia/mafia_players_events_sheet.dart';
 import '../../../widgets/mafia/night_action_sheet.dart';
 import '../../../widgets/mafia/voting_sheet.dart';
 import '../../../widgets/mafia/mafia_game_finished_sheet.dart';
-import '../../../models/mafia/mafia_event_model.dart';
 import '../../../models/mafia/mafia_chat_message_model.dart';
 import '../../../models/mafia/mafia_player_model.dart';
 import '../../../models/mafia/mafia_player_private_model.dart';
@@ -36,6 +42,9 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
   int? _lastVotingSheetShownFor;
   bool _finishedSheetShown = false;
 
+  final TextEditingController _chatController = TextEditingController();
+  final ScrollController _chatScrollController = ScrollController();
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -49,6 +58,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
   @override
   void dispose() {
     _provider?.unsubscribe();
+    _chatController.dispose();
+    _chatScrollController.dispose();
     super.dispose();
   }
 
@@ -154,40 +165,27 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     return true;
   }
 
-  IconData _eventIcon(String type) {
-    switch (type) {
-      case 'PlayerKilled':
-        return Icons.dangerous_rounded;
-      case 'PlayerSaved':
-        return Icons.shield_rounded;
-      case 'PlayerExecuted':
-        return Icons.gavel_rounded;
-      case 'RolesAssigned':
-        return Icons.style_rounded;
-      case 'PhaseChanged':
-        return Icons.autorenew_rounded;
-      case 'GameFinished':
-        return Icons.emoji_events_rounded;
-      case 'ExecutionSkipped':
-        return Icons.remove_circle_outline_rounded;
-      case 'SniperMissed':
-        return Icons.gps_off_rounded;
-      default:
-        return Icons.info_outline_rounded;
-    }
-  }
+  Future<void> _sendChatMessage() async {
+    final text = _chatController.text.trim();
+    if (text.isEmpty) return;
 
-  Color _eventColor(String type) {
-    switch (type) {
-      case 'PlayerKilled':
-      case 'PlayerExecuted':
-        return AppColors.error;
-      case 'PlayerSaved':
-        return const Color(0xFF10B981);
-      case 'GameFinished':
-        return AppColors.goldAccent;
-      default:
-        return AppColors.primary;
+    final user = context.read<UserProvider>().currentUser;
+    if (user == null) return;
+
+    _chatController.clear();
+    setState(() {});
+
+    await context.read<MafiaGameProvider>().sendGameChatMessage(
+          gameId: widget.gameId,
+          senderId: user.id,
+          senderName: user.username,
+          text: text,
+          senderAvatar: user.avatarUrl,
+        );
+
+    if (_chatScrollController.hasClients) {
+      _chatScrollController.animateTo(0,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
     }
   }
 
@@ -218,6 +216,10 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
         _maybeShowVotingSheet(game: game, currentPlayer: currentPlayer, players: players);
         _maybeShowFinishedSheet(game);
 
+        final canSendChat = currentPlayer != null &&
+            !currentPlayer.hasLeft &&
+            currentPlayer.canSpeak;
+
         return WillPopScope(
           onWillPop: () => _handleWillPop(currentPlayer),
           child: Scaffold(
@@ -230,39 +232,24 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
             body: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                   child: MafiaPhaseBanner(game: game),
                 ),
                 Expanded(
-                  child: Row(
+                  child: Stack(
                     children: [
-                      Expanded(
-                        flex: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12, right: 4, bottom: 12),
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: MafiaWaitingRoom(
-                                  game: game, players: players, currentUserId: currentUserId,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Expanded(child: _buildEventTimeline(events, isDark)),
-                            ],
-                          ),
-                        ),
+                      Positioned.fill(
+                        child: _buildChatList(chatMessages, currentUserId, isDark),
                       ),
-                      Expanded(
-                        flex: 1,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12, left: 4, bottom: 12),
-                          child: _buildChatList(chatMessages, isDark),
-                        ),
+                      MafiaPlayersEventsSheet(
+                        players: players,
+                        events: events,
+                        currentUserId: currentUserId,
                       ),
                     ],
                   ),
                 ),
+                _buildChatInput(isDark, canSendChat),
               ],
             ),
             floatingActionButton: _buildFab(game, currentPlayer, players, myPrivateData),
@@ -306,103 +293,75 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     return null;
   }
 
-  Widget _buildEventTimeline(List<MafiaEventModel> events, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            const Icon(Icons.timeline_rounded, size: 18, color: AppColors.primary),
-            const SizedBox(width: 6),
-            const Text('أحداث المباراة', style: TextStyle(fontWeight: FontWeight.bold)),
-          ]),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              reverse: true,
-              itemCount: events.length,
-              itemBuilder: (context, index) {
-                final event = events[events.length - 1 - index];
-                final color = _eventColor(event.type);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
-                        child: Icon(_eventIcon(event.type), size: 14, color: color),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(event.message, style: const TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+  Widget _buildChatList(
+    List<MafiaChatMessageModel> messages,
+    String currentUserId,
+    bool isDark,
+  ) {
+    if (messages.isEmpty) {
+      return Center(
+        child: Text('لا توجد رسائل بعد — ابدأ النقاش!',
+            style: TextStyle(color: isDark ? Colors.white38 : Colors.black38)),
+      );
+    }
+    return ListView.builder(
+      controller: _chatScrollController,
+      reverse: true,
+      padding: const EdgeInsets.only(top: 8, bottom: 90),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final message = messages[messages.length - 1 - index];
+        return MafiaChatBubble(
+          message: message,
+          isMe: message.senderId == currentUserId,
+        );
+      },
     );
   }
 
-  Widget _buildChatList(List<MafiaChatMessageModel> messages, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: AppColors.primary),
-            const SizedBox(width: 6),
-            const Text('دردشة المافيا', style: TextStyle(fontWeight: FontWeight.bold)),
-          ]),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              reverse: true,
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final message = messages[messages.length - 1 - index];
-                final isSystem = message.type == 'system';
-                return Container(
-                  margin: const EdgeInsets.symmetric(vertical: 3),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isSystem
-                        ? AppColors.goldAccent.withOpacity(0.12)
-                        : AppColors.primary.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(12),
+  Widget _buildChatInput(bool isDark, bool canSend) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                ),
+                child: TextField(
+                  controller: _chatController,
+                  enabled: canSend,
+                  minLines: 1,
+                  maxLines: 4,
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.right,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: canSend ? 'اكتب رسالتك...' : 'لا يمكنك الكتابة الآن',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    border: InputBorder.none,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(message.sender,
-                          style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.bold,
-                              color: isSystem ? AppColors.goldAccent : AppColors.primary)),
-                      Text(message.text, style: const TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                );
-              },
+                ),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Container(
+              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+              child: IconButton(
+                icon: const Icon(Icons.send_rounded, color: Colors.white),
+                onPressed: (canSend && _chatController.text.trim().isNotEmpty)
+                    ? _sendChatMessage
+                    : null,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

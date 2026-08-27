@@ -1,7 +1,9 @@
 // lib/widgets/mafia/mafia_waiting_room.dart
 //
-// ✅ تلميع: بطاقات لاعبين بظلال، مؤشر اتصال (isDisconnected)، شارة
-// "منسحب"، تدرّج خفيف على الخلفية، عداد أنيق.
+// ✅ التعديل الوحيد: عند وصول العداد للصفر (لكن قبل أن يعالجه
+// Cloud Function)، عرض حالة "جاري التحقق..." متحركة بدل تجميد الرقم
+// على 00:00 بلا أي مؤشر. هذا يوضح للمستخدم أن هناك معالجة تجري
+// بالخلفية، بدل أن تبدو الشاشة معطوبة.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -115,6 +117,15 @@ class _MafiaWaitingRoomState extends State<MafiaWaitingRoom> {
     return '$m:$s';
   }
 
+  /// ✅ جديد: هل انتهى العد لكن الحالة لسه ما تغيّرت (المرحلة
+  /// الانتقالية بين انتهاء الوقت محلياً وتنفيذ processExpiredLobbies
+  /// على السيرفر، حتى دقيقة واحدة كحد أقصى).
+  bool get _isPendingServerResolution {
+    final endsAt = widget.game.countdownEndsAt;
+    if (endsAt == null) return false;
+    return _remaining == Duration.zero;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -162,22 +173,39 @@ class _MafiaWaitingRoomState extends State<MafiaWaitingRoom> {
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.disabled)),
           if (showCountdown) ...[
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(
-                  isStarting ? Icons.rocket_launch_rounded : Icons.timer_outlined,
-                  size: 18,
-                  color: isStarting ? AppColors.primary : AppColors.goldAccent,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isStarting
-                      ? 'تبدأ المباراة خلال $_countdownLabel'
-                      : 'ينتهي وقت الانتظار خلال $_countdownLabel',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
+            _isPendingServerResolution
+                ? Row(
+                    children: [
+                      const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.goldAccent),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isStarting ? 'جاري بدء المباراة...' : 'جاري التحقق من اكتمال العدد...',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.goldAccent,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Icon(
+                        isStarting ? Icons.rocket_launch_rounded : Icons.timer_outlined,
+                        size: 18,
+                        color: isStarting ? AppColors.primary : AppColors.goldAccent,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isStarting
+                            ? 'تبدأ المباراة خلال $_countdownLabel'
+                            : 'ينتهي وقت الانتظار خلال $_countdownLabel',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
           ],
           const SizedBox(height: 12),
           Expanded(

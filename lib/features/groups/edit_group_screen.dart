@@ -19,7 +19,7 @@ import '../../widgets/loading_widget.dart';
 class EditGroupScreen extends StatefulWidget {
   final GroupModel group;
 
-  const EditGroupScreen({Key? key, required this.group}) : super(key: key);
+  const EditGroupScreen({super.key, required this.group});
 
   @override
   State<EditGroupScreen> createState() => _EditGroupScreenState();

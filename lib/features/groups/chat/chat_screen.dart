@@ -18,7 +18,6 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/game_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../providers/group_provider.dart';
-import '../../../providers/chat_background_provider.dart';
 import '../../../models/group_model.dart';
 import '../../../models/game_model.dart';
 import '../../../models/message_model.dart';
@@ -33,7 +32,7 @@ import '../../../widgets/game_bottom_bar.dart';
 import '../../../widgets/game_message_bubble.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../events/guess_character_game_screen.dart';
-import '../events/mafia_game_screen.dart'; // ✅ جديد
+import 'package:pubget/features/groups/events/mafia_lobby_screen.dart'; // ✅ جديد
 import 'package:pubget/widgets/game_events_sheet.dart';
 import 'package:pubget/models/sticker_model.dart';
 
@@ -562,7 +561,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MafiaGameScreen(gameId: gameId),
+          builder: (_) => MafiaLobbyScreen(gameId: gameId),
         ),
       );
     });
@@ -694,6 +693,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             controller: _scrollController,
                             reverse: true,
                             padding: EdgeInsets.zero,
+                            cacheExtent: 600,
+                            addAutomaticKeepAlives: false,
+                            addRepaintBoundaries: false,
                             itemCount: messages.length,
                             itemBuilder: (context, index) {
                               final message = messages[index];

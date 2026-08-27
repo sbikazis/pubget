@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:pubget/core/logic/video_delivery_policy.dart';
 import 'package:pubget/models/edits_model.dart';
 
 class EditPlayerWidget extends StatefulWidget {
@@ -24,6 +25,7 @@ class EditPlayerWidget extends StatefulWidget {
 class _EditPlayerWidgetState extends State<EditPlayerWidget>
     with AutomaticKeepAliveClientMixin {
   late VideoPlayerController _controller;
+  late VideoDeliveryProfile _deliveryProfile;
   bool _initialized = false;
   bool _showControls = false;
   bool _isVisible = false;
@@ -37,12 +39,21 @@ class _EditPlayerWidgetState extends State<EditPlayerWidget>
   @override
   void initState() {
     super.initState();
+    _deliveryProfile = VideoDeliveryPolicy.resolve(
+      throughputMbps: 8.0,
+      rebufferCount: 0,
+      startupMs: 900,
+      avgBufferPercent: 0.9,
+    );
     _initVideo();
   }
 
   Future<void> _initVideo() async {
     _controller = VideoPlayerController.networkUrl(
       Uri.parse(widget.edit.videoUrl),
+      httpHeaders: {
+        'Cache-Control': 'max-age=${_deliveryProfile.cacheMinutes * 60}',
+      },
     );
     await _controller.initialize();
     _controller.setLooping(true);

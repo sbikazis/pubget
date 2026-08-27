@@ -18,7 +18,7 @@ import 'package:pubget/providers/chat_provider.dart';
 class GroupMembersScreen extends StatelessWidget {
   final String groupId;
 
-  const GroupMembersScreen({Key? key, required this.groupId}) : super(key: key);
+  const GroupMembersScreen({super.key, required this.groupId});
 
   void _showPromotionSheet(BuildContext context, MemberModel actor, MemberModel target, List<MemberModel> allMembers) {
     final groupProvider = context.read<GroupProvider>();

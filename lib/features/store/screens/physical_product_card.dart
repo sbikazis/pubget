@@ -7,7 +7,7 @@ import 'package:pubget/models/physical_product_model.dart';
 class PhysicalProductCard extends StatelessWidget {
   final PhysicalProductModel product;
 
-  const PhysicalProductCard({Key? key, required this.product}) : super(key: key);
+  const PhysicalProductCard({super.key, required this.product});
 
   Future<void> _openAffiliateLink(BuildContext context) async {
     final uri = Uri.tryParse(product.affiliateUrl);

@@ -16,7 +16,7 @@ class AppTextField extends StatefulWidget {
   final void Function(String)? onChanged;
 
   const AppTextField({
-    Key? key,
+    super.key,
     this.label,
     this.placeholder,
     this.isPassword = false,
@@ -27,7 +27,7 @@ class AppTextField extends StatefulWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();

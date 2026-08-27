@@ -200,11 +200,25 @@ class GroupJoinValidator {
       bool characterExists = false;
 
       if (groupType == GroupType.openRoleplay) {
-        // التقمص المفتوح: بحث عالمي بدون قيود السلسلة
-        final globalImage = await AnimeApiService.getCharacterImage(
-                formattedCharacterName)
-            .timeout(const Duration(seconds: 15));
-        characterExists = globalImage != null;
+        final results = await AnimeApiService.searchCharacterMultiple(
+          characterName: formattedCharacterName,
+        ).timeout(const Duration(seconds: 15));
+
+        characterExists = results.any((entry) {
+          final apiName = entry['name'] ?? '';
+          return AnimeApiService.scoreCharacterNameMatch(
+                    formattedCharacterName,
+                    apiName,
+                  ) >
+                  0;
+        });
+
+        if (!characterExists) {
+          final globalImage = await AnimeApiService.getCharacterImage(
+                  formattedCharacterName)
+              .timeout(const Duration(seconds: 15));
+          characterExists = globalImage != null;
+        }
       } else {
         // التقمص المحدد: يجب أن تنتمي الشخصية للسلسلة المحددة
         if (animeId == null) {

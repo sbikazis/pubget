@@ -1,7 +1,7 @@
 // lib/providers/mafia_game_provider.dart
 //
-// ✅ الإضافة: تشغيل/إيقاف Timer نبضة الحياة ضمن دورة حياة
-// subscribeToGame/unsubscribe نفسها — نفس نمط بقية الاشتراكات.
+// ✅ التعديل الوحيد: sendGameChatMessage تقبل senderAvatar الآن،
+// وتكتب senderId في الرسالة. بقية الملف من Stage 7 دون أي تغيير.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -212,9 +212,6 @@ class MafiaGameProvider extends ChangeNotifier {
     });
   }
 
-  /// يبدأ إرسال نبضة حياة دورية طالما شاشة اللعبة مفتوحة. أول نبضة
-  /// تُرسل فوراً (بدون انتظار الفاصل الزمني الأول) حتى يظهر اللاعب
-  /// "متصلاً" لحظة دخوله مباشرة.
   void _startHeartbeat({required String gameId, required String playerId}) {
     _heartbeatGameId = gameId;
     _repository.sendHeartbeat(gameId: gameId, playerId: playerId);
@@ -239,16 +236,21 @@ class MafiaGameProvider extends ChangeNotifier {
     _stopHeartbeat();
   }
 
+  /// ✅ الآن تقبل senderAvatar (اختياري) وتكتب senderId في الرسالة —
+  /// ضروري لعرض الصورة الرمزية وتحديد isMe بدقة في MafiaChatBubble.
   Future<void> sendGameChatMessage({
     required String gameId,
     required String senderId,
     required String senderName,
     required String text,
+    String senderAvatar = '',
     String type = 'player',
   }) async {
     final message = MafiaChatMessageModel(
       id: '${senderId}_${DateTime.now().millisecondsSinceEpoch}',
+      senderId: senderId,
       sender: senderName,
+      senderAvatar: senderAvatar,
       text: text,
       time: DateTime.now(),
       type: type,

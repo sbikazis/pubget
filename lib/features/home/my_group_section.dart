@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ تم إضافة الاستيراد لحل مشكلة DocumentSnapshot
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/group_model.dart';
-import '../../models/member_model.dart';
 import 'package:pubget/providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/group_provider.dart';
@@ -24,10 +24,10 @@ class MyGroupsSection extends StatefulWidget {
   final bool showJoinedOnly;
 
   const MyGroupsSection({
-    Key? key,
+    super.key,
     this.showCreatedOnly = false,
     this.showJoinedOnly = false,
-  }) : super(key: key);
+  });
 
   @override
   State<MyGroupsSection> createState() => _MyGroupsSectionState();
@@ -101,9 +101,8 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
             lastReadAt: lastReadAt,
           ),
           builder: (context, countSnap) {
-            final count = countSnap.data?? 0;
+            final count = ChatProvider.normalizeBadgeCount(countSnap.data ?? 0);
 
-            // إذا كان العداد صفر، لا نعرض شيئاً
             if (count <= 0) return const SizedBox.shrink();
 
             return Container(
@@ -121,7 +120,7 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                 ],
               ),
               child: Text(
-                count > 99? '99+' : '$count',
+                count >= 99 ? '99+' : '$count',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -160,9 +159,28 @@ class _MyGroupsSectionState extends State<MyGroupsSection> {
                     width: 64,
                     height: 64,
                     child: group.imageUrl.isNotEmpty
-                       ? Image.network(group.imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) {
-                            return Container(color: AppColors.lightCard);
-                          })
+                       ? CachedNetworkImage(
+                           imageUrl: group.imageUrl,
+                           fit: BoxFit.cover,
+                           memCacheWidth: 128,
+                           memCacheHeight: 128,
+                           placeholder: (_, __) => Container(
+                             color: Theme.of(context).brightness == Brightness.dark
+                                 ? AppColors.darkCard
+                                 : AppColors.lightCard,
+                             child: const Center(
+                               child: SizedBox(
+                                 width: 18,
+                                 height: 18,
+                                 child: CircularProgressIndicator(strokeWidth: 2),
+                               ),
+                             ),
+                           ),
+                           errorWidget: (_, __, ___) => Container(
+                             color: AppColors.lightCard,
+                             child: const Icon(Icons.group, size: 36, color: Colors.white70),
+                           ),
+                         )
                         : Container(
                             color: Theme.of(context).brightness == Brightness.dark
                                ? AppColors.darkCard

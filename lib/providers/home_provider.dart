@@ -84,15 +84,42 @@ class HomeProvider extends ChangeNotifier {
   void _listenToUserGroups(String userId) {
     _userGroupsSub?.cancel();
 
+    _loadUserGroupsOnce(userId);
+
     _userGroupsSub =
         _groupProvider.streamUserGroups(userId: userId).listen((allGroups) {
-      _allUserGroups = allGroups;
-      _myGroups = _groupProvider.filterFounded(allGroups, userId);
-      _joinedGroups = _groupProvider.filterJoined(allGroups, userId);
-      notifyListeners();
+      if (allGroups.isEmpty && (_allUserGroups.isNotEmpty || _myGroups.isNotEmpty || _joinedGroups.isNotEmpty)) {
+        return;
+      }
+
+      _applyUserGroups(userId, allGroups);
     }, onError: (e) {
       debugPrint("❌ Error listening to user groups stream: $e");
+      _loadUserGroupsOnce(userId);
     });
+  }
+
+  Future<void> _loadUserGroupsOnce(String userId) async {
+    try {
+      final allGroups = await _groupProvider.getUserGroups(userId: userId);
+      if (allGroups.isNotEmpty || _allUserGroups.isNotEmpty) {
+        _applyUserGroups(userId, allGroups);
+      }
+    } catch (e) {
+      debugPrint("❌ Error loading user groups once: $e");
+    }
+  }
+
+  void _applyUserGroups(String userId, List<GroupModel> allGroups) {
+    final merged = GroupProvider.mergeUserGroups(
+      foundedGroups: _groupProvider.filterFounded(allGroups, userId),
+      joinedGroups: _groupProvider.filterJoined(allGroups, userId),
+    );
+
+    _allUserGroups = merged;
+    _myGroups = _groupProvider.filterFounded(merged, userId);
+    _joinedGroups = _groupProvider.filterJoined(merged, userId);
+    notifyListeners();
   }
 
   Future<void> _loadPromotedGroupsAndWait() async {
@@ -311,6 +338,7 @@ class HomeProvider extends ChangeNotifier {
     _currentUser = user;
     await _loadSuggestedGroups(user.id);
     await _loadPromotedGroupsAndWait();
+    await _loadUserGroupsOnce(user.id);
   }
 
   void _setLoading(bool value) {

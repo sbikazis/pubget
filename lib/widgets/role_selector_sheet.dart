@@ -9,11 +9,11 @@ class RoleSelectorSheet extends StatelessWidget {
   final Function(Roles) onRoleSelected;
 
   const RoleSelectorSheet({
-    Key? key,
+    super.key,
     required this.allMembers,
     required this.targetMember,
     required this.onRoleSelected,
-  }) : super(key: key);
+  });
 
   IconData _getRoleIcon(Roles role) {
     if (role == Roles.founder) return Icons.stars;

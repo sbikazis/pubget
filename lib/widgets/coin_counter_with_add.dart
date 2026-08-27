@@ -8,10 +8,10 @@ class CoinCounterWithAddWidget extends StatelessWidget {
   final VoidCallback onAddTap; // ينقله لصفحة المهام وكسب العملات
 
   const CoinCounterWithAddWidget({
-    Key? key,
+    super.key,
     required this.coinsBalance,
     required this.onAddTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

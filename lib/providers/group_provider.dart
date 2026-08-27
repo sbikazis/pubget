@@ -475,7 +475,13 @@ class GroupProvider extends ChangeNotifier {
         kickedMemberName = targetMember.effectiveName;
       }
 
-      await memberRef.delete();
+      final batch = firestore.batch();
+      batch.delete(memberRef);
+
+      final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
+      if (targetData.exists) {
+        batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
+      }
 
       // ✅✅✅ التصحيح الجوهري هنا
       if (characterNameToRelease != null &&
@@ -484,10 +490,12 @@ class GroupProvider extends ChangeNotifier {
         final charRef = firestore
             .collection(FirestorePaths.groupCharacters(groupId))
             .doc(charKey);
-        await charRef.delete();
+        batch.delete(charRef);
         debugPrint(
             "♻️ Released character via Kick (fixed): $characterNameToRelease");
       }
+
+      await batch.commit();
 
       if (chatProvider != null && kickedMemberName != null) {
         final groupDoc = await firestore
@@ -931,20 +939,35 @@ class GroupProvider extends ChangeNotifier {
         final joined =
             joinedGroups.where((g) => !foundedIds.contains(g.id)).toList();
 
-        final all = [...founded, ...joined];
-
-        all.sort((a, b) {
-          final aTime = a.lastMessageAt ?? a.createdAt;
-          final bTime = b.lastMessageAt ?? b.createdAt;
-          return bTime.compareTo(aTime);
-        });
-
-        return all;
+        return mergeUserGroups(
+          foundedGroups: founded,
+          joinedGroups: joined,
+        );
       },
     ).handleError((error) {
       debugPrint("❌ Error in streamUserGroups: $error");
       return <GroupModel>[];
     });
+  }
+
+  static List<GroupModel> mergeUserGroups({
+    required List<GroupModel> foundedGroups,
+    required List<GroupModel> joinedGroups,
+  }) {
+    final mergedMap = <String, GroupModel>{};
+
+    for (final group in [...foundedGroups, ...joinedGroups]) {
+      mergedMap.putIfAbsent(group.id, () => group);
+    }
+
+    final all = mergedMap.values.toList();
+    all.sort((a, b) {
+      final aTime = a.lastMessageAt ?? a.createdAt;
+      final bTime = b.lastMessageAt ?? b.createdAt;
+      return bTime.compareTo(aTime);
+    });
+
+    return all;
   }
 
   List<GroupModel> filterFounded(List<GroupModel> all, String userId) =>

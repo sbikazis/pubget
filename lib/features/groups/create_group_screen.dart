@@ -23,7 +23,7 @@ import '../../services/monetization/ad_service.dart';
 import 'create_roleplay_group_screen.dart';
 
 class CreateGroupScreen extends StatefulWidget {
-  const CreateGroupScreen({Key? key}) : super(key: key);
+  const CreateGroupScreen({super.key});
 
   @override
   State<CreateGroupScreen> createState() => _CreateGroupScreenState();
@@ -200,7 +200,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 // ─────────────────────────────────────────────────────────────
 class GeneralGroupForm extends StatefulWidget {
   final VoidCallback onBack;
-  const GeneralGroupForm({Key? key, required this.onBack}) : super(key: key);
+  const GeneralGroupForm({super.key, required this.onBack});
 
   @override
   State<GeneralGroupForm> createState() => _GeneralGroupFormState();

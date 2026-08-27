@@ -19,7 +19,7 @@ import '../../providers/profile_provider.dart';
 import 'terms_screen.dart'; 
 
 class UserInfoScreen extends StatefulWidget {
-  const UserInfoScreen({Key? key}) : super(key: key);
+  const UserInfoScreen({super.key});
 
   @override
   State<UserInfoScreen> createState() => _UserInfoScreenState();

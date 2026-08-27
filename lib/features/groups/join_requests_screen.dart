@@ -21,7 +21,7 @@ import 'package:pubget/providers/chat_provider.dart';
 class JoinRequestsScreen extends StatelessWidget {
   final String groupId;
 
-  const JoinRequestsScreen({Key? key, required this.groupId}) : super(key: key);
+  const JoinRequestsScreen({super.key, required this.groupId});
 
   String _formatDate(DateTime dt) {
     try {

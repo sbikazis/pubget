@@ -21,26 +21,38 @@ class AnimeApiService {
         .trim();
   }
 
-  // ── مطابقة ذكية مُحسَّنة
-  static bool _isSameName(String input, String apiName) {
+  static int scoreCharacterNameMatch(String input, String apiName) {
     final a = _sanitize(input);
     final b = _sanitize(apiName);
-    if (a.isEmpty || b.isEmpty) return false;
+    if (a.isEmpty || b.isEmpty) return 0;
 
-    // 1. تطابق تام
-    if (a == b) return true;
+    if (a == b) return 1000;
 
-    // تجاهل الكلمات المكونة من حرف واحد
     final inputWords = a.split(' ').where((w) => w.length > 1).toList();
     final apiWords = b.split(' ').where((w) => w.length > 1).toList();
 
-    if (inputWords.isEmpty || apiWords.isEmpty) return false;
+    if (inputWords.isEmpty || apiWords.isEmpty) return 0;
 
-    // 2. إذا المستخدم كتب كلمات أكثر من اسم الـ API → رفض فوري
-    if (inputWords.length > apiWords.length) return false;
+    if (b.contains(a) || a.contains(b)) {
+      return 500;
+    }
 
-    // 3. كل كلمات المستخدم يجب أن تكون موجودة في اسم الـ API
-    return inputWords.every((word) => apiWords.contains(word));
+    final exactWordMatches = inputWords.where((word) => apiWords.contains(word)).length;
+    if (exactWordMatches == inputWords.length && inputWords.length <= apiWords.length) {
+      return 700 + (inputWords.length * 20);
+    }
+
+    final commonWords = inputWords.where((word) => apiWords.contains(word)).length;
+    if (commonWords > 0) {
+      return 300 + (commonWords * 40);
+    }
+
+    return 0;
+  }
+
+  // ── مطابقة ذكية مُحسَّنة
+  static bool _isSameName(String input, String apiName) {
+    return scoreCharacterNameMatch(input, apiName) > 0;
   }
 
   // ── مطابقة اسم الأنمي بشكل صارم
@@ -365,10 +377,11 @@ class AnimeApiService {
   static Future<List<Map<String, String>>> searchCharacterMultiple(
       {List<int>? animeIds, required String characterName}) async {
     final List<Map<String, String>> results = [];
-    final Set<String> addedNames = {};
+    final List<Map<String, dynamic>> scoredResults = [];
     final cleanInput = _sanitize(characterName);
 
-    // ── البحث داخل أنمي محدد
+    if (cleanInput.isEmpty) return results;
+
     if (animeIds != null && animeIds.isNotEmpty) {
       for (int id in animeIds) {
         try {
@@ -383,63 +396,67 @@ class AnimeApiService {
           for (final item in data['data']) {
             final character = item['character'];
             final String apiName = character['name'] ?? '';
-            final String sanitizedApiName = _sanitize(apiName);
-            if (sanitizedApiName.contains(cleanInput) ||
-                cleanInput.contains(sanitizedApiName)) {
-              if (!addedNames.contains(apiName)) {
-                addedNames.add(apiName);
-                results.add({
-                  'name': apiName,
-                  'imageUrl':
-                      character['images']?['jpg']?['image_url'] ?? ''
-                });
-              }
+            final int score = scoreCharacterNameMatch(characterName, apiName);
+            if (score > 0) {
+              scoredResults.add({
+                'score': score,
+                'name': apiName,
+                'imageUrl': character['images']?['jpg']?['image_url'] ?? ''
+              });
             }
           }
         } catch (e) {
-          debugPrint(
-              "⚠️ searchCharacterMultiple failed for ID $id: $e");
+          debugPrint("⚠️ searchCharacterMultiple failed for ID $id: $e");
           continue;
         }
       }
-      return results;
-    }
+    } else {
+      try {
+        final url = Uri.parse('$_baseUrl/characters').replace(queryParameters: {
+          'q': characterName,
+          'limit': '25',
+          'order_by': 'favorites',
+          'sort': 'desc',
+        });
 
-    // ── البحث العالمي (التقمص المفتوح)
-    // مرتب حسب عدد المفضليات (favorites) لإظهار المشهورين أولاً
-    try {
-      final url =
-          Uri.parse('$_baseUrl/characters').replace(queryParameters: {
-        'q': characterName,
-        'limit': '25',         // عدد أكبر لضمان ظهور المشهورين
-        'order_by': 'favorites', // ترتيب حسب الشهرة
-        'sort': 'desc',          // من الأعلى شهرة للأدنى
-      });
+        final response = await http
+            .get(url, headers: _headers)
+            .timeout(const Duration(seconds: 10));
 
-      final response = await http
-          .get(url, headers: _headers)
-          .timeout(const Duration(seconds: 10));
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final List globalResults = data['data'] ?? [];
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List globalResults = data['data'] ?? [];
-
-        for (final charData in globalResults) {
-          final String apiName = charData['name'] ?? '';
-          if (apiName.isNotEmpty && !addedNames.contains(apiName)) {
-            addedNames.add(apiName);
-            results.add({
-              'name': apiName,
-              'imageUrl':
-                  charData['images']?['jpg']?['large_image_url'] ??
-                      charData['images']?['jpg']?['image_url'] ??
-                      ''
-            });
+          for (final charData in globalResults) {
+            final String apiName = charData['name'] ?? '';
+            final int score = scoreCharacterNameMatch(characterName, apiName);
+            if (score > 0) {
+              scoredResults.add({
+                'score': score,
+                'name': apiName,
+                'imageUrl': charData['images']?['jpg']?['large_image_url'] ??
+                    charData['images']?['jpg']?['image_url'] ??
+                    ''
+              });
+            }
           }
         }
+      } catch (e) {
+        debugPrint("❠ API Error (searchCharacterMultiple global): $e");
       }
-    } catch (e) {
-      debugPrint("❌ API Error (searchCharacterMultiple global): $e");
+    }
+
+    scoredResults.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+
+    final Set<String> addedNames = {};
+    for (final entry in scoredResults) {
+      final String name = entry['name'] as String;
+      if (name.isEmpty || addedNames.contains(name)) continue;
+      addedNames.add(name);
+      results.add({
+        'name': name,
+        'imageUrl': entry['imageUrl'] as String,
+      });
     }
 
     return results;
@@ -450,16 +467,9 @@ class AnimeApiService {
   // =========================================================
   static Future<String?> getCharacterImage(String characterName) async {
     try {
-      final url = Uri.parse('$_baseUrl/characters').replace(
-          queryParameters: {'q': characterName, 'limit': '1'});
-      final response = await http
-          .get(url, headers: _headers)
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body);
-      if (data['data'] == null || data['data'].isEmpty) return null;
-      return data['data'][0]['images']?['jpg']?['large_image_url'] ??
-          data['data'][0]['images']?['jpg']?['image_url'];
+      final results = await searchCharacterMultiple(characterName: characterName);
+      if (results.isEmpty) return null;
+      return results.first['imageUrl'];
     } catch (e) {
       debugPrint("❌ API Error (GetCharacterImage): $e");
       return null;
