@@ -264,6 +264,19 @@ class MafiaGameProvider extends ChangeNotifier {
     required String role,
     String? targetId,
   }) async {
+    final game = _currentGame;
+    if (game == null || game.status != MafiaGameStatus.night) {
+      throw Exception('انتهت مرحلة الليل أو لم تبدأ بعد.');
+    }
+
+    final player = _players.firstWhere(
+      (item) => item.id == playerId,
+      orElse: () => throw Exception('لم يعد هذا اللاعب متاحاً.'),
+    );
+    if (!player.isAlive || player.hasLeft || !player.canUseAbility) {
+      throw Exception('لا يمكنك استخدام قدرتك الآن.');
+    }
+
     final nightNumber = _currentGame?.currentNight ?? 0;
     final action = MafiaActionModel(
       id: '${playerId}_n$nightNumber',
@@ -282,7 +295,27 @@ class MafiaGameProvider extends ChangeNotifier {
     required String voterId,
     required String targetId,
   }) async {
-    final dayNumber = _currentGame?.currentDay ?? 0;
+    final game = _currentGame;
+    if (game == null || game.status != MafiaGameStatus.voting) {
+      throw Exception('انتهت مرحلة التصويت أو لم تبدأ بعد.');
+    }
+
+    final voter = _players.firstWhere(
+      (item) => item.id == voterId,
+      orElse: () => throw Exception('لم يعد هذا اللاعب متاحاً.'),
+    );
+    if (!voter.isAlive || voter.hasLeft || !voter.canVote) {
+      throw Exception('لا تملك حق التصويت في هذه الجولة.');
+    }
+
+    final dayNumber = game.currentDay;
+    final alreadyVoted = _votes.any(
+      (vote) => vote.voterId == voterId && vote.dayNumber == dayNumber,
+    );
+    if (alreadyVoted) {
+      throw Exception('لقد صوّت بالفعل في هذه الجولة.');
+    }
+
     final vote = MafiaVoteModel(
       id: '${voterId}_d$dayNumber',
       voterId: voterId,
