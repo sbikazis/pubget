@@ -56,7 +56,6 @@ class MafiaGameProvider extends ChangeNotifier {
   StreamSubscription? _eventsSubscription;
   StreamSubscription? _chatSubscription;
   Timer? _heartbeatTimer;
-  String? _heartbeatGameId;
 
   void setLoading(bool value) {
     _isLoading = value;
@@ -213,7 +212,6 @@ class MafiaGameProvider extends ChangeNotifier {
   }
 
   void _startHeartbeat({required String gameId, required String playerId}) {
-    _heartbeatGameId = gameId;
     _repository.sendHeartbeat(gameId: gameId, playerId: playerId);
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       _repository.sendHeartbeat(gameId: gameId, playerId: playerId);
@@ -223,7 +221,6 @@ class MafiaGameProvider extends ChangeNotifier {
   void _stopHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
-    _heartbeatGameId = null;
   }
 
   void unsubscribe() {

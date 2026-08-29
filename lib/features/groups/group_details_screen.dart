@@ -15,7 +15,9 @@ import '../../widgets/app_dialog.dart';
 
 import '../../models/group_model.dart';
 import '../../models/member_model.dart';
+import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/group_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/store_provider.dart';
