@@ -1,0 +1,82 @@
+PROMPT 02 — Pubget Foundation & Architecture
+
+هذا البرومت يبني الأساس المعماري الجديد فوق نتائج PUBGET LEGACY AUDIT. لا تبني أي شاشة أو ميزة نهائية في هذه المرحلة — الهدف هو الهيكل والقواعد التي ستُبنى فوقها كل المراحل القادمة.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- المشروع الجديد يُبنى داخل نفس مشروع Flutter الحالي، بإعادة هيكلة lib/ بالكامل — وليس كتطبيق منفصل.
+- نفس مشروع Firebase (نفس Auth والمستخدمين)، لكن Firestore Schema جديد بالكامل حول Domains، مع طبقة Migration منفصلة لاحقًا (لن نبنيها في هذا البرومت).
+- يمكن تعطيل/عزل مسارات الكود القديم مؤقتًا أثناء البناء دون قلق — لا يوجد مستخدمون نشطون حاليًا يعتمدون عليها.
+- كل عملية حساسة (عملات، مكافآت، نتائج ألعاب، تغيير أدوار) يجب أن تكون Server-side authoritative عبر Firebase Functions/Security Rules — لا يُسمح للعميل بالكتابة المباشرة على هذه الحقول.
+
+## المطلوب تنفيذه
+
+### 1. إعادة هيكلة lib/
+
+lib/
+ ├── app/              (تهيئة التطبيق، Routing المركزي)
+ ├── core/
+ │    ├── config/
+ │    ├── constants/
+ │    ├── theme/
+ │    ├── errors/       (Result/Failure handling موحّد)
+ │    ├── validators/
+ │    ├── network/       (فحص حالة الاتصال)
+ │    ├── permissions/
+ │    ├── caching/
+ │    ├── analytics/     (تجريد فقط، بدون تنفيذ فعلي الآن)
+ │    └── utils/
+ ├── features/          (فارغة إلا من placeholders الآن، Domain واحد لكل مجلد تباعًا)
+ ├── models/            (فارغة الآن، ستُبنى Model جديد كل مرحلة)
+ ├── providers/         (فارغة الآن)
+ ├── services/
+ │    └── repositories/  (طبقة Repository الفارغة، جاهزة للاستخدام لاحقًا)
+ └── main.dart
+
+لا تحذف lib القديمة فورًا — انقلها إلى مجلد lib_legacy/ للرجوع إليها كمرجع فقط أثناء البناء، ولا تستوردها من الكود الجديد أبدًا.
+
+### 2. القاعدة المعمارية الملزمة لكل الكود القادم
+
+UI → Provider/Controller → Repository/Service → Firebase
+
+اكتب هذه القاعدة كتوثيق داخل core/README.md، مع مثال بسيط توضيحي (Dummy Repository + Dummy Provider) يُبنى مرة واحدة هنا ليكون نموذجًا يُحتذى في كل الدومينات القادمة.
+
+### 3. Error & Result Handling
+
+نظام موحّد (مثال: Result<T> / Either بسيط) يُستخدم في كل Repository بدل رمي Exceptions مباشرة للـ UI. يجب أن يفرّق بين:
+NetworkError, PermissionError, NotFoundError, ValidationError, UnknownError.
+
+### 4. Loading States الموحّدة
+
+عرّف Enum/Sealed class موحّد يُستخدم في كل Provider مستقبلي:
+Initial, Loading, Refreshing, LoadingMore, Loaded, Empty, Error, Offline.
+
+### 5. Routing مركزي
+
+نظام Routes موحّد (typed routes وليس أسماء نصية متفرقة)، مع دعم أساسي لاستقبال Deep Link params لاحقًا (لا تبنِ منطق Deep Link الفعلي الآن، فقط اجعل بنية الـ Routing لا تمنعه مستقبلاً).
+
+### 6. Network & Connectivity State
+
+خدمة مركزية لحالة الاتصال (Online/Offline)، يمكن لأي Provider الاشتراك بها لاحقًا لعرض حالة Offline بدل شاشة بيضاء.
+
+### 7. Dependency Injection
+
+اختر آلية بسيطة وموثقة (Provider tree أو get_it، أيهما أنسب لحجم المشروع الحالي دون تعقيد زائد) لحقن Repositories في Providers، ووثّق القرار في core/README.md.
+
+### 8. Firebase Initialization
+
+انقل تهيئة Firebase إلى app/ بشكل نظيف، مع دعم قراءة بيئة (Dev/Prod) إن وُجدت فعليًا في المشروع، وإلا فلا تخترع بيئات غير موجودة.
+
+## قيود صارمة
+
+- لا تبنِ أي Domain فعلي (Auth, Groups, Chat...) في هذا البرومت — هذا للبرومتات القادمة.
+- لا تحذف أي بيانات Firestore ولا تُعدّل Security Rules الحالية.
+- لا تلمس lib_legacy/ بعد نقلها إليه.
+- التزم فقط بما هو مذكور هنا؛ أي فكرة إضافية اقترحها كملاحظة نصية في نهاية ردك دون تنفيذها.
+
+## عند الانتهاء
+
+اذكر:
+1. ما تم إنجازه بدقة (قائمة الملفات المُنشأة).
+2. أي قرار تقني اضطررت لاتخاذه لم يكن محددًا صراحة هنا (مثال: اختيار get_it تحديدًا).
+3. تأكيد أن المشروع لا يزال يبني (flutter build/analyze) بلا أخطاء بعد النقل، حتى لو كانت الشاشات فارغة مؤقتًا.
