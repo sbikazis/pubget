@@ -1,0 +1,1165 @@
+# PUBGET — FULL SECURITY HARDENING + APPLICATION INTEGRITY AUDIT + INCIDENT RECOVERY + REGRESSION TESTING
+
+You are working on the Pubget Flutter/Firebase application.
+
+This is a production-oriented security and integrity task.
+
+IMPORTANT:
+This task has TWO major objectives:
+
+OBJECTIVE A:
+Perform a comprehensive professional security audit and hardening of the entire application and Firebase backend.
+
+OBJECTIVE B:
+Investigate, identify, and safely repair the damage and corrupted/abnormal data caused by a suspected unauthorized user who appears to have exploited weak Firebase/Firestore authorization and manipulated application data.
+
+The application must remain normally usable after hardening.
+
+Do NOT solve security by simply disabling features or making the application unusable.
+
+The intended final state is:
+
+NORMAL USERS:
+Can use Pubget normally and freely perform every legitimate action that the existing application is designed to allow.
+
+UNAUTHORIZED USERS / ATTACKERS:
+Cannot bypass the application and directly manipulate protected Firebase data, escalate privileges, impersonate users, access private data, manipulate economy/premium/admin fields, modify other users' data, or access resources they do not own or have permission to access.
+
+==================================================
+0. NON-NEGOTIABLE SAFETY RULES
+==================================================
+
+Before modifying production data or production security configuration:
+
+1. Inspect the entire repository.
+2. Understand the current architecture.
+3. Identify all Firebase resources.
+4. Identify all Firestore collections and subcollections used by the application.
+5. Identify all Storage paths.
+6. Identify all Cloud Functions.
+7. Identify all authentication flows.
+8. Identify all client-side Firestore writes and reads.
+9. Identify all sensitive fields.
+10. Identify all user roles and permissions.
+11. Identify all application workflows.
+
+DO NOT blindly rewrite or delete data.
+
+DO NOT assume every abnormal document was created by the suspected attacker.
+
+DO NOT delete users, groups, messages, requests, or other data merely because they look unusual.
+
+DO NOT destroy evidence before determining what happened.
+
+DO NOT deploy a blanket deny-all rule to production if it breaks legitimate application functionality.
+
+DO NOT use:
+
+allow read, write: if true;
+
+or:
+
+allow read, write: if request.auth != null;
+
+as a global fallback.
+
+The final Firestore rules must use explicit authorization and a secure default-deny posture.
+
+Before destructive data recovery:
+
+- create/export a backup if the environment permits it;
+- generate an incident report;
+- identify candidate corrupted documents;
+- explain why each candidate is considered corrupted;
+- prefer reversible or auditable changes;
+- never silently delete legitimate user data.
+
+If a required production credential, Firebase integration, or deployment permission is unavailable, DO NOT invent it and DO NOT ask the user to paste secrets into source code.
+
+Clearly report what cannot be completed because of missing access.
+
+==================================================
+1. FULL REPOSITORY AUDIT
+==================================================
+
+Start by recursively auditing the entire repository.
+
+Inspect:
+
+- Flutter application code
+- lib/
+- core/
+- features/
+- services/
+- repositories/
+- providers/
+- models/
+- Firebase integration
+- Authentication
+- Firestore
+- Storage
+- Cloud Functions
+- notifications
+- monetization
+- games
+- Mafia
+- groups
+- private chats
+- user profiles
+- permissions
+- admin functionality
+- configuration files
+- firebase.json
+- firestore.rules
+- storage.rules
+- firestore.indexes.json
+- functions/
+- package.json files
+- Android configuration
+- iOS configuration if present
+- web configuration if present
+- CI/CD configuration
+- environment configuration
+
+Search the codebase for every Firebase operation, including but not limited to:
+
+get()
+getDocs()
+getDoc()
+set()
+setDoc()
+update()
+updateDoc()
+delete()
+deleteDoc()
+add()
+addDoc()
+collection()
+doc()
+where()
+arrayUnion()
+arrayRemove()
+increment()
+runTransaction()
+batch writes
+FirebaseAuth
+Cloud Functions
+Storage uploads/deletes
+FCM
+custom claims
+Admin SDK
+
+Build a complete map of the application's backend attack surface.
+
+==================================================
+2. FIRESTORE DATA INVENTORY
+==================================================
+
+Determine every Firestore collection and subcollection actually used by Pubget.
+
+At minimum investigate the currently known areas:
+
+users
+groups
+groups/{groupId}/members
+group requests / invitations if present
+edits
+fans
+respects
+notifications
+promotions
+privateChats
+user_seen
+mafia_games
+mafia_games/{gameId}/players
+mafia_games/{gameId}/players/{playerId}/private
+mafia_games/{gameId}/night_actions
+mafia_games/{gameId}/votes
+mafia_games/{gameId}/events
+mafia_history
+users/{userId}/user_mafia_history
+physical-products
+and every additional collection discovered in the source code or Firebase project.
+
+Do not assume the list above is complete.
+
+Produce a data model showing:
+
+Collection
+Purpose
+Who can read
+Who can create
+Who can update
+Who can delete
+Which fields are user-controlled
+Which fields are server-controlled
+Which fields are sensitive
+Which operations require ownership
+Which operations require group membership
+Which operations require moderator/admin privileges
+
+==================================================
+3. SECURITY THREAT MODEL
+==================================================
+
+Treat the current situation as a potential unauthorized-access incident.
+
+Test for:
+
+A. Broken access control
+B. IDOR / insecure direct object references
+C. Privilege escalation
+D. User impersonation
+E. UID spoofing
+F. ownerId spoofing
+G. senderId spoofing
+H. admin/role manipulation
+I. Premium manipulation
+J. currency manipulation
+K. Respect manipulation
+L. Fan manipulation
+M. group ownership manipulation
+N. group membership manipulation
+O. private chat access
+P. private Mafia information access
+Q. game result manipulation
+R. notification spoofing
+S. arbitrary document creation
+T. arbitrary document modification
+U. arbitrary document deletion
+V. arbitrary Storage access
+W. malicious file uploads
+X. replay attacks where applicable
+Y. race conditions
+Z. duplicate reward transactions
+AA. Cloud Function trust-boundary issues
+AB. client-controlled sensitive fields
+AC. weak authentication assumptions
+AD. missing App Check
+AE. exposed secrets
+AF. insecure API integrations
+AG. insecure admin endpoints
+AH. weak Cloud Function validation
+
+Do not merely look for vulnerabilities in the code.
+
+Try to determine whether an authenticated but malicious normal user can bypass intended application behavior by talking directly to Firebase.
+
+==================================================
+4. FIRESTORE SECURITY RULES
+==================================================
+
+Create or completely redesign firestore.rules if necessary.
+
+The rules must follow:
+
+DEFAULT DENY.
+
+Unknown collections must NOT automatically become writable by authenticated users.
+
+Never use a global fallback that gives authenticated users unrestricted access.
+
+For every collection define explicit permissions.
+
+IMPORTANT PRODUCT REQUIREMENT:
+
+Security must NOT destroy normal Pubget functionality.
+
+A normal authenticated user must be able to perform every legitimate action that the existing Pubget product intentionally allows.
+
+Security must prevent bypassing the application logic, not prevent the legitimate feature itself.
+
+For every write operation determine:
+
+- Is the user authenticated?
+- Is the user the owner?
+- Is the user a legitimate participant?
+- Is the user a member of the group?
+- Is the user a moderator?
+- Is the user an administrator?
+- Which exact fields are allowed to change?
+- Which fields must never be controlled by the client?
+- Does the new data preserve ownership?
+- Does the new data preserve identity?
+- Does the new data preserve role?
+- Does the new data preserve server-controlled state?
+
+Use field-level restrictions wherever appropriate.
+
+Examples:
+
+A user should be able to update legitimate profile fields.
+
+But the user must not be able to change:
+
+isAdmin
+isBanned
+coinsBalance
+subscription state
+privileged roles
+server-only reward fields
+security state
+other users' identities
+
+unless there is an explicitly authorized backend mechanism.
+
+For groups:
+
+Normal users should retain legitimate group functionality.
+
+But users must not be able to:
+
+- change another group's owner
+- make themselves founder/admin
+- modify another group's members without permission
+- bypass membership requirements
+- manipulate protected group state
+- delete groups they do not control
+
+For messages:
+
+Users may send legitimate messages.
+
+But sender identity must come from request.auth.uid, not from arbitrary client-controlled data.
+
+Users must not be able to impersonate another sender.
+
+For private chats:
+
+Only legitimate participants should be able to access private chat data.
+
+For Mafia:
+
+Players should be able to participate normally.
+
+However:
+
+- private roles must not be exposed to other players
+- clients must not decide winners
+- clients must not arbitrarily change roles
+- clients must not manipulate rewards
+- clients must not manipulate protected game state
+
+If server-side authority is required, move the operation to Cloud Functions or another trusted backend mechanism.
+
+==================================================
+5. STORAGE SECURITY
+==================================================
+
+Audit and create secure storage.rules.
+
+Determine every Storage path used by the application.
+
+For each path determine:
+
+- who can read
+- who can upload
+- who can overwrite
+- who can delete
+- ownership
+- allowed MIME types
+- maximum file size
+- path traversal or ownership issues
+- whether a user can overwrite another user's file
+- whether a user can access private files
+
+Prevent:
+
+- executable uploads where inappropriate
+- arbitrary file types
+- oversized files
+- overwriting other users' files
+- unauthorized deletion
+- unauthorized private-media access
+
+Do not break legitimate image/video/profile/group upload functionality.
+
+==================================================
+6. FIREBASE AUTHENTICATION SECURITY
+==================================================
+
+Audit Firebase Authentication.
+
+Check:
+
+- authentication providers
+- account creation
+- account deletion
+- session handling
+- user document creation
+- UID consistency
+- logout
+- account state
+- disabled accounts
+- password/reset flows if applicable
+- anonymous auth if applicable
+- custom claims if applicable
+
+The application's authorization must rely on Firebase Authentication identity.
+
+Never trust a client-provided UID as proof of identity.
+
+Check whether a malicious authenticated user can create a document pretending to belong to another UID.
+
+==================================================
+7. CLOUD FUNCTIONS SECURITY
+==================================================
+
+Audit every Cloud Function.
+
+For each function determine:
+
+- trigger
+- caller
+- authentication requirement
+- authorization
+- trusted inputs
+- untrusted inputs
+- validation
+- idempotency
+- transaction safety
+- race conditions
+- error handling
+- data leakage
+- privilege escalation
+- Admin SDK usage
+
+Remember:
+
+Cloud Functions using Firebase Admin SDK operate with elevated privileges and must independently validate inputs and authorization.
+
+Do not trust fields such as:
+
+userId
+senderId
+ownerId
+role
+winner
+coins
+reward
+premium
+isAdmin
+
+when supplied by the client.
+
+Move security-sensitive state transitions to trusted backend logic where appropriate.
+
+Use Firestore transactions/batches where required for atomicity.
+
+Protect against duplicate execution and replay where applicable.
+
+==================================================
+8. ECONOMY / PREMIUM / REWARDS
+==================================================
+
+Search the entire project for:
+
+coins
+balance
+currency
+premium
+subscription
+rewards
+gifts
+points
+respect
+fans
+purchases
+promotions
+rank
+roles
+badges
+inventory
+
+Determine which values are security-sensitive.
+
+A client must not be able to simply write:
+
+coinsBalance: 999999
+premium: true
+isAdmin: true
+rank: founder
+
+or equivalent.
+
+Users must retain legitimate ways of earning, spending, purchasing, and using these features.
+
+Security should protect the underlying state transition rather than remove the feature.
+
+==================================================
+9. GROUP SECURITY
+==================================================
+
+Audit the entire group system.
+
+Determine:
+
+- group creation
+- ownership
+- joining
+- leaving
+- requests
+- invitations
+- members
+- roles
+- moderators
+- group privacy
+- group deletion
+- group editing
+- group messaging
+- group media
+
+Test malicious scenarios:
+
+User A creates Group A.
+
+User B must not be able to:
+
+- change Group A ownership
+- make themselves owner
+- delete Group A
+- modify Group A's protected fields
+- manipulate Group A members
+- read private Group A data if not authorized
+
+But User B must still be able to perform every normal operation Pubget intentionally allows them to perform.
+
+==================================================
+10. PRIVATE CHAT SECURITY
+==================================================
+
+Audit:
+
+privateChats
+messages
+participants
+sender IDs
+receiver IDs
+read states
+attachments
+
+Test:
+
+User A cannot read User B's private conversation with User C.
+
+User A cannot send a message pretending to be User B.
+
+User A cannot add themselves to a conversation they are not authorized to access.
+
+Users must still be able to chat normally.
+
+==================================================
+11. MAFIA SECURITY
+==================================================
+
+Audit the entire Mafia implementation.
+
+Protect:
+
+- player identity
+- private role
+- team
+- night actions
+- votes
+- game state
+- winner
+- rewards
+- history
+
+A player must be able to perform legitimate game actions.
+
+But a player must not be able to:
+
+- read another player's secret role
+- change their role
+- change another player's role
+- declare themselves winner
+- modify rewards
+- modify protected game state
+- reveal private information
+- impersonate another player
+
+Use trusted backend logic for authoritative transitions where necessary.
+
+==================================================
+12. NOTIFICATIONS
+==================================================
+
+Audit notifications.
+
+Prevent users from creating notifications that impersonate the system or another user if the application architecture does not require client creation.
+
+Ensure notification data cannot be abused for:
+
+- spoofing
+- malicious links if applicable
+- arbitrary user targeting
+- unauthorized notification spam
+
+Preserve normal notification functionality.
+
+==================================================
+13. APP CHECK
+==================================================
+
+Prepare Firebase App Check.
+
+Determine supported platforms.
+
+Implement it carefully.
+
+If the application is already live:
+
+DO NOT immediately enforce App Check blindly.
+
+Use monitoring / metrics / staged rollout where appropriate.
+
+Document exactly what will be enforced and when.
+
+==================================================
+14. SECRETS AND CREDENTIALS
+==================================================
+
+Search the repository for:
+
+private keys
+service account credentials
+Admin SDK credentials
+API secrets
+tokens
+passwords
+private configuration
+CI secrets
+
+Never expose secrets in source code.
+
+If a secret is found:
+
+- identify it
+- do not print the secret in the report
+- recommend rotation
+- identify where it is used
+- update code/configuration safely if possible
+
+Do not ask the user to paste private credentials into chat.
+
+==================================================
+15. SUSPECTED INCIDENT / ATTACKER INVESTIGATION
+==================================================
+
+There is a suspected malicious user who claims to have:
+
+- accessed the database
+- extracted user data
+- manipulated groups
+- created or damaged group data
+- removed or altered group members
+- created abnormal/empty groups
+- accessed data through weak Firebase authorization
+
+The current Firestore rules previously contained a dangerous pattern similar to:
+
+match /{document=**} {
+  allow read, write: if request.auth != null;
+}
+
+and:
+
+match /groups/{groupId} {
+  allow read: if true;
+  allow write: if request.auth != null;
+}
+
+Therefore treat the incident seriously.
+
+DO NOT assume every abnormal record belongs to the attacker.
+
+Investigate using available evidence.
+
+Determine:
+
+- suspected user UID
+- account creation date
+- account deletion/disable status
+- relevant timestamps
+- createdBy / ownerId
+- document timestamps
+- modified fields
+- group membership changes
+- abnormal documents
+- orphaned references
+- deleted/missing user references
+- suspicious group requests
+- suspicious notifications
+- suspicious fans/respects
+- suspicious edits
+- suspicious private chat records
+- suspicious Mafia records
+
+If Firebase logs/audit logs are available through the environment, inspect them.
+
+Do not fabricate logs if unavailable.
+
+==================================================
+16. DATA RECOVERY / CLEANUP
+==================================================
+
+This is a critical requirement.
+
+The suspected attacker appears to have damaged some groups and related data.
+
+Examples include:
+
+- groups with missing names
+- groups with empty fields
+- groups with abnormal metadata
+- groups with missing/incorrect members
+- orphaned requests
+- references to users that no longer exist
+- notifications generated by suspicious activity
+- other abnormal records
+
+Before modifying data:
+
+CREATE A RECOVERY REPORT.
+
+For every suspicious document report:
+
+- path
+- document ID
+- relevant fields
+- reason it is suspicious
+- suspected source if evidence exists
+- whether recovery is possible
+- proposed action:
+  KEEP
+  REPAIR
+  RESTORE
+  ARCHIVE
+  DELETE
+  NEEDS REVIEW
+
+Never delete legitimate data merely because it is old, empty, or unusual.
+
+==================================================
+17. GROUP RECOVERY
+==================================================
+
+For damaged groups:
+
+First determine whether the group originally belonged to a legitimate user.
+
+Use available evidence such as:
+
+- createdBy
+- ownerId
+- createdAt
+- members
+- group requests
+- messages
+- images
+- related notifications
+- backups
+- historical documents
+- application logs
+- references elsewhere
+
+If the original data can be reliably reconstructed:
+
+restore it.
+
+If only some fields are damaged:
+
+repair only those fields.
+
+If the group is demonstrably malicious/spam/corrupted and has no legitimate purpose:
+
+mark it for removal or archive it according to the project's data-retention strategy.
+
+Do not automatically delete all empty groups.
+
+==================================================
+18. ORPHANED USER REFERENCES
+==================================================
+
+If documents reference:
+
+userId = X
+
+but users/X does not exist:
+
+do not automatically delete the document.
+
+Determine whether:
+
+- the user intentionally deleted their account
+- the attacker created a fake reference
+- the application generated an orphaned document
+- the reference is legitimate historical data
+
+Apply the appropriate recovery policy.
+
+==================================================
+19. ATTACKER ACCOUNT
+==================================================
+
+If the suspected account can be reliably identified:
+
+DO NOT grant it special privileges.
+
+Do not create a secret backdoor.
+
+Do not preserve hidden administrative access.
+
+If appropriate and supported by available access:
+
+- disable the account
+- revoke sessions/tokens where supported
+- block the UID at the application/backend authorization layer where appropriate
+- preserve an audit record
+- inspect related data
+
+Do not claim the user was the attacker unless the available evidence supports that conclusion.
+
+==================================================
+20. SECURITY TEST SUITE
+==================================================
+
+Create comprehensive Firebase Emulator tests.
+
+The tests must include both positive and negative cases.
+
+POSITIVE TESTS:
+
+- registration
+- profile editing
+- legitimate group creation
+- legitimate group editing
+- legitimate group membership
+- legitimate requests
+- legitimate messaging
+- legitimate private chats
+- legitimate uploads
+- legitimate respects/fans
+- legitimate game participation
+- legitimate Mafia actions
+- legitimate notifications
+- legitimate premium functionality
+- legitimate economy operations
+
+NEGATIVE ATTACK TESTS:
+
+1. Anonymous read protected data.
+2. Anonymous write.
+3. User A reading User B's private data.
+4. User A modifying User B's profile.
+5. User A changing their own UID.
+6. User A changing ownerId to another user.
+7. User A making themselves admin.
+8. User A modifying coinsBalance.
+9. User A making themselves Premium.
+10. User A changing isBanned.
+11. User A modifying another group's data.
+12. User A modifying another group's members.
+13. User A impersonating senderId.
+14. User A reading another user's private Mafia role.
+15. User A changing Mafia role.
+16. User A declaring themselves winner.
+17. User A manipulating rewards.
+18. User A reading another private chat.
+19. User A injecting arbitrary notifications.
+20. User A creating arbitrary documents in unknown collections.
+21. User A deleting another user's content.
+22. User A uploading unauthorized file types.
+23. User A overwriting another user's Storage file.
+24. User A accessing another user's private Storage.
+25. Malformed requests.
+26. Missing fields.
+27. Wrong data types.
+28. Oversized input.
+29. Race conditions where relevant.
+30. Duplicate reward requests.
+
+Every negative test must FAIL securely.
+
+Every legitimate test must PASS.
+
+==================================================
+21. REGRESSION TESTING
+==================================================
+
+After security changes, verify that normal Pubget functionality remains intact.
+
+Test the real application flows as far as the environment allows:
+
+AUTH:
+- sign up
+- sign in
+- logout
+- profile creation
+- profile editing
+
+GROUPS:
+- browse
+- create
+- edit own group
+- join
+- leave
+- requests
+- membership
+- group chat
+- group media
+
+SOCIAL:
+- fans
+- respects
+- edits
+- notifications
+
+PRIVATE:
+- create/open private chat
+- send message
+- receive message
+- attachments if applicable
+
+MAFIA:
+- create/join
+- player state
+- private role
+- actions
+- voting
+- game completion
+- rewards
+- history
+
+STORAGE:
+- profile image
+- group image
+- media uploads
+
+MONETIZATION:
+- premium state
+- purchases/subscriptions if implemented
+
+Do not merely check that the application compiles.
+
+Check actual data flow and authorization behavior.
+
+==================================================
+22. BUILD / STATIC ANALYSIS
+==================================================
+
+Run appropriate:
+
+flutter analyze
+flutter test
+Firebase Emulator tests
+Cloud Functions tests
+lint
+type checking
+build checks
+
+Fix security-related and regression errors.
+
+Do not introduce unrelated UI redesigns.
+
+Do not refactor the entire application unnecessarily.
+
+==================================================
+23. PRODUCTION DEPLOYMENT STRATEGY
+==================================================
+
+Because the application is live:
+
+DO NOT deploy everything blindly.
+
+Before production deployment:
+
+1. Verify tests.
+2. Verify Firebase rules.
+3. Verify Storage rules.
+4. Verify Functions.
+5. Verify migration scripts.
+6. Verify recovery report.
+7. Verify backup/recovery strategy.
+8. Verify monitoring.
+9. Verify rollback.
+
+If staging Firebase is available, test there first.
+
+If production deployment is possible but unsafe due to missing information, STOP and report what is required.
+
+Never silently break production.
+
+==================================================
+24. REQUIRED DELIVERABLES
+==================================================
+
+At the end provide:
+
+A. SECURITY AUDIT REPORT
+
+Include:
+
+- vulnerabilities discovered
+- severity
+- affected resource
+- attack scenario
+- current risk
+- fix implemented
+- remaining risk
+
+B. FIRESTORE SECURITY MATRIX
+
+Collection | Read | Create | Update | Delete | Conditions
+
+C. STORAGE SECURITY MATRIX
+
+Path | Read | Upload | Update | Delete | File restrictions
+
+D. FIRESTORE RULES
+
+Complete final firestore.rules.
+
+E. STORAGE RULES
+
+Complete final storage.rules.
+
+F. CLOUD FUNCTIONS SECURITY REPORT
+
+Function
+Risk
+Validation
+Authorization
+Fix
+
+G. INCIDENT REPORT
+
+Include:
+
+- suspected compromised account/UID if evidence supports it
+- suspicious records
+- affected collections
+- suspected timestamps
+- what was proven
+- what remains uncertain
+
+Do not include sensitive personal data unnecessarily.
+
+H. RECOVERY REPORT
+
+For every repaired/archived/deleted document:
+
+- path
+- action
+- reason
+- evidence
+- whether recovery was deterministic
+
+I. TEST REPORT
+
+Show:
+
+Total tests
+Passed
+Failed
+Skipped
+
+Separate:
+
+Legitimate user tests
+Attack tests
+Regression tests
+
+J. REMAINING RISKS
+
+Explicitly state anything that could not be verified.
+
+==================================================
+25. IMPORTANT FINAL SECURITY PRINCIPLE
+==================================================
+
+The final application must follow this model:
+
+NORMAL USER:
+Full normal Pubget experience.
+
+MALICIOUS USER:
+Can use legitimate public/application features like any other user.
+
+BUT:
+
+Cannot bypass application authorization.
+
+Cannot directly manipulate protected Firebase data.
+
+Cannot escalate privileges.
+
+Cannot impersonate another user.
+
+Cannot access private data.
+
+Cannot manipulate economy.
+
+Cannot manipulate Premium.
+
+Cannot manipulate admin state.
+
+Cannot manipulate protected Mafia information/results.
+
+Cannot access arbitrary Storage resources.
+
+Cannot write to arbitrary Firestore collections.
+
+Cannot create hidden backdoors.
+
+The security model must protect the DATA and AUTHORIZATION boundaries without unnecessarily restricting legitimate PRODUCT functionality.
+
+==================================================
+26. FINAL STOP CONDITION
+==================================================
+
+Do not declare the task complete merely because:
+
+- firestore.rules exists
+- storage.rules exists
+- the app compiles
+- a few tests pass
+
+The task is complete only when:
+
+1. The entire Firebase attack surface has been audited.
+2. Security rules use secure explicit authorization.
+3. Storage is protected.
+4. Cloud Functions validate untrusted inputs.
+5. Sensitive state cannot be client-forged.
+6. Emulator attack tests pass.
+7. Legitimate application-flow tests pass.
+8. Regression tests pass.
+9. Suspected incident data has been investigated.
+10. Corrupted data has been safely identified and recovered where possible.
+11. No destructive cleanup occurred without evidence.
+12. Production deployment is staged and reversible.
+13. Remaining unknowns are explicitly documented.
+
+DO NOT CLAIM "100% SECURE".
+
+Instead provide a professional risk assessment with:
+
+CRITICAL
+HIGH
+MEDIUM
+LOW
+INFORMATIONAL
+
+and clearly state what was verified versus what could not be verified.
+
+Start with AUDIT/ANALYSIS FIRST.
+
+Do not immediately modify production data.
+
+Do not immediately delete anything.
+
+Do not immediately deploy anything.
+
+First inspect the repository, produce the architecture/security/data inventory, identify the current vulnerabilities and incident indicators, then proceed through implementation, testing, and controlled recovery.
