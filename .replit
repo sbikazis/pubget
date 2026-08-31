@@ -1,7 +1,8 @@
-modules = ["web", "nodejs-20"]
+modules = ["web", "nodejs-20", "java-graalvm22.3"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["jdk21_headless"]
 
 [agent]
 expertMode = true

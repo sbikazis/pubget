@@ -133,20 +133,7 @@ class MessageModel {
       'senderName': senderName,
       'senderAvatar': senderAvatar,
       'senderIsPremium': senderIsPremium,
-      'senderRole': senderRole?.name,
-      'text': text,
-      'mediaUrl': mediaUrl,
-      'mediaType': mediaType,
       'type': type.name,
-      'gameId': gameId,
-      'gameSlot': gameSlot,
-      'gameAction': gameAction,
-      'systemEventType': systemEventType, // ✅ جديد
-      'replyToId': replyToId,
-      'replyText': replyText,
-      'replyToSenderName': replyToSenderName,
-      'replyToMediaUrl': replyToMediaUrl,
-      'reactions': reactions,
       // ✅✅✅ تعديل جوهري: بدل Timestamp.fromDate(createdAt) الذي يعتمد
       // على ساعة الجهاز المحلية وقت الإنشاء (سبب مشكلة Clock Skew بالكامل)،
       // نكتب الآن FieldValue.serverTimestamp() ليكتب فايرستور الوقت
@@ -158,13 +145,22 @@ class MessageModel {
           : Timestamp.fromDate(createdAt ?? DateTime.now()),
       'isRead': isRead,
       'isDelivered': isDelivered,
-      'audioDuration': audioDuration,
-      'editThumbnail': editThumbnail,
-      'editAnimeTitle': editAnimeTitle,
-      'editId': editId,
       'isEdited': isEdited, // ✅ جديد
       // status لا يُحفظ في Firestore عمداً
-    };
+    }..addAll({
+        if (senderRole != null) 'senderRole': senderRole!.name,
+        if (text != null) 'text': text,
+        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        if (mediaType != null) 'mediaType': mediaType,
+        if (replyToId != null) 'replyToId': replyToId,
+        // Reply display fields are intentionally not client-written: they
+        // cannot be authenticated and the referenced message is canonical.
+        if (reactions != null) 'reactions': reactions,
+        if (audioDuration != null) 'audioDuration': audioDuration,
+        if (editThumbnail != null) 'editThumbnail': editThumbnail,
+        if (editAnimeTitle != null) 'editAnimeTitle': editAnimeTitle,
+        if (editId != null) 'editId': editId,
+      });
   }
 
   MessageModel copyWith({

@@ -48,7 +48,9 @@ async function writeHistory(gameId, gameRef, winner, playersSnap) {
     });
   });
 
-  const startedAtMs = gameData.startedAt ? gameData.startedAt.toMillis() : null;
+  const startedAtMs = gameData && gameData.startedAt &&
+    typeof gameData.startedAt.toMillis === "function"
+    ? gameData.startedAt.toMillis() : null;
   const durationSeconds = startedAtMs
     ? Math.max(0, Math.round((Date.now() - startedAtMs) / 1000))
     : 0;

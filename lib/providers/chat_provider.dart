@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/message_model.dart';
 import '../models/member_model.dart';
@@ -139,43 +138,10 @@ class ChatProvider extends ChangeNotifier {
     required String systemEventType, // join / leave / kick / roleAssign
     required String text,
   }) async {
-    try {
-      final messageId = const Uuid().v4();
-
-      // ✅✅✅ تعديل جوهري: createdAt لم يُمرَّر هنا إطلاقاً (يبقى null محلياً).
-      // toMap() الافتراضي (useServerTimestamp: true) سيكتب FieldValue.serverTimestamp()
-      // تلقائياً، فلا حاجة لأي DateTime.now() من جهاز العميل بعد الآن.
-      final message = MessageModel(
-        id: messageId,
-        senderId: 'system',
-        senderName: 'النظام',
-        senderAvatar: '',
-        senderIsPremium: false,
-        senderRole: null,
-        text: text,
-        type: MessageType.systemEvent,
-        systemEventType: systemEventType,
-        isDelivered: true,
-        isRead: true, // رسائل النظام تُعتبر مقروءة دائماً
-      );
-
-      await _firestore.createDocument(
-        path: FirestorePaths.groupMessages(groupId),
-        docId: messageId,
-        data: message.toMap(),
-      );
-
-      // ✅ لا تُحدِّث lastMessageText بنص النظام لتجنب إزعاج المستخدم
-      await _firestore.updateDocument(
-        path: FirestorePaths.groups,
-        docId: groupId,
-        data: {
-          'lastMessageAt': FieldValue.serverTimestamp(),
-        },
-      );
-    } catch (e) {
-      debugPrint('⚠️ sendSystemMessage failed: $e');
-    }
+    // Authoritative membership and role events cannot be proven from a
+    // separate client write after the mutation batch has committed. Keep the
+    // API for callers, but do not create forgeable "system" messages.
+    return;
   }
 
   // =========================================================
@@ -195,7 +161,7 @@ class ChatProvider extends ChangeNotifier {
     String? gameSlot,
   }) async {
     if (text.trim().isEmpty) return;
-    final finalAvatar = sender.displayImageUrl ?? userAvatar ?? '';
+    final finalAvatar = sender.displayImageUrl ?? '';
     // ✅✅✅ تعديل جوهري: لا يوجد createdAt: DateTime.now() بعد الآن.
     // toMap() سيكتب وقت السيرفر الحقيقي تلقائياً عبر FieldValue.serverTimestamp().
     final message = MessageModel(
@@ -212,7 +178,7 @@ class ChatProvider extends ChangeNotifier {
       replyToMediaUrl: replyToMediaUrl,
       gameId: gameId,
       gameSlot: gameSlot,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
@@ -272,44 +238,24 @@ class ChatProvider extends ChangeNotifier {
       messageId: messageId,
       file: file,
     );
-    String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
-    bool freshPremiumStatus = sender.isPremium;
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error fetching live user data for media: $e");
-    }
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      realUserName: freshRealName,
-      isPremium: freshPremiumStatus,
-    );
-    final finalAvatar = updatedSender.displayImageUrl ?? userAvatar ?? '';
+    // Group messages use the member projection as their authoritative identity.
+    final finalAvatar = sender.displayImageUrl ?? '';
     // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
+      senderId: sender.userId,
+      senderName: sender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
+      senderRole: sender.role,
+      senderIsPremium: sender.isPremium,
       mediaUrl: mediaUrl,
+      type: MessageType.media,
       mediaType: mediaType,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
@@ -355,11 +301,12 @@ class ChatProvider extends ChangeNotifier {
       senderIsPremium: sender.isPremium,
       mediaUrl: gifUrl,
       mediaType: 'gif',
+      type: MessageType.media,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
@@ -395,45 +342,25 @@ class ChatProvider extends ChangeNotifier {
       messageId: messageId,
       file: audioFile,
     );
-    String? freshRealAvatar = sender.realUserImageUrl;
-    String freshRealName = sender.realUserName ?? '';
-    bool freshPremiumStatus = sender.isPremium;
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshRealName = userData?['username'] ?? freshRealName;
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error fetching live user data for audio: $e");
-    }
-    final updatedSender = sender.copyWith(
-      realUserImageUrl: freshRealAvatar,
-      realUserName: freshRealName,
-      isPremium: freshPremiumStatus,
-    );
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
+    // Group messages use the member projection as their authoritative identity.
+    final finalAvatar = sender.displayImageUrl ?? '';
     // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
     final message = MessageModel(
       id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
+      senderId: sender.userId,
+      senderName: sender.effectiveName,
       senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
+      senderRole: sender.role,
+      senderIsPremium: sender.isPremium,
       mediaUrl: audioUrl,
       mediaType: 'audio',
+      type: MessageType.media,
       audioDuration: durationSeconds,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),
@@ -503,49 +430,9 @@ class ChatProvider extends ChangeNotifier {
     String? gameSlot,
     String? gameAction,
   }) async {
-    String? freshRealAvatar = sender.realUserImageUrl;
-    bool freshPremiumStatus = sender.isPremium;
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(sender.userId)
-          .get();
-      if (userDoc.exists) {
-        final userData = userDoc.data();
-        freshRealAvatar = userData?['avatarUrl'];
-        freshPremiumStatus = userData?['subscriptionType'] == 'premium';
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error fetching live user data for game: $e");
-    }
-    final updatedSender = sender.copyWith(
-        realUserImageUrl: freshRealAvatar, isPremium: freshPremiumStatus);
-    final finalAvatar = updatedSender.displayImageUrl ?? '';
-    // ✅ تعديل جوهري: حذف createdAt: DateTime.now()
-    final message = MessageModel(
-      id: messageId,
-      senderId: updatedSender.userId,
-      senderName: updatedSender.effectiveName,
-      senderAvatar: finalAvatar,
-      senderRole: updatedSender.role,
-      senderIsPremium: updatedSender.isPremium,
-      gameId: gameId,
-      gameSlot: gameSlot,
-      gameAction: gameAction,
-      isDelivered: true,
-    );
-    await _firestore.createDocument(
-        path: FirestorePaths.groupMessages(groupId),
-        docId: messageId,
-        data: message.toMap());
-    await _firestore.updateDocument(
-      path: FirestorePaths.groups,
-      docId: groupId,
-      data: {
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageText': '🎮 لعبة',
-      },
-    );
+    // Game events are authoritative server output. A client cannot safely
+    // attest game state, so it must not write a forgeable chat event.
+    return;
   }
 
   // =========================================================
@@ -572,11 +459,12 @@ class ChatProvider extends ChangeNotifier {
       senderIsPremium: sender.isPremium,
       mediaUrl: stickerUrl,
       mediaType: 'sticker',
+      type: MessageType.media,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.groupMessages(groupId),

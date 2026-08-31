@@ -2,7 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:rxdart/rxdart.dart';
 
 import '../models/group_model.dart';
@@ -28,11 +32,61 @@ class GroupProvider extends ChangeNotifier {
     required FirestoreService firestoreService,
   }) : _firestore = firestoreService;
 
+  /// Calls the HTTPS callable protocol directly because this app deliberately
+  /// does not depend on cloud_functions. FirebaseAuth supplies the short-lived
+  /// bearer token and FirebaseOptions supplies the active project at runtime.
+  Future<void> _callDisbandGroup(Map<String, dynamic> data) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('يجب تسجيل الدخول لتنفيذ هذه العملية.');
+    }
+    final token = await user.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('تعذر التحقق من جلسة تسجيل الدخول.');
+    }
+    final projectId = Firebase.app().options.projectId;
+    if (projectId.isEmpty) {
+      throw StateError('معرّف مشروع Firebase غير متاح.');
+    }
+
+    final response = await http.post(
+      Uri.parse(
+        'https://us-central1-$projectId.cloudfunctions.net/disbandGroup',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'data': data}),
+    );
+
+    Map<String, dynamic>? payload;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) payload = decoded;
+    } on FormatException {
+      // The explicit error below avoids presenting an opaque parser failure.
+    }
+    final error = payload?['error'];
+    if (error is Map) {
+      final message = error['message'];
+      throw StateError(message is String && message.isNotEmpty
+          ? message
+          : 'تعذر تنفيذ عملية المجموعة.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('فشل الاتصال بخدمة المجموعة (${response.statusCode}).');
+    }
+    if (payload == null || !payload.containsKey('result')) {
+      throw StateError('استجابة غير صالحة من خدمة المجموعة.');
+    }
+  }
+
   // =========================================================
   static String _normalizeCharacterKey(String characterName) {
     final words = characterName
         .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), '')
         .trim()
         .split(RegExp(r'\s+'));
     words.sort();
@@ -89,7 +143,7 @@ class GroupProvider extends ChangeNotifier {
 
       final notifId = firestore
           .collection(FirestorePaths.userNotifications(founderId))
-          .doc()
+          .doc('join_request_${groupId}_${memberRequest.requestId ?? '${memberRequest.userId}_${memberRequest.joinedAt.microsecondsSinceEpoch}'}')
           .id;
       final notification = NotificationModel(
         id: notifId,
@@ -98,6 +152,7 @@ class GroupProvider extends ChangeNotifier {
             'قدم ${memberRequest.realUserName} طلباً للانضمام إلى مجموعة "$groupName"',
         type: NotificationTypes.joinRequest,
         refId: groupId,
+        senderId: memberRequest.userId,
         createdAt: DateTime.now(),
         isRead: false,
       );
@@ -128,7 +183,7 @@ class GroupProvider extends ChangeNotifier {
       final firestore = FirebaseFirestore.instance;
 
       final userDoc = await firestore
-          .collection('users')
+          .collection(FirestorePaths.publicProfiles)
           .doc(requestMember.userId)
           .get();
       bool currentPremiumStatus = false;
@@ -168,16 +223,7 @@ class GroupProvider extends ChangeNotifier {
       bool finalIsManual = false;
 
       if (existingMemberDoc.exists) {
-        final data = existingMemberDoc.data()!;
-        finalRole = data['role'] ?? 'member';
-        finalIsManual = data['isManualRole'] ?? false;
-        if (finalRole == 'founder' || finalRole == 'shogun') {
-          final requestRef = firestore
-              .collection(FirestorePaths.groupJoinRequests(groupId))
-              .doc(requestMember.userId);
-          await requestRef.delete();
-          return;
-        }
+        throw "العضو منضم بالفعل؛ يجب إلغاء الطلب القديم من حساب صاحبه.";
       }
 
       final groupDoc = await firestore
@@ -189,6 +235,8 @@ class GroupProvider extends ChangeNotifier {
       final String groupType = groupData?['groupType'] ?? 'general';
 
       final batch = firestore.batch();
+      final moderatorId = FirebaseAuth.instance.currentUser?.uid;
+      if (moderatorId == null) throw "يجب تسجيل الدخول لإدارة طلبات الانضمام.";
 
       final newMember = requestMember.copyWith(
         role: Roles.fromString(finalRole),
@@ -212,7 +260,14 @@ class GroupProvider extends ChangeNotifier {
       final groupRef =
           firestore.collection(FirestorePaths.groups).doc(groupId);
       if (!existingMemberDoc.exists) {
-        batch.update(groupRef, {'membersCount': FieldValue.increment(1)});
+        batch.update(groupRef, {
+          'membersCount': FieldValue.increment(1),
+          'membershipMutation': {
+            'operation': 'accept',
+            'userId': newMember.userId,
+            'actorId': moderatorId,
+          },
+        });
       }
 
       if (newMember.characterName != null) {
@@ -230,7 +285,8 @@ class GroupProvider extends ChangeNotifier {
 
       final notifId = firestore
           .collection(FirestorePaths.userNotifications(newMember.userId))
-          .doc()
+          .doc(
+              'request_accepted_${groupId}_${newMember.requestId ?? '${newMember.userId}_${newMember.joinedAt.microsecondsSinceEpoch}'}')
           .id;
       final notification = NotificationModel(
         id: notifId,
@@ -239,6 +295,7 @@ class GroupProvider extends ChangeNotifier {
             'وافق الشوغو على طلب انضمامك لمجموعة "$groupName". يمكنك الدردشة الآن!',
         type: NotificationTypes.requestAccepted,
         refId: groupId,
+        senderId: moderatorId,
         createdAt: DateTime.now(),
         isRead: false,
       );
@@ -286,6 +343,16 @@ class GroupProvider extends ChangeNotifier {
     try {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
+      final moderatorId = FirebaseAuth.instance.currentUser?.uid;
+      if (moderatorId == null) throw "يجب تسجيل الدخول لإدارة طلبات الانضمام.";
+      final requestSnapshot = await firestore
+          .collection(FirestorePaths.groupJoinRequests(groupId))
+          .doc(userId)
+          .get();
+      final requestId = requestSnapshot.data()?['requestId'];
+      if (!requestSnapshot.exists || requestId is! String) {
+        throw "طلب الانضمام غير موجود أو قديم؛ يرجى من العضو إعادة إرساله.";
+      }
 
       final requestRef = firestore
           .collection(FirestorePaths.groupJoinRequests(groupId))
@@ -294,7 +361,7 @@ class GroupProvider extends ChangeNotifier {
 
       final notifId = firestore
           .collection(FirestorePaths.userNotifications(userId))
-          .doc()
+          .doc('request_rejected_${groupId}_$requestId')
           .id;
       final notification = NotificationModel(
         id: notifId,
@@ -302,6 +369,7 @@ class GroupProvider extends ChangeNotifier {
         body: 'نعتذر، لم يتم قبول طلبك لمجموعة "$groupName" حالياً.',
         type: NotificationTypes.requestRejected,
         refId: groupId,
+        senderId: moderatorId,
         createdAt: DateTime.now(),
         isRead: false,
       );
@@ -328,7 +396,7 @@ class GroupProvider extends ChangeNotifier {
         var member = MemberModel.fromMap(doc.data());
         try {
           final userData = await FirebaseFirestore.instance
-              .collection('users')
+              .collection(FirestorePaths.publicProfiles)
               .doc(member.userId.trim())
               .get();
           if (userData.exists && userData.data() != null) {
@@ -476,11 +544,20 @@ class GroupProvider extends ChangeNotifier {
       }
 
       final batch = firestore.batch();
+      final actorId = FirebaseAuth.instance.currentUser?.uid;
+      if (actorId == null) throw "يجب تسجيل الدخول لإدارة أعضاء المجموعة.";
       batch.delete(memberRef);
 
       final groupRef = firestore.collection(FirestorePaths.groups).doc(groupId);
       if (targetData.exists) {
-        batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
+        batch.update(groupRef, {
+          'membersCount': FieldValue.increment(-1),
+          'membershipMutation': {
+            'operation': 'remove',
+            'userId': userId,
+            'actorId': actorId,
+          },
+        });
       }
 
       // ✅✅✅ التصحيح الجوهري هنا
@@ -558,6 +635,10 @@ class GroupProvider extends ChangeNotifier {
       }
 
       final batch = firestore.batch();
+      final actorId = FirebaseAuth.instance.currentUser?.uid;
+      if (actorId == null || actorId != userId) {
+        throw "يمكن للعضو مغادرة المجموعة بنفسه فقط.";
+      }
 
       final memberRef = firestore
           .collection(FirestorePaths.groupMembers(groupId))
@@ -566,7 +647,14 @@ class GroupProvider extends ChangeNotifier {
 
       final groupRef =
           firestore.collection(FirestorePaths.groups).doc(groupId);
-      batch.update(groupRef, {'membersCount': FieldValue.increment(-1)});
+      batch.update(groupRef, {
+        'membersCount': FieldValue.increment(-1),
+        'membershipMutation': {
+          'operation': 'remove',
+          'userId': userId,
+          'actorId': actorId,
+        },
+      });
 
       if (finalCharacterName != null && finalCharacterName.isNotEmpty) {
         final charKey = _normalizeCharacterKey(finalCharacterName);
@@ -670,6 +758,43 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  /// Removes only records created during a failed create flow.  It is kept
+  /// separate from disbanding so a partial creation does not generate member
+  /// notifications or leave its founder/character documents behind.
+  Future<void> rollbackGroupCreation({
+    required String groupId,
+    required String founderId,
+    String? characterName,
+  }) async {
+    await _callDisbandGroup({
+      'groupId': groupId,
+      'mode': 'rollback',
+    });
+    notifyListeners();
+  }
+
+  Future<void> updateFounderCharacterImage({
+    required String groupId,
+    required String founderId,
+    required String characterName,
+    required String imageUrl,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+    batch.update(
+      firestore.collection(FirestorePaths.groupMembers(groupId)).doc(founderId),
+      {'characterImageUrl': imageUrl},
+    );
+    batch.update(
+      firestore
+          .collection(FirestorePaths.groupCharacters(groupId))
+          .doc(_normalizeCharacterKey(characterName)),
+      {'imageUrl': imageUrl},
+    );
+    await batch.commit();
+    notifyListeners();
+  }
+
   // =========================================================
   Future<void> updateGroup({
     required String groupId,
@@ -713,51 +838,12 @@ class GroupProvider extends ChangeNotifier {
     required String groupName,
     String? farewellMessage,
   }) async {
-    try {
-      final firestore = FirebaseFirestore.instance;
-
-      final membersSnapshot = await firestore
-          .collection(FirestorePaths.groupMembers(groupId))
-          .get();
-
-      final batch = firestore.batch();
-
-      for (var doc in membersSnapshot.docs) {
-        final memberId = doc.id;
-        final notifId = firestore
-            .collection(FirestorePaths.userNotifications(memberId))
-            .doc()
-            .id;
-
-        final notification = NotificationModel(
-          id: notifId,
-          title: 'تم تفكيك مجموعة "$groupName" 🚩',
-          body: farewellMessage != null && farewellMessage.isNotEmpty
-              ? 'رسالة المؤسس: $farewellMessage'
-              : 'قام المؤسس بحذف المجموعة نهائياً.',
-          type: NotificationTypes.groupDisbanded,
-          refId: null,
-          createdAt: DateTime.now(),
-          isRead: false,
-        );
-
-        final notifRef = firestore
-            .collection(FirestorePaths.userNotifications(memberId))
-            .doc(notifId);
-        batch.set(notifRef, notification.toMap());
-        batch.delete(doc.reference);
-      }
-
-      final groupRef =
-          firestore.collection(FirestorePaths.groups).doc(groupId);
-      batch.delete(groupRef);
-
-      await batch.commit();
-      notifyListeners();
-    } catch (e) {
-      debugPrint("❌ Error disbanding group: $e");
-      rethrow;
-    }
+    await _callDisbandGroup({
+      'groupId': groupId,
+      'mode': 'disband',
+      if (farewellMessage != null) 'farewellMessage': farewellMessage,
+    });
+    notifyListeners();
   }
 
   Future<void> deleteGroup({required String groupId}) async {
@@ -801,7 +887,7 @@ class GroupProvider extends ChangeNotifier {
         final member = MemberModel.fromMap(doc.data());
 
         return FirebaseFirestore.instance
-            .collection('users')
+            .collection(FirestorePaths.publicProfiles)
             .doc(member.userId.trim())
             .snapshots()
             .map((userDoc) {

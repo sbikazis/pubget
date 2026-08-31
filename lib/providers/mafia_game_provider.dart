@@ -268,11 +268,12 @@ class MafiaGameProvider extends ChangeNotifier {
     final action = MafiaActionModel(
       id: '${playerId}_n$nightNumber',
       playerId: playerId,
-      role: role,
+      // Roles are private server data and must never be submitted by a client.
+      role: '',
       targetId: targetId,
       nightNumber: nightNumber,
       submittedAt: DateTime.now(),
-      isCompleted: true,
+      isCompleted: false,
     );
     await _repository.addNightAction(gameId, action);
   }

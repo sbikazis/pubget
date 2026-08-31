@@ -41,7 +41,7 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
     playersSnap.docs.map((doc) => doc.ref.collection("private").doc("data").get())
   );
 
-  const winningUserIds = [];
+  const winningUserIds = new Set();
   playersSnap.docs.forEach((doc, index) => {
     const player = doc.data();
     if (player.hasLeft === true) return; // المنسحبون لا يُكافؤون
@@ -51,18 +51,20 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
       : "citizens";
 
     if (team === winner) {
-      winningUserIds.push(player.userId || doc.id);
+      const userId = player.userId || doc.id;
+      if (typeof userId === "string" && userId.length > 0) winningUserIds.add(userId);
     }
   });
-
-  // ✅ تعليم المباراة كموزَّعة الجوائز فوراً (قبل حلقة التوزيع)، حتى
-  // لو فشل التوزيع لبعض المستخدمين لسبب عابر، لا تُعاد المحاولة
-  // بالكامل من الصفر عند أي استدعاء لاحق محتمل لهذه الدالة.
-  await gameRef.update({ rewardsDistributed: true });
 
   for (const userId of winningUserIds) {
     await rewardSingleUser(userId, gameId);
   }
+  // Only mark completion after every per-user idempotent transaction has
+  // completed. A transient failure can therefore be retried safely.
+  await gameRef.update({
+    rewardsDistributed: true,
+    rewardsDistributedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 }
 
 /**
@@ -79,6 +81,8 @@ async function rewardSingleUser(userId, gameId) {
     const existingTx = await tx.get(txRef);
     if (existingTx.exists) return; // نفس المباراة سبق ورُصدت لهذا المستخدم
 
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) return;
     const dailySnap = await tx.get(dailyRef);
     const count = dailySnap.exists ? (dailySnap.data().count || 0) : 0;
     if (count >= MAX_EVENT_WINS_PER_DAY) return; // وصل الحد اليومي المشترك

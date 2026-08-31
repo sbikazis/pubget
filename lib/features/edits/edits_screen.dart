@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pubget/models/edits_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/constants/firestore_paths.dart';
 
 import '../../providers/edits_provider.dart';
 import '../../providers/user_provider.dart';
@@ -151,7 +152,7 @@ class _EditsScreenState extends State<EditsScreen>
     _subscribeAnimCtrl.forward(from: 0.0);
 
     final userDoc = await FirebaseFirestore.instance
-        .collection('users')
+        .collection(FirestorePaths.publicProfiles)
         .doc(edit.uploaderId)
         .get();
 

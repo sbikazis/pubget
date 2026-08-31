@@ -1,0 +1,254 @@
+rules_version = '2';
+
+// Storage is deliberately an authenticated-data store.  In particular, do not
+// add a catch-all rule here: every supported object name is matched below.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+    }
+
+    function isAudio() {
+      return request.resource.contentType.matches('audio/(aac|mpeg|mp4|ogg|wav|x-m4a)');
+    }
+
+    function isVideo() {
+      return request.resource.contentType.matches('video/(mp4|webm|quicktime)');
+    }
+
+    function imageUpload(maxBytes) {
+      return isImage() && request.resource.size <= maxBytes;
+    }
+
+    // Chat paths historically use a .jpg suffix even for audio and video.
+    // The suffix is therefore not used as a security signal; the declared MIME
+    // type and a media-type-specific size ceiling are enforced instead.
+    function chatMediaUpload() {
+      return (isImage() && request.resource.size <= 10 * 1024 * 1024) ||
+          (isAudio() && request.resource.size <= 25 * 1024 * 1024) ||
+          (isVideo() && request.resource.size <= 100 * 1024 * 1024);
+    }
+
+    function groupDocument(groupId) {
+      return firestore.get(
+          /databases/(default)/documents/groups/$(groupId));
+    }
+
+    // founderId is the field written by the Flutter app. ownerId is retained
+    // only for existing groups created by older server/client code.
+    function isGroupOwner(groupId) {
+      return signedIn() &&
+          firestore.exists(/databases/(default)/documents/groups/$(groupId)) &&
+          (groupDocument(groupId).data.founderId == request.auth.uid ||
+           ('ownerId' in groupDocument(groupId).data &&
+            groupDocument(groupId).data.ownerId == request.auth.uid));
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn() &&
+          firestore.exists(
+            /databases/(default)/documents/groups/$(groupId)) &&
+          firestore.exists(
+            /databases/(default)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function isPrivateParticipant(chatId) {
+      return signedIn() &&
+          firestore.exists(
+            /databases/(default)/documents/privateChats/$(chatId)) &&
+          (firestore.get(
+            /databases/(default)/documents/privateChats/$(chatId)).data.userA ==
+            request.auth.uid ||
+           firestore.get(
+            /databases/(default)/documents/privateChats/$(chatId)).data.userB ==
+            request.auth.uid);
+    }
+
+    // StorageService writes this value for legacy chat uploads. It prevents a
+    // group member/participant from replacing or deleting another sender's
+    // object even though the object name itself has no UID.
+    function isNewUploader() {
+      return request.resource.metadata.uploadedBy == request.auth.uid;
+    }
+
+    function isExistingUploader() {
+      return resource.metadata.uploadedBy == request.auth.uid;
+    }
+
+    function isEditVideoName(fileName) {
+      return fileName.matches('v_.*\\.mp4');
+    }
+
+    function isEditThumbnailName(fileName) {
+      return fileName.matches('t_.*\\.jpg');
+    }
+
+    // Legacy profile path used by StorageService.
+    match /avatars/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() &&
+          fileName == request.auth.uid + '.jpg' &&
+          imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && fileName == request.auth.uid + '.jpg';
+    }
+
+    // Current documented profile and sticker paths.
+    match /users/{userId}/avatar.jpg {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/stickers/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          fileName.matches('.*\\.png') &&
+          request.resource.contentType == 'image/png' &&
+          request.resource.size <= 5 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          fileName.matches('.*\\.png');
+    }
+
+    match /groups/{groupId}/group_image.jpg {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && isGroupOwner(groupId) &&
+          imageUpload(10 * 1024 * 1024);
+      allow delete: if signedIn() && isGroupOwner(groupId);
+    }
+
+    match /groups/{groupId}/chat_background.jpg {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && isGroupOwner(groupId) &&
+          imageUpload(10 * 1024 * 1024);
+      allow delete: if signedIn() && isGroupOwner(groupId);
+    }
+
+    match /groups/{groupId}/characters/{fileName} {
+      allow read: if signedIn() && isGroupMember(groupId);
+      allow create, update: if signedIn() &&
+          fileName == request.auth.uid + '.jpg' &&
+          isGroupMember(groupId) && imageUpload(10 * 1024 * 1024);
+      allow delete: if signedIn() &&
+          fileName == request.auth.uid + '.jpg' &&
+          isGroupMember(groupId);
+    }
+
+    // Legacy chat media remains readable for existing messages, but new writes
+    // use an uploader UID segment so ownership is enforced independently of
+    // mutable metadata.
+    match /groups/{groupId}/chat/{fileName} {
+      allow read: if signedIn() && isGroupMember(groupId);
+      allow write: if false;
+    }
+
+    match /groups/{groupId}/chat/{uploaderId}/{fileName} {
+      allow read: if signedIn() && isGroupMember(groupId);
+      allow create, update: if signedIn() &&
+          request.auth.uid == uploaderId &&
+          isGroupMember(groupId) &&
+          isNewUploader() && chatMediaUpload();
+      allow delete: if signedIn() &&
+          request.auth.uid == uploaderId &&
+          isGroupMember(groupId);
+    }
+
+    // Reserved/current structured group-media and voice names.
+    match /groups/{groupId}/media/{fileName} {
+      allow read: if signedIn() && isGroupMember(groupId);
+      allow create: if signedIn() && isGroupMember(groupId) &&
+          isNewUploader() && chatMediaUpload();
+      allow update: if signedIn() && isGroupMember(groupId) &&
+          isExistingUploader() && isNewUploader() && chatMediaUpload();
+      allow delete: if signedIn() && isGroupMember(groupId) &&
+          isExistingUploader();
+    }
+
+    match /groups/{groupId}/voices/{fileName} {
+      allow read: if signedIn() && isGroupMember(groupId);
+      allow create: if signedIn() && isGroupMember(groupId) &&
+          isNewUploader() &&
+          fileName.matches('.*\\.m4a') &&
+          ((request.resource.contentType == 'audio/mp4' ||
+              request.resource.contentType == 'audio/x-m4a') &&
+              request.resource.size <= 25 * 1024 * 1024);
+      allow update: if signedIn() && isGroupMember(groupId) &&
+          isExistingUploader() && isNewUploader() &&
+          fileName.matches('.*\\.m4a') &&
+          ((request.resource.contentType == 'audio/mp4' ||
+              request.resource.contentType == 'audio/x-m4a') &&
+              request.resource.size <= 25 * 1024 * 1024);
+      allow delete: if signedIn() && isGroupMember(groupId) &&
+          isExistingUploader();
+    }
+
+    // Legacy private-chat media remains readable for existing messages only.
+    match /private_chats/{chatId}/{fileName} {
+      allow read: if signedIn() && isPrivateParticipant(chatId);
+      allow write: if false;
+    }
+
+    match /private_chats/{chatId}/{uploaderId}/{fileName} {
+      allow read: if signedIn() && isPrivateParticipant(chatId);
+      allow create, update: if signedIn() &&
+          request.auth.uid == uploaderId &&
+          isPrivateParticipant(chatId) &&
+          isNewUploader() && chatMediaUpload();
+      allow delete: if signedIn() &&
+          request.auth.uid == uploaderId &&
+          isPrivateParticipant(chatId);
+    }
+
+    match /privateChats/{chatId}/media/{fileName} {
+      allow read: if signedIn() && isPrivateParticipant(chatId);
+      allow create: if signedIn() && isPrivateParticipant(chatId) &&
+          isNewUploader() && chatMediaUpload();
+      allow update: if signedIn() && isPrivateParticipant(chatId) &&
+          isExistingUploader() && isNewUploader() && chatMediaUpload();
+      allow delete: if signedIn() && isPrivateParticipant(chatId) &&
+          isExistingUploader();
+    }
+
+    match /privateChats/{chatId}/voices/{fileName} {
+      allow read: if signedIn() && isPrivateParticipant(chatId);
+      allow create: if signedIn() && isPrivateParticipant(chatId) &&
+          isNewUploader() &&
+          fileName.matches('.*\\.m4a') &&
+          ((request.resource.contentType == 'audio/mp4' ||
+              request.resource.contentType == 'audio/x-m4a') &&
+              request.resource.size <= 25 * 1024 * 1024);
+      allow update: if signedIn() && isPrivateParticipant(chatId) &&
+          isExistingUploader() && isNewUploader() &&
+          fileName.matches('.*\\.m4a') &&
+          ((request.resource.contentType == 'audio/mp4' ||
+              request.resource.contentType == 'audio/x-m4a') &&
+              request.resource.size <= 25 * 1024 * 1024);
+      allow delete: if signedIn() && isPrivateParticipant(chatId) &&
+          isExistingUploader();
+    }
+
+    match /edits/{userId}/{fileName} {
+      allow read: if signedIn() && isEditVideoName(fileName);
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          isEditVideoName(fileName) &&
+          request.resource.contentType == 'video/mp4' &&
+          request.resource.size <= 250 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          isEditVideoName(fileName);
+    }
+
+    match /edits/{userId}/{fileName} {
+      allow read: if signedIn() && isEditThumbnailName(fileName);
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          isEditThumbnailName(fileName) &&
+          request.resource.contentType == 'image/jpeg' &&
+          request.resource.size <= 10 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          isEditThumbnailName(fileName);
+    }
+  }
+}

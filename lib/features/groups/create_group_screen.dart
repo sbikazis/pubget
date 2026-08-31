@@ -238,23 +238,18 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
 
     setState(() => _isLoading = true);
 
+    String? createdGroupId;
+    String? uploadedImageUrl;
     try {
-      String imageUrl = '';
-      if (_selectedImage != null) {
-        imageUrl = await storageService.uploadGroupImage(
-          groupId: DateTime.now().millisecondsSinceEpoch.toString(),
-          file: _selectedImage!,
-        );
-      }
-
       final groupId =
           DateTime.now().millisecondsSinceEpoch.toString();
+      createdGroupId = groupId;
       final group = GroupModel(
         id: groupId,
         name: _nameController.text.trim(),
         description: _descriptionController.text.trim(),
         slogan: _sloganController.text.trim(),
-        imageUrl: imageUrl,
+        imageUrl: '',
         type: GroupType.public,
         animeName: null,
         founderId: user.id,
@@ -278,6 +273,17 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
       await groupProvider.createGroup(
           group: group, founderMember: founderMember);
 
+      if (_selectedImage != null) {
+        uploadedImageUrl = await storageService.uploadGroupImage(
+          groupId: groupId,
+          file: _selectedImage!,
+        );
+        await groupProvider.updateGroup(
+          groupId: groupId,
+          data: {'imageUrl': uploadedImageUrl},
+        );
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم إنشاء المجموعة بنجاح')),
@@ -285,6 +291,20 @@ class _GeneralGroupFormState extends State<GeneralGroupForm> {
         Navigator.pop(context);
       }
     } catch (e) {
+      if (uploadedImageUrl != null) {
+        await storageService.deleteFile(uploadedImageUrl);
+      }
+      if (createdGroupId != null) {
+        try {
+          await groupProvider.rollbackGroupCreation(
+            groupId: createdGroupId,
+            founderId: user.id,
+          );
+        } catch (_) {
+          // The original error is more useful to the caller; Firestore retry
+          // will be possible because no image URL was committed on failure.
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطأ أثناء الإنشاء: $e')),

@@ -25,6 +25,10 @@ async function resolveVotes(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   const playersRef = gameRef.collection("players");
   const dayNumber = gameData.currentDay || 0;
+  const currentGame = await gameRef.get();
+  if (!currentGame.exists || currentGame.data().status !== "voting" ||
+      currentGame.data().currentPhase !== "voting" ||
+      currentGame.data().currentDay !== dayNumber) return false;
 
   const [playersSnap, votesSnap] = await Promise.all([
     playersRef.get(),
@@ -44,8 +48,13 @@ async function resolveVotes(gameId, gameData) {
   // متزامن). هذا تحقق دفاعي بسيط لا يغيّر السلوك المعتاد.
   const validVotes = votesSnap.docs.filter((doc) => {
     const vote = doc.data();
+    if (!vote || typeof vote !== "object" || typeof vote.voterId !== "string" ||
+        typeof vote.targetId !== "string" || !Number.isInteger(vote.dayNumber)) return false;
     const voter = playersById[vote.voterId];
-    return voter && voter.isAlive && voter.canVote !== false;
+    const target = playersById[vote.targetId];
+    return voter && target && vote.dayNumber === dayNumber &&
+      voter.isAlive === true && voter.hasLeft !== true && voter.canVote !== false &&
+      target.isAlive === true && target.hasLeft !== true;
   });
 
   const tally = {};
@@ -57,13 +66,13 @@ async function resolveVotes(gameId, gameData) {
   const eventsRef = gameRef.collection("events");
 
   if (Object.keys(tally).length === 0) {
-    eventsRef.doc().set({
+    await eventsRef.doc(`vote-${dayNumber}-resolved`).set({
       type: "ExecutionSkipped",
       message: "🤐 لم يصوّت أحد اليوم، ولم يُعدَم أحد.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { dayNumber },
     });
-    return;
+    return true;
   }
 
   // ✅ تحديد الأعلى تصويتاً، مع فحص التعادل: لو أكثر من هدف يتشارك
@@ -83,17 +92,17 @@ async function resolveVotes(gameId, gameData) {
   }
 
   if (tiedCount > 1) {
-    eventsRef.doc().set({
+    await eventsRef.doc(`vote-${dayNumber}-resolved`).set({
       type: "ExecutionSkipped",
       message: "⚖️ تعادلت الأصوات، ولم تتمكن القرية من اتخاذ قرار اليوم.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { dayNumber, tally },
     });
-    return;
+    return true;
   }
 
   const target = playersById[topTargetId];
-  if (!target) return;
+  if (!target || target.isAlive !== true || target.hasLeft === true) return false;
 
   const privateSnap = await target.ref.collection("private").doc("data").get();
   const role = privateSnap.exists ? privateSnap.data().role : "citizen";
@@ -108,14 +117,15 @@ async function resolveVotes(gameId, gameData) {
     revealedRole: true,
   });
 
-  batch.set(eventsRef.doc(), {
+  batch.set(eventsRef.doc(`vote-${dayNumber}-resolved`), {
     type: "PlayerExecuted",
-    message: `⚖️ قررت القرية إعدام ${target.username}... وتبيّن أنه كان ${roleLabel}!`,
+    message: `⚖️ قررت القرية إعدام ${typeof target.username === "string" && target.username.trim() ? target.username.trim().slice(0, 80) : "لاعباً"}... وتبيّن أنه كان ${roleLabel}!`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     payload: { playerId: topTargetId, role, dayNumber },
   });
 
   await batch.commit();
+  return true;
 }
 
 module.exports = { resolveVotes };

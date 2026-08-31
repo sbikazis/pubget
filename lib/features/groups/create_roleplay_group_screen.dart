@@ -447,24 +447,16 @@ class _CreateRoleplayGroupScreenState
 
     setState(() => _isLoading = true);
 
+    String? createdGroupId;
+    String? uploadedGroupImageUrl;
+    String? uploadedCharacterImageUrl;
     try {
       final storage = StorageService();
       final groupId = DateTime.now().millisecondsSinceEpoch.toString();
-      String groupImageUrl = '';
-
-      if (_pickedImage != null && await _pickedImage!.exists()) {
-        groupImageUrl = await storage.uploadGroupImage(
-            groupId: groupId, file: _pickedImage!);
-      }
+      createdGroupId = groupId;
 
       // في التقمص المفتوح: الصورة من API أو من المعرض (اختيارية)
       String finalCharImageUrl = _confirmedCharImage ?? '';
-      if (_charPickedImage != null && await _charPickedImage!.exists()) {
-        finalCharImageUrl = await storage.uploadRoleplayCharacterImage(
-            groupId: groupId,
-            userId: currentUser.id,
-            file: _charPickedImage!);
-      }
 
       final List<int> franchiseIds = _isOpenRoleplay
           ? []
@@ -475,7 +467,7 @@ class _CreateRoleplayGroupScreenState
         name: _nameCtrl.text.trim(),
         description: _descriptionCtrl.text.trim(),
         slogan: _sloganCtrl.text.trim(),
-        imageUrl: groupImageUrl,
+        imageUrl: '',
         type: _selectedGroupType,
         animeName: _isOpenRoleplay ? null : _confirmedAnimeName,
         animeId: _isOpenRoleplay ? null : _confirmedAnimeId,
@@ -506,11 +498,48 @@ class _CreateRoleplayGroupScreenState
       await groupProvider.createGroup(
           group: group, founderMember: founderMember);
 
+      if (_pickedImage != null && await _pickedImage!.exists()) {
+        uploadedGroupImageUrl = await storage.uploadGroupImage(
+            groupId: groupId, file: _pickedImage!);
+        await groupProvider.updateGroup(
+          groupId: groupId,
+          data: {'imageUrl': uploadedGroupImageUrl},
+        );
+      }
+      if (_charPickedImage != null && await _charPickedImage!.exists()) {
+        uploadedCharacterImageUrl = await storage.uploadRoleplayCharacterImage(
+          groupId: groupId,
+          userId: currentUser.id,
+          file: _charPickedImage!,
+        );
+        await groupProvider.updateFounderCharacterImage(
+          groupId: groupId,
+          founderId: currentUser.id,
+          characterName: _confirmedCharName!,
+          imageUrl: uploadedCharacterImageUrl,
+        );
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('تم إنشاء الإمبراطورية بنجاح، أيها الشوغو!')));
       Navigator.of(context).pop(true);
     } catch (e, stack) {
+      if (uploadedCharacterImageUrl != null) {
+        await StorageService().deleteFile(uploadedCharacterImageUrl);
+      }
+      if (uploadedGroupImageUrl != null) {
+        await StorageService().deleteFile(uploadedGroupImageUrl);
+      }
+      if (createdGroupId != null) {
+        try {
+          await groupProvider.rollbackGroupCreation(
+            groupId: createdGroupId,
+            founderId: currentUser.id,
+            characterName: _confirmedCharName,
+          );
+        } catch (_) {}
+      }
       debugPrint('ERROR: $e\nSTACK: $stack');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

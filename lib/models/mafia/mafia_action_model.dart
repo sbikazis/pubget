@@ -49,12 +49,9 @@ class MafiaActionModel {
   Map<String, dynamic> toMap() {
     return {
       'playerId': playerId,
-      'role': role,
       'targetId': targetId,
       'nightNumber': nightNumber,
       'submittedAt': Timestamp.fromDate(submittedAt),
-      'isCompleted': isCompleted,
-      'processedAt': processedAt != null ? Timestamp.fromDate(processedAt!) : null,
     };
   }
 }

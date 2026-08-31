@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../core/logic/respect_logic.dart';
 
 import '../models/user_model.dart';
@@ -55,9 +56,12 @@ class ProfileProvider extends ChangeNotifier {
   // =========================================================
 
   Stream<UserModel> streamUserProfile(String userId) {
+    final path = FirebaseAuth.instance.currentUser?.uid == userId
+        ? FirestorePaths.users
+        : FirestorePaths.publicProfiles;
     return _firestore
         .streamDocument(
-          path: FirestorePaths.users,
+          path: path,
           docId: userId,
         )
         .map((snapshot) {
@@ -79,8 +83,11 @@ class ProfileProvider extends ChangeNotifier {
   // =========================================================
 
   Future<UserModel?> getUserProfile(String userId) async {
+    final path = FirebaseAuth.instance.currentUser?.uid == userId
+        ? FirestorePaths.users
+        : FirestorePaths.publicProfiles;
     final data = await _firestore.getDocument(
-      path: FirestorePaths.users,
+      path: path,
       docId: userId,
     );
 

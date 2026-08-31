@@ -13,6 +13,10 @@
 //    دون تدخل يدوي من المستخدم في Firestore Console).
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../core/constants/firestore_paths.dart';
 import '../../core/constants/mafia_constants.dart';
 import '../../models/mafia/mafia_action_model.dart';
@@ -44,8 +48,6 @@ class MafiaGameRepository {
     await _firestore.runTransaction((tx) async {
       final gameRef = _firestoreService.mafiaGameDoc(game.id);
       final playerRef = _firestoreService.mafiaGamePlayerDoc(game.id, player.id);
-      final privateRef =
-          _firestoreService.mafiaGamePlayerPrivateDoc(game.id, player.id);
       final groupRef = _firestore.collection(FirestorePaths.groups).doc(game.groupId);
 
       final groupSnap = await tx.get(groupRef);
@@ -85,13 +87,6 @@ class MafiaGameRepository {
 
       tx.set(gameRef, game.toMap());
       tx.set(playerRef, player.toMap());
-      tx.set(
-        privateRef,
-        const MafiaPlayerPrivateModel(
-          role: MafiaRoles.citizen,
-          team: MafiaTeams.citizens,
-        ).toMap(),
-      );
       tx.update(groupRef, {
         'activeGameId': game.id,
         'gameStatus': game.status.name,
@@ -202,8 +197,6 @@ class MafiaGameRepository {
     await _firestore.runTransaction((tx) async {
       final gameRef = _firestoreService.mafiaGameDoc(gameId);
       final playerRef = _firestoreService.mafiaGamePlayerDoc(gameId, player.id);
-      final privateRef =
-          _firestoreService.mafiaGamePlayerPrivateDoc(gameId, player.id);
 
       final gameSnap = await tx.get(gameRef);
       if (!gameSnap.exists) {
@@ -225,13 +218,6 @@ class MafiaGameRepository {
 
       final newCount = game.playersCount + 1;
       tx.set(playerRef, player.toMap());
-      tx.set(
-        privateRef,
-        const MafiaPlayerPrivateModel(
-          role: MafiaRoles.citizen,
-          team: MafiaTeams.citizens,
-        ).toMap(),
-      );
 
       if (newCount >= game.maxPlayers) {
         tx.update(gameRef, {
@@ -259,63 +245,80 @@ class MafiaGameRepository {
     required String gameId,
     required String playerId,
   }) async {
-    await _firestore.runTransaction((tx) async {
-      final gameRef = _firestoreService.mafiaGameDoc(gameId);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.uid != playerId) {
+      throw StateError('يمكن للاعب مغادرة مباراته بنفسه فقط.');
+    }
+    final gameRef = _firestoreService.mafiaGameDoc(gameId);
+    final gameSnap = await gameRef.get();
+    if (!gameSnap.exists) return;
+    final status = gameSnap.data()?['status'];
+    if (status != MafiaGameStatus.waiting.name) {
+      await _callLeaveMafiaGame(gameId);
+      return;
+    }
+
+    final leftWaitingLobby = await _firestore.runTransaction<bool>((tx) async {
       final playerRef = _firestoreService.mafiaGamePlayerDoc(gameId, playerId);
-      final privateRef =
-          _firestoreService.mafiaGamePlayerPrivateDoc(gameId, playerId);
 
       final gameSnap = await tx.get(gameRef);
-      if (!gameSnap.exists) return;
+      if (!gameSnap.exists) return true;
       final game = MafiaGameModel.fromMap(gameSnap.id, gameSnap.data()!);
 
       final playerSnap = await tx.get(playerRef);
-      if (!playerSnap.exists) return;
+      if (!playerSnap.exists) return true;
 
-      final notStarted = game.status == MafiaGameStatus.waiting ||
-          game.status == MafiaGameStatus.starting;
-
-      if (notStarted) {
-        tx.delete(playerRef);
-        tx.delete(privateRef);
-        final newCount = (game.playersCount - 1).clamp(0, game.maxPlayers);
-        final groupRef =
-            _firestore.collection(FirestorePaths.groups).doc(game.groupId);
-
-        if (newCount <= 0) {
-          // ✅ آخر لاعب خرج قبل بدء المباراة فعلياً: احذف اللعبة
-          // بالكامل وحرّر المجموعة فوراً، بدل تركها معلّقة بالحالة
-          // waiting بعدد صفر — هذا هو الإصلاح الجوهري لهذه المرحلة.
-          tx.delete(gameRef);
-          tx.update(groupRef, {
-            'activeGameId': FieldValue.delete(),
-            'gameStatus': FieldValue.delete(),
-            'hasRunningGame': false,
-          });
-        } else if (game.status == MafiaGameStatus.starting) {
-          tx.update(gameRef, {
-            'playersCount': newCount,
-            'isLocked': false,
-            'status': MafiaGameStatus.waiting.name,
-            'currentPhase': MafiaGameStatus.waiting.name,
-            'countdownEndsAt': Timestamp.fromDate(
-              DateTime.now()
-                  .add(const Duration(seconds: MafiaTimers.lobbyWaitSeconds)),
-            ),
-          });
-        } else {
-          tx.update(gameRef, {'playersCount': newCount});
-        }
-      } else {
-        tx.update(playerRef, {
-          'hasLeft': true,
-          'isAlive': false,
-          'canVote': false,
-          'canSpeak': false,
-          'canUseAbility': false,
-        });
+      if (game.status != MafiaGameStatus.waiting) {
+        return false;
       }
+      tx.delete(playerRef);
+      final newCount = (game.playersCount - 1).clamp(0, game.maxPlayers);
+      tx.update(gameRef, {'playersCount': newCount});
+      return true;
     });
+    if (!leftWaitingLobby) {
+      await _callLeaveMafiaGame(gameId);
+    }
+  }
+
+  Future<void> _callLeaveMafiaGame(String gameId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('يجب تسجيل الدخول لمغادرة المباراة.');
+    final token = await user.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('تعذر التحقق من جلسة تسجيل الدخول.');
+    }
+    final projectId = Firebase.app().options.projectId;
+    if (projectId.isEmpty) throw StateError('معرّف مشروع Firebase غير متاح.');
+    final response = await http.post(
+      Uri.parse('https://us-central1-$projectId.cloudfunctions.net/leaveMafiaGame'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'data': {'gameId': gameId}}),
+    );
+    Map<String, dynamic>? payload;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) payload = decoded;
+    } on FormatException {
+      // The explicit checks below provide a useful error instead.
+    }
+    final error = payload?['error'];
+    if (error is Map) {
+      final message = error['message'];
+      throw StateError(message is String && message.isNotEmpty
+          ? message
+          : 'تعذر مغادرة مباراة المافيا.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('فشل الاتصال بخدمة المافيا (${response.statusCode}).');
+    }
+    final result = payload?['result'];
+    if (result is! Map || result['ok'] != true) {
+      throw StateError('استجابة غير صالحة من خدمة المافيا.');
+    }
   }
 
   Future<void> updatePlayer(

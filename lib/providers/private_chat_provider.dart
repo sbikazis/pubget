@@ -251,7 +251,7 @@ class PrivateChatProvider extends ChangeNotifier {
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
@@ -306,11 +306,12 @@ class PrivateChatProvider extends ChangeNotifier {
       senderRole: null,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
+      type: MessageType.media,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
@@ -346,11 +347,12 @@ class PrivateChatProvider extends ChangeNotifier {
       senderRole: null,
       mediaUrl: gifUrl,
       mediaType: 'gif',
+      type: MessageType.media,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
@@ -389,12 +391,13 @@ class PrivateChatProvider extends ChangeNotifier {
       senderRole: null,
       mediaUrl: audioUrl,
       mediaType: 'audio',
+      type: MessageType.media,
       audioDuration: durationSeconds,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
@@ -430,11 +433,12 @@ class PrivateChatProvider extends ChangeNotifier {
       senderRole: null,
       mediaUrl: stickerUrl,
       mediaType: 'sticker',
+      type: MessageType.media,
       replyToId: replyToId,
       replyText: replyText,
       replyToSenderName: replyToSenderName,
       replyToMediaUrl: replyToMediaUrl,
-      isDelivered: true,
+      isDelivered: false,
     );
     await _firestore.createDocument(
       path: FirestorePaths.privateMessages(chatId),
@@ -586,7 +590,7 @@ class PrivateChatProvider extends ChangeNotifier {
 
   Future<UserModel?> getUserById(String userId) async {
     final data = await _firestore.getDocument(
-        path: FirestorePaths.users, docId: userId);
+        path: FirestorePaths.publicProfiles, docId: userId);
     if (data == null) return null;
     return UserModel.fromMap(data, userId);
   }

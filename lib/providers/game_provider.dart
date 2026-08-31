@@ -649,7 +649,7 @@ class GameProvider extends ChangeNotifier {
         try {
           final loserDoc =
               await FirebaseFirestore.instance
-                  .collection('users')
+                  .collection(FirestorePaths.publicProfiles)
                   .doc(loserId)
                   .get();
 

@@ -16,13 +16,18 @@ async function resolveNight(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   const playersRef = gameRef.collection("players");
   const nightNumber = gameData.currentNight || 0;
+  // The scheduler may have read a stale game. Never resolve an action for a
+  // different phase/night, and make the resolution event deterministic.
+  const currentGame = await gameRef.get();
+  if (!currentGame.exists || currentGame.data().status !== "night" ||
+      currentGame.data().currentPhase !== "night" ||
+      currentGame.data().currentNight !== nightNumber) return false;
 
   const [playersSnap, actionsSnap] = await Promise.all([
     playersRef.get(),
     gameRef
       .collection("night_actions")
       .where("nightNumber", "==", nightNumber)
-      .where("isCompleted", "==", true)
       .get(),
   ]);
 
@@ -51,16 +56,27 @@ async function resolveNight(gameId, gameData) {
   });
 
   const actionsByRole = { mafia: [], doctor: [], detective: [], sniper: [], silencer: [] };
+  const actionTaken = new Set();
   actionsSnap.docs.forEach((doc) => {
     const action = doc.data();
+    if (!action || typeof action !== "object" ||
+        typeof action.playerId !== "string" || typeof action.targetId !== "string" ||
+        !Number.isInteger(action.nightNumber) || action.nightNumber !== nightNumber) return;
     const actualPlayer = playersById[action.playerId];
 
     // ✅ تجاهل أي إجراء لا يطابق الدور الحقيقي المخزَّن على السيرفر —
     // هذا يمنع انتحال الأدوار عبر تلاعب العميل بحقل role في الطلب.
-    if (!actualPlayer || actualPlayer.role !== action.role) return;
-    if (!actionsByRole[action.role]) return;
-
-    actionsByRole[action.role].push(action);
+    const target = playersById[action.targetId];
+    if (!actualPlayer || !target || !actionsByRole[actualPlayer.role] ||
+        actualPlayer.isAlive !== true || actualPlayer.hasLeft === true ||
+        actualPlayer.canUseAbility === false || target.isAlive !== true ||
+        target.hasLeft === true || action.nightNumber !== nightNumber) return;
+    // The document's existence is the submitted action; role and completion
+    // are server-derived, not client-controlled. One action per actor/role.
+    const key = `${actualPlayer.role}:${action.playerId}`;
+    if (actionTaken.has(key)) return;
+    actionTaken.add(key);
+    actionsByRole[actualPlayer.role].push(action);
   });
 
   const batch = db.batch();
@@ -81,7 +97,7 @@ async function resolveNight(gameId, gameData) {
   if (mafiaTargetId) {
     if (mafiaTargetId === doctorTargetId) {
       savedIds.add(mafiaTargetId);
-      eventsRef.doc().set({
+      batch.set(eventsRef.doc(`night-${nightNumber}-saved-${mafiaTargetId}`), {
         type: "PlayerSaved",
         message: "🩹 حاول أحدهم القتل الليلة، لكن الطبيب أنقذ الضحية في اللحظة الأخيرة.",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -101,14 +117,14 @@ async function resolveNight(gameId, gameData) {
 
     if (target.team === "mafias") {
       killedIds.add(action.targetId);
-      eventsRef.doc().set({
+      batch.set(eventsRef.doc(`night-${nightNumber}-sniper-${action.playerId}`), {
         type: "PlayerKilled",
         message: `🎯 أطلق القناص رصاصته بدقة، وأصاب أحد أعضاء المافيا.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         payload: { playerId: action.targetId, cause: "sniper" },
       });
     } else {
-      eventsRef.doc().set({
+      batch.set(eventsRef.doc(`night-${nightNumber}-sniper-${action.playerId}`), {
         type: "SniperMissed",
         message: `🎯 أطلق القناص رصاصته، لكنه أصاب مواطناً بريئاً بالخطأ!`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -130,9 +146,9 @@ async function resolveNight(gameId, gameData) {
       canUseAbility: false,
     });
 
-    eventsRef.doc().set({
+    batch.set(eventsRef.doc(`night-${nightNumber}-killed-${playerId}`), {
       type: "PlayerKilled",
-      message: `💀 استيقظت القرية لتجد ${player.username} قد قُتل الليلة الماضية.`,
+      message: `💀 استيقظت القرية لتجد ${typeof player.username === "string" && player.username.trim() ? player.username.trim().slice(0, 80) : "لاعباً"} قد قُتل الليلة الماضية.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { playerId },
     });
@@ -160,7 +176,14 @@ async function resolveNight(gameId, gameData) {
     });
   }
 
+  // A deterministic marker makes retried scheduler invocations harmless.
+  batch.set(eventsRef.doc(`night-${nightNumber}-resolved`), {
+    type: "NightResolved",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    payload: { nightNumber },
+  }, { merge: true });
   await batch.commit();
+  return true;
 }
 
 function pickMajorityTarget(mafiaActions) {

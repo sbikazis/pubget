@@ -171,7 +171,7 @@ class UserProvider extends ChangeNotifier {
   // =========================================================
   Stream<UserModel> streamUser(String userId) {
     return _firestoreService
-        .streamDocument(path: FirestorePaths.users, docId: userId)
+        .streamDocument(path: FirestorePaths.publicProfiles, docId: userId)
         .map((snapshot) {
       final data = snapshot.data();
       return UserModel.fromMap(data!, snapshot.id);
@@ -181,7 +181,7 @@ class UserProvider extends ChangeNotifier {
   Future<UserModel?> getUserById(String userId) async {
     try {
       final data = await _firestoreService.getDocument(
-          path: FirestorePaths.users, docId: userId);
+          path: FirestorePaths.publicProfiles, docId: userId);
       if (data == null) return null;
       return UserModel.fromMap(data, userId);
     } catch (e) {

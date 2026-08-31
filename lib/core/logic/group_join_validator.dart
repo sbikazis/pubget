@@ -85,7 +85,7 @@ class GroupJoinValidator {
       final memberId = memberDoc.id;
       try {
         final userDoc = await FirebaseFirestore.instance
-            .collection('users')
+            .collection(FirestorePaths.publicProfiles)
             .doc(memberId)
             .get();
 

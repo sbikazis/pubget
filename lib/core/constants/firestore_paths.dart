@@ -7,6 +7,7 @@ class FirestorePaths {
 
   // ROOT COLLECTIONS
   static const String users = 'users';
+  static const String publicProfiles = 'public_profiles';
   static const String groups = 'groups';
   static const String privateChats = 'privateChats';
   static const String respects = 'respects';
@@ -98,6 +99,9 @@ class FirestorePaths {
   // DOCUMENT PATH HELPERS
   static String userDoc(String userId) =>
       '$users/$userId';
+
+  static String publicProfileDoc(String userId) =>
+      '$publicProfiles/$userId';
 
   static String groupDoc(String groupId) =>
       '$groups/$groupId';

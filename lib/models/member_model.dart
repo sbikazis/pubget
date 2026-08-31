@@ -9,6 +9,7 @@ class MemberModel {
   // Display inside group
   final String? displayName;
   final String? characterName;
+  final String? characterKey;
   final String? characterImageUrl;
   final String? characterReason;
 
@@ -32,6 +33,7 @@ class MemberModel {
 
   // ✅ حقل تتبع عدد الدعوات لتسهيل منطق الترتيب (InviteRankingLogic)
   final int inviteCount;
+  final String? requestId;
 
   const MemberModel({
     required this.userId,
@@ -40,6 +42,7 @@ class MemberModel {
     required this.joinedAt,
     this.displayName,
     this.characterName,
+    this.characterKey,
     this.characterImageUrl,
     this.characterReason,
     this.realUserName, 
@@ -50,6 +53,7 @@ class MemberModel {
     this.isManualRole = false,
     this.isPremium = false,
     this.inviteCount = 0,
+    this.requestId,
   });
 
   // =========================================================
@@ -99,6 +103,8 @@ class MemberModel {
       role: Roles.fromString(map['role']?.toString() ?? 'member'),
       displayName: clean(map['displayName']),
       characterName: clean(map['characterName']),
+      characterKey: clean(map['characterKey']) ??
+          _normalizeCharacterKey(clean(map['characterName'])),
       characterImageUrl: clean(map['characterImageUrl']),
       characterReason: clean(map['characterReason']),
       realUserName: clean(map['realUserName']), 
@@ -114,6 +120,7 @@ class MemberModel {
       isManualRole: map['isManualRole'] ?? false, 
       isPremium: map['isPremium'] ?? false,
       inviteCount: map['inviteCount'] ?? 0,
+      requestId: clean(map['requestId']),
     );
   }
 
@@ -127,6 +134,9 @@ class MemberModel {
       'role': role.name,
       'displayName': displayName,
       'characterName': characterName,
+      'characterKey': characterName == null
+          ? null
+          : (characterKey ?? _normalizeCharacterKey(characterName)),
       'characterImageUrl': characterImageUrl,
       'characterReason': characterReason,
       'realUserName': realUserName, 
@@ -138,6 +148,8 @@ class MemberModel {
       'isManualRole': isManualRole, 
       'isPremium': isPremium, 
       'inviteCount': inviteCount,
+      'requestId': requestId ??
+          '${userId}_${joinedAt.microsecondsSinceEpoch}',
     };
   }
 
@@ -148,6 +160,7 @@ class MemberModel {
     Roles? role,
     String? displayName,
     String? characterName,
+    String? characterKey,
     String? characterImageUrl,
     String? characterReason,
     String? realUserName, 
@@ -159,6 +172,7 @@ class MemberModel {
     bool? isManualRole,
     bool? isPremium,
     int? inviteCount,
+    String? requestId,
   }) {
     return MemberModel(
       userId: userId,
@@ -166,6 +180,7 @@ class MemberModel {
       role: role ?? this.role,
       displayName: displayName ?? this.displayName,
       characterName: characterName ?? this.characterName,
+      characterKey: characterKey ?? this.characterKey,
       characterImageUrl: characterImageUrl ?? this.characterImageUrl,
       characterReason: characterReason ?? this.characterReason,
       realUserName: realUserName ?? this.realUserName, 
@@ -177,6 +192,18 @@ class MemberModel {
       isManualRole: isManualRole ?? this.isManualRole,
       isPremium: isPremium ?? this.isPremium,
       inviteCount: inviteCount ?? this.inviteCount,
+      requestId: requestId ?? this.requestId,
     );
+  }
+
+  static String? _normalizeCharacterKey(String? characterName) {
+    if (characterName == null || characterName.trim().isEmpty) return null;
+    final words = characterName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), '')
+        .trim()
+        .split(RegExp(r'\s+'));
+    words.sort();
+    return words.join('');
   }
 }

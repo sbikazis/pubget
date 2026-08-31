@@ -29,6 +29,7 @@ class UserModel {
   final int customMaxCreatedGroupsLimit;
   final String? invitedBy;
   final bool hasClaimedReferral;
+  final bool publicPremiumBadge;
 
   const UserModel({
     required this.id,
@@ -57,10 +58,12 @@ class UserModel {
     this.customMaxCreatedGroupsLimit = 0,
     this.invitedBy,
     this.hasClaimedReferral = false,
+    this.publicPremiumBadge = false,
   });
 
-  bool get isPremium => subscriptionType == SubscriptionType.premium && 
-                       (premiumExpiresAt?.isAfter(DateTime.now()) ?? false);
+  bool get isPremium => publicPremiumBadge ||
+      (subscriptionType == SubscriptionType.premium &&
+       (premiumExpiresAt?.isAfter(DateTime.now()) ?? false));
 
   factory UserModel.fromMap(Map<String, dynamic> map, String documentId) {
     return UserModel(
@@ -90,6 +93,7 @@ class UserModel {
       customMaxCreatedGroupsLimit: map['customMaxCreatedGroupsLimit'] ?? 0,
       invitedBy: map['invitedBy'],
       hasClaimedReferral: map['hasClaimedReferral'] ?? false,
+      publicPremiumBadge: map['isPremium'] == true,
     );
   }
 
@@ -175,6 +179,7 @@ class UserModel {
       customMaxCreatedGroupsLimit: customMaxCreatedGroupsLimit ?? this.customMaxCreatedGroupsLimit,
       invitedBy: invitedBy ?? this.invitedBy,
       hasClaimedReferral: hasClaimedReferral ?? this.hasClaimedReferral,
+      publicPremiumBadge: publicPremiumBadge,
     );
   }
 

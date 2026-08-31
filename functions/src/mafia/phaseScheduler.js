@@ -15,6 +15,7 @@ const { checkWinCondition } = require("./winConditionChecker");
 const db = admin.firestore();
 
 const ACTIVE_LOOP_STATUSES = ["night", "day", "discussion", "voting", "execution"];
+const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 exports.processPhaseTransitions = onSchedule("every 1 minutes", async () => {
   const now = admin.firestore.Timestamp.now();
@@ -32,9 +33,31 @@ exports.processPhaseTransitions = onSchedule("every 1 minutes", async () => {
 
 async function advancePhase(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
-  const eventRef = gameRef.collection("events").doc();
-
   const current = gameData.currentPhase || gameData.status;
+  const claimId = `${process.pid || "scheduler"}:${Date.now()}:${gameId}`;
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(gameRef);
+    const data = snap.data();
+    const claimedBy = data && data.phaseTransitionClaim;
+    const expiresAt = claimedBy && claimedBy.expiresAt;
+    const leaseExpired = !expiresAt || typeof expiresAt.toMillis !== "function" ||
+      expiresAt.toMillis() <= Date.now();
+    if (!snap.exists || !data || (data.currentPhase || data.status) !== current ||
+        (!data.phaseEndsAt || typeof data.phaseEndsAt.toMillis !== "function" ||
+        data.phaseEndsAt.toMillis() > Date.now()) || (claimedBy && !leaseExpired) ||
+        data.status === "finished" ||
+        data.status === "cancelled") return false;
+    tx.update(gameRef, {
+      phaseTransitionClaim: {
+        owner: claimId,
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + CLAIM_LEASE_MS),
+      },
+    });
+    return true;
+  });
+  if (!claimed) return;
+
+  try {
   const next = nextPhase(current);
 
   if (current === "night") {
@@ -52,6 +75,7 @@ async function advancePhase(gameId, gameData) {
   const freshSnap = await gameRef.get();
   const freshData = freshSnap.data();
   if (freshData.status === "finished" || freshData.status === "cancelled") {
+    await releaseClaim(gameRef, claimId);
     return;
   }
 
@@ -64,6 +88,7 @@ async function advancePhase(gameId, gameData) {
     status: next,
     currentPhase: next,
     phaseEndsAt,
+    phaseTransitionClaim: admin.firestore.FieldValue.delete(),
   };
 
   if (next === "night") {
@@ -72,9 +97,11 @@ async function advancePhase(gameId, gameData) {
     updateData.currentDay = admin.firestore.FieldValue.increment(1);
   }
 
+  const ownership = await gameRef.get();
+  if (!ownership.exists || ownership.data().phaseTransitionClaim?.owner !== claimId) return;
   const batch = db.batch();
   batch.update(gameRef, updateData);
-  batch.set(eventRef, {
+  batch.set(gameRef.collection("events").doc(`phase-${current}-${gameData.currentNight || gameData.currentDay || 0}`), {
     type: "PhaseChanged",
     message: ARABIC_MESSAGES[next] || `انتقلت المباراة إلى مرحلة ${next}`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -94,6 +121,25 @@ async function advancePhase(gameId, gameData) {
   }
 
   await batch.commit();
+  } catch (error) {
+    // Permit the scheduled retry only if this invocation still owns the claim.
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (snap.exists && snap.data().phaseTransitionClaim?.owner === claimId) {
+        tx.update(gameRef, { phaseTransitionClaim: admin.firestore.FieldValue.delete() });
+      }
+    });
+    throw error;
+  }
+}
+
+async function releaseClaim(gameRef, owner) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (snap.exists && snap.data().phaseTransitionClaim?.owner === owner) {
+      tx.update(gameRef, { phaseTransitionClaim: admin.firestore.FieldValue.delete() });
+    }
+  });
 }
 
 module.exports = { advancePhase };

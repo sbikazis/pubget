@@ -60,32 +60,39 @@ async function checkWinCondition(gameId, gameData) {
 
 async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
   const eventsRef = gameRef.collection("events");
-
-  await gameRef.update({
-    status: "finished",
-    currentPhase: "finished",
-    winner: winner,
-    endedAt: admin.firestore.FieldValue.serverTimestamp(),
-    phaseEndsAt: admin.firestore.FieldValue.delete(),
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists || ["finished", "cancelled"].includes(snap.data().status)) return false;
+    tx.update(gameRef, {
+      status: "finished", currentPhase: "finished", winner,
+      endedAt: admin.firestore.FieldValue.serverTimestamp(),
+      phaseEndsAt: admin.firestore.FieldValue.delete(),
+      phaseTransitionClaim: admin.firestore.FieldValue.delete(),
+    });
+    if (groupId) {
+      const groupRef = db.collection("groups").doc(groupId);
+      const group = await tx.get(groupRef);
+      if (group.exists && group.data().activeGameId === gameId) {
+        tx.update(groupRef, {
+          activeGameId: admin.firestore.FieldValue.delete(),
+          gameStatus: admin.firestore.FieldValue.delete(),
+          hasRunningGame: false,
+        });
+      }
+    }
+    return true;
   });
+  if (!claimed) return false;
 
   // ✅ الإصلاح الحرج: تحرير المجموعة فوراً لتصبح قادرة على استضافة
   // مباراة مافيا جديدة. بدون هذا السطر، المجموعة تبقى "مقفلة" للأبد.
-  if (groupId) {
-    await db.collection("groups").doc(groupId).update({
-      activeGameId: admin.firestore.FieldValue.delete(),
-      gameStatus: admin.firestore.FieldValue.delete(),
-      hasRunningGame: false,
-    });
-  }
-
   const message = winner === "mafias"
     ? "🔪 تمكنت المافيا من السيطرة الكاملة على القرية... المافيا تفوز!"
     : winner === "citizens"
       ? "🎉 نجحت القرية في القضاء على كل أفراد المافيا... القرية تفوز!"
       : "🌫️ انتهت المباراة دون فائز واضح.";
 
-  await eventsRef.add({
+  await eventsRef.doc("game-finished").set({
     type: "GameFinished",
     message,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -97,6 +104,7 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
   if (winner) {
     await distributeRewards(gameId, gameRef, winner, playersSnap);
   }
+  return true;
 }
 
 module.exports = { checkWinCondition };

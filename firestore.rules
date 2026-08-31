@@ -1,0 +1,800 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Server/Admin SDK calls bypass these rules.  "admin" is deliberately an
+    // opt-in custom claim; do not use a writable Firestore role as an admin bit.
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function self(uid) { return signedIn() && request.auth.uid == uid; }
+    function changedOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function group(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId));
+    }
+    function groupExists(groupId) {
+      // A trusted callable sets deletionPending before recursive cleanup.
+      // Treat that root as absent for every client rule that depends on this
+      // helper, so the marker cannot grant a last window of group access.
+      return exists(/databases/$(database)/documents/groups/$(groupId)) &&
+        (!get(/databases/$(database)/documents/groups/$(groupId)).data.keys()
+            .hasAny(['deletionPending']) ||
+         get(/databases/$(database)/documents/groups/$(groupId)).data.deletionPending != true);
+    }
+    function isFounder(groupId) {
+      return signedIn() && groupExists(groupId) &&
+        group(groupId).data.founderId == request.auth.uid;
+    }
+    function isFounderAfter(groupId) {
+      return signedIn() &&
+        existsAfter(/databases/$(database)/documents/groups/$(groupId)) &&
+        (!getAfter(/databases/$(database)/documents/groups/$(groupId)).data.keys()
+            .hasAny(['deletionPending']) ||
+         getAfter(/databases/$(database)/documents/groups/$(groupId)).data.deletionPending != true) &&
+        getAfter(/databases/$(database)/documents/groups/$(groupId)).data.founderId
+          == request.auth.uid;
+    }
+    function member(groupId, uid) {
+      return exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid));
+    }
+    function groupMember(groupId) {
+      return signedIn() && groupExists(groupId) && member(groupId, request.auth.uid);
+    }
+    function groupModerator(groupId) {
+      return signedIn() && groupExists(groupId) && groupMember(groupId) &&
+        get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
+          in ['founder', 'sensei', 'hakusho', 'senpai'];
+    }
+    function mafiaGroupMember(gameId) {
+      return signedIn() && groupMember(
+        get(/databases/$(database)/documents/mafia_games/$(gameId)).data.groupId
+      );
+    }
+    function mafiaPlayer(gameId) {
+      return mafiaGroupMember(gameId) &&
+        exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid));
+    }
+    function mafiaGame(gameId) {
+      return get(/databases/$(database)/documents/mafia_games/$(gameId));
+    }
+    function mafiaPublicPlayerDefaults(gameId, uid) {
+      return request.resource.data.keys().hasOnly([
+        'userId','username','avatar','isAlive','isDisconnected','isMuted',
+        'hasLeft','joinedAt','lastSeenAt','coinsEarned','votesReceived',
+        'canSpeak','canVote','canUseAbility','revealedRole'
+      ]) && request.resource.data.keys().hasAll([
+        'userId','username','avatar','isAlive','isDisconnected','isMuted',
+        'hasLeft','joinedAt','lastSeenAt','coinsEarned','votesReceived',
+        'canSpeak','canVote','canUseAbility','revealedRole'
+      ]) &&
+        request.resource.data.userId == uid &&
+        request.resource.data.username is string &&
+        request.resource.data.username.size() <= 100 &&
+        request.resource.data.avatar is string &&
+        request.resource.data.avatar.size() <= 2048 &&
+        request.resource.data.joinedAt is timestamp &&
+        request.resource.data.lastSeenAt == null &&
+        request.resource.data.isAlive == true &&
+        request.resource.data.isDisconnected == false &&
+        request.resource.data.isMuted == false &&
+        request.resource.data.hasLeft == false &&
+        request.resource.data.coinsEarned == 0 &&
+        request.resource.data.votesReceived == 0 &&
+        request.resource.data.canSpeak == true &&
+        request.resource.data.canVote == true &&
+        request.resource.data.canUseAbility == true &&
+        request.resource.data.revealedRole == false;
+    }
+    function mafiaGameCreate(gameId) {
+      return signedIn() && groupMember(request.resource.data.groupId) &&
+        group(request.resource.data.groupId).data.hasRunningGame == false &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'groupId','createdBy','createdAt','version','status','currentPhase',
+          'currentDay','currentNight','playersCount','maxPlayers','minPlayers',
+          'winner','countdownEndsAt','phaseEndsAt','isLocked','startedAt',
+          'endedAt','rewardsDistributed','historyWritten'
+        ]) &&
+        request.resource.data.status == 'waiting' &&
+        request.resource.data.currentPhase == 'waiting' &&
+        request.resource.data.currentDay == 0 &&
+        request.resource.data.currentNight == 0 &&
+        request.resource.data.playersCount == 1 &&
+        request.resource.data.maxPlayers is int &&
+        request.resource.data.minPlayers is int &&
+        request.resource.data.minPlayers >= 2 &&
+        request.resource.data.minPlayers <= request.resource.data.maxPlayers &&
+        request.resource.data.maxPlayers <= 50 &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.countdownEndsAt is timestamp &&
+        // Clients create a 120-second lobby.  The lower bound rejects stale
+        // timestamps while allowing ordinary request latency; the upper bound
+        // prevents a client from pinning a group with a far-future lobby.
+        request.resource.data.countdownEndsAt >= request.time + duration.value(60, 's') &&
+        request.resource.data.countdownEndsAt <= request.time + duration.value(180, 's') &&
+        request.resource.data.isLocked == false &&
+        request.resource.data.winner == null &&
+        request.resource.data.phaseEndsAt == null &&
+        request.resource.data.startedAt == null &&
+        request.resource.data.endedAt == null &&
+        request.resource.data.rewardsDistributed == false &&
+        request.resource.data.historyWritten == false &&
+        existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
+        getAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.userId == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.activeGameId == gameId &&
+        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.gameStatus == 'waiting' &&
+        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.hasRunningGame == true;
+    }
+    function mafiaJoinCounterUpdate(gameId) {
+      return resource.data.status == 'waiting' &&
+        request.resource.data.playersCount == resource.data.playersCount + 1 &&
+        !exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
+        existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
+        ((request.resource.data.playersCount < resource.data.maxPlayers &&
+          changedOnly(['playersCount'])) ||
+         (request.resource.data.playersCount == resource.data.maxPlayers &&
+          request.resource.data.isLocked == true &&
+          request.resource.data.status == 'starting' &&
+          request.resource.data.currentPhase == 'starting' &&
+          request.resource.data.countdownEndsAt is timestamp &&
+          request.resource.data.countdownEndsAt >= request.time &&
+          request.resource.data.countdownEndsAt <= request.time + duration.value(60, 's') &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+            ['playersCount','isLocked','status','currentPhase','countdownEndsAt'])));
+    }
+    function mafiaLeaveCounterUpdate(gameId) {
+      return resource.data.status == 'waiting' &&
+        request.resource.data.playersCount == resource.data.playersCount - 1 &&
+        request.resource.data.playersCount >= 0 &&
+        exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
+        !existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
+        changedOnly(['playersCount']);
+    }
+    function consumesJoinRequest(groupId, uid) {
+      return exists(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid)) &&
+        !existsAfter(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid));
+    }
+    function validMembershipMutation(operation) {
+      return request.resource.data.keys().hasAll(['membershipMutation']) &&
+        request.resource.data.membershipMutation is map &&
+        request.resource.data.membershipMutation.keys().hasOnly(
+          ['operation','userId','actorId']) &&
+        request.resource.data.membershipMutation.operation == operation &&
+        request.resource.data.membershipMutation.actorId == request.auth.uid &&
+        request.resource.data.membershipMutation.userId is string;
+    }
+    function validReservationAfter(groupId, uid, characterKey) {
+      return characterKey == null ||
+        (characterKey is string && characterKey.size() > 0 &&
+         existsAfter(/databases/$(database)/documents/groups/$(groupId)/characters/$(characterKey)) &&
+         getAfter(/databases/$(database)/documents/groups/$(groupId)/characters/$(characterKey)).data.userId == uid);
+    }
+    function membershipIncrement(groupId) {
+      let uid = request.resource.data.get(
+        'membershipMutation', {'userId': ''}).get('userId', '');
+      let newMember = getAfter(
+        /databases/$(database)/documents/groups/$(groupId)/members/$(uid));
+      return groupModerator(groupId) &&
+        validMembershipMutation('accept') &&
+        changedOnly(['membersCount','membershipMutation']) &&
+        request.resource.data.membersCount == resource.data.membersCount + 1 &&
+        request.resource.data.membersCount <= resource.data.maxMembers &&
+        !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
+        newMember.data.userId == uid &&
+        newMember.data.groupId == groupId &&
+        newMember.data.role == 'member' &&
+        consumesJoinRequest(groupId, uid) &&
+        validReservationAfter(groupId, uid, newMember.data.characterKey);
+    }
+    function membershipDecrement(groupId) {
+      let uid = request.resource.data.get(
+        'membershipMutation', {'userId': ''}).get('userId', '');
+      let oldMember = get(
+        /databases/$(database)/documents/groups/$(groupId)/members/$(uid));
+      return validMembershipMutation('remove') &&
+        changedOnly(['membersCount','membershipMutation']) &&
+        request.resource.data.membersCount == resource.data.membersCount - 1 &&
+        request.resource.data.membersCount >= 1 &&
+        exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
+        !existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
+        oldMember.data.userId == uid &&
+        oldMember.data.groupId == groupId &&
+        uid != resource.data.founderId &&
+        (uid == request.auth.uid || groupModerator(groupId));
+    }
+    function validMemberDocument(groupId, uid) {
+      return request.resource.data.keys().hasOnly([
+          'userId','groupId','role','displayName','characterName',
+          'characterKey','characterImageUrl','characterReason','realUserName',
+          'realUserImageUrl','invitedByUserId','inviterDisplayName','joinedAt',
+          'lastReadAt','isManualRole','isPremium','inviteCount','requestId'
+        ]) &&
+        request.resource.data.userId == uid &&
+        request.resource.data.groupId == groupId &&
+        request.resource.data.joinedAt is timestamp &&
+        request.resource.data.isManualRole is bool &&
+        request.resource.data.isPremium is bool &&
+        request.resource.data.inviteCount is int;
+    }
+    function canonicalNotificationData(groupId, senderId, type) {
+      return request.resource.data.keys().hasOnly([
+          'title','body','type','refId','senderId','commentId','createdAt','isRead'
+        ]) &&
+        request.resource.data.type == type &&
+        request.resource.data.refId == groupId &&
+        request.resource.data.senderId == senderId &&
+        request.resource.data.commentId == null &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 200 &&
+        request.resource.data.body is string &&
+        request.resource.data.body.size() > 0 &&
+        request.resource.data.body.size() <= 1000 &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.isRead == false;
+    }
+    function canonicalJoinNotification(uid, notificationId) {
+      let groupId = request.resource.data.get('refId', '');
+      let senderId = request.auth.uid;
+      let requestId = getAfter(
+        /databases/$(database)/documents/groups/$(groupId)/requests/$(senderId)).data.requestId;
+      return notificationId == 'join_request_' + groupId + '_' + requestId &&
+        canonicalNotificationData(groupId, senderId, 'join_request') &&
+        group(groupId).data.founderId == uid &&
+        !exists(/databases/$(database)/documents/groups/$(groupId)/requests/$(senderId)) &&
+        existsAfter(/databases/$(database)/documents/groups/$(groupId)/requests/$(senderId)) &&
+        getAfter(/databases/$(database)/documents/groups/$(groupId)/requests/$(senderId)).data.userId == senderId;
+    }
+    function canonicalDecisionNotification(uid, notificationId, type) {
+      let groupId = request.resource.data.get('refId', '');
+      let requestId = get(
+        /databases/$(database)/documents/groups/$(groupId)/requests/$(uid)).data.requestId;
+      return notificationId == type + '_' + groupId + '_' + requestId &&
+        canonicalNotificationData(groupId, request.auth.uid, type) &&
+        groupModerator(groupId) &&
+        exists(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid)) &&
+        !existsAfter(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid)) &&
+        ((type == 'request_accepted' &&
+          existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
+          getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'accept' &&
+          getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == uid) ||
+         (type == 'request_rejected' &&
+          !existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(uid))));
+    }
+    function joinNotificationAfter(groupId, uid) {
+      let requestId = getAfter(
+        /databases/$(database)/documents/groups/$(groupId)/requests/$(uid)).data.requestId;
+      let founderId = group(groupId).data.founderId;
+      let notificationId = 'join_request_' + groupId + '_' + requestId;
+      return existsAfter(
+        /databases/$(database)/documents/users/$(founderId)/notifications/$(notificationId));
+    }
+    function decisionNotificationAfter(groupId, uid, type) {
+      let requestId = get(
+        /databases/$(database)/documents/groups/$(groupId)/requests/$(uid)).data.requestId;
+      let notificationId = type + '_' + groupId + '_' + requestId;
+      return existsAfter(
+        /databases/$(database)/documents/users/$(uid)/notifications/$(notificationId));
+    }
+    function chatParticipant(chatId) {
+      return signedIn() &&
+        (get(/databases/$(database)/documents/privateChats/$(chatId)).data.userA == request.auth.uid ||
+         get(/databases/$(database)/documents/privateChats/$(chatId)).data.userB == request.auth.uid);
+    }
+    function validInitialMessageState() {
+      return request.resource.data.createdAt == request.time &&
+        request.resource.data.isRead == false &&
+        request.resource.data.isDelivered == false &&
+        request.resource.data.isEdited == false &&
+        (!request.resource.data.keys().hasAny(['reactions']) ||
+          request.resource.data.reactions.size() == 0);
+    }
+    function validMessagePayload() {
+      return request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'senderId','senderName','senderAvatar','senderIsPremium','senderRole',
+          'text','mediaUrl','mediaType','type','replyToId','reactions','createdAt','isRead','isDelivered',
+          'audioDuration','editThumbnail','editAnimeTitle','editId','isEdited'
+        ]) &&
+        request.resource.data.type in ['text','media'] &&
+        ((request.resource.data.type == 'text' &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000 &&
+          !request.resource.data.keys().hasAny(['mediaUrl','mediaType','audioDuration'])) ||
+         (request.resource.data.type == 'media' &&
+          request.resource.data.mediaUrl is string &&
+          request.resource.data.mediaUrl.size() > 0 &&
+          request.resource.data.mediaUrl.size() <= 2048 &&
+          request.resource.data.mediaType is string &&
+          request.resource.data.mediaType.size() > 0 &&
+          request.resource.data.mediaType.size() <= 40 &&
+          (!request.resource.data.keys().hasAny(['text']) ||
+           request.resource.data.text == null))) &&
+        validInitialMessageState();
+    }
+    function validGroupMessageCreate(groupId) {
+      let sender = get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data;
+      return validMessagePayload() &&
+        request.resource.data.senderName is string &&
+        request.resource.data.senderName.size() > 0 &&
+        (request.resource.data.senderName == sender.get('characterName', '') ||
+         request.resource.data.senderName == sender.get('realUserName', '') ||
+         request.resource.data.senderName == sender.get('displayName', '')) &&
+        request.resource.data.senderAvatar is string &&
+        (request.resource.data.senderAvatar == sender.get('characterImageUrl', '') ||
+         request.resource.data.senderAvatar == sender.get('realUserImageUrl', '')) &&
+        request.resource.data.senderIsPremium == sender.get('isPremium', false) &&
+        request.resource.data.senderRole == sender.role &&
+        (!request.resource.data.keys().hasAny(['replyToId']) ||
+         exists(/databases/$(database)/documents/groups/$(groupId)/messages/$(request.resource.data.replyToId)));
+    }
+    function validPrivateMessageCreate(chatId) {
+      let profile = get(/databases/$(database)/documents/public_profiles/$(request.auth.uid)).data;
+      return validMessagePayload() &&
+        !request.resource.data.keys().hasAny(['senderRole']) &&
+        request.resource.data.senderName == profile.get('username', '') &&
+        request.resource.data.senderAvatar == profile.get('avatarUrl', '') &&
+        request.resource.data.senderIsPremium == profile.get('isPremium', false) &&
+        (!request.resource.data.keys().hasAny(['replyToId']) ||
+         exists(/databases/$(database)/documents/privateChats/$(chatId)/messages/$(request.resource.data.replyToId)));
+    }
+
+    match /users/{uid} {
+      // The root user document contains credentials-adjacent and account
+      // state. Display data for other users lives in public_profiles.
+      allow get: if self(uid);
+      allow list: if false;
+      allow create: if self(uid) &&
+        request.resource.data.keys().hasOnly([
+          'email','username','nickname','avatarUrl','bio','favoriteAnimes','age',
+          'country','isProfileCompleted','createdAt','updatedAt','invitedBy',
+          'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
+          'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
+          'customMaxMembersLimit','customMaxJoinedGroupsLimit',
+          'customMaxCreatedGroupsLimit','hasClaimedReferral'
+        ]) &&
+        request.resource.data.subscriptionType == 'free' &&
+        request.resource.data.totalRespect == 0 &&
+        request.resource.data.fansCount == 0 &&
+        request.resource.data.isBanned == false &&
+        request.resource.data.coinsBalance == 0 &&
+        request.resource.data.customMaxMembersLimit == 0 &&
+        request.resource.data.customMaxJoinedGroupsLimit == 0 &&
+        request.resource.data.customMaxCreatedGroupsLimit == 0 &&
+        request.resource.data.hasClaimedReferral == false;
+      // Currency, subscription/limits, moderation, referral and social counters
+      // are service-owned.  Clients can change only presentation/profile data.
+      allow update: if self(uid) &&
+        (changedOnly([
+          'username','nickname','avatarUrl','bio','favoriteAnimes','age','country',
+          'isProfileCompleted','updatedAt'
+        ]) ||
+         (changedOnly(['fcmToken','tokenUpdatedAt']) &&
+          (!request.resource.data.keys().hasAny(['fcmToken']) ||
+           (request.resource.data.fcmToken is string &&
+            request.resource.data.fcmToken.size() > 0 &&
+            request.resource.data.fcmToken.size() <= 4096)) &&
+          (!request.resource.data.keys().hasAny(['tokenUpdatedAt']) ||
+           request.resource.data.tokenUpdatedAt is timestamp)));
+      allow delete: if false;
+
+      match /notifications/{notificationId} {
+        allow read: if self(uid);
+        allow update: if self(uid) && changedOnly(['isRead']) &&
+          request.resource.data.isRead is bool;
+        allow create: if signedIn() &&
+          (canonicalJoinNotification(uid, notificationId) ||
+           canonicalDecisionNotification(uid, notificationId, 'request_accepted') ||
+           canonicalDecisionNotification(uid, notificationId, 'request_rejected'));
+        allow delete: if self(uid);
+      }
+      match /stickers/{stickerId} {
+        allow read: if self(uid);
+        // A saved sticker is owned by this collection owner, not merely by
+        // a caller-supplied creator id.  Cross-account copies are server-side.
+        allow create: if self(uid) && request.resource.data.keys().hasOnly(
+          ['creatorId','imageUrl','createdAt']) &&
+          request.resource.data.creatorId == uid &&
+          request.resource.data.imageUrl is string &&
+          request.resource.data.imageUrl.size() > 0 &&
+          request.resource.data.imageUrl.size() <= 2048;
+        allow update: if self(uid) && changedOnly(['imageUrl']) &&
+          request.resource.data.creatorId == uid &&
+          request.resource.data.imageUrl is string &&
+          request.resource.data.imageUrl.size() > 0 &&
+          request.resource.data.imageUrl.size() <= 2048;
+        allow delete: if self(uid) && resource.data.creatorId == uid;
+      }
+      match /daily_rewards/{id} { allow read: if self(uid); allow write: if false; }
+      match /transactions/{id} { allow read: if self(uid); allow write: if false; }
+      match /rewards/{id} { allow read: if self(uid); allow write: if false; }
+      match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
+    }
+
+    match /public_profiles/{uid} {
+      allow read: if signedIn();
+      // This is a server-maintained projection of users/{uid}. Allowing a
+      // client write would let callers forge badges and social counters.
+      allow create, update, delete: if false;
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn() && groupExists(groupId);
+      allow create: if signedIn() &&
+        request.resource.data.founderId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'name','description','slogan','imageUrl','type','animeName','animeId',
+          'franchiseIds','founderId','maxMembers','createdAt','chatBackgroundUrl',
+          'membersCount','isPromoted','promotionExpiresAt','lastMessageAt',
+          'lastMessageText','activeGameId','gameStatus','hasRunningGame'
+        ]) &&
+        request.resource.data.membersCount == 1 &&
+        request.resource.data.maxMembers is int &&
+        request.resource.data.maxMembers >= 1 &&
+        request.resource.data.maxMembers ==
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+            .get('customMaxMembersLimit', 0) > 0
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+                .get('customMaxMembersLimit', 0)
+            : 100) &&
+        request.resource.data.isPromoted == false &&
+        request.resource.data.hasRunningGame == false &&
+        request.resource.data.activeGameId == null &&
+        request.resource.data.gameStatus == null;
+      allow update: if isFounder(groupId) && changedOnly([
+          'name','description','slogan','imageUrl','type','animeName','animeId',
+          'franchiseIds','chatBackgroundUrl'
+        ]) ||
+        membershipIncrement(groupId) ||
+        membershipDecrement(groupId) ||
+        // Message sends update this preview in a separate write. It cannot
+        // alter membership or any other group authority.
+        (groupMember(groupId) &&
+         changedOnly(['lastMessageAt','lastMessageText']) &&
+         request.resource.data.lastMessageAt is timestamp &&
+         request.resource.data.lastMessageText is string &&
+         request.resource.data.lastMessageText.size() <= 80) ||
+        // A lobby creator may only claim the group's active-game marker in
+        // the same atomic write that creates their waiting game.
+        signedIn() && groupMember(groupId) && changedOnly([
+          'activeGameId','gameStatus','hasRunningGame'
+        ]) && request.resource.data.activeGameId is string &&
+        request.resource.data.gameStatus == 'waiting' &&
+        request.resource.data.hasRunningGame == true &&
+        existsAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)) &&
+        getAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)).data.groupId == groupId &&
+        getAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)).data.createdBy == request.auth.uid;
+      // Group teardown is a trusted server operation: permitting a client
+      // root delete leaves subcollections behind and can orphan authority.
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if signedIn() && groupExists(groupId);
+        // A founder may establish their owner record; other direct joins are
+        // limited to an unprivileged member document for the caller.
+        allow create: if
+          ((self(uid) && isFounderAfter(groupId) &&
+             request.resource.data.role == 'founder') ||
+           (groupModerator(groupId) && consumesJoinRequest(groupId, uid) &&
+             request.resource.data.role == 'member' &&
+             getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'accept' &&
+             getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == uid &&
+             getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membersCount ==
+               group(groupId).data.membersCount + 1 &&
+             request.resource.data.characterName ==
+               get(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid)).data.characterName &&
+             request.resource.data.characterKey ==
+               get(/databases/$(database)/documents/groups/$(groupId)/requests/$(uid)).data.characterKey)) &&
+          validMemberDocument(groupId, uid);
+        allow update: if groupExists(groupId) &&
+          ((isFounder(groupId) || groupModerator(groupId)) &&
+           changedOnly(['displayName','characterImageUrl','characterReason',
+             'realUserName','realUserImageUrl',
+            'invitedByUserId','inviterDisplayName','isPremium','lastReadAt']) ||
+           (self(uid) && changedOnly(['lastReadAt','displayName'])));
+        allow delete: if groupExists(groupId) &&
+          ((self(uid) && isFounder(groupId) &&
+           !existsAfter(/databases/$(database)/documents/groups/$(groupId))) ||
+          (uid != group(groupId).data.founderId &&
+           getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'remove' &&
+           getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == uid &&
+           getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membersCount ==
+             group(groupId).data.membersCount - 1 &&
+           (self(uid) || groupModerator(groupId))));
+      }
+      match /requests/{uid} {
+        allow read: if groupExists(groupId) && (self(uid) || groupModerator(groupId));
+        allow create: if groupExists(groupId) && self(uid) && request.resource.data.userId == uid &&
+          request.resource.data.groupId == groupId &&
+          !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
+          request.resource.data.role == 'member' &&
+          request.resource.data.keys().hasOnly([
+            'userId','groupId','role','displayName','characterName',
+             'characterKey','characterImageUrl','characterReason','realUserName',
+            'realUserImageUrl','invitedByUserId','inviterDisplayName',
+             'joinedAt','lastReadAt','isManualRole','isPremium','inviteCount',
+             'requestId'
+          ]) &&
+          request.resource.data.isManualRole == false &&
+          request.resource.data.isPremium == false &&
+           request.resource.data.inviteCount == 0 &&
+           request.resource.data.requestId is string &&
+           request.resource.data.requestId.size() > 0 &&
+           request.resource.data.requestId.size() <= 200 &&
+           ((request.resource.data.characterName == null &&
+              request.resource.data.characterKey == null) ||
+            (request.resource.data.characterName is string &&
+              request.resource.data.characterName.size() > 0 &&
+              request.resource.data.characterKey is string &&
+              request.resource.data.characterKey.size() > 0)) &&
+           joinNotificationAfter(groupId, uid);
+        // Requests are immutable. A moderator can consume one only alongside
+        // its canonical decision notification (and acceptance mutation).
+        allow update: if false;
+        allow delete: if groupExists(groupId) && (self(uid) ||
+          (groupModerator(groupId) &&
+           (decisionNotificationAfter(groupId, uid, 'request_accepted') ||
+            decisionNotificationAfter(groupId, uid, 'request_rejected'))));
+      }
+      match /invites/{inviteId} {
+        allow read: if groupMember(groupId);
+        allow create, update, delete: if groupModerator(groupId);
+      }
+      match /messages/{messageId} {
+        allow read: if groupMember(groupId);
+        allow create: if groupMember(groupId) && validGroupMessageCreate(groupId);
+        allow update: if groupExists(groupId) && (
+          (resource.data.senderId == request.auth.uid &&
+           resource.data.type == 'text' &&
+           changedOnly(['text','isEdited']) &&
+           request.resource.data.text is string &&
+           request.resource.data.text.size() > 0 &&
+           request.resource.data.text.size() <= 1000 &&
+           request.resource.data.isEdited == true) ||
+          (groupMember(groupId) &&
+           resource.data.senderId != request.auth.uid &&
+           changedOnly(['isDelivered','isRead']) &&
+           (!request.resource.data.keys().hasAny(['isDelivered']) ||
+            request.resource.data.isDelivered == true) &&
+           (!request.resource.data.keys().hasAny(['isRead']) ||
+            request.resource.data.isRead == true)));
+        allow delete: if groupExists(groupId) &&
+          (groupModerator(groupId) || resource.data.senderId == request.auth.uid);
+      }
+      match /games/{gameId} {
+        allow read: if groupMember(groupId);
+        allow create, update, delete: if groupModerator(groupId);
+      }
+      match /characters/{characterId} {
+        allow read: if groupMember(groupId);
+        allow create: if groupExists(groupId) &&
+          request.resource.data.keys().hasOnly(
+            ['userId','characterName','imageUrl','reservedAt']) &&
+          request.resource.data.userId is string &&
+          request.resource.data.characterName is string &&
+          request.resource.data.characterName.size() > 0 &&
+          request.resource.data.reservedAt is timestamp &&
+          !exists(/databases/$(database)/documents/groups/$(groupId)/characters/$(characterId)) &&
+          characterId == getAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.resource.data.userId)).data.characterKey &&
+          ((self(request.resource.data.userId) && isFounderAfter(groupId)) ||
+           (groupModerator(groupId) &&
+            getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'accept' &&
+            getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == request.resource.data.userId));
+        allow update: if isFounder(groupId) &&
+          resource.data.userId == request.resource.data.userId &&
+          changedOnly(['imageUrl']);
+        allow delete: if groupExists(groupId) &&
+          ((self(resource.data.userId) && isFounder(groupId) &&
+           !existsAfter(/databases/$(database)/documents/groups/$(groupId))) ||
+          (resource.data.userId is string &&
+           exists(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.userId)) &&
+           !existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(resource.data.userId)) &&
+           getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'remove' &&
+           getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == resource.data.userId &&
+           (self(resource.data.userId) || groupModerator(groupId))));
+      }
+    }
+
+    match /privateChats/{chatId} {
+      allow read: if chatParticipant(chatId);
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'userA','userB','createdAt','lastMessageAt','lastMessageText',
+          'lastMessage','lastMessageTime','lastReadUserA','lastReadUserB'
+        ]) &&
+        request.resource.data.userA is string &&
+        request.resource.data.userB is string &&
+        request.resource.data.userA < request.resource.data.userB &&
+        (request.resource.data.userA == request.auth.uid ||
+         request.resource.data.userB == request.auth.uid);
+      // userA/userB are immutable. A sender may advance the conversation
+      // preview; each participant may advance only their own read receipt.
+      allow update: if chatParticipant(chatId) &&
+        ((changedOnly(['lastMessageAt','lastMessageText','lastMessage','lastMessageTime']) &&
+          (!request.resource.data.keys().hasAll(['lastMessageText']) ||
+           (request.resource.data.lastMessageText is string &&
+            request.resource.data.lastMessageText.size() <= 1000))) ||
+         (resource.data.userA == request.auth.uid &&
+          changedOnly(['lastReadUserA'])) ||
+         (resource.data.userB == request.auth.uid &&
+          changedOnly(['lastReadUserB'])));
+      allow delete: if false;
+      match /messages/{messageId} {
+        allow read: if chatParticipant(chatId);
+        allow create: if chatParticipant(chatId) && validPrivateMessageCreate(chatId);
+        allow update: if resource.data.senderId == request.auth.uid &&
+          resource.data.type == 'text' &&
+          changedOnly(['text','isEdited']) &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000 &&
+          request.resource.data.isEdited == true;
+        // The recipient can acknowledge delivery/read but cannot alter text,
+        // sender identity, timestamps, or other message metadata.
+        allow update: if chatParticipant(chatId) &&
+          resource.data.senderId != request.auth.uid &&
+          changedOnly(['isDelivered','isRead']) &&
+          (!request.resource.data.keys().hasAny(['isDelivered']) ||
+           request.resource.data.isDelivered == true) &&
+          (!request.resource.data.keys().hasAny(['isRead']) ||
+           request.resource.data.isRead == true);
+        allow delete: if resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    match /edits/{editId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uploaderId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'uploaderId','uploaderName','uploaderAvatar','videoUrl','thumbnailUrl',
+          'animeTitle','caption','likes','commentsCount','views','createdAt',
+          'score','totalWatchSeconds','avgWatchPercent'
+        ]) &&
+        request.resource.data.likes.size() == 0 &&
+        request.resource.data.commentsCount == 0 &&
+        request.resource.data.views == 0 &&
+        request.resource.data.score == 0 &&
+        request.resource.data.totalWatchSeconds == 0 &&
+        request.resource.data.avgWatchPercent == 0;
+      allow update: if resource.data.uploaderId == request.auth.uid &&
+        changedOnly(['caption','videoUrl','thumbnailUrl']);
+      allow delete: if resource.data.uploaderId == request.auth.uid;
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['userId','username','userAvatar','text','createdAt','likes']);
+        allow update: if resource.data.userId == request.auth.uid && changedOnly(['text']);
+        allow delete: if resource.data.userId == request.auth.uid;
+      }
+      // Aggregate viewers/watch data is server-owned; clients must not inflate it.
+      match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
+      match /watch_events/{uid} { allow read: if self(uid); allow write: if false; }
+    }
+
+    match /user_interactions/{uid}/interactions/{interactionId} {
+      allow read: if self(uid);
+      allow create: if self(uid) && request.resource.data.userId == uid;
+      allow update, delete: if false;
+    }
+    match /user_seen/{uid}/seen_edits/{editId} {
+      allow read: if self(uid);
+      allow create, update, delete: if self(uid);
+    }
+
+    match /respects/{respectId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.fromUserId == request.auth.uid &&
+        request.resource.data.toUserId != request.auth.uid &&
+        respectId == request.auth.uid + '_' + request.resource.data.toUserId &&
+        request.resource.data.value is int && request.resource.data.value >= 0 &&
+        request.resource.data.value <= 7 &&
+        request.resource.data.keys().hasOnly(['fromUserId','toUserId','value','createdAt']);
+      allow update: if resource.data.fromUserId == request.auth.uid &&
+        request.resource.data.fromUserId == request.resource.data.fromUserId &&
+        request.resource.data.toUserId == resource.data.toUserId &&
+        respectId == request.auth.uid + '_' + resource.data.toUserId &&
+        changedOnly(['value']) && request.resource.data.value is int &&
+        request.resource.data.value >= 0 && request.resource.data.value <= 7;
+      allow delete: if false;
+    }
+    match /fans/{fanId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.fanUserId == request.auth.uid &&
+        request.resource.data.targetUserId != request.auth.uid &&
+        fanId == request.auth.uid + '_' + request.resource.data.targetUserId &&
+        request.resource.data.keys().hasOnly(['fanUserId','targetUserId','createdAt']);
+      allow delete: if resource.data.fanUserId == request.auth.uid;
+      allow update: if false;
+    }
+    match /promotions/{promotionId} { allow read: if signedIn(); allow write: if false; }
+    match /physical_products/{productId} { allow read: if signedIn(); allow write: if false; }
+
+    // Game execution is Cloud Functions-only. Clients may establish a waiting
+    // lobby and submit bounded intent; all authoritative state remains server-owned.
+    match /mafia_games/{gameId} {
+      allow read: if signedIn() && groupMember(resource.data.groupId);
+      allow create: if mafiaGameCreate(gameId);
+      allow update: if mafiaJoinCounterUpdate(gameId) || mafiaLeaveCounterUpdate(gameId);
+      allow delete: if false;
+      match /players/{uid} {
+        allow read: if mafiaGroupMember(gameId);
+        allow create: if self(uid) && mafiaPublicPlayerDefaults(gameId, uid) &&
+          ((!exists(/databases/$(database)/documents/mafia_games/$(gameId)) &&
+             getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.createdBy == request.auth.uid) ||
+           (mafiaGame(gameId).data.status == 'waiting' &&
+             mafiaGame(gameId).data.playersCount < mafiaGame(gameId).data.maxPlayers &&
+             getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
+               mafiaGame(gameId).data.playersCount + 1));
+        allow delete: if self(uid) &&
+          mafiaGame(gameId).data.status == 'waiting' &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
+            mafiaGame(gameId).data.playersCount - 1 &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount >= 0 &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.diff(
+            mafiaGame(gameId).data).affectedKeys().hasOnly(['playersCount']);
+        allow update: if self(uid) && changedOnly(['lastSeenAt','isDisconnected']) &&
+          request.resource.data.isDisconnected == false;
+        match /private/{docId} { allow read: if self(uid); allow write: if false; }
+      }
+      match /night_actions/{actionId} {
+        allow read: if false;
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status == 'night' &&
+          mafiaGame(gameId).data.currentPhase == 'night' &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+           (!get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.keys().hasAny(['canUseAbility']) ||
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canUseAbility == true) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
+            in ['mafia','doctor','detective','sniper','silencer'] &&
+          actionId == request.auth.uid + '_n' + string(request.resource.data.nightNumber) &&
+          request.resource.data.playerId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['playerId','targetId','nightNumber','submittedAt']) &&
+          request.resource.data.keys().hasAll(['playerId','targetId','nightNumber','submittedAt']) &&
+          request.resource.data.nightNumber is int &&
+          request.resource.data.nightNumber == mafiaGame(gameId).data.currentNight &&
+          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
+        allow update, delete: if false;
+      }
+      match /votes/{voteId} {
+        allow read: if mafiaGroupMember(gameId);
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status == 'voting' &&
+          mafiaGame(gameId).data.currentPhase == 'voting' &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canVote == true &&
+          voteId == request.auth.uid + '_d' + string(request.resource.data.dayNumber) &&
+          request.resource.data.voterId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['voterId','targetId','dayNumber','time']) &&
+          request.resource.data.dayNumber == mafiaGame(gameId).data.currentDay &&
+          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
+        allow update, delete: if false;
+      }
+      match /events/{eventId} { allow read: if mafiaGroupMember(gameId); allow write: if false; }
+      match /chat/{messageId} {
+        allow read: if mafiaGroupMember(gameId);
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status in ['day','discussion','voting'] &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canSpeak == true &&
+          request.resource.data.keys().hasOnly(['senderId','sender','senderAvatar','text','time','type']) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.sender ==
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.username &&
+          request.resource.data.senderAvatar ==
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.avatar &&
+          request.resource.data.type == 'player' &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000;
+        allow update, delete: if false;
+      }
+    }
+    match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }
+  }
+}

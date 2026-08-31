@@ -15,6 +15,7 @@ const STATUS = {
   STARTING: "starting",
   CANCELLED: "cancelled",
 };
+const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 exports.processExpiredLobbies = onSchedule("every 1 minutes", async () => {
   const now = admin.firestore.Timestamp.now();
@@ -43,21 +44,28 @@ exports.processExpiredLobbies = onSchedule("every 1 minutes", async () => {
 async function cancelLobby(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   const playersRef = gameRef.collection("players");
-  const groupRef = db.collection("groups").doc(gameData.groupId);
-
+  if (typeof gameData.groupId !== "string" || !gameData.groupId) return;
+  // Mark cancellation first, transactionally. Retried schedulers therefore
+  // cannot delete a lobby that has subsequently started.
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists || snap.data().status !== STATUS.WAITING) return false;
+    tx.update(gameRef, { status: STATUS.CANCELLED, currentPhase: STATUS.CANCELLED });
+    const groupRef = db.collection("groups").doc(gameData.groupId);
+    const group = await tx.get(groupRef);
+    if (group.exists && group.data().activeGameId === gameId) {
+      tx.update(groupRef, {
+        activeGameId: admin.firestore.FieldValue.delete(),
+        gameStatus: admin.firestore.FieldValue.delete(), hasRunningGame: false,
+      });
+    }
+    return true;
+  });
+  if (!claimed) return;
   const playersSnap = await playersRef.get();
-
   const batch = db.batch();
-  playersSnap.docs.forEach((playerDoc) => {
-    batch.delete(playerDoc.ref);
-  });
-  batch.delete(gameRef);
-  batch.update(groupRef, {
-    activeGameId: admin.firestore.FieldValue.delete(),
-    gameStatus: admin.firestore.FieldValue.delete(),
-    hasRunningGame: false,
-  });
-
+  playersSnap.docs.forEach((playerDoc) => batch.delete(playerDoc.ref));
+  // Retain the cancelled game as an idempotency/audit marker.
   await batch.commit();
 
   await sendSystemMessage({
@@ -71,11 +79,40 @@ async function cancelLobby(gameId, gameData) {
 async function beginGame(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
 
-  await gameRef.update({
-    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+  const owner = `${process.pid || "lobby"}:${Date.now()}:${gameId}`;
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(gameRef);
+    const currentClaim = snap.exists && snap.data().roleAssignmentClaim;
+    const expired = !currentClaim || !currentClaim.expiresAt ||
+      typeof currentClaim.expiresAt.toMillis !== "function" ||
+      currentClaim.expiresAt.toMillis() <= Date.now();
+    if (!snap.exists || snap.data().status !== STATUS.STARTING ||
+        snap.data().rolesAssigned === true || (currentClaim && !expired)) return false;
+    tx.update(gameRef, {
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      roleAssignmentClaim: { owner, expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + CLAIM_LEASE_MS) },
+    });
+    return true;
   });
-
-  await assignRoles(gameId, gameData);
+  if (claimed) {
+    try {
+      const assigned = await assignRoles(gameId, {
+        ...gameData,
+        roleAssignmentOwner: owner,
+      });
+      // assignRoles atomically cancels invalid claimed lobbies (including the
+      // matching group marker). Treat a false result as handled, not a retry.
+      if (!assigned) return;
+    } catch (error) {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(gameRef);
+        if (snap.exists && snap.data().roleAssignmentClaim?.owner === owner) {
+          tx.update(gameRef, { roleAssignmentClaim: admin.firestore.FieldValue.delete() });
+        }
+      });
+      throw error;
+    }
+  }
 }
 
 async function sendSystemMessage({ groupId, text, systemEventType, gameId }) {

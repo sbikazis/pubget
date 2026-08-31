@@ -257,7 +257,7 @@ class EditsProvider extends ChangeNotifier {
           try {
             // ✅ FIX: 'Users' → FirestorePaths.users ('users')
             final userDoc = await FirebaseFirestore.instance
-                .collection(FirestorePaths.users)
+                .collection(FirestorePaths.publicProfiles)
                 .doc(c.userId)
                 .get();
             final data = userDoc.data();
