@@ -1,11 +1,15 @@
-modules = ["web", "nodejs-20", "java-graalvm22.3"]
+modules = ["web", "nodejs-20", "java-graalvm22.3", "python-base-3.13"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["jdk21_headless"]
+packages = ["jdk21_headless", "flutter"]
 
 [agent]
 expertMode = true
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
 
 [[ports]]
 localPort = 8080
