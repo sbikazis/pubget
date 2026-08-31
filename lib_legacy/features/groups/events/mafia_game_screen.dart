@@ -22,6 +22,7 @@ import '../../../models/mafia/mafia_chat_message_model.dart';
 import '../../../models/mafia/mafia_player_model.dart';
 import '../../../models/mafia/mafia_player_private_model.dart';
 import '../../../models/mafia/mafia_game_model.dart';
+import '../../../models/mafia/mafia_vote_model.dart';
 import '../../../core/constants/mafia_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../providers/mafia_game_provider.dart';
@@ -79,6 +80,7 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     if (game.status != MafiaGameStatus.night) return;
     if (currentPlayer == null || currentPlayer.hasLeft) return;
     if (currentPlayerPrivate == null) return;
+    if (!_roleHasNightAction(currentPlayerPrivate.role)) return;
     if (_lastNightSheetShownFor == game.currentNight) return;
 
     _lastNightSheetShownFor = game.currentNight;
@@ -99,9 +101,14 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     required MafiaGameModel game,
     required MafiaPlayerModel? currentPlayer,
     required List<MafiaPlayerModel> players,
+    required List<MafiaVoteModel> votes,
   }) {
     if (game.status != MafiaGameStatus.voting) return;
-    if (currentPlayer == null || currentPlayer.hasLeft) return;
+    if (currentPlayer == null || currentPlayer.hasLeft || !currentPlayer.canVote) return;
+    if (votes.any((vote) =>
+        vote.voterId == currentPlayer.id && vote.dayNumber == game.currentDay)) {
+      return;
+    }
     if (_lastVotingSheetShownFor == game.currentDay) return;
 
     _lastVotingSheetShownFor = game.currentDay;
@@ -117,6 +124,14 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
       );
     });
   }
+
+  bool _roleHasNightAction(String role) => const [
+        MafiaRoles.mafia,
+        MafiaRoles.doctor,
+        MafiaRoles.detective,
+        MafiaRoles.sniper,
+        MafiaRoles.silencer,
+      ].contains(role);
 
   void _maybeShowFinishedSheet(MafiaGameModel game) {
     if (game.status != MafiaGameStatus.finished) return;
@@ -213,7 +228,12 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
           game: game, currentPlayer: currentPlayer,
           currentPlayerPrivate: myPrivateData, players: players,
         );
-        _maybeShowVotingSheet(game: game, currentPlayer: currentPlayer, players: players);
+        _maybeShowVotingSheet(
+          game: game,
+          currentPlayer: currentPlayer,
+          players: players,
+          votes: provider.votes,
+        );
         _maybeShowFinishedSheet(game);
 
         final canSendChat = currentPlayer != null &&
@@ -252,7 +272,9 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                 _buildChatInput(isDark, canSendChat),
               ],
             ),
-            floatingActionButton: _buildFab(game, currentPlayer, players, myPrivateData),
+            floatingActionButton: _buildFab(
+              game, currentPlayer, players, myPrivateData, provider.votes,
+            ),
           ),
         );
       },
@@ -264,10 +286,14 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     MafiaPlayerModel? currentPlayer,
     List<MafiaPlayerModel> players,
     MafiaPlayerPrivateModel? myPrivateData,
+    List<MafiaVoteModel> votes,
   ) {
-    if (currentPlayer == null || !currentPlayer.isAlive) return null;
+    if (currentPlayer == null || !currentPlayer.isAlive || currentPlayer.hasLeft) return null;
 
-    if (game.status == MafiaGameStatus.night && myPrivateData != null) {
+    if (game.status == MafiaGameStatus.night &&
+        myPrivateData != null &&
+        currentPlayer.canUseAbility &&
+        _roleHasNightAction(myPrivateData.role)) {
       return FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         onPressed: () => NightActionSheet.show(
@@ -279,7 +305,9 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
       );
     }
 
-    if (game.status == MafiaGameStatus.voting) {
+    final hasVoted = votes.any((vote) =>
+      vote.voterId == currentPlayer.id && vote.dayNumber == game.currentDay);
+    if (game.status == MafiaGameStatus.voting && currentPlayer.canVote && !hasVoted) {
       return FloatingActionButton.extended(
         backgroundColor: Colors.deepOrange,
         onPressed: () => VotingSheet.show(
