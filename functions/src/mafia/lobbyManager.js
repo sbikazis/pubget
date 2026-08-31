@@ -48,11 +48,11 @@ async function cancelLobby(gameId, gameData) {
   // Mark cancellation first, transactionally. Retried schedulers therefore
   // cannot delete a lobby that has subsequently started.
   const claimed = await db.runTransaction(async (tx) => {
+    const groupRef = db.collection("groups").doc(gameData.groupId);
     const snap = await tx.get(gameRef);
+    const group = await tx.get(groupRef);
     if (!snap.exists || snap.data().status !== STATUS.WAITING) return false;
     tx.update(gameRef, { status: STATUS.CANCELLED, currentPhase: STATUS.CANCELLED });
-    const groupRef = db.collection("groups").doc(gameData.groupId);
-    const group = await tx.get(groupRef);
     if (group.exists && group.data().activeGameId === gameId) {
       tx.update(groupRef, {
         activeGameId: admin.firestore.FieldValue.delete(),

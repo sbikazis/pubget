@@ -6,3 +6,23 @@ packages = ["jdk21_headless"]
 
 [agent]
 expertMode = true
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8185
+externalPort = 3001
+
+[[ports]]
+localPort = 8635
+externalPort = 80
+
+[[ports]]
+localPort = 8857
+externalPort = 3002
+
+[[ports]]
+localPort = 8997
+externalPort = 3000

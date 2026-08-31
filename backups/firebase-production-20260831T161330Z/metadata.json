@@ -1,0 +1,38 @@
+{
+  "project": "pubget-aaf27",
+  "bucket": "pubget-aaf27.firebasestorage.app",
+  "capturedAt": "2026-08-31T16:13:30.794Z",
+  "targets": [
+    {
+      "key": "firestore",
+      "service": "cloud.firestore",
+      "status": "captured",
+      "release": "projects/pubget-aaf27/releases/cloud.firestore",
+      "rulesetName": "projects/pubget-aaf27/rulesets/11d7b0be-9ce0-4ce3-99e1-788c7ab6c2aa",
+      "createTime": "2026-03-31T10:04:04.063429Z",
+      "files": [
+        {
+          "name": "firestore.rules",
+          "path": "backups/firebase-production-20260831T161330Z/firestore-firestore.rules",
+          "sha256": "74c389b5aa19d193f07f6276414b222b53c14049f5c60e54b93893d6971094b3"
+        }
+      ]
+    },
+    {
+      "key": "storage",
+      "service": "firebase.storage",
+      "resourceName": "pubget-aaf27.firebasestorage.app",
+      "status": "captured",
+      "release": "projects/pubget-aaf27/releases/firebase.storage/pubget-aaf27.firebasestorage.app",
+      "rulesetName": "projects/pubget-aaf27/rulesets/f1bd517a-72ed-4d38-a685-5a6437baa40e",
+      "createTime": "2026-05-09T16:54:00.856693Z",
+      "files": [
+        {
+          "name": "storage.rules",
+          "path": "backups/firebase-production-20260831T161330Z/storage-storage.rules",
+          "sha256": "742b8f9423bae76ae4005029454e9ccbca93ccc3dd42692fbed375efde9d92f2"
+        }
+      ]
+    }
+  ]
+}

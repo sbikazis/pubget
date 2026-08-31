@@ -10,5 +10,10 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "firebase-tools": "^15.28.2"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.8.0",
+    "firebase-functions": "^7.2.5",
+    "firebase-functions-test": "^3.4.1"
   }
 }

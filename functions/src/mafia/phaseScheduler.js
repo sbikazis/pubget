@@ -17,7 +17,7 @@ const db = admin.firestore();
 const ACTIVE_LOOP_STATUSES = ["night", "day", "discussion", "voting", "execution"];
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
-exports.processPhaseTransitions = onSchedule("every 1 minutes", async () => {
+const processPhaseTransitions = onSchedule("every 1 minutes", async () => {
   const now = admin.firestore.Timestamp.now();
 
   const expiredGames = await db
@@ -142,4 +142,4 @@ async function releaseClaim(gameRef, owner) {
   });
 }
 
-module.exports = { advancePhase };
+module.exports = { processPhaseTransitions, advancePhase };

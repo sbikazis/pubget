@@ -1,0 +1,54 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    match /avatars/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && fileName.matches(request.auth.uid + '.*')
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    match /edits/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 50 * 1024 * 1024
+                   && (request.resource.contentType.matches('video/.*')
+                       || request.resource.contentType.matches('image/.*'));
+    }
+
+    match /groups/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    match /private_chats/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // ✅ مضاف: ملصقات المستخدمين
+    match /users/{userId}/stickers/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 2 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+  }
+}
