@@ -5,6 +5,7 @@ import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../models/private_chat_models.dart';
 import '../providers/private_chat_list_provider.dart';
@@ -61,7 +62,10 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
           onPressed: () => AppNavigation.go(context, '/home'),
           icon: const Icon(Icons.arrow_back),
         ),
-        title: const Text('Private'),
+        title: UnreadBadge(
+          count: context.watch<UnreadEngine>().privateChats,
+          child: const Text('Private'),
+        ),
       ),
       body: PubgetLoadingStateView(
         state: list.state,

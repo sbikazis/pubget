@@ -303,6 +303,92 @@ test("sendPrivateMessage writes aggregate receipts like group chat", async () =>
   assert.equal(parent.lastMessageSenderId, "alice");
 });
 
+test("a blocked relationship cannot start a private chat", async () => {
+  const db = createFakeDb(seedRelatedUsers({ friendshipStatus: "blocked" }));
+  const chat = handlers(db);
+  await assert.rejects(
+    chat.startPrivateChat({
+      auth: { uid: "alice" },
+      data: { otherUserId: "bob" },
+    }),
+    (error) => error.code === "permission-denied" && /blocked/.test(error.message),
+  );
+});
+
+test("a stranger cannot send into someone else's chat", async () => {
+  const db = createFakeDb(seedRelatedUsers({ friendshipStatus: "accepted" }));
+  const chat = handlers(db);
+  const started = await chat.startPrivateChat({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  await assert.rejects(
+    chat.sendPrivateMessage({
+      auth: { uid: "mallory" },
+      data: {
+        chatId: started.chatId,
+        messageId: "spy-1",
+        type: "text",
+        text: "hello",
+      },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("friends-only policy is re-checked on every send", async () => {
+  const db = createFakeDb(seedRelatedUsers({
+    aliceToBobRespect: 6,
+    whoCanMessageMe: "related",
+  }));
+  const chat = handlers(db);
+  const started = await chat.startPrivateChat({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  db.store.get("users/bob").whoCanMessageMe = "friends";
+  await assert.rejects(
+    chat.sendPrivateMessage({
+      auth: { uid: "alice" },
+      data: {
+        chatId: started.chatId,
+        messageId: "after-policy",
+        type: "text",
+        text: "still a fan",
+      },
+    }),
+    (error) => error.code === "permission-denied" && /Friends/.test(error.message),
+  );
+});
+
+test("markMessagesRead updates lastReadAt without N+1 user queries", async () => {
+  const db = createFakeDb(seedRelatedUsers({ friendshipStatus: "accepted" }));
+  const chat = handlers(db);
+  const started = await chat.startPrivateChat({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  await chat.sendPrivateMessage({
+    auth: { uid: "alice" },
+    data: {
+      chatId: started.chatId,
+      messageId: "read-me",
+      type: "text",
+      text: "Hello",
+    },
+  });
+  const marked = await chat.markMessagesRead({
+    auth: { uid: "bob" },
+    data: { chatId: started.chatId, messageIds: ["read-me"] },
+  });
+  assert.equal(marked.ok, true);
+  const stored = db.store.get(`privateChats/${started.chatId}/messages/read-me`);
+  assert.equal(stored.readBy.bob, true);
+  assert.equal(stored.readCount, 1);
+  const parent = db.store.get(`privateChats/${started.chatId}`);
+  assert.ok(parent.participants.bob.lastReadAt);
+});
+
 test("media messages require a processed pipeline document owned by the sender", async () => {
   const db = createFakeDb(seedRelatedUsers({ friendshipStatus: "accepted" }));
   const chat = handlers(db);

@@ -29,6 +29,12 @@ final class PrivateChatListProvider extends ChangeNotifier {
   bool get hasMore => _hasMore;
   String? get currentUserId => _currentUserId;
 
+  int get unreadCount {
+    final uid = _currentUserId;
+    if (uid == null) return 0;
+    return _chats.where((chat) => chat.isUnreadFor(uid)).length;
+  }
+
   Future<void> open(String currentUserId) async {
     if (_currentUserId == currentUserId && _subscription != null) return;
     await _subscription?.cancel();
@@ -47,6 +53,18 @@ final class PrivateChatListProvider extends ChangeNotifier {
         _safeNotify();
       },
     );
+  }
+
+  Future<void> close() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    _currentUserId = null;
+    _chats.clear();
+    _chatIndex.clear();
+    _hasMore = true;
+    _failure = null;
+    _state = LoadingState.initial;
+    _safeNotify();
   }
 
   Future<void> loadMore() async {

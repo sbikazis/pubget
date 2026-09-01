@@ -10,6 +10,7 @@ import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
+import 'package:pubget/features/notifications/providers/unread_engine.dart';
 import 'package:pubget/features/private_chat/models/private_chat_models.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_list_provider.dart';
 import 'package:pubget/features/private_chat/repositories/private_chat_repository.dart';
@@ -36,6 +37,9 @@ void main() {
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ChangeNotifierProvider<PrivateChatListProvider>.value(value: list),
+          ChangeNotifierProvider<UnreadEngine>(
+            create: (_) => UnreadEngine()..sync(privateChats: 0),
+          ),
         ],
         child: const MaterialApp(home: PrivateChatsListScreen()),
       ),
@@ -49,6 +53,61 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('private chat list shows unread from lastReadAt', (tester) async {
+    final authRepository = FakeAuthRepository(
+      user: const AuthUser(id: 'alice', email: 'alice@example.com'),
+    );
+    final auth = AuthProvider(repository: authRepository);
+    await auth.initialize();
+    addTearDown(authRepository.close);
+    addTearDown(auth.dispose);
+    final repository = _FakeListRepository();
+    final list = PrivateChatListProvider(repository: repository);
+    addTearDown(list.dispose);
+    addTearDown(repository.chats.close);
+    final unread = UnreadEngine()..sync(privateChats: 1);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<PrivateChatListProvider>.value(value: list),
+          ChangeNotifierProvider<UnreadEngine>.value(value: unread),
+        ],
+        child: const MaterialApp(home: PrivateChatsListScreen()),
+      ),
+    );
+    repository.chats.add(
+      Success(<PrivateChatSummary>[
+        PrivateChatSummary(
+          id: '5:alice3:bob',
+          participantIds: const <String>['alice', 'bob'],
+          userA: 'alice',
+          userB: 'bob',
+          lastMessageAt: DateTime(2026, 2, 2),
+          lastMessageText: 'Are you there?',
+          lastMessageSenderId: 'bob',
+          createdAt: DateTime(2026, 1, 1),
+          participants: <String, PrivateChatParticipant>{
+            'alice': const PrivateChatParticipant(
+              displayName: 'Alice',
+              avatarUrl: '',
+            ),
+            'bob': const PrivateChatParticipant(
+              displayName: 'Bob',
+              avatarUrl: '',
+            ),
+          },
+        ),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text('Are you there?'), findsOneWidget);
+    expect(find.byIcon(Icons.circle), findsOneWidget);
   });
 }
 

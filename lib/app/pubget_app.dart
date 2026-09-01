@@ -188,10 +188,22 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               EditsProvider(repository: context.read<EditsRepository>()),
         ),
-        provider.ChangeNotifierProvider<PrivateChatListProvider>(
+        provider.ChangeNotifierProxyProvider<
+          AuthProvider,
+          PrivateChatListProvider
+        >(
           create: (context) => PrivateChatListProvider(
             repository: context.read<PrivateChatRepository>(),
           ),
+          update: (_, auth, list) {
+            final uid = auth.currentUser?.id;
+            if (uid != null) {
+              list!.open(uid);
+            } else {
+              list!.close();
+            }
+            return list;
+          },
         ),
         provider.ChangeNotifierProvider<PrivateChatProvider>(
           create: (context) => PrivateChatProvider(
@@ -215,16 +227,20 @@ class PubgetApp extends StatelessWidget {
             return notifications;
           },
         ),
-        provider.ChangeNotifierProxyProvider<
+        provider.ChangeNotifierProxyProvider2<
           NotificationProvider,
+          PrivateChatListProvider,
           UnreadEngine
         >(
           create: (_) => UnreadEngine(),
-          update: (_, notifications, unread) {
-            unread!.sync(notifications: notifications.unreadCount);
-            unread.sync(
+          update: (_, notifications, list, unread) {
+            final conversationUnread = list.unreadCount;
+            unread!.sync(
+              notifications: notifications.unreadCount,
               groups: notifications.groupsUnreadCount,
-              privateChats: notifications.privateUnreadCount,
+              privateChats: notifications.privateUnreadCount > conversationUnread
+                  ? notifications.privateUnreadCount
+                  : conversationUnread,
               mentions: notifications.mentionsUnreadCount,
             );
             return unread;

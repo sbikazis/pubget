@@ -169,6 +169,21 @@ function assertNotBlocked(state, HttpsError) {
   }
 }
 
+function messagingPolicy(recipient) {
+  return recipient && WHO_CAN_MESSAGE.has(recipient.whoCanMessageMe)
+    ? recipient.whoCanMessageMe
+    : "related";
+}
+
+function assertMessagingPolicy(state, recipient, HttpsError) {
+  if (messagingPolicy(recipient) === "friends" && !state.friend) {
+    throw new HttpsError(
+      "permission-denied",
+      "This user only accepts messages from Friends.",
+    );
+  }
+}
+
 function assertCanStartChat(state, recipient, HttpsError) {
   assertNotBlocked(state, HttpsError);
   if (!state.friend && !state.fan) {
@@ -177,15 +192,12 @@ function assertCanStartChat(state, recipient, HttpsError) {
       "A Fan or Friend relationship is required to start a private chat.",
     );
   }
-  const policy = recipient && WHO_CAN_MESSAGE.has(recipient.whoCanMessageMe)
-    ? recipient.whoCanMessageMe
-    : "related";
-  if (policy === "friends" && !state.friend) {
-    throw new HttpsError(
-      "permission-denied",
-      "This user only accepts messages from Friends.",
-    );
-  }
+  assertMessagingPolicy(state, recipient, HttpsError);
+}
+
+function assertCanSend(state, recipient, HttpsError) {
+  assertNotBlocked(state, HttpsError);
+  assertMessagingPolicy(state, recipient, HttpsError);
 }
 
 async function requireParticipantChat(transaction, db, chatId, uid, HttpsError) {
@@ -281,7 +293,10 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         throw new HttpsError("failed-precondition", "Chat participants are invalid.");
       }
       const state = await relationshipState(transaction, db, uid, otherUserId);
-      assertNotBlocked(state, HttpsError);
+      const users = await requireUsers(
+        transaction, db, [uid, otherUserId], HttpsError,
+      );
+      assertCanSend(state, users[1].data() || {}, HttpsError);
 
       const existing = await transaction.get(ref);
       if (existing.exists) {
@@ -320,7 +335,6 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
           );
         }
       }
-      const users = await requireUsers(transaction, db, [uid], HttpsError);
       const sender = users[0].data() || {};
       const message = {
         senderId: uid,

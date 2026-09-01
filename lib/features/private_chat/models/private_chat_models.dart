@@ -127,6 +127,7 @@ final class PrivateChatSummary {
 DateTime? _date(dynamic value) {
   if (value is DateTime) return value;
   if (value is Timestamp) return value.toDate();
+  if (value is String) return DateTime.tryParse(value);
   try {
     return value?.toDate() as DateTime?;
   } catch (_) {

@@ -6,6 +6,7 @@ import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
 import 'package:pubget/features/private_chat/models/private_chat_models.dart';
+import 'package:pubget/features/private_chat/providers/private_chat_list_provider.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_provider.dart';
 import 'package:pubget/features/private_chat/repositories/private_chat_repository.dart';
 
@@ -140,6 +141,51 @@ void main() {
       orderedEquals(<String>['a', 'b', 'c']),
     );
   });
+
+  test('ChatMessage parses ISO createdAt from callable payloads', () {
+    final message = ChatMessage.fromMap(<String, dynamic>{
+      'senderId': 'alice',
+      'senderName': 'Alice',
+      'senderAvatar': '',
+      'senderRole': '',
+      'type': 'text',
+      'text': 'Hello',
+      'createdAt': '2026-09-01T08:00:00.000Z',
+      'recipientCount': 1,
+      'deliveredCount': 0,
+      'readCount': 0,
+      'reactions': <String, int>{},
+    }, id: 'm1');
+    expect(message.createdAt, DateTime.parse('2026-09-01T08:00:00.000Z'));
+  });
+
+  test('list unreadCount matches conversations unread for the current user', () async {
+    final repository = _FakePrivateChatRepository();
+    final list = PrivateChatListProvider(repository: repository);
+    addTearDown(list.dispose);
+    addTearDown(repository.chats.close);
+    await list.open('alice');
+    repository.chats.add(
+      Success(<PrivateChatSummary>[
+        PrivateChatSummary(
+          id: '5:alice3:bob',
+          participantIds: const <String>['alice', 'bob'],
+          userA: 'alice',
+          userB: 'bob',
+          lastMessageAt: DateTime(2026, 2, 2),
+          lastMessageText: 'Are you there?',
+          lastMessageSenderId: 'bob',
+          createdAt: DateTime(2026, 1, 1),
+          participants: const <String, PrivateChatParticipant>{
+            'alice': PrivateChatParticipant(displayName: 'Alice', avatarUrl: ''),
+            'bob': PrivateChatParticipant(displayName: 'Bob', avatarUrl: ''),
+          },
+        ),
+      ]),
+    );
+    await pumpEventQueue();
+    expect(list.unreadCount, 1);
+  });
 }
 
 ChatMessage _serverMessage(String id) => ChatMessage.fromMap(<String, dynamic>{
@@ -173,6 +219,7 @@ ChatMessage _serverMessageAt(String id, DateTime createdAt) =>
 
 final class _FakePrivateChatRepository implements PrivateChatRepository {
   final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
+  final chats = StreamController<Result<List<PrivateChatSummary>>>.broadcast();
   Completer<Result<ChatMessage>> sendCompleter =
       Completer<Result<ChatMessage>>();
 
@@ -182,7 +229,7 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
 
   @override
   Stream<Result<List<PrivateChatSummary>>> watchChats({int limit = 20}) =>
-      const Stream.empty();
+      chats.stream;
 
   @override
   Future<Result<List<PrivateChatSummary>>> getOlderChats({
