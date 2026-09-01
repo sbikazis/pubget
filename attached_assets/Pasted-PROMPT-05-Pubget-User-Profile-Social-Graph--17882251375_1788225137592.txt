@@ -1,0 +1,64 @@
+PROMPT 05 — Pubget User Profile & Social Graph
+
+هذا البرومت يبني الملف الشخصي الكامل والرسم البياني الاجتماعي (Friends/Fans/Respect) فوق Domain المصادقة المُنجز في PROMPT 04. لا تبني Groups أو Chat هنا — العلاقات الاجتماعية هنا مستقلة عن أي مجموعة.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- Respect: علاقة موجهة بين مستخدمين (من ← إلى)، بقيمة تتراوح 0–7 لكل علاقة. الوصول لـ5+ يُفعّل حالة "Fan".
+- Fan ≠ Friend: Fan علاقة أحادية الاتجاه ناتجة عن Respect؛ Friend علاقة متبادلة تتطلب طلب/قبول من الطرفين (نظام صداقة كامل منفصل تمامًا).
+- كل عملية على Respect يجب أن تكون Server-side authoritative (Firebase Functions أو Security Rules صارمة) — لا يُسمح للعميل بكتابة قيمة Respect مباشرة، فقط بإرسال "طلب منح Respect" يتحقق منه الخادم (يمنع: self-respect, duplicate abuse, automated farming — هذه بالضبط المشكلة التي رصدها تدقيق الكود القديم).
+- عدادات مجمّعة مثل totalRespect/fansCount لا تُكتب من العميل مباشرة أبدًا — تُشتق أو تُحدَّث من الخادم فقط.
+- طبقة `public_profiles` (مفهوم أُشيد به في التدقيق) يجب الاحتفاظ بها: وثيقة عامة محدودة الحقول منفصلة عن وثيقة المستخدم الكاملة، تُستخدم عند عرض هوية مستخدم آخر (لا نكشف بيانات حساسة).
+- فتح محادثة خاصة لاحقًا (PROMPT 07) سيعتمد على وجود علاقة Fan أو Friend — لا تبني منطق المحادثة هنا، فقط تأكد أن Social Graph يخزن ما يكفي لاحقًا للتحقق من ذلك.
+
+## المطلوب تنفيذه
+
+### 1. Firestore Schema (جديد، Domain-oriented)
+
+- `users/{uid}` يُوسَّع (أو يُبنى عليه) بحقول الملف الشخصي: bio, favoriteAnimeIds (placeholder array الآن، Anime Domain الحقيقي في PROMPT 14), profileVisibility, activityVisibility.
+- `public_profiles/{uid}`: projection محدود (username, avatarUrl, bio, totalRespect, fansCount) — يُحدَّث عبر Cloud Function عند تغيّر users/{uid} (بنفس مبدأ syncPublicProfile من الكود القديم، لكن معاد بناؤه بشكل نظيف يوحّد مصدر حقيقة Premium بدل الازدواجية المكتشفة في التدقيق — رغم أن Premium نفسه ليس جزءًا من هذا البرومت، صمّم projection بحيث لا يتكرر هذا الخطأ لاحقًا).
+- `respects/{fromUserId}_{toUserId}`: fromUserId, toUserId, value (0-7), createdAt, updatedAt. معرّف حتمي (Deterministic ID) لمنع التكرار.
+- `friendships/{uidA}_{uidB}` (ترتيب حتمي لتفادي تكرار الاتجاه): status (pending/accepted/blocked), requestedBy, createdAt, updatedAt.
+
+### 2. Firebase Functions (جديدة، Server-authoritative)
+
+- `giveRespect` (Callable): يتحقق من: المستخدم ليس نفسه (anti self-respect)، لا يوجد تكرار مسيء (rate limiting أساسي)، يحدّث `respects/{id}` ضمن Transaction، ويعيد حساب `totalRespect` على وثيقة `users/{toUserId}` ذريًا.
+- `syncPublicProfile` (Trigger عند كتابة users/{uid}): يُحدّث public_profiles بنفس مبدأ الكود القديم لكن مع معالجة صريحة لحذف المستخدم (كما كان موجودًا وناجحًا في القديم — احتفظ بهذا الجزء تحديدًا كما هو مفاهيميًا).
+- `sendFriendRequest`, `respondToFriendRequest` (Callable): يتحققان من الحالة الحالية (لا طلب مكرر، لا قبول طلب غير موجود)، ويكتبان `friendships/{id}` ذريًا.
+
+### 3. Repository Layer (Flutter)
+
+- `SocialRepository`: giveRespect, sendFriendRequest, respondToFriendRequest (accept/reject), removeFriend, blockUser, unblockUser — كلها تستدعي Functions أعلاه عبر Result<T>، ولا تكتب مباشرة لحقول الرصيد/العدادات.
+- `ProfileRepository`: getPublicProfile, getOwnProfile, updateProfile (bio, avatar, visibility settings) — الكتابة المباشرة مسموحة هنا لأنها بيانات المستخدم لنفسه وليست حساسة كالاقتصاد الاجتماعي.
+
+### 4. Providers
+
+- `ProfileProvider`: يدير عرض/تعديل الملف الشخصي (owner view مقابل viewer view — واجهتان مختلفتان لنفس البيانات حسب من يشاهد).
+- `SocialProvider`: يدير حالة العلاقات (Respect المُعطى/المُستلم، طلبات الصداقة الواردة/الصادرة، قائمة الأصدقاء/المعجبين).
+
+### 5. الشاشات
+
+استخدم مكوّنات core/widgets/ حصرًا:
+- **Profile Screen** (owner + viewer variants): Avatar, Username, Bio, Respect received, Fans count, Friends count, زر "منح Respect" (viewer فقط، مع Slider أو أزرار 0-7 ومنع self-respect من الواجهة أيضًا كطبقة أولى قبل تحقق الخادم)، زر "إضافة صديق" (viewer فقط، يتغير حسب حالة العلاقة: إرسال/معلّق/صديق بالفعل).
+- **Edit Profile Screen**: تعديل bio، الصورة (image_picker المُضاف مسبقًا)، إعدادات الخصوصية الأساسية (Profile visibility: Public/Private كحد أدنى الآن — باقي إعدادات الخصوصية التفصيلية في PROMPT 17).
+- **Friend Requests Screen**: واردة (قبول/رفض)، صادرة (إلغاء).
+
+### 6. معالجة الحالات
+
+كل شاشة: Initial/Loading/Error/Offline/Empty (مثال: "لا يوجد أصدقاء بعد" مع إجراء واضح) — بلا استثناء.
+
+## قيود صارمة
+
+- لا تبني Groups أو Chat أو Anime Hub الحقيقي هنا.
+- لا تلمس lib_legacy/.
+- لا تكتب أي حقل رصيد/عداد اجتماعي مباشرة من الـ Flutter Client — كل ذلك عبر Functions فقط.
+- التزم بإصدارات FlutterFire المثبتة في PROMPT 04 (firebase_core 4.9.0 وما يتوافق معها) — لا ترقية بدون سبب ضروري موثّق.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات (Firestore schema/Functions/Repositories/Providers/Screens/Routing).
+2. تأكيد أن لا كتابة مباشرة من العميل لأي عداد اجتماعي (وكيف تحقق من ذلك تحديدًا في الكود).
+3. أي قرار غير محدد صراحة هنا.
+4. نتائج flutter analyze/test/build + نتائج اختبار Functions إن وُجدت.
+5. تأكيد الرفع على GitHub (SHA + Tree).

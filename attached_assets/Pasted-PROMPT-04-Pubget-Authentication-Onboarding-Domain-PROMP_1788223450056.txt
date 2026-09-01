@@ -1,0 +1,68 @@
+PROMPT 04 — Pubget Authentication & Onboarding
+
+هذا أول برومت يبني Domain حقيقي فوق الأساس (PROMPT 02) ونظام التصميم (PROMPT 03). يجب استخدام كل مكوّنات pubget_* الموجودة في core/widgets/ لكل عنصر واجهة — لا تعيد اختراع أزرار أو حقول جديدة.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- تسجيل الدخول: بريد إلكتروني + كلمة مرور، وGoogle Sign-In. لا خطوات إضافية غير ضرورية.
+- التسجيل: بريد + كلمة مرور + تأكيد كلمة المرور + Google + موافقة على الشروط.
+- Onboarding يبني هوية أولية (اسم مستخدم، صورة، اهتمامات أنمي) لكن لا يُجبر المستخدم على تعبئة كل شيء — يجب أن يدخل التطبيق بسرعة.
+- Splash ليست شاشة فارغة: تهيئة Firebase (موجودة من PROMPT 02)، فحص حالة المصادقة، فحص الشبكة (خدمة موجودة من PROMPT 02)، تحديد أول Route.
+- كل عملية حساسة (إنشاء حساب، تحديث بيانات المستخدم) تمر عبر Repository → Firebase، وليس مباشرة من الواجهة.
+- عقد بيانات المستخدم الجديد (User Model) يُبنى من الصفر وفق Schema جديد حول Domain، وليس نسخة من UserModel القديم في lib_legacy/ — راجعه كمرجع فقط لفهم الحقول المفاهيمية (email, username, avatarUrl, bio, favoriteAnimes, coinsBalance, isProfileCompleted...) دون نسخ أي منطق فعلي أو تكرار المشاكل المكتشفة في التدقيق (مثل ازدواجية isPremium/publicPremiumBadge).
+
+## المطلوب تنفيذه
+
+### 1. User Model (جديد)
+
+في models/ (أو features/authentication/models/ إن كنت تفضل تنظيمًا أقرب لـDomain — وثّق اختيارك):
+- حقول أساسية: id, email, username, displayName, avatarUrl, bio, createdAt, isProfileCompleted.
+- لا تُضِف حقول Economy/Premium/Coins هنا — هذا Domain منفصل قادم لاحقًا في PROMPT 16. اكتفِ بحقل placeholder إن كان ضروريًا لبنية الوثيقة لاحقًا (وثّق القرار).
+- Model يتبع قواعد PROMPT 02: Immutable قدر الإمكان، fromMap/toMap، بلا منطق أعمال داخله.
+
+### 2. Repository Layer
+
+- `AuthRepository`: signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, و Stream لحالة المصادقة الحالية.
+- `UserRepository`: createUserProfile, getUserProfile, updateUserProfile.
+- كل دالة تُرجع `Result<T>` (من PROMPT 02) وليس استثناءات مباشرة للواجهة.
+- استخدم Firebase Auth SDK القياسي — لا تخترع نظام مصادقة مخصص.
+
+### 3. Providers
+
+- `AuthProvider`: يدير حالة المصادقة الحالية (LoadingState من PROMPT 02)، ويعرض Stream حالة تسجيل الدخول للتطبيق كله.
+- `OnboardingProvider`: يدير حالة إكمال الملف الشخصي الأولي (منفصل عن AuthProvider، لأن حالة "مسجل دخول" و"أكمل ملفه الشخصي" حالتان مختلفتان منطقيًا).
+
+### 4. الشاشات
+
+استخدم مكوّنات core/widgets/ (PubgetButton, PubgetInput, PubgetCard...) وtokens (app_colors, app_spacing, app_typography) من PROMPT 03 لكل شيء — بلا Hardcoding.
+
+- **Splash**: تهيئة + فحص حالة + توجيه (لا واجهة معقدة، لكن ليست فارغة بصريًا — استخدم هوية Pubget).
+- **Login**: بريد/كلمة مرور، Google، "نسيت كلمة المرور"، رابط لإنشاء حساب. حالات: Loading, Error (رسالة مفهومة غير تقنية عبر PubgetErrorState/Snackbar), Validation.
+- **Register**: بريد/كلمة مرور/تأكيد، Google، الشروط. Validation قبل الإرسال.
+- **Terms**: صفحة ثابتة بسيطة (نص placeholder مقبول الآن، سيُستبدل لاحقًا بمحتوى قانوني حقيقي — وثّق ذلك).
+- **Onboarding**: خطوة/خطوات لإدخال اسم المستخدم، صورة (رفع عبر Storage service — يمكن استخدام Firebase Storage SDK القياسي مباشرة عبر Repository)، واهتمامات أنمي أولية (Placeholder بسيط الآن إن لم يكن Anime Domain جاهزًا بعد — لا تبني Anime Hub الكامل هنا، هذا PROMPT 14).
+
+### 5. Routing
+
+اربط الشاشات في app_router.dart (من PROMPT 02) بمسارات typed: `/splash`, `/login`, `/register`, `/onboarding`, و Route افتراضي مؤقت بعد اكتمال Onboarding (Placeholder Home بسيط — الشاشة الحقيقية في PROMPT 09).
+
+### 6. معالجة الأخطاء والحالات
+
+- كل شاشة تفرّق بين: Initial, Loading, Error, Offline (باستخدام NetworkService من PROMPT 02) — لا شاشة بيضاء أبدًا أثناء الانتظار.
+- رسائل الخطأ مفهومة للمستخدم (مثال: "البريد الإلكتروني مستخدم بالفعل" وليس رمز خطأ Firebase الخام).
+
+## قيود صارمة
+
+- لا تبني أي Domain آخر (Groups, Chat...) هنا.
+- لا تلمس lib_legacy/.
+- لا تُضِف حزمة خارجية جديدة إلا إذا كانت ضرورية فعلاً (مثال: image_picker لاختيار صورة الملف الشخصي قد يكون ضروريًا — إن أضفتها اذكرها صراحة كقرار).
+- استخدم فقط مكوّنات نظام التصميم الموجودة؛ إن احتجت مكوّنًا غير موجود، أضفه لكن في core/widgets/ باتباع نفس الأنماط، ووثّق أنك أضفته.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات المُنشأة (مقسّمة: Models/Repositories/Providers/Screens/Routing).
+2. أي حزمة خارجية أضفتها ولماذا.
+3. أي قرار تصميمي لم يكن محددًا صراحة هنا.
+4. نتائج flutter analyze/test/build النهائية.
+5. تأكيد الرفع على GitHub مع SHA وTree.

@@ -109,6 +109,32 @@ test("requires group membership and uploader path ownership for group media", as
   ));
 });
 
+test("accepts immutable originals for the server media pipeline", async () => {
+  const member = env.authenticatedContext("member");
+  const original = "groups/group-owner/media/media1_original.jpg";
+  await assertSucceeds(upload(
+    member,
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("member"),
+  ));
+  await assertFails(upload(
+    member,
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("member"),
+  ));
+  await assertFails(upload(
+    member,
+    "groups/group-owner/media/media1_thumb.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("member"),
+  ));
+});
+
 test("requires membership plus the path UID for character images", async () => {
   await assertSucceeds(upload(env.authenticatedContext("member"), "groups/group-owner/characters/member.jpg", "image/jpeg"));
   await assertFails(upload(env.authenticatedContext("owner"), "groups/group-owner/characters/member.jpg", "image/jpeg"));

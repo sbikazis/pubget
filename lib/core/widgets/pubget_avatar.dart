@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
+import 'app_image_loader.dart';
 
 enum PubgetAvatarSize {
   small(32),
@@ -51,13 +52,13 @@ class PubgetAvatar extends StatelessWidget {
                     ),
                   ))
           : ClipOval(
-              child: Image.network(
-                imageUrl!,
+              child: AppImageLoader(
+                imageUrl: imageUrl!,
                 width: size.value,
                 height: size.value,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Icon(Icons.person_outline, size: size.value * 0.5),
+                memCacheWidth: size.value.round(),
+                memCacheHeight: size.value.round(),
+                errorWidget: Icon(Icons.person_outline, size: size.value * 0.5),
               ),
             ),
     );

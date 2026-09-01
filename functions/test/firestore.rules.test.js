@@ -105,13 +105,18 @@ test("private users and server-owned public profiles are separated", async () =>
   }));
   await assertFails(db("alice").doc("public_profiles/alice").delete());
 });
-test("only a group member can post and sender identity is enforced", async () => {
+test("group messages are readable by members but writable only by callables", async () => {
   const canonical = {
     senderId: "bob", senderName: "Bob", senderAvatar: "", senderIsPremium: false,
     senderRole: "member", type: "text", text: "hi", createdAt: serverTimestamp(),
     isRead: false, isDelivered: false, isEdited: false,
   };
-  await assertSucceeds(db("bob").doc("groups/g1/messages/a").set(canonical));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1/messages/a").set(canonical);
+  });
+  await assertSucceeds(db("bob").doc("groups/g1/messages/a").get());
+  await assertFails(db("mallory").doc("groups/g1/messages/a").get());
+  await assertFails(db("bob").doc("groups/g1/messages/new").set(canonical));
   await assertFails(db("mallory").doc("groups/g1/messages/b").set(canonical));
   await assertFails(db("bob").doc("groups/g1/messages/c").set({ ...canonical, senderId: "alice" }));
   await assertFails(db("bob").doc("groups/g1/messages/name").set({ ...canonical, senderName: "Alice" }));
@@ -123,7 +128,7 @@ test("only a group member can post and sender identity is enforced", async () =>
   await assertFails(db("bob").doc("groups/g1/messages/reply").set({
     ...canonical, replyToId: "missing", replyText: "forged attribution",
   }));
-  await assertSucceeds(db("bob").doc("groups/g1/messages/media").set({
+  await assertFails(db("bob").doc("groups/g1/messages/media").set({
     ...canonical, type: "media", text: null, mediaUrl: "https://example.test/a.png",
     mediaType: "image",
   }));
@@ -636,7 +641,7 @@ test("a server deletion marker closes all client group access during cleanup", a
   await assertFails(db("bob").doc("groups/g1/messages/bob-message").delete());
 });
 
-test("group members can update only safe chat previews and recipient receipts", async () => {
+test("group chat previews and aggregate receipts are server-authoritative", async () => {
   await assertSucceeds(db("bob").doc("groups/g1").update({
     lastMessageAt: new Date(), lastMessageText: "A safe preview",
   }));
@@ -651,8 +656,9 @@ test("group members can update only safe chat previews and recipient receipts", 
       senderId: "alice", type: "text", text: "hello", isDelivered: false, isRead: false,
     });
   });
-  await assertSucceeds(db("bob").doc("groups/g1/messages/receipt").update({
-    isDelivered: true, isRead: true,
+  await assertFails(db("bob").doc("groups/g1/messages/receipt").update({
+    deliveredBy: { bob: true }, readBy: { bob: true },
+    deliveredCount: 1, readCount: 1,
   }));
   await assertFails(db("bob").doc("groups/g1/messages/receipt").update({
     isRead: false,

@@ -34,6 +34,7 @@ final class Group {
     required this.chatBackgroundUrl,
     required this.rules,
     required this.activityScore,
+    this.imageUrl,
   });
 
   final String id;
@@ -50,6 +51,7 @@ final class Group {
   final String? chatBackgroundUrl;
   final String rules;
   final num activityScore;
+  final String? imageUrl;
 
   bool get isFull => membersCount >= maxMembers;
 
@@ -76,6 +78,7 @@ final class Group {
       chatBackgroundUrl: map['chatBackgroundUrl'] as String?,
       rules: map['rules'] as String? ?? '',
       activityScore: (map['activityScore'] as num?) ?? 0,
+      imageUrl: map['imageUrl'] as String?,
     );
   }
 }

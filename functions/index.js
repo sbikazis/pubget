@@ -9,6 +9,7 @@ const {
   onDocumentUpdated,
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
+const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -25,6 +26,8 @@ const {
 } = require("./src/publicProfile");
 const { createSocialGraph } = require("./src/socialGraph");
 const { createGroupsDomain } = require("./src/groupsDomain");
+const { createGroupChat } = require("./src/groupChat");
+const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 
 initializeApp();
 
@@ -78,6 +81,11 @@ const groupsDomain = createGroupsDomain({
   HttpsError,
   randomUUID,
 });
+const groupChat = createGroupChat({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
 exports.createGroupInvite = onCall(
@@ -117,6 +125,46 @@ exports.reserveRoleplayCharacter = onCall(
 exports.releaseRoleplayCharacter = onCall(
   { region: "us-central1" },
   groupsDomain.releaseRoleplayCharacter,
+);
+exports.sendGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.sendMessage,
+);
+exports.editGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.editMessage,
+);
+exports.deleteGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.deleteMessage,
+);
+exports.pinGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.pinMessage,
+);
+exports.addGroupMessageReaction = onCall(
+  { region: "us-central1" },
+  groupChat.addReaction,
+);
+exports.markGroupMessagesRead = onCall(
+  { region: "us-central1" },
+  groupChat.markMessagesRead,
+);
+exports.markGroupMessagesDelivered = onCall(
+  { region: "us-central1" },
+  groupChat.markMessagesDelivered,
+);
+exports.updateGroupChatBackground = onCall(
+  { region: "us-central1" },
+  groupChat.updateBackground,
+);
+exports.processGroupChatMedia = onObjectFinalized(
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  createGroupMediaPipeline({
+    db: getFirestore(),
+    bucket: getStorage().bucket(),
+    randomUUID,
+  }),
 );
 exports.recalculateInviteRanks = onDocumentUpdated(
   "groups/{groupId}/invites/{inviteId}",

@@ -1,0 +1,82 @@
+PROMPT 06 — Pubget Groups Domain
+
+هذا البرومت يبني نظام المجموعات الكامل فوق Auth (PROMPT 04) وSocial Graph (PROMPT 05). لا تبني Chat الفعلي هنا (PROMPT 07 القادم) — فقط بنية المجموعة، العضوية، الرتب، الصلاحيات، والانضمام/المغادرة. يمكن ترك مكان فارغ (Placeholder) لزر "الدخول للدردشة".
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- ثلاثة أنواع مجموعات: Public Group, Anime Roleplay, Open Roleplay — لا حذف، والنظام يجب أن يكون مرنًا لإضافة أنواع مستقبلية دون إعادة بناء الـDomain.
+- الرتب: Founder → Shogun → Commander → Captain → Sensei → Senpai → Member (لا يلزم استخدام كل رتبة في كل مجموعة). الرتبة **مرتبطة بالمجموعة** (نفس المستخدم قد يكون Shogun في مجموعة وMember في أخرى).
+- الصلاحيات منفصلة تمامًا عن اسم الرتبة (Permission System منفصل: Manage members, Manage messages, Delete messages, Pin, Manage events, Manage games, Manage settings, Invite, Manage requests, Manage roles, Manage background...) — الرتبة تحدد المكانة والشكل، الصلاحيات تُخصَّص لكل رتبة.
+- **مشكلة الأداء الحرجة المكتشفة في تدقيق الكود القديم يجب ألا تتكرر إطلاقًا هنا**: مغادرة المجموعة يجب أن تكون فورية من منظور المستخدم (Optimistic UI) — لا ينتظر المستخدم أي عملية ثانوية (كإعادة حساب الرتب) قبل أن تُغلق الشاشة/تُحرَّر الواجهة. أي معالجة لاحقة (كإعادة حساب رتب الدعوات) تحدث في الخلفية عبر Firebase Function، ليس أمام المستخدم.
+- **نظام "رتب الدعوات" التلقائي**: نُبقيه كمفهوم (ترقية تلقائية بحسب عدد من دعاهم المستخدم بنجاح إلى المجموعة)، لكن يُعاد بناؤه بكفاءة: لا يُعاد تحميل/حساب رتب كل الأعضاء عند كل انضمام — التحديث يكون incremental (Delta) وSever-side (Cloud Function)، ولا يحظر أي إجراء للمستخدم في الواجهة.
+- المؤسس (Founder) لا يمكنه المغادرة كعضو عادي — يجب عليه إما نقل الملكية (Transfer Ownership، بتأكيد مزدوج) أو تفكيك المجموعة (Disband، بتأكيد مزدوج + Server-side action كما في الكود القديم الذي كان مصممًا جيدًا لهذا الجزء تحديدًا).
+- كل عملية حساسة (تغيير رتبة، طرد، حظر، تفكيك، نقل ملكية) تمر عبر Firebase Functions — ليست كتابة مباشرة من العميل.
+- المجموعات الجديدة الصغيرة يجب ألا "تُدفن" — لا نبني نظام Discovery/Ranking الكامل هنا (ذلك في PROMPT 09)، لكن يجب أن يخزّن Schema الحقول اللازمة لاحقًا لحساب ذلك (نشاط، اكتمال الملف، عمر المجموعة...).
+- حجز شخصيات Roleplay: منع تكرار الشخصية بشكل ذري (Transaction)، مرتبط بعضوية المستخدم الفعلية (لا حجز يتيم).
+
+## المطلوب تنفيذه
+
+### 1. Firestore Schema
+
+- `groups/{groupId}`: name, description, imageUrl, type (public/animeRoleplay/openRoleplay), animeId (nullable), founderId, membersCount, maxMembers, joinPolicy (open/approval/inviteOnly), isSearchable, createdAt, chatBackgroundUrl (placeholder now), rules (text), activityScore (placeholder numeric field for future Discovery).
+- `groups/{groupId}/members/{uid}`: role, customRoleId (nullable, للرتب المخصصة إن بنيت الآن أو placeholder للمستقبل — قرر ووثّق)، roleplayCharacter (nullable object: name, avatarUrl), joinedAt, inviteCount (لنظام رتب الدعوات), lastActiveAt.
+- `groups/{groupId}/roles/{roleId}` (تعريف الصلاحيات لكل رتبة داخل المجموعة تحديدًا، مبني على الرتب الافتراضية عند الإنشاء، قابل للتخصيص).
+- `groups/{groupId}/requests/{uid}`: status (pending/rejected), requestedAt.
+- `groups/{groupId}/characters/{characterKey}` (لحجز شخصيات Roleplay): reservedByUid, reservedAt.
+- `groups/{groupId}/invites/{inviteId}`: invitedByUid, createdAt (أساس رتب الدعوات، يُحتسب من هنا).
+
+### 2. Firebase Functions (Server-authoritative)
+
+- `createGroup` (Callable): ينشئ المجموعة + عضوية Founder + الرتب الافتراضية ذريًا.
+- `joinGroup` / `requestToJoin` (Callable): يتحقق من joinPolicy، ينشئ العضوية أو الطلب.
+- `leaveGroup` (Callable): **يُنفَّذ في الخلفية بعد استجابة فورية للعميل (Optimistic)** — يحذف العضوية، يعالج حالة Founder (يرفض إن كان Founder)، ويُشغّل إعادة حساب رتب الدعوات كـ Delta لاحقًا وليس أمام المستخدم.
+- `acceptJoinRequest` / `rejectJoinRequest` (Callable).
+- `changeRole` (Callable): يتحقق من صلاحية المُنفِّذ، يمنع تعديل رتبة Founder من غيره.
+- `kickMember` / `banMember` (Callable).
+- `transferOwnership` (Callable): يتطلب تأكيدًا صريحًا، ينقل رتبة Founder ذريًا.
+- `disbandGroup` (Callable): يتحقق من Founder فقط، يُنفّذ حذفًا تدريجيًا (كما في النمط الجيد المكتشف بالكود القديم: deletionPending → تنظيف → حذف)، مع إشعار الأعضاء.
+- `reserveRoleplayCharacter` (Callable): Transaction تمنع الحجز المزدوج.
+- `recalculateInviteRanks` (Trigger أو مجدولة، Delta-based وليست كاملة لكل المجموعة).
+
+### 3. Repository Layer (Flutter)
+
+- `GroupRepository`: createGroup, getGroup, joinGroup, requestToJoin, leaveGroup (مع دعم Optimistic UI في الـProvider), searchGroups (بسيط الآن، بدون Ranking متقدم).
+- `GroupMembersRepository`: getMembers (Paginated!), changeRole, kickMember, banMember, transferOwnership.
+- `RoleplayRepository`: reserveCharacter, releaseCharacter, getAvailableCharacters (استخدم placeholder/mock data للشخصيات الآن إن لم يكن Anime API/Domain جاهزًا — Anime Hub الحقيقي في PROMPT 14، وثّق هذا القرار).
+
+### 4. Providers
+
+- `GroupProvider`: إنشاء/عرض/بحث المجموعات، حالة العضوية الحالية للمستخدم.
+- `GroupMembersProvider`: قائمة الأعضاء (Paginated)، إدارة الرتب — **مع Optimistic UI صريح لعملية leaveGroup تحديدًا** (تحديث الحالة محليًا فورًا، ثم تأكيد الخادم في الخلفية، مع معالجة فشل نادر بالتراجع).
+
+### 5. الشاشات
+
+استخدم مكوّنات core/widgets/ حصرًا:
+- **Create Group Wizard**: 5 مراحل كما في الوثيقة (Basic Identity → Type → Rules → Customization placeholder → Permissions defaults) — يمكن دمج بعض المراحل بصريًا إن كان منطقيًا، لكن وثّق القرار.
+- **Group Details Screen**: تختلف حسب منظور المستخدم (غير عضو / Founder / عضو عادي) كما في الوثيقة تمامًا — العضو العادي يُفترض أن ينتقل مباشرة لعرض placeholder للدردشة (الشاشة الحقيقية PROMPT 07)، غير العضو وFounder يريان Group Details.
+- **Group Members Screen**: قائمة ديناميكية Paginated، تغيير الرتب، طرد/حظر (بتأكيد).
+- **Join Requests Screen**: قبول/رفض.
+- **Roleplay Character Selection**: اختيار سهل + اقتراحات (mock data حاليًا).
+
+### 6. معالجة الحالات
+
+كل شاشة: Initial/Loading/Error/Offline/Empty، وتحديدًا **leaveGroup يجب أن يُظهَر كـPending/Optimistic ثم Confirmed، ونادرًا Reverted with error** — اختبر هذا السيناريو تحديدًا.
+
+## قيود صارمة
+
+- لا تبني Chat الفعلي (PROMPT 07).
+- لا تبني Anime Hub الحقيقي (PROMPT 14) — mock data فقط للشخصيات.
+- لا تبني Discovery/Ranking الكامل (PROMPT 09) — فقط الحقول اللازمة له في Schema.
+- لا تلمس lib_legacy/.
+- التزم بإصدارات FlutterFire المثبتة سابقًا.
+- اطلب مراجعة معمارية/أمنية مستقلة لنفسك قبل الإكمال (كما فعلت في البرومتات السابقة بنجاح) — خصوصًا حول: Race conditions في الانضمام/المغادرة المتزامنة، وإمكانية استغلال نظام رتب الدعوات (دعوات وهمية/حسابات مزيفة كما حذّر التدقيق الأصلي).
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات (Schema/Functions/Repositories/Providers/Screens).
+2. كيف تحديدًا تحقق Optimistic UI لمغادرة المجموعة (مع إثبات أن المستخدم لا ينتظر أي شيء أمامه).
+3. كيف يعمل نظام رتب الدعوات الجديد بالضبط ولماذا هو Delta-based وليس كامل كالسابق.
+4. أي قرار غير محدد صراحة هنا (خصوصًا: mock data للشخصيات، دمج مراحل الـWizard).
+5. نتائج flutter analyze/test/build + Functions + Rules.
+6. تأكيد الرفع على GitHub (SHA + Tree).

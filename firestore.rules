@@ -479,7 +479,7 @@ service cloud.firestore {
         request.resource.data.gameStatus == null;
       allow update: if isFounder(groupId) && changedOnly([
           'name','description','slogan','imageUrl','type','animeName','animeId',
-          'franchiseIds','chatBackgroundUrl'
+          'franchiseIds'
         ]) ||
         membershipIncrement(groupId) ||
         membershipDecrement(groupId) ||
@@ -589,24 +589,14 @@ service cloud.firestore {
       }
       match /messages/{messageId} {
         allow read: if groupMember(groupId);
-        allow create: if groupMember(groupId) && validGroupMessageCreate(groupId);
-        allow update: if groupExists(groupId) && (
-          (resource.data.senderId == request.auth.uid &&
-           resource.data.type == 'text' &&
-           changedOnly(['text','isEdited']) &&
-           request.resource.data.text is string &&
-           request.resource.data.text.size() > 0 &&
-           request.resource.data.text.size() <= 1000 &&
-           request.resource.data.isEdited == true) ||
-          (groupMember(groupId) &&
-           resource.data.senderId != request.auth.uid &&
-           changedOnly(['isDelivered','isRead']) &&
-           (!request.resource.data.keys().hasAny(['isDelivered']) ||
-            request.resource.data.isDelivered == true) &&
-           (!request.resource.data.keys().hasAny(['isRead']) ||
-            request.resource.data.isRead == true)));
-        allow delete: if groupExists(groupId) &&
-          (groupModerator(groupId) || resource.data.senderId == request.auth.uid);
+        // New chat writes are server-authoritative so sender identity,
+        // server timestamps, permissions and aggregate receipt counts cannot
+        // be forged by clients.
+        allow create, update, delete: if false;
+      }
+      match /media/{mediaId} {
+        allow read: if groupMember(groupId);
+        allow create, update, delete: if false;
       }
       match /games/{gameId} {
         allow read: if groupMember(groupId);

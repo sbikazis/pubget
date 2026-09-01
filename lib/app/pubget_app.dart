@@ -24,18 +24,23 @@ import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
 import '../features/groups/providers/group_members_provider.dart';
+import '../features/groups/providers/chat_provider.dart';
 import '../features/groups/providers/group_provider.dart';
 import '../features/groups/providers/roleplay_provider.dart';
 import '../features/groups/repositories/firebase_group_repositories.dart';
+import '../features/groups/repositories/chat_repository.dart';
+import '../features/groups/repositories/firebase_chat_repository.dart';
 import '../features/groups/repositories/group_members_repository.dart';
 import '../features/groups/repositories/group_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
+import '../features/groups/repositories/unavailable_chat_repository.dart';
 import '../features/groups/screens/create_group_wizard_page.dart';
-import '../features/groups/screens/group_chat_placeholder_page.dart';
+import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
 import '../features/groups/screens/group_members_page.dart';
+import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
@@ -78,6 +83,7 @@ class PubgetApp extends StatelessWidget {
       '/group' ||
       '/group-invite' ||
       '/group-chat' ||
+      '/group-media' ||
       '/group-members' ||
       '/group-requests' ||
       '/group-roleplay' => ParameterizedRoute(
@@ -105,6 +111,7 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<GroupRepository>.value(value: repositories.$5),
         provider.Provider<GroupMembersRepository>.value(value: repositories.$6),
         provider.Provider<RoleplayRepository>.value(value: repositories.$7),
+        provider.Provider<ChatRepository>.value(value: repositories.$8),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -133,6 +140,10 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<RoleplayProvider>(
           create: (context) =>
               RoleplayProvider(repository: context.read<RoleplayRepository>()),
+        ),
+        provider.ChangeNotifierProvider<ChatProvider>(
+          create: (context) =>
+              ChatProvider(repository: context.read<ChatRepository>()),
         ),
       ],
       child: Builder(
@@ -170,9 +181,10 @@ class PubgetApp extends StatelessWidget {
                   groupId: parameters['groupId'] ?? '',
                   inviteId: parameters['inviteId'] ?? '',
                 ),
-                '/group-chat': (parameters) => GroupChatPlaceholderPage(
-                  groupId: parameters['groupId'] ?? '',
-                ),
+                '/group-chat': (parameters) =>
+                    GroupChatPage(groupId: parameters['groupId'] ?? ''),
+                '/group-media': (parameters) =>
+                    GroupMediaPage(groupId: parameters['groupId'] ?? ''),
                 '/group-members': (parameters) =>
                     GroupMembersPage(groupId: parameters['groupId'] ?? ''),
                 '/group-requests': (parameters) =>
@@ -197,6 +209,7 @@ class PubgetApp extends StatelessWidget {
                     path == '/group' ||
                     path == '/group-invite' ||
                     path == '/group-chat' ||
+                    path == '/group-media' ||
                     path == '/group-members' ||
                     path == '/group-requests' ||
                     path == '/group-roleplay';
@@ -231,6 +244,7 @@ class PubgetApp extends StatelessWidget {
     GroupRepository,
     GroupMembersRepository,
     RoleplayRepository,
+    ChatRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -244,6 +258,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableGroupRepository(message),
         UnavailableGroupMembersRepository(message),
         UnavailableRoleplayRepository(message),
+        UnavailableChatRepository(message),
       );
     }
     return (
@@ -274,6 +289,11 @@ class PubgetApp extends StatelessWidget {
       FirebaseRoleplayRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseChatRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+        storage: FirebaseStorage.instance,
       ),
     );
   }

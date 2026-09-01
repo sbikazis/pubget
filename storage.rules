@@ -168,12 +168,16 @@ service firebase.storage {
     // Reserved/current structured group-media and voice names.
     match /groups/{groupId}/media/{fileName} {
       allow read: if signedIn() && isGroupMember(groupId);
-      allow create: if signedIn() && isGroupMember(groupId) &&
-          isNewUploader() && chatMediaUpload();
-      allow update: if signedIn() && isGroupMember(groupId) &&
-          isExistingUploader() && isNewUploader() && chatMediaUpload();
+      allow create: if resource == null &&
+          signedIn() && isGroupMember(groupId) &&
+          isNewUploader() && chatMediaUpload() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
+      // Original uploads are immutable. Thumb/medium variants are written
+      // only by the Admin SDK media pipeline.
+      allow update: if false;
       allow delete: if signedIn() && isGroupMember(groupId) &&
-          isExistingUploader();
+          isExistingUploader() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
     }
 
     match /groups/{groupId}/voices/{fileName} {
