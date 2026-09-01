@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_route.dart';
@@ -15,8 +16,7 @@ final class AppRouteInformationParser extends RouteInformationParser<AppRoute> {
     if (uri.path.isEmpty || uri.path == '/') {
       return const FoundationRoute();
     }
-
-    return ParameterizedRoute(path: uri.path, parameters: uri.queryParameters);
+    return _routeFromUri(uri);
   }
 
   @override
@@ -56,6 +56,15 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @override
   final GlobalKey<NavigatorState> navigatorKey;
   AppRoute _route;
+  AppRoute? _pendingRoute;
+
+  static const _authFlowPaths = <String>{
+    '/login',
+    '/register',
+    '/splash',
+    '/onboarding',
+    '/terms',
+  };
 
   @override
   AppRoute get currentConfiguration => _route;
@@ -70,7 +79,20 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     if (route case ParameterizedRoute(:final path)) {
       final redirect = routeGuard?.call(path);
       if (redirect != null && redirect != path) {
+        if (!_authFlowPaths.contains(path)) {
+          _pendingRoute = route;
+        }
         return ParameterizedRoute(path: redirect);
+      }
+    }
+    if (_pendingRoute != null) {
+      final pending = _pendingRoute!;
+      if (pending case ParameterizedRoute(:final path)) {
+        final redirect = routeGuard?.call(path);
+        if (redirect == null) {
+          _pendingRoute = null;
+          return pending;
+        }
       }
     }
     return route;
@@ -78,13 +100,18 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 
   void _refreshGuard() {
     final guarded = _guard(_route);
-    if (guarded is ParameterizedRoute &&
-        _route is ParameterizedRoute &&
-        guarded.path == (_route as ParameterizedRoute).path) {
-      return;
-    }
+    if (_sameRoute(guarded, _route)) return;
     _route = guarded;
     notifyListeners();
+  }
+
+  bool _sameRoute(AppRoute left, AppRoute right) {
+    if (left is FoundationRoute && right is FoundationRoute) return true;
+    if (left is ParameterizedRoute && right is ParameterizedRoute) {
+      return left.path == right.path &&
+          mapEquals(left.parameters, right.parameters);
+    }
+    return false;
   }
 
   @override
@@ -126,6 +153,8 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 final class AppRouter {
   const AppRouter._();
 
+  static AppRoute routeFromUri(Uri uri) => _routeFromUri(uri);
+
   static RouterConfig<AppRoute> createConfig({
     required Widget homePage,
     Widget? designSystemPage,
@@ -154,9 +183,22 @@ final class AppRouter {
 abstract final class AppNavigation {
   static Future<void> go(BuildContext context, String path) {
     final delegate = Router.of(context).routerDelegate as AppRouterDelegate;
-    final uri = Uri.parse(path);
-    return delegate.setNewRoutePath(
-      ParameterizedRoute(path: uri.path, parameters: uri.queryParameters),
+    return delegate.setNewRoutePath(_routeFromUri(Uri.parse(path)));
+  }
+}
+
+AppRoute _routeFromUri(Uri uri) {
+  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'event') {
+    return ParameterizedRoute(
+      path: '/event',
+      parameters: <String, String>{
+        ...uri.queryParameters,
+        'eventId': uri.pathSegments[1],
+      },
     );
   }
+  if (uri.path.isEmpty || uri.path == '/') {
+    return const FoundationRoute();
+  }
+  return ParameterizedRoute(path: uri.path, parameters: uri.queryParameters);
 }

@@ -13,6 +13,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.contrast,
     required this.onLongPress,
     required this.onMediaTap,
+    this.onEventTap,
     this.showSenderRole = true,
     super.key,
   });
@@ -22,6 +23,7 @@ class ChatMessageBubble extends StatelessWidget {
   final ChatContrastTheme contrast;
   final VoidCallback onLongPress;
   final VoidCallback? onMediaTap;
+  final VoidCallback? onEventTap;
   final bool showSenderRole;
 
   @override
@@ -29,7 +31,11 @@ class ChatMessageBubble extends StatelessWidget {
     if (message.type == ChatMessageType.system ||
         message.type == ChatMessageType.event ||
         message.type == ChatMessageType.game) {
-      return _SystemCard(message: message, contrast: contrast);
+      return _SystemCard(
+        message: message,
+        contrast: contrast,
+        onTap: message.type == ChatMessageType.event ? onEventTap : null,
+      );
     }
     final sticker = message.type == ChatMessageType.sticker;
     final textColor = isMine ? contrast.outgoingText : contrast.incomingText;
@@ -267,10 +273,15 @@ class _DeliveryDot extends StatelessWidget {
 }
 
 class _SystemCard extends StatelessWidget {
-  const _SystemCard({required this.message, required this.contrast});
+  const _SystemCard({
+    required this.message,
+    required this.contrast,
+    this.onTap,
+  });
 
   final ChatMessage message;
   final ChatContrastTheme contrast;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -280,21 +291,24 @@ class _SystemCard extends StatelessWidget {
       _ => 'Group update',
     };
     return Center(
-      child: Container(
-        key: ValueKey<String>('message-${message.id}'),
-        margin: const EdgeInsets.all(AppSpacing.sm),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: contrast.incomingBubble,
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-          border: Border.all(color: contrast.border),
-        ),
-        child: Text(
-          message.text?.isNotEmpty == true ? message.text! : label,
-          style: TextStyle(color: contrast.incomingText),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          key: ValueKey<String>('message-${message.id}'),
+          margin: const EdgeInsets.all(AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: contrast.incomingBubble,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: contrast.border),
+          ),
+          child: Text(
+            message.text?.isNotEmpty == true ? message.text! : label,
+            style: TextStyle(color: contrast.incomingText),
+          ),
         ),
       ),
     );

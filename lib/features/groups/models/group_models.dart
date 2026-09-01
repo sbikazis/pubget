@@ -18,6 +18,40 @@ enum GroupPermission {
   manageBackground,
 }
 
+final Map<GroupRole, Set<GroupPermission>> defaultRolePermissions =
+    <GroupRole, Set<GroupPermission>>{
+      GroupRole.founder: GroupPermission.values.toSet(),
+      GroupRole.shogun: GroupPermission.values.toSet(),
+      GroupRole.commander: <GroupPermission>{
+        GroupPermission.manageMembers,
+        GroupPermission.manageMessages,
+        GroupPermission.deleteMessages,
+        GroupPermission.pin,
+        GroupPermission.manageEvents,
+        GroupPermission.manageGames,
+        GroupPermission.invite,
+        GroupPermission.manageRequests,
+      },
+      GroupRole.captain: <GroupPermission>{
+        GroupPermission.manageMessages,
+        GroupPermission.deleteMessages,
+        GroupPermission.pin,
+        GroupPermission.manageEvents,
+        GroupPermission.invite,
+      },
+      GroupRole.sensei: <GroupPermission>{
+        GroupPermission.manageMessages,
+        GroupPermission.deleteMessages,
+        GroupPermission.pin,
+        GroupPermission.invite,
+      },
+      GroupRole.senpai: <GroupPermission>{
+        GroupPermission.pin,
+        GroupPermission.invite,
+      },
+      GroupRole.member: <GroupPermission>{},
+    };
+
 final class Group {
   const Group({
     required this.id,
@@ -107,6 +141,10 @@ final class GroupMember {
   final DateTime? joinedAt;
   final int inviteCount;
   final DateTime? lastActiveAt;
+
+  bool get canManageEvents =>
+      defaultRolePermissions[role]?.contains(GroupPermission.manageEvents) ??
+      false;
 
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(

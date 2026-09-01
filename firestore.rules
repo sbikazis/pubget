@@ -650,6 +650,34 @@ service cloud.firestore {
       }
     }
 
+    match /events/{eventId} {
+      function eventData() {
+        return get(/databases/$(database)/documents/events/$(eventId)).data;
+      }
+      function eventExists() {
+        return exists(/databases/$(database)/documents/events/$(eventId));
+      }
+      function eventVisible() {
+        return signedIn() && eventExists() &&
+          (eventData().creatorId == request.auth.uid ||
+           (eventData().status != 'draft' &&
+            eventData().groupId is string &&
+            groupMember(eventData().groupId)));
+      }
+      allow read: if eventVisible();
+      allow create, update, delete: if false;
+      match /participants/{uid} {
+        allow read: if eventVisible();
+        allow create, update, delete: if false;
+      }
+      match /responses/{uid} {
+        allow read: if eventVisible() &&
+          (request.auth.uid == uid ||
+           eventData().status in ['ended', 'archived']);
+        allow create, update, delete: if false;
+      }
+    }
+
     match /edits/{editId} {
       allow read: if signedIn();
       // Edit documents and all aggregate counters are server-authoritative.

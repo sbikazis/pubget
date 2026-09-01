@@ -9,6 +9,9 @@ import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../groups/models/group_models.dart';
 import '../../edits/providers/edits_provider.dart';
+import '../../events/models/event_models.dart';
+import '../../events/models/event_type_registry.dart';
+import '../../events/widgets/event_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -135,7 +138,7 @@ class _SearchBar extends StatelessWidget {
       ),
       child: PubgetSearchField(
         controller: controller,
-        hint: 'Search groups and people',
+        hint: 'Search groups, people, and events',
         onChanged: provider.searchChanged,
         onClear: () {
           controller.clear();
@@ -158,7 +161,7 @@ class _SearchResults extends StatelessWidget {
     if (home.searchState == LoadingState.empty) {
       return const PubgetEmptyState(
         title: 'Nothing found',
-        message: 'Try another group or username.',
+        message: 'Try another group, username, or event.',
       );
     }
     if (home.searchState == LoadingState.error) {
@@ -179,6 +182,7 @@ class _SearchResults extends StatelessWidget {
           ),
         for (final person in home.searchResults.people)
           _PersonRow(person: person),
+        for (final event in home.searchResults.events) _EventRow(event: event),
       ],
     );
   }
@@ -226,10 +230,7 @@ class _SectionView extends StatelessWidget {
       );
     }
     if (kind == HomeSectionKind.eventsPlaceholder) {
-      return const _PlaceholderSection(
-        title: 'Events',
-        message: 'Placeholder — real Events arrive with PROMPT 11.',
-      );
+      return const EventHomeStrip();
     }
     if (kind == HomeSectionKind.animePlaceholder) {
       return const _PlaceholderSection(
@@ -443,6 +444,20 @@ class _PersonRow extends StatelessWidget {
         ),
       ),
     ],
+  );
+}
+
+class _EventRow extends StatelessWidget {
+  const _EventRow({required this.event});
+
+  final PubgetEvent event;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    title: Text(event.title),
+    subtitle: Text(EventTypeRegistry.of(event.type).label),
+    leading: const Icon(Icons.celebration_outlined),
+    onTap: () => EventLinks.open(context, event.id),
   );
 }
 

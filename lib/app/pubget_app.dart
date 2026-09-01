@@ -50,6 +50,15 @@ import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_feed_page.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/events/providers/event_providers.dart';
+import '../features/events/repositories/event_repository.dart';
+import '../features/events/repositories/firebase_event_repository.dart';
+import '../features/events/repositories/unavailable_event_repository.dart';
+import '../features/events/screens/event_builder_page.dart';
+import '../features/events/screens/event_details_screen.dart';
+import '../features/events/screens/event_list_screen.dart';
+import '../core/analytics/analytics.dart';
+import '../core/analytics/logging_analytics.dart';
 import '../features/home/providers/home_provider.dart';
 import '../features/home/repositories/firebase_home_repository.dart';
 import '../features/home/repositories/home_repository.dart';
@@ -91,39 +100,12 @@ class PubgetApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final requestedRoute = switch (Uri.base.path) {
-      '/design-system' ||
-      '/design-system/' => const ParameterizedRoute(path: '/design-system'),
-      '/login' ||
-      '/register' ||
-      '/terms' ||
-      '/onboarding' ||
-      '/home' ||
-      '/profile' ||
-      '/profile/edit' ||
-      '/friend-requests' ||
-      '/notifications' ||
-      '/edits' ||
-      '/edits/upload' ||
-      '/groups' ||
-      '/groups/create' ||
-      '/group' ||
-      '/group-invite' ||
-      '/group-chat' ||
-      '/group-media' ||
-      '/group-members' ||
-      '/group-requests' ||
-      '/group-roleplay' ||
-      '/private' ||
-      '/private-chat' => ParameterizedRoute(
-        path: Uri.base.path,
-        parameters: Uri.base.queryParameters,
-      ),
-      _ => const ParameterizedRoute(path: '/splash'),
-    };
+    final requestedRoute = AppRouter.routeFromUri(Uri.base);
     final developmentInitialRoute = kDebugMode
         ? requestedRoute
-        : requestedRoute.path == '/design-system'
+        : requestedRoute is ParameterizedRoute &&
+              (requestedRoute.path == '/design-system' ||
+                  requestedRoute.path == '/design-system/')
         ? const ParameterizedRoute(path: '/splash')
         : requestedRoute;
     final repositories = _createRepositories();
@@ -144,9 +126,9 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
-        provider.Provider<PrivateChatRepository>.value(
-          value: repositories.$12,
-        ),
+        provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
+        provider.Provider<EventRepository>.value(value: repositories.$13),
+        provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -210,6 +192,22 @@ class PubgetApp extends StatelessWidget {
             repository: context.read<PrivateChatRepository>(),
           ),
         ),
+        provider.ChangeNotifierProvider<EventListProvider>(
+          create: (context) =>
+              EventListProvider(repository: context.read<EventRepository>()),
+        ),
+        provider.ChangeNotifierProvider<EventProvider>(
+          create: (context) => EventProvider(
+            repository: context.read<EventRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<EventBuilderProvider>(
+          create: (context) => EventBuilderProvider(
+            repository: context.read<EventRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
           NotificationProvider
@@ -238,7 +236,8 @@ class PubgetApp extends StatelessWidget {
             unread!.sync(
               notifications: notifications.unreadCount,
               groups: notifications.groupsUnreadCount,
-              privateChats: notifications.privateUnreadCount > conversationUnread
+              privateChats:
+                  notifications.privateUnreadCount > conversationUnread
                   ? notifications.privateUnreadCount
                   : conversationUnread,
               mentions: notifications.mentionsUnreadCount,
@@ -300,6 +299,20 @@ class PubgetApp extends StatelessWidget {
                   chatId: parameters['chatId'] ?? '',
                   otherUserId: parameters['uid'],
                 ),
+                '/event': (parameters) =>
+                    EventDetailsScreen(eventId: parameters['eventId'] ?? ''),
+                '/events': (parameters) {
+                  final groupId = parameters['groupId'];
+                  return EventListScreen(
+                    groupId: (groupId == null || groupId.isEmpty)
+                        ? null
+                        : groupId,
+                  );
+                },
+                '/events/create': (parameters) => EventBuilderPage(
+                  groupId: parameters['groupId'],
+                  templateId: parameters['templateId'],
+                ),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -326,7 +339,10 @@ class PubgetApp extends StatelessWidget {
                     path == '/group-requests' ||
                     path == '/group-roleplay' ||
                     path == '/private' ||
-                    path == '/private-chat';
+                    path == '/private-chat' ||
+                    path == '/events' ||
+                    path == '/events/create' ||
+                    path == '/event';
                 if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||
@@ -363,6 +379,7 @@ class PubgetApp extends StatelessWidget {
     HomeRepository,
     EditsRepository,
     PrivateChatRepository,
+    EventRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -381,6 +398,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableHomeRepository(message),
         UnavailableEditsRepository(message),
         UnavailablePrivateChatRepository(message),
+        UnavailableEventRepository(message),
       );
     }
     return (
@@ -432,6 +450,10 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
         storage: FirebaseStorage.instance,
+      ),
+      FirebaseEventRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
     );
   }

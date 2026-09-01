@@ -10,6 +10,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../../events/widgets/event_widgets.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
 import '../providers/chat_provider.dart';
@@ -126,6 +127,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     controller: _scrollController,
                     onAction: _showActions,
                     onMediaTap: _openMedia,
+                    onEventTap: (eventId) => EventLinks.open(context, eventId),
                   ),
                 ),
                 if (chat.uploadProgress.isNotEmpty)
@@ -137,6 +139,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   onSend: _sendText,
                   onMedia: _pickMedia,
                   onPlaceholder: _showPlaceholder,
+                  onEvents: () => AppNavigation.go(
+                    context,
+                    '/events?groupId=${Uri.encodeComponent(widget.groupId)}',
+                  ),
                 ),
               ],
             ),
@@ -318,6 +324,7 @@ class _MessageList extends StatelessWidget {
     required this.controller,
     required this.onAction,
     required this.onMediaTap,
+    required this.onEventTap,
   });
 
   final ChatProvider chat;
@@ -326,6 +333,7 @@ class _MessageList extends StatelessWidget {
   final ScrollController controller;
   final ValueChanged<ChatMessage> onAction;
   final ValueChanged<ChatMessage> onMediaTap;
+  final ValueChanged<String> onEventTap;
 
   @override
   Widget build(BuildContext context) {
@@ -372,6 +380,11 @@ class _MessageList extends StatelessWidget {
           contrast: contrast,
           onLongPress: () => onAction(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
+          onEventTap:
+              message.type == ChatMessageType.event &&
+                  (message.mediaId ?? '').isNotEmpty
+              ? () => onEventTap(message.mediaId!)
+              : null,
         );
       },
     );
@@ -419,12 +432,14 @@ class _Composer extends StatelessWidget {
     required this.onSend,
     required this.onMedia,
     required this.onPlaceholder,
+    required this.onEvents,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final void Function(ImageSource source, bool video) onMedia;
   final VoidCallback onPlaceholder;
+  final VoidCallback onEvents;
 
   @override
   Widget build(BuildContext context) {
@@ -468,8 +483,8 @@ class _Composer extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: 'Event or game',
-              onPressed: onPlaceholder,
+              tooltip: 'Group events',
+              onPressed: onEvents,
               icon: const Icon(Icons.celebration_outlined),
             ),
             IconButton(
@@ -538,6 +553,14 @@ class _GroupMenu extends StatelessWidget {
               icon: Icons.info_outline,
               label: 'Group information',
               onTap: () => AppNavigation.go(context, '/group?groupId=$groupId'),
+            ),
+            _MenuTile(
+              icon: Icons.celebration_outlined,
+              label: 'Group events',
+              onTap: () => AppNavigation.go(
+                context,
+                '/events?groupId=${Uri.encodeComponent(groupId)}',
+              ),
             ),
             _MenuTile(
               icon: Icons.perm_media_outlined,

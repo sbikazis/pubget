@@ -53,6 +53,56 @@ void main() {
     expect(find.text('Foundation'), findsNothing);
   });
 
+  test('route parser maps /event/{id} deep links', () async {
+    final parser = AppRouteInformationParser();
+    final route = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/event/abc123?ref=share')),
+    );
+    expect(route, isA<ParameterizedRoute>());
+    final parameterized = route as ParameterizedRoute;
+    expect(parameterized.path, '/event');
+    expect(parameterized.parameters['eventId'], 'abc123');
+    expect(parameterized.parameters['ref'], 'share');
+  });
+
+  test(
+    'pending event deep link is restored after the guard allows it',
+    () async {
+      var authenticated = false;
+      final delegate = AppRouterDelegate(
+        homePage: const Text('Splash'),
+        parameterizedPages: <String, ParameterizedPageBuilder>{
+          '/event': (parameters) => Text('Event ${parameters['eventId']}'),
+          '/login': (_) => const Text('Login'),
+        },
+        initialRoute: const ParameterizedRoute(
+          path: '/event',
+          parameters: {'eventId': 'e1'},
+        ),
+        routeGuard: (path) {
+          if (path == '/event' && !authenticated) return '/login';
+          return null;
+        },
+      );
+
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/login',
+      );
+      authenticated = true;
+      await delegate.setNewRoutePath(const ParameterizedRoute(path: '/login'));
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/event',
+      );
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute)
+            .parameters['eventId'],
+        'e1',
+      );
+    },
+  );
+
   testWidgets('authentication path renders its typed domain page', (
     tester,
   ) async {
