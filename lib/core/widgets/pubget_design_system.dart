@@ -6,6 +6,7 @@ export 'pubget_card.dart';
 export 'pubget_dialogs.dart';
 export 'pubget_inputs.dart';
 export 'pubget_skeleton.dart';
+export 'pubget_selection_chip.dart';
 export 'pubget_snackbars.dart';
 export 'pubget_states.dart';
 export 'pubget_tooltip.dart';

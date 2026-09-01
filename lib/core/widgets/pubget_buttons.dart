@@ -179,7 +179,7 @@ class _ButtonContent extends StatelessWidget {
           Icon(leadingIcon, size: 18),
           const SizedBox(width: AppSpacing.sm),
         ],
-        child,
+        Flexible(child: child),
       ],
     );
   }

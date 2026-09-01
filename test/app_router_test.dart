@@ -52,4 +52,27 @@ void main() {
     expect(find.text('Design system'), findsOneWidget);
     expect(find.text('Foundation'), findsNothing);
   });
+
+  testWidgets('authentication path renders its typed domain page', (
+    tester,
+  ) async {
+    final delegate = AppRouterDelegate(
+      homePage: const Text('Splash'),
+      domainPages: const <String, Widget>{'/login': Text('Login domain')},
+      initialRoute: const ParameterizedRoute(path: '/login'),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
+      ),
+    );
+
+    expect(find.text('Login domain'), findsOneWidget);
+    expect(find.text('Splash'), findsNothing);
+  });
 }
