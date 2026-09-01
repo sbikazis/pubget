@@ -1,0 +1,56 @@
+PROMPT 09 — Pubget Home & Discovery Engine
+
+هذا هو أهم برومت من حيث الأثر على المستخدم — Home هي "أهم شاشة في Pubget" حسب الوثيقة المرجعية. يُبنى هنا أيضًا Bottom Navigation النهائي وربط UnreadEngine (PROMPT 08) بشكل كامل ومرئي.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- Home ليست Dashboard ثابتة ولا Feed تقليدي بسيط — هي "Dynamic Discovery Surface": أقسام متعددة (Sections) بترتيب ومحتوى يتغيران في كل مرة، تُعرض بالتمرير المستمر للأسفل (Infinite Scroll لكن بـPagination/Lazy loading على مستوى كل قسم، ليس تحميل كل شيء دفعة واحدة).
+- الأقسام الممكنة: Promoted Groups, Recommended Groups, Trending Edits (لا يوجد Edits حقيقي بعد — PROMPT 10 — استخدم Placeholder قسم فارغ أو Mock)، Events (PROMPT 11 — نفس الشيء)، Anime of the Week (PROMPT 14 — Placeholder)، Friends Activity, Recommended People, Rising Creators (Placeholder), Small Groups Rising, Recent community activity.
+- **أولوية الترتيب الافتراضية** (قابلة للتخصيص لاحقًا حسب اهتمام المستخدم): Promoted Groups → (Edits لاحقًا) → (Events لاحقًا) → Relevant community activity → Groups → People → (Anime لاحقًا) → محتوى اكتشاف آخر. بما أن Edits/Events/Anime غير مبنية بعد، رتّب الأقسام المتاحة فعليًا (Groups, People, Activity) وفق نفس فلسفة الأولوية ووثّق كيف ستُدمَج الأقسام المستقبلية في هذا الترتيب دون إعادة هيكلة.
+- **لا يختفي نوع محتوى كامل بسبب انخفاض الاهتمام به** — فقط يقل ترتيبه/تكراره.
+- **نظام اكتشاف المجموعات الصغيرة (Rising Groups) — نظام أساسي وليس تحسينًا لاحقًا**: المجموعات الجديدة يجب أن تحصل على فرصة ظهور حقيقية بناءً على مؤشرات نشاط حقيقية (نشاط، معدل رد، اكتمال الملف، انتظام) — ليس فقط عدد الأعضاء أو القِدَم. استخدم الحقول التي جهّزناها لهذا في PROMPT 06 (`activityScore` وغيره) واحسبها/حدّثها الآن فعليًا (Server-side، عبر Function مجدولة أو Trigger تراكمي — ليست حسابًا لحظيًا مكلفًا عند كل طلب Home).
+- **مقاومة التلاعب (Anti-Manipulation)**: لا يمكن للمؤسس رفع مجموعته بحسابات وهمية أو تفاعل مصطنع — الإشارات المستخدمة في حساب `activityScore` يجب أن تراعي هذا (مستخدمين حقيقيين مختلفين، لا أنماط تكرارية مشبوهة) على الأقل بمستوى أساسي معقول الآن (نظام كشف احتيال متقدم كامل ليس هدف هذا البرومت، لكن لا تبنِ نظامًا ساذجًا يُخدَع بسهولة فورية بحساب واحد يتفاعل 100 مرة).
+- **قاعدة الضغطة الواحدة (One-Tap Rule)**: أي مساحة رئيسية يجب الوصول إليها بأقل عدد ممكن من الضغطات من Home.
+- **Bottom Navigation النهائي** (تركيبة مقترحة من الوثيقة، لكن بما أن Edits/Events غير مبنية بعد، اربط فقط ما هو موجود فعليًا وضع Placeholder واضح لما لم يُبنَ بعد، ووثّق أنه Placeholder): Discover (Home) / My Space (المجموعات + الملف الشخصي) / Private (Placeholder، الدردشة الخاصة PROMPT لاحق غير مُدرَج بعد صراحة — إن لم تكن هناك خطة مؤكدة لها بعد، اجعلها Placeholder واضح ووثّق ذلك) / Edits (Placeholder حتى PROMPT 10).
+- Search دائم في أعلى Home (بحث بسيط الآن يربط لمجموعات/مستخدمين موجودين فعليًا من PROMPT 05/06 — البحث الشامل الكامل PROMPT 17).
+
+## المطلوب تنفيذه
+
+### 1. Firestore Schema / حساب Discovery
+
+- تحديث/إتمام حساب `activityScore` على `groups/{groupId}` عبر Function مجدولة (مثال: كل ساعة) تجمع: نشاط الرسائل الأخيرة (من PROMPT 07)، معدل الرد، عدد الأعضاء الفريدين النشطين فعليًا (وليس فقط membersCount)، اكتمال الملف (صورة+وصف+قواعد موجودة)، انتظام النشاط عبر الوقت.
+- لا تُنشئ Collection جديدة ضخمة للتحليلات المعقدة الآن — فقط الحقول اللازمة لترتيب معقول وقابل للتحسين لاحقًا (PROMPT 22/Analytics الكامل لاحقًا في الخطة الكبرى).
+- Query فعّال لجلب "المجموعات الصاعدة" (Rising) دون فحص كل مجموعة في قاعدة البيانات عند كل طلب — فكّر في Index مناسب على activityScore + createdAt.
+
+### 2. Repository & Provider Layer
+
+- `HomeRepository`/`DiscoveryRepository`: getHomeSections (تُرجع بنية أقسام قابلة للعرض، كل قسم بحالة تحميله الخاصة وليس حالة واحدة للصفحة كلها)، getPromotedGroups, getRisingGroups, getRecommendedPeople (بسيط الآن: اقتراح مبني على اهتمامات/مجموعات مشتركة من PROMPT 05، وليس محرك توصية معقّد).
+- `HomeProvider`: يدير حالة كل قسم بشكل مستقل (Section-level loading كما في الوثيقة)، Pull-to-refresh، Pagination لكل قسم عند الحاجة.
+- ربط `UnreadEngine` (من PROMPT 08) بشكل كامل ومرئي في Bottom Navigation (شارات حمراء على "My Space"/"Private" حسب المصدر).
+
+### 3. الشاشات
+
+- **Home Screen**: شريط علوي بالبحث الدائم + أيقونة الإشعارات (مع شارة UnreadEngine) + صورة الملف الشخصي، ثم الأقسام بالتمرير كما وُصف، مع Skeleton لكل قسم أثناء تحميله (لا Loading كامل للصفحة).
+- **Bottom Navigation**: التركيبة أعلاه، Placeholder واضح لما لم يُبنَ (وليس رابطًا مكسورًا أو Route فارغ بلا تفسير).
+- **Search Bar** (من Home): بحث بسيط فوري يربط لمجموعات/مستخدمين حقيقيين.
+
+### 4. معالجة الحالات
+
+كل قسم مستقل في حالته: Loading (Skeleton)/Error (لا يُسقط الصفحة كلها — قسم واحد فاشل لا يكسر البقية)/Empty (رسالة + إجراء)/Loaded. Offline: عرض آخر محتوى مخزَّن مؤقتًا إن وُجد بدل شاشة بيضاء.
+
+## قيود صارمة
+
+- لا تبني Edits الحقيقي (PROMPT 10) ولا Events الحقيقي (PROMPT 11) ولا Anime Hub الحقيقي (PROMPT 14) — Placeholder صريح وموثّق لكل قسم يعتمد عليها.
+- لا تبني محرك توصية معقّد (Recommendation Engine الكامل — PROMPT لاحق في الخطة الأصلية ضمن نطاق أوسع) — نسخة بسيطة مبنية على بيانات موجودة فعليًا فقط.
+- لا تلمس lib_legacy/.
+- اطلب مراجعة أداء/أمن مستقلة لنفسك قبل الإكمال — ركّز تحديدًا على: تكلفة حساب/جلب Rising Groups (لا Full Collection Scan)، صحة مقاومة التلاعب الأساسية، وأن فشل قسم واحد لا يُسقط الصفحة كاملة.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات (Schema/Function الحساب المجدول/Repositories/Providers/Screens).
+2. كيف يُحسب `activityScore` بالضبط والحقول المستخدمة.
+3. كيف تحديدًا تم تفادي Full Collection Scan عند جلب Rising Groups (الـIndex/الStrategy المستخدمة).
+4. أي قسم/ميزة تُرك كـPlaceholder صراحة ولماذا (وأين سيُبنى لاحقًا).
+5. نتائج flutter analyze/test/build + Functions + Rules.
+6. تأكيد الرفع على GitHub (SHA + Tree).
