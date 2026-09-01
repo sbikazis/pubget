@@ -264,7 +264,8 @@ class _CharactersSection extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: PubgetSkeleton.card(height: 120),
             )
-          else if (details.charactersState == LoadingState.error)
+          else if (details.charactersState == LoadingState.error ||
+              details.charactersState == LoadingState.offline)
             PubgetErrorState(
               title: AnimeStrings.unableToLoad,
               message:

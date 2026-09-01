@@ -101,6 +101,7 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
   final List<Uri> calls = <Uri>[];
   Object? throwError;
   int failuresBeforeSuccess = 0;
+  bool alwaysThrow = false;
 
   @override
   Future<AnimeHttpResponse> get(Uri uri, {Duration? timeout}) async {
@@ -109,13 +110,15 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
       failuresBeforeSuccess -= 1;
       throw throwError ?? TimeoutException('timeout');
     }
-    if (throwError != null) {
+    if (alwaysThrow && throwError != null) {
       throw throwError!;
     }
     final keys = responses.keys.toList()
       ..sort((a, b) => b.length.compareTo(a.length));
     for (final key in keys) {
-      if (uri.toString().contains(key) || uri.path.contains(key)) {
+      if (uri.path == key ||
+          uri.path.endsWith(key) ||
+          uri.path.endsWith('/$key')) {
         return responses[key]!;
       }
     }

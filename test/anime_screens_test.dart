@@ -139,7 +139,7 @@ void main() {
         _harness(
           repository: FakeAnimeRepository(),
           theme: theme,
-          child: const AnimeHubPage(),
+          child: AnimeHubPage(key: UniqueKey()),
         ),
       );
       await tester.pumpAndSettle();

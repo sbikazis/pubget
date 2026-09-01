@@ -38,6 +38,7 @@ void main() {
           body:
               '{"data":[{"year":2026,"seasons":["winter","spring","summer","fall"]}]}',
         ),
+        '/2026/winter': AnimeHttpResponse(statusCode: 200, body: samplePageJson),
       },
     );
     repository = JikanAnimeRepository(
@@ -120,6 +121,7 @@ void main() {
 
   test('timeout becomes TimeoutError', () async {
     http.throwError = TimeoutException('timeout');
+    http.alwaysThrow = true;
     final result = await repository.getTop();
     expect(result.failureOrNull, isA<TimeoutError>());
   });

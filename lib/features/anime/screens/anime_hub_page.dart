@@ -126,7 +126,8 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
             SliverToBoxAdapter(
               child: AnimeCachedBanner(offline: !network.isOnline),
             ),
-          if (hub.state == LoadingState.loading && !_hubHasContent(hub))
+          if (hub.state == LoadingState.initial ||
+              hub.state == LoadingState.loading && !_hubHasContent(hub))
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppSpacing.md),
