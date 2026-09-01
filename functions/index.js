@@ -11,7 +11,10 @@ const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { randomUUID } = require("node:crypto");
-const { createAvatarPrivacySync } = require("./src/avatarPrivacy");
+const {
+  createAvatarPrivacySync,
+  createUpdateSocialProfile,
+} = require("./src/avatarPrivacy");
 const {
   buildPublicProfile,
   shouldPublishProfile,
@@ -26,6 +29,15 @@ exports.syncAvatarPrivacy = onDocumentWritten(
     db: getFirestore(),
     bucket: getStorage().bucket(),
     randomUUID,
+  }),
+);
+exports.updateSocialProfile = onCall(
+  { region: "us-central1" },
+  createUpdateSocialProfile({
+    db: getFirestore(),
+    bucket: getStorage().bucket(),
+    randomUUID,
+    HttpsError,
   }),
 );
 

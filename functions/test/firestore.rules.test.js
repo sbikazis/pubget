@@ -128,6 +128,17 @@ test("only a group member can post and sender identity is enforced", async () =>
     mediaType: "image",
   }));
 });
+test("a stale public projection is denied immediately after privacy changes", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("users/alice").update({
+      profileVisibility: "private",
+    });
+  });
+  await assertFails(db("bob").doc("public_profiles/alice").get());
+  await assertFails(
+    db("alice").doc("users/alice").update({ profileVisibility: "public" }),
+  );
+});
 test("mafia lifecycle and private roles are not client writable", async () => {
   await assertFails(db("alice").doc("mafia_games/m1").update({ status: "finished", winner: "mafia" }));
   await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" }));

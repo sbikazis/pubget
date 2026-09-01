@@ -104,14 +104,41 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
     const relationRef = db.collection("respects").doc(respectId(uid, toUserId));
     const legacyRef = db.collection("respects")
       .doc(legacyRespectId(uid, toUserId));
+    const friendshipRef = db.collection("friendships")
+      .doc(pairId(uid, toUserId));
+    const legacyFriendshipRef = db.collection("friendships")
+      .doc(legacyPairId(uid, toUserId));
     const targetRef = db.collection("users").doc(toUserId);
     await db.runTransaction(async (transaction) => {
-      const [relation, legacy, users, cooldownRef] = await Promise.all([
+      const [
+        relation,
+        legacy,
+        friendship,
+        legacyFriendship,
+        users,
+        cooldownRef,
+      ] = await Promise.all([
         transaction.get(relationRef),
         transaction.get(legacyRef),
+        transaction.get(friendshipRef),
+        transaction.get(legacyFriendshipRef),
         requireUsers(transaction, [uid, toUserId]),
         enforceCooldown(transaction, uid, "respect"),
       ]);
+      const [userA, userB] = [uid, toUserId].sort();
+      const matchingLegacyFriendship = legacyFriendship.exists &&
+          matchesLegacyFriendship(legacyFriendship.data(), userA, userB)
+        ? legacyFriendship
+        : null;
+      const activeFriendship = friendship.exists
+        ? friendship
+        : matchingLegacyFriendship;
+      if (activeFriendship && activeFriendship.data().status === "blocked") {
+        throw new HttpsError(
+          "permission-denied",
+          "Respect is unavailable for a blocked relationship.",
+        );
+      }
       const matchingLegacy = legacy.exists &&
           matchesLegacyRespect(legacy.data(), uid, toUserId)
         ? legacy

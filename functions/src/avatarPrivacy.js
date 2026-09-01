@@ -43,4 +43,67 @@ function createAvatarPrivacySync({ db, bucket, randomUUID }) {
   };
 }
 
-module.exports = { avatarDownloadUrl, createAvatarPrivacySync };
+function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
+  return async function updateSocialProfile(request) {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Authentication is required.");
+    }
+    const uid = request.auth.uid;
+    const input = request.data || {};
+    const bio = input.bio;
+    const favoriteAnimeIds = input.favoriteAnimeIds;
+    const profileVisibility = input.profileVisibility;
+    const activityVisibility = input.activityVisibility;
+    if (typeof bio !== "string" || bio.length > 500 ||
+        !Array.isArray(favoriteAnimeIds) || favoriteAnimeIds.length > 50 ||
+        favoriteAnimeIds.some((id) => typeof id !== "string" || id.length > 128) ||
+        !["public", "private"].includes(profileVisibility) ||
+        !["public", "private"].includes(activityVisibility)) {
+      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const snapshot = await userRef.get();
+    if (!snapshot.exists) {
+      throw new HttpsError("not-found", "Profile not found.");
+    }
+    const current = snapshot.data() || {};
+    const update = {
+      bio: bio.trim(),
+      favoriteAnimeIds,
+      profileVisibility,
+      activityVisibility,
+    };
+    const filePath = `users/${uid}/avatar.jpg`;
+    const file = bucket.file(filePath);
+
+    if (profileVisibility === "private" &&
+        current.profileVisibility !== "private" &&
+        current.avatarUrl) {
+      await file.setMetadata({
+        metadata: { firebaseStorageDownloadTokens: randomUUID() },
+      });
+      update.avatarUrl = null;
+    } else if (profileVisibility === "public" &&
+               current.profileVisibility === "private" &&
+               !current.avatarUrl) {
+      const [exists] = await file.exists();
+      if (exists) {
+        const token = randomUUID();
+        await file.setMetadata({
+          metadata: { firebaseStorageDownloadTokens: token },
+        });
+        update.avatarUrl = avatarDownloadUrl(bucket.name, filePath, token);
+      }
+    }
+
+    await userRef.update(update);
+    return { ok: true };
+  };
+}
+
+module.exports = {
+  avatarDownloadUrl,
+  createAvatarPrivacySync,
+  createUpdateSocialProfile,
+};

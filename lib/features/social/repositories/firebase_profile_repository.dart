@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
@@ -13,11 +14,15 @@ final class FirebaseProfileRepository implements ProfileRepository {
   FirebaseProfileRepository({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
+    FirebaseFunctions? functions,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance;
+       _storage = storage ?? FirebaseStorage.instance,
+       _functions =
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final FirebaseFunctions _functions;
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -63,7 +68,9 @@ final class FirebaseProfileRepository implements ProfileRepository {
     ProfileUpdate update,
   ) async {
     try {
-      await _firestore.collection('users').doc(userId).update(update.toMap());
+      await _functions
+          .httpsCallable('updateSocialProfile')
+          .call<void>(update.toMap());
       final result = await getOwnProfile(userId);
       return result;
     } on Object catch (error) {

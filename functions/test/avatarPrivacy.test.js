@@ -5,6 +5,7 @@ const test = require("node:test");
 const {
   avatarDownloadUrl,
   createAvatarPrivacySync,
+  createUpdateSocialProfile,
 } = require("../src/avatarPrivacy");
 
 function snapshot(data) {
@@ -51,6 +52,45 @@ test("making a public avatar private revokes its bearer token and clears URL", a
     metadataWrites[0].metadata.firebaseStorageDownloadTokens,
     "old-token",
   );
+});
+
+test("profile callable rotates the old token before making profile private", async () => {
+  const order = [];
+  const handler = createUpdateSocialProfile({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => snapshot({
+            profileVisibility: "public",
+            avatarUrl: "https://example.test/avatar?token=old",
+          }),
+          update: async (value) => order.push(["update", value]),
+        }),
+      }),
+    },
+    bucket: {
+      file: () => ({
+        setMetadata: async (value) => order.push(["metadata", value]),
+      }),
+    },
+    randomUUID: () => "rotated",
+    HttpsError: class extends Error {},
+  });
+
+  await handler({
+    auth: { uid: "alice" },
+    data: {
+      bio: "hello",
+      favoriteAnimeIds: ["1"],
+      profileVisibility: "private",
+      activityVisibility: "public",
+    },
+  });
+
+  assert.equal(order[0][0], "metadata");
+  assert.equal(order[1][0], "update");
+  assert.equal(order[1][1].profileVisibility, "private");
+  assert.equal(order[1][1].avatarUrl, null);
 });
 
 test("making a profile public publishes a newly rotated avatar token", async () => {

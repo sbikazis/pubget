@@ -386,7 +386,7 @@ service cloud.firestore {
       allow update: if self(uid) &&
         ((changedOnly([
           'username','nickname','avatarUrl','bio','favoriteAnimes','age','country',
-          'favoriteAnimeIds','profileVisibility','activityVisibility',
+          'favoriteAnimeIds','activityVisibility',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt'
         ]) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
@@ -443,7 +443,9 @@ service cloud.firestore {
     }
 
     match /public_profiles/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() &&
+        get(/databases/$(database)/documents/users/$(uid))
+          .data.get('profileVisibility', 'public') == 'public';
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
       allow create, update, delete: if false;
