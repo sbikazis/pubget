@@ -1,0 +1,69 @@
+
+PROMPT 10 — Pubget Edits Platform
+
+هذا البرومت يبني نظام Edits (منصة فيديو اكتشاف، وليس مجرد Gallery) فوق Auth/Social/Groups (PROMPT 04-06). هذا سيملأ قسم "Trending Edits" في Home (PROMPT 09) الذي كان Placeholder.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- فيديو فقط حاليًا (لا صور/GIF كمحتوى Edit أساسي).
+- **Repost بدل Edit التعديل بعد النشر** (مثل مفهوم TikTok): بدل تعديل المنشور الأصلي، "إعادة نشر" مرتبطة بفترة محددة بعد النشر الأصلي — يُحفَظ المُنشئ الأصلي والمُعيد النشر والتاريخان، ولا يصبح العمل ملكًا للناشر الجديد.
+- **بدل زر Follow/Subscribe: نظام Respect** (من PROMPT 05) — الوصول لـ5 يُفعّل "Fan". لا تبني زر متابعة منفصل.
+- **Views ليست مجرد فتح الفيديو**: يجب تعريف Impression/View/Qualified View/Completion بدقة (وثّق التعريف الدقيق المُستخدم، القرار السابق كان: احتساب View عند الوصول لـ~10% من الفيديو). يمكن للمستخدم توليد أكثر من View لكن بمنع التضخيم غير الطبيعي (Anti-Fraud أساسي: لا loops مصطنعة/refresh متكرر/أنماط بوت).
+- **خوارزمية الترتيب (Feed Algorithm) لا تعتمد على الوقت فقط**: إشارات متعددة (Watch time, Completion rate, Likes, Comments, Shares, Saves, Creator quality, Freshness, Negative feedback) — نسخة أساسية معقولة الآن، وليست معقّدة بالكامل (Recommendation Engine الكامل لاحق).
+- **Pipeline معالجة الفيديو حقيقي وليس رفعًا خامًا**: Validate → Compress/Process → Generate Thumbnail → Store Metadata → Publish. استخدم مبدأ نفس Pipeline الصور المبني في PROMPT 07 كمرجع (لا تُعِد اختراعه من الصفر، وسّعه لدعم الفيديو إن كان ذلك منطقيًا معماريًا، ووثّق القرار).
+- **الأداء حرج هنا تحديدًا**: الـFeed لا يحمّل عشرات الفيديوهات دفعة واحدة — مجموعة صغيرة + Prefetch للقادم، Dispose صحيح لمتحكمات الفيديو غير المرئية (مشكلة معروفة في تطبيقات الفيديو إن أُهملت: تسريب ذاكرة).
+- كل عملية حساسة (نشر، حذف، حساب Views/Score، منح Respect عبر التفاعل) تمر عبر Firebase Functions.
+
+## المطلوب تنفيذه
+
+### 1. Firestore Schema
+
+- `edits/{editId}`: creatorId, videoUrl, thumbnailUrl, caption, animeTag (نص بسيط الآن، Anime Domain الحقيقي PROMPT 14)، likesCount, commentsCount, viewsCount, score (محسوب Server-side)، createdAt, originalEditId (nullable — للـRepost)، repostedBy (nullable), status (processing/published/failed).
+- `edits/{editId}/comments/{commentId}`: authorId, text, likesCount, createdAt, replyToCommentId (nullable).
+- `edits/{editId}/views/{uid}` أو بنية مجمّعة أكثر كفاءة (قرر بناءً على نفس منطق تفادي N+1 المُطبَّق في PROMPT 07/08 — وثّق القرار).
+- `edits/{editId}/likes/{uid}`: بسيط، لمنع تكرار الإعجاب.
+
+### 2. Video/Image Processing Pipeline
+
+- عند الرفع: Validate (مدة، حجم، صيغة) → معالجة (توليد Thumbnail إلزاميًا؛ ضغط/تحويل الفيديو نفسه إن كان ممكنًا ضمن حدود Firebase Functions المعقولة — إن كانت معالجة الفيديو الثقيلة تتطلب خدمة خارجية غير متوفرة في هذا النطاق، وثّق ذلك بوضوح كقيد وابنِ الحد الأدنى المعقول الآن: توليد Thumbnail + تخزين Metadata + رفض الفيديوهات الطويلة/الكبيرة جدًا).
+- حالة النشر تُعرض بوضوح للمستخدم أثناء المعالجة (Processing) قبل الظهور في الـFeed.
+
+### 3. Repository & Provider Layer
+
+- `EditsRepository`: uploadEdit (مع Progress)، getFeed (Paginated، يستخدم Score)، getEdit, repostEdit, deleteEdit.
+- `EditInteractionRepository`: likeEdit/unlikeEdit, addComment, recordView (يستقبل نسبة المشاهدة، يقرر Server-side إن كانت Qualified View).
+- `EditsProvider`: يدير الـFeed بكفاءة (نفس فلسفة عدم إعادة البناء الكامل من PROMPT 07)، حالة كل فيديو (تشغيل/إيقاف عند الظهور/الاختفاء من الشاشة، Dispose الصحيح).
+
+### 4. الشاشات
+
+- **Edits Feed Screen**: تمرير عمودي (كل فيديو يملأ الشاشة تقريبًا)، أزرار تفاعل (Like/Comment/Share/Save/Respect/More)، معلومات المُنشئ (Avatar/Username/Respect-Fan status)، تشغيل تلقائي للفيديو الظاهر فقط.
+- **Upload Edit Screen**: اختيار فيديو، caption، معاينة، Progress واضح أثناء الرفع/المعالجة.
+- **Comments Sheet**: قائمة تعليقات، رد، إعجاب تعليق، حذف تعليق خاص بالمستخدم.
+- **Creator Profile Integration**: عرض Edits الخاصة بمستخدم في ملفه الشخصي (يربط PROMPT 05).
+
+### 5. تكامل مع Home (PROMPT 09)
+
+استبدل Placeholder "Trending Edits" في Home بقسم حقيقي يجلب من `getFeed` بترتيب مناسب لسياق الصفحة الرئيسية (عيّنة صغيرة، وليس الـFeed الكامل).
+
+### 6. معالجة الحالات
+
+Initial/Loading/Error/Offline/Empty. تحديدًا: فشل رفع فيديو يجب أن يبقى قابلاً لإعادة المحاولة (لا اختفاء صامت)، واستمرار الرفع في الخلفية إن خرج المستخدم من الشاشة (أو توثيق أنه غير مدعوم الآن إن كان تعقيده يتجاوز هذا البرومت).
+
+## قيود صارمة
+
+- لا تبني Anime Hub الحقيقي (PROMPT 14) — Tag نصي بسيط فقط.
+- لا تبني Hashtags أو Sounds/Audio pages أو Duet/Remix (هذه ميزات إضافية من رؤيتك الأصلية لم تُدرَج صراحة في نطاق أي برومت حتى الآن — أجّلها ووثّق ذلك بوضوح كي نُدرجها لاحقًا في برومت إضافي).
+- لا تلمس lib_legacy/.
+- اطلب مراجعة أداء/أمن مستقلة لنفسك قبل الإكمال — ركّز تحديدًا على: تسريب ذاكرة متحكمات الفيديو، صحة Anti-Fraud لعدّ المشاهدات، وعدم وجود N+1 في حساب Views/Likes/Comments Counts.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات (Schema/Pipeline معالجة الفيديو/Repositories/Providers/Screens).
+2. التعريف الدقيق المُستخدم لـView/Qualified View وكيف يُمنع التضخيم.
+3. كيف صُمم Feed Algorithm الأساسي (الإشارات المستخدمة وأوزانها التقريبية).
+4. حدود معالجة الفيديو الفعلية المطبَّقة (خصوصًا إن كانت معالجة الفيديو الثقيلة محدودة ضمن Firebase Functions) ولماذا.
+5. تأكيد Dispose الصحيح لمتحكمات الفيديو (كيف تحديدًا في الكود).
+6. أي ميزة من الرؤية الأصلية أُجِّلت صراحة هنا (Hashtags, Sounds, Duet/Remix) لتُدرَج في برومت لاحق.
+7. نتائج flutter analyze/test/build + Functions + Rules.
+8. تأكيد الرفع على GitHub (SHA + Tree).
