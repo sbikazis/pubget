@@ -21,7 +21,7 @@ const db = (uid, claims) => env.authenticatedContext(uid, claims).firestore();
 test.before(async () => {
   env = await initializeTestEnvironment({
     projectId: "demo-pubget-security",
-    firestore: { rules },
+    firestore: { host: "127.0.0.1", port: 8080, rules },
   });
 });
 test.beforeEach(async () => {
@@ -68,6 +68,17 @@ test.beforeEach(async () => {
     await admin.doc("privateChats/c1").set({
       userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
       lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
+    });
+    await admin.doc("events/e1").set({
+      creatorId: "alice", groupId: "g1", type: "poll", title: "Vote",
+      status: "active", participantsCount: 1, responsesCount: 0,
+    });
+    await admin.doc("events/e-draft").set({
+      creatorId: "alice", groupId: "g1", type: "poll", title: "Draft",
+      status: "draft",
+    });
+    await admin.doc("events/e1/responses/bob").set({
+      userId: "bob", eventId: "e1", responseData: { optionId: "opt-1" },
     });
   });
 });
@@ -182,6 +193,21 @@ test("private messages are readable by participants but writable only by callabl
     deliveredCount: 1,
   }));
   await assertFails(db("alice").doc("privateChats/c1/messages/m1").delete());
+});
+test("events are readable by group members and never client-writable", async () => {
+  await assertSucceeds(db("bob").doc("events/e1").get());
+  await assertFails(db("charlie").doc("events/e1").get());
+  await assertSucceeds(db("alice").doc("events/e-draft").get());
+  await assertFails(db("bob").doc("events/e-draft").get());
+  await assertFails(db("alice").doc("events/e1").update({ status: "ended" }));
+  await assertFails(db("alice").doc("events/forged").set({
+    creatorId: "alice", groupId: "g1", type: "poll", status: "active",
+  }));
+  await assertSucceeds(db("bob").doc("events/e1/responses/bob").get());
+  await assertFails(db("alice").doc("events/e1/responses/bob").get());
+  await assertFails(db("bob").doc("events/e1/responses/bob").update({
+    responseData: { optionId: "opt-2" },
+  }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {

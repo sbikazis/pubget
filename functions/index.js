@@ -38,6 +38,7 @@ const {
 } = require("./src/discoveryEngine");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createEventsDomain } = require("./src/eventsDomain");
 
 initializeApp();
 
@@ -105,6 +106,12 @@ const notificationBuilder = createNotificationBuilder({
   db: getFirestore(),
   messaging: getMessaging(),
   FieldValue,
+});
+const eventsDomain = createEventsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -264,6 +271,46 @@ exports.markPrivateMessagesDelivered = onCall(
 exports.deletePrivateChat = onCall(
   { region: "us-central1" },
   privateChat.deleteChat,
+);
+exports.saveEventDraft = onCall(
+  { region: "us-central1" },
+  eventsDomain.saveEventDraft,
+);
+exports.publishEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.publishEvent,
+);
+exports.cancelEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.cancelEvent,
+);
+exports.endEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.endEvent,
+);
+exports.archiveEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.archiveEvent,
+);
+exports.deleteEventDraft = onCall(
+  { region: "us-central1" },
+  eventsDomain.deleteEventDraft,
+);
+exports.joinEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.joinEvent,
+);
+exports.leaveEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.leaveEvent,
+);
+exports.submitEventResponse = onCall(
+  { region: "us-central1" },
+  eventsDomain.submitEventResponse,
+);
+exports.processEventLifecycle = onSchedule(
+  { region: "us-central1", schedule: "every 1 minutes" },
+  eventsDomain.processEventLifecycle,
 );
 exports.processGroupChatMedia = onObjectFinalized(
   { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },

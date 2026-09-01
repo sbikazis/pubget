@@ -116,6 +116,28 @@ class _Details extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
+        if (provider.isMember) ...[
+          PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              '/events?groupId=${Uri.encodeComponent(group.id)}',
+            ),
+            semanticLabel: 'Open group events',
+            child: const Text('Group events'),
+          ),
+          if (provider.membership?.canManageEvents == true) ...[
+            const SizedBox(height: AppSpacing.sm),
+            PubgetSecondaryButton(
+              onPressed: () => AppNavigation.go(
+                context,
+                '/events/create?groupId=${Uri.encodeComponent(group.id)}',
+              ),
+              semanticLabel: 'Create event',
+              child: const Text('Create event'),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+        ],
         if (!provider.isMember) _JoinAction(group: group),
         if (provider.isFounder) ...[
           PubgetPrimaryButton(
