@@ -678,6 +678,40 @@ service cloud.firestore {
       }
     }
 
+    match /games/{gameId} {
+      function gameData() {
+        return get(/databases/$(database)/documents/games/$(gameId)).data;
+      }
+      function gameExists() {
+        return exists(/databases/$(database)/documents/games/$(gameId));
+      }
+      function gameVisible() {
+        return signedIn() && gameExists() &&
+          (gameData().creatorId == request.auth.uid ||
+           (gameData().status != 'draft' &&
+            gameData().groupId is string &&
+            groupMember(gameData().groupId)));
+      }
+      allow read: if gameVisible();
+      allow create, update, delete: if false;
+      match /participants/{uid} {
+        allow read: if gameVisible();
+        allow create, update, delete: if false;
+      }
+      match /rounds/{roundId} {
+        allow read: if gameVisible();
+        allow create, update, delete: if false;
+      }
+      match /actions/{actionId} {
+        allow read: if gameVisible();
+        allow create, update, delete: if false;
+      }
+      match /events/{eventId} {
+        allow read: if gameVisible();
+        allow create, update, delete: if false;
+      }
+    }
+
     match /edits/{editId} {
       allow read: if signedIn();
       // Edit documents and all aggregate counters are server-authoritative.
