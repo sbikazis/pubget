@@ -28,6 +28,9 @@ const { createSocialGraph } = require("./src/socialGraph");
 const { createGroupsDomain } = require("./src/groupsDomain");
 const { createGroupChat } = require("./src/groupChat");
 const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
+const { createNotificationBuilder } = require("./src/notificationBuilder");
+const { createNotificationCallables } = require("./src/notificationCallables");
+const { createNotificationTriggers } = require("./src/notificationTriggers");
 
 initializeApp();
 
@@ -85,6 +88,20 @@ const groupChat = createGroupChat({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+});
+const notificationBuilder = createNotificationBuilder({
+  db: getFirestore(),
+  messaging: getMessaging(),
+  FieldValue,
+});
+const notificationCallables = createNotificationCallables({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
+const notificationTriggers = createNotificationTriggers({
+  db: getFirestore(),
+  builder: notificationBuilder,
 });
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
@@ -190,6 +207,45 @@ exports.removeFriend = onCall(
 exports.blockUser = onCall(
   { region: "us-central1" },
   socialGraph.blockUser,
+);
+exports.markNotificationRead = onCall(
+  { region: "us-central1" },
+  notificationCallables.markRead,
+);
+exports.markAllNotificationsRead = onCall(
+  { region: "us-central1" },
+  notificationCallables.markAllRead,
+);
+exports.registerFcmToken = onCall(
+  { region: "us-central1" },
+  notificationCallables.registerToken,
+);
+exports.unregisterFcmToken = onCall(
+  { region: "us-central1" },
+  notificationCallables.unregisterToken,
+);
+
+// PROMPT 08 replaces the legacy group-push implementation below with one
+// central, deterministic builder and batched token lookup.
+exports.onNewGroupMessage = onDocumentCreated(
+  "groups/{groupId}/messages/{messageId}",
+  notificationTriggers.groupMessage,
+);
+exports.onJoinRequest = onDocumentCreated(
+  "groups/{groupId}/requests/{requestId}",
+  notificationTriggers.joinRequest,
+);
+exports.onJoinRequestDecision = onDocumentUpdated(
+  "groups/{groupId}/requests/{requestId}",
+  notificationTriggers.joinDecision,
+);
+exports.onFriendRequest = onDocumentCreated(
+  "friendships/{friendshipId}",
+  notificationTriggers.friendRequest,
+);
+exports.onRespectReceived = onDocumentCreated(
+  "respects/{respectId}",
+  notificationTriggers.respectReceived,
 );
 exports.unblockUser = onCall(
   { region: "us-central1" },
@@ -377,7 +433,7 @@ async function removeInvalidToken(db, userId, token, error) {
   }).catch(() => {});
 }
 
-exports.onNewGroupMessage = onDocumentCreated(
+const legacyOnNewGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   async (event) => {
     const message = event.data && event.data.data();
@@ -508,7 +564,7 @@ exports.onNewPrivateMessage = onDocumentCreated(
   }
 );
 
-exports.onJoinRequest = onDocumentCreated(
+const legacyOnJoinRequest = onDocumentCreated(
   "groups/{groupId}/requests/{requestId}",
   async (event) => {
     const request = event.data && event.data.data();

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,12 @@ import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
+import '../features/notifications/providers/notification_provider.dart';
+import '../features/notifications/providers/unread_engine.dart';
+import '../features/notifications/repositories/firebase_notification_repository.dart';
+import '../features/notifications/repositories/notification_repository.dart';
+import '../features/notifications/repositories/unavailable_notification_repository.dart';
+import '../features/notifications/screens/notification_inbox_page.dart';
 import '../features/social/providers/profile_provider.dart';
 import '../features/social/providers/social_provider.dart';
 import '../features/social/repositories/firebase_profile_repository.dart';
@@ -78,6 +85,7 @@ class PubgetApp extends StatelessWidget {
       '/profile' ||
       '/profile/edit' ||
       '/friend-requests' ||
+      '/notifications' ||
       '/groups' ||
       '/groups/create' ||
       '/group' ||
@@ -112,6 +120,7 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<GroupMembersRepository>.value(value: repositories.$6),
         provider.Provider<RoleplayRepository>.value(value: repositories.$7),
         provider.Provider<ChatRepository>.value(value: repositories.$8),
+        provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -145,6 +154,38 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               ChatProvider(repository: context.read<ChatRepository>()),
         ),
+        provider.ChangeNotifierProxyProvider<
+          AuthProvider,
+          NotificationProvider
+        >(
+          create: (context) => NotificationProvider(
+            repository: context.read<NotificationRepository>(),
+          ),
+          update: (_, auth, notifications) {
+            final uid = auth.currentUser?.id;
+            if (uid != null) {
+              notifications!.open(uid);
+            } else {
+              notifications!.close();
+            }
+            return notifications;
+          },
+        ),
+        provider.ChangeNotifierProxyProvider<
+          NotificationProvider,
+          UnreadEngine
+        >(
+          create: (_) => UnreadEngine(),
+          update: (_, notifications, unread) {
+            unread!.sync(notifications: notifications.unreadCount);
+            unread.sync(
+              groups: notifications.groupsUnreadCount,
+              privateChats: notifications.privateUnreadCount,
+              mentions: notifications.mentionsUnreadCount,
+            );
+            return unread;
+          },
+        ),
       ],
       child: Builder(
         builder: (context) {
@@ -169,6 +210,7 @@ class PubgetApp extends StatelessWidget {
                 '/home': const PlaceholderHomePage(),
                 '/profile/edit': const EditProfilePage(),
                 '/friend-requests': const FriendRequestsPage(),
+                '/notifications': const NotificationInboxPage(),
                 '/groups': const GroupsHomePage(),
                 '/groups/create': const CreateGroupWizardPage(),
               },
@@ -204,6 +246,7 @@ class PubgetApp extends StatelessWidget {
                     path == '/profile' ||
                     path == '/profile/edit' ||
                     path == '/friend-requests' ||
+                    path == '/notifications' ||
                     path == '/groups' ||
                     path == '/groups/create' ||
                     path == '/group' ||
@@ -245,6 +288,7 @@ class PubgetApp extends StatelessWidget {
     GroupMembersRepository,
     RoleplayRepository,
     ChatRepository,
+    NotificationRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -259,6 +303,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableGroupMembersRepository(message),
         UnavailableRoleplayRepository(message),
         UnavailableChatRepository(message),
+        UnavailableNotificationRepository(message),
       );
     }
     return (
@@ -294,6 +339,11 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
         storage: FirebaseStorage.instance,
+      ),
+      FirebaseNotificationRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+        messaging: FirebaseMessaging.instance,
       ),
     );
   }

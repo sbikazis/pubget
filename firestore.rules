@@ -400,24 +400,18 @@ service cloud.firestore {
             in ['public','private'] &&
           request.resource.data.get('activityVisibility', 'public')
             in ['public','private']) ||
-         (changedOnly(['fcmToken','tokenUpdatedAt']) &&
-          (!request.resource.data.keys().hasAny(['fcmToken']) ||
-           (request.resource.data.fcmToken is string &&
-            request.resource.data.fcmToken.size() > 0 &&
-            request.resource.data.fcmToken.size() <= 4096)) &&
-           (!request.resource.data.keys().hasAny(['tokenUpdatedAt']) ||
-            request.resource.data.tokenUpdatedAt is timestamp)));
+         false);
       allow delete: if false;
 
       match /notifications/{notificationId} {
         allow read: if self(uid);
-        allow update: if self(uid) && changedOnly(['isRead']) &&
-          request.resource.data.isRead is bool;
-        allow create: if signedIn() &&
-          (canonicalJoinNotification(uid, notificationId) ||
-           canonicalDecisionNotification(uid, notificationId, 'request_accepted') ||
-           canonicalDecisionNotification(uid, notificationId, 'request_rejected'));
-        allow delete: if self(uid);
+        // Notification creation, read timestamps and counters are server-owned.
+        allow create, update, delete: if false;
+      }
+      match /fcmTokens/{tokenId} {
+        // Tokens are registered through callable functions so ownership,
+        // length and lifecycle cannot be forged with direct writes.
+        allow read, create, update, delete: if false;
       }
       match /stickers/{stickerId} {
         allow read: if self(uid);

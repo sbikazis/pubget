@@ -475,7 +475,7 @@ async function seedRequest(uid, characterName = null, characterKey = null) {
   });
 }
 
-test("applicant atomically creates a real request and founder notification", async () => {
+test("join requests and their notifications are server-authoritative", async () => {
   const charlie = db("charlie");
   const batch = charlie.batch();
   batch.set(charlie.doc("groups/g1/requests/charlie"), joinRequest("charlie"));
@@ -483,14 +483,14 @@ test("applicant atomically creates a real request and founder notification", asy
     charlie.doc("users/alice/notifications/join_request_g1_request-charlie"),
     notification("join_request", "charlie"),
   );
-  await assertSucceeds(batch.commit());
+  await assertFails(batch.commit());
   await assertFails(
     db("charlie").doc("users/bob/notifications/join_request_g1_request-charlie")
       .set(notification("join_request", "charlie")),
   );
 });
 
-test("moderator atomically accepts request, reserves character, and increments once", async () => {
+test("join acceptance is server-authoritative", async () => {
   await seedRequest("charlie", "Hero One", "heroone");
   const alice = db("alice");
   const batch = alice.batch();
@@ -514,10 +514,10 @@ test("moderator atomically accepts request, reserves character, and increments o
     alice.doc("users/charlie/notifications/request_accepted_g1_request-charlie"),
     notification("request_accepted", "alice"),
   );
-  await assertSucceeds(batch.commit());
+  await assertFails(batch.commit());
 });
 
-test("moderator atomically rejects a real request", async () => {
+test("join rejection is server-authoritative", async () => {
   await seedRequest("charlie");
   const alice = db("alice");
   const batch = alice.batch();
@@ -526,7 +526,7 @@ test("moderator atomically rejects a real request", async () => {
     alice.doc("users/charlie/notifications/request_rejected_g1_request-charlie"),
     notification("request_rejected", "alice"),
   );
-  await assertSucceeds(batch.commit());
+  await assertFails(batch.commit());
 });
 
 test("member can leave as self and release only own reservation", async () => {
@@ -593,7 +593,7 @@ test("membership attacks cannot forge counters, roles, removals, or reservations
   await assertFails(db("bob").doc("groups/g1/characters/alicehero").delete());
 });
 
-test("notifications cannot target unrelated users or mutate content", async () => {
+test("clients can read only their own server-owned notifications", async () => {
   await assertFails(
     db("charlie").doc("users/bob/notifications/join_request_g1_request-charlie")
       .set(notification("join_request", "charlie")),
@@ -603,10 +603,12 @@ test("notifications cannot target unrelated users or mutate content", async () =
       notification("request_accepted", "alice"),
     );
   });
-  await assertSucceeds(db("bob").doc("users/bob/notifications/n1").update({ isRead: true }));
+  await assertSucceeds(db("bob").doc("users/bob/notifications/n1").get());
+  await assertFails(db("alice").doc("users/bob/notifications/n1").get());
+  await assertFails(db("bob").doc("users/bob/notifications/n1").update({ isRead: true }));
   await assertFails(db("bob").doc("users/bob/notifications/n1").update({ body: "forged" }));
   await assertFails(db("alice").doc("users/bob/notifications/n1").delete());
-  await assertSucceeds(db("bob").doc("users/bob/notifications/n1").delete());
+  await assertFails(db("bob").doc("users/bob/notifications/n1").delete());
 });
 
 test("clients cannot delete a group root and orphan members grant no access", async () => {
@@ -668,11 +670,11 @@ test("group chat previews and aggregate receipts are server-authoritative", asyn
   }));
 });
 
-test("users can rotate or delete only their own valid FCM token", async () => {
-  await assertSucceeds(db("alice").doc("users/alice").update({
+test("FCM tokens are writable only through server callables", async () => {
+  await assertFails(db("alice").doc("users/alice").update({
     fcmToken: "token-123", tokenUpdatedAt: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("users/alice").update({
+  await assertFails(db("alice").doc("users/alice").update({
     fcmToken: require("firebase/firestore").deleteField(),
     tokenUpdatedAt: new Date(),
   }));
@@ -684,5 +686,8 @@ test("users can rotate or delete only their own valid FCM token", async () => {
   }));
   await assertFails(db("alice").doc("users/alice").update({
     fcmToken: "token-456", coinsBalance: 99,
+  }));
+  await assertFails(db("alice").doc("users/alice/fcmTokens/t1").set({
+    uid: "alice", token: "token-123", platform: "web", updatedAt: new Date(),
   }));
 });

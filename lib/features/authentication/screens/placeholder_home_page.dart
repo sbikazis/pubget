@@ -7,6 +7,9 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/auth_provider.dart';
 import '../providers/onboarding_provider.dart';
+import '../../notifications/providers/unread_engine.dart';
+import '../../notifications/repositories/notification_repository.dart';
+import '../../notifications/widgets/unread_badge.dart';
 
 class PlaceholderHomePage extends StatelessWidget {
   const PlaceholderHomePage({super.key});
@@ -21,6 +24,14 @@ class PlaceholderHomePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Pubget'),
         actions: <Widget>[
+          UnreadBadge(
+            count: context.watch<UnreadEngine>().notifications,
+            child: PubgetIconButton(
+              icon: Icons.notifications_outlined,
+              tooltip: 'Notifications',
+              onPressed: () => AppNavigation.go(context, '/notifications'),
+            ),
+          ),
           PubgetIconButton(
             icon: Icons.logout,
             tooltip: 'Sign out',
@@ -83,6 +94,8 @@ class PlaceholderHomePage extends StatelessWidget {
   }
 
   Future<void> _signOut(BuildContext context) async {
+    await context.read<NotificationRepository>().unregisterDeviceToken();
+    if (!context.mounted) return;
     final result = await context.read<AuthProvider>().signOut();
     if (!context.mounted) return;
     if (result is Success) await AppNavigation.go(context, '/login');
