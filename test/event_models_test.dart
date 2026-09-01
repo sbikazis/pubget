@@ -95,11 +95,64 @@ void main() {
     expect(EventTypeRegistry.of(EventType.ranking).usesRanking, isTrue);
   });
 
-  test('draft validation requires a group and a title', () {
+  test('draft validation requires a group, title, and valid configuration', () {
     expect(EventValidation.draft(const EventDraft()), isNotNull);
     expect(
       EventValidation.draft(
         EventDraft(groupId: 'g1', title: 'Vote', startAt: DateTime.now()),
+      ),
+      isNotNull,
+    );
+    expect(
+      EventValidation.draft(
+        EventDraft(
+          groupId: 'g1',
+          title: 'Vote',
+          startAt: DateTime.now(),
+          configuration: const EventConfiguration(
+            question: 'Q',
+            options: <EventOption>[
+              EventOption(id: 'opt-1', label: 'A'),
+              EventOption(id: 'opt-2', label: 'B'),
+            ],
+          ),
+        ),
+      ),
+      isNull,
+    );
+  });
+
+  test('quiz validation requires prompts, answers, and a correct option', () {
+    expect(
+      EventValidation.configuration(EventType.quiz, const EventConfiguration()),
+      isNotNull,
+    );
+    expect(
+      EventValidation.configuration(
+        EventType.quiz,
+        const EventConfiguration(
+          questions: <EventQuizQuestion>[
+            EventQuizQuestion(
+              id: 'q-1',
+              prompt: 'Who?',
+              options: <EventOption>[
+                EventOption(id: 'opt-1', label: 'A'),
+                EventOption(id: 'opt-2', label: 'B'),
+              ],
+              correctOptionId: 'opt-2',
+            ),
+            EventQuizQuestion(
+              id: 'q-2',
+              prompt: 'Where?',
+              options: <EventOption>[
+                EventOption(id: 'opt-1', label: 'X'),
+                EventOption(id: 'opt-2', label: 'Y'),
+                EventOption(id: 'opt-3', label: 'Z'),
+              ],
+              correctOptionId: 'opt-1',
+            ),
+          ],
+        ),
       ),
       isNull,
     );

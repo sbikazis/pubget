@@ -62,6 +62,23 @@ void main() {
     expect(repository.joinCalls, 1);
   });
 
+  test('builder publish is blocked when a quiz has no questions', () async {
+    final repository = _FakeEventRepository();
+    final provider = EventBuilderProvider(repository: repository);
+    addTearDown(provider.dispose);
+    provider.start(groupId: 'g1');
+    provider.update(
+      provider.draft.copyWith(
+        type: EventType.quiz,
+        title: 'Guess',
+        configuration: const EventConfiguration(),
+      ),
+    );
+    final result = await provider.publish();
+    expect(result, isA<FailureResult<PubgetEvent>>());
+    expect(repository.publishCalls, 0);
+  });
+
   test('builder publish is blocked when the duration exceeds 7 days', () async {
     final repository = _FakeEventRepository();
     final provider = EventBuilderProvider(repository: repository);

@@ -33,6 +33,7 @@ final class GroupProvider extends ChangeNotifier {
   Future<void>? get leaveOperation => _leaveOperation;
   bool get isMember => _membership != null;
   bool get isFounder => _membership?.role == GroupRole.founder;
+  bool get canManageEvents => memberCanManageEvents(_membership);
 
   Future<Result<Group>> create(GroupDraft draft) async {
     _start();

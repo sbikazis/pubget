@@ -125,7 +125,7 @@ class _Details extends StatelessWidget {
             semanticLabel: 'Open group events',
             child: const Text('Group events'),
           ),
-          if (provider.membership?.canManageEvents == true) ...[
+          if (provider.canManageEvents) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               onPressed: () => AppNavigation.go(
