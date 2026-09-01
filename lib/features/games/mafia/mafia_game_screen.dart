@@ -11,7 +11,6 @@ import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
 import '../widgets/game_widgets.dart';
 import 'mafia_models.dart';
-import 'mafia_phase.dart';
 import 'mafia_provider.dart';
 import 'mafia_roles.dart';
 
@@ -70,6 +69,15 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
       game?.mafia == null ? null : Map<String, Object?>.from(game!.mafia!),
     );
     final remaining = mafia.remaining(publicState);
+    GameParticipant? self;
+    if (uid != null) {
+      for (final person in games.participants) {
+        if (person.userId == uid) {
+          self = person;
+          break;
+        }
+      }
+    }
     if (game?.status == GameStatus.active &&
         publicState.phaseEndsAt != null &&
         remaining == Duration.zero &&
@@ -103,9 +111,11 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
         ),
         child: game == null
             ? const SizedBox.shrink()
-            : ListView(
+            : SingleChildScrollView(
                 padding: const EdgeInsets.all(AppSpacing.md),
-                children: <Widget>[
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
                   GameHeader(game: game),
                   const SizedBox(height: AppSpacing.md),
                   if (!online)
@@ -153,10 +163,7 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                     _ActionPanel(
                       game: game,
                       publicState: publicState,
-                      self: games.participants.cast<GameParticipant?>().firstWhere(
-                        (item) => item?.userId == uid,
-                        orElse: () => null,
-                      ),
+                      self: self,
                       selectedTarget: _selectedTarget,
                       online: online,
                     ),
@@ -170,6 +177,7 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                     ),
                 ],
               ),
+            ),
       ),
     );
   }

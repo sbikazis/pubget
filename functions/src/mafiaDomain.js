@@ -111,6 +111,9 @@ function validateMafiaConfig(raw, specCaps = {}) {
 }
 
 function resolveRoleCounts(playerCount, extra = {}) {
+  if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
+    return null;
+  }
   const auto = defaultRoleCounts(playerCount);
   const mafiaCount = extra.mafiaCount == null ? auto.mafiaCount : extra.mafiaCount;
   const detectiveCount = extra.detectiveCount == null
@@ -944,11 +947,11 @@ function createMafiaDomain({
       const result = await advancePhase(transaction, {
         ref, current, gameId: ref.id, now, force: false,
       });
-      if (result && result.notExpired) {
-        throw new HttpsError("failed-precondition", "This phase has not expired.");
-      }
       advanceResult = result;
     });
+    if (advanceResult && advanceResult.notExpired) {
+      return { ok: true, skipped: true };
+    }
     await notifyAdvanceResult(ref.id, advanceResult, uid);
     return {
       ok: true,

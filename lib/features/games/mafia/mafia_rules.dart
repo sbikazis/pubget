@@ -91,6 +91,10 @@ abstract final class MafiaRules {
     int? detectiveCount,
     int? doctorCount,
   }) {
+    if (playerCount < MafiaLimits.minPlayers ||
+        playerCount > MafiaLimits.maxPlayers) {
+      return null;
+    }
     final auto = defaultRoleCounts(playerCount);
     final mafia = mafiaCount ?? auto.mafiaCount;
     final detective = detectiveCount ?? auto.detectiveCount;

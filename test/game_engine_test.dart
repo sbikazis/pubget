@@ -84,7 +84,6 @@ void main() {
       expect(GameTypeRegistry.byName('mafia')?.implemented, isTrue);
       expect(() => GameEngine.assertCanCreate(GameType.mafia), returnsNormally);
     });
-    });
   });
 
   group('Participants', () {

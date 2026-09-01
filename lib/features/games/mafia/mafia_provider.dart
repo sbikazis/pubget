@@ -24,9 +24,7 @@ final class MafiaProvider extends ChangeNotifier {
   final Analytics _analytics;
 
   StreamSubscription<Result<MafiaPrivateState?>>? _privateSub;
-  Timer? _ticker;
   String? _gameId;
-  String? _userId;
   MafiaPrivateState? _private;
   LoadingState _privateState = LoadingState.initial;
   Failure? _failure;
@@ -36,7 +34,6 @@ final class MafiaProvider extends ChangeNotifier {
   bool _loggedStarted = false;
   bool _loggedCompleted = false;
   bool _disposed = false;
-  DateTime _now = DateTime.now().toUtc();
 
   MafiaPrivateState? get privateState => _private;
   LoadingState get privateLoading => _privateState;
@@ -44,12 +41,10 @@ final class MafiaProvider extends ChangeNotifier {
   bool get busy => _busy;
   bool get pending => _pending;
   String? get feedback => _feedback;
-  DateTime get now => _now;
   MafiaRole? get role => _private?.role;
 
   Future<void> open({required String gameId, required String userId}) async {
     _gameId = gameId;
-    _userId = userId;
     _privateState = LoadingState.loading;
     notifyListeners();
     await _privateSub?.cancel();
@@ -72,16 +67,10 @@ final class MafiaProvider extends ChangeNotifier {
       );
       notifyListeners();
     });
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_disposed) return;
-      _now = DateTime.now().toUtc();
-      notifyListeners();
-    });
   }
 
   Duration remaining(MafiaPublicState? publicState) {
-    return publicState?.remaining(_now) ?? Duration.zero;
+    return publicState?.remaining(DateTime.now().toUtc()) ?? Duration.zero;
   }
 
   bool hasSubmittedNight(MafiaPublicState? publicState) {
@@ -102,7 +91,7 @@ final class MafiaProvider extends ChangeNotifier {
     required GameParticipant? self,
   }) {
     if (game.status != GameStatus.active) return const [];
-    if (self == null || !self.isActive || !self.isAlive) return const [];
+    if (self != null && (!self.isActive || !self.isAlive)) return const [];
     final role = _private?.role;
     if (role == null) return const [];
     if (publicState.phase == MafiaPhase.night &&
@@ -167,7 +156,7 @@ final class MafiaProvider extends ChangeNotifier {
     if (gameId == null || publicState == null) {
       return const Success<void>(null);
     }
-    final left = publicState.remaining(_now);
+    final left = publicState.remaining(DateTime.now().toUtc());
     if (left == null || left > Duration.zero) {
       return const Success<void>(null);
     }
@@ -211,7 +200,6 @@ final class MafiaProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _ticker?.cancel();
     unawaited(_privateSub?.cancel());
     super.dispose();
   }

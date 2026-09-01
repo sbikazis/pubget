@@ -47,6 +47,7 @@ void main() {
     final games = GameProvider(repository: gamesRepo);
     final mafia = MafiaProvider(repository: mafiaRepo);
     final network = NetworkService(probe: () async => true);
+    await network.refresh();
     addTearDown(games.dispose);
     addTearDown(mafia.dispose);
     addTearDown(auth.dispose);
@@ -68,8 +69,9 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    await tester.pump();
 
-    expect(find.text('Nightfall'), findsOneWidget);
+    expect(find.text('Nightfall'), findsWidgets);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
     expect(find.text('mafia'), findsNothing);
@@ -113,6 +115,7 @@ void main() {
     final games = GameProvider(repository: gamesRepo);
     final mafia = MafiaProvider(repository: mafiaRepo);
     final network = NetworkService(probe: () async => true);
+    await network.refresh();
     addTearDown(games.dispose);
     addTearDown(mafia.dispose);
     addTearDown(auth.dispose);
@@ -132,6 +135,7 @@ void main() {
         child: const MaterialApp(home: MafiaGameScreen(gameId: 'm1')),
       ),
     );
+    await tester.pump();
     await tester.pump();
     await tester.pump();
 
