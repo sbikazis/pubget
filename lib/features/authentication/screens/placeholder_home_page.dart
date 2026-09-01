@@ -62,6 +62,12 @@ class PlaceholderHomePage extends StatelessWidget {
                     child: const Text('My profile'),
                   ),
                   const SizedBox(height: AppSpacing.sm),
+                  PubgetSecondaryButton(
+                    onPressed: () => AppNavigation.go(context, '/groups'),
+                    semanticLabel: 'Open groups',
+                    child: const Text('Groups'),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
                   PubgetTextButton(
                     onPressed: () => AppNavigation.go(context, '/onboarding'),
                     semanticLabel: 'Edit onboarding details',

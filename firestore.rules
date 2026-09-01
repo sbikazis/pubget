@@ -453,6 +453,9 @@ service cloud.firestore {
 
     match /groups/{groupId} {
       allow read: if signedIn() && groupExists(groupId);
+      // New Groups domain records are created by createGroup only. The
+      // legacy-compatible create branch below intentionally does not accept
+      // the new joinPolicy/search/rules/activity fields.
       allow create: if signedIn() &&
         request.resource.data.founderId == request.auth.uid &&
         request.resource.data.keys().hasOnly([
@@ -571,7 +574,18 @@ service cloud.firestore {
       }
       match /invites/{inviteId} {
         allow read: if groupMember(groupId);
-        allow create, update, delete: if groupModerator(groupId);
+        allow create, update, delete: if false;
+      }
+      match /roles/{roleId} {
+        allow read: if groupMember(groupId);
+        allow create, update, delete: if false;
+      }
+      match /bans/{uid} {
+        allow read: if self(uid) || groupModerator(groupId);
+        allow create, update, delete: if false;
+      }
+      match /transferConfirmations/{uid} {
+        allow read, create, update, delete: if false;
       }
       match /messages/{messageId} {
         allow read: if groupMember(groupId);

@@ -154,6 +154,9 @@ final class AppRouter {
 abstract final class AppNavigation {
   static Future<void> go(BuildContext context, String path) {
     final delegate = Router.of(context).routerDelegate as AppRouterDelegate;
-    return delegate.setNewRoutePath(ParameterizedRoute(path: path));
+    final uri = Uri.parse(path);
+    return delegate.setNewRoutePath(
+      ParameterizedRoute(path: uri.path, parameters: uri.queryParameters),
+    );
   }
 }

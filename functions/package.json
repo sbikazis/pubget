@@ -2,8 +2,8 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
-    "test": "node --test test/socialGraph.test.js test/avatarPrivacy.test.js",
-    "check": "node --check index.js && node --check src/socialGraph.js && node --check src/publicProfile.js && node --check src/avatarPrivacy.js",
+    "test": "node --test test/socialGraph.test.js test/avatarPrivacy.test.js test/groupsDomain.test.js",
+    "check": "node --check index.js && node --check src/socialGraph.js && node --check src/publicProfile.js && node --check src/avatarPrivacy.js && node --check src/groupsDomain.js && FIREBASE_CONFIG='{\"projectId\":\"demo-pubget-security\",\"storageBucket\":\"demo-pubget-security.appspot.com\"}' node -e \"require('./index.js')\"",
     "backfill:public-profiles": "node scripts/backfill-public-profiles.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

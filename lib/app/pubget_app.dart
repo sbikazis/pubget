@@ -23,6 +23,22 @@ import '../features/authentication/screens/placeholder_home_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
+import '../features/groups/providers/group_members_provider.dart';
+import '../features/groups/providers/group_provider.dart';
+import '../features/groups/providers/roleplay_provider.dart';
+import '../features/groups/repositories/firebase_group_repositories.dart';
+import '../features/groups/repositories/group_members_repository.dart';
+import '../features/groups/repositories/group_repository.dart';
+import '../features/groups/repositories/roleplay_repository.dart';
+import '../features/groups/repositories/unavailable_group_repositories.dart';
+import '../features/groups/screens/create_group_wizard_page.dart';
+import '../features/groups/screens/group_chat_placeholder_page.dart';
+import '../features/groups/screens/group_details_page.dart';
+import '../features/groups/screens/group_invite_page.dart';
+import '../features/groups/screens/group_members_page.dart';
+import '../features/groups/screens/groups_home_page.dart';
+import '../features/groups/screens/join_requests_page.dart';
+import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/social/providers/profile_provider.dart';
 import '../features/social/providers/social_provider.dart';
 import '../features/social/repositories/firebase_profile_repository.dart';
@@ -56,7 +72,15 @@ class PubgetApp extends StatelessWidget {
       '/home' ||
       '/profile' ||
       '/profile/edit' ||
-      '/friend-requests' => ParameterizedRoute(
+      '/friend-requests' ||
+      '/groups' ||
+      '/groups/create' ||
+      '/group' ||
+      '/group-invite' ||
+      '/group-chat' ||
+      '/group-members' ||
+      '/group-requests' ||
+      '/group-roleplay' => ParameterizedRoute(
         path: Uri.base.path,
         parameters: Uri.base.queryParameters,
       ),
@@ -78,6 +102,9 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<UserRepository>.value(value: repositories.$2),
         provider.Provider<ProfileRepository>.value(value: repositories.$3),
         provider.Provider<SocialRepository>.value(value: repositories.$4),
+        provider.Provider<GroupRepository>.value(value: repositories.$5),
+        provider.Provider<GroupMembersRepository>.value(value: repositories.$6),
+        provider.Provider<RoleplayRepository>.value(value: repositories.$7),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -93,6 +120,19 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<SocialProvider>(
           create: (context) =>
               SocialProvider(repository: context.read<SocialRepository>()),
+        ),
+        provider.ChangeNotifierProvider<GroupProvider>(
+          create: (context) =>
+              GroupProvider(repository: context.read<GroupRepository>()),
+        ),
+        provider.ChangeNotifierProvider<GroupMembersProvider>(
+          create: (context) => GroupMembersProvider(
+            repository: context.read<GroupMembersRepository>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<RoleplayProvider>(
+          create: (context) =>
+              RoleplayProvider(repository: context.read<RoleplayRepository>()),
         ),
       ],
       child: Builder(
@@ -118,10 +158,27 @@ class PubgetApp extends StatelessWidget {
                 '/home': const PlaceholderHomePage(),
                 '/profile/edit': const EditProfilePage(),
                 '/friend-requests': const FriendRequestsPage(),
+                '/groups': const GroupsHomePage(),
+                '/groups/create': const CreateGroupWizardPage(),
               },
               parameterizedPages: <String, ParameterizedPageBuilder>{
                 '/profile': (parameters) =>
                     ProfilePage(userId: parameters['uid']),
+                '/group': (parameters) =>
+                    GroupDetailsPage(groupId: parameters['groupId'] ?? ''),
+                '/group-invite': (parameters) => GroupInvitePage(
+                  groupId: parameters['groupId'] ?? '',
+                  inviteId: parameters['inviteId'] ?? '',
+                ),
+                '/group-chat': (parameters) => GroupChatPlaceholderPage(
+                  groupId: parameters['groupId'] ?? '',
+                ),
+                '/group-members': (parameters) =>
+                    GroupMembersPage(groupId: parameters['groupId'] ?? ''),
+                '/group-requests': (parameters) =>
+                    JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
+                '/group-roleplay': (parameters) =>
+                    RoleplayCharacterPage(groupId: parameters['groupId'] ?? ''),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -134,7 +191,15 @@ class PubgetApp extends StatelessWidget {
                     path == '/onboarding' ||
                     path == '/profile' ||
                     path == '/profile/edit' ||
-                    path == '/friend-requests';
+                    path == '/friend-requests' ||
+                    path == '/groups' ||
+                    path == '/groups/create' ||
+                    path == '/group' ||
+                    path == '/group-invite' ||
+                    path == '/group-chat' ||
+                    path == '/group-members' ||
+                    path == '/group-requests' ||
+                    path == '/group-roleplay';
                 if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||
@@ -158,7 +223,15 @@ class PubgetApp extends StatelessWidget {
     );
   }
 
-  (AuthRepository, UserRepository, ProfileRepository, SocialRepository)
+  (
+    AuthRepository,
+    UserRepository,
+    ProfileRepository,
+    SocialRepository,
+    GroupRepository,
+    GroupMembersRepository,
+    RoleplayRepository,
+  )
   _createRepositories() {
     if (!firebaseState.isReady) {
       final message =
@@ -168,6 +241,9 @@ class PubgetApp extends StatelessWidget {
         UnavailableUserRepository(message),
         UnavailableProfileRepository(message),
         UnavailableSocialRepository(message),
+        UnavailableGroupRepository(message),
+        UnavailableGroupMembersRepository(message),
+        UnavailableRoleplayRepository(message),
       );
     }
     return (
@@ -184,6 +260,18 @@ class PubgetApp extends StatelessWidget {
         storage: FirebaseStorage.instance,
       ),
       FirebaseSocialRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseGroupRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseGroupMembersRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseRoleplayRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),

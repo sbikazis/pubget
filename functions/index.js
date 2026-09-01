@@ -4,7 +4,11 @@
 // السابقة تماماً — بقية الملف (الإشعارات + lobbyManager + phaseScheduler)
 // دون أي تغيير آخر.
 
-const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -20,6 +24,7 @@ const {
   shouldPublishProfile,
 } = require("./src/publicProfile");
 const { createSocialGraph } = require("./src/socialGraph");
+const { createGroupsDomain } = require("./src/groupsDomain");
 
 initializeApp();
 
@@ -67,6 +72,56 @@ const socialGraph = createSocialGraph({
   FieldValue,
   HttpsError,
 });
+const groupsDomain = createGroupsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  randomUUID,
+});
+
+exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
+exports.createGroupInvite = onCall(
+  { region: "us-central1" },
+  groupsDomain.createInvite,
+);
+exports.joinGroup = onCall({ region: "us-central1" }, groupsDomain.joinGroup);
+exports.requestToJoin = onCall({ region: "us-central1" }, groupsDomain.requestToJoin);
+exports.leaveGroup = onCall({ region: "us-central1" }, groupsDomain.leaveGroup);
+exports.acceptJoinRequest = onCall(
+  { region: "us-central1" },
+  groupsDomain.acceptJoinRequest,
+);
+exports.rejectJoinRequest = onCall(
+  { region: "us-central1" },
+  groupsDomain.rejectJoinRequest,
+);
+exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.updateRolePermissions = onCall(
+  { region: "us-central1" },
+  groupsDomain.updateRolePermissions,
+);
+exports.kickMember = onCall({ region: "us-central1" }, groupsDomain.kickMember);
+exports.banMember = onCall({ region: "us-central1" }, groupsDomain.banMember);
+exports.transferOwnership = onCall(
+  { region: "us-central1" },
+  groupsDomain.transferOwnership,
+);
+exports.prepareOwnershipTransfer = onCall(
+  { region: "us-central1" },
+  groupsDomain.prepareOwnershipTransfer,
+);
+exports.reserveRoleplayCharacter = onCall(
+  { region: "us-central1" },
+  groupsDomain.reserveRoleplayCharacter,
+);
+exports.releaseRoleplayCharacter = onCall(
+  { region: "us-central1" },
+  groupsDomain.releaseRoleplayCharacter,
+);
+exports.recalculateInviteRanks = onDocumentUpdated(
+  "groups/{groupId}/invites/{inviteId}",
+  groupsDomain.recalculateInviteRanks,
+);
 
 exports.giveRespect = onCall(
   { region: "us-central1" },
