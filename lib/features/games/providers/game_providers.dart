@@ -10,7 +10,6 @@ import '../engine/game_engine.dart';
 import '../models/game_errors.dart';
 import '../models/game_lifecycle.dart';
 import '../models/game_models.dart';
-import '../models/game_type_registry.dart';
 import '../repositories/game_repository.dart';
 
 final class GameListProvider extends ChangeNotifier {

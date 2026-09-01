@@ -184,7 +184,7 @@ function recordingBuilder() {
   };
 }
 
-test("state machine allows documented transitions and rejects the rest", () {
+test("state machine allows documented transitions and rejects the rest", () => {
   assert.equal(canTransition("draft", "waiting"), true);
   assert.equal(canTransition("waiting", "active"), true);
   assert.equal(canTransition("active", "paused"), true);
@@ -198,12 +198,12 @@ test("state machine allows documented transitions and rejects the rest", () {
   );
 });
 
-test("mafia is registered but not implemented", () {
+test("mafia is registered but not implemented", () => {
   assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, false);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
 });
 
-test("action shape validation rejects empty types and oversized payloads", () {
+test("action shape validation rejects empty types and oversized payloads", () => {
   assert.throws(
     () => validateActionShape({ actionType: "" }, TestHttpsError),
     (error) => error.code === "invalid-argument",
@@ -216,7 +216,7 @@ test("action shape validation rejects empty types and oversized payloads", () {
   assert.equal(ok.actionType, "guess");
 });
 
-test("events are versioned and map to a chat activity contract", () {
+test("events are versioned and map to a chat activity contract", () => {
   const event = buildGameEvent({
     eventId: "e1",
     gameId: "game-1",

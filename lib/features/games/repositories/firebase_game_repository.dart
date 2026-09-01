@@ -69,7 +69,7 @@ final class FirebaseGameRepository implements GameRepository {
     'gameId': gameId,
     'actionType': actionType,
     'payload': payload,
-    if (clientActionId != null) 'clientActionId': clientActionId,
+    'clientActionId': ?clientActionId,
   });
 
   @override
