@@ -128,6 +128,7 @@ void main() {
     await pumpAuthScreen(tester, child: const OnboardingPage());
 
     await tester.enterText(find.byKey(const Key('onboarding-username')), 'ab');
+    await tester.ensureVisible(find.byKey(const Key('onboarding-continue')));
     await tester.tap(find.byKey(const Key('onboarding-continue')));
     await tester.pump();
 
@@ -140,6 +141,7 @@ void main() {
   ) async {
     await pumpAuthScreen(tester, child: const OnboardingPage());
 
+    await tester.ensureVisible(find.byKey(const Key('onboarding-continue')));
     await tester.tap(find.byKey(const Key('onboarding-continue')));
     await tester.pumpAndSettle();
 

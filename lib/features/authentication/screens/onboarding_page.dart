@@ -71,11 +71,37 @@ class _OnboardingPageState extends State<OnboardingPage> {
         semanticLabel: 'Skip profile setup for now',
         child: const Text('Skip'),
       ),
+      primaryAction: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (_step == 0)
+            PubgetPrimaryButton(
+              key: const Key('onboarding-continue'),
+              onPressed: loading ? null : _continueFromIdentity,
+              semanticLabel: 'Continue profile setup',
+              child: const Text('Continue'),
+            )
+          else
+            PubgetPrimaryButton(
+              key: const Key('onboarding-save'),
+              onPressed: offline || loading ? null : _save,
+              semanticLabel: 'Save profile and continue',
+              loading: loading,
+              child: const Text('Save and continue'),
+            ),
+          if (_step == 1)
+            PubgetTextButton(
+              onPressed: loading ? null : () => setState(() => _step = 0),
+              semanticLabel: 'Back to profile details',
+              child: const Text('Back'),
+            ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _OnboardingProgress(step: _step, total: 2),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
           if (offline)
             const PubgetInlineBanner(
               title: 'You are offline',
@@ -116,30 +142,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 });
               },
             ),
-          const SizedBox(height: AppSpacing.xl),
-          if (_step == 0)
-            PubgetPrimaryButton(
-              key: const Key('onboarding-continue'),
-              onPressed: loading ? null : _continueFromIdentity,
-              semanticLabel: 'Continue profile setup',
-              child: const Text('Continue'),
-            )
-          else
-            PubgetPrimaryButton(
-              key: const Key('onboarding-save'),
-              onPressed: offline || loading ? null : _save,
-              semanticLabel: 'Save profile and continue',
-              loading: loading,
-              child: const Text('Save and continue'),
-            ),
-          if (_step == 1) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetTextButton(
-              onPressed: loading ? null : () => setState(() => _step = 0),
-              semanticLabel: 'Back to profile details',
-              child: const Text('Back'),
-            ),
-          ],
         ],
       ),
     );

@@ -16,6 +16,7 @@ class AuthPageShell extends StatelessWidget {
     this.leading,
     this.trailing,
     this.footer,
+    this.primaryAction,
     this.compactBrand = false,
     super.key,
   });
@@ -26,6 +27,7 @@ class AuthPageShell extends StatelessWidget {
   final Widget? leading;
   final Widget? trailing;
   final Widget? footer;
+  final Widget? primaryAction;
   final bool compactBrand;
 
   @override
@@ -57,9 +59,9 @@ class AuthPageShell extends StatelessWidget {
               Expanded(
                 child: Center(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(
+                    padding: EdgeInsets.fromLTRB(
                       AppSpacing.xl,
-                      AppSpacing.sm,
+                      compactBrand ? AppSpacing.xs : AppSpacing.sm,
                       AppSpacing.xl,
                       AppSpacing.xl,
                     ),
@@ -73,7 +75,11 @@ class AuthPageShell extends StatelessWidget {
                             subtitle: subtitle,
                             compact: compactBrand,
                           ),
-                          const SizedBox(height: AppSpacing.xl),
+                          SizedBox(
+                            height: compactBrand
+                                ? AppSpacing.lg
+                                : AppSpacing.xl,
+                          ),
                           _AuthGlassPanel(child: child),
                           if (footer != null) ...[
                             const SizedBox(height: AppSpacing.lg),
@@ -85,6 +91,21 @@ class AuthPageShell extends StatelessWidget {
                   ),
                 ),
               ),
+              if (primaryAction != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    0,
+                    AppSpacing.xl,
+                    AppSpacing.lg,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: primaryAction,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
