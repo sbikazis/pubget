@@ -20,7 +20,6 @@ import '../features/authentication/repositories/unavailable_repositories.dart';
 import '../features/authentication/repositories/user_repository.dart';
 import '../features/authentication/screens/login_page.dart';
 import '../features/authentication/screens/onboarding_page.dart';
-import '../features/authentication/screens/placeholder_home_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
@@ -45,6 +44,11 @@ import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
+import '../features/home/providers/home_provider.dart';
+import '../features/home/repositories/firebase_home_repository.dart';
+import '../features/home/repositories/home_repository.dart';
+import '../features/home/repositories/unavailable_home_repository.dart';
+import '../features/home/screens/home_page.dart';
 import '../features/notifications/providers/notification_provider.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/repositories/firebase_notification_repository.dart';
@@ -121,6 +125,7 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<RoleplayRepository>.value(value: repositories.$7),
         provider.Provider<ChatRepository>.value(value: repositories.$8),
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
+        provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -153,6 +158,10 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) =>
               ChatProvider(repository: context.read<ChatRepository>()),
+        ),
+        provider.ChangeNotifierProvider<HomeProvider>(
+          create: (context) =>
+              HomeProvider(repository: context.read<HomeRepository>()),
         ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
@@ -207,7 +216,7 @@ class PubgetApp extends StatelessWidget {
                 '/register': const RegisterPage(),
                 '/terms': const TermsPage(),
                 '/onboarding': const OnboardingPage(),
-                '/home': const PlaceholderHomePage(),
+                '/home': const HomePage(),
                 '/profile/edit': const EditProfilePage(),
                 '/friend-requests': const FriendRequestsPage(),
                 '/notifications': const NotificationInboxPage(),
@@ -289,6 +298,7 @@ class PubgetApp extends StatelessWidget {
     RoleplayRepository,
     ChatRepository,
     NotificationRepository,
+    HomeRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -304,6 +314,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableRoleplayRepository(message),
         UnavailableChatRepository(message),
         UnavailableNotificationRepository(message),
+        UnavailableHomeRepository(message),
       );
     }
     return (
@@ -345,6 +356,7 @@ class PubgetApp extends StatelessWidget {
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
         messaging: FirebaseMessaging.instance,
       ),
+      FirebaseHomeRepository(firestore: FirebaseFirestore.instance),
     );
   }
 }

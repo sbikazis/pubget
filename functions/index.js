@@ -31,6 +31,10 @@ const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
 const { createNotificationTriggers } = require("./src/notificationTriggers");
+const {
+  createDiscoveryScheduler,
+  onSchedule,
+} = require("./src/discoveryEngine");
 
 initializeApp();
 
@@ -103,6 +107,15 @@ const notificationTriggers = createNotificationTriggers({
   db: getFirestore(),
   builder: notificationBuilder,
 });
+const discoveryScheduler = createDiscoveryScheduler({
+  db: getFirestore(),
+  FieldValue,
+});
+
+exports.refreshGroupActivityScores = onSchedule(
+  { schedule: "every 1 hours", region: "us-central1" },
+  discoveryScheduler.updateScores,
+);
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
 exports.createGroupInvite = onCall(
