@@ -10,7 +10,11 @@ const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { buildPublicProfile } = require("./src/publicProfile");
+const {
+  buildPublicProfile,
+  shouldPublishProfile,
+} = require("./src/publicProfile");
+const { createSocialGraph } = require("./src/socialGraph");
 
 initializeApp();
 
@@ -24,10 +28,47 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
     return;
   }
 
+  const data = after.data();
+  if (!shouldPublishProfile(data)) {
+    await publicRef.delete();
+    return;
+  }
+
   // Full replacement is intentional: fields removed from the allowlist or
   // source cannot linger in the public projection.
-  await publicRef.set(buildPublicProfile(uid, after.data(), new Date(event.time)));
+  await publicRef.set(buildPublicProfile(data));
 });
+
+const socialGraph = createSocialGraph({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
+
+exports.giveRespect = onCall(
+  { region: "us-central1" },
+  socialGraph.giveRespect,
+);
+exports.sendFriendRequest = onCall(
+  { region: "us-central1" },
+  socialGraph.sendFriendRequest,
+);
+exports.respondToFriendRequest = onCall(
+  { region: "us-central1" },
+  socialGraph.respondToFriendRequest,
+);
+exports.removeFriend = onCall(
+  { region: "us-central1" },
+  socialGraph.removeFriend,
+);
+exports.blockUser = onCall(
+  { region: "us-central1" },
+  socialGraph.blockUser,
+);
+exports.unblockUser = onCall(
+  { region: "us-central1" },
+  socialGraph.unblockUser,
+);
 
 const sounds = [
   'an1','an2','an3','an4','an5','an6','an7',

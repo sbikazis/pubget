@@ -3,7 +3,10 @@
 
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getFirestore, FieldPath } = require("firebase-admin/firestore");
-const { buildPublicProfile } = require("../src/publicProfile");
+const {
+  buildPublicProfile,
+  shouldPublishProfile,
+} = require("../src/publicProfile");
 
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
@@ -44,9 +47,13 @@ async function main() {
 
     const batch = apply ? db.batch() : null;
     for (const doc of snapshot.docs) {
-      const profile = buildPublicProfile(doc.id, doc.data());
       if (batch) {
-        batch.set(db.collection("public_profiles").doc(doc.id), profile);
+        const publicRef = db.collection("public_profiles").doc(doc.id);
+        if (shouldPublishProfile(doc.data())) {
+          batch.set(publicRef, buildPublicProfile(doc.data()));
+        } else {
+          batch.delete(publicRef);
+        }
       }
       scanned += 1;
     }

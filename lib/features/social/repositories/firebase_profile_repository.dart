@@ -5,11 +5,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-import '../models/pubget_user.dart';
-import 'user_repository.dart';
+import '../../authentication/models/pubget_user.dart';
+import '../models/public_profile.dart';
+import 'profile_repository.dart';
 
-final class FirebaseUserRepository implements UserRepository {
-  FirebaseUserRepository({
+final class FirebaseProfileRepository implements ProfileRepository {
+  FirebaseProfileRepository({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
@@ -18,44 +19,53 @@ final class FirebaseUserRepository implements UserRepository {
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
 
-  CollectionReference<Map<String, dynamic>> get _users =>
-      _firestore.collection('users');
+  @override
+  Future<Result<PublicProfile>> getPublicProfile(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('public_profiles')
+          .doc(userId)
+          .get();
+      if (!snapshot.exists || snapshot.data() == null) {
+        return const FailureResult<PublicProfile>(
+          NotFoundError('This profile is not available.'),
+        );
+      }
+      return Success<PublicProfile>(
+        PublicProfile.fromMap(snapshot.data()!, uid: snapshot.id),
+      );
+    } on Object catch (error) {
+      return FailureResult<PublicProfile>(_mapFailure(error));
+    }
+  }
 
   @override
-  Future<Result<PubgetUser>> createUserProfile(PubgetUser user) async {
+  Future<Result<PubgetUser>> getOwnProfile(String userId) async {
     try {
-      final data = user.toMap()..remove('id');
-      await _users.doc(user.id).set(data);
-      return Success<PubgetUser>(user);
+      final snapshot = await _firestore.collection('users').doc(userId).get();
+      if (!snapshot.exists || snapshot.data() == null) {
+        return const FailureResult<PubgetUser>(
+          NotFoundError('Your profile is not available yet.'),
+        );
+      }
+      final data = Map<String, dynamic>.from(snapshot.data()!);
+      final createdAt = data['createdAt'];
+      if (createdAt is Timestamp) data['createdAt'] = createdAt.toDate();
+      return Success<PubgetUser>(PubgetUser.fromMap(data, id: snapshot.id));
     } on Object catch (error) {
       return FailureResult<PubgetUser>(_mapFailure(error));
     }
   }
 
   @override
-  Future<Result<PubgetUser?>> getUserProfile(String userId) async {
+  Future<Result<PubgetUser>> updateProfile(
+    String userId,
+    ProfileUpdate update,
+  ) async {
     try {
-      final snapshot = await _users.doc(userId).get();
-      if (!snapshot.exists || snapshot.data() == null) {
-        return const Success<PubgetUser?>(null);
-      }
-      final data = Map<String, dynamic>.from(snapshot.data()!);
-      final createdAt = data['createdAt'];
-      if (createdAt is Timestamp) data['createdAt'] = createdAt.toDate();
-      return Success<PubgetUser?>(PubgetUser.fromMap(data, id: snapshot.id));
-    } on Object catch (error) {
-      return FailureResult<PubgetUser?>(_mapFailure(error));
-    }
-  }
-
-  @override
-  Future<Result<PubgetUser>> updateUserProfile(PubgetUser user) async {
-    try {
-      final data = user.toMap()
-        ..remove('id')
-        ..remove('createdAt');
-      await _users.doc(user.id).set(data, SetOptions(merge: true));
-      return Success<PubgetUser>(user);
+      await _firestore.collection('users').doc(userId).update(update.toMap());
+      final result = await getOwnProfile(userId);
+      return result;
     } on Object catch (error) {
       return FailureResult<PubgetUser>(_mapFailure(error));
     }
@@ -65,15 +75,19 @@ final class FirebaseUserRepository implements UserRepository {
   Future<Result<String>> uploadAvatar({
     required String userId,
     required Uint8List bytes,
-    String contentType = 'image/jpeg',
+    required String contentType,
   }) async {
     try {
-      final reference = _storage.ref('users/$userId/avatar.jpg');
-      final snapshot = await reference.putData(
+      final ref = _storage.ref('users/$userId/avatar.jpg');
+      final snapshot = await ref.putData(
         bytes,
         SettableMetadata(contentType: contentType),
       );
-      return Success<String>(await snapshot.ref.getDownloadURL());
+      final url = await snapshot.ref.getDownloadURL();
+      await _firestore.collection('users').doc(userId).update({
+        'avatarUrl': url,
+      });
+      return Success<String>(url);
     } on Object catch (error) {
       return FailureResult<String>(_mapFailure(error));
     }
@@ -92,6 +106,6 @@ final class FirebaseUserRepository implements UserRepository {
         _ => UnknownError(error.message ?? 'Profile update failed.'),
       };
     }
-    return const UnknownError('We could not save this profile.');
+    return const UnknownError('We could not update this profile.');
   }
 }

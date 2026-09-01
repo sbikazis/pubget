@@ -2,6 +2,8 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
+    "test": "node --test test/socialGraph.test.js",
+    "check": "node --check index.js && node --check src/socialGraph.js && node --check src/publicProfile.js",
     "backfill:public-profiles": "node scripts/backfill-public-profiles.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

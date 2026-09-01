@@ -9,6 +9,15 @@ service cloud.firestore {
     function changedOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
+    function activePremium(uid) {
+      let user = get(/databases/$(database)/documents/users/$(uid)).data;
+      return user.get('subscriptionType', 'free') == 'premium' &&
+        user.get('premiumExpiresAt', request.time) is timestamp &&
+        user.get('premiumExpiresAt', request.time) > request.time;
+    }
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
     function group(groupId) {
       return get(/databases/$(database)/documents/groups/$(groupId));
     }
@@ -330,12 +339,11 @@ service cloud.firestore {
          exists(/databases/$(database)/documents/groups/$(groupId)/messages/$(request.resource.data.replyToId)));
     }
     function validPrivateMessageCreate(chatId) {
-      let profile = get(/databases/$(database)/documents/public_profiles/$(request.auth.uid)).data;
       return validMessagePayload() &&
         !request.resource.data.keys().hasAny(['senderRole']) &&
-        request.resource.data.senderName == profile.get('username', '') &&
-        request.resource.data.senderAvatar == profile.get('avatarUrl', '') &&
-        request.resource.data.senderIsPremium == profile.get('isPremium', false) &&
+        request.resource.data.senderName == currentUser().get('username', '') &&
+        request.resource.data.senderAvatar == currentUser().get('avatarUrl', '') &&
+        request.resource.data.senderIsPremium == activePremium(request.auth.uid) &&
         (!request.resource.data.keys().hasAny(['replyToId']) ||
          exists(/databases/$(database)/documents/privateChats/$(chatId)/messages/$(request.resource.data.replyToId)));
     }
@@ -352,31 +360,53 @@ service cloud.firestore {
           'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
           'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
-          'customMaxCreatedGroupsLimit','hasClaimedReferral'
+          'customMaxCreatedGroupsLimit','hasClaimedReferral',
+          'favoriteAnimeIds','profileVisibility','activityVisibility',
+          'hasSkippedOnboarding'
         ]) &&
-        request.resource.data.subscriptionType == 'free' &&
-        request.resource.data.totalRespect == 0 &&
-        request.resource.data.fansCount == 0 &&
-        request.resource.data.isBanned == false &&
-        request.resource.data.coinsBalance == 0 &&
-        request.resource.data.customMaxMembersLimit == 0 &&
-        request.resource.data.customMaxJoinedGroupsLimit == 0 &&
-        request.resource.data.customMaxCreatedGroupsLimit == 0 &&
-        request.resource.data.hasClaimedReferral == false;
+        request.resource.data.keys().hasAll([
+          'email','createdAt','isProfileCompleted'
+        ]) &&
+        request.resource.data.email is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.isProfileCompleted is bool &&
+        request.resource.data.get('subscriptionType', 'free') == 'free' &&
+        request.resource.data.get('totalRespect', 0) == 0 &&
+        request.resource.data.get('fansCount', 0) == 0 &&
+        request.resource.data.get('isBanned', false) == false &&
+        request.resource.data.get('coinsBalance', 0) == 0 &&
+        request.resource.data.get('customMaxMembersLimit', 0) == 0 &&
+        request.resource.data.get('customMaxJoinedGroupsLimit', 0) == 0 &&
+        request.resource.data.get('customMaxCreatedGroupsLimit', 0) == 0 &&
+        request.resource.data.get('hasClaimedReferral', false) == false &&
+        request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
+        request.resource.data.get('activityVisibility', 'public') in ['public','private'];
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
-        (changedOnly([
+        ((changedOnly([
           'username','nickname','avatarUrl','bio','favoriteAnimes','age','country',
-          'isProfileCompleted','updatedAt'
-        ]) ||
+          'favoriteAnimeIds','profileVisibility','activityVisibility',
+          'isProfileCompleted','hasSkippedOnboarding','updatedAt'
+        ]) &&
+          (!request.resource.data.keys().hasAny(['bio']) ||
+           request.resource.data.bio == null ||
+           (request.resource.data.bio is string &&
+            request.resource.data.bio.size() <= 500)) &&
+          (!request.resource.data.keys().hasAny(['favoriteAnimeIds']) ||
+           (request.resource.data.favoriteAnimeIds is list &&
+            request.resource.data.favoriteAnimeIds.size() <= 50)) &&
+          request.resource.data.get('profileVisibility', 'public')
+            in ['public','private'] &&
+          request.resource.data.get('activityVisibility', 'public')
+            in ['public','private']) ||
          (changedOnly(['fcmToken','tokenUpdatedAt']) &&
           (!request.resource.data.keys().hasAny(['fcmToken']) ||
            (request.resource.data.fcmToken is string &&
             request.resource.data.fcmToken.size() > 0 &&
             request.resource.data.fcmToken.size() <= 4096)) &&
-          (!request.resource.data.keys().hasAny(['tokenUpdatedAt']) ||
-           request.resource.data.tokenUpdatedAt is timestamp)));
+           (!request.resource.data.keys().hasAny(['tokenUpdatedAt']) ||
+            request.resource.data.tokenUpdatedAt is timestamp)));
       allow delete: if false;
 
       match /notifications/{notificationId} {
@@ -683,29 +713,24 @@ service cloud.firestore {
     }
 
     match /respects/{respectId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.fromUserId == request.auth.uid &&
-        request.resource.data.toUserId != request.auth.uid &&
-        respectId == request.auth.uid + '_' + request.resource.data.toUserId &&
-        request.resource.data.value is int && request.resource.data.value >= 0 &&
-        request.resource.data.value <= 7 &&
-        request.resource.data.keys().hasOnly(['fromUserId','toUserId','value','createdAt']);
-      allow update: if resource.data.fromUserId == request.auth.uid &&
-        request.resource.data.fromUserId == request.resource.data.fromUserId &&
-        request.resource.data.toUserId == resource.data.toUserId &&
-        respectId == request.auth.uid + '_' + resource.data.toUserId &&
-        changedOnly(['value']) && request.resource.data.value is int &&
-        request.resource.data.value >= 0 && request.resource.data.value <= 7;
-      allow delete: if false;
+      allow get, list: if signedIn() &&
+        (resource.data.fromUserId == request.auth.uid ||
+         resource.data.toUserId == request.auth.uid);
+      // Respect values and aggregate counters are written atomically by
+      // giveRespect. Clients may never author or mutate these documents.
+      allow create, update, delete: if false;
     }
     match /fans/{fanId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.fanUserId == request.auth.uid &&
-        request.resource.data.targetUserId != request.auth.uid &&
-        fanId == request.auth.uid + '_' + request.resource.data.targetUserId &&
-        request.resource.data.keys().hasOnly(['fanUserId','targetUserId','createdAt']);
-      allow delete: if resource.data.fanUserId == request.auth.uid;
-      allow update: if false;
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+    match /friendships/{friendshipId} {
+      allow get, list: if signedIn() &&
+        request.auth.uid in resource.data.userIds;
+      allow create, update, delete: if false;
+    }
+    match /social_rate_limits/{limitId} {
+      allow read, write: if false;
     }
     match /promotions/{promotionId} { allow read: if signedIn(); allow write: if false; }
     match /physical_products/{productId} { allow read: if signedIn(); allow write: if false; }

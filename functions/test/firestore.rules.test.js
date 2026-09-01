@@ -162,6 +162,18 @@ test("private messages constrain sender, text, and recipient acknowledgements", 
   await assertFails(db("alice").doc("privateChats/c1/messages/m9").set({
     ...message, replyToId: "missing", replyToSenderName: "Bob",
   }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("users/alice").update({
+      profileVisibility: "private",
+    });
+    await context.firestore().doc("public_profiles/alice").delete();
+  });
+  await assertSucceeds(
+    db("alice").doc("privateChats/c1/messages/private-profile").set({
+      ...message,
+      createdAt: serverTimestamp(),
+    }),
+  );
   await assertSucceeds(db("alice").doc("privateChats/c1/messages/media").set({
     ...message, type: "media", text: null, mediaUrl: "https://example.test/a.png",
     mediaType: "image",
@@ -211,19 +223,55 @@ test("group capacity is fixed at trusted entitlement on create and never client-
   await assertSucceeds(db("alice").doc("groups/capacity-custom").set({ ...group, maxMembers: 350 }));
   await assertFails(db("alice").doc("groups/capacity-wrong-custom").set({ ...group, maxMembers: 100 }));
 });
-test("stickers, rating ids, and fan ids cannot be forged", async () => {
+test("stickers and social authority cannot be forged", async () => {
   await assertSucceeds(db("alice").doc("users/alice/stickers/s1").set({
     creatorId: "alice", imageUrl: "https://example.test/s.png", createdAt: new Date(),
   }));
   await assertFails(db("alice").doc("users/alice/stickers/s2").set({
     creatorId: "bob", imageUrl: "https://example.test/s.png", createdAt: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("respects/alice_bob").set({
+  await assertFails(db("alice").doc("respects/alice_bob").set({
     fromUserId: "alice", toUserId: "bob", value: 5, createdAt: new Date(),
   }));
   await assertFails(db("alice").doc("fans/not-canonical").set({
     fanUserId: "alice", targetUserId: "bob", createdAt: new Date(),
   }));
+  await assertFails(db("alice").doc("friendships/alice_bob").set({
+    userA: "alice", userB: "bob", userIds: ["alice", "bob"],
+    status: "pending", requestedBy: "alice", createdAt: new Date(),
+  }));
+});
+test("friendship reads are limited to relationship participants", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("friendships/alice_bob").set({
+      userA: "alice", userB: "bob", userIds: ["alice", "bob"],
+      status: "pending", requestedBy: "alice", createdAt: new Date(),
+    });
+  });
+  await assertSucceeds(db("alice").doc("friendships/alice_bob").get());
+  await assertSucceeds(db("bob").doc("friendships/alice_bob").get());
+  await assertFails(db("charlie").doc("friendships/alice_bob").get());
+});
+test("respect details are visible only to either participant", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("respects/server-owned-id").set({
+      fromUserId: "alice", toUserId: "bob", value: 6,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+  });
+  await assertSucceeds(db("alice").doc("respects/server-owned-id").get());
+  await assertSucceeds(db("bob").doc("respects/server-owned-id").get());
+  await assertFails(db("charlie").doc("respects/server-owned-id").get());
+});
+test("legacy fan identity documents are not client-readable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("fans/alice_bob").set({
+      fanUserId: "alice", targetUserId: "bob", createdAt: new Date(),
+    });
+  });
+  await assertFails(db("alice").doc("fans/alice_bob").get());
+  await assertFails(db("bob").doc("fans/alice_bob").get());
+  await assertFails(db("charlie").doc("fans/alice_bob").get());
 });
 test("night actions are player intent only, never role or resolver state", async () => {
   await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({

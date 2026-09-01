@@ -68,6 +68,13 @@ service firebase.storage {
             request.auth.uid);
     }
 
+    function publicProfileAvatar(userId) {
+      return signedIn() &&
+          firestore.exists(/databases/(default)/documents/users/$(userId)) &&
+          firestore.get(/databases/(default)/documents/users/$(userId))
+            .data.get('profileVisibility', 'public') == 'public';
+    }
+
     // StorageService writes this value for legacy chat uploads. It prevents a
     // group member/participant from replacing or deleting another sender's
     // object even though the object name itself has no UID.
@@ -98,7 +105,8 @@ service firebase.storage {
 
     // Current documented profile and sticker paths.
     match /users/{userId}/avatar.jpg {
-      allow read: if signedIn();
+      allow read: if signedIn() &&
+          (request.auth.uid == userId || publicProfileAvatar(userId));
       allow create, update: if signedIn() && request.auth.uid == userId &&
           imageUpload(5 * 1024 * 1024);
       allow delete: if signedIn() && request.auth.uid == userId;

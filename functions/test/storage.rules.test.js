@@ -56,6 +56,40 @@ test("requires authentication and UID ownership for avatars", async () => {
   await assertFails(upload(env.authenticatedContext("mallory"), "avatars/alice.jpg", "image/jpeg"));
 });
 
+test("private current avatars are readable only by their owner", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("users/private-user").set({
+      profileVisibility: "private",
+    });
+    await context.firestore().doc("users/public-user").set({
+      profileVisibility: "public",
+    });
+  });
+  const privateOwner = env.authenticatedContext("private-user");
+  const publicOwner = env.authenticatedContext("public-user");
+  await assertSucceeds(upload(
+    privateOwner,
+    "users/private-user/avatar.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(upload(
+    publicOwner,
+    "users/public-user/avatar.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(
+    privateOwner.storage().ref("users/private-user/avatar.jpg").getDownloadURL(),
+  );
+  await assertFails(
+    env.authenticatedContext("alice")
+      .storage().ref("users/private-user/avatar.jpg").getDownloadURL(),
+  );
+  await assertSucceeds(
+    env.authenticatedContext("alice")
+      .storage().ref("users/public-user/avatar.jpg").getDownloadURL(),
+  );
+});
+
 test("permits group image changes only to the Firestore owner", async () => {
   await assertSucceeds(upload(env.authenticatedContext("owner"), "groups/group-owner/group_image.jpg", "image/jpeg"));
   await assertFails(upload(env.authenticatedContext("member"), "groups/group-owner/group_image.jpg", "image/jpeg"));

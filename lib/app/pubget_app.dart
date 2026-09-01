@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,17 @@ import '../features/authentication/screens/placeholder_home_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
+import '../features/social/providers/profile_provider.dart';
+import '../features/social/providers/social_provider.dart';
+import '../features/social/repositories/firebase_profile_repository.dart';
+import '../features/social/repositories/firebase_social_repository.dart';
+import '../features/social/repositories/profile_repository.dart';
+import '../features/social/repositories/social_repository.dart';
+import '../features/social/repositories/unavailable_profile_repository.dart';
+import '../features/social/repositories/unavailable_social_repository.dart';
+import '../features/social/screens/edit_profile_page.dart';
+import '../features/social/screens/friend_requests_page.dart';
+import '../features/social/screens/profile_page.dart';
 import 'app_route.dart';
 import 'app_router.dart';
 import 'design_system_showcase_page.dart';
@@ -41,7 +53,13 @@ class PubgetApp extends StatelessWidget {
       '/register' ||
       '/terms' ||
       '/onboarding' ||
-      '/home' => ParameterizedRoute(path: Uri.base.path),
+      '/home' ||
+      '/profile' ||
+      '/profile/edit' ||
+      '/friend-requests' => ParameterizedRoute(
+        path: Uri.base.path,
+        parameters: Uri.base.queryParameters,
+      ),
       _ => const ParameterizedRoute(path: '/splash'),
     };
     final developmentInitialRoute = kDebugMode
@@ -58,6 +76,8 @@ class PubgetApp extends StatelessWidget {
         ),
         provider.Provider<AuthRepository>.value(value: repositories.$1),
         provider.Provider<UserRepository>.value(value: repositories.$2),
+        provider.Provider<ProfileRepository>.value(value: repositories.$3),
+        provider.Provider<SocialRepository>.value(value: repositories.$4),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -65,6 +85,14 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<OnboardingProvider>(
           create: (context) =>
               OnboardingProvider(repository: context.read<UserRepository>()),
+        ),
+        provider.ChangeNotifierProvider<ProfileProvider>(
+          create: (context) =>
+              ProfileProvider(repository: context.read<ProfileRepository>()),
+        ),
+        provider.ChangeNotifierProvider<SocialProvider>(
+          create: (context) =>
+              SocialProvider(repository: context.read<SocialRepository>()),
         ),
       ],
       child: Builder(
@@ -88,6 +116,12 @@ class PubgetApp extends StatelessWidget {
                 '/terms': const TermsPage(),
                 '/onboarding': const OnboardingPage(),
                 '/home': const PlaceholderHomePage(),
+                '/profile/edit': const EditProfilePage(),
+                '/friend-requests': const FriendRequestsPage(),
+              },
+              parameterizedPages: <String, ParameterizedPageBuilder>{
+                '/profile': (parameters) =>
+                    ProfilePage(userId: parameters['uid']),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -95,18 +129,24 @@ class PubgetApp extends StatelessWidget {
                 onboarding,
               ]),
               routeGuard: (path) {
-                if (path != '/home' && path != '/onboarding') return null;
+                final isProtected =
+                    path == '/home' ||
+                    path == '/onboarding' ||
+                    path == '/profile' ||
+                    path == '/profile/edit' ||
+                    path == '/friend-requests';
+                if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||
                     auth.state == LoadingState.loading) {
                   return '/splash';
                 }
                 if (!auth.isAuthenticated) return '/login';
-                if (path == '/home' &&
+                if (path != '/onboarding' &&
                     onboarding.state == LoadingState.initial) {
                   return '/splash';
                 }
-                if (path == '/home' && !onboarding.canEnterHome) {
+                if (path != '/onboarding' && !onboarding.canEnterHome) {
                   return '/onboarding';
                 }
                 return null;
@@ -118,13 +158,16 @@ class PubgetApp extends StatelessWidget {
     );
   }
 
-  (AuthRepository, UserRepository) _createRepositories() {
+  (AuthRepository, UserRepository, ProfileRepository, SocialRepository)
+  _createRepositories() {
     if (!firebaseState.isReady) {
       final message =
           firebaseState.message ?? 'Firebase is unavailable in this build.';
       return (
         UnavailableAuthRepository(message),
         UnavailableUserRepository(message),
+        UnavailableProfileRepository(message),
+        UnavailableSocialRepository(message),
       );
     }
     return (
@@ -135,6 +178,14 @@ class PubgetApp extends StatelessWidget {
       FirebaseUserRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
+      ),
+      FirebaseProfileRepository(
+        firestore: FirebaseFirestore.instance,
+        storage: FirebaseStorage.instance,
+      ),
+      FirebaseSocialRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
     );
   }

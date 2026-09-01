@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'app_route.dart';
 
 typedef AppRouteGuard = String? Function(String path);
+typedef ParameterizedPageBuilder =
+    Widget Function(Map<String, String> parameters);
 
 final class AppRouteInformationParser extends RouteInformationParser<AppRoute> {
   @override
@@ -34,6 +36,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     required this.homePage,
     this.designSystemPage,
     this.domainPages = const <String, Widget>{},
+    this.parameterizedPages = const <String, ParameterizedPageBuilder>{},
     GlobalKey<NavigatorState>? navigatorKey,
     AppRoute initialRoute = const FoundationRoute(),
     this.routeGuard,
@@ -47,6 +50,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   final Widget homePage;
   final Widget? designSystemPage;
   final Map<String, Widget> domainPages;
+  final Map<String, ParameterizedPageBuilder> parameterizedPages;
   final AppRouteGuard? routeGuard;
   final Listenable? refreshListenable;
   @override
@@ -86,6 +90,9 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @override
   Widget build(BuildContext context) {
     final page = switch (_route) {
+      ParameterizedRoute(:final path, :final parameters)
+          when parameterizedPages[path] != null =>
+        parameterizedPages[path]!(parameters),
       ParameterizedRoute(:final path) when domainPages[path] != null =>
         domainPages[path]!,
       ParameterizedRoute(:final path)
@@ -123,6 +130,8 @@ final class AppRouter {
     required Widget homePage,
     Widget? designSystemPage,
     Map<String, Widget> domainPages = const <String, Widget>{},
+    Map<String, ParameterizedPageBuilder> parameterizedPages =
+        const <String, ParameterizedPageBuilder>{},
     AppRoute initialRoute = const FoundationRoute(),
     AppRouteGuard? routeGuard,
     Listenable? refreshListenable,
@@ -132,6 +141,7 @@ final class AppRouter {
         homePage: homePage,
         designSystemPage: designSystemPage,
         domainPages: domainPages,
+        parameterizedPages: parameterizedPages,
         initialRoute: initialRoute,
         routeGuard: routeGuard,
         refreshListenable: refreshListenable,

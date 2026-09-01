@@ -7,6 +7,11 @@ final class PubgetUser {
     this.avatarUrl,
     this.bio,
     this.favoriteAnimes = const <String>[],
+    this.favoriteAnimeIds = const <String>[],
+    this.profileVisibility = 'public',
+    this.activityVisibility = 'public',
+    this.totalRespect = 0,
+    this.fansCount = 0,
     required this.createdAt,
     required this.isProfileCompleted,
     this.hasSkippedOnboarding = false,
@@ -19,6 +24,11 @@ final class PubgetUser {
   final String? avatarUrl;
   final String? bio;
   final List<String> favoriteAnimes;
+  final List<String> favoriteAnimeIds;
+  final String profileVisibility;
+  final String activityVisibility;
+  final int totalRespect;
+  final int fansCount;
   final DateTime createdAt;
   final bool isProfileCompleted;
   final bool hasSkippedOnboarding;
@@ -36,6 +46,15 @@ final class PubgetUser {
             growable: false,
           ) ??
           const <String>[],
+      favoriteAnimeIds:
+          (map['favoriteAnimeIds'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const <String>[],
+      profileVisibility: map['profileVisibility'] as String? ?? 'public',
+      activityVisibility: map['activityVisibility'] as String? ?? 'public',
+      totalRespect: _intFrom(map['totalRespect']),
+      fansCount: _intFrom(map['fansCount']),
       createdAt: _dateFrom(map['createdAt']) ?? DateTime.now(),
       isProfileCompleted: map['isProfileCompleted'] as bool? ?? false,
       hasSkippedOnboarding: map['hasSkippedOnboarding'] as bool? ?? false,
@@ -51,6 +70,9 @@ final class PubgetUser {
       'avatarUrl': avatarUrl,
       'bio': bio,
       'favoriteAnimes': favoriteAnimes,
+      'favoriteAnimeIds': favoriteAnimeIds,
+      'profileVisibility': profileVisibility,
+      'activityVisibility': activityVisibility,
       'createdAt': createdAt,
       'isProfileCompleted': isProfileCompleted,
       'hasSkippedOnboarding': hasSkippedOnboarding,
@@ -63,6 +85,11 @@ final class PubgetUser {
     String? avatarUrl,
     String? bio,
     List<String>? favoriteAnimes,
+    List<String>? favoriteAnimeIds,
+    String? profileVisibility,
+    String? activityVisibility,
+    int? totalRespect,
+    int? fansCount,
     bool? isProfileCompleted,
     bool? hasSkippedOnboarding,
   }) {
@@ -74,6 +101,11 @@ final class PubgetUser {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       bio: bio ?? this.bio,
       favoriteAnimes: favoriteAnimes ?? this.favoriteAnimes,
+      favoriteAnimeIds: favoriteAnimeIds ?? this.favoriteAnimeIds,
+      profileVisibility: profileVisibility ?? this.profileVisibility,
+      activityVisibility: activityVisibility ?? this.activityVisibility,
+      totalRespect: totalRespect ?? this.totalRespect,
+      fansCount: fansCount ?? this.fansCount,
       createdAt: createdAt,
       isProfileCompleted: isProfileCompleted ?? this.isProfileCompleted,
       hasSkippedOnboarding: hasSkippedOnboarding ?? this.hasSkippedOnboarding,
@@ -85,4 +117,6 @@ final class PubgetUser {
     if (value is String) return DateTime.tryParse(value);
     return null;
   }
+
+  static int _intFrom(Object? value) => value is num ? value.toInt() : 0;
 }
