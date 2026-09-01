@@ -29,4 +29,27 @@ void main() {
 
     expect(information.uri.toString(), '/groups/example?source=invite');
   });
+
+  testWidgets('design system path renders the internal showcase page', (
+    tester,
+  ) async {
+    final delegate = AppRouterDelegate(
+      homePage: const Text('Foundation'),
+      designSystemPage: const Text('Design system'),
+      initialRoute: const ParameterizedRoute(path: '/design-system'),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
+      ),
+    );
+
+    expect(find.text('Design system'), findsOneWidget);
+    expect(find.text('Foundation'), findsNothing);
+  });
 }

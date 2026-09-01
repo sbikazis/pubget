@@ -97,3 +97,66 @@ copying a hard-coded project configuration.
 `Online`/`Offline` state, can be subscribed to from any future Provider, and
 cleans up its polling timer. Its platform probes use native IO on desktop and
 mobile and the browser online flag on web.
+
+## Design system
+
+The shared visual language lives under `core/theme/` and `core/widgets/`.
+It uses a Royal Purple primary palette and a Gold accent palette with equal
+support for light and dark themes.
+
+### Required rules
+
+- Do not introduce hard-coded colors outside `AppColors`. Components should
+  normally read semantic colors from `Theme.of(context).colorScheme`.
+- Use `AppSpacing`, `AppRadius`, `AppTypography`, and `AppShadows` instead of
+  inventing values in feature widgets.
+- Let the surrounding `Directionality` decide layout. Use directional
+  alignment and start/end semantics instead of left/right assumptions.
+- All visible copy must be supplied by the caller when it belongs to a feature.
+  Shared fallback messages are intentionally generic and may be overridden.
+- Shared widgets stay presentational. State transitions and business decisions
+  remain in Providers/Controllers, following the required dependency direction.
+- Motion must communicate progress or feedback. The skeleton animation is
+  implemented with Flutter's animation primitives, so no animation or shimmer
+  package is required.
+
+Import the component barrel when a screen needs several controls:
+
+```dart
+import 'package:pubget/core/widgets/pubget_design_system.dart';
+```
+
+Individual files remain available for narrow imports. Primary, secondary,
+text, and icon buttons expose disabled and loading behavior. Inputs cover
+single-line, multiline, search, focus, disabled, and error states. Cards,
+avatars, and badges are visual primitives and do not contain premium, rank, or
+identity rules.
+
+Sheets and dialogs return values to their caller without changing application
+state. `PubgetSnackbars` exposes success, error, and information feedback.
+`PubgetTooltip` uses the current theme and platform tooltip behavior.
+
+### LoadingState composition
+
+`PubgetLoadingStateView` maps the foundation `LoadingState` to consistent
+loading, empty, error, offline, refreshing, pagination, and loaded UI:
+
+```dart
+PubgetLoadingStateView(
+  state: provider.state,
+  onRetry: provider.load,
+  skeleton: const PubgetSkeleton.card(width: double.infinity),
+  empty: const PubgetEmptyState(title: 'No items yet'),
+  child: ItemsList(items: provider.items),
+)
+```
+
+Feature screens should override user-facing messages with localized copy and
+never expose raw Firebase or technical exception text.
+
+### Internal showcase
+
+`DesignSystemShowcasePage` is reachable from the foundation page during
+development. It renders the complete component catalog and provides live
+Light/Dark and RTL/LTR controls. It is not a production user flow and contains
+no domain behavior.

@@ -1,0 +1,66 @@
+PROMPT 03 — Pubget Design System
+
+هذا البرومت يبني نظام التصميم الموحّد الذي ستستخدمه كل شاشة قادمة. لا تبني أي شاشة إنتاجية حقيقية هنا — فقط المكوّنات القابلة لإعادة الاستخدام وقواعدها، مع صفحة Showcase داخلية واحدة لعرضها والتحقق منها بصريًا.
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- الهوية البصرية: Royal Purple كلون أساسي + Gold كلون تمييز (Accent)، هوية "أنمي فاخر" (Anime × Premium Social Platform) — ليس طابع أنمي طفولي أو صارخ.
+- يجب دعم Dark Mode و Light Mode بجودة متساوية.
+- يجب دعم RTL (عربي) و LTR (إنجليزي) بشكل حقيقي في كل مكوّن من البداية — ليس كطبقة تُضاف لاحقًا.
+- الحركة (Animations) تُستخدم لإعطاء Feedback ووضوح تسلسل هرمي، وليست زخرفة بلا وظيفة.
+- كل مكوّن يُبنى فوق قاعدة UI ← Provider/Controller ← Repository/Service المتفق عليها في PROMPT 02 إن احتاج حالة (State)؛ معظم مكوّنات هذا البرومت ستكون Stateless بطبيعتها.
+
+## المطلوب تنفيذه
+
+### 1. Design Tokens (الأساس الخام)
+
+في core/theme/ (البنية التي أُنشئت في PROMPT 02):
+- Color tokens: Primary (Royal Purple + درجاته)، Accent (Gold + درجاته)، Semantic colors (Success/Error/Warning/Info)، Surface/Background لكل من Dark/Light.
+- Typography scale: أحجام وأوزان موحّدة (Display/Headline/Title/Body/Caption)، مع اختبار وضوح القراءة في العربية والإنجليزية معًا.
+- Spacing scale ثابتة (مثال: 4/8/12/16/24/32...).
+- Radius scale (لأزرار/بطاقات/حقول).
+- Shadow/Elevation tokens لكل من الوضعين.
+
+### 2. المكوّنات الأساسية (Components)
+
+ابنِ كل مكوّن كملف مستقل قابل لإعادة الاستخدام، مع دعم Dark/Light وRTL/LTR تلقائيًا عبر Theme/Directionality المحيط به (لا Hardcoding لأي اتجاه أو لون):
+
+- Buttons: Primary, Secondary, Text, Icon، مع حالات Disabled/Loading.
+- Inputs: نص عادي، متعدد الأسطر، بحث، مع حالات Error/Focus/Disabled.
+- Cards: بطاقة أساسية قابلة للتخصيص (Elevation, Padding, onTap).
+- Avatars: دائرية بأحجام متعددة، مع Placeholder وFallback بالحرف الأول عند غياب صورة.
+- Badges: شارة عامة قابلة لتخصيص اللون/النص (ستُستخدم لاحقًا لشارات الرتب والـPremium، لكن لا تبنِ منطق الرتب هنا — فقط المكوّن البصري العام).
+- Bottom Sheets: حاوية سفلية موحّدة (Draggable حيث مناسب).
+- Dialogs: تأكيد (Confirmation) وتنبيه (Alert) بنمط موحّد.
+- Snackbars: نجاح/خطأ/معلومة.
+- Skeletons: أشكال تحميل هيكلية (Shimmer) قابلة للتشكيل حسب الحاوية (بطاقة/قائمة/دائرة).
+- Empty States: مكوّن موحّد (أيقونة/رسم + نص + إجراء اختياري).
+- Error States: مكوّن موحّد (رسالة مفهومة + زر إعادة محاولة، بلا تفاصيل تقنية).
+- Tooltips (إن دعمتها المنصة الحالية بسهولة).
+
+### 3. ربط حالات التحميل الموحّدة
+
+اربط Skeleton/Empty/Error States بالـ LoadingState enum المُعرَّف في PROMPT 02، بحيث يصبح استخدامها لاحقًا في أي Provider مستقبلي مباشرًا وموثقًا (مثال Widget واحد يوضح: `switch(state) { Loading => Skeleton(), Empty => EmptyState(), Error => ErrorState(), ... }`).
+
+### 4. صفحة Showcase داخلية
+
+صفحة واحدة (تُستخدم فقط أثناء التطوير، ليست جزءًا من تدفق المستخدم النهائي) تعرض كل مكوّن أعلاه مع تبديل حي بين Dark/Light وRTL/LTR للتحقق البصري السريع.
+
+### 5. توثيق
+
+وثّق في core/README.md (أو ملف design-system.md منفصل إن كان أوضح): كيف يُستخدم كل مكوّن، وما القواعد الملزمة (مثال: لا Hardcoded colors خارج tokens، لا نصوص مباشرة بدون دعم اتجاه).
+
+## قيود صارمة
+
+- لا تبني أي شاشة إنتاجية حقيقية (لا Login، لا Home، لا Chat) — هذا البرومت للمكوّنات فقط.
+- لا تضف حزمة خارجية جديدة للـ Shimmer/Animations إلا إذا كانت ضرورية فعلاً ولا يمكن تحقيق تأثير مقبول بـ Flutter الأساسي؛ إن أضفتها اذكرها صراحة كقرار غير محدد مسبقًا.
+- التزم بحدود Dart/Flutter الحالية بعد التعديل في PROMPT 02، ولا تعدّل pubspec.yaml إلا إن كانت الإضافة ضرورية فعلاً.
+- لا تلمس lib_legacy/.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات المُنشأة.
+2. أي حزمة خارجية أضفتها ولماذا كانت ضرورية.
+3. تأكيد نهائي: flutter analyze وflutter test وflutter build ناجحة بلا أخطاء.
+4. تأكيد أن الرفع إلى GitHub تم بنجاح هذه المرة (تجنبًا لتكرار مشكلة PROMPT 02).

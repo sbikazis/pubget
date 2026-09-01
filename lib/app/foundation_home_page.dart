@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/examples/dummy_provider.dart';
 import '../core/loading/loading_state.dart';
 import '../core/network/network_service.dart';
+import '../core/theme/app_spacing.dart';
+import '../core/widgets/pubget_buttons.dart';
+import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
 
 class FoundationHomePage extends StatelessWidget {
@@ -23,7 +27,7 @@ class FoundationHomePage extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -33,13 +37,13 @@ class FoundationHomePage extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 const Text(
                   'The new application foundation is ready. Feature domains '
                   'will be added in later stages.',
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xl),
                 _StatusRow(
                   label: 'Firebase',
                   value: firebase?.isReady == true
@@ -50,20 +54,34 @@ class FoundationHomePage extends StatelessWidget {
                   label: 'Network',
                   value: network.isOnline ? 'Online' : 'Offline',
                 ),
-                const SizedBox(height: 16),
-                OutlinedButton(
+                const SizedBox(height: AppSpacing.lg),
+                PubgetSecondaryButton(
                   onPressed: dummy.state == LoadingState.loading
                       ? null
                       : dummy.load,
+                  semanticLabel: 'Run foundation data flow',
                   child: Text(
                     dummy.state == LoadingState.loading
                         ? 'Loading example…'
                         : 'Run foundation data flow',
                   ),
                 ),
+                if (kDebugMode) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetPrimaryButton(
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DesignSystemShowcasePage(),
+                      ),
+                    ),
+                    semanticLabel: 'Open design system showcase',
+                    leadingIcon: Icons.palette_outlined,
+                    child: const Text('Open design system showcase'),
+                  ),
+                ],
                 if (dummy.greeting case final greeting?)
                   Padding(
-                    padding: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
                     child: Text(greeting, textAlign: TextAlign.center),
                   ),
               ],
@@ -89,7 +107,7 @@ class _StatusRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
           Text(label),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Text(
               value,
