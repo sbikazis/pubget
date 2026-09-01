@@ -44,6 +44,12 @@ import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
+import '../features/edits/providers/edits_provider.dart';
+import '../features/edits/repositories/edits_repository.dart';
+import '../features/edits/repositories/firebase_edits_repository.dart';
+import '../features/edits/repositories/unavailable_edits_repository.dart';
+import '../features/edits/screens/edit_feed_page.dart';
+import '../features/edits/screens/edit_upload_page.dart';
 import '../features/home/providers/home_provider.dart';
 import '../features/home/repositories/firebase_home_repository.dart';
 import '../features/home/repositories/home_repository.dart';
@@ -90,6 +96,8 @@ class PubgetApp extends StatelessWidget {
       '/profile/edit' ||
       '/friend-requests' ||
       '/notifications' ||
+      '/edits' ||
+      '/edits/upload' ||
       '/groups' ||
       '/groups/create' ||
       '/group' ||
@@ -126,6 +134,7 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<ChatRepository>.value(value: repositories.$8),
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
+        provider.Provider<EditsRepository>.value(value: repositories.$11),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -162,6 +171,10 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<HomeProvider>(
           create: (context) =>
               HomeProvider(repository: context.read<HomeRepository>()),
+        ),
+        provider.ChangeNotifierProvider<EditsProvider>(
+          create: (context) =>
+              EditsProvider(repository: context.read<EditsRepository>()),
         ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
@@ -220,6 +233,8 @@ class PubgetApp extends StatelessWidget {
                 '/profile/edit': const EditProfilePage(),
                 '/friend-requests': const FriendRequestsPage(),
                 '/notifications': const NotificationInboxPage(),
+                '/edits': const EditFeedPage(),
+                '/edits/upload': const EditUploadPage(),
                 '/groups': const GroupsHomePage(),
                 '/groups/create': const CreateGroupWizardPage(),
               },
@@ -256,6 +271,8 @@ class PubgetApp extends StatelessWidget {
                     path == '/profile/edit' ||
                     path == '/friend-requests' ||
                     path == '/notifications' ||
+                    path == '/edits' ||
+                    path == '/edits/upload' ||
                     path == '/groups' ||
                     path == '/groups/create' ||
                     path == '/group' ||
@@ -299,6 +316,7 @@ class PubgetApp extends StatelessWidget {
     ChatRepository,
     NotificationRepository,
     HomeRepository,
+    EditsRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -315,6 +333,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableChatRepository(message),
         UnavailableNotificationRepository(message),
         UnavailableHomeRepository(message),
+        UnavailableEditsRepository(message),
       );
     }
     return (
@@ -357,6 +376,11 @@ class PubgetApp extends StatelessWidget {
         messaging: FirebaseMessaging.instance,
       ),
       FirebaseHomeRepository(firestore: FirebaseFirestore.instance),
+      FirebaseEditsRepository(
+        firestore: FirebaseFirestore.instance,
+        storage: FirebaseStorage.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
     );
   }
 }

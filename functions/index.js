@@ -35,6 +35,8 @@ const {
   createDiscoveryScheduler,
   onSchedule,
 } = require("./src/discoveryEngine");
+const { createEditsDomain } = require("./src/editsDomain");
+const { createEditPipeline } = require("./src/editPipeline");
 
 initializeApp();
 
@@ -111,10 +113,55 @@ const discoveryScheduler = createDiscoveryScheduler({
   db: getFirestore(),
   FieldValue,
 });
+const editsDomain = createEditsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 
 exports.refreshGroupActivityScores = onSchedule(
   { schedule: "every 1 hours", region: "us-central1" },
   discoveryScheduler.updateScores,
+);
+exports.startEditUpload = onCall(
+  { region: "us-central1" },
+  editsDomain.startUpload,
+);
+exports.repostEdit = onCall(
+  { region: "us-central1" },
+  editsDomain.repost,
+);
+exports.deleteEdit = onCall(
+  { region: "us-central1" },
+  editsDomain.deleteEdit,
+);
+exports.likeEdit = onCall(
+  { region: "us-central1" },
+  editsDomain.like,
+);
+exports.addEditComment = onCall(
+  { region: "us-central1" },
+  editsDomain.comment,
+);
+exports.startEditPlayback = onCall(
+  { region: "us-central1" },
+  editsDomain.startPlayback,
+);
+exports.recordEditView = onCall(
+  { region: "us-central1" },
+  editsDomain.recordView,
+);
+exports.recordEditSignal = onCall(
+  { region: "us-central1" },
+  editsDomain.signal,
+);
+exports.editCommentAction = onCall(
+  { region: "us-central1" },
+  editsDomain.commentAction,
+);
+exports.processEditVideo = onObjectFinalized(
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  createEditPipeline({ db: getFirestore(), bucket: getStorage().bucket() }),
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);

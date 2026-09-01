@@ -87,11 +87,11 @@ service firebase.storage {
     }
 
     function isEditVideoName(fileName) {
-      return fileName.matches('v_.*\\.mp4');
+      return fileName.matches('(v|[a-zA-Z0-9_-]+)\\.mp4');
     }
 
     function isEditThumbnailName(fileName) {
-      return fileName.matches('t_.*\\.jpg');
+      return fileName.matches('t_[a-zA-Z0-9_-]+\\.jpg');
     }
 
     // Legacy profile path used by StorageService.
@@ -245,22 +245,23 @@ service firebase.storage {
 
     match /edits/{userId}/{fileName} {
       allow read: if signedIn() && isEditVideoName(fileName);
-      allow create, update: if signedIn() && request.auth.uid == userId &&
+      allow create: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
           request.resource.contentType == 'video/mp4' &&
-          request.resource.size <= 250 * 1024 * 1024;
+          request.resource.size <= 100 * 1024 * 1024;
+      allow update: if false;
       allow delete: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName);
     }
 
     match /edits/{userId}/{fileName} {
       allow read: if signedIn() && isEditThumbnailName(fileName);
-      allow create, update: if signedIn() && request.auth.uid == userId &&
-          isEditThumbnailName(fileName) &&
-          request.resource.contentType == 'image/jpeg' &&
-          request.resource.size <= 10 * 1024 * 1024;
-      allow delete: if signedIn() && request.auth.uid == userId &&
-          isEditThumbnailName(fileName);
+      allow write: if false;
+    }
+
+    match /edits-processed/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
     }
   }
 }
