@@ -111,37 +111,10 @@ class _HomePageState extends State<HomePage> {
       case 1:
         AppNavigation.go(context, '/groups');
       case 2:
-        _showPlaceholder(
-          context,
-          'Private',
-          'Private chat will be connected in a later prompt.',
-        );
+        AppNavigation.go(context, '/private');
       case 3:
         AppNavigation.go(context, '/edits');
     }
-  }
-
-  void _showPlaceholder(BuildContext context, String title, String message) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.sm),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
   }
 }
 

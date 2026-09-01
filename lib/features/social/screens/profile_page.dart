@@ -7,6 +7,7 @@ import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../models/social_models.dart';
 import '../providers/profile_provider.dart';
 import '../providers/social_provider.dart';
@@ -212,6 +213,8 @@ class _ProfileContent extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _FriendAction(profileId: profileId),
           const SizedBox(height: AppSpacing.sm),
+          _StartChatAction(profileId: profileId),
+          const SizedBox(height: AppSpacing.sm),
           _BlockAction(profileId: profileId),
           if (social.failure != null) ...[
             const SizedBox(height: AppSpacing.md),
@@ -281,6 +284,50 @@ class _CreatorEditsState extends State<_CreatorEdits> {
       );
     },
   );
+}
+
+class _StartChatAction extends StatelessWidget {
+  const _StartChatAction({required this.profileId});
+
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    final social = context.watch<SocialProvider>();
+    if (!social.canStartPrivateChatWith(profileId)) {
+      return const SizedBox.shrink();
+    }
+    return PubgetPrimaryButton(
+      key: const Key('profile-start-chat'),
+      onPressed: social.state == LoadingState.loading
+          ? null
+          : () => _start(context),
+      semanticLabel: 'Start a private chat',
+      leadingIcon: Icons.chat_bubble_outline,
+      child: const Text('Start chat'),
+    );
+  }
+
+  Future<void> _start(BuildContext context) async {
+    try {
+      final list = context.read<PrivateChatListProvider>();
+      final result = await list.startChat(profileId);
+      if (!context.mounted) return;
+      final chatId = result.valueOrNull;
+      if (chatId != null) {
+        await AppNavigation.go(
+          context,
+          '/private-chat?chatId=${Uri.encodeComponent(chatId)}',
+        );
+        return;
+      }
+      final message = result.failureOrNull?.message ??
+          'Could not start this private chat.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on ProviderNotFoundException {
+      return;
+    }
+  }
 }
 
 class _BlockAction extends StatelessWidget {

@@ -399,7 +399,10 @@ function createGroupChat({ db, FieldValue, HttpsError }) {
 }
 
 module.exports = {
+  MEDIA_TYPES,
   MESSAGE_TYPES,
+  USER_MESSAGE_TYPES,
   createGroupChat,
   validString,
+  validateMessage,
 };

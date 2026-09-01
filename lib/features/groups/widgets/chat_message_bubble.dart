@@ -13,6 +13,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.contrast,
     required this.onLongPress,
     required this.onMediaTap,
+    this.showSenderRole = true,
     super.key,
   });
 
@@ -21,6 +22,7 @@ class ChatMessageBubble extends StatelessWidget {
   final ChatContrastTheme contrast;
   final VoidCallback onLongPress;
   final VoidCallback? onMediaTap;
+  final bool showSenderRole;
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +99,8 @@ class ChatMessageBubble extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: AppSpacing.xs),
-                          PubgetBadge(label: message.senderRole),
+                          if (showSenderRole)
+                            PubgetBadge(label: message.senderRole),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.xs),

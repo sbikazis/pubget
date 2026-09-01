@@ -28,6 +28,12 @@ final class SocialProvider extends ChangeNotifier {
   List<RespectRelation> get fans =>
       _snapshot.receivedRespect.where((item) => item.value >= 5).toList();
 
+  bool canStartPrivateChatWith(String otherUserId) {
+    final userId = _userId;
+    if (userId == null) return false;
+    return _snapshot.canStartPrivateChat(userId, otherUserId);
+  }
+
   Future<Result<SocialSnapshot>> load(String userId) async {
     _userId = userId;
     _failure = null;

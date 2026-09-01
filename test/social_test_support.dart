@@ -59,6 +59,7 @@ final class FakeProfileRepository implements ProfileRepository {
       favoriteAnimeIds: update.favoriteAnimeIds,
       profileVisibility: update.profileVisibility,
       activityVisibility: update.activityVisibility,
+      whoCanMessageMe: update.whoCanMessageMe,
     );
     return Success<PubgetUser>(ownProfile);
   }

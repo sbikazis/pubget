@@ -66,8 +66,8 @@ test.beforeEach(async () => {
     await admin.doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" });
     await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "mafia" });
     await admin.doc("privateChats/c1").set({
-      userA: "alice", userB: "bob", lastMessageAt: new Date(),
-      lastReadUserA: null, lastReadUserB: null,
+      userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
+      lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
     });
   });
 });
@@ -153,74 +153,35 @@ test("private interaction data is scoped to its owner", async () => {
   await assertFails(db("bob").doc("user_seen/alice/seen_edits/e1").get());
   await assertFails(db("bob").doc("user_interactions/alice/interactions/i1").set({ userId: "alice" }));
 });
-test("private-chat participants are immutable and receipts are recipient scoped", async () => {
-  await assertSucceeds(db("bob").doc("privateChats/c1").update({ lastReadUserB: new Date() }));
-  await assertFails(db("bob").doc("privateChats/c1").update({ lastReadUserA: new Date() }));
-  await assertFails(db("alice").doc("privateChats/c1").update({ userB: "mallory" }));
+test("private-chat documents are readable by participants and not client-writable", async () => {
+  await assertSucceeds(db("bob").doc("privateChats/c1").get());
   await assertFails(db("mallory").doc("privateChats/c1").get());
+  await assertFails(db("alice").doc("privateChats/c1").update({ userB: "mallory" }));
+  await assertFails(db("bob").doc("privateChats/c1").update({
+    lastReadUserB: new Date(),
+  }));
+  await assertFails(db("alice").doc("privateChats/forged").set({
+    userA: "alice", userB: "mallory", participantIds: ["alice", "mallory"],
+    createdAt: new Date(),
+  }));
 });
-test("private messages constrain sender, text, and recipient acknowledgements", async () => {
+test("private messages are readable by participants but writable only by callables", async () => {
   const message = {
-    senderId: "alice", senderName: "Alice", senderAvatar: "", senderIsPremium: false,
-    type: "text", text: "hello", createdAt: serverTimestamp(), isDelivered: false,
-    isRead: false, isEdited: false,
+    senderId: "alice", senderName: "Alice", senderAvatar: "", senderRole: "",
+    type: "text", text: "hello", createdAt: new Date(),
+    recipientCount: 1, deliveredCount: 0, readCount: 0,
   };
-  await assertSucceeds(db("alice").doc("privateChats/c1/messages/m1").set(message));
-  await assertSucceeds(db("bob").doc("privateChats/c1/messages/m1").update({ isDelivered: true, isRead: true }));
-  await assertFails(db("bob").doc("privateChats/c1/messages/m1").update({ text: "rewritten" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m2").set({ ...message, text: "x".repeat(1001) }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m3").set({ ...message, senderId: "bob" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m4").set({ ...message, senderName: "Bob" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m5").set({ ...message, senderAvatar: "forged" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m6").set({ ...message, senderIsPremium: true }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m7").set({ ...message, senderRole: "founder" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m8").set({ ...message, type: "gameInvite" }));
-  await assertFails(db("alice").doc("privateChats/c1/messages/m9").set({
-    ...message, replyToId: "missing", replyToSenderName: "Bob",
-  }));
   await env.withSecurityRulesDisabled(async (context) => {
-    await context.firestore().doc("users/alice").update({
-      profileVisibility: "private",
-    });
-    await context.firestore().doc("public_profiles/alice").delete();
+    await context.firestore().doc("privateChats/c1/messages/m1").set(message);
   });
-  await assertSucceeds(
-    db("alice").doc("privateChats/c1/messages/private-profile").set({
-      ...message,
-      createdAt: serverTimestamp(),
-    }),
-  );
-  await assertSucceeds(db("alice").doc("privateChats/c1/messages/media").set({
-    ...message, type: "media", text: null, mediaUrl: "https://example.test/a.png",
-    mediaType: "image",
+  await assertSucceeds(db("alice").doc("privateChats/c1/messages/m1").get());
+  await assertSucceeds(db("bob").doc("privateChats/c1/messages/m1").get());
+  await assertFails(db("mallory").doc("privateChats/c1/messages/m1").get());
+  await assertFails(db("alice").doc("privateChats/c1/messages/m2").set(message));
+  await assertFails(db("bob").doc("privateChats/c1/messages/m1").update({
+    deliveredCount: 1,
   }));
-});
-test("private provider payloads allow text, image, video, audio, and sticker", async () => {
-  const base = {
-    senderId: "alice",
-    senderName: "Alice",
-    senderAvatar: "",
-    senderIsPremium: false,
-    createdAt: serverTimestamp(),
-    isRead: false,
-    isDelivered: false,
-    isEdited: false,
-  };
-  await assertSucceeds(db("alice").doc("privateChats/c1/messages/provider-text").set({
-    ...base, type: "text", text: "hello",
-  }));
-  for (const mediaType of ["image", "video", "audio", "sticker"]) {
-    const payload = {
-      ...base,
-      type: "media",
-      mediaType,
-      mediaUrl: `https://example.test/${mediaType}`,
-    };
-    if (mediaType === "audio") payload.audioDuration = 12;
-    await assertSucceeds(
-      db("alice").doc(`privateChats/c1/messages/provider-${mediaType}`).set(payload),
-    );
-  }
+  await assertFails(db("alice").doc("privateChats/c1/messages/m1").delete());
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {

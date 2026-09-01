@@ -45,6 +45,7 @@ void main() {
     expect(find.byKey(const Key('profile-give-respect')), findsOneWidget);
     expect(find.byKey(const Key('profile-add-friend')), findsOneWidget);
     expect(find.byKey(const Key('profile-block-user')), findsOneWidget);
+    expect(find.byKey(const Key('profile-start-chat')), findsNothing);
 
     await tester.tap(find.byKey(const Key('profile-block-user')));
     await tester.pumpAndSettle();
@@ -96,5 +97,48 @@ void main() {
     expect(find.text('Friend request'), findsOneWidget);
     expect(find.byTooltip('Accept request'), findsOneWidget);
     expect(find.byTooltip('Reject request'), findsOneWidget);
+  });
+
+  testWidgets('start chat is offered only when Fan or Friend exists', (
+    tester,
+  ) async {
+    final authRepository = FakeAuthRepository(
+      user: const AuthUser(id: 'user-1', email: 'fan@example.com'),
+    );
+    final auth = AuthProvider(repository: authRepository);
+    await auth.initialize();
+    addTearDown(authRepository.close);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<ProfileProvider>(
+            create: (_) => ProfileProvider(repository: FakeProfileRepository()),
+          ),
+          ChangeNotifierProvider<SocialProvider>(
+            create: (_) => SocialProvider(
+              repository: FakeSocialRepository(
+                snapshot: const SocialSnapshot(
+                  friendships: <Friendship>[
+                    Friendship(
+                      userA: 'user-1',
+                      userB: 'user-2',
+                      status: FriendshipStatus.accepted,
+                      requestedBy: 'user-1',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: ProfilePage(userId: 'user-2')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('profile-start-chat')), findsOneWidget);
   });
 }

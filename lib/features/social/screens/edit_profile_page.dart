@@ -26,6 +26,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _loaded = false;
   String _profileVisibility = 'public';
   String _activityVisibility = 'public';
+  String _whoCanMessageMe = 'related';
   Uint8List? _avatarBytes;
   String _avatarContentType = 'image/jpeg';
 
@@ -101,6 +102,29 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ? null
                 : (value) => setState(() => _activityVisibility = value),
           ),
+          const SizedBox(height: AppSpacing.md),
+          DropdownButtonFormField<String>(
+            key: const Key('edit-profile-who-can-message'),
+            value: _whoCanMessageMe,
+            decoration: const InputDecoration(labelText: 'Who can message me'),
+            items: const <DropdownMenuItem<String>>[
+              DropdownMenuItem(
+                value: 'related',
+                child: Text('Fans and Friends'),
+              ),
+              DropdownMenuItem(
+                value: 'friends',
+                child: Text('Friends only'),
+              ),
+            ],
+            onChanged: loading
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() => _whoCanMessageMe = value);
+                    }
+                  },
+          ),
           if (profile.failure != null) ...[
             const SizedBox(height: AppSpacing.md),
             PubgetErrorState(message: profile.failure!.message),
@@ -131,6 +155,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           .join(', ');
       _profileVisibility = profile?.profileVisibility ?? 'public';
       _activityVisibility = profile?.activityVisibility ?? 'public';
+      _whoCanMessageMe = profile?.whoCanMessageMe ?? 'related';
     });
   }
 
@@ -175,6 +200,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         favoriteAnimeIds: favorites,
         profileVisibility: _profileVisibility,
         activityVisibility: _activityVisibility,
+        whoCanMessageMe: _whoCanMessageMe,
       ),
     );
     if (mounted && result.isSuccess) {

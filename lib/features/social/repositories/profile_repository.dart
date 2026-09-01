@@ -10,18 +10,21 @@ final class ProfileUpdate {
     this.favoriteAnimeIds,
     this.profileVisibility,
     this.activityVisibility,
+    this.whoCanMessageMe,
   });
 
   final String? bio;
   final List<String>? favoriteAnimeIds;
   final String? profileVisibility;
   final String? activityVisibility;
+  final String? whoCanMessageMe;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     if (bio != null) 'bio': bio!.trim(),
     if (favoriteAnimeIds != null) 'favoriteAnimeIds': favoriteAnimeIds,
     if (profileVisibility != null) 'profileVisibility': profileVisibility,
     if (activityVisibility != null) 'activityVisibility': activityVisibility,
+    if (whoCanMessageMe != null) 'whoCanMessageMe': whoCanMessageMe,
   };
 }
 

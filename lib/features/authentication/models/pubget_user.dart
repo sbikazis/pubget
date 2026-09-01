@@ -10,6 +10,7 @@ final class PubgetUser {
     this.favoriteAnimeIds = const <String>[],
     this.profileVisibility = 'public',
     this.activityVisibility = 'public',
+    this.whoCanMessageMe = 'related',
     this.totalRespect = 0,
     this.fansCount = 0,
     required this.createdAt,
@@ -27,6 +28,7 @@ final class PubgetUser {
   final List<String> favoriteAnimeIds;
   final String profileVisibility;
   final String activityVisibility;
+  final String whoCanMessageMe;
   final int totalRespect;
   final int fansCount;
   final DateTime createdAt;
@@ -53,6 +55,7 @@ final class PubgetUser {
           const <String>[],
       profileVisibility: map['profileVisibility'] as String? ?? 'public',
       activityVisibility: map['activityVisibility'] as String? ?? 'public',
+      whoCanMessageMe: map['whoCanMessageMe'] as String? ?? 'related',
       totalRespect: _intFrom(map['totalRespect']),
       fansCount: _intFrom(map['fansCount']),
       createdAt: _dateFrom(map['createdAt']) ?? DateTime.now(),
@@ -73,6 +76,7 @@ final class PubgetUser {
       'favoriteAnimeIds': favoriteAnimeIds,
       'profileVisibility': profileVisibility,
       'activityVisibility': activityVisibility,
+      'whoCanMessageMe': whoCanMessageMe,
       'createdAt': createdAt,
       'isProfileCompleted': isProfileCompleted,
       'hasSkippedOnboarding': hasSkippedOnboarding,
@@ -88,6 +92,7 @@ final class PubgetUser {
     List<String>? favoriteAnimeIds,
     String? profileVisibility,
     String? activityVisibility,
+    String? whoCanMessageMe,
     int? totalRespect,
     int? fansCount,
     bool? isProfileCompleted,
@@ -104,6 +109,7 @@ final class PubgetUser {
       favoriteAnimeIds: favoriteAnimeIds ?? this.favoriteAnimeIds,
       profileVisibility: profileVisibility ?? this.profileVisibility,
       activityVisibility: activityVisibility ?? this.activityVisibility,
+      whoCanMessageMe: whoCanMessageMe ?? this.whoCanMessageMe,
       totalRespect: totalRespect ?? this.totalRespect,
       fansCount: fansCount ?? this.fansCount,
       createdAt: createdAt,

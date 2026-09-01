@@ -69,6 +69,22 @@ final class SocialSnapshot {
       .where((friendship) => friendship.status == FriendshipStatus.accepted)
       .toList(growable: false);
 
+  static const int fanThreshold = 5;
+
+  bool canStartPrivateChat(String viewerId, String otherUserId) {
+    if (viewerId.isEmpty || viewerId == otherUserId) return false;
+    final relation = relationWith(otherUserId);
+    if (relation?.status == FriendshipStatus.blocked) return false;
+    if (relation?.status == FriendshipStatus.accepted) return true;
+    final given = givenRespect.any(
+      (item) => item.toUserId == otherUserId && item.value >= fanThreshold,
+    );
+    final received = receivedRespect.any(
+      (item) => item.fromUserId == otherUserId && item.value >= fanThreshold,
+    );
+    return given || received;
+  }
+
   List<Friendship> pendingFor(String userId) => friendships
       .where(
         (friendship) =>

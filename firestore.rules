@@ -287,8 +287,14 @@ service cloud.firestore {
     }
     function chatParticipant(chatId) {
       return signedIn() &&
-        (get(/databases/$(database)/documents/privateChats/$(chatId)).data.userA == request.auth.uid ||
-         get(/databases/$(database)/documents/privateChats/$(chatId)).data.userB == request.auth.uid);
+        exists(/databases/$(database)/documents/privateChats/$(chatId)) &&
+        (request.auth.uid in
+           get(/databases/$(database)/documents/privateChats/$(chatId))
+             .data.get('participantIds', []) ||
+         get(/databases/$(database)/documents/privateChats/$(chatId)).data.userA
+           == request.auth.uid ||
+         get(/databases/$(database)/documents/privateChats/$(chatId)).data.userB
+           == request.auth.uid);
     }
     function validInitialMessageState() {
       return request.resource.data.createdAt == request.time &&
@@ -362,7 +368,7 @@ service cloud.firestore {
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
           'customMaxCreatedGroupsLimit','hasClaimedReferral',
           'favoriteAnimeIds','profileVisibility','activityVisibility',
-          'hasSkippedOnboarding'
+          'hasSkippedOnboarding','whoCanMessageMe'
         ]) &&
         request.resource.data.keys().hasAll([
           'email','createdAt','isProfileCompleted'
@@ -380,7 +386,8 @@ service cloud.firestore {
         request.resource.data.get('customMaxCreatedGroupsLimit', 0) == 0 &&
         request.resource.data.get('hasClaimedReferral', false) == false &&
         request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
-        request.resource.data.get('activityVisibility', 'public') in ['public','private'];
+        request.resource.data.get('activityVisibility', 'public') in ['public','private'] &&
+        request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'];
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
@@ -628,48 +635,18 @@ service cloud.firestore {
 
     match /privateChats/{chatId} {
       allow read: if chatParticipant(chatId);
-      allow create: if signedIn() &&
-        request.resource.data.keys().hasOnly([
-          'userA','userB','createdAt','lastMessageAt','lastMessageText',
-          'lastMessage','lastMessageTime','lastReadUserA','lastReadUserB'
-        ]) &&
-        request.resource.data.userA is string &&
-        request.resource.data.userB is string &&
-        request.resource.data.userA < request.resource.data.userB &&
-        (request.resource.data.userA == request.auth.uid ||
-         request.resource.data.userB == request.auth.uid);
-      // userA/userB are immutable. A sender may advance the conversation
-      // preview; each participant may advance only their own read receipt.
-      allow update: if chatParticipant(chatId) &&
-        ((changedOnly(['lastMessageAt','lastMessageText','lastMessage','lastMessageTime']) &&
-          (!request.resource.data.keys().hasAll(['lastMessageText']) ||
-           (request.resource.data.lastMessageText is string &&
-            request.resource.data.lastMessageText.size() <= 1000))) ||
-         (resource.data.userA == request.auth.uid &&
-          changedOnly(['lastReadUserA'])) ||
-         (resource.data.userB == request.auth.uid &&
-          changedOnly(['lastReadUserB'])));
-      allow delete: if false;
+      // Chat documents, messages, receipts and media metadata are written
+      // only by startPrivateChat / sendPrivateMessage / mark* / delete*
+      // callables so Block, Fan/Friend, and whoCanMessageMe cannot be
+      // bypassed from a tampered client.
+      allow create, update, delete: if false;
       match /messages/{messageId} {
         allow read: if chatParticipant(chatId);
-        allow create: if chatParticipant(chatId) && validPrivateMessageCreate(chatId);
-        allow update: if resource.data.senderId == request.auth.uid &&
-          resource.data.type == 'text' &&
-          changedOnly(['text','isEdited']) &&
-          request.resource.data.text is string &&
-          request.resource.data.text.size() > 0 &&
-          request.resource.data.text.size() <= 1000 &&
-          request.resource.data.isEdited == true;
-        // The recipient can acknowledge delivery/read but cannot alter text,
-        // sender identity, timestamps, or other message metadata.
-        allow update: if chatParticipant(chatId) &&
-          resource.data.senderId != request.auth.uid &&
-          changedOnly(['isDelivered','isRead']) &&
-          (!request.resource.data.keys().hasAny(['isDelivered']) ||
-           request.resource.data.isDelivered == true) &&
-          (!request.resource.data.keys().hasAny(['isRead']) ||
-           request.resource.data.isRead == true);
-        allow delete: if resource.data.senderId == request.auth.uid;
+        allow create, update, delete: if false;
+      }
+      match /media/{mediaId} {
+        allow read: if chatParticipant(chatId);
+        allow create, update, delete: if false;
       }
     }
 
