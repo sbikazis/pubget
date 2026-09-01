@@ -51,6 +51,9 @@ abstract final class GameValidation {
     if (draft.configuration.maxPlayers < draft.configuration.minPlayers) {
       return 'maxPlayers must be greater than or equal to minPlayers.';
     }
+    if (draft.type == GameType.mafia && draft.configuration.minPlayers < 4) {
+      return 'Mafia requires at least 4 players.';
+    }
     return null;
   }
 

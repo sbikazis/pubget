@@ -58,6 +58,8 @@ import '../features/events/screens/event_builder_page.dart';
 import '../features/events/screens/event_details_screen.dart';
 import '../features/events/screens/event_list_screen.dart';
 import '../features/games/providers/game_providers.dart';
+import '../features/games/mafia/mafia_provider.dart';
+import '../features/games/mafia/mafia_repository.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
 import '../features/games/repositories/unavailable_game_repository.dart';
@@ -229,6 +231,21 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<GameCreateProvider>(
           create: (context) => GameCreateProvider(
             repository: context.read<GameRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.Provider<MafiaRepository>(
+          create: (context) => MafiaRepository(
+            games: context.read<GameRepository>(),
+            firestore: firebaseState.isReady ? FirebaseFirestore.instance : null,
+            functions: firebaseState.isReady
+                ? FirebaseFunctions.instanceFor(region: 'us-central1')
+                : null,
+          ),
+        ),
+        provider.ChangeNotifierProvider<MafiaProvider>(
+          create: (context) => MafiaProvider(
+            repository: context.read<MafiaRepository>(),
             analytics: context.read<Analytics>(),
           ),
         ),

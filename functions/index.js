@@ -40,6 +40,7 @@ const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
+const { createMafiaDomain } = require("./src/mafiaDomain");
 
 initializeApp();
 
@@ -114,11 +115,18 @@ const eventsDomain = createEventsDomain({
   HttpsError,
   notificationBuilder,
 });
+const mafiaDomain = createMafiaDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+});
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
+  mafia: mafiaDomain,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -354,6 +362,14 @@ exports.endGame = onCall(
 exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
+);
+exports.advanceMafiaPhase = onCall(
+  { region: "us-central1" },
+  mafiaDomain.advanceMafiaPhase,
+);
+exports.processMafiaLifecycle = onSchedule(
+  { region: "us-central1", schedule: "every 1 minutes" },
+  mafiaDomain.processMafiaLifecycle,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

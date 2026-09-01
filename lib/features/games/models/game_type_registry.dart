@@ -74,14 +74,13 @@ abstract final class GameTypeRegistry {
       implemented: true,
       capabilities: GameCapabilities(usesScoring: true),
     ),
-    // Registered for routing/capability lookup. Implementation is PROMPT 13.
     GameType.mafia: GameTypeSpec(
       type: GameType.mafia,
       name: 'Mafia',
-      description: 'Coming soon.',
+      description: 'Hidden roles, night actions, and a town vote.',
       icon: Icons.nightlight_outlined,
       version: 1,
-      implemented: false,
+      implemented: true,
       capabilities: GameCapabilities(
         usesRounds: true,
         minPlayers: 4,
@@ -138,4 +137,21 @@ abstract final class GameStrings {
   static const comingSoon = 'This game is not available yet.';
   static const copied = 'Game link copied';
   static const copyLink = 'Copy link';
+  static const mafiaLobby = 'Mafia lobby';
+  static const yourRole = 'Your role';
+  static const eliminated = 'Eliminated';
+  static const alive = 'Alive';
+  static const waitingNight = 'Waiting for night actions.';
+  static const selectTarget = 'Select a player';
+  static const investigate = 'Investigate';
+  static const protect = 'Protect';
+  static const kill = 'Target';
+  static const vote = 'Vote';
+  static const nightResult = 'Night result';
+  static const voteResult = 'Vote result';
+  static const townWins = 'Town wins';
+  static const mafiaWins = 'Mafia wins';
+  static const spectating = 'You are spectating.';
+  static const noKill = 'Nobody was eliminated.';
+  static const saved = 'The Doctor saved the target.';
 }

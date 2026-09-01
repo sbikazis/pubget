@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../mafia/mafia_config.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
@@ -56,7 +57,20 @@ class _GameCreatePageState extends State<GameCreatePage> {
               subtitle: Text(spec.description),
               onChanged: (value) {
                 if (value == null) return;
-                creator.update(creator.draft.copyWith(type: value));
+                final spec = GameTypeRegistry.of(value);
+                creator.update(
+                  creator.draft.copyWith(
+                    type: value,
+                    configuration: GameConfiguration(
+                      minPlayers: spec.capabilities.minPlayers,
+                      maxPlayers: spec.capabilities.maxPlayers,
+                      usesRounds: spec.capabilities.usesRounds,
+                      extra: value == GameType.mafia
+                          ? const MafiaConfig().toExtra()
+                          : const <String, dynamic>{},
+                    ),
+                  ),
+                );
               },
             ),
           const SizedBox(height: AppSpacing.md),
