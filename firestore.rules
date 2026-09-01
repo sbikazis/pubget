@@ -675,31 +675,15 @@ service cloud.firestore {
 
     match /edits/{editId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.uploaderId == request.auth.uid &&
-        request.resource.data.keys().hasOnly([
-          'uploaderId','uploaderName','uploaderAvatar','videoUrl','thumbnailUrl',
-          'animeTitle','caption','likes','commentsCount','views','createdAt',
-          'score','totalWatchSeconds','avgWatchPercent'
-        ]) &&
-        request.resource.data.likes.size() == 0 &&
-        request.resource.data.commentsCount == 0 &&
-        request.resource.data.views == 0 &&
-        request.resource.data.score == 0 &&
-        request.resource.data.totalWatchSeconds == 0 &&
-        request.resource.data.avgWatchPercent == 0;
-      allow update: if resource.data.uploaderId == request.auth.uid &&
-        changedOnly(['caption','videoUrl','thumbnailUrl']);
-      allow delete: if resource.data.uploaderId == request.auth.uid;
+      // Edit documents and all aggregate counters are server-authoritative.
+      allow create, update, delete: if false;
       match /comments/{commentId} {
         allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.userId == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['userId','username','userAvatar','text','createdAt','likes']);
-        allow update: if resource.data.userId == request.auth.uid && changedOnly(['text']);
-        allow delete: if resource.data.userId == request.auth.uid;
+        allow create, update, delete: if false;
       }
+      match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
       match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
-      match /watch_events/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
     match /user_interactions/{uid}/interactions/{interactionId} {

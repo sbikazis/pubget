@@ -8,6 +8,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../groups/models/group_models.dart';
+import '../../edits/providers/edits_provider.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -116,11 +117,7 @@ class _HomePageState extends State<HomePage> {
           'Private chat will be connected in a later prompt.',
         );
       case 3:
-        _showPlaceholder(
-          context,
-          'Edits',
-          'Edits are intentionally reserved for PROMPT 10.',
-        );
+        AppNavigation.go(context, '/edits');
     }
   }
 
@@ -223,9 +220,36 @@ class _SectionView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kind == HomeSectionKind.editsPlaceholder) {
-      return const _PlaceholderSection(
+      final edits = context.watch<EditsProvider>();
+      if (edits.state == LoadingState.initial) {
+        Future<void>.microtask(() => edits.load(limit: 4));
+      }
+      return _SectionShell(
         title: 'Trending Edits',
-        message: 'Placeholder — real Edits arrive with PROMPT 10.',
+        child: SizedBox(
+          height: 150,
+          child: edits.items.isEmpty
+              ? const _SkeletonSection()
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                  ),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: edits.items.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) => SizedBox(
+                    width: 120,
+                    child: PubgetCard(
+                      onTap: () => AppNavigation.go(context, '/edits'),
+                      child: AppImageLoader(
+                        imageUrl: edits.items[index].thumbnailUrl,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
       );
     }
     if (kind == HomeSectionKind.eventsPlaceholder) {

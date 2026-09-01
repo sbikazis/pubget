@@ -3,12 +3,15 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../models/social_models.dart';
 import '../providers/profile_provider.dart';
 import '../providers/social_provider.dart';
+import '../../edits/repositories/edits_repository.dart';
+import '../../edits/models/edit_models.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({this.userId, super.key});
@@ -164,6 +167,8 @@ class _ProfileContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
+        _CreatorEdits(profileId: profileId),
+        const SizedBox(height: AppSpacing.xl),
         if (profile.isOwner) ...[
           PubgetPrimaryButton(
             onPressed: () => AppNavigation.go(context, '/profile/edit'),
@@ -216,6 +221,66 @@ class _ProfileContent extends StatelessWidget {
       ],
     );
   }
+}
+
+class _CreatorEdits extends StatefulWidget {
+  const _CreatorEdits({required this.profileId});
+  final String profileId;
+
+  @override
+  State<_CreatorEdits> createState() => _CreatorEditsState();
+}
+
+class _CreatorEditsState extends State<_CreatorEdits> {
+  late final Future<Result<List<Edit>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      _future = context.read<EditsRepository>().getCreatorEdits(
+        widget.profileId,
+      );
+    } on ProviderNotFoundException {
+      _future = Future<Result<List<Edit>>>.value(
+        const Success<List<Edit>>(<Edit>[]),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Result<List<Edit>>>(
+    future: _future,
+    builder: (context, snapshot) {
+      final edits = snapshot.data?.valueOrNull ?? const <Edit>[];
+      if (edits.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Edits', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 130,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: edits.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) => SizedBox(
+                width: 100,
+                child: PubgetCard(
+                  onTap: () => AppNavigation.go(context, '/edits'),
+                  child: AppImageLoader(
+                    imageUrl: edits[index].thumbnailUrl,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _BlockAction extends StatelessWidget {
