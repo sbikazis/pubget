@@ -27,16 +27,14 @@ class PubgetPrimaryButton extends StatelessWidget {
       enabled: !loading && onPressed != null,
       liveRegion: loading,
       label: semanticLabel,
-      child: ExcludeSemantics(
-        excluding: !loading,
-        child: ElevatedButton(
-          onPressed: loading ? null : onPressed,
-          child: _ButtonContent(
-            loading: loading,
-            color: foreground,
-            leadingIcon: leadingIcon,
-            child: child,
-          ),
+      onTap: loading ? null : onPressed,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        child: _ButtonContent(
+          loading: loading,
+          color: foreground,
+          leadingIcon: leadingIcon,
+          child: child,
         ),
       ),
     );
@@ -67,16 +65,14 @@ class PubgetSecondaryButton extends StatelessWidget {
       enabled: !loading && onPressed != null,
       liveRegion: loading,
       label: semanticLabel,
-      child: ExcludeSemantics(
-        excluding: !loading,
-        child: OutlinedButton(
-          onPressed: loading ? null : onPressed,
-          child: _ButtonContent(
-            loading: loading,
-            color: foreground,
-            leadingIcon: leadingIcon,
-            child: child,
-          ),
+      onTap: loading ? null : onPressed,
+      child: OutlinedButton(
+        onPressed: loading ? null : onPressed,
+        child: _ButtonContent(
+          loading: loading,
+          color: foreground,
+          leadingIcon: leadingIcon,
+          child: child,
         ),
       ),
     );
@@ -105,15 +101,13 @@ class PubgetTextButton extends StatelessWidget {
       enabled: !loading && onPressed != null,
       liveRegion: loading,
       label: semanticLabel,
-      child: ExcludeSemantics(
-        excluding: !loading,
-        child: TextButton(
-          onPressed: loading ? null : onPressed,
-          child: _ButtonContent(
-            loading: loading,
-            color: foreground,
-            child: child,
-          ),
+      onTap: loading ? null : onPressed,
+      child: TextButton(
+        onPressed: loading ? null : onPressed,
+        child: _ButtonContent(
+          loading: loading,
+          color: foreground,
+          child: child,
         ),
       ),
     );
