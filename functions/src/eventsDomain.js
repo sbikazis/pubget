@@ -275,33 +275,43 @@ function emptyTally(configuration, type) {
   return { votes, submissions: 0 };
 }
 
-function applyTally(tally, type, configuration, responseData) {
+function bumpMap(map, id, amount) {
+  map[id] = Math.max(0, (map[id] || 0) + amount);
+}
+
+function applyTally(tally, type, configuration, responseData, delta = 1) {
+  const step = delta < 0 ? -1 : 1;
+  const payload = responseData && typeof responseData === "object" ? responseData : {};
   const next = {
-    submissions: (tally.submissions || 0) + 1,
+    submissions: Math.max(0, (tally.submissions || 0) + step),
     votes: { ...(tally.votes || {}) },
     scores: { ...(tally.scores || {}) },
     correctCounts: { ...(tally.correctCounts || {}) },
   };
   if (type === "quiz") {
-    configuration.questions.forEach((question) => {
-      if (responseData.answers[question.id] === question.correctOptionId) {
-        next.correctCounts[question.id] = (next.correctCounts[question.id] || 0) + 1;
+    const answers = payload.answers && typeof payload.answers === "object"
+      ? payload.answers
+      : {};
+    (configuration.questions || []).forEach((question) => {
+      if (answers[question.id] === question.correctOptionId) {
+        bumpMap(next.correctCounts, question.id, step);
       }
     });
     return next;
   }
   if (type === "ranking") {
-    const n = responseData.rankedIds.length;
-    responseData.rankedIds.forEach((id, index) => {
-      next.scores[id] = (next.scores[id] || 0) + (n - index);
+    const ranked = Array.isArray(payload.rankedIds) ? payload.rankedIds : [];
+    const n = ranked.length;
+    ranked.forEach((id, index) => {
+      bumpMap(next.scores, id, step * (n - index));
     });
     return next;
   }
   if (type === "theory" || type === "openDiscussion" || type === "challenge") {
     return next;
   }
-  (responseData.optionIds || []).forEach((id) => {
-    next.votes[id] = (next.votes[id] || 0) + 1;
+  (payload.optionIds || []).forEach((id) => {
+    bumpMap(next.votes, id, step);
   });
   return next;
 }
@@ -417,7 +427,68 @@ function notifySafe(builder, payload) {
   return builder.build(payload).catch(() => {});
 }
 
+const RECIPIENT_CAP = 200;
+
+async function listCollectionDocs(collectionRef, limit = RECIPIENT_CAP) {
+  if (!collectionRef) return [];
+  if (typeof collectionRef.limit === "function") {
+    const snapshot = await collectionRef.limit(limit).get();
+    return snapshot.docs;
+  }
+  const snapshot = await collectionRef.get();
+  return snapshot.docs.slice(0, limit);
+}
+
+async function listGroupMemberIds(db, groupId) {
+  if (!validString(groupId, 128)) return [];
+  const docs = await listCollectionDocs(groupRef(db, groupId).collection("members"));
+  return docs.map((doc) => doc.id).filter((id) => validString(id, 128));
+}
+
+async function listActiveParticipantIds(db, eventId) {
+  if (!validString(eventId, EVENT_ID_MAX)) return [];
+  const docs = await listCollectionDocs(
+    eventRef(db, eventId).collection("participants"),
+  );
+  return docs
+    .filter((doc) => !(doc.data() || {}).leftAt)
+    .map((doc) => doc.id)
+    .filter((id) => validString(id, 128));
+}
+
+function uniqueRecipientIds(ids) {
+  return [...new Set((ids || []).filter((id) => validString(id, 128)))]
+    .slice(0, RECIPIENT_CAP);
+}
+
 function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder }) {
+  async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
+    if (!validString(eventId, EVENT_ID_MAX)) return;
+    const started = kind === "started";
+    let recipientIds = started
+      ? await listGroupMemberIds(db, groupId)
+      : await listActiveParticipantIds(db, eventId);
+    if (!started && recipientIds.length === 0) {
+      recipientIds = await listGroupMemberIds(db, groupId);
+    }
+    if (creatorId) recipientIds.push(creatorId);
+    recipientIds = uniqueRecipientIds(recipientIds);
+    if (recipientIds.length === 0) return;
+    await notifySafe(notificationBuilder, {
+      id: started ? `event-start-${eventId}` : `event-end-${eventId}`,
+      recipientIds,
+      type: started ? "event_starting" : "event_ended",
+      actorId: creatorId || null,
+      targetId: eventId,
+      action: started ? "started" : "ended",
+      destination: `/event/${eventId}`,
+      metadata: { groupId: groupId || "" },
+      title: started ? "Event started" : "Event ended",
+      body: title || (started ? "An event just started." : "Results are ready."),
+      pushWorthy: started,
+    });
+  }
+
   async function saveEventDraft(request) {
     const uid = requireAuth(request, HttpsError);
     const input = applyTemplate(request.data || {});
@@ -553,6 +624,13 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         kind: "started",
         text: `Event started: ${published.title}`,
       });
+      await notifyEventLifecycle({
+        kind: "started",
+        eventId: published.eventId,
+        groupId: published.groupId,
+        creatorId: uid,
+        title: published.title,
+      });
     } else if (published) {
       await postEventChatActivity(db, FieldValue, {
         groupId: published.groupId,
@@ -648,6 +726,13 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         eventId: ref.id,
         kind: "ended",
         text: `Event ended: ${ended.title}`,
+      });
+      await notifyEventLifecycle({
+        kind: "ended",
+        eventId: ref.id,
+        groupId: ended.groupId,
+        creatorId: ended.creatorId || uid,
+        title: ended.title,
       });
     }
     return { ok: true, eventId: ref.id, status: "ended", result: ended.result };
@@ -829,16 +914,36 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         responseData,
         metadata: { version: 1 },
       };
+      let tally = current.tally || emptyTally(configuration, current.type);
       if (prior.exists) {
+        tally = applyTally(
+          tally,
+          current.type,
+          configuration,
+          prior.data().responseData || {},
+          -1,
+        );
+        tally = applyTally(
+          tally,
+          current.type,
+          configuration,
+          responseData,
+          1,
+        );
         transaction.update(answer, payload);
+        transaction.update(ref, {
+          tally,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
         return;
       }
       transaction.create(answer, payload);
-      const tally = applyTally(
-        current.tally || emptyTally(configuration, current.type),
+      tally = applyTally(
+        tally,
         current.type,
         configuration,
         responseData,
+        1,
       );
       const joinedNow = !existing.exists || existing.data().leftAt;
       const eventUpdate = {
@@ -875,18 +980,12 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         kind: "started",
         text: `Event started: ${data.title || "Event"}`,
       });
-      await notifySafe(notificationBuilder, {
-        id: `event-start-${doc.id}`,
-        recipientIds: data.creatorId ? [data.creatorId] : [],
-        type: "event_starting",
-        actorId: data.creatorId,
-        targetId: doc.id,
-        action: "started",
-        destination: `/event/${doc.id}`,
-        metadata: { groupId: data.groupId || "" },
-        title: "Event started",
-        body: data.title || "An event just started.",
-        pushWorthy: true,
+      await notifyEventLifecycle({
+        kind: "started",
+        eventId: doc.id,
+        groupId: data.groupId,
+        creatorId: data.creatorId,
+        title: data.title,
       });
     }
 
@@ -909,18 +1008,12 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
           kind: "ended",
           text: `Event ended: ${ended.title || "Event"}`,
         });
-        await notifySafe(notificationBuilder, {
-          id: `event-end-${doc.id}`,
-          recipientIds: ended.creatorId ? [ended.creatorId] : [],
-          type: "event_ended",
-          actorId: ended.creatorId,
-          targetId: doc.id,
-          action: "ended",
-          destination: `/event/${doc.id}`,
-          metadata: { groupId: ended.groupId || "" },
-          title: "Event ended",
-          body: ended.title || "Results are ready.",
-          pushWorthy: false,
+        await notifyEventLifecycle({
+          kind: "ended",
+          eventId: doc.id,
+          groupId: ended.groupId,
+          creatorId: ended.creatorId,
+          title: ended.title,
         });
       }
     }

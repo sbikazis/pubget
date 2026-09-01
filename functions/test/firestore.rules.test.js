@@ -21,7 +21,7 @@ const db = (uid, claims) => env.authenticatedContext(uid, claims).firestore();
 test.before(async () => {
   env = await initializeTestEnvironment({
     projectId: "demo-pubget-security",
-    firestore: { rules },
+    firestore: { host: "127.0.0.1", port: 8080, rules },
   });
 });
 test.beforeEach(async () => {

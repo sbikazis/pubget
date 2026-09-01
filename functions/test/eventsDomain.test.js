@@ -50,7 +50,7 @@ function applyUpdate(current, data) {
 
 function createFakeDb(seed = {}) {
   const store = new Map(Object.entries(clone(seed)));
-  const collection = (base) => ({
+  const makeCollection = (base) => ({
     doc(id) {
       const resolvedId = id || `auto-${store.size + 1}`;
       const resolvedPath = `${base}/${resolvedId}`;
@@ -58,7 +58,7 @@ function createFakeDb(seed = {}) {
         path: resolvedPath,
         id: resolvedId,
         collection(name) {
-          return collection(`${resolvedPath}/${name}`);
+          return makeCollection(`${resolvedPath}/${name}`);
         },
         async set(data) {
           store.set(resolvedPath, clone(data));
@@ -67,6 +67,15 @@ function createFakeDb(seed = {}) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
       };
+    },
+    where(field, op, value) {
+      return query(base, [{ field, op, value }]);
+    },
+    limit(n) {
+      return query(base, []).limit(n);
+    },
+    get() {
+      return query(base, []).get();
     },
   });
   function query(base, filters) {
@@ -102,7 +111,7 @@ function createFakeDb(seed = {}) {
             const id = path.slice(prefix.length);
             docs.push({
               id,
-              ref: collection(base).doc(id),
+              ref: makeCollection(base).doc(id),
               data: () => clone(data),
             });
           }
@@ -115,9 +124,7 @@ function createFakeDb(seed = {}) {
   return {
     store,
     collection(name) {
-      const api = collection(name);
-      api.where = (field, op, value) => query(name, [{ field, op, value }]);
-      return api;
+      return makeCollection(name);
     },
     async runTransaction(callback) {
       const transaction = {
@@ -161,12 +168,24 @@ function seedGroup({ role = "founder" } = {}) {
   };
 }
 
-function handlers(db) {
+function handlers(db, notificationBuilder) {
   return createEventsDomain({
     db,
     FieldValue,
     HttpsError: TestHttpsError,
+    notificationBuilder,
   });
+}
+
+function recordingBuilder() {
+  const sent = [];
+  return {
+    sent,
+    build: async (payload) => {
+      sent.push(payload);
+      return { created: payload.recipientIds.length };
+    },
+  };
 }
 
 test("poll configuration requires two to ten options", () => {
@@ -472,4 +491,100 @@ test("publish is idempotent for an already active event", async () => {
   const second = await events.publishEvent({ auth: { uid: "alice" }, data: payload });
   assert.equal(first.status, "active");
   assert.equal(second.status, "active");
+});
+
+test("allowUpdate decrements the previous tally before applying the new one", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Q",
+      groupId: "g1",
+      question: "Q?",
+      options: ["A", "B"],
+      configuration: { allowUpdate: true, question: "Q?", options: ["A", "B"] },
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "opt-1" } },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "opt-2" } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.submissions, 1);
+  assert.equal(stored.tally.votes["opt-1"], 0);
+  assert.equal(stored.tally.votes["opt-2"], 1);
+});
+
+test("event start notifies group members, not only the creator", async () => {
+  const db = createFakeDb(seedGroup());
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Live vote",
+      groupId: "g1",
+      question: "Q?",
+      options: ["A", "B"],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  const start = recorder.sent.find((item) => item.type === "event_starting");
+  assert.ok(start);
+  assert.ok(start.recipientIds.includes("alice"));
+  assert.ok(start.recipientIds.includes("bob"));
+});
+
+test("event end notifies participants who joined", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    "events/old": {
+      type: "poll",
+      creatorId: "alice",
+      groupId: "g1",
+      title: "Old",
+      status: "active",
+      startAt: new Date(Date.now() - 3600000),
+      endAt: new Date(Date.now() - 1000),
+      configuration: {
+        question: "Q",
+        options: [{ id: "opt-1", label: "A" }, { id: "opt-2", label: "B" }],
+      },
+      tally: { votes: { "opt-1": 1, "opt-2": 0 }, submissions: 1 },
+      responsesCount: 1,
+    },
+    "events/old/participants/bob": { userId: "bob", leftAt: null },
+    "events/old/participants/gone": { userId: "gone", leftAt: new Date() },
+  });
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  await events.processEventLifecycle();
+  const ended = recorder.sent.find((item) => item.type === "event_ended");
+  assert.ok(ended);
+  assert.ok(ended.recipientIds.includes("bob"));
+  assert.ok(ended.recipientIds.includes("alice"));
+  assert.equal(ended.recipientIds.includes("gone"), false);
 });
