@@ -10,6 +10,8 @@ const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
+const { randomUUID } = require("node:crypto");
+const { createAvatarPrivacySync } = require("./src/avatarPrivacy");
 const {
   buildPublicProfile,
   shouldPublishProfile,
@@ -17,6 +19,15 @@ const {
 const { createSocialGraph } = require("./src/socialGraph");
 
 initializeApp();
+
+exports.syncAvatarPrivacy = onDocumentWritten(
+  "users/{uid}",
+  createAvatarPrivacySync({
+    db: getFirestore(),
+    bucket: getStorage().bucket(),
+    randomUUID,
+  }),
+);
 
 exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   const uid = event.params.uid;

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/social/models/social_models.dart';
 import 'package:pubget/features/social/providers/profile_provider.dart';
 import 'package:pubget/features/social/providers/social_provider.dart';
@@ -43,6 +44,17 @@ void main() {
     expect(find.text('other_fan'), findsOneWidget);
     expect(find.byKey(const Key('profile-give-respect')), findsOneWidget);
     expect(find.byKey(const Key('profile-add-friend')), findsOneWidget);
+    expect(find.byKey(const Key('profile-block-user')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('profile-block-user')));
+    await tester.pumpAndSettle();
+    expect(find.text('Block this user?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Block'));
+    await tester.pumpAndSettle();
+    expect(
+      find.widgetWithText(PubgetSecondaryButton, 'Unblock user'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('friend requests renders an actionable incoming request', (

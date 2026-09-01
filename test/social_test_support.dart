@@ -78,6 +78,7 @@ final class FakeSocialRepository implements SocialRepository {
   Failure? failure;
   int respectCalls = 0;
   int friendRequestCalls = 0;
+  int blockCalls = 0;
 
   Result<T> _result<T>(T value) =>
       failure == null ? Success<T>(value) : FailureResult<T>(failure!);
@@ -112,8 +113,28 @@ final class FakeSocialRepository implements SocialRepository {
       _result<void>(null);
 
   @override
-  Future<Result<void>> blockUser({required String otherUserId}) async =>
-      _result<void>(null);
+  Future<Result<void>> blockUser({required String otherUserId}) async {
+    blockCalls++;
+    snapshot = SocialSnapshot(
+      friendships: <Friendship>[
+        ...snapshot.friendships.where(
+          (item) =>
+              !((item.userA == 'user-1' && item.userB == otherUserId) ||
+                  (item.userA == otherUserId && item.userB == 'user-1')),
+        ),
+        Friendship(
+          userA: 'user-1',
+          userB: otherUserId,
+          status: FriendshipStatus.blocked,
+          requestedBy: 'user-1',
+          blockedBy: 'user-1',
+        ),
+      ],
+      givenRespect: snapshot.givenRespect,
+      receivedRespect: snapshot.receivedRespect,
+    );
+    return _result<void>(null);
+  }
 
   @override
   Future<Result<void>> unblockUser({required String otherUserId}) async =>

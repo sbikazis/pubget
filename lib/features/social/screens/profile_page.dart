@@ -206,6 +206,8 @@ class _ProfileContent extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           _FriendAction(profileId: profileId),
+          const SizedBox(height: AppSpacing.sm),
+          _BlockAction(profileId: profileId),
           if (social.failure != null) ...[
             const SizedBox(height: AppSpacing.md),
             PubgetErrorState(message: social.failure!.message),
@@ -213,6 +215,64 @@ class _ProfileContent extends StatelessWidget {
         ],
       ],
     );
+  }
+}
+
+class _BlockAction extends StatelessWidget {
+  const _BlockAction({required this.profileId});
+
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    final social = context.watch<SocialProvider>();
+    final relation = social.snapshot.relationWith(profileId);
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final blockedByMe =
+        relation?.status == FriendshipStatus.blocked &&
+        relation?.blockedBy == currentUserId;
+    final blockedByOther =
+        relation?.status == FriendshipStatus.blocked && !blockedByMe;
+
+    return PubgetSecondaryButton(
+      key: const Key('profile-block-user'),
+      onPressed: social.state == LoadingState.loading || blockedByOther
+          ? null
+          : blockedByMe
+          ? () => social.unblockUser(profileId)
+          : () => _confirmBlock(context, social),
+      semanticLabel: blockedByMe ? 'Unblock user' : 'Block user',
+      leadingIcon: blockedByMe
+          ? Icons.lock_open_outlined
+          : Icons.block_outlined,
+      child: Text(blockedByMe ? 'Unblock user' : 'Block user'),
+    );
+  }
+
+  Future<void> _confirmBlock(
+    BuildContext context,
+    SocialProvider social,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block this user?'),
+        content: const Text(
+          'They will no longer be able to interact with this relationship.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await social.blockUser(profileId);
   }
 }
 
