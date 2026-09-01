@@ -54,11 +54,14 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
     const favoriteAnimeIds = input.favoriteAnimeIds;
     const profileVisibility = input.profileVisibility;
     const activityVisibility = input.activityVisibility;
+    const whoCanMessageMe = input.whoCanMessageMe;
     if (typeof bio !== "string" || bio.length > 500 ||
         !Array.isArray(favoriteAnimeIds) || favoriteAnimeIds.length > 50 ||
         favoriteAnimeIds.some((id) => typeof id !== "string" || id.length > 128) ||
         !["public", "private"].includes(profileVisibility) ||
-        !["public", "private"].includes(activityVisibility)) {
+        !["public", "private"].includes(activityVisibility) ||
+        (whoCanMessageMe !== undefined &&
+          !["related", "friends"].includes(whoCanMessageMe))) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
 
@@ -74,6 +77,7 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
       profileVisibility,
       activityVisibility,
     };
+    if (whoCanMessageMe) update.whoCanMessageMe = whoCanMessageMe;
     const filePath = `users/${uid}/avatar.jpg`;
     const file = bucket.file(filePath);
 

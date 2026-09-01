@@ -5,8 +5,10 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 
+// Shared by group chat (PROMPT 07) and private chats. Captures collection,
+// owner id (groupId or chatId), mediaId, and the original file extension.
 const ORIGINAL_PATTERN =
-  /^groups\/([^/]+)\/media\/([^/]+)_original\.([a-zA-Z0-9]+)$/;
+  /^(groups|privateChats)\/([^/]+)\/media\/([^/]+)_original\.([a-zA-Z0-9]+)$/;
 
 function runFfmpeg(binary, args) {
   return new Promise((resolve, reject) => {
@@ -24,7 +26,7 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
     const object = event.data || {};
     const match = ORIGINAL_PATTERN.exec(object.name || "");
     if (!match) return null;
-    const [, groupId, mediaId] = match;
+    const [, collection, ownerId, mediaId] = match;
     const contentType = object.contentType || "";
     const isImage = contentType.startsWith("image/");
     const isVideo = contentType.startsWith("video/");
@@ -32,12 +34,12 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
 
     const sourcePath = object.name;
     const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "pubget-chat-"));
-    const sourceFile = path.join(workDir, `source.${match[3]}`);
+    const sourceFile = path.join(workDir, `source.${match[4]}`);
     const thumbnailFile = path.join(workDir, "thumbnail.jpg");
     const mediumFile = path.join(workDir, "medium.jpg");
-    const thumbPath = `groups/${groupId}/media/${mediaId}_thumb.jpg`;
-    const mediumPath = `groups/${groupId}/media/${mediaId}_medium.jpg`;
-    const mediaRef = db.collection("groups").doc(groupId)
+    const thumbPath = `${collection}/${ownerId}/media/${mediaId}_thumb.jpg`;
+    const mediumPath = `${collection}/${ownerId}/media/${mediaId}_medium.jpg`;
+    const mediaRef = db.collection(collection).doc(ownerId)
       .collection("media").doc(mediaId);
 
     await mediaRef.set({
@@ -101,7 +103,7 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
         processedAt: new Date(),
       }, { merge: true });
 
-      const messages = await db.collection("groups").doc(groupId)
+      const messages = await db.collection(collection).doc(ownerId)
         .collection("messages").where("mediaId", "==", mediaId).limit(10).get();
       const batch = db.batch();
       messages.docs.forEach((doc) => batch.update(doc.ref, {
@@ -115,8 +117,9 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
         errorCode: "processing-failed",
         failedAt: new Date(),
       }, { merge: true });
-      console.error("Group media processing failed", {
-        groupId,
+      console.error("Chat media processing failed", {
+        collection,
+        ownerId,
         mediaId,
         error: error && error.message,
       });

@@ -61,6 +61,13 @@ import '../features/notifications/repositories/firebase_notification_repository.
 import '../features/notifications/repositories/notification_repository.dart';
 import '../features/notifications/repositories/unavailable_notification_repository.dart';
 import '../features/notifications/screens/notification_inbox_page.dart';
+import '../features/private_chat/providers/private_chat_list_provider.dart';
+import '../features/private_chat/providers/private_chat_provider.dart';
+import '../features/private_chat/repositories/firebase_private_chat_repository.dart';
+import '../features/private_chat/repositories/private_chat_repository.dart';
+import '../features/private_chat/repositories/unavailable_private_chat_repository.dart';
+import '../features/private_chat/screens/private_chat_screen.dart';
+import '../features/private_chat/screens/private_chats_list_screen.dart';
 import '../features/social/providers/profile_provider.dart';
 import '../features/social/providers/social_provider.dart';
 import '../features/social/repositories/firebase_profile_repository.dart';
@@ -106,7 +113,9 @@ class PubgetApp extends StatelessWidget {
       '/group-media' ||
       '/group-members' ||
       '/group-requests' ||
-      '/group-roleplay' => ParameterizedRoute(
+      '/group-roleplay' ||
+      '/private' ||
+      '/private-chat' => ParameterizedRoute(
         path: Uri.base.path,
         parameters: Uri.base.queryParameters,
       ),
@@ -135,6 +144,9 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
+        provider.Provider<PrivateChatRepository>.value(
+          value: repositories.$12,
+        ),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -175,6 +187,16 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<EditsProvider>(
           create: (context) =>
               EditsProvider(repository: context.read<EditsRepository>()),
+        ),
+        provider.ChangeNotifierProvider<PrivateChatListProvider>(
+          create: (context) => PrivateChatListProvider(
+            repository: context.read<PrivateChatRepository>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<PrivateChatProvider>(
+          create: (context) => PrivateChatProvider(
+            repository: context.read<PrivateChatRepository>(),
+          ),
         ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
@@ -237,6 +259,7 @@ class PubgetApp extends StatelessWidget {
                 '/edits/upload': const EditUploadPage(),
                 '/groups': const GroupsHomePage(),
                 '/groups/create': const CreateGroupWizardPage(),
+                '/private': const PrivateChatsListScreen(),
               },
               parameterizedPages: <String, ParameterizedPageBuilder>{
                 '/profile': (parameters) =>
@@ -257,6 +280,10 @@ class PubgetApp extends StatelessWidget {
                     JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
                 '/group-roleplay': (parameters) =>
                     RoleplayCharacterPage(groupId: parameters['groupId'] ?? ''),
+                '/private-chat': (parameters) => PrivateChatScreen(
+                  chatId: parameters['chatId'] ?? '',
+                  otherUserId: parameters['uid'],
+                ),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -281,7 +308,9 @@ class PubgetApp extends StatelessWidget {
                     path == '/group-media' ||
                     path == '/group-members' ||
                     path == '/group-requests' ||
-                    path == '/group-roleplay';
+                    path == '/group-roleplay' ||
+                    path == '/private' ||
+                    path == '/private-chat';
                 if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||
@@ -317,6 +346,7 @@ class PubgetApp extends StatelessWidget {
     NotificationRepository,
     HomeRepository,
     EditsRepository,
+    PrivateChatRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -334,6 +364,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableNotificationRepository(message),
         UnavailableHomeRepository(message),
         UnavailableEditsRepository(message),
+        UnavailablePrivateChatRepository(message),
       );
     }
     return (
@@ -380,6 +411,11 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebasePrivateChatRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+        storage: FirebaseStorage.instance,
       ),
     );
   }

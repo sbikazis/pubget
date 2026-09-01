@@ -80,4 +80,41 @@ void main() {
     expect(provider.incomingRequests.single.requestedBy, 'user-2');
     expect(provider.outgoingRequests.single.otherUserId('user-1'), 'user-3');
   });
+
+  test('Fan or Friend can start a private chat, blocked users cannot', () {
+    const friends = SocialSnapshot(
+      friendships: <Friendship>[
+        Friendship(
+          userA: 'user-1',
+          userB: 'user-2',
+          status: FriendshipStatus.accepted,
+          requestedBy: 'user-1',
+        ),
+      ],
+    );
+    const fans = SocialSnapshot(
+      givenRespect: <RespectRelation>[
+        RespectRelation(fromUserId: 'user-1', toUserId: 'user-3', value: 5),
+      ],
+    );
+    const blocked = SocialSnapshot(
+      friendships: <Friendship>[
+        Friendship(
+          userA: 'user-1',
+          userB: 'user-4',
+          status: FriendshipStatus.blocked,
+          requestedBy: 'user-1',
+          blockedBy: 'user-1',
+        ),
+      ],
+      givenRespect: <RespectRelation>[
+        RespectRelation(fromUserId: 'user-1', toUserId: 'user-4', value: 7),
+      ],
+    );
+
+    expect(friends.canStartPrivateChat('user-1', 'user-2'), isTrue);
+    expect(fans.canStartPrivateChat('user-1', 'user-3'), isTrue);
+    expect(blocked.canStartPrivateChat('user-1', 'user-4'), isFalse);
+    expect(const SocialSnapshot().canStartPrivateChat('user-1', 'user-9'), isFalse);
+  });
 }

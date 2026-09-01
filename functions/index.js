@@ -27,6 +27,7 @@ const {
 const { createSocialGraph } = require("./src/socialGraph");
 const { createGroupsDomain } = require("./src/groupsDomain");
 const { createGroupChat } = require("./src/groupChat");
+const { createPrivateChat } = require("./src/privateChat");
 const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
@@ -91,6 +92,11 @@ const groupsDomain = createGroupsDomain({
   randomUUID,
 });
 const groupChat = createGroupChat({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
+const privateChat = createPrivateChat({
   db: getFirestore(),
   FieldValue,
   HttpsError,
@@ -234,6 +240,30 @@ exports.markGroupMessagesDelivered = onCall(
 exports.updateGroupChatBackground = onCall(
   { region: "us-central1" },
   groupChat.updateBackground,
+);
+exports.startPrivateChat = onCall(
+  { region: "us-central1" },
+  privateChat.startPrivateChat,
+);
+exports.sendPrivateMessage = onCall(
+  { region: "us-central1" },
+  privateChat.sendPrivateMessage,
+);
+exports.deletePrivateMessage = onCall(
+  { region: "us-central1" },
+  privateChat.deleteMessage,
+);
+exports.markPrivateMessagesRead = onCall(
+  { region: "us-central1" },
+  privateChat.markMessagesRead,
+);
+exports.markPrivateMessagesDelivered = onCall(
+  { region: "us-central1" },
+  privateChat.markMessagesDelivered,
+);
+exports.deletePrivateChat = onCall(
+  { region: "us-central1" },
+  privateChat.deleteChat,
 );
 exports.processGroupChatMedia = onObjectFinalized(
   { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
@@ -568,60 +598,11 @@ const legacyOnNewGroupMessage = onDocumentCreated(
   }
 );
 
+// Replaces the legacy per-token FCM path with the PROMPT 08 builder so
+// unreadPrivateMessagesCount and push share one idempotent write.
 exports.onNewPrivateMessage = onDocumentCreated(
   "privateChats/{chatId}/messages/{messageId}",
-  async (event) => {
-    const message = event.data && event.data.data();
-    const senderId = message.senderId;
-    const chatId = event.params.chatId;
-    const messageId = event.params.messageId;
-    const db = getFirestore();
-
-    if (!message || typeof message !== "object" || !validId(senderId) ||
-        (typeof message.text !== "undefined" && (typeof message.text !== "string" || message.text.length > 4000)) ||
-        (typeof message.mediaType !== "undefined" && typeof message.mediaType !== "string")) return;
-    const chatDoc = await db.collection("privateChats").doc(chatId).get();
-    if (!chatDoc.exists) return;
-    const userA = chatDoc.data()?.userA;
-    const userB = chatDoc.data()?.userB;
-
-    if (!validId(userA) || !validId(userB) || userA === userB || (senderId !== userA && senderId !== userB)) return;
-    const receiverId = userA === senderId ? userB : userA;
-
-    const userDoc = await db.collection("users").doc(receiverId).get();
-    const token = userDoc.data()?.fcmToken;
-    if (typeof token !== "string" || token.length > 4096) return;
-
-    const senderDoc = await db.collection("users").doc(senderId).get();
-    if (!senderDoc.exists) return;
-    const senderName = displayText(senderDoc.data()?.username, "شخص ما");
-
-    const body = messagePreview(message, senderName, false);
-
-    const sound = randomSound();
-
-    await getMessaging().send({
-      token,
-      notification: { title: senderName, body },
-      android: {
-        notification: {
-          sound,
-          channelId: `pubget_reply_private`,
-        },
-      },
-      data: {
-        type: 'private_chat',
-        refId: chatId,
-        senderId: senderId,
-        senderName: senderName,
-        contextName: senderName,
-        commentId: '',
-        messageId: messageId,
-      },
-    }).catch(async (error) => {
-      await removeInvalidToken(db, receiverId, token, error);
-    });
-  }
+  notificationTriggers.privateMessage,
 );
 
 const legacyOnJoinRequest = onDocumentCreated(

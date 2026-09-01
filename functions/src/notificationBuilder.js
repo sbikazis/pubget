@@ -2,6 +2,7 @@
 
 const PUSH_TYPES = new Set([
   "group_message",
+  "private_message",
   "join_request",
   "request_accepted",
   "friend_request",

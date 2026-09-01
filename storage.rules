@@ -60,7 +60,10 @@ service firebase.storage {
       return signedIn() &&
           firestore.exists(
             /databases/(default)/documents/privateChats/$(chatId)) &&
-          (firestore.get(
+          (request.auth.uid in firestore.get(
+            /databases/(default)/documents/privateChats/$(chatId))
+              .data.get('participantIds', []) ||
+           firestore.get(
             /databases/(default)/documents/privateChats/$(chatId)).data.userA ==
             request.auth.uid ||
            firestore.get(
@@ -217,12 +220,14 @@ service firebase.storage {
 
     match /privateChats/{chatId}/media/{fileName} {
       allow read: if signedIn() && isPrivateParticipant(chatId);
-      allow create: if signedIn() && isPrivateParticipant(chatId) &&
-          isNewUploader() && chatMediaUpload();
-      allow update: if signedIn() && isPrivateParticipant(chatId) &&
-          isExistingUploader() && isNewUploader() && chatMediaUpload();
+      allow create: if resource == null &&
+          signedIn() && isPrivateParticipant(chatId) &&
+          isNewUploader() && chatMediaUpload() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
+      allow update: if false;
       allow delete: if signedIn() && isPrivateParticipant(chatId) &&
-          isExistingUploader();
+          isExistingUploader() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
     }
 
     match /privateChats/{chatId}/voices/{fileName} {

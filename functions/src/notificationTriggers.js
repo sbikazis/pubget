@@ -106,6 +106,46 @@ function createNotificationTriggers({ db, builder }) {
     });
   }
 
+  async function privateMessage(event) {
+    const message = event.data && event.data.data();
+    if (!message || !message.senderId || message.deletedAt ||
+        message.type === "system") {
+      return;
+    }
+    const chatId = event.params.chatId;
+    const messageId = event.params.messageId;
+    const chat = await db.collection("privateChats").doc(chatId).get();
+    if (!chat.exists) return;
+    const data = chat.data() || {};
+    const participants = Array.isArray(data.participantIds)
+      ? data.participantIds
+      : [data.userA, data.userB];
+    const recipientIds = participants.filter(
+      (uid) => uid && uid !== message.senderId,
+    );
+    if (!recipientIds.length) return;
+    const sender = await db.collection("users").doc(message.senderId).get();
+    const senderName = (sender.exists && sender.data()?.username) ||
+      message.senderName ||
+      "شخص ما";
+    const body = typeof message.text === "string" && message.text.trim()
+      ? message.text.trim().slice(0, 240)
+      : "رسالة خاصة جديدة";
+    return builder.build({
+      id: `private_message_${chatId}_${messageId}`,
+      recipientIds,
+      type: "private_message",
+      actorId: message.senderId,
+      targetId: chatId,
+      action: "message_created",
+      destination: `/private-chat?chatId=${encodeURIComponent(chatId)}`,
+      metadata: { messageId },
+      groupKey: `private_message_${chatId}`,
+      title: senderName,
+      body,
+    });
+  }
+
   async function respectReceived(event) {
     const data = event.data && event.data.data();
     if (!data || !data.toUserId || !data.fromUserId) return;
@@ -126,6 +166,7 @@ function createNotificationTriggers({ db, builder }) {
 
   return {
     groupMessage,
+    privateMessage,
     joinRequest,
     joinDecision,
     friendRequest,

@@ -22,6 +22,7 @@ void main() {
     expect(restored.id, user.id);
     expect(restored.createdAt, createdAt);
     expect(restored.favoriteAnimes, <String>['Mystery', 'Fantasy']);
+    expect(restored.whoCanMessageMe, 'related');
     expect(map, isNot(contains('coinsBalance')));
     expect(map, isNot(contains('isPremium')));
     expect(map, isNot(contains('subscription')));

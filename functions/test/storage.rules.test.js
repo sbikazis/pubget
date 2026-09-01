@@ -155,6 +155,20 @@ test("allows only Firestore private-chat participants", async () => {
     32,
     uploaderMetadata("mallory"),
   ));
+  await assertSucceeds(upload(
+    env.authenticatedContext("alice"),
+    "privateChats/private-1/media/m1_original.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("alice"),
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("alice"),
+    "privateChats/private-1/media/m1_thumb.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("alice"),
+  ));
 });
 
 test("enforces MIME and size ceilings", async () => {
