@@ -40,4 +40,32 @@ void main() {
     expect(provider.state, LoadingState.error);
     expect(provider.failure?.message, 'Email or password is incorrect.');
   });
+
+  test('password reset does not put the session into loading', () async {
+    final repository = FakeAuthRepository();
+    addTearDown(repository.close);
+    final provider = AuthProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final future = provider.sendPasswordResetEmail(email: 'fan@example.com');
+    expect(provider.isResetting, isTrue);
+    expect(provider.state, isNot(LoadingState.loading));
+    await future;
+    expect(provider.isResetting, isFalse);
+    expect(provider.failure, isNull);
+  });
+
+  test('cancelled Google sign-in is not treated as a failure', () async {
+    final repository = FakeAuthRepository(authFailure: const CancelledError());
+    addTearDown(repository.close);
+    final provider = AuthProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final result = await provider.signInWithGoogle();
+
+    expect(result.isSuccess, isFalse);
+    expect(provider.failure, isNull);
+    expect(provider.state, LoadingState.loaded);
+    expect(provider.isAuthenticated, isFalse);
+  });
 }

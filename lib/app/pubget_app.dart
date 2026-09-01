@@ -9,8 +9,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
 import '../core/network/network_service.dart';
-import '../core/loading/loading_state.dart';
 import '../core/theme/app_theme.dart';
+import '../features/authentication/auth_route_guard.dart';
+import '../features/authentication/providers/auth_draft_store.dart';
 import '../features/authentication/providers/auth_provider.dart';
 import '../features/authentication/providers/onboarding_provider.dart';
 import '../features/authentication/repositories/auth_repository.dart';
@@ -18,6 +19,7 @@ import '../features/authentication/repositories/firebase_auth_repository.dart';
 import '../features/authentication/repositories/firebase_user_repository.dart';
 import '../features/authentication/repositories/unavailable_repositories.dart';
 import '../features/authentication/repositories/user_repository.dart';
+import '../features/authentication/screens/forgot_password_page.dart';
 import '../features/authentication/screens/login_page.dart';
 import '../features/authentication/screens/onboarding_page.dart';
 import '../features/authentication/screens/register_page.dart';
@@ -129,6 +131,9 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
+        provider.ChangeNotifierProvider<AuthDraftStore>(
+          create: (_) => AuthDraftStore(),
+        ),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -264,6 +269,7 @@ class PubgetApp extends StatelessWidget {
                 '/splash': SplashPage(firebaseState: firebaseState),
                 '/login': const LoginPage(),
                 '/register': const RegisterPage(),
+                '/forgot-password': const ForgotPasswordPage(),
                 '/terms': const TermsPage(),
                 '/onboarding': const OnboardingPage(),
                 '/home': const HomePage(),
@@ -319,46 +325,14 @@ class PubgetApp extends StatelessWidget {
                 auth,
                 onboarding,
               ]),
-              routeGuard: (path) {
-                final isProtected =
-                    path == '/home' ||
-                    path == '/onboarding' ||
-                    path == '/profile' ||
-                    path == '/profile/edit' ||
-                    path == '/friend-requests' ||
-                    path == '/notifications' ||
-                    path == '/edits' ||
-                    path == '/edits/upload' ||
-                    path == '/groups' ||
-                    path == '/groups/create' ||
-                    path == '/group' ||
-                    path == '/group-invite' ||
-                    path == '/group-chat' ||
-                    path == '/group-media' ||
-                    path == '/group-members' ||
-                    path == '/group-requests' ||
-                    path == '/group-roleplay' ||
-                    path == '/private' ||
-                    path == '/private-chat' ||
-                    path == '/events' ||
-                    path == '/events/create' ||
-                    path == '/event';
-                if (!isProtected) return null;
-                if (!auth.isInitialized ||
-                    auth.state == LoadingState.initial ||
-                    auth.state == LoadingState.loading) {
-                  return '/splash';
-                }
-                if (!auth.isAuthenticated) return '/login';
-                if (path != '/onboarding' &&
-                    onboarding.state == LoadingState.initial) {
-                  return '/splash';
-                }
-                if (path != '/onboarding' && !onboarding.canEnterHome) {
-                  return '/onboarding';
-                }
-                return null;
-              },
+              routeGuard: (path) => AuthRouteGuard.resolve(
+                path: path,
+                isInitialized: auth.isInitialized,
+                authState: auth.state,
+                isAuthenticated: auth.isAuthenticated,
+                onboardingState: onboarding.state,
+                canEnterHome: onboarding.canEnterHome,
+              ),
             ),
           );
         },

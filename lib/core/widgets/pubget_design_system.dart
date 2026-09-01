@@ -1,6 +1,7 @@
 export 'app_image_loader.dart';
 export 'pubget_avatar.dart';
 export 'pubget_badge.dart';
+export 'pubget_banners.dart';
 export 'pubget_bottom_sheet.dart';
 export 'pubget_buttons.dart';
 export 'pubget_card.dart';

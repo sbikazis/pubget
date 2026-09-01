@@ -1,10 +1,17 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/network/network_service.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/models/pubget_user.dart';
+import 'package:pubget/features/authentication/providers/auth_draft_store.dart';
+import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
 import 'package:pubget/features/authentication/repositories/auth_repository.dart';
 import 'package:pubget/features/authentication/repositories/user_repository.dart';
 
@@ -106,4 +113,43 @@ final class FakeUserRepository implements UserRepository {
     user = next;
     return Success<PubgetUser>(next);
   }
+}
+
+Future<void> pumpAuthScreen(
+  WidgetTester tester, {
+  required Widget child,
+  FakeAuthRepository? repository,
+  FakeUserRepository? users,
+  NetworkService? network,
+  AuthDraftStore? draft,
+}) async {
+  final createdNetwork = network == null;
+  final resolvedNetwork = network ?? NetworkService(probe: () async => true);
+  if (createdNetwork) {
+    await resolvedNetwork.refresh();
+    addTearDown(resolvedNetwork.dispose);
+  }
+  final createdRepository = repository == null;
+  final authRepository = repository ?? FakeAuthRepository();
+  if (createdRepository) {
+    addTearDown(authRepository.close);
+  }
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<NetworkService>.value(value: resolvedNetwork),
+        ChangeNotifierProvider<AuthDraftStore>.value(
+          value: draft ?? AuthDraftStore(),
+        ),
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(repository: authRepository),
+        ),
+        ChangeNotifierProvider<OnboardingProvider>(
+          create: (_) =>
+              OnboardingProvider(repository: users ?? FakeUserRepository()),
+        ),
+      ],
+      child: MaterialApp(home: child),
+    ),
+  );
 }

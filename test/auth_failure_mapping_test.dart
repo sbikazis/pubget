@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/features/authentication/repositories/firebase_auth_repository.dart';
 
@@ -24,5 +25,13 @@ void main() {
 
     expect(failure, isA<NetworkError>());
     expect(failure.message, 'Check your connection and try again.');
+  });
+
+  test('cancelled Google sign-in becomes a silent cancelled error', () {
+    final failure = FirebaseAuthRepository.mapFailure(
+      const GoogleSignInException(code: GoogleSignInExceptionCode.canceled),
+    );
+
+    expect(failure, isA<CancelledError>());
   });
 }

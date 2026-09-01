@@ -3,11 +3,16 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
-import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../auth_validators.dart';
+import '../providers/auth_draft_store.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/auth_google_button.dart';
+import '../widgets/auth_or_divider.dart';
+import '../widgets/auth_password_field.dart';
+import '../widgets/terms_copy.dart';
 import 'auth_page_shell.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -18,14 +23,30 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _email = TextEditingController();
+  late final TextEditingController _email;
   final _password = TextEditingController();
   final _confirmation = TextEditingController();
   String? _emailError;
   String? _passwordError;
   String? _confirmationError;
-  bool _acceptedTerms = false;
-  bool _hidePassword = true;
+  var _seededEmail = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _email = TextEditingController();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_seededEmail) return;
+    _seededEmail = true;
+    final draft = context.read<AuthDraftStore>().email;
+    if (_email.text.isEmpty && draft.isNotEmpty) {
+      _email.text = draft;
+    }
+  }
 
   @override
   void dispose() {
@@ -38,135 +59,170 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final draft = context.watch<AuthDraftStore>();
     final network = context.watch<NetworkService>();
-    final loading = auth.state == LoadingState.loading;
+    final loading = auth.isBusy;
+    final offline = network.isOffline;
     return AuthPageShell(
       title: 'Create your account',
-      subtitle: 'Start quickly. You can finish your profile later.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (!network.isOnline)
-            const PubgetOfflineState(
-              title: 'You are offline',
-              message: 'Reconnect before creating an account.',
-            )
-          else if (auth.failure != null)
-            PubgetErrorState(
-              title: 'Registration failed',
-              message: auth.failure!.message,
+      subtitle: 'A few details now. You can finish your profile later.',
+      compactBrand: true,
+      footer: PubgetTextButton(
+        onPressed: loading ? null : () => AppNavigation.go(context, '/login'),
+        semanticLabel: 'Return to sign in',
+        child: const Text('Already have an account? Sign in'),
+      ),
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            if (offline)
+              const PubgetInlineBanner(
+                title: 'You are offline',
+                message: 'Reconnect before creating an account.',
+                icon: Icons.cloud_off_outlined,
+              )
+            else if (auth.failure != null)
+              PubgetInlineBanner.error(
+                title: 'Registration failed',
+                message: auth.failure!.message,
+              ),
+            if (offline || auth.failure != null)
+              const SizedBox(height: AppSpacing.md),
+            PubgetTextField(
+              key: const Key('register-email'),
+              controller: _email,
+              label: 'Email',
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              errorText: _emailError,
+              enabled: !loading,
+              autocorrect: false,
+              enableSuggestions: false,
+              autofillHints: const <String>[AutofillHints.email],
+              onChanged: (value) =>
+                  context.read<AuthDraftStore>().setEmail(value),
             ),
-          PubgetTextField(
-            key: const Key('register-email'),
-            controller: _email,
-            label: 'Email',
-            keyboardType: TextInputType.emailAddress,
-            errorText: _emailError,
-            enabled: !loading,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetTextField(
-            key: const Key('register-password'),
-            controller: _password,
-            label: 'Password',
-            obscureText: _hidePassword,
-            errorText: _passwordError,
-            enabled: !loading,
-            suffixIcon: PubgetIconButton(
-              icon: _hidePassword
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              tooltip: _hidePassword ? 'Show password' : 'Hide password',
-              onPressed: loading
+            const SizedBox(height: AppSpacing.md),
+            AuthPasswordField(
+              key: const Key('register-password'),
+              controller: _password,
+              label: 'Password',
+              errorText: _passwordError,
+              enabled: !loading,
+              showStrength: true,
+              helperText: 'At least 6 characters.',
+              textInputAction: TextInputAction.next,
+              autofillHints: const <String>[AutofillHints.newPassword],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            AuthPasswordField(
+              key: const Key('register-confirmation'),
+              controller: _confirmation,
+              label: 'Confirm password',
+              errorText: _confirmationError,
+              enabled: !loading,
+              autofillHints: const <String>[AutofillHints.newPassword],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: draft.acceptedTerms,
+              onChanged: loading
                   ? null
-                  : () => setState(() => _hidePassword = !_hidePassword),
+                  : (value) => draft.setAcceptedTerms(value ?? false),
+              title: const Text('I agree to the terms'),
+              controlAffinity: ListTileControlAffinity.leading,
             ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetTextField(
-            key: const Key('register-confirmation'),
-            controller: _confirmation,
-            label: 'Confirm password',
-            obscureText: true,
-            errorText: _confirmationError,
-            enabled: !loading,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _acceptedTerms,
-            onChanged: loading
-                ? null
-                : (value) => setState(() => _acceptedTerms = value ?? false),
-            title: const Text('I agree to the terms'),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          PubgetTextButton(
-            onPressed: () => AppNavigation.go(context, '/terms'),
-            semanticLabel: 'Read the terms',
-            child: const Text('Read the terms'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetPrimaryButton(
-            key: const Key('register-submit'),
-            onPressed: !network.isOnline || loading ? null : _submit,
-            semanticLabel: 'Create account with email',
-            loading: loading,
-            child: const Text('Create account'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetSecondaryButton(
-            onPressed: !network.isOnline || loading ? null : _google,
-            semanticLabel: 'Create account with Google',
-            leadingIcon: Icons.account_circle_outlined,
-            child: const Text('Continue with Google'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetTextButton(
-            onPressed: loading
-                ? null
-                : () => AppNavigation.go(context, '/login'),
-            semanticLabel: 'Return to sign in',
-            child: const Text('Already have an account? Sign in'),
-          ),
-        ],
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PubgetTextButton(
+                onPressed: () => _openTerms(draft),
+                semanticLabel: 'Read the terms',
+                child: const Text('Read the terms'),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            PubgetPrimaryButton(
+              key: const Key('register-submit'),
+              onPressed: offline || loading ? null : _submit,
+              semanticLabel: 'Create account with email',
+              loading: loading,
+              child: const Text('Create account'),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const AuthOrDivider(),
+            const SizedBox(height: AppSpacing.lg),
+            AuthGoogleButton(
+              onPressed: offline || loading ? null : _google,
+              semanticLabel: 'Create account with Google',
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  Future<void> _openTerms(AuthDraftStore draft) async {
+    final accepted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final height = MediaQuery.sizeOf(sheetContext).height * 0.86;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: AppSpacing.xl,
+              right: AppSpacing.xl,
+              bottom:
+                  MediaQuery.viewInsetsOf(sheetContext).bottom + AppSpacing.xl,
+            ),
+            child: SizedBox(
+              height: height,
+              child: SingleChildScrollView(
+                child: TermsCopy(
+                  onAccept: () => Navigator.of(sheetContext).pop(true),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (accepted == true) draft.setAcceptedTerms(true);
+  }
+
   bool _validate() {
-    final email = _email.text.trim();
-    final password = _password.text;
     setState(() {
-      _emailError = !email.contains('@') ? 'Enter a valid email.' : null;
-      _passwordError = password.length < 6
-          ? 'Password must be at least 6 characters.'
-          : null;
-      _confirmationError = password != _confirmation.text
-          ? 'Passwords do not match.'
-          : null;
+      _emailError = AuthValidators.email(_email.text);
+      _passwordError = AuthValidators.password(_password.text);
+      _confirmationError = AuthValidators.confirmation(
+        _password.text,
+        _confirmation.text,
+      );
     });
-    if (!_acceptedTerms) {
+    if (!context.read<AuthDraftStore>().acceptedTerms) {
       PubgetSnackbars.showError(context, 'Accept the terms to continue.');
     }
     return _emailError == null &&
         _passwordError == null &&
         _confirmationError == null &&
-        _acceptedTerms;
+        context.read<AuthDraftStore>().acceptedTerms;
   }
 
   Future<void> _submit() async {
     if (!_validate()) return;
     final result = await context.read<AuthProvider>().signUpWithEmail(
-      email: _email.text,
+      email: AuthValidators.normalizeEmail(_email.text),
       password: _password.text,
     );
     if (!mounted) return;
-    if (result is Success) await AppNavigation.go(context, '/onboarding');
+    if (result is Success) await AppNavigation.go(context, '/splash');
   }
 
   Future<void> _google() async {
-    if (!_acceptedTerms) {
+    if (!context.read<AuthDraftStore>().acceptedTerms) {
       PubgetSnackbars.showError(context, 'Accept the terms to continue.');
       return;
     }
