@@ -129,6 +129,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
     await db.runTransaction(async (transaction) => {
       transaction.create(groupRef, {
         name: data.name.trim(),
+        searchName: data.name.trim().toLowerCase(),
         description: data.description.trim(),
         imageUrl: "",
         type: data.type,
@@ -142,6 +143,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
         chatBackgroundUrl: null,
         rules: data.rules.trim(),
         activityScore: 0,
+        risingEligible: false,
       });
       transaction.create(memberRef, groupMemberData(uid, "founder", FieldValue));
       for (const role of ROLES) {

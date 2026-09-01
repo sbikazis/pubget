@@ -35,6 +35,8 @@ final class Group {
     required this.rules,
     required this.activityScore,
     this.imageUrl,
+    this.lastActivityAt,
+    this.promotionExpiresAt,
   });
 
   final String id;
@@ -52,6 +54,8 @@ final class Group {
   final String rules;
   final num activityScore;
   final String? imageUrl;
+  final DateTime? lastActivityAt;
+  final DateTime? promotionExpiresAt;
 
   bool get isFull => membersCount >= maxMembers;
 
@@ -79,6 +83,8 @@ final class Group {
       rules: map['rules'] as String? ?? '',
       activityScore: (map['activityScore'] as num?) ?? 0,
       imageUrl: map['imageUrl'] as String?,
+      lastActivityAt: _date(map['lastMessageAt']),
+      promotionExpiresAt: _date(map['promotionExpiresAt']),
     );
   }
 }

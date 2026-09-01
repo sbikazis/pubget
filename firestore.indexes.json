@@ -1,6 +1,54 @@
 {
   "indexes": [
     {
+      "collectionGroup": "groups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "isSearchable", "order": "ASCENDING"},
+        {"fieldPath": "risingEligible", "order": "ASCENDING"},
+        {"fieldPath": "activityScore", "order": "DESCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "groups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "isSearchable", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "groups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "isSearchable", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "groups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "isSearchable", "order": "ASCENDING"},
+        {"fieldPath": "isPromoted", "order": "ASCENDING"},
+        {"fieldPath": "promotionExpiresAt", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "groups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "isSearchable", "order": "ASCENDING"},
+        {"fieldPath": "searchName", "order": "ASCENDING"},
+        {"fieldPath": "__name__", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "respects",
       "queryScope": "COLLECTION",
       "fields": [
