@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/repositories/anime_repository.dart';
 import '../../groups/models/group_models.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
@@ -47,8 +49,9 @@ final class HomeSectionState {
 }
 
 final class HomeProvider extends ChangeNotifier {
-  HomeProvider({required HomeRepository repository})
-    : _repository = repository {
+  HomeProvider({required HomeRepository repository, AnimeRepository? animeRepository})
+    : _repository = repository,
+      _animeRepository = animeRepository {
     _sections = {
       for (final kind in _sectionOrder)
         kind: HomeSectionState(kind: kind, state: LoadingState.initial),
@@ -67,6 +70,7 @@ final class HomeProvider extends ChangeNotifier {
   ];
 
   final HomeRepository _repository;
+  final AnimeRepository? _animeRepository;
   late Map<HomeSectionKind, HomeSectionState> _sections;
   DiscoverySearchResults _searchResults = const DiscoverySearchResults();
   LoadingState _searchState = LoadingState.initial;
@@ -128,21 +132,41 @@ final class HomeProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> retrySearch(String query) => _search(query);
+
   Future<void> _search(String query) async {
     _searchState = LoadingState.loading;
     _searchFailure = null;
     _safeNotify();
-    final result = await _repository.search(query);
+    final trimmed = query.trim();
+    final result = await _repository.search(trimmed);
+    Result<AnimePage>? animeResult;
+    if (trimmed.length >= 2 && _animeRepository != null) {
+      animeResult = await _animeRepository.searchAnime(trimmed, limit: 8);
+    }
+    if (_disposed) return;
     result.fold(
       onSuccess: (results) {
-        _searchResults = results;
-        _searchState = results.isEmpty
+        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
+        _searchResults = DiscoverySearchResults(
+          groups: results.groups,
+          people: results.people,
+          events: results.events,
+          anime: anime,
+        );
+        _searchState = _searchResults.isEmpty
             ? LoadingState.empty
             : LoadingState.loaded;
       },
       onFailure: (failure) {
-        _searchFailure = failure;
-        _searchState = LoadingState.error;
+        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
+        if (anime.isNotEmpty) {
+          _searchResults = DiscoverySearchResults(anime: anime);
+          _searchState = LoadingState.loaded;
+        } else {
+          _searchFailure = failure;
+          _searchState = LoadingState.error;
+        }
       },
     );
     _safeNotify();

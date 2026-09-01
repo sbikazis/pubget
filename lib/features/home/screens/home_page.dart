@@ -12,6 +12,8 @@ import '../../edits/providers/edits_provider.dart';
 import '../../events/models/event_models.dart';
 import '../../events/models/event_type_registry.dart';
 import '../../events/widgets/event_widgets.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/widgets/anime_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -138,7 +140,7 @@ class _SearchBar extends StatelessWidget {
       ),
       child: PubgetSearchField(
         controller: controller,
-        hint: 'Search groups, people, and events',
+        hint: AnimeStrings.searchHomeHint,
         onChanged: provider.searchChanged,
         onClear: () {
           controller.clear();
@@ -161,7 +163,7 @@ class _SearchResults extends StatelessWidget {
     if (home.searchState == LoadingState.empty) {
       return const PubgetEmptyState(
         title: 'Nothing found',
-        message: 'Try another group, username, or event.',
+        message: 'Try another group, username, event, or anime.',
       );
     }
     if (home.searchState == LoadingState.error) {
@@ -183,6 +185,8 @@ class _SearchResults extends StatelessWidget {
         for (final person in home.searchResults.people)
           _PersonRow(person: person),
         for (final event in home.searchResults.events) _EventRow(event: event),
+        for (final anime in home.searchResults.anime)
+          AnimeResultTile(anime: anime),
       ],
     );
   }
@@ -233,10 +237,7 @@ class _SectionView extends StatelessWidget {
       return const EventHomeStrip();
     }
     if (kind == HomeSectionKind.animePlaceholder) {
-      return const _PlaceholderSection(
-        title: 'Anime of the Week',
-        message: 'Placeholder — Anime Hub arrives with PROMPT 14.',
-      );
+      return const AnimeHomeStrip();
     }
     final state = provider.section(kind);
     if (state.state == LoadingState.initial) {
@@ -506,21 +507,6 @@ class _SkeletonSection extends StatelessWidget {
           ),
         ),
       ),
-    ),
-  );
-}
-
-class _PlaceholderSection extends StatelessWidget {
-  const _PlaceholderSection({required this.title, required this.message});
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => _SectionShell(
-    title: title,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-      child: PubgetCard(child: Text(message)),
     ),
   );
 }

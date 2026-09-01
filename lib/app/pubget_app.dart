@@ -50,6 +50,15 @@ import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_feed_page.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/anime/data/anime_http_client.dart';
+import '../features/anime/models/anime_models.dart';
+import '../features/anime/providers/anime_providers.dart';
+import '../features/anime/repositories/anime_repository.dart';
+import '../features/anime/repositories/cached_anime_repository.dart';
+import '../features/anime/repositories/jikan_anime_repository.dart';
+import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_details_page.dart';
+import '../features/anime/screens/anime_hub_page.dart';
 import '../features/events/providers/event_providers.dart';
 import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
@@ -128,6 +137,19 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<EditsRepository>.value(value: repositories.$11),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
+        provider.Provider<AnimeRepository>(
+          create: (context) {
+            final network = context.read<NetworkService>();
+            return CachedAnimeRepository(
+              inner: JikanAnimeRepository(
+                http: ResilientAnimeHttpClient(
+                  inner: PackageAnimeHttpClient(),
+                ),
+              ),
+              isOnline: () => network.isOnline,
+            );
+          },
+        ),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
@@ -163,8 +185,10 @@ class PubgetApp extends StatelessWidget {
               ChatProvider(repository: context.read<ChatRepository>()),
         ),
         provider.ChangeNotifierProvider<HomeProvider>(
-          create: (context) =>
-              HomeProvider(repository: context.read<HomeRepository>()),
+          create: (context) => HomeProvider(
+            repository: context.read<HomeRepository>(),
+            animeRepository: context.read<AnimeRepository>(),
+          ),
         ),
         provider.ChangeNotifierProvider<EditsProvider>(
           create: (context) =>
@@ -205,6 +229,25 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<EventBuilderProvider>(
           create: (context) => EventBuilderProvider(
             repository: context.read<EventRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<AnimeHubProvider>(
+          create: (context) => AnimeHubProvider(
+            repository: context.read<AnimeRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<AnimeListProvider>(
+          create: (context) => AnimeListProvider(
+            repository: context.read<AnimeRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<AnimeDetailsProvider>(
+          create: (context) => AnimeDetailsProvider(
+            repository: context.read<AnimeRepository>(),
+            profiles: context.read<ProfileRepository>(),
             analytics: context.read<Analytics>(),
           ),
         ),
@@ -275,6 +318,7 @@ class PubgetApp extends StatelessWidget {
                 '/groups': const GroupsHomePage(),
                 '/groups/create': const CreateGroupWizardPage(),
                 '/private': const PrivateChatsListScreen(),
+                '/anime': const AnimeHubPage(),
               },
               parameterizedPages: <String, ParameterizedPageBuilder>{
                 '/profile': (parameters) =>
@@ -313,6 +357,27 @@ class PubgetApp extends StatelessWidget {
                   groupId: parameters['groupId'],
                   templateId: parameters['templateId'],
                 ),
+                '/anime/details': (parameters) => AnimeDetailsPage(
+                  animeId: parameters['animeId'] ?? '',
+                ),
+                '/anime/browse': (parameters) {
+                  final match = AnimeCatalogKind.values.where(
+                    (kind) => kind.routeValue == parameters['kind'],
+                  );
+                  return AnimeBrowsePage(
+                    kind: match.isEmpty
+                        ? AnimeCatalogKind.trending
+                        : match.first,
+                  );
+                },
+                '/anime/genre': (parameters) => AnimeBrowsePage(
+                  genreId: parameters['genreId'],
+                  genreName: parameters['name'],
+                ),
+                '/anime/season': (parameters) => AnimeBrowsePage(
+                  year: int.tryParse(parameters['year'] ?? ''),
+                  season: AnimeSeason.tryParse(parameters['season']),
+                ),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -342,7 +407,12 @@ class PubgetApp extends StatelessWidget {
                     path == '/private-chat' ||
                     path == '/events' ||
                     path == '/events/create' ||
-                    path == '/event';
+                    path == '/event' ||
+                    path == '/anime' ||
+                    path == '/anime/details' ||
+                    path == '/anime/browse' ||
+                    path == '/anime/genre' ||
+                    path == '/anime/season';
                 if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||

@@ -119,6 +119,14 @@ final class OnboardingProvider extends ChangeNotifier {
     isProfileCompleted: false,
   );
 
+  void applyFavoriteAnimeIds(List<String> ids) {
+    if (_profile == null) return;
+    _profile = _profile!.copyWith(
+      favoriteAnimeIds: List<String>.unmodifiable(ids),
+    );
+    if (!_disposed) notifyListeners();
+  }
+
   void clearFailure() {
     if (_failure == null) return;
     _failure = null;
