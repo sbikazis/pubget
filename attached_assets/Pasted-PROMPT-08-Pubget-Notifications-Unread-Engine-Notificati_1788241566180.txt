@@ -1,0 +1,62 @@
+PROMPT 08 — Pubget Notifications & Unread Engine
+
+هذا البرومت يبني نظام إشعارات مركزي (Notification Inbox + Push) ومحرك عدادات "غير مقروء" موحّد عبر التطبيق كله، فوق Auth/Social/Groups/Chat (PROMPT 04-07).
+
+## القرارات الملزمة المسبقة (لا تُعِد فتح النقاش فيها)
+
+- نظام موحّد مركزي وليس عدادات متفرقة يبنيها كل Domain بطريقته الخاصة (كما كان في الكود القديم) — أي إشعار مستقبلي (مجموعات، دردشة، ألعاب لاحقًا، إلخ) يمرّ عبر نفس الـBuilder المركزي.
+- كل Notification تحمل حقولاً موحّدة: type, actorId, targetId, action, destination (Route قابل للتنقل المباشر إليه), metadata, createdAt, readAt.
+- عند الضغط على أي إشعار، يعرف التطبيق أين يذهب تلقائيًا عبر `destination` — بدون Switch statements متناثرة في الواجهة.
+- **الدوائر الحمراء (Unread Indicators)** موحّدة عبر التطبيق: عداد المجموعات، عداد الخاص (سيُبنى لاحقًا لكن الـEngine يجب أن يدعمه من الآن)، عداد الإشعارات، عداد الإشارات (Mentions لاحقًا). لا حساب منفصل بمنطق مختلف لكل شاشة.
+- **الفصل بين Push-worthy وInbox-only**: ليس كل شيء يُرسل كـPush Notification خارج التطبيق — الأحداث المهمة (رسالة، طلب انضمام، قبول) تُرسل Push، الأحداث الأقل أهمية تبقى في الـInbox فقط. القرار يُتخذ مركزيًا عند بناء الإشعار.
+- **تجميع الإشعارات المتكررة (Batching)**: بدل 15 إشعار منفصل لتفاعل مع نفس المحتوى، إشعار واحد مُجمَّع ("Ahmed و12 آخرون تفاعلوا مع..."). لا تبني هذا بتعقيد كامل الآن إن كان صعبًا معماريًا لحدود هذا البرومت، لكن صمّم Schema بما يسمح لاحقًا بالـGrouping دون إعادة هيكلة — وثّق مستوى التنفيذ الفعلي.
+- **مشكلة N+1 وتكرار الإرسال المكتشفة في تدقيق الكود القديم (`onNewGroupMessage`) يجب ألا تتكرر**: لا قراءة متسلسلة لكل عضو لجلب FCM tokens، ولا إرسال Push مكرر عند إعادة تشغيل Trigger (Idempotency).
+- Push عبر Firebase Cloud Messaging القياسي.
+
+## المطلوب تنفيذه
+
+### 1. Firestore Schema
+
+- `users/{uid}/notifications/{notificationId}`: type, actorId (nullable), targetId, action, destination (route string قابل للparse من app_router)، metadata (map مرن)، createdAt, readAt (nullable), groupKey (nullable — أساس التجميع المستقبلي: نفس groupKey لنفس نوع الحدث على نفس الهدف خلال فترة زمنية).
+- `users/{uid}/fcmTokens/{tokenId}`: token, platform, updatedAt (لإدارة أجهزة متعددة وتنظيف tokens غير الصالحة كما كان يحدث جزئيًا في الكود القديم).
+- حقول عدادات "غير مقروء" — قرر: تُحسب Client-side من الـStream مباشرة (بسيط لكن قد يكون مكلفًا مع عدد كبير)، أو تُخزَّن كعداد مجمّع (أداءً أفضل، يحتاج تحديث ذري من الخادم). وثّق القرار وسببه صراحة، مع مراعاة أن هذا النظام يجب أن يتوسّع لاحقًا (خاص، إشارات) دون إعادة هيكلة.
+
+### 2. Firebase Functions (Server-authoritative)
+
+- `NotificationBuilder` (وحدة مركزية داخلية تُستدعى من كل Triggers أخرى — وليست Callable مباشرة): تُنشئ وثيقة الإشعار + تقرر Push-worthy أم لا + تتحقق من groupKey للتجميع الأساسي.
+- Trigger عند رسالة مجموعة جديدة (يستبدل `onNewGroupMessage` القديم): يستخدم NotificationBuilder، **يحل مشكلة N+1** (اجلب tokens بكفاءة — Batch query وليس قراءة متسلسلة)، ويمنع تكرار الإرسال عند إعادة تشغيل الـTrigger (تحقق من وجود إشعار مطابق قبل الإرسال أو استخدام معرّف حتمي).
+- Triggers لأحداث Social/Groups من PROMPT 05/06 (طلب انضمام، قبول، Respect مستلم، طلب صداقة) — تُبنى الآن كاستدعاءات لـNotificationBuilder، لا تعيد كتابة منطق الإشعار من الصفر في كل Trigger.
+- `markNotificationRead` / `markAllNotificationsRead` (Callable).
+- `registerFcmToken` / `unregisterFcmToken` (Callable، مع تنظيف tokens غير صالحة كما كان يحدث في الكود القديم بنجاح).
+
+### 3. Repository & Provider Layer
+
+- `NotificationRepository`: getNotifications (Paginated Stream), markAsRead, markAllAsRead, registerDeviceToken.
+- `NotificationProvider`: قائمة الإشعارات + عداد غير مقروء.
+- `UnreadEngine` (وحدة/Provider مركزية منفصلة تجمع كل مصادر "غير مقروء" الحالية: المجموعات من PROMPT 07، الإشعارات هنا) وتعرضها بواجهة موحّدة تستخدمها أي شاشة (Home لاحقًا، Bottom Navigation، شارات المجموعات).
+
+### 4. الشاشات
+
+- **Notification Inbox Screen**: قائمة Paginated، "تمييز الكل كمقروء"، الضغط على إشعار يوجّه مباشرة عبر `destination`، حالة فارغة واضحة.
+- ربط عداد الدوائر الحمراء في أي مكان ظاهر حاليًا (شارة المجموعات في قوائم PROMPT 06، أيقونة إشعارات — Placeholder للـBottom Navigation الكامل الذي سيُبنى في PROMPT 09).
+
+### 5. معالجة الحالات
+
+Initial/Loading/Error/Offline/Empty. تأكد أن فشل تسجيل FCM token (رفض الإذن مثلاً) لا يكسر بقية التطبيق — طلب الإذن Just-in-time وليس عند أول تشغيل بلا سبب (كما في الوثيقة).
+
+## قيود صارمة
+
+- لا تبني Home الكامل أو Bottom Navigation النهائي (PROMPT 09) — فقط اربط عدادات الإشعارات/المجموعات بمكان مؤقت واضح.
+- لا تبني نظام Mentions الفعلي (يعتمد على وجود محتوى نصي متقدم لاحقًا) — فقط تأكد أن Schema لا يمنعه مستقبلاً.
+- لا تلمس lib_legacy/.
+- اطلب مراجعة معمارية/أمنية/أداء مستقلة لنفسك قبل الإكمال — ركّز تحديدًا على: عدم تكرار مشكلة N+1 في جلب FCM tokens، Idempotency عند إعادة تشغيل Triggers، وعدم تسريب بيانات إشعار لمستخدم غير معنيّ به.
+
+## عند الانتهاء
+
+اذكر:
+1. قائمة الملفات (Schema/Functions/Repositories/Providers/Screens).
+2. القرار المتخذ لتخزين عدادات "غير مقروء" (Client-computed مقابل Server-aggregated) ولماذا.
+3. كيف تحديدًا تم حل مشكلة N+1 في جلب FCM tokens (مقارنة بالكود القديم الذي رصده التدقيق).
+4. مستوى تنفيذ التجميع (Batching) الفعلي في هذا البرومت — كامل أم أساس فقط قابل للتوسعة.
+5. نتائج flutter analyze/test/build + Functions + Rules.
+6. تأكيد الرفع على GitHub (SHA + Tree).
