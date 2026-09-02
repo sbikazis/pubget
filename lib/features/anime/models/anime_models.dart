@@ -278,5 +278,6 @@ abstract final class AnimeStrings {
   static const trailer = 'Trailer';
   static const links = 'External links';
   static const copied = 'Link copied';
+  static const share = 'Share anime';
   static const favoriteLimit = 'You can save up to 50 favorite anime.';
 }

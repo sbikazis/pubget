@@ -44,7 +44,21 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
       appBar: AppBar(
         title: Text(anime?.title ?? AnimeStrings.hubTitle),
         actions: <Widget>[
-          if (anime != null)
+          if (anime != null) ...<Widget>[
+            PubgetIconButton(
+              icon: Icons.share_outlined,
+              tooltip: AnimeStrings.share,
+              onPressed: () => AnimeLinks.share(
+                context,
+                widget.animeId,
+                title: anime.title,
+              ),
+            ),
+            PubgetIconButton(
+              icon: Icons.link_outlined,
+              tooltip: AnimeStrings.copied,
+              onPressed: () => AnimeLinks.copyCanonical(context, widget.animeId),
+            ),
             PubgetIconButton(
               icon: details.isFavorite ? Icons.favorite : Icons.favorite_border,
               tooltip: details.isFavorite
@@ -53,6 +67,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
               loading: details.savingFavorite,
               onPressed: details.toggleFavorite,
             ),
+          ],
         ],
       ),
       body: PubgetLoadingStateView(

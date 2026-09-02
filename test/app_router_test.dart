@@ -202,4 +202,139 @@ void main() {
     expect(parameterized.path, '/store/item');
     expect(parameterized.parameters['itemId'], 'frame_sakura');
   });
+
+  test('trailing slashes, encoding, and entity aliases parse safely', () async {
+    final parser = AppRouteInformationParser();
+
+    Future<ParameterizedRoute> parse(String raw) async {
+      final route = await parser.parseRouteInformation(
+        RouteInformation(uri: Uri.parse(raw)),
+      );
+      return route as ParameterizedRoute;
+    }
+
+    final event = await parse('/event/abc123/');
+    expect(event.path, '/event');
+    expect(event.parameters['eventId'], 'abc123');
+
+    final encoded = await parse('/event/abc%201');
+    expect(encoded.parameters['eventId'], 'abc 1');
+
+    final arabic = await parse('/event/${Uri.encodeComponent('حدث')}');
+    expect(arabic.parameters['eventId'], 'حدث');
+
+    final fanWork = await parse('/fan-work/w1?view=manga');
+    expect(fanWork.path, '/fan-work');
+    expect(fanWork.parameters['view'], 'manga');
+
+    final browse = await parse('/anime/browse?kind=trending');
+    expect(browse.path, '/anime/browse');
+    expect(browse.parameters['kind'], 'trending');
+
+    final genre = await parse('/anime/genre?genreId=1&name=Action');
+    expect(genre.path, '/anime/genre');
+    expect(genre.parameters['genreId'], '1');
+
+    final season = await parse('/anime/season?year=2024&season=fall');
+    expect(season.path, '/anime/season');
+    expect(season.parameters['year'], '2024');
+
+    final store = await parse('/store');
+    expect(store.path, '/store');
+
+    final group = await parse('/group/g-1');
+    expect(group.path, '/group');
+    expect(group.parameters['groupId'], 'g-1');
+
+    final profile = await parse('/profile/u-1');
+    expect(profile.path, '/profile');
+    expect(profile.parameters['uid'], 'u-1');
+  });
+
+  test('missing ids, unknown routes, and malformed URIs fall back safely', () {
+    ParameterizedRoute asRoute(AppRoute route) => route as ParameterizedRoute;
+
+    expect(asRoute(AppRouter.routeFromString('/event/')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/event')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/game/')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/fan-work/')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/store/item')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/not-a-real-route')).path, '/not-a-real-route');
+    expect(asRoute(AppRouter.routeFromString(':')).path, '/unknown');
+  });
+
+  testWidgets('unknown routes render the fallback page instead of crashing', (
+    tester,
+  ) async {
+    final delegate = AppRouterDelegate(
+      homePage: const Text('Splash'),
+      domainPages: const <String, Widget>{
+        '/unknown': Text('Unknown link'),
+      },
+      initialRoute: const ParameterizedRoute(path: '/totally-missing'),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
+      ),
+    );
+
+    expect(find.text('Unknown link'), findsOneWidget);
+  });
+
+  test('cancelled login keeps the pending target without looping', () async {
+    var authenticated = false;
+    final delegate = AppRouterDelegate(
+      homePage: const Text('Splash'),
+      parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/event': (parameters) => Text('Event ${parameters['eventId']}'),
+        '/login': (_) => const Text('Login'),
+      },
+      initialRoute: const ParameterizedRoute(
+        path: '/event',
+        parameters: {'eventId': 'e1'},
+      ),
+      routeGuard: (path) {
+        if (path == '/event' && !authenticated) return '/login';
+        return null;
+      },
+    );
+
+    expect((delegate.currentConfiguration as ParameterizedRoute).path, '/login');
+    expect(delegate.pendingRoute, isNotNull);
+    await delegate.setNewRoutePath(const ParameterizedRoute(path: '/login'));
+    expect((delegate.currentConfiguration as ParameterizedRoute).path, '/login');
+    expect(
+      (delegate.pendingRoute as ParameterizedRoute).parameters['eventId'],
+      'e1',
+    );
+  });
+
+  test('sign-out clears a previously restored protected destination', () async {
+    var authenticated = true;
+    final delegate = AppRouterDelegate(
+      homePage: const Text('Splash'),
+      parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/home': (_) => const Text('Home'),
+        '/event': (parameters) => Text('Event ${parameters['eventId']}'),
+        '/login': (_) => const Text('Login'),
+      },
+      initialRoute: const ParameterizedRoute(path: '/home'),
+      routeGuard: (path) {
+        if (path != '/login' && !authenticated) return '/login';
+        return null;
+      },
+    );
+
+    expect((delegate.currentConfiguration as ParameterizedRoute).path, '/home');
+    authenticated = false;
+    await delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
+    expect((delegate.currentConfiguration as ParameterizedRoute).path, '/login');
+    expect(delegate.pendingRoute, isNull);
+  });
 }

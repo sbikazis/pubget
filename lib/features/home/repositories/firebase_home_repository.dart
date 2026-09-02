@@ -5,6 +5,7 @@ import '../../../core/errors/result.dart';
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
 import '../../fan_works/models/fan_work_models.dart';
+import '../../search/search_query.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import 'home_repository.dart';
@@ -123,8 +124,10 @@ final class FirebaseHomeRepository implements HomeRepository {
 
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return const Success(DiscoverySearchResults());
+    final normalized = SearchQuery.prefix(query);
+    if (normalized.length < SearchQuery.minLength) {
+      return const Success(DiscoverySearchResults());
+    }
     try {
       final end = '$normalized\uf8ff';
       final groupsFuture = _firestore
@@ -167,24 +170,45 @@ final class FirebaseHomeRepository implements HomeRepository {
       final fanWorks = results[3];
       return Success(
         DiscoverySearchResults(
-          groups: groups.docs
-              .map((doc) => Group.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
-          people: people.docs
-              .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
-              .toList(growable: false),
-          events: events.docs
-              .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
-          fanWorks: fanWorks.docs
-              .map((doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
+          groups: _uniqueBy(
+            groups.docs.map((doc) => Group.fromMap(doc.data(), id: doc.id)),
+            (group) => group.id,
+          ),
+          people: _uniqueBy(
+            people.docs.map(
+              (doc) => PublicProfile.fromMap(doc.data(), uid: doc.id),
+            ),
+            (person) => person.uid,
+          ),
+          events: _uniqueBy(
+            events.docs.map(
+              (doc) => PubgetEvent.fromMap(doc.data(), id: doc.id),
+            ),
+            (event) => event.id,
+          ),
+          fanWorks: _uniqueBy(
+            fanWorks.docs.map(
+              (doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id),
+            ),
+            (work) => work.id,
+          ),
         ),
       );
     } on Object catch (error) {
       return FailureResult(_failure(error));
     }
   }
+}
+
+List<T> _uniqueBy<T>(Iterable<T> items, String Function(T value) idOf) {
+  final seen = <String>{};
+  final unique = <T>[];
+  for (final item in items) {
+    final id = idOf(item);
+    if (id.isEmpty || !seen.add(id)) continue;
+    unique.add(item);
+  }
+  return List<T>.unmodifiable(unique);
 }
 
 Failure _failure(Object error) {
@@ -196,8 +220,8 @@ Failure _failure(Object error) {
       'permission-denied' => const PermissionError(
         'Discovery is not available for this account.',
       ),
-      _ => UnknownError(error.message ?? 'Discovery could not load.'),
+      _ => const UnknownError('Discovery could not load.'),
     };
   }
-  return UnknownError(error.toString());
+  return const UnknownError('Discovery could not load.');
 }

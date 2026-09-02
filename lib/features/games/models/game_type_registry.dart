@@ -138,4 +138,5 @@ abstract final class GameStrings {
   static const comingSoon = 'This game is not available yet.';
   static const copied = 'Game link copied';
   static const copyLink = 'Copy link';
+  static const share = 'Share';
 }

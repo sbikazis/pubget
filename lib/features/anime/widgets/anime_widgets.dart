@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -13,8 +14,9 @@ import '../providers/anime_providers.dart';
 abstract final class AnimeLinks {
   static String hubPath() => '/anime';
 
-  static String detailsPath(String animeId) =>
-      '/anime/${Uri.encodeComponent(animeId)}';
+  static String detailsPath(String animeId) => PubgetLinks.animePath(animeId);
+
+  static String canonical(String animeId) => PubgetLinks.anime(animeId);
 
   static String catalogPath(AnimeCatalogKind kind) =>
       '/anime/browse?kind=${Uri.encodeComponent(kind.routeValue)}';
@@ -45,6 +47,25 @@ abstract final class AnimeLinks {
     required int year,
     required AnimeSeason season,
   }) => AppNavigation.go(context, seasonPath(year, season));
+
+  static Future<void> copyCanonical(BuildContext context, String animeId) =>
+      PubgetLinks.copy(
+        context,
+        canonical(animeId),
+        type: 'anime',
+        message: AnimeStrings.copied,
+      );
+
+  static Future<void> share(
+    BuildContext context,
+    String animeId, {
+    String? title,
+  }) => PubgetLinks.share(
+    context,
+    url: canonical(animeId),
+    title: title,
+    type: 'anime',
+  );
 
   static Future<void> copyUrl(BuildContext context, String url) async {
     await Clipboard.setData(ClipboardData(text: url));

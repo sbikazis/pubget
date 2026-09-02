@@ -18,6 +18,8 @@ abstract final class AuthRouteGuard {
 
   static const protectedPaths = <String>{
     '/home',
+    '/search',
+    '/settings',
     '/onboarding',
     '/profile',
     '/profile/edit',

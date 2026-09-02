@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -48,7 +49,30 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       });
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Group details')),
+      appBar: AppBar(
+        title: const Text('Group details'),
+        actions: <Widget>[
+          PubgetIconButton(
+            icon: Icons.share_outlined,
+            tooltip: 'Share group',
+            onPressed: () => PubgetLinks.share(
+              context,
+              url: PubgetLinks.group(widget.groupId),
+              title: group?.name,
+              type: 'group',
+            ),
+          ),
+          PubgetIconButton(
+            icon: Icons.copy_outlined,
+            tooltip: 'Copy link',
+            onPressed: () => PubgetLinks.copy(
+              context,
+              PubgetLinks.group(widget.groupId),
+              type: 'group',
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: PubgetLoadingStateView(
           state: provider.state,

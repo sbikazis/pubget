@@ -9,20 +9,18 @@ import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../groups/models/group_models.dart';
 import '../../edits/providers/edits_provider.dart';
-import '../../events/models/event_models.dart';
-import '../../events/models/event_type_registry.dart';
 import '../../events/widgets/event_widgets.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/widgets/anime_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
-import '../../fan_works/models/fan_work_lifecycle.dart';
-import '../../fan_works/models/fan_work_models.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
 import '../../economy/models/economy_types.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
+import '../../search/search_provider.dart';
+import '../../search/screens/search_page.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
@@ -66,6 +64,7 @@ class _HomePageState extends State<HomePage> {
     final profile = context.watch<OnboardingProvider>().profile;
     final auth = context.watch<AuthProvider>();
     final home = context.watch<HomeProvider>();
+    final search = context.watch<SearchProvider>();
     final unread = context.watch<UnreadEngine>();
     final economy = maybeEconomy(context);
     final name =
@@ -91,6 +90,11 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => AppNavigation.go(context, '/notifications'),
             ),
           ),
+          PubgetIconButton(
+            icon: Icons.settings_outlined,
+            tooltip: 'Settings',
+            onPressed: () => AppNavigation.go(context, '/settings'),
+          ),
           const SizedBox(width: AppSpacing.xs),
           GestureDetector(
             onTap: () => AppNavigation.go(context, '/profile'),
@@ -113,7 +117,9 @@ class _HomePageState extends State<HomePage> {
             if (economy != null)
               const SliverToBoxAdapter(child: _HomeAdSlot()),
             if (_search.text.trim().isNotEmpty)
-              SliverToBoxAdapter(child: _SearchResults(home: home)),
+              SliverToBoxAdapter(
+                child: SearchResultsView(search: search, shrinkWrap: true),
+              ),
             if (_search.text.trim().isEmpty)
               SliverList.builder(
                 itemCount: home.sectionOrder.length,
@@ -187,7 +193,7 @@ class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.read<HomeProvider>();
+    final provider = context.read<SearchProvider>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -204,49 +210,6 @@ class _SearchBar extends StatelessWidget {
           provider.searchChanged('');
         },
       ),
-    );
-  }
-}
-
-class _SearchResults extends StatelessWidget {
-  const _SearchResults({required this.home});
-  final HomeProvider home;
-
-  @override
-  Widget build(BuildContext context) {
-    if (home.searchState == LoadingState.loading) {
-      return const _SkeletonSection();
-    }
-    if (home.searchState == LoadingState.empty) {
-      return const PubgetEmptyState(
-        title: 'Nothing found',
-        message: 'Try another group, username, event, anime, or Fan Work.',
-      );
-    }
-    if (home.searchState == LoadingState.error) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Text(home.searchFailure?.message ?? 'Search failed.'),
-      );
-    }
-    return Column(
-      children: <Widget>[
-        for (final group in home.searchResults.groups)
-          _GroupRow(
-            groupName: group.name,
-            subtitle: 'Group',
-            onTap: () {
-              AppNavigation.go(context, '/group?groupId=${group.id}');
-            },
-          ),
-        for (final person in home.searchResults.people)
-          _PersonRow(person: person),
-        for (final event in home.searchResults.events) _EventRow(event: event),
-        for (final anime in home.searchResults.anime)
-          AnimeResultTile(anime: anime),
-        for (final work in home.searchResults.fanWorks)
-          _FanWorkRow(preview: work),
-      ],
     );
   }
 }
@@ -510,55 +473,6 @@ class _PersonRow extends StatelessWidget {
         ),
       ),
     ],
-  );
-}
-
-class _FanWorkRow extends StatelessWidget {
-  const _FanWorkRow({required this.preview});
-
-  final FanWorkPreview preview;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(preview.title),
-    subtitle: Text(
-      '${FanWorkTypeCatalog.label(preview.type)} · ${preview.creatorName}',
-    ),
-    leading: const Icon(Icons.auto_awesome_outlined),
-    onTap: () => FanWorkLinks.open(context, preview.id),
-  );
-}
-
-class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event});
-
-  final PubgetEvent event;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(event.title),
-    subtitle: Text(EventTypeRegistry.of(event.type).label),
-    leading: const Icon(Icons.celebration_outlined),
-    onTap: () => EventLinks.open(context, event.id),
-  );
-}
-
-class _GroupRow extends StatelessWidget {
-  const _GroupRow({
-    required this.groupName,
-    required this.subtitle,
-    required this.onTap,
-  });
-  final String groupName;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(groupName),
-    subtitle: Text(subtitle),
-    leading: const Icon(Icons.groups_outlined),
-    onTap: onTap,
   );
 }
 

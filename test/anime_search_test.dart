@@ -5,8 +5,8 @@ import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/home/models/home_models.dart';
-import 'package:pubget/features/home/providers/home_provider.dart';
 import 'package:pubget/features/home/repositories/home_repository.dart';
+import 'package:pubget/features/search/search_provider.dart';
 import 'package:pubget/features/social/models/public_profile.dart';
 
 import 'anime_test_support.dart';
@@ -98,16 +98,18 @@ void main() {
     expect(repository.searchCalls, 1);
   });
 
-  test('home discovery search merges anime without replacing groups', () async {
-    final home = HomeProvider(
-      repository: _FakeHomeRepository(),
+  test('home discovery search is owned by SearchProvider', () async {
+    final search = SearchProvider(
+      homeRepository: _FakeHomeRepository(),
       animeRepository: FakeAnimeRepository(),
+      debounce: Duration.zero,
     );
-    addTearDown(home.dispose);
-    home.searchChanged('fri');
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(home.searchResults.groups, isNotEmpty);
-    expect(home.searchResults.anime, isNotEmpty);
+    addTearDown(search.dispose);
+    search.searchChanged('fri');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(search.results.groups, isNotEmpty);
+    expect(search.results.anime, isNotEmpty);
+    expect(search.hits, isNotEmpty);
   });
 }
 

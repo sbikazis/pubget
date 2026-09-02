@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -12,47 +11,39 @@ import '../models/fan_work_models.dart';
 import '../providers/fan_work_providers.dart';
 
 abstract final class FanWorkLinks {
-  static const host = 'pubget-aaf27.web.app';
+  static const host = PubgetLinks.host;
 
-  static String path(String workId) =>
-      '/fan-work/${Uri.encodeComponent(workId)}';
+  static String path(String workId) => PubgetLinks.fanWorkPath(workId);
 
-  static String canonical(String workId) => 'https://$host${path(workId)}';
+  static String canonical(String workId) => PubgetLinks.fanWork(workId);
 
   @visibleForTesting
-  static Future<void> Function(String text, String? subject)? debugNativeShare;
+  static Future<void> Function(String text, String? subject)? get debugNativeShare =>
+      PubgetLinks.debugNativeShare;
 
-  static Future<void> copy(BuildContext context, String workId) async {
-    await Clipboard.setData(ClipboardData(text: path(workId)));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text(FanWorkStrings.copied)));
-  }
+  @visibleForTesting
+  static set debugNativeShare(
+    Future<void> Function(String text, String? subject)? value,
+  ) => PubgetLinks.debugNativeShare = value;
+
+  static Future<void> copy(BuildContext context, String workId) =>
+      PubgetLinks.copy(
+        context,
+        canonical(workId),
+        type: 'fanWork',
+        message: FanWorkStrings.copied,
+      );
 
   static Future<void> share(
     BuildContext context,
     String workId, {
     String? title,
-  }) async {
-    final link = canonical(workId);
-    try {
-      if (debugNativeShare != null) {
-        await debugNativeShare!(link, title);
-        return;
-      }
-      await SharePlus.instance.share(
-        ShareParams(
-          text: link,
-          title: title ?? FanWorkStrings.share,
-          subject: title ?? FanWorkStrings.share,
-        ),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      await copy(context, workId);
-    }
-  }
+  }) => PubgetLinks.share(
+    context,
+    url: canonical(workId),
+    title: title ?? FanWorkStrings.share,
+    type: 'fanWork',
+  );
 
   static void open(BuildContext context, String workId) {
     AppNavigation.go(context, path(workId));

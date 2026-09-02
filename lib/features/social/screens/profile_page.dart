@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -65,6 +66,30 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: Text(profile.isOwner ? 'My profile' : 'Profile'),
         actions: <Widget>[
+          if (profileId.isNotEmpty) ...<Widget>[
+            PubgetIconButton(
+              icon: Icons.share_outlined,
+              tooltip: 'Share profile',
+              onPressed: () => PubgetLinks.share(
+                context,
+                url: PubgetLinks.profile(profileId),
+                title:
+                    profile.publicProfile?.username ??
+                    profile.ownProfile?.username ??
+                    'Pubget profile',
+                type: 'profile',
+              ),
+            ),
+            PubgetIconButton(
+              icon: Icons.copy_outlined,
+              tooltip: 'Copy link',
+              onPressed: () => PubgetLinks.copy(
+                context,
+                PubgetLinks.profile(profileId),
+                type: 'profile',
+              ),
+            ),
+          ],
           if (profile.isOwner)
             PubgetIconButton(
               icon: Icons.edit_outlined,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -5,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
@@ -87,11 +90,18 @@ import '../features/economy/repositories/unavailable_economy_repository.dart';
 import '../features/economy/screens/economy_screens.dart';
 import '../core/analytics/analytics.dart';
 import '../core/analytics/logging_analytics.dart';
+import '../core/links/pubget_links.dart';
 import '../features/home/providers/home_provider.dart';
 import '../features/home/repositories/firebase_home_repository.dart';
 import '../features/home/repositories/home_repository.dart';
 import '../features/home/repositories/unavailable_home_repository.dart';
 import '../features/home/screens/home_page.dart';
+import '../features/search/search_provider.dart';
+import '../features/search/screens/search_page.dart';
+import '../features/settings/settings_provider.dart';
+import '../features/settings/settings_repository.dart';
+import '../features/settings/shared_preferences_settings_store.dart';
+import '../features/settings/screens/settings_page.dart';
 import '../features/notifications/providers/notification_provider.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/repositories/firebase_notification_repository.dart';
@@ -120,6 +130,7 @@ import 'app_route.dart';
 import 'app_router.dart';
 import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
+import 'unknown_link_page.dart';
 
 class PubgetApp extends StatelessWidget {
   const PubgetApp({required this.firebaseState, super.key});
@@ -128,14 +139,6 @@ class PubgetApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final requestedRoute = AppRouter.routeFromUri(Uri.base);
-    final developmentInitialRoute = kDebugMode
-        ? requestedRoute
-        : requestedRoute is ParameterizedRoute &&
-              (requestedRoute.path == '/design-system' ||
-                  requestedRoute.path == '/design-system/')
-        ? const ParameterizedRoute(path: '/splash')
-        : requestedRoute;
     final repositories = _createRepositories();
 
     return provider.MultiProvider(
@@ -180,17 +183,29 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
         ),
-        provider.ChangeNotifierProvider<OnboardingProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, OnboardingProvider>(
           create: (context) =>
               OnboardingProvider(repository: context.read<UserRepository>()),
+          update: (_, auth, onboarding) {
+            onboarding!.bindUser(auth.currentUser?.id);
+            return onboarding;
+          },
         ),
-        provider.ChangeNotifierProvider<ProfileProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, ProfileProvider>(
           create: (context) =>
               ProfileProvider(repository: context.read<ProfileRepository>()),
+          update: (_, auth, profile) {
+            profile!.bindUser(auth.currentUser?.id);
+            return profile;
+          },
         ),
-        provider.ChangeNotifierProvider<SocialProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, SocialProvider>(
           create: (context) =>
               SocialProvider(repository: context.read<SocialRepository>()),
+          update: (_, auth, social) {
+            social!.bindUser(auth.currentUser?.id);
+            return social;
+          },
         ),
         provider.ChangeNotifierProvider<GroupProvider>(
           create: (context) =>
@@ -209,11 +224,40 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               ChatProvider(repository: context.read<ChatRepository>()),
         ),
-        provider.ChangeNotifierProvider<HomeProvider>(
-          create: (context) => HomeProvider(
-            repository: context.read<HomeRepository>(),
+        provider.ChangeNotifierProxyProvider<AuthProvider, HomeProvider>(
+          create: (context) =>
+              HomeProvider(repository: context.read<HomeRepository>()),
+          update: (_, auth, home) {
+            home!.bindUser(auth.currentUser?.id);
+            return home;
+          },
+        ),
+        provider.ChangeNotifierProxyProvider2<
+          AuthProvider,
+          SocialProvider,
+          SearchProvider
+        >(
+          create: (context) => SearchProvider(
+            homeRepository: context.read<HomeRepository>(),
             animeRepository: context.read<AnimeRepository>(),
+            analytics: context.read<Analytics>(),
           ),
+          update: (_, auth, social, search) {
+            search!.bindUser(auth.currentUser?.id);
+            search.bindHiddenUsers(social.blockedUserIds);
+            return search;
+          },
+        ),
+        provider.ChangeNotifierProvider<SettingsProvider>(
+          create: (context) {
+            final settings = SettingsProvider(
+              repository: SettingsRepository(
+                store: SharedPreferencesSettingsStore(),
+              ),
+            );
+            unawaited(settings.load());
+            return settings;
+          },
         ),
         provider.ChangeNotifierProvider<EditsProvider>(
           create: (context) =>
@@ -309,12 +353,16 @@ class PubgetApp extends StatelessWidget {
             analytics: context.read<Analytics>(),
           ),
         ),
-        provider.ChangeNotifierProvider<EconomyProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, EconomyProvider>(
           create: (context) => EconomyProvider(
             repository: context.read<EconomyRepository>(),
             network: context.read<NetworkService>(),
             analytics: context.read<Analytics>(),
           ),
+          update: (_, auth, economy) {
+            economy!.bindUser(auth.currentUser?.id);
+            return economy;
+          },
         ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
@@ -354,147 +402,9 @@ class PubgetApp extends StatelessWidget {
           },
         ),
       ],
-      child: Builder(
-        builder: (context) {
-          final auth = context.read<AuthProvider>();
-          final onboarding = context.read<OnboardingProvider>();
-          return MaterialApp.router(
-            title: 'Pubget',
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
-            themeMode: ThemeMode.system,
-            routerConfig: AppRouter.createConfig(
-              homePage: SplashPage(firebaseState: firebaseState),
-              designSystemPage: kDebugMode
-                  ? const DesignSystemShowcasePage()
-                  : null,
-              domainPages: <String, Widget>{
-                '/splash': SplashPage(firebaseState: firebaseState),
-                '/login': const LoginPage(),
-                '/register': const RegisterPage(),
-                '/forgot-password': const ForgotPasswordPage(),
-                '/terms': const TermsPage(),
-                '/onboarding': const OnboardingPage(),
-                '/home': const HomePage(),
-                '/profile/edit': const EditProfilePage(),
-                '/friend-requests': const FriendRequestsPage(),
-                '/notifications': const NotificationInboxPage(),
-                '/edits': const EditFeedPage(),
-                '/edits/upload': const EditUploadPage(),
-                '/groups': const GroupsHomePage(),
-                '/groups/create': const CreateGroupWizardPage(),
-                '/private': const PrivateChatsListScreen(),
-                '/anime': const AnimeHubPage(),
-                '/fan-works': const FanWorkFeedPage(),
-                '/store': const StorePage(),
-                '/inventory': const InventoryPage(),
-                '/premium': const PremiumPage(),
-                '/economy/history': const EconomyHistoryPage(),
-              },
-              parameterizedPages: <String, ParameterizedPageBuilder>{
-                '/profile': (parameters) =>
-                    ProfilePage(userId: parameters['uid']),
-                '/group': (parameters) =>
-                    GroupDetailsPage(groupId: parameters['groupId'] ?? ''),
-                '/group-invite': (parameters) => GroupInvitePage(
-                  groupId: parameters['groupId'] ?? '',
-                  inviteId: parameters['inviteId'] ?? '',
-                ),
-                '/group-chat': (parameters) =>
-                    GroupChatPage(groupId: parameters['groupId'] ?? ''),
-                '/group-media': (parameters) =>
-                    GroupMediaPage(groupId: parameters['groupId'] ?? ''),
-                '/group-members': (parameters) =>
-                    GroupMembersPage(groupId: parameters['groupId'] ?? ''),
-                '/group-requests': (parameters) =>
-                    JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
-                '/group-roleplay': (parameters) =>
-                    RoleplayCharacterPage(groupId: parameters['groupId'] ?? ''),
-                '/private-chat': (parameters) => PrivateChatScreen(
-                  chatId: parameters['chatId'] ?? '',
-                  otherUserId: parameters['uid'],
-                ),
-                '/event': (parameters) =>
-                    EventDetailsScreen(eventId: parameters['eventId'] ?? ''),
-                '/events': (parameters) {
-                  final groupId = parameters['groupId'];
-                  return EventListScreen(
-                    groupId: (groupId == null || groupId.isEmpty)
-                        ? null
-                        : groupId,
-                  );
-                },
-                '/events/create': (parameters) => EventBuilderPage(
-                  groupId: parameters['groupId'],
-                  templateId: parameters['templateId'],
-                ),
-                '/anime/details': (parameters) => AnimeDetailsPage(
-                  animeId: parameters['animeId'] ?? '',
-                ),
-                '/anime/browse': (parameters) {
-                  final match = AnimeCatalogKind.values.where(
-                    (kind) => kind.routeValue == parameters['kind'],
-                  );
-                  return AnimeBrowsePage(
-                    kind: match.isEmpty
-                        ? AnimeCatalogKind.trending
-                        : match.first,
-                  );
-                },
-                '/anime/genre': (parameters) => AnimeBrowsePage(
-                  genreId: parameters['genreId'],
-                  genreName: parameters['name'],
-                ),
-                '/anime/season': (parameters) => AnimeBrowsePage(
-                  year: int.tryParse(parameters['year'] ?? ''),
-                  season: AnimeSeason.tryParse(parameters['season']),
-                ),
-                '/game': (parameters) =>
-                    GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
-                '/games': (parameters) {
-                  final groupId = parameters['groupId'];
-                  return GameListScreen(
-                    groupId: (groupId == null || groupId.isEmpty)
-                        ? null
-                        : groupId,
-                  );
-                },
-                '/games/create': (parameters) =>
-                    GameCreatePage(groupId: parameters['groupId']),
-                '/fan-work': (parameters) {
-                  final workId = parameters['workId'] ?? '';
-                  final view = parameters['view'];
-                  if (view == 'manga') return MangaViewerPage(workId: workId);
-                  if (view == 'story') return StoryReaderPage(workId: workId);
-                  return FanWorkDetailsPage(workId: workId);
-                },
-                '/fan-works/create': (parameters) => FanWorkEditorPage(
-                  workId: parameters['workId'],
-                ),
-                '/store/item': (parameters) => StoreItemDetailsPage(
-                  itemId: parameters['itemId'] ?? '',
-                ),
-              },
-              initialRoute: developmentInitialRoute,
-              refreshListenable: Listenable.merge(<Listenable>[
-                auth,
-                onboarding,
-              ]),
-              routeGuard: (path) => AuthRouteGuard.resolve(
-                path: path,
-                isInitialized: auth.isInitialized,
-                authState: auth.state,
-                isAuthenticated: auth.isAuthenticated,
-                onboardingState: onboarding.state,
-                canEnterHome: onboarding.canEnterHome,
-              ),
-            ),
-          );
-        },
-      ),
+      child: _PubgetRouterHost(firebaseState: firebaseState),
     );
   }
-
   (
     AuthRepository,
     UserRepository,
@@ -601,6 +511,168 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseEconomyRepository(
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+    );
+  }
+}
+
+class _PubgetRouterHost extends StatefulWidget {
+  const _PubgetRouterHost({required this.firebaseState});
+
+  final FirebaseInitializationState firebaseState;
+
+  @override
+  State<_PubgetRouterHost> createState() => _PubgetRouterHostState();
+}
+
+class _PubgetRouterHostState extends State<_PubgetRouterHost> {
+  RouterConfig<AppRoute>? _router;
+
+  @override
+  Widget build(BuildContext context) {
+    PubgetLinks.analytics = context.read<Analytics>();
+    _router ??= _createRouter(context);
+    final settings = context.watch<SettingsProvider>();
+    return MaterialApp.router(
+      title: 'Pubget',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: settings.themeMode,
+      locale: settings.locale,
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      routerConfig: _router!,
+    );
+  }
+
+  RouterConfig<AppRoute> _createRouter(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final onboarding = context.read<OnboardingProvider>();
+    final requestedRoute = AppRouter.routeFromUri(Uri.base);
+    final developmentInitialRoute = kDebugMode
+        ? requestedRoute
+        : requestedRoute is ParameterizedRoute &&
+              (requestedRoute.path == '/design-system' ||
+                  requestedRoute.path == '/design-system/')
+        ? const ParameterizedRoute(path: '/splash')
+        : requestedRoute;
+    final firebaseState = widget.firebaseState;
+    return AppRouter.createConfig(
+      homePage: SplashPage(firebaseState: firebaseState),
+      designSystemPage: kDebugMode ? const DesignSystemShowcasePage() : null,
+      domainPages: <String, Widget>{
+        '/splash': SplashPage(firebaseState: firebaseState),
+        '/login': const LoginPage(),
+        '/register': const RegisterPage(),
+        '/forgot-password': const ForgotPasswordPage(),
+        '/terms': const TermsPage(),
+        '/onboarding': const OnboardingPage(),
+        '/home': const HomePage(),
+        '/search': const SearchPage(),
+        '/settings': const SettingsPage(),
+        '/unknown': const UnknownLinkPage(),
+        '/profile/edit': const EditProfilePage(),
+        '/friend-requests': const FriendRequestsPage(),
+        '/notifications': const NotificationInboxPage(),
+        '/edits': const EditFeedPage(),
+        '/edits/upload': const EditUploadPage(),
+        '/groups': const GroupsHomePage(),
+        '/groups/create': const CreateGroupWizardPage(),
+        '/private': const PrivateChatsListScreen(),
+        '/anime': const AnimeHubPage(),
+        '/fan-works': const FanWorkFeedPage(),
+        '/store': const StorePage(),
+        '/inventory': const InventoryPage(),
+        '/premium': const PremiumPage(),
+        '/economy/history': const EconomyHistoryPage(),
+      },
+      parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
+        '/group': (parameters) =>
+            GroupDetailsPage(groupId: parameters['groupId'] ?? ''),
+        '/group-invite': (parameters) => GroupInvitePage(
+          groupId: parameters['groupId'] ?? '',
+          inviteId: parameters['inviteId'] ?? '',
+        ),
+        '/group-chat': (parameters) =>
+            GroupChatPage(groupId: parameters['groupId'] ?? ''),
+        '/group-media': (parameters) =>
+            GroupMediaPage(groupId: parameters['groupId'] ?? ''),
+        '/group-members': (parameters) =>
+            GroupMembersPage(groupId: parameters['groupId'] ?? ''),
+        '/group-requests': (parameters) =>
+            JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
+        '/group-roleplay': (parameters) =>
+            RoleplayCharacterPage(groupId: parameters['groupId'] ?? ''),
+        '/private-chat': (parameters) => PrivateChatScreen(
+          chatId: parameters['chatId'] ?? '',
+          otherUserId: parameters['uid'],
+        ),
+        '/event': (parameters) =>
+            EventDetailsScreen(eventId: parameters['eventId'] ?? ''),
+        '/events': (parameters) {
+          final groupId = parameters['groupId'];
+          return EventListScreen(
+            groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
+          );
+        },
+        '/events/create': (parameters) => EventBuilderPage(
+          groupId: parameters['groupId'],
+          templateId: parameters['templateId'],
+        ),
+        '/anime/details': (parameters) =>
+            AnimeDetailsPage(animeId: parameters['animeId'] ?? ''),
+        '/anime/browse': (parameters) {
+          final match = AnimeCatalogKind.values.where(
+            (kind) => kind.routeValue == parameters['kind'],
+          );
+          return AnimeBrowsePage(
+            kind: match.isEmpty ? AnimeCatalogKind.trending : match.first,
+          );
+        },
+        '/anime/genre': (parameters) => AnimeBrowsePage(
+          genreId: parameters['genreId'],
+          genreName: parameters['name'],
+        ),
+        '/anime/season': (parameters) => AnimeBrowsePage(
+          year: int.tryParse(parameters['year'] ?? ''),
+          season: AnimeSeason.tryParse(parameters['season']),
+        ),
+        '/game': (parameters) =>
+            GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
+        '/games': (parameters) {
+          final groupId = parameters['groupId'];
+          return GameListScreen(
+            groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
+          );
+        },
+        '/games/create': (parameters) =>
+            GameCreatePage(groupId: parameters['groupId']),
+        '/fan-work': (parameters) {
+          final workId = parameters['workId'] ?? '';
+          final view = parameters['view'];
+          if (view == 'manga') return MangaViewerPage(workId: workId);
+          if (view == 'story') return StoryReaderPage(workId: workId);
+          return FanWorkDetailsPage(workId: workId);
+        },
+        '/fan-works/create': (parameters) =>
+            FanWorkEditorPage(workId: parameters['workId']),
+        '/store/item': (parameters) =>
+            StoreItemDetailsPage(itemId: parameters['itemId'] ?? ''),
+      },
+      initialRoute: developmentInitialRoute,
+      refreshListenable: Listenable.merge(<Listenable>[auth, onboarding]),
+      routeGuard: (path) => AuthRouteGuard.resolve(
+        path: path,
+        isInitialized: auth.isInitialized,
+        authState: auth.state,
+        isAuthenticated: auth.isAuthenticated,
+        onboardingState: onboarding.state,
+        canEnterHome: onboarding.canEnterHome,
       ),
     );
   }

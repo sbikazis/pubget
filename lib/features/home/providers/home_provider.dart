@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/repositories/anime_repository.dart';
 import '../../groups/models/group_models.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
@@ -49,9 +47,8 @@ final class HomeSectionState {
 }
 
 final class HomeProvider extends ChangeNotifier {
-  HomeProvider({required HomeRepository repository, AnimeRepository? animeRepository})
-    : _repository = repository,
-      _animeRepository = animeRepository {
+  HomeProvider({required HomeRepository repository})
+    : _repository = repository {
     _sections = {
       for (final kind in _sectionOrder)
         kind: HomeSectionState(kind: kind, state: LoadingState.initial),
@@ -72,21 +69,29 @@ final class HomeProvider extends ChangeNotifier {
   ];
 
   final HomeRepository _repository;
-  final AnimeRepository? _animeRepository;
   late Map<HomeSectionKind, HomeSectionState> _sections;
-  DiscoverySearchResults _searchResults = const DiscoverySearchResults();
-  LoadingState _searchState = LoadingState.initial;
-  Failure? _searchFailure;
-  Timer? _searchDebounce;
   String? _userId;
   bool _disposed = false;
   static const _pageSize = 8;
 
   List<HomeSectionKind> get sectionOrder => _sectionOrder;
   HomeSectionState section(HomeSectionKind kind) => _sections[kind]!;
-  DiscoverySearchResults get searchResults => _searchResults;
-  LoadingState get searchState => _searchState;
-  Failure? get searchFailure => _searchFailure;
+  String? get userId => _userId;
+
+  void bindUser(String? userId) {
+    if (userId == _userId) return;
+    resetSession();
+    if (userId != null) load(userId);
+  }
+
+  void resetSession() {
+    _userId = null;
+    _sections = {
+      for (final kind in _sectionOrder)
+        kind: HomeSectionState(kind: kind, state: LoadingState.initial),
+    };
+    _safeNotify();
+  }
 
   void load(String userId) {
     _userId = userId;
@@ -118,61 +123,6 @@ final class HomeProvider extends ChangeNotifier {
       return;
     }
     await _loadSection(kind, refresh: false, loadMore: true);
-  }
-
-  void searchChanged(String query) {
-    _searchDebounce?.cancel();
-    if (query.trim().isEmpty) {
-      _searchResults = const DiscoverySearchResults();
-      _searchState = LoadingState.initial;
-      _safeNotify();
-      return;
-    }
-    _searchDebounce = Timer(
-      const Duration(milliseconds: 280),
-      () => unawaited(_search(query)),
-    );
-  }
-
-  Future<void> retrySearch(String query) => _search(query);
-
-  Future<void> _search(String query) async {
-    _searchState = LoadingState.loading;
-    _searchFailure = null;
-    _safeNotify();
-    final trimmed = query.trim();
-    final result = await _repository.search(trimmed);
-    Result<AnimePage>? animeResult;
-    if (trimmed.length >= 2 && _animeRepository != null) {
-      animeResult = await _animeRepository.searchAnime(trimmed, limit: 8);
-    }
-    if (_disposed) return;
-    result.fold(
-      onSuccess: (results) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
-        _searchResults = DiscoverySearchResults(
-          groups: results.groups,
-          people: results.people,
-          events: results.events,
-          anime: anime,
-          fanWorks: results.fanWorks,
-        );
-        _searchState = _searchResults.isEmpty
-            ? LoadingState.empty
-            : LoadingState.loaded;
-      },
-      onFailure: (failure) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
-        if (anime.isNotEmpty) {
-          _searchResults = DiscoverySearchResults(anime: anime);
-          _searchState = LoadingState.loaded;
-        } else {
-          _searchFailure = failure;
-          _searchState = LoadingState.error;
-        }
-      },
-    );
-    _safeNotify();
   }
 
   Future<void> _loadSection(
@@ -276,7 +226,6 @@ final class HomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _searchDebounce?.cancel();
     super.dispose();
   }
 }

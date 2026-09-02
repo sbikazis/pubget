@@ -21,6 +21,15 @@ final class SocialProvider extends ChangeNotifier {
   LoadingState get state => _state;
   Failure? get failure => _failure;
   List<Friendship> get friends => _snapshot.friends;
+  Set<String> get blockedUserIds {
+    final uid = _userId;
+    if (uid == null) return const <String>{};
+    return <String>{
+      for (final friendship in _snapshot.friendships)
+        if (friendship.status == FriendshipStatus.blocked)
+          friendship.otherUserId(uid),
+    };
+  }
   List<Friendship> get incomingRequests =>
       _userId == null ? const <Friendship>[] : _snapshot.pendingFor(_userId!);
   List<Friendship> get outgoingRequests =>
@@ -133,6 +142,22 @@ final class SocialProvider extends ChangeNotifier {
     if (_disposed) return;
     _state = state;
     notifyListeners();
+  }
+
+  void resetSession() {
+    _userId = null;
+    _snapshot = const SocialSnapshot();
+    _failure = null;
+    _state = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  void bindUser(String? userId) {
+    if (_userId == userId) return;
+    if (userId == null || (_userId != null && _userId != userId)) {
+      resetSession();
+    }
+    _userId = userId;
   }
 
   @override

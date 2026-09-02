@@ -59,6 +59,15 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
         title: Text(game?.title ?? 'Game'),
         actions: [
           IconButton(
+            tooltip: GameStrings.share,
+            onPressed: () => GameLinks.share(
+              context,
+              widget.gameId,
+              title: game?.title,
+            ),
+            icon: const Icon(Icons.share_outlined),
+          ),
+          IconButton(
             tooltip: GameStrings.copyLink,
             onPressed: () => GameLinks.copy(context, widget.gameId),
             icon: const Icon(Icons.copy_outlined),
