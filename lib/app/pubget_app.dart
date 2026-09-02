@@ -57,6 +57,13 @@ import '../features/events/repositories/unavailable_event_repository.dart';
 import '../features/events/screens/event_builder_page.dart';
 import '../features/events/screens/event_details_screen.dart';
 import '../features/events/screens/event_list_screen.dart';
+import '../features/games/providers/game_providers.dart';
+import '../features/games/repositories/firebase_game_repository.dart';
+import '../features/games/repositories/game_repository.dart';
+import '../features/games/repositories/unavailable_game_repository.dart';
+import '../features/games/screens/game_create_page.dart';
+import '../features/games/screens/game_details_screen.dart';
+import '../features/games/screens/game_list_screen.dart';
 import '../core/analytics/analytics.dart';
 import '../core/analytics/logging_analytics.dart';
 import '../features/home/providers/home_provider.dart';
@@ -128,6 +135,7 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<EditsRepository>.value(value: repositories.$11),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
+        provider.Provider<GameRepository>.value(value: repositories.$14),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
@@ -205,6 +213,22 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<EventBuilderProvider>(
           create: (context) => EventBuilderProvider(
             repository: context.read<EventRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<GameListProvider>(
+          create: (context) =>
+              GameListProvider(repository: context.read<GameRepository>()),
+        ),
+        provider.ChangeNotifierProvider<GameProvider>(
+          create: (context) => GameProvider(
+            repository: context.read<GameRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<GameCreateProvider>(
+          create: (context) => GameCreateProvider(
+            repository: context.read<GameRepository>(),
             analytics: context.read<Analytics>(),
           ),
         ),
@@ -313,6 +337,18 @@ class PubgetApp extends StatelessWidget {
                   groupId: parameters['groupId'],
                   templateId: parameters['templateId'],
                 ),
+                '/game': (parameters) =>
+                    GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
+                '/games': (parameters) {
+                  final groupId = parameters['groupId'];
+                  return GameListScreen(
+                    groupId: (groupId == null || groupId.isEmpty)
+                        ? null
+                        : groupId,
+                  );
+                },
+                '/games/create': (parameters) =>
+                    GameCreatePage(groupId: parameters['groupId']),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -342,7 +378,10 @@ class PubgetApp extends StatelessWidget {
                     path == '/private-chat' ||
                     path == '/events' ||
                     path == '/events/create' ||
-                    path == '/event';
+                    path == '/event' ||
+                    path == '/games' ||
+                    path == '/games/create' ||
+                    path == '/game';
                 if (!isProtected) return null;
                 if (!auth.isInitialized ||
                     auth.state == LoadingState.initial ||
@@ -380,6 +419,7 @@ class PubgetApp extends StatelessWidget {
     EditsRepository,
     PrivateChatRepository,
     EventRepository,
+    GameRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -399,6 +439,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableEditsRepository(message),
         UnavailablePrivateChatRepository(message),
         UnavailableEventRepository(message),
+        UnavailableGameRepository(message),
       );
     }
     return (
@@ -452,6 +493,10 @@ class PubgetApp extends StatelessWidget {
         storage: FirebaseStorage.instance,
       ),
       FirebaseEventRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseGameRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),

@@ -80,6 +80,23 @@ test.beforeEach(async () => {
     await admin.doc("events/e1/responses/bob").set({
       userId: "bob", eventId: "e1", responseData: { optionId: "opt-1" },
     });
+    await admin.doc("games/game1").set({
+      creatorId: "alice", groupId: "g1", type: "guessCharacter", title: "Guess",
+      status: "waiting", participantsCount: 1,
+    });
+    await admin.doc("games/game-draft").set({
+      creatorId: "alice", groupId: "g1", type: "guessCharacter", title: "Draft",
+      status: "draft",
+    });
+    await admin.doc("games/game1/participants/alice").set({
+      userId: "alice", gameId: "game1", status: "active",
+    });
+    await admin.doc("games/game1/participants/bob").set({
+      userId: "bob", gameId: "game1", status: "active", score: 1,
+    });
+    await admin.doc("games/game1/actions/a1").set({
+      playerId: "bob", actionType: "guess", payload: { value: "Luffy" },
+    });
   });
 });
 test.after(() => env.cleanup());
@@ -208,6 +225,22 @@ test("events are readable by group members and never client-writable", async () 
   await assertFails(db("bob").doc("events/e1/responses/bob").update({
     responseData: { optionId: "opt-2" },
   }));
+});
+test("games are readable by group members and never client-writable", async () => {
+  await assertSucceeds(db("bob").doc("games/game1").get());
+  await assertFails(db("charlie").doc("games/game1").get());
+  await assertSucceeds(db("alice").doc("games/game-draft").get());
+  await assertFails(db("bob").doc("games/game-draft").get());
+  await assertFails(db("alice").doc("games/game1").update({ status: "completed" }));
+  await assertFails(db("bob").doc("games/game1/participants/bob").update({ score: 999999 }));
+  await assertFails(db("alice").doc("games/game1/participants/bob").update({ status: "left" }));
+  await assertFails(db("bob").doc("games/game1/actions/a1").set({
+    playerId: "alice", actionType: "guess", payload: { value: "spoof" },
+  }));
+  await assertFails(db("alice").doc("games/forged").set({
+    creatorId: "alice", groupId: "g1", type: "guessCharacter", status: "active",
+  }));
+  await assertSucceeds(db("bob").doc("games/game1/participants/alice").get());
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {

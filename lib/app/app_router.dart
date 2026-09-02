@@ -197,6 +197,15 @@ AppRoute _routeFromUri(Uri uri) {
       },
     );
   }
+  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'game') {
+    return ParameterizedRoute(
+      path: '/game',
+      parameters: <String, String>{
+        ...uri.queryParameters,
+        'gameId': uri.pathSegments[1],
+      },
+    );
+  }
   if (uri.path.isEmpty || uri.path == '/') {
     return const FoundationRoute();
   }

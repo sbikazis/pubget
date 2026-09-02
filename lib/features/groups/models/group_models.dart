@@ -157,6 +157,10 @@ final class GroupMember {
   bool get canManageEvents =>
       memberCanManageEvents(this, roleDocument: null);
 
+  bool get canManageGames =>
+      defaultRolePermissions[role]?.contains(GroupPermission.manageGames) ??
+      false;
+
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(
       uid: uid,

@@ -12,6 +12,7 @@ import '../../edits/providers/edits_provider.dart';
 import '../../events/models/event_models.dart';
 import '../../events/models/event_type_registry.dart';
 import '../../events/widgets/event_widgets.dart';
+import '../../games/widgets/game_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -231,6 +232,9 @@ class _SectionView extends StatelessWidget {
     }
     if (kind == HomeSectionKind.eventsPlaceholder) {
       return const EventHomeStrip();
+    }
+    if (kind == HomeSectionKind.gamesPlaceholder) {
+      return const GameHomeStrip();
     }
     if (kind == HomeSectionKind.animePlaceholder) {
       return const _PlaceholderSection(

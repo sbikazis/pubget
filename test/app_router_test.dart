@@ -125,4 +125,54 @@ void main() {
     expect(find.text('Login domain'), findsOneWidget);
     expect(find.text('Splash'), findsNothing);
   });
+
+  test('route parser maps /game/{id} deep links', () async {
+    final parser = AppRouteInformationParser();
+    final route = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/game/abc123?ref=share')),
+    );
+    expect(route, isA<ParameterizedRoute>());
+    final parameterized = route as ParameterizedRoute;
+    expect(parameterized.path, '/game');
+    expect(parameterized.parameters['gameId'], 'abc123');
+    expect(parameterized.parameters['ref'], 'share');
+  });
+
+  test(
+    'pending game deep link is restored after the guard allows it',
+    () async {
+      var authenticated = false;
+      final delegate = AppRouterDelegate(
+        homePage: const Text('Splash'),
+        parameterizedPages: <String, ParameterizedPageBuilder>{
+          '/game': (parameters) => Text('Game ${parameters['gameId']}'),
+          '/login': (_) => const Text('Login'),
+        },
+        initialRoute: const ParameterizedRoute(
+          path: '/game',
+          parameters: {'gameId': 'g1'},
+        ),
+        routeGuard: (path) {
+          if (path == '/game' && !authenticated) return '/login';
+          return null;
+        },
+      );
+
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/login',
+      );
+      authenticated = true;
+      await delegate.setNewRoutePath(const ParameterizedRoute(path: '/login'));
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/game',
+      );
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute)
+            .parameters['gameId'],
+        'g1',
+      );
+    },
+  );
 }
