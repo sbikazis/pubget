@@ -18,6 +18,9 @@ import '../../games/widgets/game_widgets.dart';
 import '../../fan_works/models/fan_work_lifecycle.dart';
 import '../../fan_works/models/fan_work_models.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
+import '../../economy/models/economy_types.dart';
+import '../../economy/providers/economy_provider.dart';
+import '../../economy/widgets/economy_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -44,6 +47,10 @@ class _HomePageState extends State<HomePage> {
     final uid = auth.currentUser?.id;
     if (uid != null) {
       Future<void>.microtask(() => home.load(uid));
+      final economy = Provider.maybeOf<EconomyProvider>(context, listen: false);
+      if (economy != null) {
+        Future<void>.microtask(economy.load);
+      }
     }
   }
 
@@ -60,12 +67,22 @@ class _HomePageState extends State<HomePage> {
     final auth = context.watch<AuthProvider>();
     final home = context.watch<HomeProvider>();
     final unread = context.watch<UnreadEngine>();
+    final economy = Provider.maybeOf<EconomyProvider>(context);
     final name =
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Discover'),
         actions: <Widget>[
+          if (economy != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: AppSpacing.sm),
+              child: CoinBalanceChip(
+                balance: economy.coins,
+                cached: economy.offlineCached,
+                onPressed: () => AppNavigation.go(context, '/store'),
+              ),
+            ),
           UnreadBadge(
             count: unread.notifications,
             child: PubgetIconButton(
@@ -77,9 +94,10 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: AppSpacing.xs),
           GestureDetector(
             onTap: () => AppNavigation.go(context, '/profile'),
-            child: PubgetAvatar(
+            child: EquippedAvatar(
               imageUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
               name: name,
+              frameId: economy?.equipped.frameId,
               size: PubgetAvatarSize.small,
             ),
           ),
@@ -92,6 +110,8 @@ class _HomePageState extends State<HomePage> {
           controller: _scroll,
           slivers: <Widget>[
             SliverToBoxAdapter(child: _SearchBar(controller: _search)),
+            if (economy != null)
+              const SliverToBoxAdapter(child: _HomeAdSlot()),
             if (_search.text.trim().isNotEmpty)
               SliverToBoxAdapter(child: _SearchResults(home: home)),
             if (_search.text.trim().isEmpty)
@@ -124,6 +144,39 @@ class _HomePageState extends State<HomePage> {
       case 3:
         AppNavigation.go(context, '/edits');
     }
+  }
+}
+
+class _HomeAdSlot extends StatefulWidget {
+  const _HomeAdSlot();
+
+  @override
+  State<_HomeAdSlot> createState() => _HomeAdSlotState();
+}
+
+class _HomeAdSlotState extends State<_HomeAdSlot> {
+  bool? _visible;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final economy = Provider.maybeOf<EconomyProvider>(context, listen: false);
+      setState(() {
+        _visible = economy?.showAd(AdPlacement.homeFeed) ?? false;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final economy = Provider.maybeOf<EconomyProvider>(context);
+    if (_visible == null) return const SizedBox.shrink();
+    return AdPlacementView(
+      visible: _visible!,
+      adFree: economy?.isAdFree ?? false,
+    );
   }
 }
 

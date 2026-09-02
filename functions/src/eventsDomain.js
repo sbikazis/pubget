@@ -463,7 +463,9 @@ function uniqueRecipientIds(ids) {
     .slice(0, RECIPIENT_CAP);
 }
 
-function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder }) {
+function createEventsDomain({
+  db, FieldValue, HttpsError, notificationBuilder, economy,
+}) {
   async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
     if (!validString(eventId, EVENT_ID_MAX)) return;
     const started = kind === "started";
@@ -736,6 +738,7 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         creatorId: ended.creatorId || uid,
         title: ended.title,
       });
+      await grantEventRewards(ref.id, ended);
     }
     return { ok: true, eventId: ref.id, status: "ended", result: ended.result };
   }
@@ -1017,9 +1020,24 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
           creatorId: ended.creatorId,
           title: ended.title,
         });
+        await grantEventRewards(doc.id, ended);
       }
     }
     return { ok: true };
+  }
+
+  async function grantEventRewards(eventId, event) {
+    if (!economy || typeof economy.grantDomainRewards !== "function") return;
+    const winners = Array.isArray(event && event.result && event.result.winnerIds)
+      ? event.result.winnerIds
+      : [];
+    if (winners.length === 0) return;
+    await economy.grantDomainRewards(winners, {
+      type: "earn_event",
+      referenceId: eventId,
+      source: "event",
+      metadata: { eventType: event.type || "" },
+    });
   }
 
   return {

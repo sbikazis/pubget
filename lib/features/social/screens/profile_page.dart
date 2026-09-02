@@ -11,6 +11,8 @@ import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../models/social_models.dart';
 import '../providers/profile_provider.dart';
 import '../providers/social_provider.dart';
+import '../../economy/providers/economy_provider.dart';
+import '../../economy/widgets/economy_widgets.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../edits/models/edit_models.dart';
 import '../../fan_works/models/fan_work_lifecycle.dart';
@@ -132,17 +134,29 @@ class _ProfileContent extends StatelessWidget {
     final fansCount = profile.isOwner
         ? own?.fansCount ?? 0
         : public?.fansCount ?? 0;
+    final economy = Provider.maybeOf<EconomyProvider>(context);
+    final frameId = profile.isOwner
+        ? economy?.equipped.frameId
+        : public?.equippedFrameId;
+    final badgeId = profile.isOwner
+        ? economy?.equipped.badgeId
+        : public?.equippedBadgeId;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: <Widget>[
         Center(
-          child: PubgetAvatar(
+          child: EquippedAvatar(
             imageUrl: avatarUrl,
             name: name,
+            frameId: frameId,
             size: PubgetAvatarSize.large,
           ),
         ),
+        if (badgeId != null && badgeId.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Center(child: PubgetBadge(label: badgeId, compact: true)),
+        ],
         const SizedBox(height: AppSpacing.md),
         Text(
           name ?? 'Pubget user',
@@ -190,6 +204,22 @@ class _ProfileContent extends StatelessWidget {
             leadingIcon: Icons.person_add_alt_1_outlined,
             child: Text('Friend requests (${social.incomingRequests.length})'),
           ),
+          if (economy != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            PubgetSecondaryButton(
+              onPressed: () => AppNavigation.go(context, '/store'),
+              semanticLabel: 'Open the cosmetics store',
+              leadingIcon: Icons.storefront_outlined,
+              child: const Text('Store'),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PubgetSecondaryButton(
+              onPressed: () => AppNavigation.go(context, '/premium'),
+              semanticLabel: 'Open Premium',
+              leadingIcon: Icons.workspace_premium_outlined,
+              child: const Text('Premium'),
+            ),
+          ],
         ] else ...[
           Text('Give Respect', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
