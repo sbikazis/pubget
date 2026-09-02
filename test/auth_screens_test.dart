@@ -176,4 +176,84 @@ void main() {
     expect(find.text('Sign-in failed'), findsOneWidget);
     expect(find.text('The email or password is incorrect.'), findsOneWidget);
   });
+
+  testWidgets('login does not show a RangeError as the user-facing message', (
+    tester,
+  ) async {
+    final repository = FakeAuthRepository(
+      authFailure: const UnknownError('Unexpected authentication error.'),
+    );
+    addTearDown(repository.close);
+    await pumpAuthScreen(
+      tester,
+      child: const LoginPage(),
+      repository: repository,
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('login-email')),
+      'fan@example.com',
+    );
+    await tester.enterText(find.byKey(const Key('login-password')), 'password');
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('RangeError'), findsNothing);
+    expect(find.text('Unexpected authentication error.'), findsOneWidget);
+  });
+
+  testWidgets('login ignores duplicate submits while loading', (tester) async {
+    final repository = FakeAuthRepository(
+      authFailure: const ValidationError('The email or password is incorrect.'),
+    )..authDelay = const Duration(milliseconds: 400);
+    addTearDown(repository.close);
+    await pumpAuthScreen(
+      tester,
+      child: const LoginPage(),
+      repository: repository,
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('login-email')),
+      'fan@example.com',
+    );
+    await tester.enterText(find.byKey(const Key('login-password')), 'password');
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pump();
+    expect(repository.emailSignInCalls, 1);
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('login and register keep the Pubget identity in dark mode', (
+    tester,
+  ) async {
+    await pumpAuthScreen(
+      tester,
+      child: const LoginPage(),
+      themeMode: ThemeMode.dark,
+    );
+    expect(find.text('PUBGET'), findsOneWidget);
+    expect(find.text('Premium Anime Community'), findsOneWidget);
+    expect(find.byType(PubgetToriiMark), findsWidgets);
+
+    await pumpAuthScreen(
+      tester,
+      child: const RegisterPage(),
+      themeMode: ThemeMode.dark,
+    );
+    expect(find.text('Create your account'), findsOneWidget);
+    expect(find.byType(PubgetToriiMark), findsWidgets);
+  });
+
+  testWidgets('login supports RTL layout', (tester) async {
+    await pumpAuthScreen(
+      tester,
+      child: const LoginPage(),
+      textDirection: TextDirection.rtl,
+    );
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+  });
 }

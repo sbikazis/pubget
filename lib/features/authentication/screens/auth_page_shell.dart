@@ -32,8 +32,10 @@ class AuthPageShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: AppColors.lightBackground,
+      backgroundColor: isDark ? AppColors.royalNight : AppColors.royalDusk,
+      resizeToAvoidBottomInset: true,
       body: AuthAtmosphere(
         child: SafeArea(
           child: Column(
@@ -45,15 +47,18 @@ class AuthPageShell extends StatelessWidget {
                   AppSpacing.sm,
                   0,
                 ),
-                child: Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 48,
-                      child: leading ?? const SizedBox.shrink(),
-                    ),
-                    const Spacer(),
-                    if (trailing != null) trailing!,
-                  ],
+                child: Theme(
+                  data: _atmosphereChromeTheme(context),
+                  child: Row(
+                    children: <Widget>[
+                      SizedBox(
+                        width: 48,
+                        child: leading ?? const SizedBox.shrink(),
+                      ),
+                      const Spacer(),
+                      if (trailing != null) trailing!,
+                    ],
+                  ),
                 ),
               ),
               Expanded(
@@ -63,7 +68,7 @@ class AuthPageShell extends StatelessWidget {
                       AppSpacing.xl,
                       compactBrand ? AppSpacing.xs : AppSpacing.sm,
                       AppSpacing.xl,
-                      AppSpacing.xl,
+                      AppSpacing.xl + MediaQuery.viewInsetsOf(context).bottom,
                     ),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 440),
@@ -80,10 +85,13 @@ class AuthPageShell extends StatelessWidget {
                                 ? AppSpacing.lg
                                 : AppSpacing.xl,
                           ),
-                          _AuthGlassPanel(child: child),
+                          _AuthPanel(child: child),
                           if (footer != null) ...[
                             const SizedBox(height: AppSpacing.lg),
-                            footer!,
+                            Theme(
+                              data: _atmosphereChromeTheme(context),
+                              child: footer!,
+                            ),
                           ],
                         ],
                       ),
@@ -114,13 +122,28 @@ class AuthPageShell extends StatelessWidget {
   }
 }
 
-class _AuthGlassPanel extends StatelessWidget {
-  const _AuthGlassPanel({required this.child});
+ThemeData _atmosphereChromeTheme(BuildContext context) {
+  final theme = Theme.of(context);
+  return theme.copyWith(
+    colorScheme: theme.colorScheme.copyWith(
+      primary: AppColors.goldSheen,
+      onSurface: AppColors.goldPale,
+    ),
+    iconTheme: const IconThemeData(color: AppColors.goldPale),
+  );
+}
+
+class _AuthPanel extends StatelessWidget {
+  const _AuthPanel({required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? AppColors.darkSurface.withValues(alpha: 0.92)
+        : AppColors.lightSurface.withValues(alpha: 0.94);
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -128,17 +151,17 @@ class _AuthGlassPanel extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: <Color>[
-            AppColors.gold.withValues(alpha: 0.55),
-            AppColors.royalPurple.withValues(alpha: 0.35),
+            AppColors.goldSheen.withValues(alpha: 0.70),
+            AppColors.royalPurpleLight.withValues(alpha: 0.45),
           ],
         ),
-        boxShadow: AppShadows.lightCard,
+        boxShadow: isDark ? AppShadows.darkCard : AppShadows.lightCard,
       ),
       child: Padding(
         padding: const EdgeInsets.all(1.2),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.lightSurface.withValues(alpha: 0.94),
+            color: surface,
             borderRadius: BorderRadius.circular(AppRadius.xl - 1),
           ),
           child: Padding(

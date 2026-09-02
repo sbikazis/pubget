@@ -56,6 +56,31 @@ void main() {
     );
   });
 
+  test('unauthenticated login is a normal guest route, not an error', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/login',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.initial,
+        canEnterHome: false,
+      ),
+      isNull,
+    );
+  });
+
+  test('unauthenticated event deep links still return to login', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/event',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
   test('store and premium routes are protected', () {
     expect(
       AuthRouteGuard.resolve(

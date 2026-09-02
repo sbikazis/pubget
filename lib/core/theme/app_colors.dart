@@ -8,11 +8,18 @@ abstract final class AppColors {
   static const royalPurpleDark = Color(0xFF4B258C);
   static const royalPurpleLight = Color(0xFF9B75E8);
   static const royalPurplePale = Color(0xFFEDE5FF);
+  static const royalNight = Color(0xFF140C22);
+  static const royalDusk = Color(0xFF2C1654);
+  static const royalTwilight = Color(0xFF4A2480);
+  static const royalEmber = Color(0xFF1A0F18);
+  static const royalHorizon = Color(0xFF2A1658);
+  static const royalViolet = Color(0xFF24143A);
 
   static const gold = Color(0xFFD8A838);
   static const goldDark = Color(0xFFA87514);
   static const goldLight = Color(0xFFF4D37D);
   static const goldPale = Color(0xFFFFF4D6);
+  static const goldSheen = Color(0xFFE8C56B);
 
   static const success = Color(0xFF2D9D68);
   static const successDark = Color(0xFF1E7049);

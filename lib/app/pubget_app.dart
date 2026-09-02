@@ -362,7 +362,7 @@ class PubgetApp extends StatelessWidget {
             title: 'Pubget',
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
-            themeMode: ThemeMode.light,
+            themeMode: ThemeMode.system,
             routerConfig: AppRouter.createConfig(
               homePage: SplashPage(firebaseState: firebaseState),
               designSystemPage: kDebugMode

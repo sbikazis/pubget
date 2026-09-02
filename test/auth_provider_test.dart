@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/loading/loading_state.dart';
+import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 
 import 'authentication_test_support.dart';
@@ -67,5 +68,37 @@ void main() {
     expect(provider.failure, isNull);
     expect(provider.state, LoadingState.loaded);
     expect(provider.isAuthenticated, isFalse);
+  });
+
+  test('sign-out clears the session', () async {
+    final repository = FakeAuthRepository();
+    addTearDown(repository.close);
+    final provider = AuthProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.initialize();
+    await provider.signInWithEmail(
+      email: 'fan@example.com',
+      password: 'password',
+    );
+    expect(provider.isAuthenticated, isTrue);
+
+    await provider.signOut();
+    expect(provider.isAuthenticated, isFalse);
+    expect(provider.currentUser, isNull);
+    expect(provider.state, LoadingState.loaded);
+  });
+
+  test('restored session stays authenticated without going to login', () async {
+    final repository = FakeAuthRepository(
+      user: const AuthUser(id: 'user-1', email: 'fan@example.com'),
+    );
+    addTearDown(repository.close);
+    final provider = AuthProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.initialize();
+    expect(provider.isAuthenticated, isTrue);
+    expect(provider.currentUser?.email, 'fan@example.com');
   });
 }
