@@ -6,10 +6,10 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/repositories/anime_repository.dart';
-import '../../home/models/home_models.dart';
-import '../../home/repositories/home_repository.dart';
+import '../anime/models/anime_models.dart';
+import '../anime/repositories/anime_repository.dart';
+import '../home/models/home_models.dart';
+import '../home/repositories/home_repository.dart';
 import 'search_hit.dart';
 import 'search_query.dart';
 

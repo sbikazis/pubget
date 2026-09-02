@@ -17,15 +17,6 @@ abstract final class EventLinks {
 
   static String canonical(String eventId) => PubgetLinks.event(eventId);
 
-  @visibleForTesting
-  static Future<void> Function(String text, String? subject)? get debugNativeShare =>
-      PubgetLinks.debugNativeShare;
-
-  @visibleForTesting
-  static set debugNativeShare(
-    Future<void> Function(String text, String? subject)? value,
-  ) => PubgetLinks.debugNativeShare = value;
-
   static Future<void> copy(BuildContext context, String eventId) =>
       PubgetLinks.copy(
         context,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import 'settings_repository.dart';
 import 'settings_store.dart';

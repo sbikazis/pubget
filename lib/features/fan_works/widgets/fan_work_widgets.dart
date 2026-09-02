@@ -17,15 +17,6 @@ abstract final class FanWorkLinks {
 
   static String canonical(String workId) => PubgetLinks.fanWork(workId);
 
-  @visibleForTesting
-  static Future<void> Function(String text, String? subject)? get debugNativeShare =>
-      PubgetLinks.debugNativeShare;
-
-  @visibleForTesting
-  static set debugNativeShare(
-    Future<void> Function(String text, String? subject)? value,
-  ) => PubgetLinks.debugNativeShare = value;
-
   static Future<void> copy(BuildContext context, String workId) =>
       PubgetLinks.copy(
         context,
