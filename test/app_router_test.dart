@@ -126,6 +126,22 @@ void main() {
     expect(find.text('Splash'), findsNothing);
   });
 
+  test('anime and game deep links both parse after a combined merge', () async {
+    final parser = AppRouteInformationParser();
+    final anime = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/anime/21')),
+    );
+    final game = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/game/g-1')),
+    );
+    expect(anime, isA<ParameterizedRoute>());
+    expect((anime as ParameterizedRoute).path, '/anime/details');
+    expect(anime.parameters['animeId'], '21');
+    expect(game, isA<ParameterizedRoute>());
+    expect((game as ParameterizedRoute).path, '/game');
+    expect(game.parameters['gameId'], 'g-1');
+  });
+
   test('route parser maps /game/{id} deep links', () async {
     final parser = AppRouteInformationParser();
     final route = await parser.parseRouteInformation(

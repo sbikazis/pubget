@@ -75,6 +75,11 @@ import '../features/games/repositories/unavailable_game_repository.dart';
 import '../features/games/screens/game_create_page.dart';
 import '../features/games/screens/game_details_screen.dart';
 import '../features/games/screens/game_list_screen.dart';
+import '../features/fan_works/providers/fan_work_providers.dart';
+import '../features/fan_works/repositories/fan_work_repository.dart';
+import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
+import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
+import '../features/fan_works/screens/fan_work_screens.dart';
 import '../core/analytics/analytics.dart';
 import '../core/analytics/logging_analytics.dart';
 import '../features/home/providers/home_provider.dart';
@@ -160,6 +165,7 @@ class PubgetApp extends StatelessWidget {
           },
         ),
         provider.Provider<GameRepository>.value(value: repositories.$14),
+        provider.Provider<FanWorkRepository>.value(value: repositories.$15),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthDraftStore>(
           create: (_) => AuthDraftStore(),
@@ -261,6 +267,9 @@ class PubgetApp extends StatelessWidget {
           create: (context) => AnimeDetailsProvider(
             repository: context.read<AnimeRepository>(),
             profiles: context.read<ProfileRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>
               GameListProvider(repository: context.read<GameRepository>()),
@@ -274,6 +283,23 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<GameCreateProvider>(
           create: (context) => GameCreateProvider(
             repository: context.read<GameRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<FanWorkFeedProvider>(
+          create: (context) => FanWorkFeedProvider(
+            repository: context.read<FanWorkRepository>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<FanWorkDetailsProvider>(
+          create: (context) => FanWorkDetailsProvider(
+            repository: context.read<FanWorkRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
+        provider.ChangeNotifierProvider<FanWorkEditorProvider>(
+          create: (context) => FanWorkEditorProvider(
+            repository: context.read<FanWorkRepository>(),
             analytics: context.read<Analytics>(),
           ),
         ),
@@ -346,6 +372,7 @@ class PubgetApp extends StatelessWidget {
                 '/groups/create': const CreateGroupWizardPage(),
                 '/private': const PrivateChatsListScreen(),
                 '/anime': const AnimeHubPage(),
+                '/fan-works': const FanWorkFeedPage(),
               },
               parameterizedPages: <String, ParameterizedPageBuilder>{
                 '/profile': (parameters) =>
@@ -417,6 +444,16 @@ class PubgetApp extends StatelessWidget {
                 },
                 '/games/create': (parameters) =>
                     GameCreatePage(groupId: parameters['groupId']),
+                '/fan-work': (parameters) {
+                  final workId = parameters['workId'] ?? '';
+                  final view = parameters['view'];
+                  if (view == 'manga') return MangaViewerPage(workId: workId);
+                  if (view == 'story') return StoryReaderPage(workId: workId);
+                  return FanWorkDetailsPage(workId: workId);
+                },
+                '/fan-works/create': (parameters) => FanWorkEditorPage(
+                  workId: parameters['workId'],
+                ),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -431,54 +468,6 @@ class PubgetApp extends StatelessWidget {
                 onboardingState: onboarding.state,
                 canEnterHome: onboarding.canEnterHome,
               ),
-              routeGuard: (path) {
-                final isProtected =
-                    path == '/home' ||
-                    path == '/onboarding' ||
-                    path == '/profile' ||
-                    path == '/profile/edit' ||
-                    path == '/friend-requests' ||
-                    path == '/notifications' ||
-                    path == '/edits' ||
-                    path == '/edits/upload' ||
-                    path == '/groups' ||
-                    path == '/groups/create' ||
-                    path == '/group' ||
-                    path == '/group-invite' ||
-                    path == '/group-chat' ||
-                    path == '/group-media' ||
-                    path == '/group-members' ||
-                    path == '/group-requests' ||
-                    path == '/group-roleplay' ||
-                    path == '/private' ||
-                    path == '/private-chat' ||
-                    path == '/events' ||
-                    path == '/events/create' ||
-                    path == '/event' ||
-                    path == '/anime' ||
-                    path == '/anime/details' ||
-                    path == '/anime/browse' ||
-                    path == '/anime/genre' ||
-                    path == '/anime/season';
-                    path == '/games' ||
-                    path == '/games/create' ||
-                    path == '/game';
-                if (!isProtected) return null;
-                if (!auth.isInitialized ||
-                    auth.state == LoadingState.initial ||
-                    auth.state == LoadingState.loading) {
-                  return '/splash';
-                }
-                if (!auth.isAuthenticated) return '/login';
-                if (path != '/onboarding' &&
-                    onboarding.state == LoadingState.initial) {
-                  return '/splash';
-                }
-                if (path != '/onboarding' && !onboarding.canEnterHome) {
-                  return '/onboarding';
-                }
-                return null;
-              },
             ),
           );
         },
@@ -501,6 +490,7 @@ class PubgetApp extends StatelessWidget {
     PrivateChatRepository,
     EventRepository,
     GameRepository,
+    FanWorkRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -521,6 +511,7 @@ class PubgetApp extends StatelessWidget {
         UnavailablePrivateChatRepository(message),
         UnavailableEventRepository(message),
         UnavailableGameRepository(message),
+        UnavailableFanWorkRepository(message),
       );
     }
     return (
@@ -580,6 +571,11 @@ class PubgetApp extends StatelessWidget {
       FirebaseGameRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseFanWorkRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+        storage: FirebaseStorage.instance,
       ),
     );
   }

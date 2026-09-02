@@ -40,6 +40,7 @@ const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
+const { createFanWorksDomain } = require("./src/fanWorksDomain");
 
 initializeApp();
 
@@ -119,6 +120,13 @@ const gamesDomain = createGamesDomain({
   FieldValue,
   HttpsError,
   notificationBuilder,
+});
+const fanWorksDomain = createFanWorksDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+  storage: getStorage().bucket(),
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -354,6 +362,42 @@ exports.endGame = onCall(
 exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
+);
+exports.saveFanWorkDraft = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.saveFanWorkDraft,
+);
+exports.publishFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.publishFanWork,
+);
+exports.archiveFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.archiveFanWork,
+);
+exports.deleteFanWorkDraft = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.deleteFanWorkDraft,
+);
+exports.startFanWorkMediaUpload = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.startFanWorkMediaUpload,
+);
+exports.confirmFanWorkMedia = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.confirmFanWorkMedia,
+);
+exports.likeFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.likeFanWork,
+);
+exports.bookmarkFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.bookmarkFanWork,
+);
+exports.reportFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.reportFanWork,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

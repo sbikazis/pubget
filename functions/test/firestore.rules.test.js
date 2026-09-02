@@ -97,6 +97,25 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/actions/a1").set({
       playerId: "bob", actionType: "guess", payload: { value: "Luffy" },
     });
+    await admin.doc("fanWorks/fw-public").set({
+      creatorId: "alice", type: "drawing", title: "Public drawing",
+      status: "published", moderationStatus: "approved", visibility: "public",
+      likesCount: 2, bookmarksCount: 1, reportsCount: 0,
+    });
+    await admin.doc("fanWorks/fw-draft").set({
+      creatorId: "alice", type: "story", title: "Secret draft",
+      status: "draft", moderationStatus: "pending", visibility: "unpublished",
+    });
+    await admin.doc("fanWorks/fw-rejected").set({
+      creatorId: "alice", type: "other", title: "Rejected",
+      status: "published", moderationStatus: "rejected", visibility: "public",
+    });
+    await admin.doc("fanWorks/fw-public/likes/bob").set({
+      userId: "bob", createdAt: new Date(),
+    });
+    await admin.doc("fanWorks/fw-public/reports/fw-public_bob").set({
+      reporterId: "bob", reason: "spam", details: "", createdAt: new Date(),
+    });
   });
 });
 test.after(() => env.cleanup());
@@ -710,4 +729,28 @@ test("FCM tokens are writable only through server callables", async () => {
   await assertFails(db("alice").doc("users/alice/fcmTokens/t1").set({
     uid: "alice", token: "token-123", platform: "web", updatedAt: new Date(),
   }));
+});
+
+test("fan works are owner-or-public readable and never client-writable", async () => {
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public").get());
+  await assertSucceeds(db("alice").doc("fanWorks/fw-draft").get());
+  await assertFails(db("bob").doc("fanWorks/fw-draft").get());
+  await assertFails(db("bob").doc("fanWorks/fw-rejected").get());
+  await assertSucceeds(db("alice").doc("fanWorks/fw-rejected").get());
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    likesCount: 99, creatorId: "bob", moderationStatus: "approved",
+  }));
+  await assertFails(db("alice").doc("fanWorks/forged").set({
+    creatorId: "alice", status: "published", moderationStatus: "approved",
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public").delete());
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/likes/bob").get());
+  await assertFails(db("alice").doc("fanWorks/fw-public/likes/bob").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/likes/bob").set({
+    userId: "bob",
+  }));
+  await assertFails(db("mallory").doc("fanWorks/fw-public/reports/fw-public_bob").set({
+    reporterId: "bob", reason: "spam",
+  }));
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/reports/fw-public_bob").get());
 });

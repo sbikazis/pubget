@@ -13,6 +13,10 @@ import '../providers/profile_provider.dart';
 import '../providers/social_provider.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../edits/models/edit_models.dart';
+import '../../fan_works/models/fan_work_lifecycle.dart';
+import '../../fan_works/models/fan_work_models.dart';
+import '../../fan_works/repositories/fan_work_repository.dart';
+import '../../fan_works/widgets/fan_work_widgets.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({this.userId, super.key});
@@ -170,6 +174,8 @@ class _ProfileContent extends StatelessWidget {
         const SizedBox(height: AppSpacing.xl),
         _CreatorEdits(profileId: profileId),
         const SizedBox(height: AppSpacing.xl),
+        _CreatorFanWorks(profileId: profileId),
+        const SizedBox(height: AppSpacing.xl),
         if (profile.isOwner) ...[
           PubgetPrimaryButton(
             onPressed: () => AppNavigation.go(context, '/profile/edit'),
@@ -284,6 +290,68 @@ class _CreatorEditsState extends State<_CreatorEdits> {
       );
     },
   );
+}
+
+class _CreatorFanWorks extends StatefulWidget {
+  const _CreatorFanWorks({required this.profileId});
+  final String profileId;
+
+  @override
+  State<_CreatorFanWorks> createState() => _CreatorFanWorksState();
+}
+
+class _CreatorFanWorksState extends State<_CreatorFanWorks> {
+  late final Future<Result<FanWorkListPage>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      _future = context.read<FanWorkRepository>().getCreatorWorks(
+        creatorId: widget.profileId,
+        limit: 12,
+      );
+    } on ProviderNotFoundException {
+      _future = Future<Result<FanWorkListPage>>.value(
+        const Success<FanWorkListPage>(
+          FanWorkListPage(items: <FanWork>[], hasMore: false),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FutureBuilder<Result<FanWorkListPage>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final works = snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
+          if (works.isEmpty) return const SizedBox.shrink();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                FanWorkStrings.feedTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SizedBox(
+                height: 180,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: works.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) => SizedBox(
+                    width: 120,
+                    child: FanWorkPreviewCard(work: works[index]),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
 }
 
 class _StartChatAction extends StatelessWidget {

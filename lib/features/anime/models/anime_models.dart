@@ -256,7 +256,8 @@ abstract final class AnimeStrings {
   static const hubTitle = 'Anime Hub';
   static const seeAll = 'See all';
   static const searchHint = 'Search anime';
-  static const searchHomeHint = 'Search groups, people, events, and anime';
+  static const searchHomeHint =
+      'Search groups, people, events, anime, and Fan Works';
   static const nothingFound = 'Nothing found';
   static const nothingFoundMessage = 'Try another title or browse the catalog.';
   static const unableToLoad = 'Unable to load anime right now.';
