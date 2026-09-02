@@ -15,6 +15,9 @@ import '../../events/widgets/event_widgets.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/widgets/anime_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
+import '../../fan_works/models/fan_work_lifecycle.dart';
+import '../../fan_works/models/fan_work_models.dart';
+import '../../fan_works/widgets/fan_work_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
 import '../../social/models/public_profile.dart';
@@ -164,7 +167,7 @@ class _SearchResults extends StatelessWidget {
     if (home.searchState == LoadingState.empty) {
       return const PubgetEmptyState(
         title: 'Nothing found',
-        message: 'Try another group, username, event, or anime.',
+        message: 'Try another group, username, event, anime, or Fan Work.',
       );
     }
     if (home.searchState == LoadingState.error) {
@@ -188,6 +191,8 @@ class _SearchResults extends StatelessWidget {
         for (final event in home.searchResults.events) _EventRow(event: event),
         for (final anime in home.searchResults.anime)
           AnimeResultTile(anime: anime),
+        for (final work in home.searchResults.fanWorks)
+          _FanWorkRow(preview: work),
       ],
     );
   }
@@ -239,6 +244,9 @@ class _SectionView extends StatelessWidget {
     }
     if (kind == HomeSectionKind.gamesPlaceholder) {
       return const GameHomeStrip();
+    }
+    if (kind == HomeSectionKind.fanWorksPlaceholder) {
+      return const FanWorkHomeStrip();
     }
     if (kind == HomeSectionKind.animePlaceholder) {
       return const AnimeHomeStrip();
@@ -449,6 +457,22 @@ class _PersonRow extends StatelessWidget {
         ),
       ),
     ],
+  );
+}
+
+class _FanWorkRow extends StatelessWidget {
+  const _FanWorkRow({required this.preview});
+
+  final FanWorkPreview preview;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    title: Text(preview.title),
+    subtitle: Text(
+      '${FanWorkTypeCatalog.label(preview.type)} · ${preview.creatorName}',
+    ),
+    leading: const Icon(Icons.auto_awesome_outlined),
+    onTap: () => FanWorkLinks.open(context, preview.id),
   );
 }
 

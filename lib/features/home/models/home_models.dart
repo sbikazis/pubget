@@ -1,6 +1,7 @@
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
 import '../../anime/models/anime_models.dart';
+import '../../fan_works/models/fan_work_models.dart';
 import '../../social/models/public_profile.dart';
 
 enum HomeSectionKind {
@@ -12,6 +13,7 @@ enum HomeSectionKind {
   editsPlaceholder,
   eventsPlaceholder,
   gamesPlaceholder,
+  fanWorksPlaceholder,
   animePlaceholder,
 }
 
@@ -21,15 +23,21 @@ final class DiscoverySearchResults {
     this.people = const <PublicProfile>[],
     this.events = const <PubgetEvent>[],
     this.anime = const <Anime>[],
+    this.fanWorks = const <FanWorkPreview>[],
   });
 
   final List<Group> groups;
   final List<PublicProfile> people;
   final List<PubgetEvent> events;
   final List<Anime> anime;
+  final List<FanWorkPreview> fanWorks;
 
   bool get isEmpty =>
-      groups.isEmpty && people.isEmpty && events.isEmpty && anime.isEmpty;
+      groups.isEmpty &&
+      people.isEmpty &&
+      events.isEmpty &&
+      anime.isEmpty &&
+      fanWorks.isEmpty;
 }
 
 final class HomeSection {

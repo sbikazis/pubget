@@ -39,6 +39,17 @@ abstract final class AuthRouteGuard {
     '/events',
     '/events/create',
     '/event',
+    '/anime',
+    '/anime/details',
+    '/anime/browse',
+    '/anime/genre',
+    '/anime/season',
+    '/games',
+    '/games/create',
+    '/game',
+    '/fan-works',
+    '/fan-works/create',
+    '/fan-work',
   };
 
   static String? resolve({

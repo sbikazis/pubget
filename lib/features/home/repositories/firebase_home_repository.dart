@@ -4,6 +4,7 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
+import '../../fan_works/models/fan_work_models.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import 'home_repository.dart';
@@ -146,14 +147,24 @@ final class FirebaseHomeRepository implements HomeRepository {
           .where('searchName', isLessThanOrEqualTo: end)
           .limit(20)
           .get();
+      final fanWorksFuture = _firestore
+          .collection('fanWorks')
+          .where('status', isEqualTo: 'published')
+          .where('moderationStatus', isEqualTo: 'approved')
+          .where('searchTitle', isGreaterThanOrEqualTo: normalized)
+          .where('searchTitle', isLessThanOrEqualTo: end)
+          .limit(20)
+          .get();
       final results = await Future.wait([
         groupsFuture,
         peopleFuture,
         eventsFuture,
+        fanWorksFuture,
       ]);
       final groups = results[0];
       final people = results[1];
       final events = results[2];
+      final fanWorks = results[3];
       return Success(
         DiscoverySearchResults(
           groups: groups.docs
@@ -164,6 +175,9 @@ final class FirebaseHomeRepository implements HomeRepository {
               .toList(growable: false),
           events: events.docs
               .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
+              .toList(growable: false),
+          fanWorks: fanWorks.docs
+              .map((doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id))
               .toList(growable: false),
         ),
       );

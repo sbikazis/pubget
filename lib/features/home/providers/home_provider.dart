@@ -67,6 +67,7 @@ final class HomeProvider extends ChangeNotifier {
     HomeSectionKind.editsPlaceholder,
     HomeSectionKind.eventsPlaceholder,
     HomeSectionKind.gamesPlaceholder,
+    HomeSectionKind.fanWorksPlaceholder,
     HomeSectionKind.animePlaceholder,
   ];
 
@@ -154,6 +155,7 @@ final class HomeProvider extends ChangeNotifier {
           people: results.people,
           events: results.events,
           anime: anime,
+          fanWorks: results.fanWorks,
         );
         _searchState = _searchResults.isEmpty
             ? LoadingState.empty
@@ -262,6 +264,7 @@ final class HomeProvider extends ChangeNotifier {
     HomeSectionKind.editsPlaceholder ||
     HomeSectionKind.eventsPlaceholder ||
     HomeSectionKind.gamesPlaceholder ||
+    HomeSectionKind.fanWorksPlaceholder ||
     HomeSectionKind.animePlaceholder => true,
     _ => false,
   };

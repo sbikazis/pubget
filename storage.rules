@@ -268,5 +268,31 @@ service firebase.storage {
       allow read: if signedIn();
       allow write: if false;
     }
+
+    function fanWorkDocument(workId) {
+      return firestore.get(/databases/(default)/documents/fanWorks/$(workId));
+    }
+
+    function fanWorkPublic(workId) {
+      return firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
+          fanWorkDocument(workId).data.status == 'published' &&
+          fanWorkDocument(workId).data.moderationStatus == 'approved';
+    }
+
+    match /fan_works/{userId}/{workId}/{fileName} {
+      allow read: if signedIn() &&
+          (request.auth.uid == userId || fanWorkPublic(workId));
+      allow create: if signedIn() &&
+          request.auth.uid == userId &&
+          firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
+          fanWorkDocument(workId).data.creatorId == request.auth.uid &&
+          fanWorkDocument(workId).data.status == 'draft' &&
+          imageUpload(10 * 1024 * 1024) &&
+          request.resource.metadata.uploadedBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
+          fanWorkDocument(workId).data.creatorId == request.auth.uid;
+    }
   }
 }

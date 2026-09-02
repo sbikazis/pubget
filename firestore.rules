@@ -725,6 +725,37 @@ service cloud.firestore {
       match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
+    match /fanWorks/{workId} {
+      function fanWorkData() {
+        return get(/databases/$(database)/documents/fanWorks/$(workId)).data;
+      }
+      function fanWorkExists() {
+        return exists(/databases/$(database)/documents/fanWorks/$(workId));
+      }
+      function fanWorkVisible() {
+        return signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
+      }
+      allow read: if fanWorkVisible();
+      allow create, update, delete: if false;
+      match /likes/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /bookmarks/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /reports/{reportId} {
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           resource.data.reporterId == request.auth.uid);
+        allow create, update, delete: if false;
+      }
+    }
+
     match /user_interactions/{uid}/interactions/{interactionId} {
       allow read: if self(uid);
       allow create: if self(uid) && request.resource.data.userId == uid;
