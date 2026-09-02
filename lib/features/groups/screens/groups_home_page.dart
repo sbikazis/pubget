@@ -58,9 +58,17 @@ class _GroupsHomePageState extends State<GroupsHomePage> {
               child: PubgetLoadingStateView(
                 state: provider.state,
                 onRetry: () => provider.search(_search.text),
-                empty: const PubgetEmptyState(
+                empty: PubgetEmptyState(
                   title: 'No groups found',
-                  message: 'Create the first group or try another search.',
+                  message:
+                      'Discover a community or create the first group on Pubget.',
+                  icon: Icons.groups_outlined,
+                  action: PubgetPrimaryButton(
+                    onPressed: () =>
+                        AppNavigation.go(context, '/groups/create'),
+                    semanticLabel: 'Create a group',
+                    child: const Text('Create a group'),
+                  ),
                 ),
                 error: PubgetErrorState(
                   message:

@@ -43,8 +43,7 @@ function groupInput(request, HttpsError) {
       data.description.length > 500 || !GROUP_TYPES.includes(data.type) ||
       !JOIN_POLICIES.includes(data.joinPolicy) ||
       typeof data.isSearchable !== "boolean" || typeof data.rules !== "string" ||
-      data.rules.length > 4000 || !Number.isInteger(data.maxMembers) ||
-      data.maxMembers < 2 || data.maxMembers > 500 ||
+      data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128))) {
     throw new HttpsError("invalid-argument", "Group details are invalid.");
@@ -74,6 +73,12 @@ function roleDefinition(role) {
     position: ROLE_POSITIONS[role],
     isDefault: true,
   };
+}
+
+function entitledMaxMembers(userData) {
+  const custom = Number(userData && userData.customMaxMembersLimit) || 0;
+  if (!Number.isFinite(custom) || custom <= 0) return 100;
+  return Math.min(Math.max(Math.trunc(custom), 2), 500);
 }
 
 function inviteRankForCount(count) {
@@ -127,6 +132,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
     const groupRef = db.collection("groups").doc();
     const memberRef = memberPath(db, groupRef.id, uid);
     await db.runTransaction(async (transaction) => {
+      const userSnap = await transaction.get(db.collection("users").doc(uid));
+      const maxMembers = entitledMaxMembers(userSnap.exists ? userSnap.data() : {});
       transaction.create(groupRef, {
         name: data.name.trim(),
         searchName: data.name.trim().toLowerCase(),
@@ -136,7 +143,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
         animeId: data.animeId || null,
         founderId: uid,
         membersCount: 1,
-        maxMembers: data.maxMembers,
+        maxMembers,
         joinPolicy: data.joinPolicy,
         isSearchable: data.isSearchable,
         createdAt: FieldValue.serverTimestamp(),
@@ -625,5 +632,6 @@ module.exports = {
   ROLE_PERMISSIONS,
   ROLES,
   createGroupsDomain,
+  entitledMaxMembers,
   inviteRankForCount,
 };

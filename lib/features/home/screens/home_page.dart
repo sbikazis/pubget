@@ -35,7 +35,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
-  int _tab = 0;
 
   @override
   void initState() {
@@ -70,6 +69,7 @@ class _HomePageState extends State<HomePage> {
     final name =
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Discover'),
         actions: <Widget>[
@@ -108,48 +108,33 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: AppSpacing.md),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: home.refresh,
-        child: CustomScrollView(
-          controller: _scroll,
-          slivers: <Widget>[
-            SliverToBoxAdapter(child: _SearchBar(controller: _search)),
-            if (economy != null)
-              const SliverToBoxAdapter(child: _HomeAdSlot()),
-            if (_search.text.trim().isNotEmpty)
-              SliverToBoxAdapter(
-                child: SearchResultsView(search: search, shrinkWrap: true),
-              ),
-            if (_search.text.trim().isEmpty)
-              SliverList.builder(
-                itemCount: home.sectionOrder.length,
-                itemBuilder: (context, index) => _SectionView(
-                  key: ValueKey(home.sectionOrder[index]),
-                  kind: home.sectionOrder[index],
-                  provider: home,
+      body: PubgetAtmosphere(
+        child: RefreshIndicator(
+          onRefresh: home.refresh,
+          child: CustomScrollView(
+            controller: _scroll,
+            slivers: <Widget>[
+              SliverToBoxAdapter(child: _SearchBar(controller: _search)),
+              if (economy != null)
+                const SliverToBoxAdapter(child: _HomeAdSlot()),
+              if (_search.text.trim().isNotEmpty)
+                SliverToBoxAdapter(
+                  child: SearchResultsView(search: search, shrinkWrap: true),
                 ),
-              ),
-          ],
+              if (_search.text.trim().isEmpty)
+                SliverList.builder(
+                  itemCount: home.displayOrder.length,
+                  itemBuilder: (context, index) => _SectionView(
+                    key: ValueKey(home.displayOrder[index]),
+                    kind: home.displayOrder[index],
+                    provider: home,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      bottomNavigationBar: _BottomNavigation(
-        selectedIndex: _tab,
-        unread: unread,
-        onSelected: (index) => _selectTab(context, index),
-      ),
     );
-  }
-
-  void _selectTab(BuildContext context, int index) {
-    setState(() => _tab = index);
-    switch (index) {
-      case 1:
-        AppNavigation.go(context, '/groups');
-      case 2:
-        AppNavigation.go(context, '/private');
-      case 3:
-        AppNavigation.go(context, '/edits');
-    }
   }
 }
 
@@ -285,13 +270,39 @@ class _SectionView extends StatelessWidget {
     if (state.state == LoadingState.error && !state.hasContent) {
       return _SectionShell(
         title: title,
-        child: Text(state.failure?.message ?? 'This section could not load.'),
+        child: PubgetErrorState(
+          message: state.failure?.message ?? 'This section could not load.',
+          onRetry: () => provider.retrySection(kind),
+        ),
       );
     }
     if (state.state == LoadingState.empty) {
       return _SectionShell(
         title: title,
-        child: const Text('Nothing here yet. Check back soon.'),
+        child: PubgetEmptyState(
+          compact: true,
+          icon: kind == HomeSectionKind.recommendedPeople
+              ? Icons.person_search_outlined
+              : Icons.groups_outlined,
+          title: 'Nothing here yet',
+          message: kind == HomeSectionKind.recommendedPeople
+              ? 'Find people through search and Respect.'
+              : 'Discover groups or start one of your own.',
+          action: PubgetTextButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              kind == HomeSectionKind.recommendedPeople ? '/search' : '/groups',
+            ),
+            semanticLabel: kind == HomeSectionKind.recommendedPeople
+                ? 'Search people'
+                : 'Explore groups',
+            child: Text(
+              kind == HomeSectionKind.recommendedPeople
+                  ? 'Search people'
+                  : 'Explore groups',
+            ),
+          ),
+        ),
       );
     }
     return _SectionShell(
@@ -324,11 +335,7 @@ class _SectionShell extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+        PubgetSectionHeader(title: title),
         child,
       ],
     ),
@@ -493,60 +500,15 @@ class _SkeletonSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Container(height: 18, width: 150, color: Colors.black12),
+              const PubgetSkeleton(height: 18, width: 150),
               const SizedBox(height: AppSpacing.sm),
-              Container(height: 14, width: 200, color: Colors.black12),
+              const PubgetSkeleton(height: 14, width: 200),
               const SizedBox(height: AppSpacing.xs),
-              Container(height: 14, width: 170, color: Colors.black12),
+              const PubgetSkeleton(height: 14, width: 170),
             ],
           ),
         ),
       ),
     ),
-  );
-}
-
-class _BottomNavigation extends StatelessWidget {
-  const _BottomNavigation({
-    required this.selectedIndex,
-    required this.unread,
-    required this.onSelected,
-  });
-  final int selectedIndex;
-  final UnreadEngine unread;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) => NavigationBar(
-    selectedIndex: selectedIndex,
-    onDestinationSelected: onSelected,
-    destinations: <NavigationDestination>[
-      const NavigationDestination(
-        icon: Icon(Icons.explore_outlined),
-        selectedIcon: Icon(Icons.explore),
-        label: 'Discover',
-      ),
-      NavigationDestination(
-        icon: UnreadBadge(
-          count: unread.groups,
-          child: const Icon(Icons.space_dashboard_outlined),
-        ),
-        selectedIcon: const Icon(Icons.space_dashboard),
-        label: 'My Space',
-      ),
-      NavigationDestination(
-        icon: UnreadBadge(
-          count: unread.privateChats,
-          child: const Icon(Icons.forum_outlined),
-        ),
-        selectedIcon: const Icon(Icons.forum),
-        label: 'Private',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.auto_awesome_outlined),
-        selectedIcon: Icon(Icons.auto_awesome),
-        label: 'Edits',
-      ),
-    ],
   );
 }

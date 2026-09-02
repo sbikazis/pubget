@@ -211,6 +211,12 @@ class _ProfileContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
+        if (profile.isOwner)
+          _AnimeTaste(
+            names: own?.favoriteAnimes ?? const <String>[],
+            ids: own?.favoriteAnimeIds ?? const <String>[],
+          ),
+        if (profile.isOwner) const SizedBox(height: AppSpacing.xl),
         _CreatorEdits(profileId: profileId),
         const SizedBox(height: AppSpacing.xl),
         _CreatorFanWorks(profileId: profileId),
@@ -282,6 +288,53 @@ class _ProfileContent extends StatelessWidget {
             PubgetErrorState(message: social.failure!.message),
           ],
         ],
+      ],
+    );
+  }
+}
+
+class _AnimeTaste extends StatelessWidget {
+  const _AnimeTaste({required this.names, required this.ids});
+
+  final List<String> names;
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = <String>{
+      ...names.where((name) => name.trim().isNotEmpty),
+      ...ids.where((id) => id.trim().isNotEmpty),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('Anime taste', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: AppSpacing.sm),
+        if (labels.isEmpty)
+          PubgetEmptyState(
+            compact: true,
+            icon: Icons.movie_outlined,
+            title: 'No favorites yet',
+            message: 'Save anime you love so Discover can feel like you.',
+            action: PubgetTextButton(
+              onPressed: () => AppNavigation.go(context, '/anime'),
+              semanticLabel: 'Open Anime Hub',
+              child: const Text('Open Anime Hub'),
+            ),
+          )
+        else
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final label in labels) PubgetBadge(label: label),
+              PubgetTextButton(
+                onPressed: () => AppNavigation.go(context, '/anime'),
+                semanticLabel: 'Explore more anime',
+                child: const Text('Explore more'),
+              ),
+            ],
+          ),
       ],
     );
   }

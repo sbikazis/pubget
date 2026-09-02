@@ -170,6 +170,27 @@ abstract final class AppTheme {
         ),
         textStyle: typography.bodySmall?.copyWith(color: colors.text),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: colors.surface,
+        indicatorColor: colors.primaryContainer,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: 68,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return typography.labelMedium?.copyWith(
+            color: selected ? colors.primary : colors.mutedText,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? colors.primary : colors.mutedText,
+            size: 24,
+          );
+        }),
+      ),
     );
   }
 }

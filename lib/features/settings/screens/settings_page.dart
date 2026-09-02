@@ -113,6 +113,26 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.xl),
+          Text('Help', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                PubgetTextButton(
+                  onPressed: () => AppNavigation.go(context, '/guide'),
+                  semanticLabel: 'Open the Pubget guide',
+                  child: const Text('Guide'),
+                ),
+                PubgetTextButton(
+                  onPressed: () => AppNavigation.go(context, '/terms'),
+                  semanticLabel: 'Open community terms',
+                  child: const Text('Terms'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
           Text('About', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           PubgetCard(
@@ -123,11 +143,6 @@ class SettingsPage extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Version'),
                   subtitle: Text(appVersion),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/terms'),
-                  semanticLabel: 'Open community terms',
-                  child: const Text('Terms'),
                 ),
               ],
             ),

@@ -4,6 +4,15 @@ import 'package:pubget/app/app_route.dart';
 import 'package:pubget/app/app_router.dart';
 
 void main() {
+  test('route parser maps /guide as a normal path', () async {
+    final parser = AppRouteInformationParser();
+    final route = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/guide')),
+    );
+    expect(route, isA<ParameterizedRoute>());
+    expect((route as ParameterizedRoute).path, '/guide');
+  });
+
   test('route parser retains path and query parameters', () async {
     final parser = AppRouteInformationParser();
 

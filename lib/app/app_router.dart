@@ -151,6 +151,9 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     };
     final pageKey = switch (_route) {
       FoundationRoute() => const ValueKey<String>('foundation'),
+      ParameterizedRoute(:final path)
+          when AppRouter.shellPaths.contains(path) =>
+        const ValueKey<String>('app-shell'),
       ParameterizedRoute(:final path) => ValueKey<String>(path),
     };
 
@@ -173,6 +176,13 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 
 final class AppRouter {
   const AppRouter._();
+
+  static const shellPaths = <String>{
+    '/home',
+    '/groups',
+    '/private',
+    '/edits',
+  };
 
   static AppRoute routeFromUri(Uri uri) {
     try {

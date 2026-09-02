@@ -11,6 +11,7 @@ class PubgetEmptyState extends StatelessWidget {
     this.message,
     this.icon = Icons.inbox_outlined,
     this.action,
+    this.compact = false,
     super.key,
   });
 
@@ -18,6 +19,7 @@ class PubgetEmptyState extends StatelessWidget {
   final String? message;
   final IconData icon;
   final Widget? action;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +29,7 @@ class PubgetEmptyState extends StatelessWidget {
       title: title,
       message: message,
       action: action,
+      compact: compact,
       iconColor: theme.colorScheme.primary,
     );
   }
@@ -167,6 +170,7 @@ class _StateLayout extends StatelessWidget {
     required this.iconColor,
     this.message,
     this.action,
+    this.compact = false,
   });
 
   final IconData icon;
@@ -174,21 +178,24 @@ class _StateLayout extends StatelessWidget {
   final String? message;
   final Widget? action;
   final Color iconColor;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
+        padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 48, color: iconColor),
-            const SizedBox(height: AppSpacing.lg),
+            Icon(icon, size: compact ? 28 : 48, color: iconColor),
+            SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
             Text(
               title,
-              style: theme.textTheme.titleLarge,
+              style: compact
+                  ? theme.textTheme.titleMedium
+                  : theme.textTheme.titleLarge,
               textAlign: TextAlign.center,
             ),
             if (message != null) ...[
@@ -197,10 +204,12 @@ class _StateLayout extends StatelessWidget {
                 message!,
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
+                maxLines: compact ? 2 : null,
+                overflow: compact ? TextOverflow.ellipsis : null,
               ),
             ],
             if (action != null) ...[
-              const SizedBox(height: AppSpacing.xl),
+              SizedBox(height: compact ? AppSpacing.sm : AppSpacing.xl),
               action!,
             ],
           ],

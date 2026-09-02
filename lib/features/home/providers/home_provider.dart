@@ -75,6 +75,23 @@ final class HomeProvider extends ChangeNotifier {
   static const _pageSize = 8;
 
   List<HomeSectionKind> get sectionOrder => _sectionOrder;
+  List<HomeSectionKind> get displayOrder {
+    final active = <HomeSectionKind>[];
+    final empty = <HomeSectionKind>[];
+    for (final kind in _sectionOrder) {
+      if (_isPlaceholder(kind) ||
+          section(kind).hasContent ||
+          section(kind).state == LoadingState.initial ||
+          section(kind).state == LoadingState.loading ||
+          section(kind).state == LoadingState.refreshing ||
+          section(kind).state == LoadingState.loadingMore) {
+        active.add(kind);
+      } else {
+        empty.add(kind);
+      }
+    }
+    return <HomeSectionKind>[...active, ...empty];
+  }
   HomeSectionState section(HomeSectionKind kind) => _sections[kind]!;
   String? get userId => _userId;
 
@@ -113,6 +130,11 @@ final class HomeProvider extends ChangeNotifier {
       return;
     }
     unawaited(_loadSection(kind, refresh: false));
+  }
+
+  Future<void> retrySection(HomeSectionKind kind) async {
+    if (_userId == null || _isPlaceholder(kind)) return;
+    await _loadSection(kind, refresh: true);
   }
 
   Future<void> loadMore(HomeSectionKind kind) async {
