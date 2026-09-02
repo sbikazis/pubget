@@ -81,6 +81,28 @@ void main() {
         canEnterHome: true,
       ),
       '/login',
+  test('store and premium routes are protected', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/store',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/premium',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: true,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      isNull,
     );
   });
 }

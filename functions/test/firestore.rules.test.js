@@ -754,3 +754,49 @@ test("fan works are owner-or-public readable and never client-writable", async (
   }));
   await assertSucceeds(db("bob").doc("fanWorks/fw-public/reports/fw-public_bob").get());
 });
+
+test("clients cannot mutate economy, catalog, inventory, or premium", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("storeCatalog/frame_sakura").set({
+      id: "frame_sakura", price: 80, availability: "active",
+    });
+    await admin.doc("economyTransactions/tx1").set({
+      transactionId: "tx1", userId: "alice", amount: 10, type: "earn_event",
+    });
+    await admin.doc("users/alice/inventory/frame_sakura").set({
+      itemId: "frame_sakura", type: "frame",
+    });
+    await admin.doc("users/alice/transactions/tx1").set({
+      amount: 10, type: "earn_event",
+    });
+    await admin.doc("users/alice").update({
+      subscriptionType: "free", premiumExpiresAt: new Date(Date.now() + 86400000),
+    });
+  });
+  await assertSucceeds(db("alice").doc("storeCatalog/frame_sakura").get());
+  await assertFails(db("alice").doc("storeCatalog/frame_sakura").update({ price: 1 }));
+  await assertFails(db("alice").doc("storeCatalog/hack").set({ price: 1 }));
+  await assertSucceeds(db("alice").doc("economyTransactions/tx1").get());
+  await assertFails(db("bob").doc("economyTransactions/tx1").get());
+  await assertFails(db("alice").doc("economyTransactions/tx1").update({ amount: 999 }));
+  await assertFails(db("alice").doc("economyTransactions/forged").set({
+    userId: "alice", amount: 500, type: "earn_event",
+  }));
+  await assertFails(db("alice").doc("economyTransactions/tx1").delete());
+  await assertSucceeds(db("alice").doc("users/alice/inventory/frame_sakura").get());
+  await assertFails(db("bob").doc("users/alice/inventory/frame_sakura").get());
+  await assertFails(db("alice").doc("users/alice/inventory/badge_pioneer").set({
+    itemId: "badge_pioneer",
+  }));
+  await assertFails(db("alice").doc("users/alice/inventory/frame_sakura").delete());
+  await assertFails(db("alice").doc("users/alice/transactions/tx1").update({ amount: 99 }));
+  await assertFails(db("alice").doc("users/alice/transactions/new").set({ amount: 10 }));
+  await assertFails(db("alice").doc("users/alice").update({ subscriptionType: "premium" }));
+  await assertFails(db("alice").doc("users/alice").update({
+    premiumExpiresAt: serverTimestamp(),
+  }));
+  await assertFails(db("alice").doc("users/alice").update({ equippedFrameId: "frame_sakura" }));
+  await assertFails(db("alice").doc("users/bob").update({ coinsBalance: 0 }));
+  await assertFails(db("alice").doc("users/alice/economyRate/purchase").set({ count: 0 }));
+});

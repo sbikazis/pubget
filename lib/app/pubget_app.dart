@@ -80,6 +80,11 @@ import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
+import '../features/economy/providers/economy_provider.dart';
+import '../features/economy/repositories/economy_repository.dart';
+import '../features/economy/repositories/firebase_economy_repository.dart';
+import '../features/economy/repositories/unavailable_economy_repository.dart';
+import '../features/economy/screens/economy_screens.dart';
 import '../core/analytics/analytics.dart';
 import '../core/analytics/logging_analytics.dart';
 import '../features/home/providers/home_provider.dart';
@@ -166,6 +171,7 @@ class PubgetApp extends StatelessWidget {
         ),
         provider.Provider<GameRepository>.value(value: repositories.$14),
         provider.Provider<FanWorkRepository>.value(value: repositories.$15),
+        provider.Provider<EconomyRepository>.value(value: repositories.$16),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthDraftStore>(
           create: (_) => AuthDraftStore(),
@@ -303,6 +309,13 @@ class PubgetApp extends StatelessWidget {
             analytics: context.read<Analytics>(),
           ),
         ),
+        provider.ChangeNotifierProvider<EconomyProvider>(
+          create: (context) => EconomyProvider(
+            repository: context.read<EconomyRepository>(),
+            network: context.read<NetworkService>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
           NotificationProvider
@@ -373,6 +386,10 @@ class PubgetApp extends StatelessWidget {
                 '/private': const PrivateChatsListScreen(),
                 '/anime': const AnimeHubPage(),
                 '/fan-works': const FanWorkFeedPage(),
+                '/store': const StorePage(),
+                '/inventory': const InventoryPage(),
+                '/premium': const PremiumPage(),
+                '/economy/history': const EconomyHistoryPage(),
               },
               parameterizedPages: <String, ParameterizedPageBuilder>{
                 '/profile': (parameters) =>
@@ -454,6 +471,9 @@ class PubgetApp extends StatelessWidget {
                 '/fan-works/create': (parameters) => FanWorkEditorPage(
                   workId: parameters['workId'],
                 ),
+                '/store/item': (parameters) => StoreItemDetailsPage(
+                  itemId: parameters['itemId'] ?? '',
+                ),
               },
               initialRoute: developmentInitialRoute,
               refreshListenable: Listenable.merge(<Listenable>[
@@ -491,6 +511,7 @@ class PubgetApp extends StatelessWidget {
     EventRepository,
     GameRepository,
     FanWorkRepository,
+    EconomyRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -512,6 +533,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableEventRepository(message),
         UnavailableGameRepository(message),
         UnavailableFanWorkRepository(message),
+        UnavailableEconomyRepository(message),
       );
     }
     return (
@@ -576,6 +598,9 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
         storage: FirebaseStorage.instance,
+      ),
+      FirebaseEconomyRepository(
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
     );
   }

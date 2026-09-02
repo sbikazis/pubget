@@ -41,6 +41,7 @@ const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
+const { createEconomyDomain } = require("./src/economyDomain");
 
 initializeApp();
 
@@ -109,17 +110,25 @@ const notificationBuilder = createNotificationBuilder({
   messaging: getMessaging(),
   FieldValue,
 });
+const economyDomain = createEconomyDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+});
 const eventsDomain = createEventsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
+  economy: economyDomain,
 });
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
+  economy: economyDomain,
 });
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
@@ -127,6 +136,7 @@ const fanWorksDomain = createFanWorksDomain({
   HttpsError,
   notificationBuilder,
   storage: getStorage().bucket(),
+  economy: economyDomain,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -189,7 +199,11 @@ exports.editCommentAction = onCall(
 );
 exports.processEditVideo = onObjectFinalized(
   { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
-  createEditPipeline({ db: getFirestore(), bucket: getStorage().bucket() }),
+  createEditPipeline({
+    db: getFirestore(),
+    bucket: getStorage().bucket(),
+    economy: economyDomain,
+  }),
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
@@ -398,6 +412,42 @@ exports.bookmarkFanWork = onCall(
 exports.reportFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.reportFanWork,
+);
+exports.getEconomy = onCall(
+  { region: "us-central1" },
+  economyDomain.getEconomy,
+);
+exports.getInventory = onCall(
+  { region: "us-central1" },
+  economyDomain.getInventory,
+);
+exports.getEconomyTransactions = onCall(
+  { region: "us-central1" },
+  economyDomain.getEconomyTransactions,
+);
+exports.getPremiumEntitlement = onCall(
+  { region: "us-central1" },
+  economyDomain.getPremiumEntitlement,
+);
+exports.restorePremiumPurchases = onCall(
+  { region: "us-central1" },
+  economyDomain.restorePremiumPurchases,
+);
+exports.claimEconomyReward = onCall(
+  { region: "us-central1" },
+  economyDomain.claimEconomyReward,
+);
+exports.purchaseStoreItem = onCall(
+  { region: "us-central1" },
+  economyDomain.purchaseStoreItem,
+);
+exports.equipCosmetic = onCall(
+  { region: "us-central1" },
+  economyDomain.equipCosmetic,
+);
+exports.unequipCosmetic = onCall(
+  { region: "us-central1" },
+  economyDomain.unequipCosmetic,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

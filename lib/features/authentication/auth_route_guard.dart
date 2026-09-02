@@ -50,6 +50,11 @@ abstract final class AuthRouteGuard {
     '/fan-works',
     '/fan-works/create',
     '/fan-work',
+    '/store',
+    '/store/item',
+    '/inventory',
+    '/premium',
+    '/economy/history',
   };
 
   static String? resolve({
