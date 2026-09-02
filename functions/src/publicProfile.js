@@ -6,6 +6,9 @@ const DISPLAY_FIELDS = Object.freeze([
   "bio",
   "totalRespect",
   "fansCount",
+  "equippedFrameId",
+  "equippedBadgeId",
+  "equippedNameplateId",
 ]);
 
 function buildPublicProfile(data) {
@@ -13,7 +16,11 @@ function buildPublicProfile(data) {
   for (const field of DISPLAY_FIELDS) {
     profile[field] = Object.prototype.hasOwnProperty.call(data, field)
       ? data[field]
-      : field === "totalRespect" || field === "fansCount" ? 0 : null;
+      : field === "totalRespect" || field === "fansCount"
+        ? 0
+        : field.startsWith("equipped")
+          ? ""
+          : null;
   }
   return profile;
 }

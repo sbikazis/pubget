@@ -440,7 +440,19 @@ service cloud.firestore {
       match /daily_rewards/{id} { allow read: if self(uid); allow write: if false; }
       match /transactions/{id} { allow read: if self(uid); allow write: if false; }
       match /rewards/{id} { allow read: if self(uid); allow write: if false; }
+      match /inventory/{itemId} { allow read: if self(uid); allow write: if false; }
+      match /economyRate/{id} { allow read, write: if false; }
       match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
+    }
+
+    match /storeCatalog/{itemId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /economyTransactions/{transactionId} {
+      allow get: if signedIn() && resource.data.userId == request.auth.uid;
+      allow list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
     match /public_profiles/{uid} {

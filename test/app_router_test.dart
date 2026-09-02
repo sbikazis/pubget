@@ -191,4 +191,15 @@ void main() {
       );
     },
   );
+
+  test('route parser maps /store/item query links', () async {
+    final parser = AppRouteInformationParser();
+    final route = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/store/item?itemId=frame_sakura')),
+    );
+    expect(route, isA<ParameterizedRoute>());
+    final parameterized = route as ParameterizedRoute;
+    expect(parameterized.path, '/store/item');
+    expect(parameterized.parameters['itemId'], 'frame_sakura');
+  });
 }
