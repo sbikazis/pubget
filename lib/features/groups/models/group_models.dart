@@ -132,6 +132,7 @@ final class GroupMember {
     this.joinedAt,
     this.inviteCount = 0,
     this.lastActiveAt,
+    this.effectivePermissions,
   });
 
   final String uid;
@@ -142,9 +143,19 @@ final class GroupMember {
   final int inviteCount;
   final DateTime? lastActiveAt;
 
+  /// Permissions from the group role document, when loaded.
+  /// `null` means fall back to [defaultRolePermissions] for [role].
+  final Set<GroupPermission>? effectivePermissions;
+
+  String get roleDocumentId =>
+      (customRoleId != null && customRoleId!.trim().isNotEmpty)
+      ? customRoleId!.trim()
+      : role.name;
+
+  /// Matches Cloud Functions `loadPermissions`: founder always manages
+  /// events; otherwise the role document (or default role set) is used.
   bool get canManageEvents =>
-      defaultRolePermissions[role]?.contains(GroupPermission.manageEvents) ??
-      false;
+      memberCanManageEvents(this, roleDocument: null);
 
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(
@@ -162,6 +173,34 @@ final class GroupMember {
       lastActiveAt: _date(map['lastActiveAt']),
     );
   }
+
+  GroupMember withEffectivePermissions(Set<GroupPermission> permissions) =>
+      GroupMember(
+        uid: uid,
+        role: role,
+        customRoleId: customRoleId,
+        roleplayCharacter: roleplayCharacter,
+        joinedAt: joinedAt,
+        inviteCount: inviteCount,
+        lastActiveAt: lastActiveAt,
+        effectivePermissions: permissions,
+      );
+}
+
+/// Client mirror of server event-management authorization. Server remains
+/// authoritative; this is UX gating only.
+bool memberCanManageEvents(
+  GroupMember? member, {
+  GroupRoleDefinition? roleDocument,
+}) {
+  if (member == null) return false;
+  if (member.role == GroupRole.founder) return true;
+  final granted =
+      roleDocument?.permissions ??
+      member.effectivePermissions ??
+      defaultRolePermissions[member.role] ??
+      const <GroupPermission>{};
+  return granted.contains(GroupPermission.manageEvents);
 }
 
 final class GroupRoleDefinition {

@@ -42,7 +42,19 @@ final class FirebaseGroupRepository implements GroupRepository {
             .doc(userId)
             .get();
         if (!snapshot.exists || snapshot.data() == null) return null;
-        return GroupMember.fromMap(snapshot.data()!, uid: userId);
+        final member = GroupMember.fromMap(snapshot.data()!, uid: userId);
+        final roleSnap = await _firestore
+            .collection('groups')
+            .doc(groupId)
+            .collection('roles')
+            .doc(member.roleDocumentId)
+            .get();
+        if (!roleSnap.exists || roleSnap.data() == null) return member;
+        final definition = GroupRoleDefinition.fromMap(
+          roleSnap.data()!,
+          id: roleSnap.id,
+        );
+        return member.withEffectivePermissions(definition.permissions);
       });
 
   @override

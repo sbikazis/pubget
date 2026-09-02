@@ -322,6 +322,12 @@ final class EventBuilderProvider extends ChangeNotifier {
   }
 
   Future<Result<String>> saveDraft() async {
+    final validation = EventValidation.draft(_draft);
+    if (validation != null) {
+      _failure = ValidationError(validation);
+      notifyListeners();
+      return FailureResult(ValidationError(validation));
+    }
     _saving = true;
     notifyListeners();
     final result = await _repository.saveDraft(_draft);

@@ -77,6 +77,18 @@ final class EventQuizQuestion {
           (options.isEmpty ? '' : options.first.id),
     );
   }
+
+  EventQuizQuestion copyWith({
+    String? id,
+    String? prompt,
+    List<EventOption>? options,
+    String? correctOptionId,
+  }) => EventQuizQuestion(
+    id: id ?? this.id,
+    prompt: prompt ?? this.prompt,
+    options: options ?? this.options,
+    correctOptionId: correctOptionId ?? this.correctOptionId,
+  );
 }
 
 final class EventConfiguration {
