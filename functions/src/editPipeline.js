@@ -31,7 +31,7 @@ function probe(binary, source) {
   });
 }
 
-function createEditPipeline({ db, bucket }) {
+function createEditPipeline({ db, bucket, economy }) {
   return async function processEdit(event) {
     const object = event.data || {};
     const match = /^edits\/([^/]+)\/([^/]+)\.mp4$/.exec(object.name || "");
@@ -87,6 +87,14 @@ function createEditPipeline({ db, bucket }) {
         videoUrl: processedPath, thumbnailUrl: thumbnailPath, durationSeconds,
         status: "published", score: 20 + creatorQuality, processedAt: new Date(),
       });
+      if (economy && typeof economy.applyReward === "function") {
+        await economy.applyReward({
+          userId: creatorId,
+          type: "earn_publish",
+          referenceId: editId,
+          source: "edit",
+        });
+      }
     } catch (error) {
       await ref.update({ status: "failed", failureReason: "processing-failed" });
       console.error("Edit processing failed", { editId, error: error.message });

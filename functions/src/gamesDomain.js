@@ -306,7 +306,9 @@ function writeEvent(transaction, db, FieldValue, {
   }));
 }
 
-function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) {
+function createGamesDomain({
+  db, FieldValue, HttpsError, notificationBuilder, economy,
+}) {
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
     let recipientIds;
@@ -704,6 +706,19 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
         title: result.game.title,
         type: result.game.type,
       });
+      if (economy && typeof economy.grantDomainRewards === "function") {
+        const winners = Array.isArray(result.game.result && result.game.result.winnerIds)
+          ? result.game.result.winnerIds
+          : [];
+        if (winners.length > 0) {
+          await economy.grantDomainRewards(winners, {
+            type: "earn_game",
+            referenceId: request.data.gameId.trim(),
+            source: "game",
+            metadata: { gameType: result.game.type || "" },
+          });
+        }
+      }
     }
     return { ok: true };
   }
