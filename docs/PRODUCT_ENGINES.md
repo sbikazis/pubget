@@ -10,7 +10,7 @@ Generic lobby state lives in `games/{gameId}`. Specialized rules live in Cloud F
 |---|---|---|---|
 | Guess Character | `games` | 2–2 | `guessCharacter.js` |
 | Anime Chain | `games` | 2–8 | `animeChain.js` |
-| Emoji Anime Guess | `games` | 2–4 | `emojiAnimeGuess.js` |
+| Emoji Anime Guess | `games` | 2–4 | `emojiAnimeGuess.js` — server-owned catalog emoji clues, one guesser per turn |
 | Mafia | `mafia_games` | 4–16 | `mafia/` |
 
 Mafia is not created through `createGame`. The Flutter registry marks it implemented and routes to `/mafia/{id}` via `createMafiaGame`.
@@ -21,7 +21,7 @@ Generic games: `draft → waiting → active ⇄ paused → completed | cancelle
 
 Server phases for quiz/chain/emoji engines are stored in `currentPhase` (`waiting`, `round`, `resolution`, `game_over`). Invalid transitions are rejected. `stateVersion` plus optional `payload.stateVersion` reject stale clients.
 
-Mafia phases: `waiting → starting → night → day → discussion → voting → execution → finished`, with `cancelled` from a valid cancel. ROLE_REVEAL is `starting` plus private role assignment. WIN_CHECK runs after each resolution.
+Mafia phases: `waiting → starting → night → day → discussion → voting → execution → night`, with `cancelled` from a valid cancel and `finished` after WIN_CHECK. ROLE_REVEAL is `starting` plus private role assignment. Four-player classic games assign one Mafia plus Doctor and Detective so the match does not start at parity. Vote ties spare everyone. Town wins when no Mafia remain. Mafia wins at parity/majority.
 
 ## Server authority
 

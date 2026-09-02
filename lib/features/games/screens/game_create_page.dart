@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/analytics/analytics.dart';
-import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../mafia/providers/mafia_provider.dart';
@@ -32,7 +31,9 @@ class _GameCreatePageState extends State<GameCreatePage> {
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    context.read<GameCreateProvider>().start(groupId: widget.groupId);
+    final creator = context.read<GameCreateProvider>();
+    final groupId = widget.groupId;
+    Future<void>.microtask(() => creator.start(groupId: groupId));
   }
 
   @override
@@ -56,19 +57,23 @@ class _GameCreatePageState extends State<GameCreatePage> {
         children: <Widget>[
           Text('Game type', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
-          for (final item in types)
-            RadioListTile<GameType>(
-              value: item.type,
-              groupValue: creator.draft.type,
-              title: Text(item.name),
-              subtitle: Text(
-                '${item.description} · ${item.capabilities.minPlayers}–${item.capabilities.maxPlayers} players',
-              ),
-              onChanged: (value) {
-                if (value == null) return;
-                creator.selectType(value);
-              },
-            ),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final item in types)
+                PubgetSelectionChip(
+                  label: item.name,
+                  selected: creator.draft.type == item.type,
+                  onSelected: (_) => creator.selectType(item.type),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(spec.description),
+          Text(
+            '${spec.capabilities.minPlayers}–${spec.capabilities.maxPlayers} players',
+          ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _title,
@@ -258,9 +263,8 @@ class _GameCreatePageState extends State<GameCreatePage> {
         return;
       }
       setState(
-        () => _localError = result is FailureResult
-            ? result.failure.message
-            : 'Could not create Mafia.',
+        () => _localError =
+            result.failureOrNull?.message ?? 'Could not create Mafia.',
       );
       return;
     }

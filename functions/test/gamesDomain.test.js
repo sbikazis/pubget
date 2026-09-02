@@ -62,6 +62,15 @@ function createFakeDb(seed = {}) {
         async set(data) {
           store.set(resolvedPath, clone(data));
         },
+        async get() {
+          const data = store.get(resolvedPath);
+          return {
+            exists: data !== undefined,
+            id: resolvedId,
+            path: resolvedPath,
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
+        },
         async update(data) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
@@ -331,27 +340,29 @@ test("submitAction is idempotent and rejects impersonation", async () => {
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const secret = db.store.get(`games/${created.gameId}/secret/round`);
+  const current = db.store.get(`games/${created.gameId}`).publicState.currentPlayerId;
   await games.submitGameAction({
-    auth: { uid: "alice" },
+    auth: { uid: current },
     data: {
       gameId: created.gameId,
-      actionType: "submit",
-      payload: { emojis: ["🍜", "🦊", "🍥"] },
+      actionType: "guess",
+      payload: { title: secret.title },
       clientActionId: "act-1",
     },
   });
   await games.submitGameAction({
-    auth: { uid: "alice" },
+    auth: { uid: current },
     data: {
       gameId: created.gameId,
-      actionType: "submit",
-      payload: { emojis: ["🔥", "🔥", "🔥"] },
+      actionType: "guess",
+      payload: { title: "Naruto" },
       clientActionId: "act-1",
     },
   });
   const actions = [...db.store.entries()].filter(([path]) => path.includes("/actions/"));
   assert.equal(actions.length, 1);
-  assert.deepEqual(actions[0][1].payload.emojis, ["🍜", "🦊", "🍥"]);
+  assert.equal(actions[0][1].payload.title, secret.title);
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "bob" },

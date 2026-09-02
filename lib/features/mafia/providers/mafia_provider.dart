@@ -195,6 +195,7 @@ final class MafiaProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     unawaited(_cancel());
     super.dispose();

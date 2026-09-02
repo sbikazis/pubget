@@ -54,6 +54,15 @@ function createFakeDb(seed = {}) {
         async set(data) {
           store.set(resolvedPath, clone(data));
         },
+        async get() {
+          const data = store.get(resolvedPath);
+          return {
+            exists: data !== undefined,
+            id: resolvedId,
+            path: resolvedPath,
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
+        },
         async update(data) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
@@ -299,7 +308,7 @@ test("anime chain validates studio/character relations and turn order", async ()
   );
 });
 
-test("emoji guess hides the answer and scores a correct title", async () => {
+test("emoji guess uses server clues and scores a correct title", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const created = await games.createGame({
@@ -310,19 +319,25 @@ test("emoji guess hides the answer and scores a correct title", async () => {
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   const publicState = db.store.get(`games/${created.gameId}`).publicState;
   const secret = db.store.get(`games/${created.gameId}/secret/round`);
-  assert.equal(publicState.phase, "clue");
-  assert.ok(!JSON.stringify(publicState).includes(secret.title) || publicState.phase === "clue");
+  assert.equal(publicState.phase, "guess");
+  assert.ok(Array.isArray(publicState.emojis) && publicState.emojis.length >= 3);
+  assert.equal(JSON.stringify(publicState).includes(secret.title), false);
   assert.ok(!publicState.title);
+  const current = publicState.currentPlayerId;
+  const other = current === "alice" ? "bob" : "alice";
+  await assert.rejects(
+    games.submitGameAction({
+      auth: { uid: other },
+      data: {
+        gameId: created.gameId,
+        actionType: "guess",
+        payload: { title: secret.title },
+      },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
   await games.submitGameAction({
-    auth: { uid: "alice" },
-    data: {
-      gameId: created.gameId,
-      actionType: "submit",
-      payload: { emojis: ["🍜", "🦊", "🍥"] },
-    },
-  });
-  await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: current },
     data: {
       gameId: created.gameId,
       actionType: "guess",
@@ -330,6 +345,25 @@ test("emoji guess hides the answer and scores a correct title", async () => {
     },
   });
   const after = db.store.get(`games/${created.gameId}`);
-  assert.ok(after.publicState.scores.bob >= 2);
+  assert.ok(after.publicState.scores[current] >= 1);
   assert.ok(after.publicState.lastReveal);
+  assert.equal(after.publicState.lastReveal.title, secret.title);
+});
+
+test("emoji guess timeout advances without scoring the current player", async () => {
+  let now = new Date("2026-09-02T12:00:00Z");
+  const db = createFakeDb(seed());
+  const games = domain(db, { clock: { now: () => now } });
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1" },
+  });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
+  await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const before = db.store.get(`games/${created.gameId}`).publicState.currentPlayerId;
+  now = new Date("2026-09-02T12:05:00Z");
+  await games.processExpiredGames();
+  const after = db.store.get(`games/${created.gameId}`);
+  assert.notEqual(after.publicState.currentPlayerId, before);
+  assert.equal(after.publicState.scores[before], 0);
 });

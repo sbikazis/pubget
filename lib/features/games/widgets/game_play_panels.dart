@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../../authentication/providers/auth_provider.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
@@ -316,12 +315,10 @@ class EmojiGuessPlay extends StatefulWidget {
 }
 
 class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
-  final _emojis = TextEditingController();
   final _guess = TextEditingController();
 
   @override
   void dispose() {
-    _emojis.dispose();
     _guess.dispose();
     super.dispose();
   }
@@ -330,16 +327,15 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
   Widget build(BuildContext context) {
     final provider = context.watch<GameProvider>();
     final state = widget.game.publicState;
-    final phase = state['phase'] as String? ?? widget.game.currentPhase;
-    final clueGiver = state['clueGiverId'] as String?;
-    final mineClue = clueGiver == widget.userId;
+    final current = state['currentPlayerId'] as String?;
+    final mine = current == widget.userId;
     final emojis = (state['emojis'] as List<Object?>? ?? const <Object?>[])
         .whereType<String>()
         .toList();
-    final guessed =
-        (state['guessedPlayerIds'] as List<Object?>? ?? const <Object?>[])
-            .whereType<String>();
-    final private = provider.privateState;
+    final lastReveal = state['lastReveal'] is Map
+        ? Map<String, dynamic>.from(state['lastReveal'] as Map)
+        : null;
+    final scores = _scoreMap(state['scores']);
     final online = _online(context);
     return PubgetCard(
       child: Column(
@@ -347,24 +343,28 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text('Turn ${((state['turnIndex'] as num?)?.toInt() ?? 0) + 1}'),
+              Text(
+                'Turn ${((state['turnIndex'] as num?)?.toInt() ?? 0) + 1}'
+                '/${state['totalTurns'] ?? '?'}',
+              ),
               const Spacer(),
               GameDeadlineTimer(deadlineAt: widget.game.deadlineAt),
             ],
           ),
-          if (mineClue && private['title'] is String) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text('Your title: ${private['title']}'),
-          ],
+          const SizedBox(height: AppSpacing.sm),
+          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
           if (emojis.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
-            Text(emojis.join('  '), style: Theme.of(context).textTheme.headlineSmall),
+            Text(
+              emojis.join('  '),
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
           ],
           const SizedBox(height: AppSpacing.md),
-          if (phase == 'clue' && mineClue) ...[
+          if (mine) ...[
             PubgetTextField(
-              controller: _emojis,
-              label: '3–4 emoji clues',
+              controller: _guess,
+              label: 'Anime title',
               enabled: !provider.busy && online,
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -373,50 +373,23 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
                   ? null
                   : () => provider.submitAction(
                       gameId: widget.game.id,
-                      actionType: GameActionTypes.submit,
+                      actionType: GameActionTypes.guess,
                       payload: <String, dynamic>{
-                        'emojis': _emojis.text
-                            .trim()
-                            .split(RegExp(r'\s+'))
-                            .where((item) => item.isNotEmpty)
-                            .toList(),
+                        'title': _guess.text,
                         'stateVersion': widget.game.stateVersion,
                       },
                       clientActionId:
-                          '${widget.game.id}-${widget.game.stateVersion}-clue',
+                          '${widget.game.id}-${widget.game.stateVersion}-guess',
                     ),
-              semanticLabel: 'Submit clues',
-              child: const Text('Submit clues'),
+              semanticLabel: 'Submit guess',
+              child: const Text('Submit guess'),
             ),
-          ] else if (phase == 'guess' && !mineClue) ...[
-            if (guessed.contains(widget.userId))
-              const Text('Guess locked in.')
-            else ...[
-              PubgetTextField(
-                controller: _guess,
-                label: 'Anime title',
-                enabled: !provider.busy && online,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              PubgetPrimaryButton(
-                onPressed: provider.busy || !online
-                    ? null
-                    : () => provider.submitAction(
-                        gameId: widget.game.id,
-                        actionType: GameActionTypes.guess,
-                        payload: <String, dynamic>{
-                          'title': _guess.text,
-                          'stateVersion': widget.game.stateVersion,
-                        },
-                        clientActionId:
-                            '${widget.game.id}-${widget.game.stateVersion}-guess',
-                      ),
-                semanticLabel: 'Submit guess',
-                child: const Text('Submit guess'),
-              ),
-            ],
-          ] else
-            Text(mineClue ? 'Waiting for guesses.' : GameStrings.waitingTurn),
+          ],
+          Text('You ${scores[widget.userId] ?? 0}'),
+          if (lastReveal != null && lastReveal['title'] is String) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text('Last title: ${lastReveal['title']}'),
+          ],
           if (!online) const Text(GameStrings.offlineAction),
           GameActionFeedback(message: provider.actionFeedback),
         ],

@@ -431,10 +431,6 @@ function createGamesDomain({
   }
 
   async function initializeEngine(gameId) {
-    const engineTypeSnap = await gameRef(db, gameId).get();
-    if (!engineTypeSnap.exists) return;
-    const engine = engineFor(engineTypeSnap.data().type);
-    if (!engine || typeof engine.initialize !== "function") return;
     const playerIds = await activePlayerIds(gameId);
     await db.runTransaction(async (transaction) => {
       const ref = gameRef(db, gameId);
@@ -443,6 +439,8 @@ function createGamesDomain({
       const current = snapshot.data() || {};
       if (current.status !== "active") return;
       if (current.publicState && current.publicState.engine) return;
+      const engine = engineFor(current.type);
+      if (!engine || typeof engine.initialize !== "function") return;
       engine.initialize({
         transaction,
         db,

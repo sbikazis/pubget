@@ -28,7 +28,8 @@ class _AchievementsPageState extends State<AchievementsPage> {
     if (_opened && _openedForUser == uid) return;
     _opened = true;
     _openedForUser = uid;
-    Future<void>.microtask(() => context.read<AchievementProvider>().open(uid));
+    final achievements = context.read<AchievementProvider>();
+    Future<void>.microtask(() => achievements.open(uid));
   }
 
   @override
@@ -56,7 +57,7 @@ class _AchievementsPageState extends State<AchievementsPage> {
         child: ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.md),
           itemCount: state.items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
           itemBuilder: (context, index) {
             final item = state.items[index];
             return _AchievementTile(

@@ -1,15 +1,24 @@
-// functions/src/mafia/winConditionChecker.js
-//
-// ✅ الإصلاح الحرج: finishGame الآن يصفّر hasRunningGame/activeGameId
-// على مستند المجموعة عند انتهاء المباراة بفوز طبيعي، تماماً كما
-// يفعل cancelLobby.js عند الإلغاء. بدون هذا، أي مجموعة تلعب مباراة
-// واحدة تُقفل نهائياً من لعب أي مباراة مافيا أخرى.
+"use strict";
 
 const admin = require("firebase-admin");
 const { distributeRewards } = require("./rewardDistributor");
 const { writeHistory } = require("./historyWriter");
 
 const db = admin.firestore();
+
+function winnerFromAliveTeams(teams) {
+  const list = Array.isArray(teams) ? teams : [];
+  if (list.length === 0) return null;
+  let mafiaCount = 0;
+  let othersCount = 0;
+  for (const team of list) {
+    if (team === "mafias") mafiaCount += 1;
+    else othersCount += 1;
+  }
+  if (mafiaCount === 0) return "citizens";
+  if (mafiaCount >= othersCount) return "mafias";
+  return null;
+}
 
 async function checkWinCondition(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
@@ -22,7 +31,7 @@ async function checkWinCondition(gameId, gameData) {
   const playersSnap = await playersRef.get();
 
   const alivePlayers = playersSnap.docs.filter(
-    (doc) => doc.data().isAlive === true && doc.data().hasLeft !== true
+    (doc) => doc.data().isAlive === true && doc.data().hasLeft !== true,
   );
 
   if (alivePlayers.length === 0) {
@@ -31,28 +40,11 @@ async function checkWinCondition(gameId, gameData) {
   }
 
   const privateSnaps = await Promise.all(
-    alivePlayers.map((doc) => doc.ref.collection("private").doc("data").get())
+    alivePlayers.map((doc) => doc.ref.collection("private").doc("data").get()),
   );
-
-  let mafiaCount = 0;
-  let othersCount = 0;
-
-  privateSnaps.forEach((snap) => {
-    const team = snap.exists ? snap.data().team : "citizens";
-    if (team === "mafias") {
-      mafiaCount += 1;
-    } else {
-      othersCount += 1;
-    }
-  });
-
-  let winner = null;
-  if (mafiaCount === 0) {
-    winner = "citizens";
-  } else if (mafiaCount >= othersCount) {
-    winner = "mafias";
-  }
-
+  const winner = winnerFromAliveTeams(
+    privateSnaps.map((snap) => (snap.exists ? snap.data().team : "citizens")),
+  );
   if (!winner) return;
 
   await finishGame(gameId, gameRef, winner, playersSnap, gameData.groupId);
@@ -64,7 +56,9 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
     const snap = await tx.get(gameRef);
     if (!snap.exists || ["finished", "cancelled"].includes(snap.data().status)) return false;
     tx.update(gameRef, {
-      status: "finished", currentPhase: "finished", winner,
+      status: "finished",
+      currentPhase: "finished",
+      winner,
       endedAt: admin.firestore.FieldValue.serverTimestamp(),
       phaseEndsAt: admin.firestore.FieldValue.delete(),
       phaseTransitionClaim: admin.firestore.FieldValue.delete(),
@@ -84,13 +78,11 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
   });
   if (!claimed) return false;
 
-  // ✅ الإصلاح الحرج: تحرير المجموعة فوراً لتصبح قادرة على استضافة
-  // مباراة مافيا جديدة. بدون هذا السطر، المجموعة تبقى "مقفلة" للأبد.
   const message = winner === "mafias"
-    ? "🔪 تمكنت المافيا من السيطرة الكاملة على القرية... المافيا تفوز!"
+    ? "Mafia controls the village."
     : winner === "citizens"
-      ? "🎉 نجحت القرية في القضاء على كل أفراد المافيا... القرية تفوز!"
-      : "🌫️ انتهت المباراة دون فائز واضح.";
+      ? "Town eliminated every Mafia member."
+      : "The game ended without a winner.";
 
   await eventsRef.doc("game-finished").set({
     type: "GameFinished",
@@ -107,4 +99,4 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
   return true;
 }
 
-module.exports = { checkWinCondition };
+module.exports = { checkWinCondition, winnerFromAliveTeams };

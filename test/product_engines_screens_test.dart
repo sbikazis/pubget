@@ -84,6 +84,7 @@ void main() {
     );
     expect(start.onPressed, isNull);
     expect(find.textContaining('Your role:'), findsNothing);
+    mafia.dispose();
   });
 
   testWidgets('guess character play locks a submitted answer', (tester) async {
@@ -132,12 +133,12 @@ void main() {
 
     expect(find.text('Guess the Character'), findsOneWidget);
     expect(find.text('Mafia'), findsOneWidget);
-    expect(find.text('Difficulty'), findsOneWidget);
+    expect(find.text('Rules', skipOffstage: false), findsOneWidget);
     await tester.ensureVisible(find.text('Mafia'));
     await tester.tap(find.text('Mafia'));
     await tester.pumpAndSettle();
-    expect(find.text('Minimum players'), findsOneWidget);
-    expect(find.text('Difficulty'), findsNothing);
+    expect(find.text('Minimum players', skipOffstage: false), findsOneWidget);
+    expect(find.text('Rules', skipOffstage: false), findsNothing);
   });
 
   testWidgets('expired events hide the submit control', (tester) async {
@@ -160,7 +161,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ended poll'), findsOneWidget);
+    expect(find.text('Ended poll'), findsWidgets);
     expect(find.text(EventStrings.submit), findsNothing);
   });
 

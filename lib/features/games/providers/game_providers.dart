@@ -116,7 +116,6 @@ final class GameProvider extends ChangeNotifier {
   bool _loggedCompleted = false;
   bool _disposed = false;
   String? _userId;
-  String? _openGameId;
 
   PubgetGame? get game => _game;
   List<GameParticipant> get participants => _participants;
@@ -133,7 +132,6 @@ final class GameProvider extends ChangeNotifier {
   Future<void> open(String gameId, {String? userId}) async {
     _state = LoadingState.loading;
     _loggedCompleted = false;
-    _openGameId = gameId;
     _userId = userId ?? _userId;
     notifyListeners();
     await _gameSub?.cancel();
@@ -207,7 +205,7 @@ final class GameProvider extends ChangeNotifier {
     _failure = null;
     _actionFeedback = null;
     _loggedCompleted = false;
-    _openGameId = null;
+    _userId = null;
     _busy = false;
     _state = LoadingState.initial;
     _safeNotify();
@@ -307,6 +305,7 @@ final class GameProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     unawaited(_gameSub?.cancel());
     unawaited(_peopleSub?.cancel());
