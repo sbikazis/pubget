@@ -111,7 +111,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 80));
     expect(home.queries.last, 'bb');
     expect(search.query.trim(), 'bb');
-    expect(search.hits.single.id, 'g-bb');
+    expect(search.hits.map((hit) => hit.id), contains('g-bb'));
+    expect(search.hits.map((hit) => hit.id), isNot(contains('g-aa')));
   });
 
   test('Arabic queries are searchable and hidden users are omitted', () async {

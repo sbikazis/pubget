@@ -124,6 +124,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Sign out'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('العربية'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('العربية'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.byType(SettingsPage))),
