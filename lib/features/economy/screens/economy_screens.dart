@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
-import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/economy_models.dart';
@@ -179,7 +178,8 @@ class _StoreItemDetailsPageState extends State<StoreItemDetailsPage> {
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final economy = context.read<EconomyProvider>();
       if (economy.snapshot == null) await economy.load();
       final item = economy.snapshot?.itemById(widget.itemId);
@@ -439,7 +439,8 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final economy = context.read<EconomyProvider>();
       await economy.load();
       await economy.loadHistory();

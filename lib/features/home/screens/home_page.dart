@@ -47,7 +47,7 @@ class _HomePageState extends State<HomePage> {
     final uid = auth.currentUser?.id;
     if (uid != null) {
       Future<void>.microtask(() => home.load(uid));
-      final economy = Provider.maybeOf<EconomyProvider>(context, listen: false);
+      final economy = maybeEconomy(context, listen: false);
       if (economy != null) {
         Future<void>.microtask(economy.load);
       }
@@ -67,7 +67,7 @@ class _HomePageState extends State<HomePage> {
     final auth = context.watch<AuthProvider>();
     final home = context.watch<HomeProvider>();
     final unread = context.watch<UnreadEngine>();
-    final economy = Provider.maybeOf<EconomyProvider>(context);
+    final economy = maybeEconomy(context);
     final name =
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
@@ -162,7 +162,7 @@ class _HomeAdSlotState extends State<_HomeAdSlot> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final economy = Provider.maybeOf<EconomyProvider>(context, listen: false);
+      final economy = maybeEconomy(context, listen: false);
       setState(() {
         _visible = economy?.showAd(AdPlacement.homeFeed) ?? false;
       });
@@ -171,7 +171,7 @@ class _HomeAdSlotState extends State<_HomeAdSlot> {
 
   @override
   Widget build(BuildContext context) {
-    final economy = Provider.maybeOf<EconomyProvider>(context);
+    final economy = maybeEconomy(context);
     if (_visible == null) return const SizedBox.shrink();
     return AdPlacementView(
       visible: _visible!,

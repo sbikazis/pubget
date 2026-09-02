@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
-import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../ads/ads_service.dart';
@@ -233,5 +233,13 @@ final class EconomyProvider extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     super.dispose();
+  }
+}
+
+EconomyProvider? maybeEconomy(BuildContext context, {bool listen = true}) {
+  try {
+    return Provider.of<EconomyProvider>(context, listen: listen);
+  } on ProviderNotFoundException {
+    return null;
   }
 }

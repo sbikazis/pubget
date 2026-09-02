@@ -134,7 +134,7 @@ class _ProfileContent extends StatelessWidget {
     final fansCount = profile.isOwner
         ? own?.fansCount ?? 0
         : public?.fansCount ?? 0;
-    final economy = Provider.maybeOf<EconomyProvider>(context);
+    final economy = maybeEconomy(context);
     final frameId = profile.isOwner
         ? economy?.equipped.frameId
         : public?.equippedFrameId;

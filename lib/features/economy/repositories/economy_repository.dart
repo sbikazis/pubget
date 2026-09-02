@@ -1,4 +1,3 @@
-import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../models/economy_models.dart';
 

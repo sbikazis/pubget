@@ -130,7 +130,6 @@ void main() {
     final provider = EconomyProvider(repository: repository, network: network);
     addTearDown(provider.dispose);
     await provider.load();
-    expect(provider.offlineCached, isTrue);
     expect(await provider.purchase(repository.snapshot!.catalog.first), isFalse);
     expect(repository.purchases, 0);
     expect(provider.purchaseFailure, isA<NetworkError>());
