@@ -10,6 +10,7 @@ enum HomeSectionKind {
   recommendedPeople,
   editsPlaceholder,
   eventsPlaceholder,
+  gamesPlaceholder,
   animePlaceholder,
 }
 

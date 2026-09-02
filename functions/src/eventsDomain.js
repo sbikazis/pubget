@@ -373,8 +373,10 @@ async function loadPermissions(transaction, db, groupId, uid) {
   ]);
   if (!group.exists) return { member: false, manageEvents: false, role: null, missingGroup: true };
   if (!member.exists) return { member: false, manageEvents: false, role: null };
-  const role = member.data().role || "member";
-  const roleSnap = await transaction.get(roleRef(db, groupId, role));
+  const data = member.data() || {};
+  const role = data.role || "member";
+  const customRoleId = validString(data.customRoleId, 128) ? data.customRoleId.trim() : null;
+  const roleSnap = await transaction.get(roleRef(db, groupId, customRoleId || role));
   const permissions = roleSnap.exists && Array.isArray(roleSnap.data().permissions)
     ? roleSnap.data().permissions
     : (ROLE_PERMISSIONS[role] || []);

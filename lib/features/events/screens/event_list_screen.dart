@@ -59,8 +59,7 @@ class _EventListScreenState extends State<EventListScreen> {
         ),
         floatingActionButton:
             groupId == null ||
-                context.watch<GroupProvider>().membership?.canManageEvents !=
-                    true
+                context.watch<GroupProvider>().canManageEvents != true
             ? null
             : FloatingActionButton.extended(
                 onPressed: () => AppNavigation.go(
@@ -81,11 +80,7 @@ class _EventListScreenState extends State<EventListScreen> {
             icon: Icons.celebration_outlined,
             action:
                 groupId != null &&
-                    context
-                            .watch<GroupProvider>()
-                            .membership
-                            ?.canManageEvents ==
-                        true
+                    context.watch<GroupProvider>().canManageEvents == true
                 ? PubgetPrimaryButton(
                     onPressed: () => AppNavigation.go(
                       context,

@@ -172,6 +172,11 @@ abstract final class EventStrings {
   static const share = 'Share event';
   static const copyLink = 'Copy link';
   static const copied = 'Event link copied';
+  static const saveDraft = 'Save draft';
+  static const addQuestion = 'Add question';
+  static const removeQuestion = 'Remove question';
+  static const addAnswer = 'Add answer';
+  static const correctAnswer = 'Correct answer';
   static const seeAll = 'See all events';
   static const groupEvents = 'Group events';
   static const endEvent = 'End event';

@@ -563,6 +563,14 @@ class _GroupMenu extends StatelessWidget {
               ),
             ),
             _MenuTile(
+              icon: Icons.sports_esports_outlined,
+              label: 'Group games',
+              onTap: () => AppNavigation.go(
+                context,
+                '/games?groupId=${Uri.encodeComponent(groupId)}',
+              ),
+            ),
+            _MenuTile(
               icon: Icons.perm_media_outlined,
               label: 'Group media',
               onTap: () =>

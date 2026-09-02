@@ -39,6 +39,7 @@ const {
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
+const { createGamesDomain } = require("./src/gamesDomain");
 
 initializeApp();
 
@@ -108,6 +109,12 @@ const notificationBuilder = createNotificationBuilder({
   FieldValue,
 });
 const eventsDomain = createEventsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+});
+const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
@@ -307,6 +314,46 @@ exports.leaveEvent = onCall(
 exports.submitEventResponse = onCall(
   { region: "us-central1" },
   eventsDomain.submitEventResponse,
+);
+exports.createGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.createGame,
+);
+exports.initializeGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.initializeGame,
+);
+exports.joinGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.joinGame,
+);
+exports.leaveGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.leaveGame,
+);
+exports.startGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.startGame,
+);
+exports.pauseGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.pauseGame,
+);
+exports.resumeGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.resumeGame,
+);
+exports.submitGameAction = onCall(
+  { region: "us-central1" },
+  gamesDomain.submitGameAction,
+);
+exports.endGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.endGame,
+);
+exports.cancelGame = onCall(
+  { region: "us-central1" },
+  gamesDomain.cancelGame,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

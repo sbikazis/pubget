@@ -79,7 +79,11 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             tooltip: EventStrings.share,
             onPressed: () {
               context.read<EventProvider>().share(widget.eventId);
-              EventLinks.share(context, widget.eventId);
+              EventLinks.share(
+                context,
+                widget.eventId,
+                title: event?.title,
+              );
             },
             icon: const Icon(Icons.ios_share),
           ),
@@ -403,9 +407,10 @@ class _ManageActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final member = context.watch<GroupProvider>().membership;
     final uid = context.watch<AuthProvider>().currentUser?.id;
-    final canManage = member?.canManageEvents == true || event.creatorId == uid;
+    final canManage =
+        context.watch<GroupProvider>().canManageEvents ||
+        event.creatorId == uid;
     if (!canManage) return const SizedBox.shrink();
     final provider = context.read<EventProvider>();
     return Padding(

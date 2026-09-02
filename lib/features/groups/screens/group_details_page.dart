@@ -125,7 +125,7 @@ class _Details extends StatelessWidget {
             semanticLabel: 'Open group events',
             child: const Text('Group events'),
           ),
-          if (provider.membership?.canManageEvents == true) ...[
+          if (provider.canManageEvents) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               onPressed: () => AppNavigation.go(
@@ -134,6 +134,26 @@ class _Details extends StatelessWidget {
               ),
               semanticLabel: 'Create event',
               child: const Text('Create event'),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              '/games?groupId=${Uri.encodeComponent(group.id)}',
+            ),
+            semanticLabel: 'Open group games',
+            child: const Text('Group games'),
+          ),
+          if (provider.membership?.canManageGames == true) ...[
+            const SizedBox(height: AppSpacing.sm),
+            PubgetSecondaryButton(
+              onPressed: () => AppNavigation.go(
+                context,
+                '/games/create?groupId=${Uri.encodeComponent(group.id)}',
+              ),
+              semanticLabel: 'Create game',
+              child: const Text('Create game'),
             ),
           ],
           const SizedBox(height: AppSpacing.lg),
