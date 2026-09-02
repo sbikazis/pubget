@@ -12,9 +12,13 @@ void main() {
       ),
     );
 
+    expect(find.text('Guide'), findsOneWidget);
     expect(find.text('Groups'), findsWidgets);
+
+    await tester.enterText(find.byType(TextField), 'respect');
+    await tester.pump();
     expect(find.text('Respect and Fans'), findsOneWidget);
-    expect(find.text('Coins and Store'), findsOneWidget);
+    expect(find.text('Edits'), findsNothing);
 
     await tester.enterText(find.byType(TextField), 'mafia');
     await tester.pump();
