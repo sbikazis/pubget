@@ -3,11 +3,15 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
-import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../auth_validators.dart';
+import '../providers/auth_draft_store.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/auth_google_button.dart';
+import '../widgets/auth_or_divider.dart';
+import '../widgets/auth_password_field.dart';
 import 'auth_page_shell.dart';
 
 class LoginPage extends StatefulWidget {
@@ -18,11 +22,28 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _email = TextEditingController();
+  late final TextEditingController _email;
   final _password = TextEditingController();
   String? _emailError;
   String? _passwordError;
-  bool _hidePassword = true;
+  var _seededEmail = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _email = TextEditingController();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_seededEmail) return;
+    _seededEmail = true;
+    final draft = context.read<AuthDraftStore>().email;
+    if (_email.text.isEmpty && draft.isNotEmpty) {
+      _email.text = draft;
+    }
+  }
 
   @override
   void dispose() {
@@ -35,99 +56,97 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final network = context.watch<NetworkService>();
-    final loading = auth.state == LoadingState.loading;
+    final loading = auth.isBusy;
+    final offline = network.isOffline;
     return AuthPageShell(
       title: 'Welcome back',
       subtitle: 'Sign in to continue your Pubget story.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (!network.isOnline) ...[
-            const PubgetOfflineState(
-              title: 'You are offline',
-              message: 'Reconnect before signing in.',
+      footer: PubgetTextButton(
+        onPressed: loading
+            ? null
+            : () => AppNavigation.go(context, '/register'),
+        semanticLabel: 'Create a new account',
+        child: const Text('New to Pubget? Create an account'),
+      ),
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            if (offline)
+              const PubgetInlineBanner(
+                title: 'You are offline',
+                message: 'Reconnect before signing in.',
+                icon: Icons.cloud_off_outlined,
+              )
+            else if (auth.failure != null)
+              PubgetInlineBanner.error(
+                title: 'Sign-in failed',
+                message: auth.failure!.message,
+              ),
+            if (offline || auth.failure != null)
+              const SizedBox(height: AppSpacing.md),
+            PubgetTextField(
+              key: const Key('login-email'),
+              controller: _email,
+              label: 'Email',
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              errorText: _emailError,
+              enabled: !loading,
+              autocorrect: false,
+              enableSuggestions: false,
+              autofillHints: const <String>[AutofillHints.email],
+              onChanged: (value) =>
+                  context.read<AuthDraftStore>().setEmail(value),
             ),
             const SizedBox(height: AppSpacing.md),
-          ] else if (auth.failure != null) ...[
-            PubgetErrorState(
-              title: 'Sign-in failed',
-              message: auth.failure!.message,
+            AuthPasswordField(
+              key: const Key('login-password'),
+              controller: _password,
+              label: 'Password',
+              errorText: _passwordError,
+              enabled: !loading,
+              onSubmitted: (_) => _submit(),
+            ),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: PubgetTextButton(
+                onPressed: loading ? null : _openReset,
+                semanticLabel: 'Reset forgotten password',
+                child: const Text('Forgot password?'),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PubgetPrimaryButton(
+              key: const Key('login-submit'),
+              onPressed: offline || loading ? null : _submit,
+              semanticLabel: 'Sign in with email',
+              loading: loading,
+              child: const Text('Sign in'),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const AuthOrDivider(),
+            const SizedBox(height: AppSpacing.lg),
+            AuthGoogleButton(
+              onPressed: offline || loading ? null : _signInWithGoogle,
+              semanticLabel: 'Continue with Google',
             ),
             const SizedBox(height: AppSpacing.md),
+            Text(
+              'You stay signed in on this device.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
-          PubgetTextField(
-            key: const Key('login-email'),
-            controller: _email,
-            label: 'Email',
-            keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-            errorText: _emailError,
-            enabled: !loading,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetTextField(
-            key: const Key('login-password'),
-            controller: _password,
-            label: 'Password',
-            obscureText: _hidePassword,
-            textInputAction: TextInputAction.done,
-            errorText: _passwordError,
-            enabled: !loading,
-            onSubmitted: (_) => _submit(),
-            suffixIcon: PubgetIconButton(
-              icon: _hidePassword
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              tooltip: _hidePassword ? 'Show password' : 'Hide password',
-              onPressed: loading
-                  ? null
-                  : () => setState(() => _hidePassword = !_hidePassword),
-            ),
-          ),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: PubgetTextButton(
-              onPressed: loading ? null : _resetPassword,
-              semanticLabel: 'Reset forgotten password',
-              child: const Text('Forgot password?'),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetPrimaryButton(
-            key: const Key('login-submit'),
-            onPressed: !network.isOnline || loading ? null : _submit,
-            semanticLabel: 'Sign in with email',
-            loading: loading,
-            child: const Text('Sign in'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetSecondaryButton(
-            onPressed: !network.isOnline || loading ? null : _signInWithGoogle,
-            semanticLabel: 'Continue with Google',
-            leadingIcon: Icons.account_circle_outlined,
-            child: const Text('Continue with Google'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetTextButton(
-            onPressed: loading
-                ? null
-                : () => AppNavigation.go(context, '/register'),
-            semanticLabel: 'Create a new account',
-            child: const Text('New to Pubget? Create an account'),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   bool _validate() {
-    final email = _email.text.trim();
-    final password = _password.text;
     setState(() {
-      _emailError = !email.contains('@') ? 'Enter a valid email.' : null;
-      _passwordError = password.length < 6
-          ? 'Password must be at least 6 characters.'
-          : null;
+      _emailError = AuthValidators.email(_email.text);
+      _passwordError = AuthValidators.password(_password.text);
     });
     return _emailError == null && _passwordError == null;
   }
@@ -135,7 +154,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _submit() async {
     if (!_validate()) return;
     final result = await context.read<AuthProvider>().signInWithEmail(
-      email: _email.text,
+      email: AuthValidators.normalizeEmail(_email.text),
       password: _password.text,
     );
     if (!mounted) return;
@@ -148,20 +167,8 @@ class _LoginPageState extends State<LoginPage> {
     if (result is Success) await AppNavigation.go(context, '/splash');
   }
 
-  Future<void> _resetPassword() async {
-    if (!_email.text.contains('@')) {
-      setState(() => _emailError = 'Enter your email first.');
-      return;
-    }
-    final result = await context.read<AuthProvider>().sendPasswordResetEmail(
-      email: _email.text,
-    );
-    if (!mounted) return;
-    result.fold(
-      onSuccess: (_) =>
-          PubgetSnackbars.showSuccess(context, 'Password reset email sent.'),
-      onFailure: (failure) =>
-          PubgetSnackbars.showError(context, failure.message),
-    );
+  Future<void> _openReset() async {
+    context.read<AuthDraftStore>().setEmail(_email.text);
+    await AppNavigation.go(context, '/forgot-password');
   }
 }

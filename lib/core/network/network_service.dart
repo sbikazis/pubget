@@ -19,9 +19,12 @@ class NetworkService extends ChangeNotifier {
   NetworkStatus _status = NetworkStatus.offline;
   int _refreshGeneration = 0;
   bool _disposed = false;
+  bool _resolved = false;
 
   NetworkStatus get status => _status;
+  bool get hasResolved => _resolved;
   bool get isOnline => _status == NetworkStatus.online;
+  bool get isOffline => _resolved && _status == NetworkStatus.offline;
 
   void start() {
     if (_timer != null) return;
@@ -40,8 +43,9 @@ class NetworkService extends ChangeNotifier {
     if (_disposed || generation != _refreshGeneration) return;
 
     final nextStatus = online ? NetworkStatus.online : NetworkStatus.offline;
-    if (_status == nextStatus) return;
+    if (_resolved && _status == nextStatus) return;
     _status = nextStatus;
+    _resolved = true;
     notifyListeners();
   }
 

@@ -9,8 +9,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
 import '../core/network/network_service.dart';
-import '../core/loading/loading_state.dart';
 import '../core/theme/app_theme.dart';
+import '../features/authentication/auth_route_guard.dart';
+import '../features/authentication/providers/auth_draft_store.dart';
 import '../features/authentication/providers/auth_provider.dart';
 import '../features/authentication/providers/onboarding_provider.dart';
 import '../features/authentication/repositories/auth_repository.dart';
@@ -18,6 +19,7 @@ import '../features/authentication/repositories/firebase_auth_repository.dart';
 import '../features/authentication/repositories/firebase_user_repository.dart';
 import '../features/authentication/repositories/unavailable_repositories.dart';
 import '../features/authentication/repositories/user_repository.dart';
+import '../features/authentication/screens/forgot_password_page.dart';
 import '../features/authentication/screens/login_page.dart';
 import '../features/authentication/screens/onboarding_page.dart';
 import '../features/authentication/screens/register_page.dart';
@@ -137,6 +139,9 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<GameRepository>.value(value: repositories.$14),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
+        provider.ChangeNotifierProvider<AuthDraftStore>(
+          create: (_) => AuthDraftStore(),
+        ),
         provider.ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
               AuthProvider(repository: context.read<AuthRepository>()),
@@ -288,6 +293,7 @@ class PubgetApp extends StatelessWidget {
                 '/splash': SplashPage(firebaseState: firebaseState),
                 '/login': const LoginPage(),
                 '/register': const RegisterPage(),
+                '/forgot-password': const ForgotPasswordPage(),
                 '/terms': const TermsPage(),
                 '/onboarding': const OnboardingPage(),
                 '/home': const HomePage(),
@@ -355,6 +361,14 @@ class PubgetApp extends StatelessWidget {
                 auth,
                 onboarding,
               ]),
+              routeGuard: (path) => AuthRouteGuard.resolve(
+                path: path,
+                isInitialized: auth.isInitialized,
+                authState: auth.state,
+                isAuthenticated: auth.isAuthenticated,
+                onboardingState: onboarding.state,
+                canEnterHome: onboarding.canEnterHome,
+              ),
               routeGuard: (path) {
                 final isProtected =
                     path == '/home' ||

@@ -109,15 +109,51 @@ final class OnboardingProvider extends ChangeNotifier {
     );
   }
 
-  Future<Result<PubgetUser>> skip(AuthUser authUser) => saveProfile(
-    authUser: authUser,
-    username: _profile?.username,
-    displayName: _profile?.displayName,
-    avatarUrl: _profile?.avatarUrl,
-    bio: _profile?.bio,
-    favoriteAnimes: _profile?.favoriteAnimes ?? const <String>[],
-    isProfileCompleted: false,
-  );
+  Future<Result<PubgetUser>> skip(
+    AuthUser authUser, {
+    String? username,
+    String? displayName,
+    String? avatarUrl,
+    String? bio,
+    List<String> favoriteAnimes = const <String>[],
+  }) async {
+    final result = await saveProfile(
+      authUser: authUser,
+      username: username,
+      displayName: displayName,
+      avatarUrl: avatarUrl,
+      bio: bio,
+      favoriteAnimes: favoriteAnimes,
+      isProfileCompleted: false,
+    );
+    if (result is FailureResult<PubgetUser> && result.failure is NetworkError) {
+      final local = PubgetUser(
+        id: authUser.id,
+        email: authUser.email,
+        username: _clean(username) ?? _profile?.username,
+        displayName:
+            _clean(displayName) ??
+            _profile?.displayName ??
+            authUser.displayName,
+        avatarUrl:
+            _clean(avatarUrl) ?? _profile?.avatarUrl ?? authUser.avatarUrl,
+        bio: _clean(bio) ?? _profile?.bio,
+        favoriteAnimes: List<String>.unmodifiable(
+          favoriteAnimes.isEmpty
+              ? _profile?.favoriteAnimes ?? const <String>[]
+              : favoriteAnimes,
+        ),
+        createdAt: _profile?.createdAt ?? DateTime.now(),
+        isProfileCompleted: false,
+        hasSkippedOnboarding: true,
+      );
+      _profile = local;
+      _failure = null;
+      _setState(LoadingState.loaded);
+      return Success<PubgetUser>(local);
+    }
+    return result;
+  }
 
   void clearFailure() {
     if (_failure == null) return;

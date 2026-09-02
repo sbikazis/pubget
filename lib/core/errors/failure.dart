@@ -22,6 +22,10 @@ final class ValidationError extends Failure {
   const ValidationError([super.message = 'The supplied data is invalid.']);
 }
 
+final class CancelledError extends Failure {
+  const CancelledError([super.message = 'That action was cancelled.']);
+}
+
 final class UnknownError extends Failure {
   const UnknownError([super.message = 'An unexpected error occurred.']);
 }

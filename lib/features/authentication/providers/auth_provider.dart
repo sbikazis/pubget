@@ -18,12 +18,15 @@ final class AuthProvider extends ChangeNotifier {
   Failure? _failure;
   bool _initialized = false;
   bool _disposed = false;
+  bool _resetting = false;
 
   AuthUser? get currentUser => _currentUser;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get isAuthenticated => _currentUser != null;
   bool get isInitialized => _initialized;
+  bool get isBusy => _state == LoadingState.loading;
+  bool get isResetting => _resetting;
   Stream<AuthUser?> get authStateChanges => _repository.authStateChanges;
 
   Future<void> initialize() async {
@@ -61,12 +64,11 @@ final class AuthProvider extends ChangeNotifier {
       _runAuthAction(_repository.signInWithGoogle);
 
   Future<Result<void>> sendPasswordResetEmail({required String email}) async {
-    _setState(LoadingState.loading);
+    _resetting = true;
+    notifyListeners();
     final result = await _repository.sendPasswordResetEmail(email: email);
-    result.fold(
-      onSuccess: (_) => _setState(LoadingState.loaded),
-      onFailure: _setFailure,
-    );
+    _resetting = false;
+    notifyListeners();
     return result;
   }
 
@@ -100,7 +102,13 @@ final class AuthProvider extends ChangeNotifier {
         _currentUser = user;
         _setState(LoadingState.loaded);
       },
-      onFailure: _setFailure,
+      onFailure: (failure) {
+        if (failure is CancelledError) {
+          _setState(LoadingState.loaded);
+          return;
+        }
+        _setFailure(failure);
+      },
     );
     return result;
   }

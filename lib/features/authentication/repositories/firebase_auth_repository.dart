@@ -148,6 +148,13 @@ final class FirebaseAuthRepository implements AuthRepository {
         _ => UnknownError(error.message ?? 'Authentication failed.'),
       };
     }
+    if (error is GoogleSignInException) {
+      return switch (error.code) {
+        GoogleSignInExceptionCode.canceled ||
+        GoogleSignInExceptionCode.interrupted => const CancelledError(),
+        _ => UnknownError(error.description ?? 'Google sign-in failed.'),
+      };
+    }
     if (error is firebase_auth.FirebaseException &&
         error.code == 'network-request-failed') {
       return const NetworkError('Check your connection and try again.');

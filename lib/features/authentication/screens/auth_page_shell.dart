@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
+import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../widgets/auth_atmosphere.dart';
+import '../widgets/auth_brand_header.dart';
 
 class AuthPageShell extends StatelessWidget {
   const AuthPageShell({
@@ -9,6 +14,10 @@ class AuthPageShell extends StatelessWidget {
     required this.subtitle,
     required this.child,
     this.leading,
+    this.trailing,
+    this.footer,
+    this.primaryAction,
+    this.compactBrand = false,
     super.key,
   });
 
@@ -16,41 +25,148 @@ class AuthPageShell extends StatelessWidget {
   final String subtitle;
   final Widget child;
   final Widget? leading;
+  final Widget? trailing;
+  final Widget? footer;
+  final Widget? primaryAction;
+  final bool compactBrand;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(leading: leading, title: const Text('Pubget')),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: PubgetCard(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      backgroundColor: AppColors.lightBackground,
+      body: AuthAtmosphere(
+        child: SafeArea(
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.sm,
+                  AppSpacing.xs,
+                  AppSpacing.sm,
+                  0,
+                ),
+                child: Row(
                   children: <Widget>[
-                    Icon(
-                      Icons.auto_awesome,
-                      color: theme.colorScheme.secondary,
-                      size: 36,
+                    SizedBox(
+                      width: 48,
+                      child: leading ?? const SizedBox.shrink(),
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    Text(title, style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(subtitle, style: theme.textTheme.bodyMedium),
-                    const SizedBox(height: AppSpacing.xl),
-                    child,
+                    const Spacer(),
+                    if (trailing != null) trailing!,
                   ],
                 ),
               ),
-            ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      compactBrand ? AppSpacing.xs : AppSpacing.sm,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          AuthBrandHeader(
+                            title: title,
+                            subtitle: subtitle,
+                            compact: compactBrand,
+                          ),
+                          SizedBox(
+                            height: compactBrand
+                                ? AppSpacing.lg
+                                : AppSpacing.xl,
+                          ),
+                          _AuthGlassPanel(child: child),
+                          if (footer != null) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            footer!,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (primaryAction != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    0,
+                    AppSpacing.xl,
+                    AppSpacing.lg,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: primaryAction,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AuthGlassPanel extends StatelessWidget {
+  const _AuthGlassPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            AppColors.gold.withValues(alpha: 0.55),
+            AppColors.royalPurple.withValues(alpha: 0.35),
+          ],
+        ),
+        boxShadow: AppShadows.lightCard,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(1.2),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.lightSurface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(AppRadius.xl - 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AuthBackButton extends StatelessWidget {
+  const AuthBackButton({
+    required this.onPressed,
+    this.tooltip = 'Back',
+    super.key,
+  });
+
+  final VoidCallback onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return PubgetIconButton(
+      icon: Icons.arrow_back,
+      tooltip: tooltip,
+      onPressed: onPressed,
     );
   }
 }

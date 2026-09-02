@@ -17,6 +17,7 @@ enum PubgetAvatarSize {
 class PubgetAvatar extends StatelessWidget {
   const PubgetAvatar({
     this.imageUrl,
+    this.image,
     this.name,
     this.size = PubgetAvatarSize.medium,
     this.onTap,
@@ -24,6 +25,7 @@ class PubgetAvatar extends StatelessWidget {
   });
 
   final String? imageUrl;
+  final ImageProvider? image;
   final String? name;
   final PubgetAvatarSize size;
   final VoidCallback? onTap;
@@ -41,7 +43,10 @@ class PubgetAvatar extends StatelessWidget {
       radius: size.value / 2,
       backgroundColor: theme.colorScheme.primaryContainer,
       foregroundColor: theme.colorScheme.onPrimaryContainer,
-      child: imageUrl == null || imageUrl!.isEmpty
+      backgroundImage: image,
+      child: image != null
+          ? null
+          : imageUrl == null || imageUrl!.isEmpty
           ? (_initial == null
                 ? Icon(Icons.person_outline, size: size.value * 0.5)
                 : Text(

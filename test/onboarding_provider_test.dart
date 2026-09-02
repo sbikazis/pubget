@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
@@ -46,5 +47,23 @@ void main() {
     expect(result.isSuccess, isTrue);
     expect(repository.avatarUploads, 1);
     expect(provider.profile?.avatarUrl, 'https://example.com/avatar.jpg');
+  });
+
+  test('skip still lets the user through when saving is offline', () async {
+    final repository = FakeUserRepository()
+      ..failure = const NetworkError('Check your connection and try again.');
+    final provider = OnboardingProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final result = await provider.skip(
+      authUser,
+      username: 'fan',
+      displayName: 'Fan',
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(provider.canEnterHome, isTrue);
+    expect(provider.isProfileCompleted, isFalse);
+    expect(provider.failure, isNull);
   });
 }

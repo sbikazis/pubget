@@ -39,4 +39,12 @@ void main() {
 
     await refresh;
   });
+
+  test('network service stays unresolved until the first probe finishes', () {
+    final service = NetworkService(probe: () async => true);
+    expect(service.hasResolved, isFalse);
+    expect(service.isOffline, isFalse);
+    expect(service.isOnline, isFalse);
+    service.dispose();
+  });
 }

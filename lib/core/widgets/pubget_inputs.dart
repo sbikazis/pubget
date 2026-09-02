@@ -20,6 +20,11 @@ class PubgetTextField extends StatelessWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.autofocus = false,
+    this.autocorrect = true,
+    this.enableSuggestions = true,
+    this.textCapitalization = TextCapitalization.none,
+    this.autofillHints,
+    this.focusNode,
     super.key,
   });
 
@@ -39,6 +44,11 @@ class PubgetTextField extends StatelessWidget {
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final bool autofocus;
+  final bool autocorrect;
+  final bool enableSuggestions;
+  final TextCapitalization textCapitalization;
+  final Iterable<String>? autofillHints;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +63,11 @@ class PubgetTextField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       autofocus: autofocus,
+      autocorrect: autocorrect,
+      enableSuggestions: enableSuggestions,
+      textCapitalization: textCapitalization,
+      autofillHints: autofillHints,
+      focusNode: focusNode,
       textAlign: TextAlign.start,
       decoration: InputDecoration(
         labelText: label,
