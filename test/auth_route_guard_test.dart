@@ -81,6 +81,9 @@ void main() {
         canEnterHome: true,
       ),
       '/login',
+    );
+  });
+
   test('store and premium routes are protected', () {
     expect(
       AuthRouteGuard.resolve(
