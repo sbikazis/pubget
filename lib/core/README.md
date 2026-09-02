@@ -29,9 +29,20 @@ letting Firebase exceptions reach the UI. Failures are categorized as:
 - `NotFoundError`
 - `ValidationError`
 - `UnknownError`
+- `TimeoutError`
+- `RateLimitedError`
+- `UnavailableError`
+- `MalformedDataError`
 
-Providers translate a `FailureResult` into user-facing state without
-reimplementing Firebase error parsing.
+The extra failure types were added for external catalog APIs (Anime Hub).
+Providers still map `FailureResult` into user-facing `LoadingState` without
+exposing raw exception text.
+
+## Caching
+
+`core/caching/ttl_cache.dart` provides an in-memory TTL cache. Anime Hub is
+the first consumer. Fresh entries skip the remote source; expired entries may
+still be served when offline.
 
 ## Loading states
 

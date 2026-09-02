@@ -198,6 +198,25 @@ AppRoute _routeFromUri(Uri uri) {
       },
     );
   }
+  if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'anime') {
+    if (uri.pathSegments.length == 1) {
+      return ParameterizedRoute(
+        path: '/anime',
+        parameters: uri.queryParameters,
+      );
+    }
+    final second = uri.pathSegments[1];
+    if (second == 'browse' || second == 'genre' || second == 'season') {
+      return ParameterizedRoute(
+        path: '/anime/$second',
+        parameters: uri.queryParameters,
+      );
+    }
+    return ParameterizedRoute(
+      path: '/anime/details',
+      parameters: <String, String>{
+        ...uri.queryParameters,
+        'animeId': second,
   if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'game') {
     return ParameterizedRoute(
       path: '/game',
