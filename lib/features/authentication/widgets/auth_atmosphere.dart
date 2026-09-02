@@ -26,12 +26,12 @@ class AuthAtmosphere extends StatelessWidget {
                   ? const <Color>[
                       AppColors.royalNight,
                       AppColors.royalDusk,
-                      Color(0xFF1A0F18),
+                      AppColors.royalEmber,
                     ]
                   : const <Color>[
-                      Color(0xFF2A1658),
+                      AppColors.royalHorizon,
                       AppColors.royalTwilight,
-                      Color(0xFF24143A),
+                      AppColors.royalViolet,
                     ],
               stops: const <double>[0, 0.46, 1],
             ),

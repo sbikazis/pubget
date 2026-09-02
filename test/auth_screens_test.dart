@@ -203,8 +203,9 @@ void main() {
   });
 
   testWidgets('login ignores duplicate submits while loading', (tester) async {
-    final repository = FakeAuthRepository()
-      ..authDelay = const Duration(milliseconds: 400);
+    final repository = FakeAuthRepository(
+      authFailure: const ValidationError('The email or password is incorrect.'),
+    )..authDelay = const Duration(milliseconds: 400);
     addTearDown(repository.close);
     await pumpAuthScreen(
       tester,

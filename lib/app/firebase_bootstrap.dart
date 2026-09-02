@@ -91,13 +91,6 @@ abstract final class FirebaseBootstrap {
 
   static void _logInitializationFailure(Object error, StackTrace stackTrace) {
     debugPrint('Firebase initialization failed: $error');
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'firebase_bootstrap',
-        silent: true,
-      ),
-    );
+    debugPrint('$stackTrace');
   }
 }

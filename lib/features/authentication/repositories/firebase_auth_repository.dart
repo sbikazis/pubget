@@ -193,13 +193,8 @@ final class FirebaseAuthRepository implements AuthRepository {
 
   static void _logUnexpectedAuthError(Object error, StackTrace? stackTrace) {
     debugPrint('Unexpected authentication error: $error');
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'authentication',
-        silent: true,
-      ),
-    );
+    if (stackTrace != null) {
+      debugPrint('$stackTrace');
+    }
   }
 }

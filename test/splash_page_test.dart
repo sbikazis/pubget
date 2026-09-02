@@ -49,6 +49,12 @@ void main() {
     final network = NetworkService(probe: () async => true);
     addTearDown(network.dispose);
     await network.refresh();
+    final delegate = AppRouterDelegate(
+      homePage: const SplashPage(
+        firebaseState: FirebaseInitializationState.initializedForTests(),
+      ),
+      domainPages: const <String, Widget>{'/login': LoginPage()},
+    );
 
     await tester.pumpWidget(
       MultiProvider(
@@ -64,14 +70,12 @@ void main() {
             create: (_) => OnboardingProvider(repository: FakeUserRepository()),
           ),
         ],
-        child: MaterialApp.router(
+        child: MaterialApp(
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
-          routerConfig: AppRouter.createConfig(
-            homePage: const SplashPage(
-              firebaseState: FirebaseInitializationState.initializedForTests(),
-            ),
-            domainPages: const <String, Widget>{'/login': LoginPage()},
+          home: Router(
+            routerDelegate: delegate,
+            routeInformationParser: AppRouteInformationParser(),
           ),
         ),
       ),
