@@ -116,7 +116,6 @@ test.beforeEach(async () => {
     await admin.doc("fanWorks/fw-public/reports/fw-public_bob").set({
       reporterId: "bob", reason: "spam", details: "", createdAt: new Date(),
     });
-    });
   });
 });
 test.after(() => env.cleanup());
