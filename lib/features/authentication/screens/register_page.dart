@@ -65,7 +65,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final offline = network.isOffline;
     return AuthPageShell(
       title: 'Create your account',
-      subtitle: 'A few details now. You can finish your profile later.',
+      subtitle: 'Join Pubget. You can finish your profile after registration.',
       compactBrand: true,
       footer: PubgetTextButton(
         onPressed: loading ? null : () => AppNavigation.go(context, '/login'),

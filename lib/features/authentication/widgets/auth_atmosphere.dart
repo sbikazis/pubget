@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -10,44 +12,62 @@ class AuthAtmosphere extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final direction = Directionality.of(context);
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                AppColors.royalPurplePale,
-                AppColors.lightBackground,
-                AppColors.goldPale,
-              ],
-              stops: <double>[0, 0.52, 1],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: isDark
+                  ? const <Color>[
+                      AppColors.royalNight,
+                      AppColors.royalDusk,
+                      Color(0xFF1A0F18),
+                    ]
+                  : const <Color>[
+                      Color(0xFF2A1658),
+                      AppColors.royalTwilight,
+                      Color(0xFF24143A),
+                    ],
+              stops: const <double>[0, 0.46, 1],
             ),
           ),
         ),
-        Positioned(
-          top: -80,
-          right: -60,
+        const CustomPaint(painter: _AuthLightRayPainter(), size: Size.infinite),
+        const CustomPaint(painter: _AuthParticlePainter(), size: Size.infinite),
+        Positioned.directional(
+          textDirection: direction,
+          top: -110,
+          end: -80,
           child: _GlowOrb(
-            diameter: 220,
-            color: AppColors.royalPurple.withValues(alpha: 0.16),
+            diameter: 280,
+            color: AppColors.royalPurpleLight.withValues(
+              alpha: isDark ? 0.22 : 0.28,
+            ),
           ),
         ),
-        Positioned(
-          bottom: -40,
-          left: -50,
+        Positioned.directional(
+          textDirection: direction,
+          bottom: -70,
+          start: -90,
           child: _GlowOrb(
-            diameter: 180,
-            color: AppColors.gold.withValues(alpha: 0.18),
+            diameter: 240,
+            color: AppColors.gold.withValues(alpha: isDark ? 0.14 : 0.18),
           ),
         ),
-        const Positioned(
-          top: 36,
-          right: 18,
+        Positioned.directional(
+          textDirection: direction,
+          bottom: 24,
+          end: 12,
           child: IgnorePointer(
-            child: Opacity(opacity: 0.07, child: PubgetToriiMark(size: 168)),
+            child: Opacity(
+              opacity: isDark ? 0.10 : 0.12,
+              child: const PubgetToriiMark(size: 188),
+            ),
           ),
         ),
         child,
@@ -67,7 +87,78 @@ class _GlowOrb extends StatelessWidget {
     return Container(
       width: diameter,
       height: diameter,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: <Color>[color, color.withValues(alpha: 0)],
+        ),
+      ),
     );
   }
+}
+
+class _AuthLightRayPainter extends CustomPainter {
+  const _AuthLightRayPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader =
+          LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              AppColors.goldSheen.withValues(alpha: 0.10),
+              AppColors.goldSheen.withValues(alpha: 0),
+            ],
+          ).createShader(
+            Rect.fromLTWH(
+              size.width * 0.28,
+              0,
+              size.width * 0.44,
+              size.height * 0.62,
+            ),
+          );
+    final path = Path()
+      ..moveTo(size.width * 0.42, 0)
+      ..lineTo(size.width * 0.58, 0)
+      ..lineTo(size.width * 0.70, size.height * 0.58)
+      ..lineTo(size.width * 0.30, size.height * 0.58)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _AuthParticlePainter extends CustomPainter {
+  const _AuthParticlePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = AppColors.goldSheen.withValues(alpha: 0.16);
+    const seeds = <double>[
+      0.12,
+      0.18,
+      0.27,
+      0.33,
+      0.41,
+      0.48,
+      0.56,
+      0.63,
+      0.71,
+      0.79,
+      0.86,
+      0.93,
+    ];
+    for (var i = 0; i < seeds.length; i++) {
+      final dx = size.width * ((math.sin(seeds[i] * 12) + 1) / 2);
+      final dy = size.height * seeds[i];
+      canvas.drawCircle(Offset(dx, dy), i.isEven ? 1.6 : 1.1, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

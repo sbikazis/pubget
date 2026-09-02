@@ -36,49 +36,13 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     if (!widget.firebaseState.isReady) {
-      return Scaffold(
-        body: AuthAtmosphere(
-          child: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const PubgetToriiMark(size: 88),
-                      const SizedBox(height: AppSpacing.lg),
-                      Text(
-                        'PUBGET',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          letterSpacing: 6,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.royalPurpleDark,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.xl),
-                      PubgetInlineBanner.error(
-                        title: 'Authentication is unavailable here',
-                        message:
-                            widget.firebaseState.message ??
-                            'Firebase could not be initialized.',
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      PubgetSecondaryButton(
-                        onPressed: () => AppNavigation.go(context, '/login'),
-                        semanticLabel: 'Open sign in',
-                        child: const Text('Open sign in'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+      return _MessageScaffold(
+        offline: false,
+        title: 'Pubget could not start',
+        message:
+            widget.firebaseState.message ??
+            FirebaseBootstrap.unexpectedInitializationMessage,
       );
     }
 
@@ -106,19 +70,28 @@ class _SplashPageState extends State<SplashPage> {
     }
 
     return Scaffold(
+      backgroundColor: AppColors.royalNight,
       body: AuthAtmosphere(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const PubgetToriiMark(size: 96),
+              const PubgetToriiMark(size: 104),
               const SizedBox(height: AppSpacing.lg),
               Text(
                 'PUBGET',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  letterSpacing: 6,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  letterSpacing: 7,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.royalPurpleDark,
+                  color: AppColors.goldPale,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Premium Anime Community',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  letterSpacing: 1.4,
+                  color: AppColors.goldSheen,
                 ),
               ),
               const SizedBox(height: AppSpacing.xl),
@@ -127,16 +100,18 @@ class _SplashPageState extends State<SplashPage> {
                 child: LinearProgressIndicator(
                   minHeight: 3,
                   borderRadius: BorderRadius.circular(99),
-                  color: theme.colorScheme.secondary,
-                  backgroundColor: AppColors.royalPurple.withValues(
-                    alpha: 0.16,
+                  color: AppColors.goldSheen,
+                  backgroundColor: AppColors.royalPurpleLight.withValues(
+                    alpha: 0.22,
                   ),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
                 'Preparing your experience…',
-                style: theme.textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.goldPale.withValues(alpha: 0.86),
+                ),
               ),
             ],
           ),
@@ -204,17 +179,18 @@ class _MessageScaffold extends StatelessWidget {
     required this.offline,
     required this.title,
     required this.message,
-    required this.onRetry,
+    this.onRetry,
   });
 
   final bool offline;
   final String title;
   final String message;
-  final VoidCallback onRetry;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.royalNight,
       body: AuthAtmosphere(
         child: SafeArea(
           child: Center(
@@ -225,7 +201,7 @@ class _MessageScaffold extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    const PubgetToriiMark(size: 72),
+                    const PubgetToriiMark(size: 88),
                     const SizedBox(height: AppSpacing.xl),
                     if (offline)
                       PubgetInlineBanner(

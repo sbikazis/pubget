@@ -19,12 +19,13 @@ class AuthBrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final markSize = compact ? 56.0 : 72.0;
+    final onAtmosphere = AppColors.goldPale;
+    final markSize = compact ? 64.0 : 84.0;
     return Column(
       children: <Widget>[
         TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0.86, end: 1),
-          duration: const Duration(milliseconds: 700),
+          tween: Tween<double>(begin: 0.90, end: 1),
+          duration: const Duration(milliseconds: 640),
           curve: Curves.easeOutCubic,
           builder: (context, value, child) {
             return Opacity(
@@ -38,17 +39,26 @@ class AuthBrandHeader extends StatelessWidget {
         Text(
           'PUBGET',
           style: theme.textTheme.titleSmall?.copyWith(
-            letterSpacing: 6,
+            letterSpacing: 7,
             fontWeight: FontWeight.w700,
-            color: AppColors.royalPurpleDark,
+            color: onAtmosphere,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Premium Anime Community',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 1.4,
+            color: AppColors.goldSheen.withValues(alpha: 0.92),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
         Container(
-          width: 36,
+          width: 42,
           height: 3,
           decoration: BoxDecoration(
-            color: theme.colorScheme.secondary,
+            color: AppColors.goldSheen,
             borderRadius: BorderRadius.circular(99),
           ),
         ),
@@ -56,16 +66,18 @@ class AuthBrandHeader extends StatelessWidget {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: compact
-              ? theme.textTheme.headlineSmall
-              : theme.textTheme.headlineMedium,
+          style:
+              (compact
+                      ? theme.textTheme.headlineSmall
+                      : theme.textTheme.headlineMedium)
+                  ?.copyWith(color: AppColors.white),
         ),
         const SizedBox(height: AppSpacing.sm),
         Text(
           subtitle,
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: AppColors.lightTextMuted,
+            color: AppColors.goldPale.withValues(alpha: 0.86),
           ),
         ),
       ],

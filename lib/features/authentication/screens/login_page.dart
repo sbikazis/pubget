@@ -60,7 +60,8 @@ class _LoginPageState extends State<LoginPage> {
     final offline = network.isOffline;
     return AuthPageShell(
       title: 'Welcome back',
-      subtitle: 'Sign in to continue your Pubget story.',
+      subtitle:
+          'Sign in to continue your story in the premium anime community.',
       footer: PubgetTextButton(
         onPressed: loading
             ? null
