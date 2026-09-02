@@ -235,6 +235,13 @@ class _ProfileContent extends StatelessWidget {
             leadingIcon: Icons.person_add_alt_1_outlined,
             child: Text('Friend requests (${social.incomingRequests.length})'),
           ),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(context, '/achievements'),
+            semanticLabel: 'Open achievements',
+            leadingIcon: Icons.emoji_events_outlined,
+            child: const Text('Achievements'),
+          ),
           if (economy != null) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(

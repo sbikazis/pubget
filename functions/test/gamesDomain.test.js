@@ -156,9 +156,11 @@ function seedGroup({ role = "founder" } = {}) {
     "users/alice": { username: "Alice" },
     "users/bob": { username: "Bob" },
     "users/charlie": { username: "Charlie" },
+    "users/dave": { username: "Dave" },
     "groups/g1": { founderId: "alice", name: "G" },
     "groups/g1/members/alice": { role, userId: "alice" },
     "groups/g1/members/bob": { role: "member", userId: "bob" },
+    "groups/g1/members/dave": { role: "member", userId: "dave" },
     "groups/g1/roles/founder": { permissions: ["manageGames", "manageEvents"] },
     "groups/g1/roles/member": { permissions: [] },
   };
@@ -289,6 +291,8 @@ test("founder can create, members can join once, and start is idempotent", async
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`games/${created.gameId}`).status, "active");
+  assert.equal(db.store.get(`games/${created.gameId}`).publicState.engine, "guessCharacter");
+  assert.ok(db.store.get(`games/${created.gameId}/secret/round`).correctId);
   const startedEvents = [...db.store.entries()]
     .filter(([path, data]) => path.includes("/events/") && data.type === "game_started");
   assert.equal(startedEvents.length, 1);
@@ -303,14 +307,15 @@ test("join after start and actions from non-participants are rejected", async ()
     auth: { uid: "alice" },
     data: { type: "animeChain", title: "Chain", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await assert.rejects(
-    games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } }),
+    games.joinGame({ auth: { uid: "dave" }, data: { gameId: created.gameId } }),
     (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
-      auth: { uid: "bob" },
+      auth: { uid: "dave" },
       data: { gameId: created.gameId, actionType: "submit" },
     }),
     (error) => error.code === "permission-denied",
@@ -327,26 +332,26 @@ test("submitAction is idempotent and rejects impersonation", async () => {
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: "alice" },
     data: {
       gameId: created.gameId,
-      actionType: "guess",
-      payload: { value: "Naruto" },
+      actionType: "submit",
+      payload: { emojis: ["🍜", "🦊", "🍥"] },
       clientActionId: "act-1",
     },
   });
   await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: "alice" },
     data: {
       gameId: created.gameId,
-      actionType: "guess",
-      payload: { value: "Sasuke" },
+      actionType: "submit",
+      payload: { emojis: ["🔥", "🔥", "🔥"] },
       clientActionId: "act-1",
     },
   });
   const actions = [...db.store.entries()].filter(([path]) => path.includes("/actions/"));
   assert.equal(actions.length, 1);
-  assert.equal(actions[0][1].payload.value, "Naruto");
+  assert.deepEqual(actions[0][1].payload.emojis, ["🍜", "🦊", "🍥"]);
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "bob" },
@@ -384,6 +389,7 @@ test("pause, resume, end, and cancel follow the state machine", async () => {
     auth: { uid: "alice" },
     data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.pauseGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`games/${created.gameId}`).status, "paused");
@@ -436,6 +442,7 @@ test("games never write group chat messages", async () => {
     auth: { uid: "alice" },
     data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   const chatWrites = [...db.store.keys()].filter((path) => path.includes("/messages/"));
   assert.equal(chatWrites.length, 0);

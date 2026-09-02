@@ -406,6 +406,7 @@ function createFanWorksDomain({
   notificationBuilder,
   storage,
   economy,
+  achievements,
 }) {
   async function saveFanWorkDraft(request) {
     const uid = requireAuth(request, HttpsError);
@@ -529,6 +530,14 @@ function createFanWorksDomain({
         type: "earn_publish",
         referenceId: workId,
         source: "fan_work",
+      });
+    }
+    if (!alreadyPublished && achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "fan_work_published",
+        userId: uid,
+        source: "fan_work",
+        metadata: { workId },
       });
     }
     return { workId, alreadyPublished };

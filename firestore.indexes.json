@@ -436,6 +436,24 @@
       ]
     },
     {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deadlineAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "fanWorks",
       "queryScope": "COLLECTION",
       "fields": [

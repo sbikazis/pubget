@@ -9,6 +9,7 @@
 const admin = require("firebase-admin");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { createEconomyDomain } = require("../economyDomain");
+const { createAchievementsDomain } = require("../achievementsDomain");
 
 const db = admin.firestore();
 
@@ -22,6 +23,19 @@ function economyService() {
     });
   }
   return economy;
+}
+
+let achievements;
+function achievementsService() {
+  if (!achievements) {
+    achievements = createAchievementsDomain({
+      db,
+      FieldValue: admin.firestore.FieldValue,
+      HttpsError,
+      economy: economyService(),
+    });
+  }
+  return achievements;
 }
 
 /**
@@ -56,9 +70,21 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
   });
 
   await economyService().grantDomainRewards([...winningUserIds], {
-    type: "earn_event",
+    type: "earn_game",
     referenceId: gameId,
     source: "mafia",
+  });
+  await achievementsService().evaluate({
+    type: "game_won",
+    userIds: [...winningUserIds],
+    source: "mafia",
+    metadata: { gameId },
+  });
+  await achievementsService().evaluate({
+    type: "game_completed",
+    userIds: playersSnap.docs.map((doc) => doc.id),
+    source: "mafia",
+    metadata: { gameId },
   });
   await gameRef.update({
     rewardsDistributed: true,

@@ -8,6 +8,8 @@
 // toGameActivity(event) through the existing system-activity contract.
 
 const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const { engineFor } = require("./gameEngines");
+const { secretRef, isExpired } = require("./gameEngines/helpers");
 
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
@@ -28,19 +30,28 @@ const GAME_TYPE_REGISTRY = {
     name: "Guess the Character",
     version: 1,
     implemented: true,
-    capabilities: { usesRounds: true, usesScoring: true, minPlayers: 1, maxPlayers: 16 },
+    capabilities: {
+      usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 2,
+      defaultRounds: 5, defaultTimer: 20,
+    },
   },
   animeChain: {
     name: "Anime Chain",
     version: 1,
     implemented: true,
-    capabilities: { usesRounds: true, usesScoring: false, minPlayers: 1, maxPlayers: 16 },
+    capabilities: {
+      usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 8,
+      defaultRounds: 8, defaultTimer: 25,
+    },
   },
   emojiAnimeGuess: {
     name: "Emoji Anime Guess",
     version: 1,
     implemented: true,
-    capabilities: { usesRounds: false, usesScoring: true, minPlayers: 1, maxPlayers: 16 },
+    capabilities: {
+      usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 4,
+      defaultRounds: 1, defaultTimer: 25,
+    },
   },
   mafia: {
     name: "Mafia",
@@ -143,12 +154,6 @@ function clampInt(value, fallback, min, max) {
 function normalizeConfiguration(raw, spec) {
   const input = raw && typeof raw === "object" ? raw : {};
   const caps = spec.capabilities || {};
-  const minPlayers = clampInt(
-    input.minPlayers, caps.minPlayers || 1, 1, 64,
-  );
-  const maxPlayers = clampInt(
-    input.maxPlayers, caps.maxPlayers || 16, minPlayers, 64,
-  );
   const extra = input.extra && typeof input.extra === "object" &&
     !Array.isArray(input.extra)
     ? Object.fromEntries(
@@ -162,10 +167,31 @@ function normalizeConfiguration(raw, spec) {
       }).filter(Boolean),
     )
     : {};
+  const minCap = caps.minPlayers || 1;
+  const maxCap = caps.maxPlayers || 16;
+  const minPlayers = clampInt(input.minPlayers, minCap, minCap, maxCap);
+  const maxPlayers = clampInt(input.maxPlayers, maxCap, minPlayers, maxCap);
+  const difficultySource = input.difficulty || extra.difficulty;
+  const difficulty = ["easy", "normal", "hard"].includes(difficultySource)
+    ? difficultySource
+    : "normal";
   return {
     minPlayers,
     maxPlayers,
     usesRounds: input.usesRounds === true || caps.usesRounds === true,
+    roundCount: clampInt(
+      input.roundCount ?? extra.roundCount,
+      caps.defaultRounds || 5,
+      3,
+      10,
+    ),
+    timerSeconds: clampInt(
+      input.timerSeconds ?? extra.timerSeconds,
+      caps.defaultTimer || 20,
+      10,
+      60,
+    ),
+    difficulty,
     extra,
   };
 }
@@ -307,8 +333,12 @@ function writeEvent(transaction, db, FieldValue, {
 }
 
 function createGamesDomain({
-  db, FieldValue, HttpsError, notificationBuilder, economy,
+  db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
+  clock, random,
 }) {
+  const nowOf = () => (clock && typeof clock.now === "function" ? clock.now() : new Date());
+  const rng = typeof random === "function" ? random : Math.random;
+
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
     let recipientIds;
@@ -354,6 +384,117 @@ function createGamesDomain({
       body,
       pushWorthy,
     });
+  }
+
+  async function activePlayerIds(gameId) {
+    return uniqueRecipientIds(await listActiveParticipantIds(db, gameId)).sort();
+  }
+
+  async function afterComplete(gameId, game, result) {
+    if (!game) return;
+    await notifyGame({
+      kind: "completed",
+      gameId,
+      groupId: game.groupId,
+      actorId: game.creatorId,
+      title: game.title,
+      type: game.type,
+    });
+    const winnerIds = Array.isArray(result && result.winnerIds)
+      ? result.winnerIds
+      : (Array.isArray(game.result && game.result.winnerIds) ? game.result.winnerIds : []);
+    const participants = await activePlayerIds(gameId);
+    if (economy && typeof economy.grantDomainRewards === "function" && winnerIds.length > 0) {
+      await economy.grantDomainRewards(winnerIds, {
+        type: "earn_game",
+        referenceId: gameId,
+        source: "game",
+        metadata: { gameType: game.type || "" },
+      });
+    }
+    if (achievements && typeof achievements.evaluate === "function") {
+      if (winnerIds.length > 0) {
+        await achievements.evaluate({
+          type: "game_won",
+          userIds: winnerIds,
+          source: "game",
+          metadata: { gameId, gameType: game.type || "" },
+        });
+      }
+      await achievements.evaluate({
+        type: "game_completed",
+        userIds: participants.length ? participants : winnerIds,
+        source: "game",
+        metadata: { gameId },
+      });
+    }
+  }
+
+  async function initializeEngine(gameId) {
+    const engineTypeSnap = await gameRef(db, gameId).get();
+    if (!engineTypeSnap.exists) return;
+    const engine = engineFor(engineTypeSnap.data().type);
+    if (!engine || typeof engine.initialize !== "function") return;
+    const playerIds = await activePlayerIds(gameId);
+    await db.runTransaction(async (transaction) => {
+      const ref = gameRef(db, gameId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() || {};
+      if (current.status !== "active") return;
+      if (current.publicState && current.publicState.engine) return;
+      engine.initialize({
+        transaction,
+        db,
+        gameRef: ref,
+        FieldValue,
+        game: current,
+        gameId,
+        playerIds,
+        random: rng,
+        now: nowOf(),
+      });
+    });
+  }
+
+  async function resolveExpiredGame(gameId) {
+    const playerIds = await activePlayerIds(gameId);
+    let outcome = { completed: false, result: null, game: null };
+    await db.runTransaction(async (transaction) => {
+      const ref = gameRef(db, gameId);
+      const [snapshot, secretSnap] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(secretRef(ref)),
+      ]);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() || {};
+      if (current.status !== "active") return;
+      if (!isExpired(current.deadlineAt, nowOf())) return;
+      const engine = engineFor(current.type);
+      if (!engine || typeof engine.onTimeout !== "function") return;
+      const result = engine.onTimeout({
+        transaction,
+        db,
+        gameRef: ref,
+        FieldValue,
+        HttpsError,
+        game: current,
+        gameId,
+        playerIds,
+        random: rng,
+        now: nowOf(),
+        secretSnap,
+      }) || { completed: false };
+      outcome = {
+        completed: result.completed === true,
+        result: result.result || current.result,
+        game: current,
+      };
+    });
+    if (outcome.completed) {
+      await afterComplete(gameId, outcome.game, outcome.result);
+    }
+    return outcome;
   }
 
   async function createGame(request) {
@@ -403,6 +544,10 @@ function createGamesDomain({
         participantsCount: asDraft ? 0 : 1,
         result: null,
         currentRoundNumber: null,
+        publicState: null,
+        currentPhase: status,
+        stateVersion: 0,
+        deadlineAt: null,
         createdAt: now,
         updatedAt: now,
         startedAt: null,
@@ -657,6 +802,7 @@ function createGamesDomain({
         type: result.game.type,
       });
     }
+    await initializeEngine(request.data.gameId.trim());
     return { ok: true };
   }
 
@@ -698,27 +844,11 @@ function createGamesDomain({
       }),
     });
     if (!result.skipped && result.game) {
-      await notifyGame({
-        kind: "completed",
-        gameId: request.data.gameId.trim(),
-        groupId: result.game.groupId,
-        actorId: request.auth.uid,
-        title: result.game.title,
-        type: result.game.type,
-      });
-      if (economy && typeof economy.grantDomainRewards === "function") {
-        const winners = Array.isArray(result.game.result && result.game.result.winnerIds)
-          ? result.game.result.winnerIds
-          : [];
-        if (winners.length > 0) {
-          await economy.grantDomainRewards(winners, {
-            type: "earn_game",
-            referenceId: request.data.gameId.trim(),
-            source: "game",
-            metadata: { gameType: result.game.type || "" },
-          });
-        }
-      }
+      await afterComplete(
+        request.data.gameId.trim(),
+        result.game,
+        result.game.result,
+      );
     }
     return { ok: true };
   }
@@ -748,11 +878,15 @@ function createGamesDomain({
     const person = participantRef(db, gameId, uid);
     const actionId = action.clientActionId || db.collection("_").doc().id;
     const stored = actionRef(db, gameId, actionId);
+    const refSecret = secretRef(ref);
+    let completed = null;
+    let completedGame = null;
     await db.runTransaction(async (transaction) => {
-      const [snapshot, existing, prior] = await Promise.all([
+      const [snapshot, existing, prior, secretSnap] = await Promise.all([
         transaction.get(ref),
         transaction.get(person),
         transaction.get(stored),
+        transaction.get(refSecret),
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
       const current = snapshot.data() || {};
@@ -787,9 +921,50 @@ function createGamesDomain({
         actorId: uid,
         payload: { actionType: action.actionType, actionId },
       });
-      transaction.update(ref, { updatedAt: now });
+      const engine = engineFor(current.type);
+      if (engine && typeof engine.applyAction === "function") {
+        const outcome = engine.applyAction({
+          transaction,
+          db,
+          gameRef: ref,
+          FieldValue,
+          HttpsError,
+          game: current,
+          gameId,
+          uid,
+          action,
+          now: nowOf(),
+          secretSnap,
+          random: rng,
+        }) || {};
+        if (outcome.completed) {
+          completed = outcome.result;
+          completedGame = current;
+        }
+      } else {
+        transaction.update(ref, { updatedAt: now });
+      }
     });
+    if (completed && completedGame) {
+      await afterComplete(gameId, completedGame, completed);
+    }
     return { ok: true, actionId };
+  }
+
+  async function processExpiredGames() {
+    const snapshot = await db.collection("games")
+      .where("status", "==", "active")
+      .limit(100)
+      .get();
+    const now = nowOf();
+    const docs = (snapshot.docs || []).filter((doc) => {
+      const data = doc.data() || {};
+      return isExpired(data.deadlineAt, now);
+    });
+    for (const doc of docs) {
+      await resolveExpiredGame(doc.id);
+    }
+    return { ok: true, scanned: (snapshot.docs || []).length, expired: docs.length };
   }
 
   return {
@@ -803,6 +978,7 @@ function createGamesDomain({
     submitGameAction,
     endGame,
     cancelGame,
+    processExpiredGames,
   };
 }
 

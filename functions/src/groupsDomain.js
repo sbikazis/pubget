@@ -105,7 +105,7 @@ function permissionFor(member, role, permission) {
     (role && role.permissions && role.permissions.includes(permission)));
 }
 
-function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
+function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievements }) {
   function requireGroupId(request) {
     const groupId = request.data && request.data.groupId;
     if (!validString(groupId, 128)) {
@@ -158,6 +158,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
       }
     });
     const created = await groupRef.get();
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "group_created",
+        userId: uid,
+        source: "group",
+        metadata: { groupId: groupRef.id },
+      });
+    }
     return { ok: true, groupId: groupRef.id, group: created.data() };
   }
 

@@ -141,10 +141,12 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   if (event.status == EventStatus.ended)
                     const Text(EventStrings.ended),
                   const SizedBox(height: AppSpacing.lg),
-                  if (!event.isReadOnly) _Participation(event: event),
-                  if (event.isHistorical && event.result != null)
+                  if (event.isOpen && !event.isExpired())
+                    _Participation(event: event),
+                  if ((event.isHistorical || event.isExpired()) &&
+                      event.result != null)
                     _ResultCard(event: event),
-                  if (!event.isReadOnly) ...[
+                  if (event.isInteractable()) ...[
                     const SizedBox(height: AppSpacing.lg),
                     _ResponseForm(
                       event: event,

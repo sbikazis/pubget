@@ -722,6 +722,30 @@ service cloud.firestore {
         allow read: if gameVisible();
         allow create, update, delete: if false;
       }
+      match /secret/{docId} {
+        allow read, write: if false;
+      }
+      match /private/{uid} {
+        allow read: if gameVisible() && self(uid);
+        allow write: if false;
+      }
+    }
+
+    match /game_history/{gameId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /achievements/{achievementId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /user_achievements/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /items/{achievementId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
     }
 
     match /edits/{editId} {

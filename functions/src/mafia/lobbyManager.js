@@ -116,34 +116,13 @@ async function beginGame(gameId, gameData) {
 }
 
 async function sendSystemMessage({ groupId, text, systemEventType, gameId }) {
-  const messagesRef = db.collection("groups").doc(groupId).collection("messages");
-
-  await messagesRef.add({
-    senderId: "system",
-    senderName: "النظام",
-    senderAvatar: "",
-    senderIsPremium: false,
-    senderRole: null,
-    text,
-    mediaUrl: null,
-    mediaType: null,
-    type: "systemEvent",
-    gameId: gameId ?? null,
-    gameSlot: null,
-    gameAction: null,
-    systemEventType,
-    replyToId: null,
-    replyText: null,
-    replyToSenderName: null,
-    replyToMediaUrl: null,
-    reactions: null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    isRead: false,
-    isDelivered: true,
-    audioDuration: null,
-    editThumbnail: null,
-    editAnimeTitle: null,
-    editId: null,
-    isEdited: false,
-  });
+  if (!gameId) return;
+  await db.collection("mafia_games").doc(gameId).collection("events")
+    .doc(`${systemEventType || "system"}-${gameId}`)
+    .set({
+      type: systemEventType || "System",
+      message: text,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      payload: { groupId: groupId || null },
+    }, { merge: true });
 }

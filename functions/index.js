@@ -13,7 +13,7 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { randomUUID } = require("node:crypto");
 const {
@@ -42,6 +42,8 @@ const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createEconomyDomain } = require("./src/economyDomain");
+const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
 
@@ -84,17 +86,6 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   await publicRef.set(buildPublicProfile(data));
 });
 
-const socialGraph = createSocialGraph({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-});
-const groupsDomain = createGroupsDomain({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  randomUUID,
-});
 const groupChat = createGroupChat({
   db: getFirestore(),
   FieldValue,
@@ -116,12 +107,33 @@ const economyDomain = createEconomyDomain({
   HttpsError,
   notificationBuilder,
 });
+const achievementsDomain = createAchievementsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  economy: economyDomain,
+  notificationBuilder,
+});
+const socialGraph = createSocialGraph({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  achievements: achievementsDomain,
+});
+const groupsDomain = createGroupsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  randomUUID,
+  achievements: achievementsDomain,
+});
 const eventsDomain = createEventsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
   economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
@@ -129,6 +141,14 @@ const gamesDomain = createGamesDomain({
   HttpsError,
   notificationBuilder,
   economy: economyDomain,
+  achievements: achievementsDomain,
+});
+const mafiaDomain = createMafiaDomain({
+  db: getFirestore(),
+  FieldValue,
+  Timestamp,
+  HttpsError,
+  notificationBuilder,
 });
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
@@ -137,6 +157,7 @@ const fanWorksDomain = createFanWorksDomain({
   notificationBuilder,
   storage: getStorage().bucket(),
   economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -155,6 +176,7 @@ const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+  achievements: achievementsDomain,
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -203,6 +225,7 @@ exports.processEditVideo = onObjectFinalized(
     db: getFirestore(),
     bucket: getStorage().bucket(),
     economy: economyDomain,
+    achievements: achievementsDomain,
   }),
 );
 
@@ -376,6 +399,26 @@ exports.endGame = onCall(
 exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
+);
+exports.processExpiredGames = onSchedule(
+  { region: "us-central1", schedule: "every 1 minutes" },
+  gamesDomain.processExpiredGames,
+);
+exports.createMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.createMafiaGame,
+);
+exports.joinMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.joinMafiaGame,
+);
+exports.startMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.startMafiaGame,
+);
+exports.getAchievements = onCall(
+  { region: "us-central1" },
+  achievementsDomain.getAchievements,
 );
 exports.saveFanWorkDraft = onCall(
   { region: "us-central1" },

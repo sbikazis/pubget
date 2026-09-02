@@ -139,6 +139,14 @@ final class GuideTopic {
       body:
           'Mafia is a private-role game. The server owns timers, roles, and '
           'results. Your client never receives another player’s secret role.',
+      route: '/games',
+    ),
+    GuideTopic(
+      title: 'Achievements',
+      body:
+          'Milestones unlock on the server when you create a group, publish, '
+          'make a friend, or win. Rewards are granted once.',
+      route: '/achievements',
     ),
     GuideTopic(
       title: 'Events',
