@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
@@ -11,8 +12,15 @@ import '../models/event_type_registry.dart';
 import '../providers/event_providers.dart';
 
 abstract final class EventLinks {
+  static const host = 'pubget-aaf27.web.app';
+
   static String path(String eventId) =>
       '/event/${Uri.encodeComponent(eventId)}';
+
+  static String canonical(String eventId) => 'https://$host${path(eventId)}';
+
+  @visibleForTesting
+  static Future<void> Function(String text, String? subject)? debugNativeShare;
 
   static Future<void> copy(BuildContext context, String eventId) async {
     await Clipboard.setData(ClipboardData(text: path(eventId)));
@@ -22,8 +30,28 @@ abstract final class EventLinks {
     ).showSnackBar(const SnackBar(content: Text(EventStrings.copied)));
   }
 
-  static Future<void> share(BuildContext context, String eventId) {
-    return copy(context, eventId);
+  static Future<void> share(
+    BuildContext context,
+    String eventId, {
+    String? title,
+  }) async {
+    final link = canonical(eventId);
+    try {
+      if (debugNativeShare != null) {
+        await debugNativeShare!(link, title);
+        return;
+      }
+      await SharePlus.instance.share(
+        ShareParams(
+          text: link,
+          title: title ?? EventStrings.share,
+          subject: title ?? EventStrings.share,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      await copy(context, eventId);
+    }
   }
 
   static void open(BuildContext context, String eventId) {

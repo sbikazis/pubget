@@ -216,6 +216,12 @@ AppRoute _routeFromUri(Uri uri) {
       parameters: <String, String>{
         ...uri.queryParameters,
         'animeId': second,
+  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'game') {
+    return ParameterizedRoute(
+      path: '/game',
+      parameters: <String, String>{
+        ...uri.queryParameters,
+        'gameId': uri.pathSegments[1],
       },
     );
   }

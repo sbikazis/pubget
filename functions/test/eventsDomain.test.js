@@ -50,6 +50,7 @@ function applyUpdate(current, data) {
 
 function createFakeDb(seed = {}) {
   const store = new Map(Object.entries(clone(seed)));
+  let txQueue = Promise.resolve();
   const makeCollection = (base) => ({
     doc(id) {
       const resolvedId = id || `auto-${store.size + 1}`;
@@ -127,44 +128,54 @@ function createFakeDb(seed = {}) {
       return makeCollection(name);
     },
     async runTransaction(callback) {
-      const transaction = {
-        async get(ref) {
-          const data = store.get(ref.path);
-          return {
-            exists: data !== undefined,
-            ref,
-            data: () => (data === undefined ? undefined : clone(data)),
-          };
-        },
-        create(ref, data) {
-          if (store.has(ref.path)) throw new Error("already-exists");
-          store.set(ref.path, clone(data));
-        },
-        set(ref, data) {
-          store.set(ref.path, clone(data));
-        },
-        update(ref, data) {
-          if (!store.has(ref.path)) throw new Error("not-found");
-          store.set(ref.path, applyUpdate(store.get(ref.path), data));
-        },
-        delete(ref) {
-          store.delete(ref.path);
-        },
-      };
-      return callback(transaction);
+      const run = txQueue.then(async () => {
+        const transaction = {
+          async get(ref) {
+            const data = store.get(ref.path);
+            return {
+              exists: data !== undefined,
+              ref,
+              data: () => (data === undefined ? undefined : clone(data)),
+            };
+          },
+          create(ref, data) {
+            if (store.has(ref.path)) {
+              const error = new Error("already-exists");
+              error.code = "already-exists";
+              throw error;
+            }
+            store.set(ref.path, clone(data));
+          },
+          set(ref, data) {
+            store.set(ref.path, clone(data));
+          },
+          update(ref, data) {
+            if (!store.has(ref.path)) throw new Error("not-found");
+            store.set(ref.path, applyUpdate(store.get(ref.path), data));
+          },
+          delete(ref) {
+            store.delete(ref.path);
+          },
+        };
+        return callback(transaction);
+      });
+      txQueue = run.then(() => undefined, () => undefined);
+      return run;
     },
   };
 }
 
-function seedGroup({ role = "founder" } = {}) {
+function seedGroup({ role = "founder", extra = {} } = {}) {
   return {
     "users/alice": { username: "Alice" },
     "users/bob": { username: "Bob" },
+    "users/charlie": { username: "Charlie" },
     "groups/g1": { founderId: "alice", name: "G" },
     "groups/g1/members/alice": { role, userId: "alice" },
     "groups/g1/members/bob": { role: "member", userId: "bob" },
     "groups/g1/roles/founder": { permissions: ["manageEvents"] },
     "groups/g1/roles/member": { permissions: [] },
+    ...extra,
   };
 }
 
@@ -556,6 +567,11 @@ test("event start notifies group members, not only the creator", async () => {
   assert.ok(start);
   assert.ok(start.recipientIds.includes("alice"));
   assert.ok(start.recipientIds.includes("bob"));
+  assert.equal(start.recipientIds.includes("charlie"), false);
+  assert.equal(start.pushWorthy, true);
+  assert.equal(start.destination, `/event/${draft.eventId}`);
+  assert.equal(start.id, `event-start-${draft.eventId}`);
+  assert.equal(new Set(start.recipientIds).size, start.recipientIds.length);
 });
 
 test("event end notifies participants who joined", async () => {
@@ -587,4 +603,199 @@ test("event end notifies participants who joined", async () => {
   assert.ok(ended.recipientIds.includes("bob"));
   assert.ok(ended.recipientIds.includes("alice"));
   assert.equal(ended.recipientIds.includes("gone"), false);
+  assert.equal(ended.pushWorthy, false);
+  assert.equal(ended.destination, "/event/old");
+  assert.equal(ended.id, "event-end-old");
+  await events.processEventLifecycle();
+  assert.equal(recorder.sent.filter((item) => item.type === "event_ended").length, 1);
+});
+
+async function publishPoll(events, { allowUpdate = false, extraOptions } = {}) {
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Q",
+      groupId: "g1",
+      question: "Q?",
+      options: extraOptions || ["A", "B"],
+      configuration: {
+        allowUpdate,
+        question: "Q?",
+        options: extraOptions || ["A", "B"],
+      },
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  return draft.eventId;
+}
+
+test("first submission increments the tally once", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events);
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId, responseData: { optionId: "opt-1" } },
+  });
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.submissions, 1);
+  assert.equal(stored.tally.votes["opt-1"], 1);
+  assert.equal(stored.tally.votes["opt-2"], 0);
+});
+
+test("duplicate submission is rejected when updates are disallowed", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events, { allowUpdate: false });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId, responseData: { optionId: "opt-1" } },
+  });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-2" } },
+    }),
+    (error) => error.code === "already-exists",
+  );
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.votes["opt-1"], 1);
+  assert.equal(stored.tally.votes["opt-2"], 0);
+});
+
+test("concurrent in-flight updates keep a single consistent tally", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events, { allowUpdate: true });
+  await Promise.all([
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-2" } },
+    }),
+  ]);
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.submissions, 1);
+  const votes = stored.tally.votes;
+  assert.equal((votes["opt-1"] || 0) + (votes["opt-2"] || 0), 1);
+  assert.ok((votes["opt-1"] === 1 && votes["opt-2"] === 0) ||
+    (votes["opt-1"] === 0 && votes["opt-2"] === 1));
+});
+
+test("concurrent first submissions from two members both count", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "users/carol": { username: "Carol" },
+      "groups/g1/members/carol": { role: "member", userId: "carol" },
+    },
+  }));
+  const events = handlers(db);
+  const eventId = await publishPoll(events);
+  await Promise.all([
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+    events.submitEventResponse({
+      auth: { uid: "carol" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+  ]);
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 2);
+  assert.equal(stored.tally.submissions, 2);
+  assert.equal(stored.tally.votes["opt-1"], 2);
+});
+
+test("captain default role can create an event", async () => {
+  const db = createFakeDb(seedGroup({ role: "captain" }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("custom role with manageEvents can create an event", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "groups/g1/members/bob": { role: "member", userId: "bob", customRoleId: "moderator" },
+      "groups/g1/roles/moderator": { permissions: ["manageEvents"] },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "bob" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("custom role without manageEvents cannot create an event", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "groups/g1/roles/captain": { permissions: ["invite"] },
+    },
+    role: "captain",
+  }));
+  const events = handlers(db);
+  await assert.rejects(
+    events.saveEventDraft({
+      auth: { uid: "alice" },
+      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("non-members cannot create an event", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  await assert.rejects(
+    events.saveEventDraft({
+      auth: { uid: "charlie" },
+      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("founder can create even when the role document has no permissions", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: { "groups/g1/roles/founder": { permissions: [] } },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("quiz configuration accepts multiple ordered questions", () => {
+  const config = validateConfiguration("quiz", {
+    questions: [
+      { id: "q-a", prompt: "First?", options: ["A", "B"], correctIndex: 0 },
+      { id: "q-b", prompt: "Second?", options: ["C", "D", "E"], correctOptionId: "opt-2" },
+    ],
+  });
+  assert.equal(config.questions.length, 2);
+  assert.equal(config.questions[0].id, "q-a");
+  assert.equal(config.questions[1].correctOptionId, "opt-2");
+  assert.equal(config.allowUpdate, false);
 });

@@ -66,6 +66,7 @@ final class HomeProvider extends ChangeNotifier {
     HomeSectionKind.recommendedPeople,
     HomeSectionKind.editsPlaceholder,
     HomeSectionKind.eventsPlaceholder,
+    HomeSectionKind.gamesPlaceholder,
     HomeSectionKind.animePlaceholder,
   ];
 
@@ -260,6 +261,7 @@ final class HomeProvider extends ChangeNotifier {
   bool _isPlaceholder(HomeSectionKind kind) => switch (kind) {
     HomeSectionKind.editsPlaceholder ||
     HomeSectionKind.eventsPlaceholder ||
+    HomeSectionKind.gamesPlaceholder ||
     HomeSectionKind.animePlaceholder => true,
     _ => false,
   };
