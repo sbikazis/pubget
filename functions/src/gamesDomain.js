@@ -8,6 +8,7 @@
 // toGameActivity(event) through the existing system-activity contract.
 
 const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const { validateMafiaConfig } = require("./mafiaDomain");
 
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
@@ -45,7 +46,7 @@ const GAME_TYPE_REGISTRY = {
   mafia: {
     name: "Mafia",
     version: 1,
-    implemented: false,
+    implemented: true,
     capabilities: { usesRounds: true, usesScoring: false, minPlayers: 4, maxPlayers: 16 },
   },
 };
@@ -140,7 +141,10 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeConfiguration(raw, spec) {
+function normalizeConfiguration(raw, spec, type) {
+  if (type === "mafia") {
+    return validateMafiaConfig(raw, spec.capabilities || {});
+  }
   const input = raw && typeof raw === "object" ? raw : {};
   const caps = spec.capabilities || {};
   const minPlayers = clampInt(
@@ -306,7 +310,7 @@ function writeEvent(transaction, db, FieldValue, {
   }));
 }
 
-function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) {
+function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder, mafia }) {
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
     let recipientIds;
@@ -373,7 +377,7 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
     if (!validString(input.groupId, 128)) {
       throw new HttpsError("invalid-argument", "groupId is required.");
     }
-    const configuration = normalizeConfiguration(input.configuration, spec);
+    const configuration = normalizeConfiguration(input.configuration, spec, input.type);
     const asDraft = input.asDraft === true;
     const status = asDraft ? "draft" : "waiting";
     const ref = db.collection("games").doc();
@@ -389,7 +393,7 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
       }
       const user = await transaction.get(db.collection("users").doc(uid));
       const now = FieldValue.serverTimestamp();
-      transaction.create(ref, {
+      const created = {
         type: input.type,
         title,
         description: typeof input.description === "string" ? input.description.trim() : "",
@@ -406,7 +410,20 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
         startedAt: null,
         endedAt: null,
         searchName: searchNameOf(title),
-      });
+      };
+      if (input.type === "mafia") {
+        created.mafia = {
+          phase: "setup",
+          roundNumber: 0,
+          phaseStartedAt: now,
+          phaseEndsAt: null,
+          deadUserIds: [],
+          lastNight: null,
+          lastVote: null,
+          winner: null,
+        };
+      }
+      transaction.create(ref, created);
       if (!asDraft) {
         transaction.create(participantRef(db, ref.id, uid), {
           gameId: ref.id,
@@ -561,6 +578,13 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
       if (existing.data().status === "left" || existing.data().leftAt) return;
+      if (current.type === "mafia" &&
+          (current.status === "active" || current.status === "paused")) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You cannot leave an in-progress Mafia game.",
+        );
+      }
       const now = FieldValue.serverTimestamp();
       transaction.update(person, {
         status: "left",
@@ -581,7 +605,7 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
   }
 
   async function mutateStatus(request, {
-    target, eventType, extra, fromStatuses, oneShotEvent = true,
+    target, eventType, extra, fromStatuses, oneShotEvent = true, after,
   }) {
     const uid = requireAuth(request, HttpsError);
     const gameId = request.data && request.data.gameId;
@@ -591,6 +615,7 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
     const ref = gameRef(db, gameId.trim());
     let skipped = false;
     let snapshotData;
+    let afterResult;
     await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
@@ -632,8 +657,13 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
         actorId: uid,
         payload: { from: current.status, to: target },
       });
+      if (typeof after === "function") {
+        afterResult = await after(transaction, {
+          ref, current: { ...current, ...update }, uid, now, target,
+        });
+      }
     });
-    return { ok: true, skipped, game: snapshotData };
+    return { ok: true, skipped, game: snapshotData, afterResult };
   }
 
   async function startGame(request) {
@@ -644,6 +674,19 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
       extra: (current, now) => ({
         startedAt: current.startedAt || now,
       }),
+      after: async (transaction, ctx) => {
+        if (ctx.current.type !== "mafia") return null;
+        if (!mafia || typeof mafia.onStart !== "function") {
+          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
+        }
+        return mafia.onStart(transaction, {
+          ref: ctx.ref,
+          current: ctx.current,
+          uid: ctx.uid,
+          now: ctx.now,
+          gameId: ctx.ref.id,
+        });
+      },
     });
     if (!result.skipped && result.game) {
       await notifyGame({
@@ -654,6 +697,13 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
         title: result.game.title,
         type: result.game.type,
       });
+      if (result.game.type === "mafia" && mafia && typeof mafia.notifyMafia === "function") {
+        await mafia.notifyMafia("night", {
+          gameId: request.data.gameId.trim(),
+          actorId: request.auth.uid,
+          roundNumber: 1,
+        });
+      }
     }
     return { ok: true };
   }
@@ -756,6 +806,21 @@ function createGamesDomain({ db, FieldValue, HttpsError, notificationBuilder }) 
       }
       if (prior.exists) return;
       const now = FieldValue.serverTimestamp();
+      if (current.type === "mafia") {
+        if (!mafia || typeof mafia.submitAction !== "function") {
+          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
+        }
+        await mafia.submitAction(transaction, {
+          gameId,
+          uid,
+          actionType: action.actionType,
+          payload: action.payload,
+          current,
+          person: existing.data() || {},
+        });
+        transaction.update(ref, { updatedAt: now });
+        return;
+      }
       transaction.create(stored, {
         actionId,
         gameId,

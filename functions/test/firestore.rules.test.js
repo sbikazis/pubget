@@ -97,6 +97,28 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/actions/a1").set({
       playerId: "bob", actionType: "guess", payload: { value: "Luffy" },
     });
+    await admin.doc("games/mafia1").set({
+      creatorId: "alice", groupId: "g1", type: "mafia", title: "Night",
+      status: "active", participantsCount: 2,
+      mafia: { phase: "night", roundNumber: 1, deadUserIds: [], winner: null },
+    });
+    await admin.doc("games/mafia1/participants/alice").set({
+      userId: "alice", gameId: "mafia1", status: "active", isAlive: true,
+    });
+    await admin.doc("games/mafia1/participants/bob").set({
+      userId: "bob", gameId: "mafia1", status: "active", isAlive: false,
+    });
+    await admin.doc("games/mafia1/private/alice").set({
+      userId: "alice", role: "mafia", investigation: null,
+    });
+    await admin.doc("games/mafia1/private/bob").set({
+      userId: "bob", role: "doctor",
+      investigation: { roundNumber: 1, targetId: "alice", isMafia: true },
+    });
+    await admin.doc("games/mafia1/secret/state").set({
+      roles: { alice: "mafia", bob: "doctor" },
+      night: { 1: { kills: { alice: "bob" } } },
+    });
   });
 });
 test.after(() => env.cleanup());
@@ -241,6 +263,39 @@ test("games are readable by group members and never client-writable", async () =
     creatorId: "alice", groupId: "g1", type: "guessCharacter", status: "active",
   }));
   await assertSucceeds(db("bob").doc("games/game1/participants/alice").get());
+});
+test("mafia hidden state is protected from clients", async () => {
+  // Attack 1: Player A cannot read Player B's private role.
+  await assertFails(db("alice").doc("games/mafia1/private/bob").get());
+  await assertSucceeds(db("alice").doc("games/mafia1/private/alice").get());
+  // Attack 2: Player A cannot write their own role.
+  await assertFails(db("alice").doc("games/mafia1/private/alice").update({ role: "civilian" }));
+  await assertFails(db("alice").doc("games/mafia1/private/alice").set({ role: "mafia" }));
+  // Attack 3: Player A cannot write another player's role.
+  await assertFails(db("alice").doc("games/mafia1/private/bob").set({ role: "civilian" }));
+  // Attack 4: Player A cannot change phase.
+  await assertFails(db("alice").doc("games/mafia1").update({
+    "mafia.phase": "day",
+  }));
+  await assertFails(db("alice").doc("games/mafia1").update({ status: "completed" }));
+  // Attack 5: Player cannot mark themselves alive after elimination.
+  await assertFails(db("bob").doc("games/mafia1/participants/bob").update({ isAlive: true }));
+  // Attack 10: Client cannot read authoritative hidden state.
+  await assertFails(db("alice").doc("games/mafia1/secret/state").get());
+  await assertFails(db("bob").doc("games/mafia1/secret/state").get());
+  await assertFails(db("charlie").doc("games/mafia1/secret/state").get());
+  // Non-participants cannot read private game state.
+  await assertFails(db("charlie").doc("games/mafia1").get());
+  await assertFails(db("charlie").doc("games/mafia1/private/alice").get());
+  // Public state is readable by participants/group members.
+  await assertSucceeds(db("bob").doc("games/mafia1").get());
+  await assertSucceeds(db("alice").doc("games/mafia1/participants/bob").get());
+  // Winner / vote tallies / night resolution cannot be client-written.
+  await assertFails(db("alice").doc("games/mafia1").update({ "mafia.winner": "mafia" }));
+  await assertFails(db("alice").doc("games/mafia1").set({
+    creatorId: "alice", groupId: "g1", type: "mafia", status: "completed",
+    mafia: { winner: "mafia", phase: "finished" },
+  }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {

@@ -62,6 +62,15 @@ function createFakeDb(seed = {}) {
         async set(data) {
           store.set(resolvedPath, clone(data));
         },
+        async get() {
+          const data = store.get(resolvedPath);
+          return {
+            exists: data !== undefined,
+            id: resolvedId,
+            ref: makeCollection(base).doc(resolvedId),
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
+        },
         async update(data) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
@@ -121,6 +130,9 @@ function createFakeDb(seed = {}) {
       const run = chain.then(() => {
         const transaction = {
           async get(ref) {
+            if (ref && typeof ref.get === "function" && typeof ref.path !== "string") {
+              return ref.get();
+            }
             const data = store.get(ref.path);
             return {
               exists: data !== undefined,
@@ -165,11 +177,19 @@ function seedGroup({ role = "founder" } = {}) {
 }
 
 function handlers(db, notificationBuilder) {
+  const { createMafiaDomain } = require("../src/mafiaDomain");
+  const mafia = createMafiaDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    notificationBuilder,
+  });
   return createGamesDomain({
     db,
     FieldValue,
     HttpsError: TestHttpsError,
     notificationBuilder,
+    mafia,
   });
 }
 
@@ -198,9 +218,10 @@ test("state machine allows documented transitions and rejects the rest", () => {
   );
 });
 
-test("mafia is registered but not implemented", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, false);
+test("mafia is registered and implemented through the Games registry", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.mafia.capabilities.minPlayers, 4);
 });
 
 test("action shape validation rejects empty types and oversized payloads", () => {
@@ -255,15 +276,14 @@ test("members without manageGames cannot create a game", async () => {
   );
 });
 
-test("mafia cannot be created and unknown types are rejected", async () => {
+test("mafia can be created and unknown types are rejected", async () => {
   const games = handlers(createFakeDb(seedGroup()));
-  await assert.rejects(
-    games.createGame({
-      auth: { uid: "alice" },
-      data: { type: "mafia", title: "Night", groupId: "g1" },
-    }),
-    (error) => error.code === "failed-precondition",
-  );
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: { type: "mafia", title: "Night", groupId: "g1" },
+  });
+  assert.equal(created.status, "waiting");
+  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
   await assert.rejects(
     games.createGame({
       auth: { uid: "alice" },

@@ -20,6 +20,14 @@ enum GameEventType {
   roundCompleted,
   gameCompleted,
   gameCancelled,
+  mafiaGameStarted,
+  mafiaNightStarted,
+  mafiaNightResolved,
+  mafiaDayStarted,
+  mafiaVotingStarted,
+  mafiaVoteResolved,
+  mafiaPlayerEliminated,
+  mafiaGameCompleted,
 }
 
 /// Generic action type names. Meaning belongs to the specific game.
@@ -122,6 +130,7 @@ final class PubgetGame {
     this.endedAt,
     this.result,
     this.currentRoundNumber,
+    this.mafia,
   });
 
   final String id;
@@ -140,6 +149,9 @@ final class PubgetGame {
   final DateTime? endedAt;
   final GameResult? result;
   final int? currentRoundNumber;
+
+  /// Public Mafia slice. Hidden roles never live here.
+  final Map<String, dynamic>? mafia;
 
   bool get isJoinable => status == GameStatus.waiting;
   bool get isPlayable => status == GameStatus.active;
@@ -163,6 +175,7 @@ final class PubgetGame {
     'endedAt': endedAt?.toUtc().toIso8601String(),
     'result': result?.toMap(),
     'currentRoundNumber': currentRoundNumber,
+    if (mafia != null) 'mafia': mafia,
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -196,6 +209,9 @@ final class PubgetGame {
           ? GameResult.fromMap(Map<String, dynamic>.from(map['result'] as Map))
           : null,
       currentRoundNumber: (map['currentRoundNumber'] as num?)?.toInt(),
+      mafia: map['mafia'] is Map
+          ? Map<String, dynamic>.from(map['mafia'] as Map)
+          : null,
     );
   }
 }
@@ -210,6 +226,7 @@ final class GameParticipant {
     this.leftAt,
     this.score,
     this.metadata = const <String, dynamic>{},
+    this.isAlive = true,
   });
 
   final String gameId;
@@ -223,6 +240,7 @@ final class GameParticipant {
   /// not by this generic model (no coins/XP/wins assumed).
   final int? score;
   final Map<String, dynamic> metadata;
+  final bool isAlive;
 
   bool get isActive => status == ParticipantStatus.active && leftAt == null;
 
@@ -232,6 +250,7 @@ final class GameParticipant {
     DateTime? leftAt,
     int? score,
     Map<String, dynamic>? metadata,
+    bool? isAlive,
     bool clearScore = false,
   }) => GameParticipant(
     gameId: gameId,
@@ -242,6 +261,7 @@ final class GameParticipant {
     leftAt: leftAt ?? this.leftAt,
     score: clearScore ? null : score ?? this.score,
     metadata: metadata ?? this.metadata,
+    isAlive: isAlive ?? this.isAlive,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -252,6 +272,7 @@ final class GameParticipant {
     'joinedAt': joinedAt?.toUtc().toIso8601String(),
     'leftAt': leftAt?.toUtc().toIso8601String(),
     if (score != null) 'score': score,
+    'isAlive': isAlive,
     'metadata': metadata,
   };
 
@@ -272,6 +293,7 @@ final class GameParticipant {
       joinedAt: _date(map['joinedAt']),
       leftAt: _date(map['leftAt']),
       score: (map['score'] as num?)?.toInt(),
+      isAlive: map['isAlive'] != false,
       metadata: map['metadata'] is Map
           ? Map<String, dynamic>.from(map['metadata'] as Map)
           : const <String, dynamic>{},
@@ -548,6 +570,14 @@ String _eventWireName(GameEventType type) {
     GameEventType.roundCompleted => 'round_completed',
     GameEventType.gameCompleted => 'game_completed',
     GameEventType.gameCancelled => 'game_cancelled',
+    GameEventType.mafiaGameStarted => 'mafia_game_started',
+    GameEventType.mafiaNightStarted => 'mafia_night_started',
+    GameEventType.mafiaNightResolved => 'mafia_night_resolved',
+    GameEventType.mafiaDayStarted => 'mafia_day_started',
+    GameEventType.mafiaVotingStarted => 'mafia_voting_started',
+    GameEventType.mafiaVoteResolved => 'mafia_vote_resolved',
+    GameEventType.mafiaPlayerEliminated => 'mafia_player_eliminated',
+    GameEventType.mafiaGameCompleted => 'mafia_game_completed',
   };
 }
 
@@ -564,6 +594,14 @@ GameEventType parseGameEventType(String? raw) {
     'round_completed' || 'roundCompleted' => GameEventType.roundCompleted,
     'game_completed' || 'gameCompleted' => GameEventType.gameCompleted,
     'game_cancelled' || 'gameCancelled' => GameEventType.gameCancelled,
+    'mafia_game_started' => GameEventType.mafiaGameStarted,
+    'mafia_night_started' => GameEventType.mafiaNightStarted,
+    'mafia_night_resolved' => GameEventType.mafiaNightResolved,
+    'mafia_day_started' => GameEventType.mafiaDayStarted,
+    'mafia_voting_started' => GameEventType.mafiaVotingStarted,
+    'mafia_vote_resolved' => GameEventType.mafiaVoteResolved,
+    'mafia_player_eliminated' => GameEventType.mafiaPlayerEliminated,
+    'mafia_game_completed' => GameEventType.mafiaGameCompleted,
     _ => GameEventType.gameCreated,
   };
 }

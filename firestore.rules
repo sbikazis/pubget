@@ -710,6 +710,13 @@ service cloud.firestore {
         allow read: if gameVisible();
         allow create, update, delete: if false;
       }
+      match /private/{uid} {
+        allow read: if gameVisible() && request.auth.uid == uid;
+        allow create, update, delete: if false;
+      }
+      match /secret/{document=**} {
+        allow read, write: if false;
+      }
     }
 
     match /edits/{editId} {

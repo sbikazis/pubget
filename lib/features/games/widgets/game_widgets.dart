@@ -122,11 +122,17 @@ class ParticipantList extends StatelessWidget {
           for (final person in active)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.person_outline),
+              leading: Icon(
+                person.isAlive
+                    ? Icons.person_outline
+                    : Icons.person_off_outlined,
+              ),
               title: Text(
                 person.displayName.isEmpty ? person.userId : person.displayName,
               ),
-              trailing: person.score == null ? null : Text('${person.score}'),
+              trailing: person.isAlive
+                  ? (person.score == null ? null : Text('${person.score}'))
+                  : const PubgetBadge(label: GameStrings.eliminated),
             ),
         ],
       ),

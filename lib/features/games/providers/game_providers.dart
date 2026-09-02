@@ -167,10 +167,12 @@ final class GameProvider extends ChangeNotifier {
 
   Future<Result<void>> join(String gameId) => _run(
     () => _repository.join(gameId),
-    onSuccess: () => _analytics.logEvent(
-      'game_joined',
-      parameters: {'gameId': gameId},
-    ),
+    onSuccess: () {
+      _analytics.logEvent('game_joined', parameters: {'gameId': gameId});
+      if (_game?.type == GameType.mafia) {
+        _analytics.logEvent('mafia_game_joined', parameters: {'gameId': gameId});
+      }
+    },
   );
 
   Future<Result<void>> leave(String gameId) =>
@@ -178,10 +180,18 @@ final class GameProvider extends ChangeNotifier {
 
   Future<Result<void>> start(String gameId) => _run(
     () => _repository.start(gameId),
-    onSuccess: () => _analytics.logEvent(
-      'game_started',
-      parameters: {'gameId': gameId},
-    ),
+    onSuccess: () {
+      _analytics.logEvent(
+        'game_started',
+        parameters: {'gameId': gameId},
+      );
+      if (_game?.type == GameType.mafia) {
+        _analytics.logEvent(
+          'mafia_game_started',
+          parameters: {'gameId': gameId},
+        );
+      }
+    },
   );
 
   Future<Result<void>> pause(String gameId) =>
@@ -321,6 +331,12 @@ final class GameCreateProvider extends ChangeNotifier {
           'game_created',
           parameters: {'gameId': game.id, 'type': game.type.name},
         );
+        if (game.type == GameType.mafia) {
+          _analytics.logEvent(
+            'mafia_game_created',
+            parameters: {'gameId': game.id},
+          );
+        }
       },
       onFailure: (failure) => _failure = failure,
     );

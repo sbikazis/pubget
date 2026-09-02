@@ -74,24 +74,15 @@ void main() {
   group('Game registry', () {
     test('registers known types and looks them up', () {
       expect(GameTypeRegistry.isRegistered(GameType.guessCharacter), isTrue);
-      expect(GameTypeRegistry.of(GameType.mafia).implemented, isFalse);
+      expect(GameTypeRegistry.of(GameType.mafia).implemented, isTrue);
       expect(GameTypeRegistry.of(GameType.animeChain).name, 'Anime Chain');
-      expect(GameTypeRegistry.implemented, hasLength(3));
+      expect(GameTypeRegistry.implemented, hasLength(4));
     });
 
     test('unknown game type lookup returns null', () {
       expect(GameTypeRegistry.byName('unknownGame'), isNull);
-      expect(GameTypeRegistry.byName('mafia')?.implemented, isFalse);
-      expect(
-        () => GameEngine.assertCanCreate(GameType.mafia),
-        throwsA(
-          isA<GameException>().having(
-            (error) => error.code,
-            'code',
-            GameErrorCode.unimplementedType,
-          ),
-        ),
-      );
+      expect(GameTypeRegistry.byName('mafia')?.implemented, isTrue);
+      expect(() => GameEngine.assertCanCreate(GameType.mafia), returnsNormally);
     });
   });
 
@@ -275,6 +266,14 @@ void main() {
       }, id: 'legacy');
       expect(legacy.schemaVersion, 1);
       expect(legacy.type, GameEventType.gameStarted);
+      expect(
+        parseGameEventType('mafia_night_resolved'),
+        GameEventType.mafiaNightResolved,
+      );
+      expect(
+        parseGameEventType('mafia_game_completed'),
+        GameEventType.mafiaGameCompleted,
+      );
       final activity = GameActivity.fromEvent(
         event: restored,
         gameType: GameType.guessCharacter,
