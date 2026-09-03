@@ -1,0 +1,17 @@
+{
+  "name": "Pubget (Flutter web + Firebase)",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "flutter-web",
+      "description": "Builds the Flutter web app and serves it at http://localhost:5000",
+      "command": "export PATH=\"$HOME/flutter/bin:$PATH\" && flutter build web --pwa-strategy=none && python3 -m http.server 5000 --directory build/web"
+    }
+  ],
+  "ports": [
+    {
+      "name": "flutter-web",
+      "port": 5000
+    }
+  ]
+}
