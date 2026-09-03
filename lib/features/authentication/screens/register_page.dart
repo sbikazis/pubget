@@ -125,14 +125,17 @@ class _RegisterPageState extends State<RegisterPage> {
               autofillHints: const <String>[AutofillHints.newPassword],
             ),
             const SizedBox(height: AppSpacing.sm),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: draft.acceptedTerms,
-              onChanged: loading
-                  ? null
-                  : (value) => draft.setAcceptedTerms(value ?? false),
-              title: const Text('I agree to the terms'),
-              controlAffinity: ListTileControlAffinity.leading,
+            Material(
+              type: MaterialType.transparency,
+              child: CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: draft.acceptedTerms,
+                onChanged: loading
+                    ? null
+                    : (value) => draft.setAcceptedTerms(value ?? false),
+                title: const Text('I agree to the terms'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
             ),
             Align(
               alignment: AlignmentDirectional.centerStart,
