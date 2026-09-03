@@ -67,23 +67,9 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/mafia_games/$(gameId));
     }
     function mafiaPhaseOpen(gameId) {
-      return !('phaseEndsAt' in mafiaGame(gameId).data) ||
+      return !mafiaGame(gameId).data.keys().hasAny(['phaseEndsAt']) ||
         mafiaGame(gameId).data.phaseEndsAt == null ||
         request.time < mafiaGame(gameId).data.phaseEndsAt;
-    }
-    function mafiaPrivateRole(gameId, uid) {
-      return get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(uid)/private/data).data.role;
-    }
-    function mafiaNightTargetAllowed(gameId) {
-      return exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data) &&
-        exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)/private/data) &&
-        (
-          mafiaPrivateRole(gameId, request.auth.uid) != 'mafia' ||
-          (
-            request.resource.data.targetId != request.auth.uid &&
-            mafiaPrivateRole(gameId, request.resource.data.targetId) != 'mafia'
-          )
-        );
     }
     function mafiaPublicPlayerDefaults(gameId, uid) {
       return request.resource.data.keys().hasOnly([
@@ -892,7 +878,13 @@ service cloud.firestore {
           mafiaPhaseOpen(gameId) &&
           exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
           get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true &&
-          mafiaNightTargetAllowed(gameId);
+          (
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role != 'mafia' ||
+            (
+              request.resource.data.targetId != request.auth.uid &&
+              get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)/private/data).data.role != 'mafia'
+            )
+          );
         allow update, delete: if false;
       }
       match /votes/{voteId} {

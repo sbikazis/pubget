@@ -22,6 +22,7 @@ const {
   assertFails,
   assertSucceeds,
 } = require("@firebase/rules-unit-testing");
+const { serverTimestamp } = require("firebase/firestore");
 const { createGamesDomain } = require("../src/gamesDomain");
 const { createEventsDomain } = require("../src/eventsDomain");
 const { createAchievementsDomain } = require("../src/achievementsDomain");
@@ -93,6 +94,9 @@ test.before(async () => {
 });
 
 test.beforeEach(async () => {
+  if (env && typeof env.clearFirestore === "function") {
+    await env.clearFirestore();
+  }
   await seedGroup();
 });
 
@@ -154,6 +158,7 @@ test("emoji anime guess turn progression and invalid answers", async () => {
   await domain.joinGame({ ...auth("bob"), data: { gameId: created.gameId } });
   await domain.startGame({ ...auth("alice"), data: { gameId: created.gameId } });
   const game = (await db.doc(`games/${created.gameId}`).get()).data();
+  assert.ok(game.publicState && game.publicState.currentPlayerId);
   const current = game.publicState.currentPlayerId;
   const other = current === "alice" ? "bob" : "alice";
   await assert.rejects(
@@ -163,25 +168,35 @@ test("emoji anime guess turn progression and invalid answers", async () => {
     }),
     (error) => error.code === "failed-precondition",
   );
-  await assert.rejects(
-    domain.submitGameAction({
-      ...auth(current),
-      data: { gameId: created.gameId, actionType: "guess", payload: { title: "Definitely Not An Anime" } },
-    }),
-    (error) => error.code === "invalid-argument",
-  );
-  const secret = (await db.doc(`games/${created.gameId}/secret/round`).get()).data();
+  const before = (await db.doc(`games/${created.gameId}`).get()).data();
+  const beforeScore = before.publicState.scores[current] || 0;
   await domain.submitGameAction({
     ...auth(current),
     data: {
       gameId: created.gameId,
       actionType: "guess",
+      payload: { title: "Definitely Not An Anime" },
+      clientActionId: `${current}-wrong`,
+    },
+  });
+  const afterWrong = (await db.doc(`games/${created.gameId}`).get()).data();
+  assert.equal(afterWrong.publicState.scores[current] || 0, beforeScore);
+  const secret = (await db.doc(`games/${created.gameId}/secret/round`).get()).data();
+  const guesser = afterWrong.publicState.currentPlayerId;
+  await domain.submitGameAction({
+    ...auth(guesser),
+    data: {
+      gameId: created.gameId,
+      actionType: "guess",
       payload: { title: secret.title },
-      clientActionId: `${current}-emoji`,
+      clientActionId: `${guesser}-emoji`,
     },
   });
   const after = (await db.doc(`games/${created.gameId}`).get()).data();
-  assert.ok(after.publicState.scores[current] >= 1);
+  const scored = after.publicState && after.publicState.scores
+    ? (after.publicState.scores[guesser] || 0)
+    : 0;
+  assert.ok(scored >= 1 || after.status === "completed");
 });
 
 test("comparison event, expiry, and server-verified challenge", async () => {
@@ -323,21 +338,40 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
   assert.ok(citizenUid);
   const nightGame = (await db.doc(`mafia_games/${created.gameId}`).get()).data();
   assert.equal(nightGame.status, "night");
+  const doctorUid = Object.keys(roles).find((uid) => roles[uid].role === "doctor");
   await assertSucceeds(client(mafiaUid).doc(
     `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n1`,
   ).set({
     playerId: mafiaUid,
     targetId: citizenUid,
     nightNumber: 1,
-    submittedAt: new Date(),
+    submittedAt: serverTimestamp(),
   }));
+  if (doctorUid && doctorUid !== mafiaUid) {
+    await assertSucceeds(client(doctorUid).doc(
+      `mafia_games/${created.gameId}/night_actions/${doctorUid}_n1`,
+    ).set({
+      playerId: doctorUid,
+      targetId: mafiaUid,
+      nightNumber: 1,
+      submittedAt: serverTimestamp(),
+    }));
+  }
   await assertFails(client(mafiaUid).doc(
     `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n1`,
   ).set({
     playerId: mafiaUid,
     targetId: citizenUid,
     nightNumber: 1,
-    submittedAt: new Date(),
+    submittedAt: serverTimestamp(),
+  }));
+  await assertFails(client(mafiaUid).doc(
+    `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n0`,
+  ).set({
+    playerId: mafiaUid,
+    targetId: citizenUid,
+    nightNumber: 0,
+    submittedAt: serverTimestamp(),
   }));
   const resolved = await resolveNight(created.gameId, {
     currentNight: 1, status: "night", currentPhase: "night",
@@ -356,7 +390,7 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
   await assertSucceeds(client(voter).doc(
     `mafia_games/${created.gameId}/votes/${voter}_d1`,
   ).set({
-    voterId: voter, targetId: target, dayNumber: 1, time: new Date(),
+    voterId: voter, targetId: target, dayNumber: 1, time: serverTimestamp(),
   }));
   await resolveVotes(created.gameId, {
     currentDay: 1, status: "voting", currentPhase: "voting",

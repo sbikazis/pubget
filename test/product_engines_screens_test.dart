@@ -128,7 +128,43 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Use the written clue instead.'), findsOneWidget);
-    expect(find.byType(CustomPaint), findsNothing);
+    expect(find.text('Original Pubget silhouette'), findsNothing);
+  });
+
+  testWidgets('guess character artwork paints a licensed silhouette', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CharacterArtworkView(
+            artwork: <String, dynamic>{
+              'assetId': 'pgart_3f8c1a92b4e0',
+              'license': 'pubget-original',
+              'attribution': 'Original Pubget silhouette',
+              'source': 'pubget',
+              'portrait': <String, dynamic>{
+                'background': '#4C1D95',
+                'shapes': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'type': 'rect',
+                    'x': 8,
+                    'y': 8,
+                    'w': 84,
+                    'h': 84,
+                    'r': 18,
+                    'color': '#F5D76E',
+                  },
+                ],
+              },
+            },
+            fallbackClue: 'A straw hat pirate.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Original Pubget silhouette'), findsOneWidget);
+    expect(find.byType(CustomPaint), findsWidgets);
+    expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
   testWidgets('game create exposes implemented options including Mafia', (
