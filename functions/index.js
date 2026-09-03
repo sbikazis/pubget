@@ -46,6 +46,10 @@ const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
 
+// Eventarc requires a Storage-triggered function to run in the same region as
+// the bucket it listens to. The default pubget bucket lives in europe-west3.
+const STORAGE_REGION = "europe-west3";
+
 exports.syncAvatarPrivacy = onDocumentWritten(
   "users/{uid}",
   createAvatarPrivacySync({
@@ -252,7 +256,7 @@ exports.editCommentAction = onCall(
   editsDomain.commentAction,
 );
 exports.processEditVideo = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: STORAGE_REGION, memory: "1GiB", timeoutSeconds: 300 },
   createEditPipeline({
     db: getFirestore(),
     bucket: getStorage().bucket(),
@@ -549,7 +553,7 @@ exports.processEventLifecycle = onSchedule(
   eventsDomain.processEventLifecycle,
 );
 exports.processGroupChatMedia = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: STORAGE_REGION, memory: "1GiB", timeoutSeconds: 300 },
   createGroupMediaPipeline({
     db: getFirestore(),
     bucket: getStorage().bucket(),
