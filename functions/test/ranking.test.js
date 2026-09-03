@@ -128,10 +128,16 @@ test("fan works require published approved state", () => {
   }, profile, now), 0);
   const live = scoreFanWork({
     status: "published", moderationStatus: "approved", animeId: "one_piece",
-    likesCount: 4, publishedAt: now, version: 2,
+    likesCount: 4, commentsCount: 0, publishedAt: now, version: 2,
+    copyright: { originalWorkId: "op-1" },
+  }, profile, now);
+  const discussed = scoreFanWork({
+    status: "published", moderationStatus: "approved", animeId: "one_piece",
+    likesCount: 4, commentsCount: 12, publishedAt: now, version: 2,
     copyright: { originalWorkId: "op-1" },
   }, profile, now);
   assert.ok(live > 0);
+  assert.ok(discussed > live);
 });
 
 test("anime recommendations prefer related taste over already-listed titles", () => {

@@ -134,6 +134,15 @@ abstract final class FanWorkStrings {
   static const report = 'Report';
   static const like = 'Like';
   static const bookmark = 'Save';
+  static const comments = 'Comments';
+  static const addComment = 'Add a comment';
+  static const sendComment = 'Send comment';
+  static const noComments = 'No comments yet';
+  static const noCommentsMessage = 'Be the first to reply to this Fan Work.';
+  static const reply = 'Reply';
+  static const likeComment = 'Like comment';
+  static const deleteComment = 'Delete comment';
+  static const reportComment = 'Report comment';
   static const missing = 'This Fan Work is unavailable.';
   static const emptyTitle = 'No Fan Works yet';
   static const emptyMessage = 'Be the first to publish a drawing, story, or manga.';

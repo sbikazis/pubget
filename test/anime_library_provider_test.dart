@@ -35,6 +35,7 @@ void main() {
     final library = AnimeLibraryProvider(repository: repository);
     addTearDown(library.dispose);
     library.bindUser('alice');
+    await library.load();
     await library.toggleCharacter(characterId: 'luffy', name: 'Luffy');
     expect(library.isCharacterFavorite('luffy'), isTrue);
     await library.toggleCharacter(characterId: 'luffy', name: 'Luffy');

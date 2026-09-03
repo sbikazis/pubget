@@ -479,3 +479,99 @@ test("copyright metadata, published revision, and removal request are server-own
   assert.equal(flagged.removalRequested, true);
   assert.equal(flagged.moderationStatus, "flagged");
 });
+
+test("fan work comments are server-owned with replies, likes, mentions, and cooldown", async () => {
+  const notifications = recordingBuilder();
+  const { domain, db } = handlers({ notificationBuilder: notifications });
+  const created = await domain.saveFanWorkDraft(authed("alice", {
+    type: "story",
+    title: "A publishable story title",
+    body: "Once upon a time in a village far away.",
+  }));
+  await assert.rejects(
+    () => domain.commentFanWork(authed("bob", {
+      workId: created.workId,
+      text: "Too early",
+    })),
+    (error) => error.code === "not-found",
+  );
+  await domain.publishFanWork(authed("alice", { workId: created.workId }));
+  assert.equal(db.store.get(`fanWorks/${created.workId}`).commentsCount, 0);
+  const first = await domain.commentFanWork(authed("bob", {
+    workId: created.workId,
+    text: "Loved the ending @alice",
+    eventId: "evt-1",
+  }));
+  assert.equal(db.store.get(`fanWorks/${created.workId}`).commentsCount, 1);
+  const comment = db.store.get(`fanWorks/${created.workId}/comments/${first.commentId}`);
+  assert.equal(comment.authorId, "bob");
+  assert.deepEqual(comment.mentions, ["alice"]);
+  const replay = await domain.commentFanWork(authed("bob", {
+    workId: created.workId,
+    text: "Loved the ending @alice",
+    eventId: "evt-1",
+  }));
+  assert.equal(replay.commentId, first.commentId);
+  assert.equal(db.store.get(`fanWorks/${created.workId}`).commentsCount, 1);
+  await assert.rejects(
+    () => domain.commentFanWork(authed("bob", {
+      workId: created.workId,
+      text: "Another take",
+    })),
+    (error) => error.code === "resource-exhausted",
+  );
+  const reply = await domain.commentFanWork(authed("alice", {
+    workId: created.workId,
+    text: "Thank you",
+    replyToCommentId: first.commentId,
+  }));
+  assert.equal(
+    db.store.get(`fanWorks/${created.workId}/comments/${reply.commentId}`).replyToCommentId,
+    first.commentId,
+  );
+  await domain.fanWorkCommentAction(authed("alice", {
+    workId: created.workId,
+    commentId: first.commentId,
+    action: "like",
+  }));
+  assert.equal(
+    db.store.get(`fanWorks/${created.workId}/comments/${first.commentId}`).likesCount,
+    1,
+  );
+  await domain.fanWorkCommentAction(authed("alice", {
+    workId: created.workId,
+    commentId: first.commentId,
+    action: "like",
+  }));
+  assert.equal(
+    db.store.get(`fanWorks/${created.workId}/comments/${first.commentId}`).likesCount,
+    1,
+  );
+  await assert.rejects(
+    () => domain.fanWorkCommentAction(authed("alice", {
+      workId: created.workId,
+      commentId: first.commentId,
+      action: "delete",
+    })),
+    (error) => error.code === "permission-denied",
+  );
+  await domain.fanWorkCommentAction(authed("alice", {
+    workId: created.workId,
+    commentId: reply.commentId,
+    action: "delete",
+  }));
+  assert.equal(db.store.get(`fanWorks/${created.workId}`).commentsCount, 1);
+  await domain.fanWorkCommentAction(authed("alice", {
+    workId: created.workId,
+    commentId: first.commentId,
+    action: "report",
+  }));
+  assert.equal(
+    db.store.get(`fanWorks/${created.workId}/comments/${first.commentId}`).reported,
+    true,
+  );
+  assert.equal(
+    notifications.sent.some((item) => item.type === "fan_work_commented"),
+    true,
+  );
+});

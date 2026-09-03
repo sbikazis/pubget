@@ -167,8 +167,8 @@ final class FirebaseHomeRepository implements HomeRepository {
     try {
       final result = await _functions.httpsCallable('getDiscoveryFeed').call(
         <String, dynamic>{
-          if (section != null) 'section': section,
-          if (cursor != null) 'cursor': cursor,
+          'section': ?section,
+          'cursor': ?cursor,
           'limit': limit,
         },
       );

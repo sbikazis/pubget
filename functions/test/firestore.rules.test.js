@@ -112,7 +112,7 @@ test.beforeEach(async () => {
     await admin.doc("fanWorks/fw-public").set({
       creatorId: "alice", type: "drawing", title: "Public drawing",
       status: "published", moderationStatus: "approved", visibility: "public",
-      likesCount: 2, bookmarksCount: 1, reportsCount: 0,
+      likesCount: 2, bookmarksCount: 1, reportsCount: 0, commentsCount: 1,
     });
     await admin.doc("fanWorks/fw-draft").set({
       creatorId: "alice", type: "story", title: "Secret draft",
@@ -127,6 +127,9 @@ test.beforeEach(async () => {
     });
     await admin.doc("fanWorks/fw-public/reports/fw-public_bob").set({
       reporterId: "bob", reason: "spam", details: "", createdAt: new Date(),
+    });
+    await admin.doc("fanWorks/fw-public/comments/c1").set({
+      authorId: "bob", text: "nice", likesCount: 0,
     });
   });
 });
@@ -938,5 +941,12 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertSucceeds(db("bob").doc("fanWorks/fw-public/revisions/1").get());
   await assertFails(db("alice").doc("fanWorks/fw-public/revisions/2").set({
     version: 2, title: "forged",
+  }));
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/comments/c1").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/comments/c1").set({
+    authorId: "bob", text: "forged",
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    commentsCount: 99,
   }));
 });

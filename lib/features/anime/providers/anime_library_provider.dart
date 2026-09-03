@@ -26,6 +26,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   bool _saving = false;
   bool _disposed = false;
   String? _userId;
+  int _loadGeneration = 0;
 
   LoadingState get state => _state;
   Failure? get failure => _failure;
@@ -50,6 +51,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     _characterIds.clear();
     _state = LoadingState.initial;
     _failure = null;
+    _loadGeneration += 1;
     if (userId != null) {
       unawaited(load());
     } else {
@@ -63,12 +65,13 @@ final class AnimeLibraryProvider extends ChangeNotifier {
       _safeNotify();
       return;
     }
+    final generation = ++_loadGeneration;
     _state = _entries.isEmpty ? LoadingState.loading : LoadingState.refreshing;
     _failure = null;
     _safeNotify();
     final lists = await _repository.getList(limit: 50);
     final characters = await _repository.getCharacterFavorites();
-    if (_disposed) return;
+    if (_disposed || generation != _loadGeneration) return;
     lists.fold(
       onSuccess: (page) {
         _entries

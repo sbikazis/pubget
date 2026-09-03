@@ -62,6 +62,28 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  }) async => _fail();
+
+  @override
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) async => _fail();
+
+  @override
   Future<Result<void>> revisePublished({
     required String workId,
     String? title,

@@ -115,6 +115,33 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(details.state, LoadingState.offline);
   });
+
+  test('details loads comments and posts a new one', () async {
+    final repository = _FakeFanWorkRepository()
+      ..watchWorkResult = Success(_work('w1'))
+      ..comments.add(
+        const FanWorkComment(id: 'c1', authorId: 'bob', text: 'Loved this'),
+      );
+    final details = FanWorkDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+
+    await details.open(workId: 'w1', userId: 'alice');
+    expect(details.comments.map((comment) => comment.text), <String>['Loved this']);
+
+    await details.addComment(workId: 'w1', text: 'Thanks @bob');
+    expect(repository.addedComments, contains('Thanks @bob'));
+    expect(
+      details.comments.any((comment) => comment.text == 'Thanks @bob'),
+      isTrue,
+    );
+
+    await details.commentAction(
+      workId: 'w1',
+      commentId: 'c1',
+      action: 'delete',
+    );
+    expect(details.comments.any((comment) => comment.id == 'c1'), isFalse);
+  });
 }
 
 FanWork _work(String id) => FanWork(
@@ -253,6 +280,50 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required FanWorkReportReason reason,
     String details = '',
   }) async => const Success<void>(null);
+
+  final List<FanWorkComment> comments = <FanWorkComment>[];
+  final List<String> addedComments = <String>[];
+
+  @override
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  }) async {
+    comments.add(
+      FanWorkComment(
+        id: eventId ?? 'c-${comments.length + 1}',
+        authorId: 'alice',
+        text: text,
+        replyToCommentId: replyToCommentId,
+      ),
+    );
+    addedComments.add(text);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  }) async {
+    if (after != null) return const Success(<FanWorkComment>[]);
+    return Success(List<FanWorkComment>.from(comments));
+  }
+
+  @override
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) async {
+    if (action == 'delete') {
+      comments.removeWhere((comment) => comment.id == commentId);
+    }
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> revisePublished({

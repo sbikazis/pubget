@@ -807,6 +807,18 @@ service cloud.firestore {
         allow read: if fanWorkVisible();
         allow create, update, delete: if false;
       }
+      match /comments/{commentId} {
+        allow read: if fanWorkVisible();
+        allow create, update, delete: if false;
+        match /likes/{uid} {
+          allow read: if self(uid);
+          allow create, update, delete: if false;
+        }
+        match /reports/{uid} {
+          allow read: if self(uid);
+          allow create, update, delete: if false;
+        }
+      }
     }
 
     match /user_interactions/{uid}/interactions/{interactionId} {

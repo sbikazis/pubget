@@ -21,9 +21,16 @@ function createFakeDb() {
         const path = `${base}/${id}`;
         return {
           id,
+          path,
           collection: (name) => collection(`${path}/${name}`),
           async get() {
             return { exists: store.has(path), id, data: () => store.get(path) };
+          },
+          async set(data) {
+            store.set(path, { ...data });
+          },
+          async delete() {
+            store.delete(path);
           },
         };
       },
@@ -72,6 +79,12 @@ function domain() {
         nested.doc = (childId) => {
           const inner = nestedDoc(childId);
           inner.path = `${name}/${id}/${child}/${childId}`;
+          inner.set = async (data) => {
+            db.store.set(inner.path, { ...(db.store.get(inner.path) || {}), ...data });
+          };
+          inner.delete = async () => {
+            db.store.delete(inner.path);
+          };
           return inner;
         };
         nested.where = () => nested;

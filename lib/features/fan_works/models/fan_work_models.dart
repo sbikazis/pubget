@@ -411,6 +411,7 @@ final class FanWork {
     this.animeTitle = '',
     this.characterIds = const <String>[],
     this.likesCount = 0,
+    this.commentsCount = 0,
     this.bookmarksCount = 0,
     this.reportsCount = 0,
     this.publishedAt,
@@ -436,6 +437,7 @@ final class FanWork {
   final FanWorkStatus status;
   final FanWorkModerationStatus moderationStatus;
   final int likesCount;
+  final int commentsCount;
   final int bookmarksCount;
   final int reportsCount;
   final DateTime? createdAt;
@@ -473,6 +475,7 @@ final class FanWork {
     'status': status.name,
     'moderationStatus': moderationStatus.name,
     'likesCount': likesCount,
+    'commentsCount': commentsCount,
     'bookmarksCount': bookmarksCount,
     'reportsCount': reportsCount,
     'createdAt': createdAt?.toUtc().toIso8601String(),
@@ -527,6 +530,7 @@ final class FanWork {
         orElse: () => FanWorkModerationStatus.pending,
       ),
       likesCount: (map['likesCount'] as num?)?.toInt() ?? 0,
+      commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
       bookmarksCount: (map['bookmarksCount'] as num?)?.toInt() ?? 0,
       reportsCount: (map['reportsCount'] as num?)?.toInt() ?? 0,
       createdAt: _date(map['createdAt']),
@@ -577,6 +581,7 @@ final class FanWork {
     status: status ?? this.status,
     moderationStatus: moderationStatus ?? this.moderationStatus,
     likesCount: likesCount,
+    commentsCount: commentsCount,
     bookmarksCount: bookmarksCount,
     reportsCount: reportsCount,
     createdAt: createdAt,
@@ -587,6 +592,43 @@ final class FanWork {
     copyright: copyright ?? this.copyright,
     removalRequested: removalRequested ?? this.removalRequested,
   );
+}
+
+final class FanWorkComment {
+  const FanWorkComment({
+    required this.id,
+    required this.authorId,
+    required this.text,
+    this.likesCount = 0,
+    this.createdAt,
+    this.replyToCommentId,
+    this.mentions = const <String>[],
+  });
+
+  final String id;
+  final String authorId;
+  final String text;
+  final int likesCount;
+  final DateTime? createdAt;
+  final String? replyToCommentId;
+  final List<String> mentions;
+
+  factory FanWorkComment.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+  }) {
+    return FanWorkComment(
+      id: id,
+      authorId: map['authorId'] as String? ?? '',
+      text: map['text'] as String? ?? '',
+      likesCount: (map['likesCount'] as num?)?.toInt() ?? 0,
+      createdAt: _date(map['createdAt']),
+      replyToCommentId: map['replyToCommentId'] as String?,
+      mentions:
+          (map['mentions'] as List<Object?>?)?.whereType<String>().toList() ??
+          const <String>[],
+    );
+  }
 }
 
 final class FanWorkDraft {

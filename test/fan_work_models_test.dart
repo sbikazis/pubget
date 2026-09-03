@@ -34,6 +34,7 @@ void main() {
       moderationStatus: FanWorkModerationStatus.approved,
       visibility: FanWorkVisibility.public,
       likesCount: 3,
+      commentsCount: 2,
       createdAt: DateTime.utc(2026, 9, 1),
       updatedAt: DateTime.utc(2026, 9, 1),
       publishedAt: DateTime.utc(2026, 9, 1, 12),
@@ -48,6 +49,7 @@ void main() {
     expect(restored.content.orderedPages.first.caption, 'Splash');
     expect(restored.isPubliclyListed, isTrue);
     expect(restored.schemaVersion, 1);
+    expect(restored.commentsCount, 2);
   });
 
   test('invalid maps fall back to safe defaults', () {

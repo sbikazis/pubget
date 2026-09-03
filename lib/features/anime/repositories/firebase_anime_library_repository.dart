@@ -20,8 +20,8 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
   }) => _guard(() async {
     final result = await _functions.httpsCallable('getAnimeList').call(
       <String, dynamic>{
-        if (status != null) 'status': status.wireValue,
-        if (cursor != null) 'cursor': cursor,
+        'status': ?status?.wireValue,
+        'cursor': ?cursor,
         'limit': limit,
       },
     );
@@ -40,7 +40,7 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
         'animeId': animeId,
         'status': status.wireValue,
         'title': title,
-        if (rating != null) 'rating': rating,
+        'rating': ?rating,
       },
     );
     final data = Map<String, dynamic>.from(result.data as Map);
@@ -89,7 +89,7 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
         'characterId': characterId,
         'favorite': favorite,
         'name': name,
-        if (rating != null) 'rating': rating,
+        'rating': ?rating,
       },
     );
     final data = Map<String, dynamic>.from(result.data as Map);

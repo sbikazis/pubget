@@ -48,6 +48,25 @@ abstract interface class FanWorkRepository {
     String details,
   });
 
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  });
+
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  });
+
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  });
+
   Future<Result<void>> revisePublished({
     required String workId,
     String? title,

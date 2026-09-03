@@ -227,7 +227,8 @@ function scoreFanWork(work, profile, now) {
   const freshness = freshnessScore(work.publishedAt || work.createdAt, now, 21);
   const engagement = clamp(
     Math.min(50, (Number(work.likesCount) || 0) * 3) +
-    Math.min(30, (Number(work.bookmarksCount) || 0) * 4),
+    Math.min(30, (Number(work.bookmarksCount) || 0) * 4) +
+    Math.min(24, (Number(work.commentsCount) || 0) * 2),
   );
   const quality = clamp(40 + (Number(work.version) || 1) * 4 +
     (work.copyright && work.copyright.originalWorkId ? 10 : 0));

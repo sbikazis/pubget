@@ -326,7 +326,7 @@ class _DetailsBody extends StatelessWidget {
         FanWorkTagWrap(tags: work.tags),
         const SizedBox(height: AppSpacing.md),
         Text(
-          '${work.likesCount} likes · ${work.bookmarksCount} saves',
+          '${work.likesCount} likes · ${work.commentsCount} comments · ${work.bookmarksCount} saves',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -448,6 +448,8 @@ class _DetailsBody extends StatelessWidget {
             semanticLabel: 'Edit draft',
             child: const Text('Edit draft'),
           ),
+        const SizedBox(height: AppSpacing.xl),
+        _FanWorkCommentsSection(workId: work.id),
       ],
     );
   }
@@ -472,6 +474,170 @@ class _DetailsBody extends StatelessWidget {
     await context.read<FanWorkDetailsProvider>().report(
       workId: work.id,
       reason: reason,
+    );
+  }
+}
+
+class _FanWorkCommentsSection extends StatefulWidget {
+  const _FanWorkCommentsSection({required this.workId});
+
+  final String workId;
+
+  @override
+  State<_FanWorkCommentsSection> createState() => _FanWorkCommentsSectionState();
+}
+
+class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    final result = await context.read<FanWorkDetailsProvider>().addComment(
+      workId: widget.workId,
+      text: text,
+    );
+    if (!mounted) return;
+    if (result.isSuccess) _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final details = context.watch<FanWorkDetailsProvider>();
+    final uid = context.watch<AuthProvider>().currentUser?.id;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(FanWorkStrings.comments, style: theme.textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.sm),
+        if (details.replyTo != null)
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Replying to ${details.replyTo!.text}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cancel reply',
+                onPressed: () => details.setReplyTo(null),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: PubgetTextField(
+                key: const Key('fan-work-comment-field'),
+                controller: _controller,
+                hint: FanWorkStrings.addComment,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+              ),
+            ),
+            IconButton(
+              key: const Key('fan-work-comment-send'),
+              tooltip: FanWorkStrings.sendComment,
+              onPressed: details.acting ? null : _send,
+              icon: const Icon(Icons.send),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (details.commentsLoading)
+          const PubgetSkeleton.card(height: 72)
+        else if (details.commentsFailure != null && details.comments.isEmpty)
+          PubgetErrorState(
+            message: details.commentsFailure!.message,
+            onRetry: () => details.loadComments(widget.workId),
+          )
+        else if (details.comments.isEmpty)
+          const PubgetEmptyState(
+            compact: true,
+            icon: Icons.chat_bubble_outline,
+            title: FanWorkStrings.noComments,
+            message: FanWorkStrings.noCommentsMessage,
+          )
+        else
+          for (final comment in details.comments)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(comment.text),
+              subtitle: Text(
+                [
+                  if (comment.replyToCommentId != null) 'Reply',
+                  if (comment.mentions.isNotEmpty)
+                    comment.mentions.map((handle) => '@$handle').join(' '),
+                  '${comment.likesCount} likes',
+                ].join(' · '),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    tooltip: FanWorkStrings.reply,
+                    onPressed: () => details.setReplyTo(comment),
+                    icon: const Icon(Icons.reply),
+                  ),
+                  IconButton(
+                    tooltip: FanWorkStrings.likeComment,
+                    onPressed: details.acting
+                        ? null
+                        : () => details.commentAction(
+                            workId: widget.workId,
+                            commentId: comment.id,
+                            action: 'like',
+                          ),
+                    icon: const Icon(Icons.favorite_border),
+                  ),
+                  if (comment.authorId == uid)
+                    IconButton(
+                      tooltip: FanWorkStrings.deleteComment,
+                      onPressed: details.acting
+                          ? null
+                          : () => details.commentAction(
+                              workId: widget.workId,
+                              commentId: comment.id,
+                              action: 'delete',
+                            ),
+                      icon: const Icon(Icons.delete_outline),
+                    )
+                  else
+                    IconButton(
+                      tooltip: FanWorkStrings.reportComment,
+                      onPressed: details.acting
+                          ? null
+                          : () => details.commentAction(
+                              workId: widget.workId,
+                              commentId: comment.id,
+                              action: 'report',
+                            ),
+                      icon: const Icon(Icons.flag_outlined),
+                    ),
+                ],
+              ),
+            ),
+        if (details.commentsHasMore)
+          PubgetTextButton(
+            onPressed: details.commentsLoadingMore
+                ? null
+                : () => details.loadComments(widget.workId, more: true),
+            semanticLabel: 'Load more comments',
+            child: Text(details.commentsLoadingMore ? 'Loading…' : 'Load more'),
+          ),
+      ],
     );
   }
 }
@@ -641,9 +807,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
               ),
             ),
           Expanded(
-            child: ListView(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(AppSpacing.md),
-              children: <Widget>[
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
                 if (editor.step == FanWorkEditorStep.type)
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -816,6 +984,7 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                   ],
                 ],
               ],
+              ),
             ),
           ),
           SafeArea(
