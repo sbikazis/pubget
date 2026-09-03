@@ -165,6 +165,15 @@ async function startEdit(caption = "Gear five port") {
 async function uploadEditBytes(videoStoragePath, bytes, contentType = "video/mp4") {
   const storage = env.authenticatedContext(CREATOR).storage();
   await assertSucceeds(storage.ref(videoStoragePath).put(bytes, { contentType }));
+  await assertFails(
+    env.authenticatedContext(MALLORY).storage().ref(videoStoragePath).put(bytes, { contentType }),
+  );
+  // Admin writes the same object the pipeline downloads. The rules-unit-testing
+  // client and Admin SDK can land in different emulator bucket views.
+  await bucket.file(videoStoragePath).save(bytes, {
+    resumable: false,
+    metadata: { contentType },
+  });
 }
 
 async function runProcessEdit(videoStoragePath, bytes, contentType = "video/mp4") {
