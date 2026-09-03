@@ -41,6 +41,7 @@ final class EconomyProvider extends ChangeNotifier {
   PurchasePhase _purchasePhase = PurchasePhase.idle;
   AdImpressionLog _adsLog = const AdImpressionLog();
   bool _offlineCached = false;
+  String? _boundUserId;
   bool _disposed = false;
 
   EconomySnapshot? get snapshot => _snapshot;
@@ -218,6 +219,25 @@ final class EconomyProvider extends ChangeNotifier {
 
   void viewPremium() {
     _analytics?.logEvent('premium_view');
+  }
+
+  void resetSession() {
+    _snapshot = null;
+    _history = const <EconomyTransaction>[];
+    _failure = null;
+    _purchaseFailure = null;
+    _purchasePhase = PurchasePhase.idle;
+    _adsLog = const AdImpressionLog();
+    _offlineCached = false;
+    _state = LoadingState.initial;
+    _historyState = LoadingState.initial;
+    _notify();
+  }
+
+  void bindUser(String? userId) {
+    if (_boundUserId == userId) return;
+    _boundUserId = userId;
+    resetSession();
   }
 
   void _setState(LoadingState next) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -65,6 +66,30 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: Text(profile.isOwner ? 'My profile' : 'Profile'),
         actions: <Widget>[
+          if (profileId.isNotEmpty) ...<Widget>[
+            PubgetIconButton(
+              icon: Icons.share_outlined,
+              tooltip: 'Share profile',
+              onPressed: () => PubgetLinks.share(
+                context,
+                url: PubgetLinks.profile(profileId),
+                title:
+                    profile.publicProfile?.username ??
+                    profile.ownProfile?.username ??
+                    'Pubget profile',
+                type: 'profile',
+              ),
+            ),
+            PubgetIconButton(
+              icon: Icons.copy_outlined,
+              tooltip: 'Copy link',
+              onPressed: () => PubgetLinks.copy(
+                context,
+                PubgetLinks.profile(profileId),
+                type: 'profile',
+              ),
+            ),
+          ],
           if (profile.isOwner)
             PubgetIconButton(
               icon: Icons.edit_outlined,
@@ -186,6 +211,12 @@ class _ProfileContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
+        if (profile.isOwner)
+          _AnimeTaste(
+            names: own?.favoriteAnimes ?? const <String>[],
+            ids: own?.favoriteAnimeIds ?? const <String>[],
+          ),
+        if (profile.isOwner) const SizedBox(height: AppSpacing.xl),
         _CreatorEdits(profileId: profileId),
         const SizedBox(height: AppSpacing.xl),
         _CreatorFanWorks(profileId: profileId),
@@ -203,6 +234,13 @@ class _ProfileContent extends StatelessWidget {
             semanticLabel: 'Open friend requests',
             leadingIcon: Icons.person_add_alt_1_outlined,
             child: Text('Friend requests (${social.incomingRequests.length})'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(context, '/achievements'),
+            semanticLabel: 'Open achievements',
+            leadingIcon: Icons.emoji_events_outlined,
+            child: const Text('Achievements'),
           ),
           if (economy != null) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -257,6 +295,53 @@ class _ProfileContent extends StatelessWidget {
             PubgetErrorState(message: social.failure!.message),
           ],
         ],
+      ],
+    );
+  }
+}
+
+class _AnimeTaste extends StatelessWidget {
+  const _AnimeTaste({required this.names, required this.ids});
+
+  final List<String> names;
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = <String>{
+      ...names.where((name) => name.trim().isNotEmpty),
+      ...ids.where((id) => id.trim().isNotEmpty),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('Anime taste', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: AppSpacing.sm),
+        if (labels.isEmpty)
+          PubgetEmptyState(
+            compact: true,
+            icon: Icons.movie_outlined,
+            title: 'No favorites yet',
+            message: 'Save anime you love so Discover can feel like you.',
+            action: PubgetTextButton(
+              onPressed: () => AppNavigation.go(context, '/anime'),
+              semanticLabel: 'Open Anime Hub',
+              child: const Text('Open Anime Hub'),
+            ),
+          )
+        else
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final label in labels) PubgetBadge(label: label),
+              PubgetTextButton(
+                onPressed: () => AppNavigation.go(context, '/anime'),
+                semanticLabel: 'Explore more anime',
+                child: const Text('Explore more'),
+              ),
+            ],
+          ),
       ],
     );
   }

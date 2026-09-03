@@ -89,6 +89,37 @@ void main() {
     expect(EventLifecycle.validateWindow(start, start), isNotNull);
   });
 
+  test('expired active events are not interactable', () {
+    final now = DateTime.utc(2026, 9, 2);
+    final event = PubgetEvent(
+      id: 'e1',
+      type: EventType.poll,
+      creatorId: 'alice',
+      groupId: 'g1',
+      title: 'Vote',
+      description: '',
+      configuration: const EventConfiguration(
+        question: 'Best?',
+        options: <EventOption>[
+          EventOption(id: 'opt-1', label: 'One'),
+          EventOption(id: 'opt-2', label: 'Two'),
+        ],
+      ),
+      status: EventStatus.active,
+      startAt: DateTime.utc(2026, 8, 1),
+      endAt: DateTime.utc(2026, 8, 2),
+      participantsCount: 1,
+      responsesCount: 1,
+      tally: const EventTally(),
+      result: null,
+      createdAt: DateTime.utc(2026, 8, 1),
+      updatedAt: DateTime.utc(2026, 8, 1),
+    );
+    expect(event.isExpired(now), isTrue);
+    expect(event.isInteractable(now), isFalse);
+    expect(event.isReadOnly, isFalse);
+  });
+
   test('templates map onto real event types', () {
     expect(EventTypeRegistry.templates['animeBattle'], EventType.versus);
     expect(EventTypeRegistry.templates['guessCharacter'], EventType.quiz);
@@ -155,6 +186,35 @@ void main() {
         ),
       ),
       isNull,
+    );
+  });
+
+  test('comparison events require canonical candidates', () {
+    expect(
+      EventValidation.configuration(
+        EventType.characterComparison,
+        const EventConfiguration(
+          criterion: 'Who wins?',
+          options: <EventOption>[
+            EventOption(id: 'luffy', label: 'luffy', characterId: 'luffy'),
+            EventOption(id: 'naruto', label: 'naruto', characterId: 'naruto'),
+          ],
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      EventValidation.configuration(
+        EventType.characterComparison,
+        const EventConfiguration(
+          criterion: 'Who wins?',
+          options: <EventOption>[
+            EventOption(id: 'luffy', label: 'luffy', characterId: 'luffy'),
+            EventOption(id: 'luffy-2', label: 'luffy', characterId: 'luffy'),
+          ],
+        ),
+      ),
+      isNotNull,
     );
   });
 }

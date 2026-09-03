@@ -7,6 +7,7 @@
 // existing notification builder. Group permissions reuse ROLE_PERMISSIONS.
 
 const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const catalog = require("./gameCatalog");
 
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const TITLE_MAX = 80;
@@ -42,6 +43,28 @@ const TEMPLATES = {
   emojiChallenge: { type: "challenge", title: "Emoji Challenge" },
   guessCharacter: { type: "quiz", title: "Guess the Character" },
 };
+
+const CHALLENGE_KINDS = Object.freeze([
+  "finish_game",
+  "publish_edit",
+  "create_group",
+  "participate_event",
+  "self_report",
+]);
+
+const CHALLENGE_EVIDENCE = Object.freeze({
+  finish_game: { achievementId: "community_milestone" },
+  publish_edit: { achievementId: "first_edit" },
+  create_group: { achievementId: "first_group" },
+});
+
+const IMAGE_MIME_TYPES = Object.freeze([
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+]);
+
+const COMPARISON_TYPES = Object.freeze([
+  "imageComparison", "characterComparison", "animeComparison",
+]);
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -171,6 +194,190 @@ function validateQuiz(questions) {
   return normalized;
 }
 
+function pickCriterion(input) {
+  const value = input.criterion || input.question || input.prompt || input.title;
+  return validString(value, 200) ? value.trim() : "";
+}
+
+function validHttpsImageUrl(url) {
+  if (typeof url !== "string" || url.trim().length < 12 || url.trim().length > 1024) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password &&
+      Boolean(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+function candidateList(input) {
+  return input.candidates || input.options || input.items;
+}
+
+function validateCharacterComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seen = new Set();
+  for (const item of raw) {
+    let characterId = "";
+    if (typeof item === "string") characterId = item.trim();
+    else if (item && typeof item === "object") {
+      characterId = validString(item.characterId, 64) ? item.characterId.trim()
+        : (validString(item.id, 64) ? item.id.trim() : "");
+    }
+    const character = catalog.characterById(characterId);
+    if (!character || seen.has(character.id)) return null;
+    seen.add(character.id);
+    options.push({
+      id: character.id,
+      label: character.name,
+      characterId: character.id,
+      animeId: character.animeId,
+      animeTitle: character.animeTitle,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "character",
+    options,
+    candidates: options.map((item) => ({
+      characterId: item.characterId,
+      animeId: item.animeId,
+    })),
+    maxSelections: 1,
+  };
+}
+
+function validateAnimeComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seen = new Set();
+  for (const item of raw) {
+    let animeId = "";
+    if (typeof item === "string") animeId = item.trim();
+    else if (item && typeof item === "object") {
+      animeId = validString(item.animeId, 64) ? item.animeId.trim()
+        : (validString(item.id, 64) ? item.id.trim() : "");
+    }
+    const anime = catalog.byAnimeId(animeId);
+    if (!anime || seen.has(anime.id)) return null;
+    seen.add(anime.id);
+    options.push({
+      id: anime.id,
+      label: anime.title,
+      animeId: anime.id,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "anime",
+    options,
+    candidates: options.map((item) => ({ animeId: item.animeId })),
+    maxSelections: 1,
+  };
+}
+
+function validateImageComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seenUrls = new Set();
+  for (let index = 0; index < raw.length; index += 1) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") return null;
+    const imageUrl = typeof item.imageUrl === "string" ? item.imageUrl.trim() : "";
+    const mimeType = typeof item.mimeType === "string" ? item.mimeType.trim().toLowerCase() : "";
+    const license = typeof item.license === "string" ? item.license.trim() : "";
+    const attribution = typeof item.attribution === "string" ? item.attribution.trim() : "";
+    const label = validString(item.label || item.caption, 80)
+      ? (item.label || item.caption).trim()
+      : `Image ${index + 1}`;
+    if (!validHttpsImageUrl(imageUrl) ||
+        !IMAGE_MIME_TYPES.includes(mimeType) ||
+        !validString(license, 80) ||
+        !validString(attribution, 200) ||
+        seenUrls.has(imageUrl)) {
+      return null;
+    }
+    seenUrls.add(imageUrl);
+    const id = validString(item.id, 64) ? item.id.trim() : `img-${index + 1}`;
+    if (options.some((option) => option.id === id)) return null;
+    options.push({
+      id,
+      label,
+      imageUrl,
+      mimeType,
+      license,
+      attribution,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "image",
+    options,
+    candidates: options.map((item) => ({
+      id: item.id,
+      imageUrl: item.imageUrl,
+      mimeType: item.mimeType,
+      license: item.license,
+      attribution: item.attribution,
+    })),
+    maxSelections: 1,
+  };
+}
+
+function validateChallenge(input) {
+  const prompt = validString(input.prompt || input.question, 200)
+    ? (input.prompt || input.question).trim()
+    : "";
+  if (!prompt) return null;
+  const challengeKind = validString(input.challengeKind, 40)
+    ? input.challengeKind.trim()
+    : "self_report";
+  if (!CHALLENGE_KINDS.includes(challengeKind)) return null;
+  let targetEventId = "";
+  if (challengeKind === "participate_event") {
+    if (!validString(input.targetEventId, EVENT_ID_MAX)) return null;
+    targetEventId = input.targetEventId.trim();
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    prompt,
+    challengeKind,
+    targetEventId,
+    verification: challengeKind === "self_report" ? "self_reported" : "server",
+    completionRule: typeof input.completionRule === "string"
+      ? input.completionRule.trim().slice(0, 200)
+      : "",
+    allowVoting: false,
+  };
+}
+
 function validateConfiguration(type, raw) {
   const input = raw && typeof raw === "object" ? raw : {};
   const allowMultiple = input.allowMultiple === true;
@@ -181,7 +388,11 @@ function validateConfiguration(type, raw) {
     if (!questions) return null;
     return { ...base, allowUpdate: false, questions };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "characterComparison") return validateCharacterComparison(input);
+  if (type === "animeComparison") return validateAnimeComparison(input);
+  if (type === "imageComparison") return validateImageComparison(input);
+  if (type === "challenge") return validateChallenge(input);
+  if (type === "theory" || type === "openDiscussion") {
     const prompt = validString(input.prompt || input.question, 200)
       ? (input.prompt || input.question).trim()
       : "";
@@ -227,12 +438,16 @@ function validateResponse(type, configuration, data) {
     }
     return { answers: next };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
-    if (type === "challenge" && payload.completed === true) {
-      return { completed: true, text: "" };
-    }
+  if (type === "challenge") {
+    const text = typeof payload.text === "string" ? payload.text.trim().slice(0, TEXT_MAX) : "";
+    return {
+      text,
+      challengeKind: configuration.challengeKind || "self_report",
+    };
+  }
+  if (type === "theory" || type === "openDiscussion") {
     if (!validString(payload.text, TEXT_MAX)) return null;
-    return { text: payload.text.trim(), completed: payload.completed === true };
+    return { text: payload.text.trim() };
   }
   if (type === "ranking") {
     const ranked = Array.isArray(payload.rankedIds) ? payload.rankedIds : [];
@@ -268,7 +483,11 @@ function emptyTally(configuration, type) {
     return { scores, submissions: 0 };
   }
   if (type === "theory" || type === "openDiscussion" || type === "challenge") {
-    return { submissions: 0 };
+    return {
+      submissions: 0,
+      verifiedCompletions: 0,
+      selfReported: 0,
+    };
   }
   const votes = {};
   (configuration.options || []).forEach((item) => { votes[item.id] = 0; });
@@ -287,6 +506,8 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     votes: { ...(tally.votes || {}) },
     scores: { ...(tally.scores || {}) },
     correctCounts: { ...(tally.correctCounts || {}) },
+    verifiedCompletions: tally.verifiedCompletions || 0,
+    selfReported: tally.selfReported || 0,
   };
   if (type === "quiz") {
     const answers = payload.answers && typeof payload.answers === "object"
@@ -307,7 +528,16 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     });
     return next;
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "challenge") {
+    if (payload.verified === true) {
+      next.verifiedCompletions = Math.max(0, next.verifiedCompletions + step);
+    }
+    if (payload.verification === "self_reported") {
+      next.selfReported = Math.max(0, next.selfReported + step);
+    }
+    return next;
+  }
+  if (type === "theory" || type === "openDiscussion") {
     return next;
   }
   (payload.optionIds || []).forEach((id) => {
@@ -343,10 +573,45 @@ function calculateResult({ type, configuration, tally, responsesCount }) {
     const win = winnersFromMap(tally.scores || {});
     return { kind: type, submissions, scores: tally.scores || {}, winnerIds: win.ids };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "challenge") {
+    return {
+      kind: type,
+      challengeKind: configuration.challengeKind || "self_report",
+      verification: configuration.verification || "server",
+      submissions,
+      verifiedCompletions: tally.verifiedCompletions || 0,
+      selfReported: tally.selfReported || 0,
+    };
+  }
+  if (type === "theory" || type === "openDiscussion") {
     return { kind: type, submissions };
   }
   const win = winnersFromMap(tally.votes || {});
+  if (COMPARISON_TYPES.includes(type)) {
+    const byId = {};
+    (configuration.options || []).forEach((item) => {
+      byId[item.id] = item;
+    });
+    return {
+      kind: type,
+      comparisonKind: configuration.comparisonType || type,
+      criterion: configuration.criterion || configuration.question || "",
+      submissions,
+      votes: tally.votes || {},
+      winnerIds: win.ids,
+      winners: win.ids.map((id) => {
+        const option = byId[id] || { id };
+        return {
+          id,
+          label: option.label || id,
+          characterId: option.characterId || null,
+          animeId: option.animeId || null,
+          imageUrl: option.imageUrl || null,
+          license: option.license || null,
+        };
+      }),
+    };
+  }
   return { kind: type, submissions, votes: tally.votes || {}, winnerIds: win.ids };
 }
 
@@ -463,8 +728,54 @@ function uniqueRecipientIds(ids) {
     .slice(0, RECIPIENT_CAP);
 }
 
+function achievementItemRef(db, uid, achievementId) {
+  return db.collection("user_achievements").doc(uid)
+    .collection("items").doc(achievementId);
+}
+
+async function verifyChallengeCompletion(transaction, db, uid, configuration, eventId, HttpsError) {
+  const kind = configuration.challengeKind || "self_report";
+  if (kind === "self_report") {
+    return {
+      verified: false,
+      verification: "self_reported",
+      challengeKind: kind,
+    };
+  }
+  if (kind === "participate_event") {
+    const target = configuration.targetEventId;
+    if (!validString(target, EVENT_ID_MAX) || target === eventId) {
+      throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+    }
+    const evidence = await transaction.get(responseRef(db, target, uid));
+    if (!evidence.exists) {
+      throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+    }
+    return {
+      verified: true,
+      verification: "server",
+      challengeKind: kind,
+      evidence: { eventId: target },
+    };
+  }
+  const mapped = CHALLENGE_EVIDENCE[kind];
+  if (!mapped) {
+    throw new HttpsError("invalid-argument", "Unknown challenge kind.");
+  }
+  const evidence = await transaction.get(achievementItemRef(db, uid, mapped.achievementId));
+  if (!evidence.exists) {
+    throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+  }
+  return {
+    verified: true,
+    verification: "server",
+    challengeKind: kind,
+    evidence: { achievementId: mapped.achievementId },
+  };
+}
+
 function createEventsDomain({
-  db, FieldValue, HttpsError, notificationBuilder, economy,
+  db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
 }) {
   async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
     if (!validString(eventId, EVENT_ID_MAX)) return;
@@ -895,9 +1206,15 @@ function createEventsDomain({
         throw new HttpsError("failed-precondition", "This event has already ended.");
       }
       const configuration = current.configuration || {};
-      const responseData = validateResponse(current.type, configuration, request.data && request.data.responseData);
+      let responseData = validateResponse(current.type, configuration, request.data && request.data.responseData);
       if (!responseData) {
         throw new HttpsError("invalid-argument", "The response does not match this event type.");
+      }
+      if (current.type === "challenge") {
+        const verified = await verifyChallengeCompletion(
+          transaction, db, uid, configuration, ref.id, HttpsError,
+        );
+        responseData = { ...responseData, ...verified };
       }
       if (prior.exists && configuration.allowUpdate !== true) {
         throw new HttpsError("already-exists", "You already submitted a response.");
@@ -959,6 +1276,14 @@ function createEventsDomain({
       if (joinedNow) eventUpdate.participantsCount = FieldValue.increment(1);
       transaction.update(ref, eventUpdate);
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_participated",
+        userId: uid,
+        source: "event",
+        metadata: { eventId: eventId.trim() },
+      });
+    }
     return { ok: true };
   }
 
@@ -1038,6 +1363,14 @@ function createEventsDomain({
       source: "event",
       metadata: { eventType: event.type || "" },
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_won",
+        userIds: winners,
+        source: "event",
+        metadata: { eventId },
+      });
+    }
   }
 
   return {
@@ -1068,4 +1401,6 @@ module.exports = {
   emptyTally,
   validateConfiguration,
   validateResponse,
+  CHALLENGE_KINDS,
+  COMPARISON_TYPES,
 };

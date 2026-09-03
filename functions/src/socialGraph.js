@@ -41,7 +41,7 @@ function matchesLegacyFriendship(data, userA, userB) {
     data.userB === userB;
 }
 
-function createSocialGraph({ db, FieldValue, HttpsError }) {
+function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
   function authenticated(request) {
     if (!request || !request.auth || !validUid(request.auth.uid)) {
       throw new HttpsError("unauthenticated", "Authentication is required.");
@@ -109,7 +109,7 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
     const legacyFriendshipRef = db.collection("friendships")
       .doc(legacyPairId(uid, toUserId));
     const targetRef = db.collection("users").doc(toUserId);
-    await db.runTransaction(async (transaction) => {
+    const respectOutcome = await db.runTransaction(async (transaction) => {
       const [
         relation,
         legacy,
@@ -184,7 +184,16 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
         lastActionAt: FieldValue.serverTimestamp(),
       });
       transaction.update(targetRef, { totalRespect, fansCount });
+      return { becameFan: isFan && previousFans === 0 };
     });
+    if (respectOutcome && respectOutcome.becameFan &&
+        achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "fan_gained",
+        userId: toUserId,
+        source: "respect",
+      });
+    }
     return { ok: true, value };
   }
 
@@ -302,6 +311,13 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
         if (matchingLegacy) transaction.delete(legacyRef);
       }
     });
+    if (response === "accept" && achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "friend_accepted",
+        userIds: [uid, otherUserId],
+        source: "friend",
+      });
+    }
     return { ok: true };
   }
 
@@ -360,7 +376,7 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
         ? legacy
         : null;
       const existing = relation.exists ? relation : matchingLegacy;
-      if (existing.exists &&
+      if (existing && existing.exists &&
           existing.data().status === "blocked" &&
           existing.data().blockedBy !== uid) {
         throw new HttpsError(
@@ -373,9 +389,9 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
         userB,
         userIds: [userA, userB],
         status: "blocked",
-        requestedBy: existing.exists ? existing.data().requestedBy : uid,
+        requestedBy: existing && existing.exists ? existing.data().requestedBy : uid,
         blockedBy: uid,
-        createdAt: existing.exists
+        createdAt: existing && existing.exists
           ? existing.data().createdAt
           : FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -403,7 +419,7 @@ function createSocialGraph({ db, FieldValue, HttpsError }) {
         ? legacy
         : null;
       const existing = relation.exists ? relation : matchingLegacy;
-      if (!existing.exists || existing.data().status !== "blocked") return;
+      if (!existing || !existing.exists || existing.data().status !== "blocked") return;
       if (existing.data().blockedBy !== uid) {
         throw new HttpsError(
           "permission-denied",

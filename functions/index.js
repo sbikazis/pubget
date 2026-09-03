@@ -13,7 +13,7 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { randomUUID } = require("node:crypto");
 const {
@@ -32,16 +32,17 @@ const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
 const { createNotificationTriggers } = require("./src/notificationTriggers");
-const {
-  createDiscoveryScheduler,
-  onSchedule,
-} = require("./src/discoveryEngine");
+const { createDiscoveryScheduler, onSchedule } = require("./src/discoveryEngine");
+const { createRecommendationEngine } = require("./src/recommendationEngine");
+const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createEconomyDomain } = require("./src/economyDomain");
+const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
 
@@ -84,17 +85,6 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   await publicRef.set(buildPublicProfile(data));
 });
 
-const socialGraph = createSocialGraph({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-});
-const groupsDomain = createGroupsDomain({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  randomUUID,
-});
 const groupChat = createGroupChat({
   db: getFirestore(),
   FieldValue,
@@ -116,12 +106,33 @@ const economyDomain = createEconomyDomain({
   HttpsError,
   notificationBuilder,
 });
+const achievementsDomain = createAchievementsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  economy: economyDomain,
+  notificationBuilder,
+});
+const socialGraph = createSocialGraph({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  achievements: achievementsDomain,
+});
+const groupsDomain = createGroupsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  randomUUID,
+  achievements: achievementsDomain,
+});
 const eventsDomain = createEventsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
   economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
@@ -129,6 +140,14 @@ const gamesDomain = createGamesDomain({
   HttpsError,
   notificationBuilder,
   economy: economyDomain,
+  achievements: achievementsDomain,
+});
+const mafiaDomain = createMafiaDomain({
+  db: getFirestore(),
+  FieldValue,
+  Timestamp,
+  HttpsError,
+  notificationBuilder,
 });
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
@@ -137,6 +156,7 @@ const fanWorksDomain = createFanWorksDomain({
   notificationBuilder,
   storage: getStorage().bucket(),
   economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -151,15 +171,49 @@ const discoveryScheduler = createDiscoveryScheduler({
   db: getFirestore(),
   FieldValue,
 });
+const recommendationEngine = createRecommendationEngine({
+  db: getFirestore(),
+  HttpsError,
+});
+const animeListsDomain = createAnimeListsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+  achievements: achievementsDomain,
 });
 
 exports.refreshGroupActivityScores = onSchedule(
   { schedule: "every 1 hours", region: "us-central1" },
   discoveryScheduler.updateScores,
+);
+exports.getDiscoveryFeed = onCall(
+  { region: "us-central1" },
+  recommendationEngine.getDiscoveryFeed,
+);
+exports.setAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setAnimeListEntry,
+);
+exports.removeAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.removeAnimeListEntry,
+);
+exports.getAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getAnimeList,
+);
+exports.setCharacterFavorite = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setCharacterFavorite,
+);
+exports.getCharacterFavorites = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCharacterFavorites,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },
@@ -203,6 +257,7 @@ exports.processEditVideo = onObjectFinalized(
     db: getFirestore(),
     bucket: getStorage().bucket(),
     economy: economyDomain,
+    achievements: achievementsDomain,
   }),
 );
 
@@ -377,6 +432,26 @@ exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
 );
+exports.processExpiredGames = onSchedule(
+  { region: "us-central1", schedule: "every 1 minutes" },
+  gamesDomain.processExpiredGames,
+);
+exports.createMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.createMafiaGame,
+);
+exports.joinMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.joinMafiaGame,
+);
+exports.startMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.startMafiaGame,
+);
+exports.getAchievements = onCall(
+  { region: "us-central1" },
+  achievementsDomain.getAchievements,
+);
 exports.saveFanWorkDraft = onCall(
   { region: "us-central1" },
   fanWorksDomain.saveFanWorkDraft,
@@ -384,6 +459,14 @@ exports.saveFanWorkDraft = onCall(
 exports.publishFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.publishFanWork,
+);
+exports.revisePublishedFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.revisePublishedFanWork,
+);
+exports.requestFanWorkRemoval = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.requestFanWorkRemoval,
 );
 exports.archiveFanWork = onCall(
   { region: "us-central1" },
@@ -412,6 +495,18 @@ exports.bookmarkFanWork = onCall(
 exports.reportFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.reportFanWork,
+);
+exports.rateFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.rateFanWork,
+);
+exports.addFanWorkComment = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.commentFanWork,
+);
+exports.fanWorkCommentAction = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.fanWorkCommentAction,
 );
 exports.getEconomy = onCall(
   { region: "us-central1" },

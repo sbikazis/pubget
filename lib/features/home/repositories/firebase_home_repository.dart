@@ -1,19 +1,26 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
 import '../../fan_works/models/fan_work_models.dart';
+import '../../search/search_query.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import 'home_repository.dart';
 
 final class FirebaseHomeRepository implements HomeRepository {
-  FirebaseHomeRepository({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  FirebaseHomeRepository({
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _functions =
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
   Query<Map<String, dynamic>> _groups() =>
       _firestore.collection('groups').where('isSearchable', isEqualTo: true);
@@ -53,12 +60,12 @@ final class FirebaseHomeRepository implements HomeRepository {
   Future<Result<List<Group>>> getRisingGroups({int limit = 10, Group? after}) {
     var query = _groups()
         .where('risingEligible', isEqualTo: true)
-        .orderBy('activityScore', descending: true)
+        .orderBy('risingScore', descending: true)
         .orderBy('createdAt', descending: true)
         .orderBy(FieldPath.documentId, descending: true);
     if (after != null) {
       query = query.startAfter(<Object?>[
-        after.activityScore,
+        after.risingScore,
         after.createdAt,
         after.id,
       ]);
@@ -70,14 +77,24 @@ final class FirebaseHomeRepository implements HomeRepository {
   Future<Result<List<Group>>> getRecommendedGroups({
     int limit = 10,
     Group? after,
-  }) {
-    var query = _groups()
-        .orderBy('createdAt', descending: true)
-        .orderBy(FieldPath.documentId, descending: true);
-    if (after != null) {
-      query = query.startAfter(<Object?>[after.createdAt, after.id]);
-    }
-    return _groupQuery(query.limit(limit));
+  }) async {
+    final ranked = await getDiscoveryFeed(
+      section: 'recommendedGroups',
+      cursor: after?.id,
+      limit: limit,
+    );
+    return ranked.fold(
+      onSuccess: (feed) {
+        final groups = feed
+            .section('recommendedGroups')
+            .items
+            .map(_groupFromItem)
+            .whereType<Group>()
+            .toList(growable: false);
+        return Success(groups);
+      },
+      onFailure: FailureResult<List<Group>>.new,
+    );
   }
 
   @override
@@ -100,22 +117,41 @@ final class FirebaseHomeRepository implements HomeRepository {
     int limit = 10,
     PublicProfile? after,
   }) async {
+    final ranked = await getDiscoveryFeed(
+      section: 'recommendedPeople',
+      cursor: after?.uid,
+      limit: limit,
+    );
+    return ranked.fold(
+      onSuccess: (feed) {
+        final people = feed
+            .section('recommendedPeople')
+            .items
+            .map(_personFromItem)
+            .where((person) => person.uid != userId)
+            .toList(growable: false);
+        return Success(people);
+      },
+      onFailure: FailureResult<List<PublicProfile>>.new,
+    );
+  }
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async {
     try {
-      var query = _firestore
-          .collection('public_profiles')
-          .orderBy('totalRespect', descending: true)
-          .orderBy(FieldPath.documentId, descending: true);
-      if (after != null) {
-        query = query.startAfter(<Object>[after.totalRespect, after.uid]);
-      }
-      final snapshot = await query.limit(limit + 1).get();
-      return Success(
-        snapshot.docs
-            .where((doc) => doc.id != userId)
-            .take(limit)
-            .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
-            .toList(growable: false),
+      final result = await _functions.httpsCallable('getDiscoveryFeed').call(
+        <String, dynamic>{
+          'section': ?section,
+          'cursor': ?cursor,
+          'limit': limit,
+        },
       );
+      final data = Map<String, dynamic>.from(result.data as Map);
+      return Success(DiscoveryFeed.fromMap(data));
     } on Object catch (error) {
       return FailureResult(_failure(error));
     }
@@ -123,8 +159,10 @@ final class FirebaseHomeRepository implements HomeRepository {
 
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return const Success(DiscoverySearchResults());
+    final normalized = SearchQuery.prefix(query);
+    if (normalized.length < SearchQuery.minLength) {
+      return const Success(DiscoverySearchResults());
+    }
     try {
       final end = '$normalized\uf8ff';
       final groupsFuture = _firestore
@@ -167,24 +205,55 @@ final class FirebaseHomeRepository implements HomeRepository {
       final fanWorks = results[3];
       return Success(
         DiscoverySearchResults(
-          groups: groups.docs
-              .map((doc) => Group.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
-          people: people.docs
-              .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
-              .toList(growable: false),
-          events: events.docs
-              .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
-          fanWorks: fanWorks.docs
-              .map((doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id))
-              .toList(growable: false),
+          groups: _uniqueBy(
+            groups.docs.map((doc) => Group.fromMap(doc.data(), id: doc.id)),
+            (group) => group.id,
+          ),
+          people: _uniqueBy(
+            people.docs.map(
+              (doc) => PublicProfile.fromMap(doc.data(), uid: doc.id),
+            ),
+            (person) => person.uid,
+          ),
+          events: _uniqueBy(
+            events.docs.map(
+              (doc) => PubgetEvent.fromMap(doc.data(), id: doc.id),
+            ),
+            (event) => event.id,
+          ),
+          fanWorks: _uniqueBy(
+            fanWorks.docs.map(
+              (doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id),
+            ),
+            (work) => work.id,
+          ),
         ),
       );
     } on Object catch (error) {
       return FailureResult(_failure(error));
     }
   }
+}
+
+Group? _groupFromItem(DiscoveryItem item) {
+  final data = Map<String, dynamic>.from(item.metadata);
+  if (item.targetId.isEmpty) return null;
+  return Group.fromMap(data, id: item.targetId);
+}
+
+PublicProfile _personFromItem(DiscoveryItem item) {
+  return PublicProfile.fromMap(item.metadata, uid: item.targetId);
+}
+
+List<T> _uniqueBy<T>(Iterable<T> items, String Function(T value) idOf) {
+  final seen = <String>{};
+  final unique = <T>[];
+  for (final item in items) {
+    final id = idOf(item);
+    if (id.isEmpty || !seen.add(id)) continue;
+    unique.add(item);
+  }
+  return List<T>.unmodifiable(unique);
 }
 
 Failure _failure(Object error) {
@@ -196,8 +265,8 @@ Failure _failure(Object error) {
       'permission-denied' => const PermissionError(
         'Discovery is not available for this account.',
       ),
-      _ => UnknownError(error.message ?? 'Discovery could not load.'),
+      _ => const UnknownError('Discovery could not load.'),
     };
   }
-  return UnknownError(error.toString());
+  return const UnknownError('Discovery could not load.');
 }

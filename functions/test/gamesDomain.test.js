@@ -25,6 +25,28 @@ const FieldValue = {
   increment: (value) => ({ _increment: value }),
 };
 
+function millisOf(value) {
+  if (value == null) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function matchesFilter(data, filter) {
+  const val = data[filter.field];
+  if (filter.op === "==") return val === filter.value;
+  const left = millisOf(val);
+  const right = millisOf(filter.value);
+  if (left == null || right == null) return false;
+  if (filter.op === "<=") return left <= right;
+  if (filter.op === "<") return left < right;
+  if (filter.op === ">=") return left >= right;
+  if (filter.op === ">") return left > right;
+  return false;
+}
+
 function clone(value) {
   if (value === null || typeof value !== "object") return value;
   if (value instanceof Date) return new Date(value.getTime());
@@ -62,6 +84,15 @@ function createFakeDb(seed = {}) {
         async set(data) {
           store.set(resolvedPath, clone(data));
         },
+        async get() {
+          const data = store.get(resolvedPath);
+          return {
+            exists: data !== undefined,
+            id: resolvedId,
+            path: resolvedPath,
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
+        },
         async update(data) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
@@ -77,11 +108,14 @@ function createFakeDb(seed = {}) {
       return query(base, []).get();
     },
   });
-  function query(base, filters) {
+  function query(base, filters, orders = []) {
     const chainQuery = {
       _limit: 25,
       where(field, op, value) {
-        return query(base, [...filters, { field, op, value }]);
+        return query(base, [...filters, { field, op, value }], orders);
+      },
+      orderBy(field, direction = "asc") {
+        return query(base, filters, [...orders, { field, direction }]);
       },
       limit(n) {
         chainQuery._limit = n;
@@ -94,18 +128,25 @@ function createFakeDb(seed = {}) {
           if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) {
             continue;
           }
-          let ok = true;
-          for (const filter of filters) {
-            if (filter.op === "==" && data[filter.field] !== filter.value) ok = false;
-          }
-          if (ok) {
-            const id = path.slice(prefix.length);
-            docs.push({
-              id,
-              ref: makeCollection(base).doc(id),
-              data: () => clone(data),
-            });
-          }
+          if (!filters.every((filter) => matchesFilter(data, filter))) continue;
+          const id = path.slice(prefix.length);
+          docs.push({
+            id,
+            ref: makeCollection(base).doc(id),
+            data: () => clone(data),
+            _data: data,
+          });
+        }
+        if (orders.length > 0) {
+          docs.sort((a, b) => {
+            for (const order of orders) {
+              const av = millisOf(a._data[order.field]) ?? 0;
+              const bv = millisOf(b._data[order.field]) ?? 0;
+              if (av === bv) continue;
+              return order.direction === "desc" ? bv - av : av - bv;
+            }
+            return 0;
+          });
         }
         return { docs: docs.slice(0, chainQuery._limit) };
       },
@@ -156,9 +197,11 @@ function seedGroup({ role = "founder" } = {}) {
     "users/alice": { username: "Alice" },
     "users/bob": { username: "Bob" },
     "users/charlie": { username: "Charlie" },
+    "users/dave": { username: "Dave" },
     "groups/g1": { founderId: "alice", name: "G" },
     "groups/g1/members/alice": { role, userId: "alice" },
     "groups/g1/members/bob": { role: "member", userId: "bob" },
+    "groups/g1/members/dave": { role: "member", userId: "dave" },
     "groups/g1/roles/founder": { permissions: ["manageGames", "manageEvents"] },
     "groups/g1/roles/member": { permissions: [] },
   };
@@ -289,6 +332,8 @@ test("founder can create, members can join once, and start is idempotent", async
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`games/${created.gameId}`).status, "active");
+  assert.equal(db.store.get(`games/${created.gameId}`).publicState.engine, "guessCharacter");
+  assert.ok(db.store.get(`games/${created.gameId}/secret/round`).correctId);
   const startedEvents = [...db.store.entries()]
     .filter(([path, data]) => path.includes("/events/") && data.type === "game_started");
   assert.equal(startedEvents.length, 1);
@@ -303,14 +348,15 @@ test("join after start and actions from non-participants are rejected", async ()
     auth: { uid: "alice" },
     data: { type: "animeChain", title: "Chain", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await assert.rejects(
-    games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } }),
+    games.joinGame({ auth: { uid: "dave" }, data: { gameId: created.gameId } }),
     (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
-      auth: { uid: "bob" },
+      auth: { uid: "dave" },
       data: { gameId: created.gameId, actionType: "submit" },
     }),
     (error) => error.code === "permission-denied",
@@ -326,27 +372,29 @@ test("submitAction is idempotent and rejects impersonation", async () => {
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const secret = db.store.get(`games/${created.gameId}/secret/round`);
+  const current = db.store.get(`games/${created.gameId}`).publicState.currentPlayerId;
   await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: current },
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { value: "Naruto" },
+      payload: { title: secret.title },
       clientActionId: "act-1",
     },
   });
   await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: current },
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { value: "Sasuke" },
+      payload: { title: "Naruto" },
       clientActionId: "act-1",
     },
   });
   const actions = [...db.store.entries()].filter(([path]) => path.includes("/actions/"));
   assert.equal(actions.length, 1);
-  assert.equal(actions[0][1].payload.value, "Naruto");
+  assert.equal(actions[0][1].payload.title, secret.title);
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "bob" },
@@ -384,6 +432,7 @@ test("pause, resume, end, and cancel follow the state machine", async () => {
     auth: { uid: "alice" },
     data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.pauseGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`games/${created.gameId}`).status, "paused");
@@ -436,7 +485,54 @@ test("games never write group chat messages", async () => {
     auth: { uid: "alice" },
     data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   const chatWrites = [...db.store.keys()].filter((path) => path.includes("/messages/"));
   assert.equal(chatWrites.length, 0);
+});
+
+test("processExpiredGames queries eligible deadlines and stays bounded", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const seed = seedGroup();
+  for (let index = 0; index < 60; index += 1) {
+    seed[`games/old-${index}`] = {
+      status: "active",
+      type: "guessCharacter",
+      deadlineAt: new Date("2026-09-03T11:00:00Z"),
+      publicState: { engine: "guessCharacter", phase: "waiting" },
+    };
+  }
+  seed["games/future"] = {
+    status: "active",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T13:00:00Z"),
+    publicState: { engine: "guessCharacter", phase: "round" },
+  };
+  seed["games/done"] = {
+    status: "completed",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  seed["games/cancel"] = {
+    status: "cancelled",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  const db = createFakeDb(seed);
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+  });
+  const first = await games.processExpiredGames();
+  assert.equal(first.limit, 50);
+  assert.equal(first.scanned, 50);
+  assert.equal(first.expired, 50);
+  const future = db.store.get("games/future");
+  assert.equal(future.status, "active");
+  assert.equal(db.store.get("games/done").status, "completed");
+  assert.equal(db.store.get("games/cancel").status, "cancelled");
+  const second = await games.processExpiredGames();
+  assert.ok(second.scanned <= 50);
 });

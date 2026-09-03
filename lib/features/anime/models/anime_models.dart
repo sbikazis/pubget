@@ -278,5 +278,12 @@ abstract final class AnimeStrings {
   static const trailer = 'Trailer';
   static const links = 'External links';
   static const copied = 'Link copied';
+  static const share = 'Share anime';
   static const favoriteLimit = 'You can save up to 50 favorite anime.';
+  static const libraryTitle = 'My anime lists';
+  static const libraryEmpty = 'No titles in this list yet';
+  static const libraryEmptyMessage =
+      'Add anime from a details page. Lists are saved on the server.';
+  static const listStatus = 'List status';
+  static const removeFromList = 'Remove from list';
 }

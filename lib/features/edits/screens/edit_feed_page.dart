@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -9,7 +10,7 @@ import '../models/edit_models.dart';
 import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
 import '../../groups/services/storage_video_controller.dart';
-import 'edit_upload_page.dart';
+import '../widgets/edit_comments_sheet.dart';
 
 class EditFeedPage extends StatefulWidget {
   const EditFeedPage({super.key});
@@ -39,14 +40,22 @@ class _EditFeedPageState extends State<EditFeedPage> {
     final provider = context.watch<EditsProvider>();
     if (provider.state == LoadingState.loading ||
         provider.state == LoadingState.initial) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: PubgetSkeleton.card(width: 240, height: 320)),
+      );
     }
     if (provider.state == LoadingState.empty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Edits')),
-        body: const PubgetEmptyState(
+        body: PubgetEmptyState(
           title: 'No Edits yet',
           message: 'Be the first creator to share a video.',
+          icon: Icons.movie_filter_outlined,
+          action: PubgetPrimaryButton(
+            onPressed: () => AppNavigation.go(context, '/edits/upload'),
+            semanticLabel: 'Upload an Edit',
+            child: const Text('Upload an Edit'),
+          ),
         ),
         floatingActionButton: _uploadButton(context),
       );
@@ -86,9 +95,7 @@ class _EditFeedPageState extends State<EditFeedPage> {
   }
 
   Widget _uploadButton(BuildContext context) => FloatingActionButton(
-    onPressed: () => Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const EditUploadPage())),
+    onPressed: () => AppNavigation.go(context, '/edits/upload'),
     child: const Icon(Icons.add),
   );
 }
@@ -220,9 +227,9 @@ class _EditVideoItemState extends State<_EditVideoItem> {
               ),
             ),
           ),
-          Positioned(
-            left: AppSpacing.md,
-            right: 76,
+          PositionedDirectional(
+            start: AppSpacing.md,
+            end: 76,
             bottom: AppSpacing.xl,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,8 +246,8 @@ class _EditVideoItemState extends State<_EditVideoItem> {
               ],
             ),
           ),
-          Positioned(
-            right: AppSpacing.md,
+          PositionedDirectional(
+            end: AppSpacing.md,
             bottom: AppSpacing.xl,
             child: Column(
               children: <Widget>[
@@ -253,7 +260,7 @@ class _EditVideoItemState extends State<_EditVideoItem> {
                 _Action(
                   icon: Icons.comment_outlined,
                   label: '${widget.edit.commentsCount}',
-                  onTap: () => _showComments(context, widget.edit),
+                  onTap: () => EditCommentsSheet.show(context, widget.edit),
                 ),
                 _Action(
                   icon: Icons.repeat,
@@ -284,70 +291,6 @@ class _EditVideoItemState extends State<_EditVideoItem> {
       );
     },
   );
-
-  Future<void> _showComments(BuildContext context, Edit edit) async {
-    final repository = context.read<EditsRepository>();
-    final controller = TextEditingController();
-    final result = await repository.getComments(edit.id);
-    if (!context.mounted) return;
-    final comments = result.valueOrNull ?? const <EditComment>[];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: AppSpacing.md,
-          right: AppSpacing.md,
-          top: AppSpacing.md,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.md,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('Comments', style: Theme.of(context).textTheme.titleLarge),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: comments
-                    .map(
-                      (comment) => ListTile(
-                        title: Text(comment.text),
-                        subtitle: Text('${comment.likesCount} likes'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.favorite_border),
-                          onPressed: () => repository.commentAction(
-                            editId: edit.id,
-                            commentId: comment.id,
-                            action: 'like',
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-            Row(
-              children: <Widget>[
-                Expanded(child: TextField(controller: controller)),
-                IconButton(
-                  onPressed: () async {
-                    if (controller.text.trim().isEmpty) return;
-                    await repository.addComment(
-                      editId: edit.id,
-                      text: controller.text,
-                    );
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  icon: const Icon(Icons.send),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-  }
 }
 
 class _Action extends StatelessWidget {

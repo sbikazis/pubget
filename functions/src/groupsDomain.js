@@ -43,8 +43,7 @@ function groupInput(request, HttpsError) {
       data.description.length > 500 || !GROUP_TYPES.includes(data.type) ||
       !JOIN_POLICIES.includes(data.joinPolicy) ||
       typeof data.isSearchable !== "boolean" || typeof data.rules !== "string" ||
-      data.rules.length > 4000 || !Number.isInteger(data.maxMembers) ||
-      data.maxMembers < 2 || data.maxMembers > 500 ||
+      data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128))) {
     throw new HttpsError("invalid-argument", "Group details are invalid.");
@@ -76,6 +75,12 @@ function roleDefinition(role) {
   };
 }
 
+function entitledMaxMembers(userData) {
+  const custom = Number(userData && userData.customMaxMembersLimit) || 0;
+  if (!Number.isFinite(custom) || custom <= 0) return 100;
+  return Math.min(Math.max(Math.trunc(custom), 2), 500);
+}
+
 function inviteRankForCount(count) {
   if (count >= 50) return "captain";
   if (count >= 20) return "sensei";
@@ -100,7 +105,7 @@ function permissionFor(member, role, permission) {
     (role && role.permissions && role.permissions.includes(permission)));
 }
 
-function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
+function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievements }) {
   function requireGroupId(request) {
     const groupId = request.data && request.data.groupId;
     if (!validString(groupId, 128)) {
@@ -127,6 +132,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
     const groupRef = db.collection("groups").doc();
     const memberRef = memberPath(db, groupRef.id, uid);
     await db.runTransaction(async (transaction) => {
+      const userSnap = await transaction.get(db.collection("users").doc(uid));
+      const maxMembers = entitledMaxMembers(userSnap.exists ? userSnap.data() : {});
       transaction.create(groupRef, {
         name: data.name.trim(),
         searchName: data.name.trim().toLowerCase(),
@@ -136,7 +143,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
         animeId: data.animeId || null,
         founderId: uid,
         membersCount: 1,
-        maxMembers: data.maxMembers,
+        maxMembers,
         joinPolicy: data.joinPolicy,
         isSearchable: data.isSearchable,
         createdAt: FieldValue.serverTimestamp(),
@@ -151,6 +158,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID }) {
       }
     });
     const created = await groupRef.get();
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "group_created",
+        userId: uid,
+        source: "group",
+        metadata: { groupId: groupRef.id },
+      });
+    }
     return { ok: true, groupId: groupRef.id, group: created.data() };
   }
 
@@ -625,5 +640,6 @@ module.exports = {
   ROLE_PERMISSIONS,
   ROLES,
   createGroupsDomain,
+  entitledMaxMembers,
   inviteRankForCount,
 };

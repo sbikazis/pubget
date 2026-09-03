@@ -16,6 +16,7 @@ const REWARD_TYPES = Object.freeze([
   "earn_event",
   "earn_game",
   "earn_publish",
+  "earn_achievement",
   "earn_referral_inviter",
   "earn_referral_invited",
   "purchase_cosmetic",
@@ -27,6 +28,7 @@ const REWARD_AMOUNTS = Object.freeze({
   earn_event: 10,
   earn_game: 10,
   earn_publish: 10,
+  earn_achievement: 5,
   earn_referral_inviter: 70,
   earn_referral_invited: 30,
 });
@@ -35,12 +37,14 @@ const DAILY_CAPS = Object.freeze({
   earn_event: 3,
   earn_game: 3,
   earn_publish: 1,
+  earn_achievement: 9,
 });
 
 const DAILY_BUCKET = Object.freeze({
   earn_event: "event",
   earn_game: "event",
   earn_publish: "publish",
+  earn_achievement: "achievement",
 });
 
 const RATE_LIMITS = Object.freeze({

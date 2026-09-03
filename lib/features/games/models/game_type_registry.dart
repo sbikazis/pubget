@@ -54,7 +54,12 @@ abstract final class GameTypeRegistry {
       icon: Icons.person_search_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesScoring: true, usesRounds: true),
+      capabilities: GameCapabilities(
+        usesScoring: true,
+        usesRounds: true,
+        minPlayers: 2,
+        maxPlayers: 2,
+      ),
     ),
     GameType.animeChain: GameTypeSpec(
       type: GameType.animeChain,
@@ -63,7 +68,12 @@ abstract final class GameTypeRegistry {
       icon: Icons.link_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesRounds: true),
+      capabilities: GameCapabilities(
+        usesRounds: true,
+        usesScoring: true,
+        minPlayers: 2,
+        maxPlayers: 8,
+      ),
     ),
     GameType.emojiAnimeGuess: GameTypeSpec(
       type: GameType.emojiAnimeGuess,
@@ -72,16 +82,20 @@ abstract final class GameTypeRegistry {
       icon: Icons.emoji_emotions_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesScoring: true),
+      capabilities: GameCapabilities(
+        usesScoring: true,
+        usesRounds: true,
+        minPlayers: 2,
+        maxPlayers: 4,
+      ),
     ),
-    // Registered for routing/capability lookup. Implementation is PROMPT 13.
     GameType.mafia: GameTypeSpec(
       type: GameType.mafia,
       name: 'Mafia',
-      description: 'Coming soon.',
+      description: 'A private-role social deduction game.',
       icon: Icons.nightlight_outlined,
       version: 1,
-      implemented: false,
+      implemented: true,
       capabilities: GameCapabilities(
         usesRounds: true,
         minPlayers: 4,
@@ -111,6 +125,20 @@ abstract final class GameTypeRegistry {
       specs.values.where((spec) => spec.implemented).toList(growable: false);
 
   static bool isRegistered(GameType type) => specs.containsKey(type);
+
+  /// Default configuration for a type. Only implemented options are filled.
+  static GameConfiguration configurationFor(GameType type) {
+    final spec = of(type);
+    final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;
+    return GameConfiguration(
+      minPlayers: spec.capabilities.minPlayers,
+      maxPlayers: spec.capabilities.maxPlayers,
+      usesRounds: spec.capabilities.usesRounds,
+      roundCount: quiz ? 5 : 1,
+      timerSeconds: quiz ? 20 : 45,
+      difficulty: 'normal',
+    );
+  }
 }
 
 abstract final class GameStrings {
@@ -138,4 +166,15 @@ abstract final class GameStrings {
   static const comingSoon = 'This game is not available yet.';
   static const copied = 'Game link copied';
   static const copyLink = 'Copy link';
+  static const share = 'Share';
+  static const playAgain = 'Play again';
+  static const viewHistory = 'View history';
+  static const waitingForPlayers = 'Waiting for players';
+  static const cannotStart = 'Not enough players to start.';
+  static const yourTurn = 'Your turn';
+  static const waitingTurn = 'Waiting for the other players';
+  static const submitting = 'Submitting…';
+  static const timedOut = 'Time is up';
+  static const reconnecting = 'Reconnecting to the live game…';
+  static const offlineAction = 'Connect to the internet to take this action.';
 }

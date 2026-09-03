@@ -9,20 +9,18 @@ import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../groups/models/group_models.dart';
 import '../../edits/providers/edits_provider.dart';
-import '../../events/models/event_models.dart';
-import '../../events/models/event_type_registry.dart';
 import '../../events/widgets/event_widgets.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/widgets/anime_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
-import '../../fan_works/models/fan_work_lifecycle.dart';
-import '../../fan_works/models/fan_work_models.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
 import '../../economy/models/economy_types.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
+import '../../search/search_provider.dart';
+import '../../search/screens/search_page.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
@@ -37,7 +35,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
-  int _tab = 0;
 
   @override
   void initState() {
@@ -66,11 +63,13 @@ class _HomePageState extends State<HomePage> {
     final profile = context.watch<OnboardingProvider>().profile;
     final auth = context.watch<AuthProvider>();
     final home = context.watch<HomeProvider>();
+    final search = context.watch<SearchProvider>();
     final unread = context.watch<UnreadEngine>();
     final economy = maybeEconomy(context);
     final name =
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Discover'),
         actions: <Widget>[
@@ -91,6 +90,11 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => AppNavigation.go(context, '/notifications'),
             ),
           ),
+          PubgetIconButton(
+            icon: Icons.settings_outlined,
+            tooltip: 'Settings',
+            onPressed: () => AppNavigation.go(context, '/settings'),
+          ),
           const SizedBox(width: AppSpacing.xs),
           GestureDetector(
             onTap: () => AppNavigation.go(context, '/profile'),
@@ -104,46 +108,57 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: AppSpacing.md),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: home.refresh,
-        child: CustomScrollView(
-          controller: _scroll,
-          slivers: <Widget>[
-            SliverToBoxAdapter(child: _SearchBar(controller: _search)),
-            if (economy != null)
-              const SliverToBoxAdapter(child: _HomeAdSlot()),
-            if (_search.text.trim().isNotEmpty)
-              SliverToBoxAdapter(child: _SearchResults(home: home)),
-            if (_search.text.trim().isEmpty)
-              SliverList.builder(
-                itemCount: home.sectionOrder.length,
-                itemBuilder: (context, index) => _SectionView(
-                  key: ValueKey(home.sectionOrder[index]),
-                  kind: home.sectionOrder[index],
-                  provider: home,
+      body: PubgetAtmosphere(
+        child: RefreshIndicator(
+          onRefresh: home.refresh,
+          child: CustomScrollView(
+            controller: _scroll,
+            slivers: <Widget>[
+              SliverToBoxAdapter(child: _SearchBar(controller: _search)),
+              if (economy != null)
+                const SliverToBoxAdapter(child: _HomeAdSlot()),
+              if (home.coldStart && _search.text.trim().isEmpty)
+                const SliverToBoxAdapter(child: _ColdStartBanner()),
+              if (_search.text.trim().isNotEmpty)
+                SliverToBoxAdapter(
+                  child: SearchResultsView(search: search, shrinkWrap: true),
                 ),
-              ),
-          ],
+              if (_search.text.trim().isEmpty)
+                SliverList.builder(
+                  itemCount: home.displayOrder.length,
+                  itemBuilder: (context, index) => _SectionView(
+                    key: ValueKey(home.displayOrder[index]),
+                    kind: home.displayOrder[index],
+                    provider: home,
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: _BottomNavigation(
-        selectedIndex: _tab,
-        unread: unread,
-        onSelected: (index) => _selectTab(context, index),
       ),
     );
   }
+}
 
-  void _selectTab(BuildContext context, int index) {
-    setState(() => _tab = index);
-    switch (index) {
-      case 1:
-        AppNavigation.go(context, '/groups');
-      case 2:
-        AppNavigation.go(context, '/private');
-      case 3:
-        AppNavigation.go(context, '/edits');
-    }
+class _ColdStartBanner extends StatelessWidget {
+  const _ColdStartBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: PubgetCard(
+        child: Text(
+          'Fresh start: we are mixing quality, trending, and rising groups until your taste is clearer.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ),
+    );
   }
 }
 
@@ -187,7 +202,7 @@ class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.read<HomeProvider>();
+    final provider = context.read<SearchProvider>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -208,49 +223,6 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-class _SearchResults extends StatelessWidget {
-  const _SearchResults({required this.home});
-  final HomeProvider home;
-
-  @override
-  Widget build(BuildContext context) {
-    if (home.searchState == LoadingState.loading) {
-      return const _SkeletonSection();
-    }
-    if (home.searchState == LoadingState.empty) {
-      return const PubgetEmptyState(
-        title: 'Nothing found',
-        message: 'Try another group, username, event, anime, or Fan Work.',
-      );
-    }
-    if (home.searchState == LoadingState.error) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Text(home.searchFailure?.message ?? 'Search failed.'),
-      );
-    }
-    return Column(
-      children: <Widget>[
-        for (final group in home.searchResults.groups)
-          _GroupRow(
-            groupName: group.name,
-            subtitle: 'Group',
-            onTap: () {
-              AppNavigation.go(context, '/group?groupId=${group.id}');
-            },
-          ),
-        for (final person in home.searchResults.people)
-          _PersonRow(person: person),
-        for (final event in home.searchResults.events) _EventRow(event: event),
-        for (final anime in home.searchResults.anime)
-          AnimeResultTile(anime: anime),
-        for (final work in home.searchResults.fanWorks)
-          _FanWorkRow(preview: work),
-      ],
-    );
-  }
-}
-
 class _SectionView extends StatelessWidget {
   const _SectionView({required this.kind, required this.provider, super.key});
 
@@ -260,6 +232,34 @@ class _SectionView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kind == HomeSectionKind.editsPlaceholder) {
+      final ranked = provider.feed.section('recommendedEdits').items;
+      if (ranked.isNotEmpty) {
+        return _SectionShell(
+          title: 'Trending Edits',
+          child: SizedBox(
+            height: 150,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              scrollDirection: Axis.horizontal,
+              itemCount: ranked.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) {
+                final item = ranked[index];
+                final thumb = item.metadata['thumbnailUrl'] as String? ?? '';
+                return SizedBox(
+                  width: 120,
+                  child: PubgetCard(
+                    onTap: () => AppNavigation.go(context, '/edits'),
+                    child: thumb.isEmpty
+                        ? const Icon(Icons.movie_filter_outlined)
+                        : AppImageLoader(imageUrl: thumb, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
       final edits = context.watch<EditsProvider>();
       if (edits.state == LoadingState.initial) {
         Future<void>.microtask(() => edits.load(limit: 4));
@@ -322,13 +322,39 @@ class _SectionView extends StatelessWidget {
     if (state.state == LoadingState.error && !state.hasContent) {
       return _SectionShell(
         title: title,
-        child: Text(state.failure?.message ?? 'This section could not load.'),
+        child: PubgetErrorState(
+          message: state.failure?.message ?? 'This section could not load.',
+          onRetry: () => provider.retrySection(kind),
+        ),
       );
     }
     if (state.state == LoadingState.empty) {
       return _SectionShell(
         title: title,
-        child: const Text('Nothing here yet. Check back soon.'),
+        child: PubgetEmptyState(
+          compact: true,
+          icon: kind == HomeSectionKind.recommendedPeople
+              ? Icons.person_search_outlined
+              : Icons.groups_outlined,
+          title: 'Nothing here yet',
+          message: kind == HomeSectionKind.recommendedPeople
+              ? 'Find people through search and Respect.'
+              : 'Discover groups or start one of your own.',
+          action: PubgetTextButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              kind == HomeSectionKind.recommendedPeople ? '/search' : '/groups',
+            ),
+            semanticLabel: kind == HomeSectionKind.recommendedPeople
+                ? 'Search people'
+                : 'Explore groups',
+            child: Text(
+              kind == HomeSectionKind.recommendedPeople
+                  ? 'Search people'
+                  : 'Explore groups',
+            ),
+          ),
+        ),
       );
     }
     return _SectionShell(
@@ -361,11 +387,7 @@ class _SectionShell extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+        PubgetSectionHeader(title: title),
         child,
       ],
     ),
@@ -429,7 +451,7 @@ class _GroupCarousel extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '${group.membersCount} members · score ${group.activityScore.toStringAsFixed(0)}',
+                  '${group.membersCount} members · rising ${group.risingScore.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -513,55 +535,6 @@ class _PersonRow extends StatelessWidget {
   );
 }
 
-class _FanWorkRow extends StatelessWidget {
-  const _FanWorkRow({required this.preview});
-
-  final FanWorkPreview preview;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(preview.title),
-    subtitle: Text(
-      '${FanWorkTypeCatalog.label(preview.type)} · ${preview.creatorName}',
-    ),
-    leading: const Icon(Icons.auto_awesome_outlined),
-    onTap: () => FanWorkLinks.open(context, preview.id),
-  );
-}
-
-class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event});
-
-  final PubgetEvent event;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(event.title),
-    subtitle: Text(EventTypeRegistry.of(event.type).label),
-    leading: const Icon(Icons.celebration_outlined),
-    onTap: () => EventLinks.open(context, event.id),
-  );
-}
-
-class _GroupRow extends StatelessWidget {
-  const _GroupRow({
-    required this.groupName,
-    required this.subtitle,
-    required this.onTap,
-  });
-  final String groupName;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    title: Text(groupName),
-    subtitle: Text(subtitle),
-    leading: const Icon(Icons.groups_outlined),
-    onTap: onTap,
-  );
-}
-
 class _SkeletonSection extends StatelessWidget {
   const _SkeletonSection();
 
@@ -579,60 +552,15 @@ class _SkeletonSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Container(height: 18, width: 150, color: Colors.black12),
+              const PubgetSkeleton(height: 18, width: 150),
               const SizedBox(height: AppSpacing.sm),
-              Container(height: 14, width: 200, color: Colors.black12),
+              const PubgetSkeleton(height: 14, width: 200),
               const SizedBox(height: AppSpacing.xs),
-              Container(height: 14, width: 170, color: Colors.black12),
+              const PubgetSkeleton(height: 14, width: 170),
             ],
           ),
         ),
       ),
     ),
-  );
-}
-
-class _BottomNavigation extends StatelessWidget {
-  const _BottomNavigation({
-    required this.selectedIndex,
-    required this.unread,
-    required this.onSelected,
-  });
-  final int selectedIndex;
-  final UnreadEngine unread;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) => NavigationBar(
-    selectedIndex: selectedIndex,
-    onDestinationSelected: onSelected,
-    destinations: <NavigationDestination>[
-      const NavigationDestination(
-        icon: Icon(Icons.explore_outlined),
-        selectedIcon: Icon(Icons.explore),
-        label: 'Discover',
-      ),
-      NavigationDestination(
-        icon: UnreadBadge(
-          count: unread.groups,
-          child: const Icon(Icons.space_dashboard_outlined),
-        ),
-        selectedIcon: const Icon(Icons.space_dashboard),
-        label: 'My Space',
-      ),
-      NavigationDestination(
-        icon: UnreadBadge(
-          count: unread.privateChats,
-          child: const Icon(Icons.forum_outlined),
-        ),
-        selectedIcon: const Icon(Icons.forum),
-        label: 'Private',
-      ),
-      const NavigationDestination(
-        icon: Icon(Icons.auto_awesome_outlined),
-        selectedIcon: Icon(Icons.auto_awesome),
-        label: 'Edits',
-      ),
-    ],
   );
 }

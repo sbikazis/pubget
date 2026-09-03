@@ -78,6 +78,62 @@ abstract final class EventValidation {
           ? config.prompt
           : config.question;
       if (prompt.trim().isEmpty) return 'A prompt is required.';
+      if (type == EventType.challenge) {
+        const kinds = <String>{
+          'finish_game',
+          'publish_edit',
+          'create_group',
+          'participate_event',
+          'self_report',
+        };
+        final kind = config.challengeKind.trim().isEmpty
+            ? 'self_report'
+            : config.challengeKind.trim();
+        if (!kinds.contains(kind)) return 'Choose a valid challenge type.';
+        if (kind == 'participate_event' && config.targetEventId.trim().isEmpty) {
+          return 'A target event is required.';
+        }
+      }
+      return null;
+    }
+    if (type == EventType.characterComparison ||
+        type == EventType.animeComparison ||
+        type == EventType.imageComparison) {
+      final criterion = config.criterion.trim().isNotEmpty
+          ? config.criterion
+          : config.question;
+      if (criterion.trim().isEmpty) return 'A comparison criterion is required.';
+      if (config.options.length < 2 || config.options.length > 10) {
+        return 'Provide between 2 and 10 candidates.';
+      }
+      final ids = <String>{};
+      for (final option in config.options) {
+        if (type == EventType.characterComparison &&
+            option.characterId.trim().isEmpty &&
+            option.label.trim().isEmpty) {
+          return 'Every character candidate needs a catalog ID.';
+        }
+        if (type == EventType.animeComparison &&
+            option.animeId.trim().isEmpty &&
+            option.label.trim().isEmpty) {
+          return 'Every anime candidate needs a catalog ID.';
+        }
+        if (type == EventType.imageComparison) {
+          if (!option.imageUrl.startsWith('https://') ||
+              option.mimeType.trim().isEmpty ||
+              option.license.trim().isEmpty ||
+              option.attribution.trim().isEmpty) {
+            return 'Image candidates need a HTTPS URL, MIME type, license, and attribution.';
+          }
+        }
+        final key = type == EventType.imageComparison
+            ? option.imageUrl
+            : (option.characterId.isNotEmpty
+                  ? option.characterId
+                  : (option.animeId.isNotEmpty ? option.animeId : option.label));
+        if (ids.contains(key)) return 'Duplicate candidates are not allowed.';
+        ids.add(key);
+      }
       return null;
     }
     final question = config.question.trim().isNotEmpty

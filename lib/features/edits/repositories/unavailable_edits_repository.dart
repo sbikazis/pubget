@@ -41,6 +41,7 @@ final class UnavailableEditsRepository implements EditsRepository {
   Future<Result<void>> addComment({
     required String editId,
     required String text,
+    String? replyToCommentId,
   }) async => _fail();
   @override
   Future<Result<void>> recordView({
@@ -52,7 +53,11 @@ final class UnavailableEditsRepository implements EditsRepository {
   @override
   Future<Result<String>> startPlayback(String editId) async => _fail();
   @override
-  Future<Result<List<EditComment>>> getComments(String editId) async => _fail();
+  Future<Result<List<EditComment>>> getComments(
+    String editId, {
+    EditComment? after,
+    int limit = 30,
+  }) async => _fail();
   @override
   Future<Result<void>> commentAction({
     required String editId,

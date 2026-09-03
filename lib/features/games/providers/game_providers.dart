@@ -10,6 +10,7 @@ import '../engine/game_engine.dart';
 import '../models/game_errors.dart';
 import '../models/game_lifecycle.dart';
 import '../models/game_models.dart';
+import '../models/game_type_registry.dart';
 import '../repositories/game_repository.dart';
 
 final class GameListProvider extends ChangeNotifier {
@@ -104,17 +105,21 @@ final class GameProvider extends ChangeNotifier {
   final Analytics _analytics;
   StreamSubscription<Result<PubgetGame>>? _gameSub;
   StreamSubscription<Result<List<GameParticipant>>>? _peopleSub;
+  StreamSubscription<Result<Map<String, dynamic>>>? _privateSub;
   PubgetGame? _game;
   List<GameParticipant> _participants = const <GameParticipant>[];
+  Map<String, dynamic> _privateState = const <String, dynamic>{};
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _busy = false;
   String? _actionFeedback;
   bool _loggedCompleted = false;
   bool _disposed = false;
+  String? _userId;
 
   PubgetGame? get game => _game;
   List<GameParticipant> get participants => _participants;
+  Map<String, dynamic> get privateState => _privateState;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get busy => _busy;
@@ -124,11 +129,14 @@ final class GameProvider extends ChangeNotifier {
     (item) => item.userId == userId && item.isActive,
   );
 
-  Future<void> open(String gameId) async {
+  Future<void> open(String gameId, {String? userId}) async {
     _state = LoadingState.loading;
+    _loggedCompleted = false;
+    _userId = userId ?? _userId;
     notifyListeners();
     await _gameSub?.cancel();
     await _peopleSub?.cancel();
+    await _privateSub?.cancel();
     _gameSub = _repository.watchGame(gameId).listen((result) {
       if (_disposed) return;
       result.fold(
@@ -163,6 +171,44 @@ final class GameProvider extends ChangeNotifier {
       );
       notifyListeners();
     });
+    final uid = _userId;
+    if (uid != null && uid.isNotEmpty) {
+      _privateSub = _repository
+          .watchPrivate(gameId: gameId, userId: uid)
+          .listen((result) {
+            if (_disposed) return;
+            result.fold(
+              onSuccess: (data) => _privateState = data,
+              onFailure: (_) {},
+            );
+            notifyListeners();
+          });
+    }
+  }
+
+  void bindUser(String? userId) {
+    if (_userId == userId) return;
+    reset();
+    _userId = userId;
+  }
+
+  void reset() {
+    unawaited(_gameSub?.cancel());
+    unawaited(_peopleSub?.cancel());
+    unawaited(_privateSub?.cancel());
+    _gameSub = null;
+    _peopleSub = null;
+    _privateSub = null;
+    _game = null;
+    _participants = const <GameParticipant>[];
+    _privateState = const <String, dynamic>{};
+    _failure = null;
+    _actionFeedback = null;
+    _loggedCompleted = false;
+    _userId = null;
+    _busy = false;
+    _state = LoadingState.initial;
+    _safeNotify();
   }
 
   Future<Result<void>> join(String gameId) => _run(
@@ -259,9 +305,11 @@ final class GameProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     unawaited(_gameSub?.cancel());
     unawaited(_peopleSub?.cancel());
+    unawaited(_privateSub?.cancel());
     super.dispose();
   }
 }
@@ -286,8 +334,19 @@ final class GameCreateProvider extends ChangeNotifier {
   bool get saving => _saving;
 
   void start({String? groupId}) {
-    _draft = GameDraft(groupId: groupId);
+    _draft = GameDraft(
+      groupId: groupId,
+      configuration: GameTypeRegistry.configurationFor(GameType.guessCharacter),
+    );
     _state = LoadingState.loaded;
+    notifyListeners();
+  }
+
+  void selectType(GameType type) {
+    _draft = _draft.copyWith(
+      type: type,
+      configuration: GameTypeRegistry.configurationFor(type),
+    );
     notifyListeners();
   }
 
@@ -297,6 +356,14 @@ final class GameCreateProvider extends ChangeNotifier {
   }
 
   Future<Result<PubgetGame>> create() async {
+    if (_draft.type == GameType.mafia) {
+      const failure = ValidationError(
+        'Mafia uses a dedicated lobby. Create it from the Mafia option.',
+      );
+      _failure = failure;
+      notifyListeners();
+      return const FailureResult(failure);
+    }
     final validation = GameValidation.draft(_draft);
     if (validation != null) {
       _failure = ValidationError(validation);

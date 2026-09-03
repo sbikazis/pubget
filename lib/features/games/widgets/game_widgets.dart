@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -11,19 +11,40 @@ import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
 
 abstract final class GameLinks {
-  static String path(String gameId) =>
-      '/game/${Uri.encodeComponent(gameId)}';
+  static String path(String gameId) => PubgetLinks.gamePath(gameId);
 
-  static Future<void> copy(BuildContext context, String gameId) async {
-    await Clipboard.setData(ClipboardData(text: path(gameId)));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text(GameStrings.copied)));
-  }
+  static String canonical(String gameId) => PubgetLinks.game(gameId);
+
+  static Future<void> copy(BuildContext context, String gameId) =>
+      PubgetLinks.copy(
+        context,
+        canonical(gameId),
+        type: 'game',
+        message: GameStrings.copied,
+      );
+
+  static Future<void> share(
+    BuildContext context,
+    String gameId, {
+    String? title,
+  }) => PubgetLinks.share(
+    context,
+    url: canonical(gameId),
+    title: title ?? GameStrings.share,
+    type: 'game',
+  );
 
   static void open(BuildContext context, String gameId) {
     AppNavigation.go(context, path(gameId));
+  }
+
+  static void openMafia(BuildContext context, String gameId) {
+    AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
+  }
+
+  static void openCreate(BuildContext context, {String? groupId}) {
+    final suffix = groupId == null || groupId.isEmpty ? '' : '?groupId=$groupId';
+    AppNavigation.go(context, '/games/create$suffix');
   }
 }
 

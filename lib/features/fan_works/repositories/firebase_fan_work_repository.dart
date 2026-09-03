@@ -122,6 +122,24 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   }) => _call('bookmarkFanWork', {'workId': workId, 'bookmark': bookmark});
 
   @override
+  Future<Result<void>> rate({required String workId, required int rating}) =>
+      _call('rateFanWork', {'workId': workId, 'rating': rating});
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _works
+        .doc(workId)
+        .collection('ratings')
+        .doc(userId)
+        .get();
+    final value = snapshot.data()?['rating'];
+    return value is num ? value.toInt() : null;
+  });
+
+  @override
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,
@@ -129,6 +147,76 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   }) => _call('reportFanWork', {
     'workId': workId,
     'reason': reason.name,
+    'details': details,
+  });
+
+  @override
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  }) => _call('addFanWorkComment', {
+    'workId': workId,
+    'text': text,
+    if (replyToCommentId != null && replyToCommentId.isNotEmpty)
+      'replyToCommentId': replyToCommentId,
+    if (eventId != null && eventId.isNotEmpty) 'eventId': eventId,
+  });
+
+  @override
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  }) => _guard(() async {
+    Query<Map<String, dynamic>> query = _works
+        .doc(workId)
+        .collection('comments')
+        .orderBy('createdAt', descending: true)
+        .limit(limit.clamp(1, 50));
+    final cursor = after?.createdAt;
+    if (cursor != null) {
+      query = query.startAfter(<Object>[Timestamp.fromDate(cursor)]);
+    }
+    final snapshot = await query.get();
+    return snapshot.docs
+        .map((doc) => FanWorkComment.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) => _call('fanWorkCommentAction', {
+    'workId': workId,
+    'commentId': commentId,
+    'action': action,
+  });
+
+  @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) => _call('revisePublishedFanWork', {
+    'workId': workId,
+    'title': ?title,
+    'description': ?description,
+    'copyright': ?copyright?.toMap(),
+    'tags': ?tags,
+  });
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) => _call('requestFanWorkRemoval', {
+    'workId': workId,
     'details': details,
   });
 

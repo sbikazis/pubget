@@ -84,10 +84,57 @@ void main() {
     );
   });
 
-  test('store and premium routes are protected', () {
+  test('mafia and achievement routes are protected', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/mafia',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/achievements',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+  });
+
+  test('store, search, and settings routes are protected', () {
     expect(
       AuthRouteGuard.resolve(
         path: '/store',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/search',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/settings',
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
@@ -106,6 +153,17 @@ void main() {
         canEnterHome: true,
       ),
       isNull,
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/guide',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
     );
   });
 }

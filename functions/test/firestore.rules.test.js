@@ -64,7 +64,7 @@ test.beforeEach(async () => {
       canVote: true, canSpeak: true,
     });
     await admin.doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" });
-    await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "mafia" });
+    await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
     await admin.doc("privateChats/c1").set({
       userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
       lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
@@ -97,10 +97,22 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/actions/a1").set({
       playerId: "bob", actionType: "guess", payload: { value: "Luffy" },
     });
+    await admin.doc("games/game1/secret/round").set({
+      roundNumber: 1, correctId: "luffy", correctName: "Monkey D. Luffy",
+    });
+    await admin.doc("games/game1/private/alice").set({
+      note: "alice-only",
+    });
+    await admin.doc("user_achievements/alice/items/first_game_win").set({
+      achievementId: "first_game_win", title: "First Victory",
+    });
+    await admin.doc("game_history/game1").set({
+      gameId: "game1", type: "guessCharacter", result: { winnerIds: ["alice"] },
+    });
     await admin.doc("fanWorks/fw-public").set({
       creatorId: "alice", type: "drawing", title: "Public drawing",
       status: "published", moderationStatus: "approved", visibility: "public",
-      likesCount: 2, bookmarksCount: 1, reportsCount: 0,
+      likesCount: 2, bookmarksCount: 1, reportsCount: 0, commentsCount: 1,
     });
     await admin.doc("fanWorks/fw-draft").set({
       creatorId: "alice", type: "story", title: "Secret draft",
@@ -115,6 +127,9 @@ test.beforeEach(async () => {
     });
     await admin.doc("fanWorks/fw-public/reports/fw-public_bob").set({
       reporterId: "bob", reason: "spam", details: "", createdAt: new Date(),
+    });
+    await admin.doc("fanWorks/fw-public/comments/c1").set({
+      authorId: "bob", text: "nice", likesCount: 0,
     });
   });
 });
@@ -260,6 +275,21 @@ test("games are readable by group members and never client-writable", async () =
     creatorId: "alice", groupId: "g1", type: "guessCharacter", status: "active",
   }));
   await assertSucceeds(db("bob").doc("games/game1/participants/alice").get());
+  await assertFails(db("alice").doc("games/game1/secret/round").get());
+  await assertFails(db("bob").doc("games/game1/secret/round").get());
+  await assertFails(db("alice").doc("games/game1/secret/round").set({ correctId: "spoof" }));
+  await assertSucceeds(db("alice").doc("games/game1/private/alice").get());
+  await assertFails(db("bob").doc("games/game1/private/alice").get());
+  await assertFails(db("alice").doc("games/game1/private/alice").set({ score: 99 }));
+  await assertFails(db("alice").doc("games/game1").update({
+    result: { winnerIds: ["alice"], scores: { alice: 99 } },
+  }));
+  await assertSucceeds(db("alice").doc("user_achievements/alice/items/first_game_win").get());
+  await assertFails(db("bob").doc("user_achievements/alice/items/first_game_win").get());
+  await assertFails(db("alice").doc("user_achievements/alice/items/forged").set({
+    achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {
@@ -471,6 +501,89 @@ test("a living player can submit canonical vote and chat intent in its phase", a
   await assertSucceeds(db("alice").doc("mafia_games/m1/chat/c1").set({
     senderId: "alice", sender: "Alice", senderAvatar: "", text: "hello",
     time: new Date(), type: "player",
+  }));
+});
+
+test("mafia night and vote attacks are rejected", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob/private/data").set({ role: "mafia" });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/bob_n1").set({
+    playerId: "bob", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "alice", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n0").set({
+    playerId: "alice", targetId: "bob", nightNumber: 0, submittedAt: new Date(),
+  }));
+  await assertFails(db("mallory").doc("mafia_games/m1/night_actions/mallory_n1").set({
+    playerId: "mallory", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1/members/eve").set({
+      userId: "eve", groupId: "g1", role: "member", displayName: "Eve",
+      realUserName: "Eve", realUserImageUrl: "", isPremium: false,
+    });
+  });
+  await assertFails(db("eve").doc("mafia_games/m1/night_actions/eve_n1").set({
+    playerId: "eve", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").update({
+    targetId: "alice",
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: false });
+  });
+  await assertFails(db("bob").doc("mafia_games/m1/night_actions/bob_n1").set({
+    playerId: "bob", targetId: "alice", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1").update({
+      status: "voting", currentPhase: "voting", currentDay: 1,
+      phaseEndsAt: new Date(Date.now() - 60 * 1000),
+    });
+    await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: true });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1").update({ phaseEndsAt: null });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/votes/bob_d1").set({
+    voterId: "bob", targetId: "alice", dayNumber: 1, time: new Date(),
+  }));
+  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "alice", dayNumber: 1, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").update({
+    targetId: "alice",
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d2").set({
+    voterId: "alice", targetId: "bob", dayNumber: 2, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1").update({
+    winner: "mafia", status: "finished", currentPhase: "finished",
+    phaseEndsAt: new Date(), rewardsDistributed: true,
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").update({
+    role: "citizen",
   }));
 });
 
@@ -799,4 +912,66 @@ test("clients cannot mutate economy, catalog, inventory, or premium", async () =
   await assertFails(db("alice").doc("users/alice").update({ equippedFrameId: "frame_sakura" }));
   await assertFails(db("alice").doc("users/bob").update({ coinsBalance: 0 }));
   await assertFails(db("alice").doc("users/alice/economyRate/purchase").set({ count: 0 }));
+});
+
+test("clients cannot write anime lists, ranking scores, or edit metrics", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("users/alice/anime_lists/21").set({
+      animeId: "21", userId: "alice", status: "watching",
+    });
+    await admin.doc("edits/e1").set({
+      creatorId: "alice", status: "published", viewsCount: 2, score: 4,
+    });
+    await admin.doc("groups/g1").update({ risingScore: 12, activityScore: 12 });
+    await admin.doc("fanWorks/fw-public/revisions/1").set({
+      version: 1, title: "old", creatorId: "alice",
+    });
+  });
+  await assertSucceeds(db("alice").doc("users/alice/anime_lists/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_lists/21").get());
+  await assertFails(db("alice").doc("users/alice/anime_lists/21").set({
+    animeId: "21", status: "completed", rating: 10,
+  }));
+  await assertFails(db("alice").doc("users/alice/character_favorites/luffy").set({
+    characterId: "luffy",
+  }));
+  await assertFails(db("alice").doc("edits/e1").update({ viewsCount: 99, score: 99 }));
+  await assertFails(db("alice").doc("edits/e1").update({
+    status: "published", qualifiedViewsCount: 99, rankingScore: 99,
+  }));
+  await assertFails(db("bob").doc("edits/e1/playbackSessions/alice").set({
+    viewerId: "alice", consumed: false, creditedSeconds: 99,
+  }));
+  await assertFails(db("alice").doc("edits/e1/viewers/bob").set({
+    lastPercent: 100, creditedWatchSeconds: 99,
+  }));
+  await assertFails(db("alice").doc("groups/g1").update({ risingScore: 99 }));
+  await assertFails(db("alice").doc("groups/g1").update({
+    risingEligible: true, activityScore: 99,
+  }));
+  await assertFails(db("bob").doc("friendships/alice_creator").set({
+    userA: "alice", userB: "creator", userIds: ["alice", "creator"],
+    status: "blocked", blockedBy: "bob",
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    status: "published", moderationStatus: "approved",
+  }));
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/revisions/1").get());
+  await assertFails(db("alice").doc("fanWorks/fw-public/revisions/2").set({
+    version: 2, title: "forged",
+  }));
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/comments/c1").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/comments/c1").set({
+    authorId: "bob", text: "forged",
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    commentsCount: 99,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/ratings/bob").set({
+    rating: 10,
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    ratingsAverage: 10,
+  }));
 });

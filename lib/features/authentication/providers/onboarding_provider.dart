@@ -15,6 +15,7 @@ final class OnboardingProvider extends ChangeNotifier {
   PubgetUser? _profile;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
+  String? _boundUserId;
   bool _disposed = false;
 
   PubgetUser? get profile => _profile;
@@ -167,6 +168,22 @@ final class OnboardingProvider extends ChangeNotifier {
     if (_failure == null) return;
     _failure = null;
     notifyListeners();
+  }
+
+  void clearSession() {
+    _profile = null;
+    _failure = null;
+    _state = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  void bindUser(String? userId) {
+    if (_boundUserId == userId) return;
+    final previous = _boundUserId;
+    _boundUserId = userId;
+    if (userId == null || (previous != null && previous != userId)) {
+      clearSession();
+    }
   }
 
   void _setFailure(Failure failure) {

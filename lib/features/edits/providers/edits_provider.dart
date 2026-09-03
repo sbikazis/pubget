@@ -80,8 +80,15 @@ final class EditsProvider extends ChangeNotifier {
   Future<Result<void>> like(String editId, bool like) =>
       _repository.likeEdit(editId: editId, like: like);
 
-  Future<Result<void>> comment(String editId, String text) =>
-      _repository.addComment(editId: editId, text: text);
+  Future<Result<void>> comment(
+    String editId,
+    String text, {
+    String? replyToCommentId,
+  }) => _repository.addComment(
+    editId: editId,
+    text: text,
+    replyToCommentId: replyToCommentId,
+  );
 
   Future<Result<void>> view({
     required String editId,

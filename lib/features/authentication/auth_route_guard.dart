@@ -18,6 +18,9 @@ abstract final class AuthRouteGuard {
 
   static const protectedPaths = <String>{
     '/home',
+    '/search',
+    '/settings',
+    '/guide',
     '/onboarding',
     '/profile',
     '/profile/edit',
@@ -47,6 +50,8 @@ abstract final class AuthRouteGuard {
     '/games',
     '/games/create',
     '/game',
+    '/mafia',
+    '/achievements',
     '/fan-works',
     '/fan-works/create',
     '/fan-work',

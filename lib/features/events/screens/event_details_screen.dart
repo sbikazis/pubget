@@ -141,10 +141,12 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   if (event.status == EventStatus.ended)
                     const Text(EventStrings.ended),
                   const SizedBox(height: AppSpacing.lg),
-                  if (!event.isReadOnly) _Participation(event: event),
-                  if (event.isHistorical && event.result != null)
+                  if (event.isOpen && !event.isExpired())
+                    _Participation(event: event),
+                  if ((event.isHistorical || event.isExpired()) &&
+                      event.result != null)
                     _ResultCard(event: event),
-                  if (!event.isReadOnly) ...[
+                  if (event.isInteractable()) ...[
                     const SizedBox(height: AppSpacing.lg),
                     _ResponseForm(
                       event: event,
@@ -255,6 +257,13 @@ class _ResponseForm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        if (event.configuration.criterion.isNotEmpty) ...[
+          Text(
+            event.configuration.criterion,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (spec.usesRanking) ...[
           const Text('Tap options in the order you want to rank them.'),
           ...event.configuration.options.map((option) {
@@ -282,6 +291,26 @@ class _ResponseForm extends StatelessWidget {
           ...event.configuration.options.map(
             (option) => RadioListTile<String>(
               title: Text(option.label),
+              subtitle: option.characterId.isNotEmpty
+                  ? Text(option.characterId)
+                  : option.animeId.isNotEmpty
+                  ? Text(option.animeId)
+                  : option.license.isNotEmpty
+                  ? Text('${option.license} · ${option.attribution}')
+                  : null,
+              secondary: option.imageUrl.startsWith('https://')
+                  ? SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: AppImageLoader(
+                        imageUrl: option.imageUrl,
+                        width: 56,
+                        height: 56,
+                        memCacheWidth: 112,
+                        memCacheHeight: 112,
+                      ),
+                    )
+                  : null,
               value: option.id,
               groupValue: selectedOptionId,
               onChanged: (value) {
@@ -340,7 +369,9 @@ class _ResponseForm extends StatelessWidget {
       if (rankedIds.length != event.configuration.options.length) return;
       data = <String, dynamic>{'rankedIds': rankedIds};
     } else if (spec.usesTextResponse) {
-      data = <String, dynamic>{'text': text.text, 'completed': true};
+      data = <String, dynamic>{
+        if (text.text.trim().isNotEmpty) 'text': text.text.trim(),
+      };
     } else if (spec.usesQuiz) {
       if (quizAnswers.length != event.configuration.questions.length) return;
       data = <String, dynamic>{'answers': quizAnswers};

@@ -92,7 +92,7 @@ abstract final class EventTypeRegistry {
       usesTextResponse: false,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'Compare images or visual items.',
+      hint: 'Compare licensed image candidates against a criterion.',
     ),
     EventType.characterComparison: EventTypeSpec(
       type: EventType.characterComparison,
@@ -101,7 +101,7 @@ abstract final class EventTypeRegistry {
       usesTextResponse: false,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'Compare anime characters.',
+      hint: 'Compare catalog characters against a criterion.',
     ),
     EventType.animeComparison: EventTypeSpec(
       type: EventType.animeComparison,
@@ -110,7 +110,7 @@ abstract final class EventTypeRegistry {
       usesTextResponse: false,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'Compare anime titles.',
+      hint: 'Compare catalog anime titles against a criterion.',
     ),
     EventType.openDiscussion: EventTypeSpec(
       type: EventType.openDiscussion,
@@ -128,7 +128,7 @@ abstract final class EventTypeRegistry {
       usesTextResponse: true,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'A community challenge with a completion rule.',
+      hint: 'A challenge verified from Pubget activity, or explicitly self-reported.',
     ),
   };
 

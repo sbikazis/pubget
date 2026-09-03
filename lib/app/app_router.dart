@@ -12,11 +12,7 @@ final class AppRouteInformationParser extends RouteInformationParser<AppRoute> {
   Future<AppRoute> parseRouteInformation(
     RouteInformation routeInformation,
   ) async {
-    final uri = routeInformation.uri;
-    if (uri.path.isEmpty || uri.path == '/') {
-      return const FoundationRoute();
-    }
-    return _routeFromUri(uri);
+    return AppRouter.routeFromUri(routeInformation.uri);
   }
 
   @override
@@ -24,7 +20,10 @@ final class AppRouteInformationParser extends RouteInformationParser<AppRoute> {
     return switch (configuration) {
       FoundationRoute() => RouteInformation(uri: Uri(path: '/')),
       ParameterizedRoute(:final path, :final parameters) => RouteInformation(
-        uri: Uri(path: path, queryParameters: parameters),
+        uri: Uri(
+          path: path,
+          queryParameters: parameters.isEmpty ? null : parameters,
+        ),
       ),
     };
   }
@@ -57,6 +56,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   final GlobalKey<NavigatorState> navigatorKey;
   AppRoute _route;
   AppRoute? _pendingRoute;
+  var _sessionHadProtectedAccess = false;
 
   static const _authFlowPaths = <String>{
     '/login',
@@ -70,20 +70,36 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @override
   AppRoute get currentConfiguration => _route;
 
+  @visibleForTesting
+  AppRoute? get pendingRoute => _pendingRoute;
+
   @override
   Future<void> setNewRoutePath(AppRoute configuration) async {
     _route = _guard(configuration);
     notifyListeners();
   }
 
+  void clearPending() {
+    _pendingRoute = null;
+    _sessionHadProtectedAccess = false;
+  }
+
   AppRoute _guard(AppRoute route) {
     if (route case ParameterizedRoute(:final path)) {
       final redirect = routeGuard?.call(path);
       if (redirect != null && redirect != path) {
-        if (!_authFlowPaths.contains(path)) {
+        final signingOutToLogin =
+            redirect == '/login' && _sessionHadProtectedAccess;
+        if (signingOutToLogin) {
+          _pendingRoute = null;
+          _sessionHadProtectedAccess = false;
+        } else if (!_authFlowPaths.contains(path)) {
           _pendingRoute = route;
         }
         return ParameterizedRoute(path: redirect);
+      }
+      if (redirect == null && !_authFlowPaths.contains(path)) {
+        _sessionHadProtectedAccess = true;
       }
     }
     if (_pendingRoute != null) {
@@ -127,10 +143,17 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
           when designSystemPage != null &&
               (path == '/design-system' || path == '/design-system/') =>
         designSystemPage!,
-      _ => homePage,
+      ParameterizedRoute(:final path)
+          when path == '/' || path.isEmpty =>
+        homePage,
+      FoundationRoute() => homePage,
+      _ => domainPages['/unknown'] ?? homePage,
     };
     final pageKey = switch (_route) {
       FoundationRoute() => const ValueKey<String>('foundation'),
+      ParameterizedRoute(:final path)
+          when AppRouter.shellPaths.contains(path) =>
+        const ValueKey<String>('app-shell'),
       ParameterizedRoute(:final path) => ValueKey<String>(path),
     };
 
@@ -154,7 +177,28 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 final class AppRouter {
   const AppRouter._();
 
-  static AppRoute routeFromUri(Uri uri) => _routeFromUri(uri);
+  static const shellPaths = <String>{
+    '/home',
+    '/groups',
+    '/private',
+    '/edits',
+  };
+
+  static AppRoute routeFromUri(Uri uri) {
+    try {
+      return _routeFromUri(uri);
+    } catch (_) {
+      return const ParameterizedRoute(path: '/unknown');
+    }
+  }
+
+  static AppRoute routeFromString(String raw) {
+    try {
+      return _routeFromUri(Uri.parse(raw));
+    } catch (_) {
+      return const ParameterizedRoute(path: '/unknown');
+    }
+  }
 
   static RouterConfig<AppRoute> createConfig({
     required Widget homePage,
@@ -184,62 +228,90 @@ final class AppRouter {
 abstract final class AppNavigation {
   static Future<void> go(BuildContext context, String path) {
     final delegate = Router.of(context).routerDelegate as AppRouterDelegate;
-    return delegate.setNewRoutePath(_routeFromUri(Uri.parse(path)));
+    return delegate.setNewRoutePath(AppRouter.routeFromString(path));
   }
 }
 
 AppRoute _routeFromUri(Uri uri) {
-  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'event') {
-    return ParameterizedRoute(
-      path: '/event',
-      parameters: <String, String>{
-        ...uri.queryParameters,
-        'eventId': uri.pathSegments[1],
-      },
-    );
-  }
-  if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'anime') {
-    if (uri.pathSegments.length == 1) {
-      return ParameterizedRoute(
-        path: '/anime',
-        parameters: uri.queryParameters,
-      );
-    }
-    final second = uri.pathSegments[1];
-    if (second == 'browse' || second == 'genre' || second == 'season') {
-      return ParameterizedRoute(
-        path: '/anime/$second',
-        parameters: uri.queryParameters,
-      );
+  final segments = [
+    for (final segment in uri.pathSegments)
+      if (segment.isNotEmpty) segment,
+  ];
+  final query = uri.queryParameters;
+
+  ParameterizedRoute entity({
+    required String path,
+    required String key,
+    required String id,
+  }) {
+    if (id.trim().isEmpty) {
+      return const ParameterizedRoute(path: '/unknown');
     }
     return ParameterizedRoute(
-      path: '/anime/details',
-      parameters: <String, String>{
-        ...uri.queryParameters,
-        'animeId': second,
-      },
+      path: path,
+      parameters: <String, String>{...query, key: id},
     );
   }
-  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'game') {
-    return ParameterizedRoute(
-      path: '/game',
-      parameters: <String, String>{
-        ...uri.queryParameters,
-        'gameId': uri.pathSegments[1],
-      },
-    );
+
+  if (segments.length == 2 && segments.first == 'event') {
+    return entity(path: '/event', key: 'eventId', id: segments[1]);
   }
-  if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'fan-work') {
-    return ParameterizedRoute(
-      path: '/fan-work',
-      parameters: <String, String>{
-        ...uri.queryParameters,
-        'workId': uri.pathSegments[1],
-      },
-    );
+  if (segments.isNotEmpty && segments.first == 'anime') {
+    if (segments.length == 1) {
+      return ParameterizedRoute(path: '/anime', parameters: query);
+    }
+    final second = segments[1];
+    if (second == 'browse' ||
+        second == 'genre' ||
+        second == 'season' ||
+        second == 'library') {
+      return ParameterizedRoute(path: '/anime/$second', parameters: query);
+    }
+    return entity(path: '/anime/details', key: 'animeId', id: second);
   }
-  if (uri.path.isEmpty || uri.path == '/') {
+  if (segments.length == 2 && segments.first == 'game') {
+    return entity(path: '/game', key: 'gameId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'mafia') {
+    return entity(path: '/mafia', key: 'gameId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'fan-work') {
+    return entity(path: '/fan-work', key: 'workId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'group') {
+    return entity(path: '/group', key: 'groupId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'profile') {
+    return entity(path: '/profile', key: 'uid', id: segments[1]);
+  }
+  if (segments.isEmpty) {
     return const FoundationRoute();
   }
-  return ParameterizedRoute(path: uri.path, parameters: uri.queryParameters);
+  final path = '/${segments.join('/')}';
+  if (path == '/unknown') {
+    return const ParameterizedRoute(path: '/unknown');
+  }
+  return _requireEntityId(
+    ParameterizedRoute(path: path, parameters: query),
+  );
+}
+
+const _requiredEntityKeys = <String, String>{
+  '/event': 'eventId',
+  '/game': 'gameId',
+  '/mafia': 'gameId',
+  '/fan-work': 'workId',
+  '/group': 'groupId',
+  '/anime/details': 'animeId',
+  '/store/item': 'itemId',
+};
+
+AppRoute _requireEntityId(ParameterizedRoute route) {
+  final key = _requiredEntityKeys[route.path];
+  if (key == null) return route;
+  final id = route.parameters[key]?.trim() ?? '';
+  if (id.isEmpty) {
+    return const ParameterizedRoute(path: '/unknown');
+  }
+  return route;
 }

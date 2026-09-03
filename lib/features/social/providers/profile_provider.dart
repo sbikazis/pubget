@@ -17,6 +17,7 @@ final class ProfileProvider extends ChangeNotifier {
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _isOwner = false;
+  String? _boundUserId;
   bool _disposed = false;
 
   PubgetUser? get ownProfile => _ownProfile;
@@ -85,6 +86,21 @@ final class ProfileProvider extends ChangeNotifier {
     if (_failure == null) return;
     _failure = null;
     notifyListeners();
+  }
+
+  void resetSession() {
+    _ownProfile = null;
+    _publicProfile = null;
+    _failure = null;
+    _isOwner = false;
+    _state = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  void bindUser(String? userId) {
+    if (_boundUserId == userId) return;
+    _boundUserId = userId;
+    resetSession();
   }
 
   void _setFailure(Failure failure) {

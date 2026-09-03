@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/repositories/anime_repository.dart';
 import '../../groups/models/group_models.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
@@ -49,9 +48,9 @@ final class HomeSectionState {
 }
 
 final class HomeProvider extends ChangeNotifier {
-  HomeProvider({required HomeRepository repository, AnimeRepository? animeRepository})
+  HomeProvider({required HomeRepository repository, Analytics? analytics})
     : _repository = repository,
-      _animeRepository = animeRepository {
+      _analytics = analytics {
     _sections = {
       for (final kind in _sectionOrder)
         kind: HomeSectionState(kind: kind, state: LoadingState.initial),
@@ -72,28 +71,62 @@ final class HomeProvider extends ChangeNotifier {
   ];
 
   final HomeRepository _repository;
-  final AnimeRepository? _animeRepository;
+  final Analytics? _analytics;
   late Map<HomeSectionKind, HomeSectionState> _sections;
-  DiscoverySearchResults _searchResults = const DiscoverySearchResults();
-  LoadingState _searchState = LoadingState.initial;
-  Failure? _searchFailure;
-  Timer? _searchDebounce;
+  DiscoveryFeed _feed = const DiscoveryFeed();
   String? _userId;
   bool _disposed = false;
   static const _pageSize = 8;
 
   List<HomeSectionKind> get sectionOrder => _sectionOrder;
+  List<HomeSectionKind> get displayOrder {
+    final active = <HomeSectionKind>[];
+    final empty = <HomeSectionKind>[];
+    for (final kind in _sectionOrder) {
+      if (_isPlaceholder(kind) ||
+          section(kind).hasContent ||
+          section(kind).state == LoadingState.initial ||
+          section(kind).state == LoadingState.loading ||
+          section(kind).state == LoadingState.refreshing ||
+          section(kind).state == LoadingState.loadingMore) {
+        active.add(kind);
+      } else {
+        empty.add(kind);
+      }
+    }
+    return <HomeSectionKind>[...active, ...empty];
+  }
+
   HomeSectionState section(HomeSectionKind kind) => _sections[kind]!;
-  DiscoverySearchResults get searchResults => _searchResults;
-  LoadingState get searchState => _searchState;
-  Failure? get searchFailure => _searchFailure;
+  String? get userId => _userId;
+  DiscoveryFeed get feed => _feed;
+  bool get coldStart => _feed.coldStart;
+
+  void bindUser(String? userId) {
+    if (userId == _userId) return;
+    resetSession();
+    if (userId != null) load(userId);
+  }
+
+  void resetSession() {
+    _userId = null;
+    _feed = const DiscoveryFeed();
+    _sections = {
+      for (final kind in _sectionOrder)
+        kind: HomeSectionState(kind: kind, state: LoadingState.initial),
+    };
+    _safeNotify();
+  }
 
   void load(String userId) {
     _userId = userId;
+    _analytics?.logEvent('home_impression');
+    unawaited(_prefetchFeed());
     ensureLoaded(HomeSectionKind.promotedGroups);
   }
 
   Future<void> refresh() async {
+    unawaited(_prefetchFeed(refresh: true));
     final loaded = _sectionOrder.where(
       (kind) =>
           !_isPlaceholder(kind) && section(kind).state != LoadingState.initial,
@@ -110,6 +143,11 @@ final class HomeProvider extends ChangeNotifier {
     unawaited(_loadSection(kind, refresh: false));
   }
 
+  Future<void> retrySection(HomeSectionKind kind) async {
+    if (_userId == null || _isPlaceholder(kind)) return;
+    await _loadSection(kind, refresh: true);
+  }
+
   Future<void> loadMore(HomeSectionKind kind) async {
     final current = section(kind);
     if (!current.hasMore ||
@@ -120,57 +158,22 @@ final class HomeProvider extends ChangeNotifier {
     await _loadSection(kind, refresh: false, loadMore: true);
   }
 
-  void searchChanged(String query) {
-    _searchDebounce?.cancel();
-    if (query.trim().isEmpty) {
-      _searchResults = const DiscoverySearchResults();
-      _searchState = LoadingState.initial;
-      _safeNotify();
-      return;
-    }
-    _searchDebounce = Timer(
-      const Duration(milliseconds: 280),
-      () => unawaited(_search(query)),
-    );
-  }
-
-  Future<void> retrySearch(String query) => _search(query);
-
-  Future<void> _search(String query) async {
-    _searchState = LoadingState.loading;
-    _searchFailure = null;
-    _safeNotify();
-    final trimmed = query.trim();
-    final result = await _repository.search(trimmed);
-    Result<AnimePage>? animeResult;
-    if (trimmed.length >= 2 && _animeRepository != null) {
-      animeResult = await _animeRepository.searchAnime(trimmed, limit: 8);
-    }
+  Future<void> _prefetchFeed({bool refresh = false}) async {
+    final result = await _repository.getDiscoveryFeed(limit: _pageSize);
     if (_disposed) return;
     result.fold(
-      onSuccess: (results) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
-        _searchResults = DiscoverySearchResults(
-          groups: results.groups,
-          people: results.people,
-          events: results.events,
-          anime: anime,
-          fanWorks: results.fanWorks,
+      onSuccess: (feed) {
+        _feed = feed;
+        _analytics?.logEvent(
+          'home_feed_loaded',
+          parameters: {
+            'coldStart': feed.coldStart ? 1 : 0,
+            'sections': feed.sections.length,
+            if (refresh) 'refresh': 1,
+          },
         );
-        _searchState = _searchResults.isEmpty
-            ? LoadingState.empty
-            : LoadingState.loaded;
       },
-      onFailure: (failure) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
-        if (anime.isNotEmpty) {
-          _searchResults = DiscoverySearchResults(anime: anime);
-          _searchState = LoadingState.loaded;
-        } else {
-          _searchFailure = failure;
-          _searchState = LoadingState.error;
-        }
-      },
+      onFailure: (_) {},
     );
     _safeNotify();
   }
@@ -190,6 +193,10 @@ final class HomeProvider extends ChangeNotifier {
       clearFailure: true,
     );
     _safeNotify();
+    _analytics?.logEvent(
+      'section_impression',
+      parameters: {'section': kind.name},
+    );
     if (kind == HomeSectionKind.recommendedPeople) {
       final result = await _repository.getRecommendedPeople(
         userId: _userId!,
@@ -276,7 +283,6 @@ final class HomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _searchDebounce?.cancel();
     super.dispose();
   }
 }

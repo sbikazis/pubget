@@ -42,9 +42,48 @@ abstract interface class FanWorkRepository {
     required bool bookmark,
   });
 
+  Future<Result<void>> rate({required String workId, required int rating});
+
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  });
+
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,
+    String details,
+  });
+
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  });
+
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  });
+
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  });
+
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  });
+
+  Future<Result<void>> requestRemoval({
+    required String workId,
     String details,
   });
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/core/links/pubget_links.dart';
 import 'package:pubget/features/events/widgets/event_widgets.dart';
 
 void main() {
@@ -15,10 +16,10 @@ void main() {
     tester,
   ) async {
     String? shared;
-    EventLinks.debugNativeShare = (text, subject) async {
+    PubgetLinks.debugNativeShare = (text, subject) async {
       shared = text;
     };
-    addTearDown(() => EventLinks.debugNativeShare = null);
+    addTearDown(() => PubgetLinks.debugNativeShare = null);
 
     await tester.pumpWidget(
       MaterialApp(

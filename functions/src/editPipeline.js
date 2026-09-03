@@ -31,7 +31,17 @@ function probe(binary, source) {
   });
 }
 
-function createEditPipeline({ db, bucket, economy }) {
+function ffmpegBinary() {
+  try {
+    const packed = require("ffmpeg-static");
+    if (packed && fs.existsSync(packed)) return packed;
+  } catch (_) {
+    // ffmpeg-static is optional when a system ffmpeg is available.
+  }
+  return "ffmpeg";
+}
+
+function createEditPipeline({ db, bucket, economy, achievements }) {
   return async function processEdit(event) {
     const object = event.data || {};
     const match = /^edits\/([^/]+)\/([^/]+)\.mp4$/.exec(object.name || "");
@@ -40,7 +50,8 @@ function createEditPipeline({ db, bucket, economy }) {
     const ref = db.collection("edits").doc(editId);
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
-        edit.data()?.status !== "processing") return null;
+        !["processing", "uploading"].includes(edit.data()?.status)) return null;
+    await ref.update({ status: "processing", processingStartedAt: new Date() });
     if (object.contentType !== "video/mp4" || Number(object.size || 0) > 250 * 1024 * 1024) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
       return null;
@@ -51,7 +62,7 @@ function createEditPipeline({ db, bucket, economy }) {
     const processed = path.join(dir, "processed.mp4");
     try {
       await bucket.file(object.name).download({ destination: source });
-      const ffmpeg = require("ffmpeg-static");
+      const ffmpeg = ffmpegBinary();
       const durationSeconds = await probe(ffmpeg, source);
       if (durationSeconds <= 0 || durationSeconds > 180) {
         throw new Error("Video duration is outside the 180 second limit");
@@ -83,9 +94,16 @@ function createEditPipeline({ db, bucket, economy }) {
         0,
         Number(creator.data()?.totalRespect || 0) * 0.5,
       ));
+      const published = await db.collection("edits")
+        .where("creatorId", "==", creatorId)
+        .where("status", "==", "published")
+        .limit(6)
+        .get()
+        .catch(() => ({ size: 0, docs: [] }));
       await ref.update({
         videoUrl: processedPath, thumbnailUrl: thumbnailPath, durationSeconds,
         status: "published", score: 20 + creatorQuality, processedAt: new Date(),
+        creatorQuality,
       });
       if (economy && typeof economy.applyReward === "function") {
         await economy.applyReward({
@@ -93,6 +111,14 @@ function createEditPipeline({ db, bucket, economy }) {
           type: "earn_publish",
           referenceId: editId,
           source: "edit",
+        });
+      }
+      if (achievements && typeof achievements.evaluate === "function") {
+        await achievements.evaluate({
+          type: "edit_published",
+          userId: creatorId,
+          source: "edit",
+          metadata: { editId, publishedCount: (published.size || 0) + 1 },
         });
       }
     } catch (error) {

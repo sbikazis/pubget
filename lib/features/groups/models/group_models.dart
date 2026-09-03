@@ -68,6 +68,7 @@ final class Group {
     required this.chatBackgroundUrl,
     required this.rules,
     required this.activityScore,
+    this.risingScore = 0,
     this.imageUrl,
     this.lastActivityAt,
     this.promotionExpiresAt,
@@ -87,6 +88,7 @@ final class Group {
   final String? chatBackgroundUrl;
   final String rules;
   final num activityScore;
+  final num risingScore;
   final String? imageUrl;
   final DateTime? lastActivityAt;
   final DateTime? promotionExpiresAt;
@@ -116,6 +118,7 @@ final class Group {
       chatBackgroundUrl: map['chatBackgroundUrl'] as String?,
       rules: map['rules'] as String? ?? '',
       activityScore: (map['activityScore'] as num?) ?? 0,
+      risingScore: (map['risingScore'] as num?) ?? 0,
       imageUrl: map['imageUrl'] as String?,
       lastActivityAt: _date(map['lastMessageAt']),
       promotionExpiresAt: _date(map['promotionExpiresAt']),

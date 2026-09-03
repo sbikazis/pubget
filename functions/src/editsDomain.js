@@ -9,7 +9,7 @@ function string(value, max) {
     : null;
 }
 
-function createEditsDomain({ db, FieldValue, HttpsError }) {
+function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
   function uid(request) {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
     return request.auth.uid;
@@ -34,7 +34,7 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
       sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
       createdAt: FieldValue.serverTimestamp(), originalEditId: null, repostedBy: null,
       originalCreatorId: creatorId,
-      status: "processing",
+      status: "uploading",
     });
     return { editId, videoPath: `edits/${creatorId}/${editId}.mp4` };
   }
@@ -61,6 +61,14 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
       completionCount: 0, score: 10, status: "published",
       sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "edit_published",
+        userId: creatorId,
+        source: "edit",
+        metadata: { editId: ref.id },
+      });
+    }
     return { editId: ref.id };
   }
 
@@ -111,7 +119,13 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
     const authorId = uid(request);
     const editId = string(request.data?.editId, 128);
     const text = string(request.data?.text, 500);
-    const replyToCommentId = request.data?.replyToCommentId || null;
+    const replyRaw = request.data?.replyToCommentId;
+    const replyToCommentId = replyRaw == null || replyRaw === ""
+      ? null
+      : string(replyRaw, 128);
+    if (replyRaw && !replyToCommentId) {
+      throw new HttpsError("invalid-argument", "Reply target is invalid.");
+    }
     if (!editId || !text || text.length === 0) {
       throw new HttpsError("invalid-argument", "A comment is required.");
     }
@@ -122,6 +136,12 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
     }
     const commentRef = ref.collection("comments").doc();
     await db.runTransaction(async (tx) => {
+      if (replyToCommentId) {
+        const parent = await tx.get(ref.collection("comments").doc(replyToCommentId));
+        if (!parent.exists) {
+          throw new HttpsError("not-found", "The comment you are replying to is gone.");
+        }
+      }
       tx.create(commentRef, {
         authorId, text, likesCount: 0, replyToCommentId,
         createdAt: FieldValue.serverTimestamp(),
@@ -153,6 +173,7 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
       if (!edit.exists || edit.data()?.status !== "published") {
         throw new HttpsError("not-found", "Edit not found.");
       }
+      const isSelf = edit.data()?.creatorId === viewerId;
       const sessionData = session.data() || {};
       const expires = sessionData.expiresAt?.toDate?.()?.getTime?.() || 0;
       if (!session.exists || sessionData.viewerId !== viewerId ||
@@ -174,8 +195,8 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
       const last = previous.lastQualifiedAt?.toDate?.()?.getTime?.() || 0;
       // A qualified view is counted once per account/edit/day and is derived
       // from server elapsed time, not from client percentages alone.
-      const qualified = verifiedPercent >= 10 && Date.now() - last >= DAY;
-      const completed = verifiedPercent >= 90 && previous.completed !== true;
+      const qualified = !isSelf && verifiedPercent >= 10 && Date.now() - last >= DAY;
+      const completed = !isSelf && verifiedPercent >= 90 && previous.completed !== true;
       const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
       const watchCredit = increment;
       tx.set(viewerRef, {

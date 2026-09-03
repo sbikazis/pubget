@@ -9,6 +9,7 @@ final class PublicProfile {
     this.equippedFrameId,
     this.equippedBadgeId,
     this.equippedNameplateId,
+    this.favoriteAnimeIds = const <String>[],
   });
 
   final String uid;
@@ -20,6 +21,7 @@ final class PublicProfile {
   final String? equippedFrameId;
   final String? equippedBadgeId;
   final String? equippedNameplateId;
+  final List<String> favoriteAnimeIds;
 
   factory PublicProfile.fromMap(Map<String, dynamic> map, {String? uid}) {
     return PublicProfile(
@@ -32,6 +34,11 @@ final class PublicProfile {
       equippedFrameId: _optionalId(map['equippedFrameId']),
       equippedBadgeId: _optionalId(map['equippedBadgeId']),
       equippedNameplateId: _optionalId(map['equippedNameplateId']),
+      favoriteAnimeIds:
+          (map['favoriteAnimeIds'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const <String>[],
     );
   }
 

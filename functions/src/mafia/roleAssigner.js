@@ -52,6 +52,10 @@ function computeRoleDistribution(playersCount, version) {
     if (playersCount >= 7) distribution.push("detective");
     if (playersCount >= 9) distribution.push("sniper");
     if (playersCount >= 10) distribution.push("silencer");
+  } else if (playersCount <= 4) {
+    // 4 players cannot support two Mafia without starting at parity.
+    distribution.push("mafia");
+    if (playersCount >= 4) distribution.push("doctor", "detective");
   } else {
     distribution.push("mafia", "mafia");
     if (playersCount >= 5) distribution.push("doctor");
@@ -138,7 +142,7 @@ async function assignRoles(gameId, gameData) {
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     tx.set(gameRef.collection("events").doc("roles-assigned"), {
-      type: "RolesAssigned", message: "تم توزيع الأدوار، وبدأت الليلة الأولى في المافيا...",
+      type: "RolesAssigned", message: "Roles have been assigned. Night 1 has begun.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { playersCount: activePlayers.length, version: gameData.version || "classic" },
     });
