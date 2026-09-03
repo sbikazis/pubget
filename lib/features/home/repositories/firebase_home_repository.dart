@@ -83,23 +83,18 @@ final class FirebaseHomeRepository implements HomeRepository {
       cursor: after?.id,
       limit: limit,
     );
-    if (ranked.isSuccess) {
-      final groups = ranked.valueOrNull
-              ?.section('recommendedGroups')
-              .items
-              .map(_groupFromItem)
-              .whereType<Group>()
-              .toList(growable: false) ??
-          const <Group>[];
-      if (groups.isNotEmpty) return Success(groups);
-    }
-    var query = _groups()
-        .orderBy('createdAt', descending: true)
-        .orderBy(FieldPath.documentId, descending: true);
-    if (after != null) {
-      query = query.startAfter(<Object?>[after.createdAt, after.id]);
-    }
-    return _groupQuery(query.limit(limit));
+    return ranked.fold(
+      onSuccess: (feed) {
+        final groups = feed
+            .section('recommendedGroups')
+            .items
+            .map(_groupFromItem)
+            .whereType<Group>()
+            .toList(growable: false);
+        return Success(groups);
+      },
+      onFailure: FailureResult<List<Group>>.new,
+    );
   }
 
   @override
@@ -127,35 +122,18 @@ final class FirebaseHomeRepository implements HomeRepository {
       cursor: after?.uid,
       limit: limit,
     );
-    if (ranked.isSuccess) {
-      final people = ranked.valueOrNull
-              ?.section('recommendedPeople')
-              .items
-              .map(_personFromItem)
-              .where((person) => person.uid != userId)
-              .toList(growable: false) ??
-          const <PublicProfile>[];
-      if (people.isNotEmpty) return Success(people);
-    }
-    try {
-      var query = _firestore
-          .collection('public_profiles')
-          .orderBy('totalRespect', descending: true)
-          .orderBy(FieldPath.documentId, descending: true);
-      if (after != null) {
-        query = query.startAfter(<Object>[after.totalRespect, after.uid]);
-      }
-      final snapshot = await query.limit(limit + 1).get();
-      return Success(
-        snapshot.docs
-            .where((doc) => doc.id != userId)
-            .take(limit)
-            .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
-            .toList(growable: false),
-      );
-    } on Object catch (error) {
-      return FailureResult(_failure(error));
-    }
+    return ranked.fold(
+      onSuccess: (feed) {
+        final people = feed
+            .section('recommendedPeople')
+            .items
+            .map(_personFromItem)
+            .where((person) => person.uid != userId)
+            .toList(growable: false);
+        return Success(people);
+      },
+      onFailure: FailureResult<List<PublicProfile>>.new,
+    );
   }
 
   @override
