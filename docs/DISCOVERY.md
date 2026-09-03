@@ -46,7 +46,7 @@ Diversity caps (`DIVERSITY`) keep a page from repeating the same creator or grou
 - Repeat refresh cannot rewrite scores; ranking reads server aggregates
 - Blocked users and non-searchable/private groups are excluded
 - Moderation-rejected Fan Works are dropped before ranking
-- Fan Work comments, likes, and comment reports are callable-only; clients cannot increment `commentsCount`
+- Fan Work comments, likes, ratings, and comment reports are callable-only; clients cannot increment `commentsCount` or `ratingsAverage`
 
 ## Caching and pagination
 

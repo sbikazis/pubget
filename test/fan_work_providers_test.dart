@@ -142,6 +142,17 @@ void main() {
     );
     expect(details.comments.any((comment) => comment.id == 'c1'), isFalse);
   });
+
+  test('details rating is stored through the repository', () async {
+    final repository = _FakeFanWorkRepository()
+      ..watchWorkResult = Success(_work('w1'));
+    final details = FanWorkDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.open(workId: 'w1', userId: 'alice');
+    await details.rate(workId: 'w1', rating: 8);
+    expect(details.myRating, 8);
+    expect(repository.storedRating, 8);
+  });
 }
 
 FanWork _work(String id) => FanWork(
@@ -181,6 +192,20 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String workId,
     required bool bookmark,
   }) async => const Success<void>(null);
+
+  int? storedRating;
+
+  @override
+  Future<Result<void>> rate({required String workId, required int rating}) async {
+    storedRating = rating;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) async => Success(storedRating);
 
   @override
   Future<Result<void>> confirmMedia({

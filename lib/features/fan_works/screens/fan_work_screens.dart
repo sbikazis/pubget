@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -198,9 +199,11 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
     super.initState();
     final details = context.read<FanWorkDetailsProvider>();
     final uid = context.read<AuthProvider>().currentUser?.id ?? '';
-    Future<void>.microtask(
-      () => details.open(workId: widget.workId, userId: uid),
-    );
+    if (details.state == LoadingState.initial) {
+      Future<void>.microtask(
+        () => details.open(workId: widget.workId, userId: uid),
+      );
+    }
   }
 
   @override
@@ -237,6 +240,7 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
                 isOwner: details.work!.creatorId == uid,
                 liked: details.liked,
                 bookmarked: details.bookmarked,
+                myRating: details.myRating,
                 acting: details.acting,
               ),
       ),
@@ -250,6 +254,7 @@ class _DetailsBody extends StatelessWidget {
     required this.isOwner,
     required this.liked,
     required this.bookmarked,
+    required this.myRating,
     required this.acting,
   });
 
@@ -257,15 +262,18 @@ class _DetailsBody extends StatelessWidget {
   final bool isOwner;
   final bool liked;
   final bool bookmarked;
+  final int? myRating;
   final bool acting;
 
   @override
   Widget build(BuildContext context) {
     final details = context.read<FanWorkDetailsProvider>();
     final theme = Theme.of(context);
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.md),
-      children: <Widget>[
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
         if (work.cover?.path.isNotEmpty ?? false)
           AspectRatio(
             aspectRatio: 3 / 4,
@@ -326,7 +334,8 @@ class _DetailsBody extends StatelessWidget {
         FanWorkTagWrap(tags: work.tags),
         const SizedBox(height: AppSpacing.md),
         Text(
-          '${work.likesCount} likes · ${work.commentsCount} comments · ${work.bookmarksCount} saves',
+          '${work.likesCount} likes · ${work.commentsCount} comments · ${work.bookmarksCount} saves'
+          '${work.ratingsCount > 0 ? ' · ${work.ratingsAverage.toStringAsFixed(1)} rating' : ''}',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -384,6 +393,23 @@ class _DetailsBody extends StatelessWidget {
             ),
           ),
         const SizedBox(height: AppSpacing.lg),
+        Text(FanWorkStrings.rating, style: theme.textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.sm,
+          children: [
+            for (var score = 1; score <= 10; score++)
+              PubgetSelectionChip(
+                key: Key('fan-work-rate-$score'),
+                label: '$score',
+                selected: myRating == score,
+                onSelected: acting
+                    ? null
+                    : (_) => details.rate(workId: work.id, rating: score),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
         Row(
           children: <Widget>[
             Expanded(
@@ -451,6 +477,7 @@ class _DetailsBody extends StatelessWidget {
         const SizedBox(height: AppSpacing.xl),
         _FanWorkCommentsSection(workId: work.id),
       ],
+      ),
     );
   }
 

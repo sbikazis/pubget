@@ -797,6 +797,10 @@ service cloud.firestore {
         allow read: if self(uid);
         allow create, update, delete: if false;
       }
+      match /ratings/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
       match /reports/{reportId} {
         allow read: if signedIn() && fanWorkExists() &&
           (fanWorkData().creatorId == request.auth.uid ||

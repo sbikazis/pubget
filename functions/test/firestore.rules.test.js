@@ -949,4 +949,10 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("fanWorks/fw-public").update({
     commentsCount: 99,
   }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/ratings/bob").set({
+    rating: 10,
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    ratingsAverage: 10,
+  }));
 });

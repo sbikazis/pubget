@@ -42,6 +42,13 @@ abstract interface class FanWorkRepository {
     required bool bookmark,
   });
 
+  Future<Result<void>> rate({required String workId, required int rating});
+
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  });
+
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,

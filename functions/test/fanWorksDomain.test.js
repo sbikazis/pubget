@@ -575,3 +575,29 @@ test("fan work comments are server-owned with replies, likes, mentions, and cool
     true,
   );
 });
+
+test("fan work ratings are server-owned and upserted per user", async () => {
+  const { domain, db } = handlers();
+  const created = await domain.saveFanWorkDraft(authed("alice", {
+    type: "story",
+    title: "A publishable story title",
+    body: "Once upon a time in a village far away.",
+  }));
+  await domain.publishFanWork(authed("alice", { workId: created.workId }));
+  await domain.rateFanWork(authed("bob", { workId: created.workId, rating: 9 }));
+  let stored = db.store.get(`fanWorks/${created.workId}`);
+  assert.equal(stored.ratingsCount, 1);
+  assert.equal(stored.ratingsAverage, 9);
+  await domain.rateFanWork(authed("bob", { workId: created.workId, rating: 7 }));
+  stored = db.store.get(`fanWorks/${created.workId}`);
+  assert.equal(stored.ratingsCount, 1);
+  assert.equal(stored.ratingsAverage, 7);
+  await domain.rateFanWork(authed("alice", { workId: created.workId, rating: 5 }));
+  stored = db.store.get(`fanWorks/${created.workId}`);
+  assert.equal(stored.ratingsCount, 2);
+  assert.equal(stored.ratingsAverage, 6);
+  await assert.rejects(
+    () => domain.rateFanWork(authed("bob", { workId: created.workId, rating: 11 })),
+    (error) => error.code === "invalid-argument",
+  );
+});

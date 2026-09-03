@@ -496,6 +496,10 @@ exports.reportFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.reportFanWork,
 );
+exports.rateFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.rateFanWork,
+);
 exports.addFanWorkComment = onCall(
   { region: "us-central1" },
   fanWorksDomain.commentFanWork,

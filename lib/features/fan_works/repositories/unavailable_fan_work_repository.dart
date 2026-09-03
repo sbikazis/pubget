@@ -55,6 +55,16 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
+  Future<Result<void>> rate({required String workId, required int rating}) async =>
+      _fail();
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) async => _fail();
+
+  @override
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,

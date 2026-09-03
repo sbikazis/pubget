@@ -231,7 +231,8 @@ function scoreFanWork(work, profile, now) {
     Math.min(24, (Number(work.commentsCount) || 0) * 2),
   );
   const quality = clamp(40 + (Number(work.version) || 1) * 4 +
-    (work.copyright && work.copyright.originalWorkId ? 10 : 0));
+    (work.copyright && work.copyright.originalWorkId ? 10 : 0) +
+    Math.min(20, (Number(work.ratingsAverage) || 0) * 2));
   const social = profile.creatorIds && profile.creatorIds.has(work.creatorId) ? 70 : 0;
   const creatorRepeat = profile.seenCreators &&
     (profile.seenCreators.get(work.creatorId) || 0) >= 2 ? 30 : 0;

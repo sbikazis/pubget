@@ -414,6 +414,8 @@ final class FanWork {
     this.commentsCount = 0,
     this.bookmarksCount = 0,
     this.reportsCount = 0,
+    this.ratingsCount = 0,
+    this.ratingsAverage = 0,
     this.publishedAt,
     this.version = 1,
     this.schemaVersion = 1,
@@ -440,6 +442,8 @@ final class FanWork {
   final int commentsCount;
   final int bookmarksCount;
   final int reportsCount;
+  final int ratingsCount;
+  final double ratingsAverage;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? publishedAt;
@@ -478,6 +482,8 @@ final class FanWork {
     'commentsCount': commentsCount,
     'bookmarksCount': bookmarksCount,
     'reportsCount': reportsCount,
+    'ratingsCount': ratingsCount,
+    'ratingsAverage': ratingsAverage,
     'createdAt': createdAt?.toUtc().toIso8601String(),
     'updatedAt': updatedAt?.toUtc().toIso8601String(),
     'publishedAt': publishedAt?.toUtc().toIso8601String(),
@@ -533,6 +539,8 @@ final class FanWork {
       commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
       bookmarksCount: (map['bookmarksCount'] as num?)?.toInt() ?? 0,
       reportsCount: (map['reportsCount'] as num?)?.toInt() ?? 0,
+      ratingsCount: (map['ratingsCount'] as num?)?.toInt() ?? 0,
+      ratingsAverage: (map['ratingsAverage'] as num?)?.toDouble() ?? 0,
       createdAt: _date(map['createdAt']),
       updatedAt: _date(map['updatedAt']),
       publishedAt: _date(map['publishedAt']),
@@ -584,6 +592,8 @@ final class FanWork {
     commentsCount: commentsCount,
     bookmarksCount: bookmarksCount,
     reportsCount: reportsCount,
+    ratingsCount: ratingsCount,
+    ratingsAverage: ratingsAverage,
     createdAt: createdAt,
     updatedAt: updatedAt,
     publishedAt: publishedAt,

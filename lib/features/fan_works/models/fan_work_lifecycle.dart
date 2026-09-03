@@ -134,6 +134,7 @@ abstract final class FanWorkStrings {
   static const report = 'Report';
   static const like = 'Like';
   static const bookmark = 'Save';
+  static const rating = 'Rate';
   static const comments = 'Comments';
   static const addComment = 'Add a comment';
   static const sendComment = 'Send comment';

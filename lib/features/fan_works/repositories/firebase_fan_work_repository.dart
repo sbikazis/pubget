@@ -122,6 +122,24 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   }) => _call('bookmarkFanWork', {'workId': workId, 'bookmark': bookmark});
 
   @override
+  Future<Result<void>> rate({required String workId, required int rating}) =>
+      _call('rateFanWork', {'workId': workId, 'rating': rating});
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _works
+        .doc(workId)
+        .collection('ratings')
+        .doc(userId)
+        .get();
+    final value = snapshot.data()?['rating'];
+    return value is num ? value.toInt() : null;
+  });
+
+  @override
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,

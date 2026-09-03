@@ -161,6 +161,7 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   Failure? _failure;
   bool _liked = false;
   bool _bookmarked = false;
+  int? _myRating;
   bool _acting = false;
   bool _disposed = false;
   final List<FanWorkComment> _comments = <FanWorkComment>[];
@@ -175,6 +176,7 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get liked => _liked;
   bool get bookmarked => _bookmarked;
+  int? get myRating => _myRating;
   bool get acting => _acting;
   List<FanWorkComment> get comments => List<FanWorkComment>.unmodifiable(_comments);
   bool get commentsLoading => _commentsLoading;
@@ -193,8 +195,10 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
       workId: workId,
       userId: userId,
     );
+    final rating = await _repository.myRating(workId: workId, userId: userId);
     _liked = liked.valueOrNull ?? false;
     _bookmarked = bookmarked.valueOrNull ?? false;
+    _myRating = rating.valueOrNull;
     await loadComments(workId);
     _subscription = _repository.watchWork(workId).listen((result) {
       if (_disposed) return;
@@ -234,6 +238,20 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
         bookmark: next,
       );
       if (result.isSuccess) _bookmarked = next;
+      return result;
+    });
+  }
+
+  Future<Result<void>> rate({required String workId, required int rating}) {
+    return _act(() async {
+      final result = await _repository.rate(workId: workId, rating: rating);
+      if (result.isSuccess) {
+        _myRating = rating;
+        _analytics.logEvent(
+          'fan_work_rated',
+          parameters: {'workId': workId, 'rating': rating},
+        );
+      }
       return result;
     });
   }

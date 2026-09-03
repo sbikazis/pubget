@@ -519,6 +519,9 @@ function createFanWorksDomain({
         commentsCount: 0,
         bookmarksCount: 0,
         reportsCount: 0,
+        ratingsCount: 0,
+        ratingsSum: 0,
+        ratingsAverage: 0,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         publishedAt: null,
@@ -934,6 +937,48 @@ function createFanWorksDomain({
     return { ok: true };
   }
 
+  async function rateFanWork(request) {
+    const actor = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const rating = Number(request.data?.rating);
+    if (!workId || !Number.isInteger(rating) || rating < 1 || rating > 10) {
+      throw new HttpsError("invalid-argument", "Rating must be an integer from 1 to 10.");
+    }
+    const ref = workRef(db, workId);
+    const ratingRef = ref.collection("ratings").doc(actor);
+    await db.runTransaction(async (transaction) => {
+      const [work, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(ratingRef),
+      ]);
+      if (!work.exists || !isPubliclyListed(work.data())) {
+        throw new HttpsError("not-found", "Fan Work not found.");
+      }
+      const current = work.data() || {};
+      let count = Number(current.ratingsCount) || 0;
+      let sum = Number(current.ratingsSum) || 0;
+      const previous = existing.exists ? Number(existing.data()?.rating) : 0;
+      if (existing.exists && previous === rating) return;
+      if (existing.exists) {
+        sum -= previous;
+      } else {
+        count += 1;
+      }
+      sum += rating;
+      transaction.set(ratingRef, {
+        userId: actor,
+        rating,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(ref, {
+        ratingsCount: count,
+        ratingsSum: sum,
+        ratingsAverage: count > 0 ? Math.round((sum / count) * 10) / 10 : 0,
+      });
+    });
+    return { ok: true, rating };
+  }
+
   async function commentFanWork(request) {
     const authorId = requireAuth(request, HttpsError);
     const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
@@ -1093,6 +1138,7 @@ function createFanWorksDomain({
     likeFanWork,
     bookmarkFanWork,
     reportFanWork,
+    rateFanWork,
     commentFanWork,
     fanWorkCommentAction,
     TYPES,
