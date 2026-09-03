@@ -6,7 +6,7 @@ import '../../../core/errors/result.dart';
 import '../models/achievement_models.dart';
 import 'achievement_repository.dart';
 
-const _catalog = <AchievementItem>[
+final _catalog = <AchievementItem>[
   AchievementItem(
     id: 'first_group',
     type: 'community',

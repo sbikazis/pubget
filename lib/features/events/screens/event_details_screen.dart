@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
