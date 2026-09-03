@@ -93,6 +93,11 @@ test.before(async () => {
   });
 });
 
+test.after(async () => {
+  if (env) await env.cleanup();
+  if (admin.apps.length) await admin.app().delete();
+});
+
 test.beforeEach(async () => {
   if (env && typeof env.clearFirestore === "function") {
     await env.clearFirestore();
