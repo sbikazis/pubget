@@ -542,7 +542,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
                 controller: _controller,
                 hint: FanWorkStrings.addComment,
                 minLines: 1,
-                maxLines: 4,
+                maxLines: 1,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
               ),
@@ -550,7 +550,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
             IconButton(
               key: const Key('fan-work-comment-send'),
               tooltip: FanWorkStrings.sendComment,
-              onPressed: details.acting ? null : _send,
+              onPressed: _send,
               icon: const Icon(Icons.send),
             ),
           ],

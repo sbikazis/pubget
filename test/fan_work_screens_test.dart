@@ -147,7 +147,7 @@ void main() {
       find.byKey(const Key('fan-work-comment-field')),
       'Thanks',
     );
-    await tester.tap(find.byKey(const Key('fan-work-comment-send')));
+    await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
     expect(repository.addedComments, contains('Thanks'));
     expect(find.text('Thanks'), findsOneWidget);
