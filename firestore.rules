@@ -448,6 +448,14 @@ service cloud.firestore {
       match /inventory/{itemId} { allow read: if self(uid); allow write: if false; }
       match /economyRate/{id} { allow read, write: if false; }
       match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
+      match /anime_lists/{animeId} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /character_favorites/{characterId} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
     }
 
     match /storeCatalog/{itemId} {
@@ -793,6 +801,10 @@ service cloud.firestore {
         allow read: if signedIn() && fanWorkExists() &&
           (fanWorkData().creatorId == request.auth.uid ||
            resource.data.reporterId == request.auth.uid);
+        allow create, update, delete: if false;
+      }
+      match /revisions/{revisionId} {
+        allow read: if fanWorkVisible();
         allow create, update, delete: if false;
       }
     }

@@ -307,6 +307,17 @@ class _DetailsBody extends StatelessWidget {
             style: theme.textTheme.bodyMedium,
           ),
         ],
+        if (!work.copyright.isEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(FanWorkStrings.copyright, style: theme.textTheme.titleSmall),
+          if (work.copyright.sourceTitle.isNotEmpty)
+            Text('Source: ${work.copyright.sourceTitle}'),
+          if (work.copyright.originalWorkId.isNotEmpty)
+            Text('Original ID: ${work.copyright.originalWorkId}'),
+          if (work.copyright.credit.isNotEmpty)
+            Text('Credit: ${work.copyright.credit}'),
+          Text('Revision ${work.version}'),
+        ],
         if (work.characterIds.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           Text('Character refs: ${work.characterIds.join(', ')}'),
@@ -402,6 +413,26 @@ class _DetailsBody extends StatelessWidget {
           semanticLabel: FanWorkStrings.report,
           child: const Text(FanWorkStrings.report),
         ),
+        PubgetTextButton(
+          onPressed: acting
+              ? null
+              : () => details.requestRemoval(workId: work.id),
+          semanticLabel: FanWorkStrings.requestRemoval,
+          child: const Text(FanWorkStrings.requestRemoval),
+        ),
+        if (isOwner && work.isPublished)
+          PubgetSecondaryButton(
+            onPressed: acting
+                ? null
+                : () => details.revisePublished(
+                    workId: work.id,
+                    title: work.title,
+                    description: work.description,
+                    copyright: work.copyright,
+                  ),
+            semanticLabel: FanWorkStrings.revised,
+            child: const Text('Save revision metadata'),
+          ),
         if (isOwner && work.isPublished)
           PubgetSecondaryButton(
             onPressed: acting ? null : () => details.archive(work.id),
@@ -466,6 +497,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
   late final TextEditingController _abilities;
   late final TextEditingController _background;
   late final TextEditingController _lore;
+  late final TextEditingController _originalWorkId;
+  late final TextEditingController _sourceTitle;
+  late final TextEditingController _credit;
   final _picker = ImagePicker();
 
   @override
@@ -483,6 +517,13 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities = TextEditingController(text: editor.draft.abilities);
     _background = TextEditingController(text: editor.draft.background);
     _lore = TextEditingController(text: editor.draft.lore);
+    _originalWorkId = TextEditingController(
+      text: editor.draft.copyright.originalWorkId,
+    );
+    _sourceTitle = TextEditingController(
+      text: editor.draft.copyright.sourceTitle,
+    );
+    _credit = TextEditingController(text: editor.draft.copyright.credit);
     Future<void>.microtask(() async {
       await editor.start(workId: widget.workId);
       if (!mounted) return;
@@ -502,6 +543,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities.text = draft.abilities;
     _background.text = draft.background;
     _lore.text = draft.lore;
+    _originalWorkId.text = draft.copyright.originalWorkId;
+    _sourceTitle.text = draft.copyright.sourceTitle;
+    _credit.text = draft.copyright.credit;
   }
 
   FanWorkDraft _collected(FanWorkEditorProvider editor) {
@@ -517,6 +561,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
       abilities: _abilities.text,
       background: _background.text,
       lore: _lore.text,
+      copyright: editor.draft.copyright.copyWith(
+        originalWorkId: _originalWorkId.text.trim(),
+        sourceTitle: _sourceTitle.text.trim(),
+        credit: _credit.text.trim(),
+      ),
     );
   }
 
@@ -533,6 +582,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities.dispose();
     _background.dispose();
     _lore.dispose();
+    _originalWorkId.dispose();
+    _sourceTitle.dispose();
+    _credit.dispose();
     super.dispose();
   }
 
@@ -644,6 +696,33 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                     key: const Key('fan-work-anime-title'),
                     controller: _animeTitle,
                     label: 'Related anime title',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-original-id'),
+                    controller: _originalWorkId,
+                    label: 'Original work ID',
+                    hint: 'Optional source identifier',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-source-title'),
+                    controller: _sourceTitle,
+                    label: 'Source title',
+                    hint: 'Original series or work',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-credit'),
+                    controller: _credit,
+                    label: 'Credit',
+                    hint: 'How this work should be credited',
                     onChanged: (_) =>
                         editor.updateDraft(_collected(editor)),
                   ),

@@ -250,6 +250,44 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
     return _act(() => _repository.archive(workId));
   }
 
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) {
+    return _act(() async {
+      final result = await _repository.requestRemoval(
+        workId: workId,
+        details: details,
+      );
+      if (result.isSuccess) {
+        _analytics.logEvent('fan_work_removal_requested', parameters: {
+          'workId': workId,
+        });
+      }
+      return result;
+    });
+  }
+
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+  }) {
+    return _act(() async {
+      final result = await _repository.revisePublished(
+        workId: workId,
+        title: title,
+        description: description,
+        copyright: copyright,
+      );
+      if (result.isSuccess) {
+        _analytics.logEvent('fan_work_revised', parameters: {'workId': workId});
+      }
+      return result;
+    });
+  }
+
   Future<Result<T>> _act<T>(Future<Result<T>> Function() action) async {
     _acting = true;
     _safeNotify();
@@ -586,6 +624,11 @@ final class FanWorkEditorProvider extends ChangeNotifier {
       imageIds:
           (data['imageIds'] as List<Object?>?)?.whereType<String>().toList() ??
           const <String>[],
+      copyright: FanWorkCopyright.fromMap(
+        data['copyright'] is Map
+            ? Map<String, dynamic>.from(data['copyright'] as Map)
+            : null,
+      ),
     );
     if (_draft.type != FanWorkType.drawing || _draft.title.isNotEmpty) {
       _step = FanWorkEditorStep.details;

@@ -117,6 +117,8 @@ class _HomePageState extends State<HomePage> {
               SliverToBoxAdapter(child: _SearchBar(controller: _search)),
               if (economy != null)
                 const SliverToBoxAdapter(child: _HomeAdSlot()),
+              if (home.coldStart && _search.text.trim().isEmpty)
+                const SliverToBoxAdapter(child: _ColdStartBanner()),
               if (_search.text.trim().isNotEmpty)
                 SliverToBoxAdapter(
                   child: SearchResultsView(search: search, shrinkWrap: true),
@@ -132,6 +134,28 @@ class _HomePageState extends State<HomePage> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ColdStartBanner extends StatelessWidget {
+  const _ColdStartBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: PubgetCard(
+        child: Text(
+          'Fresh start: we are mixing quality, trending, and rising groups until your taste is clearer.',
+          style: Theme.of(context).textTheme.bodyMedium,
         ),
       ),
     );
@@ -208,6 +232,34 @@ class _SectionView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kind == HomeSectionKind.editsPlaceholder) {
+      final ranked = provider.feed.section('recommendedEdits').items;
+      if (ranked.isNotEmpty) {
+        return _SectionShell(
+          title: 'Trending Edits',
+          child: SizedBox(
+            height: 150,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              scrollDirection: Axis.horizontal,
+              itemCount: ranked.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) {
+                final item = ranked[index];
+                final thumb = item.metadata['thumbnailUrl'] as String? ?? '';
+                return SizedBox(
+                  width: 120,
+                  child: PubgetCard(
+                    onTap: () => AppNavigation.go(context, '/edits'),
+                    child: thumb.isEmpty
+                        ? const Icon(Icons.movie_filter_outlined)
+                        : AppImageLoader(imageUrl: thumb, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
       final edits = context.watch<EditsProvider>();
       if (edits.state == LoadingState.initial) {
         Future<void>.microtask(() => edits.load(limit: 4));
@@ -399,7 +451,7 @@ class _GroupCarousel extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '${group.membersCount} members · score ${group.activityScore.toStringAsFixed(0)}',
+                  '${group.membersCount} members · rising ${group.risingScore.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

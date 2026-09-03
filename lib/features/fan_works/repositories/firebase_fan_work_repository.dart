@@ -133,6 +133,30 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   });
 
   @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) => _call('revisePublishedFanWork', {
+    'workId': workId,
+    if (title != null) 'title': title,
+    if (description != null) 'description': description,
+    if (copyright != null) 'copyright': copyright.toMap(),
+    if (tags != null) 'tags': tags,
+  });
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) => _call('requestFanWorkRemoval', {
+    'workId': workId,
+    'details': details,
+  });
+
+  @override
   Stream<Result<FanWork>> watchWork(String workId) {
     return _works
         .doc(workId)

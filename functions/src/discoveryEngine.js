@@ -1,6 +1,7 @@
 "use strict";
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { calculateRisingScore } = require("./ranking");
 
 const WINDOW_DAYS = 7;
 const MAX_MESSAGES = 500;
@@ -114,30 +115,58 @@ function createDiscoveryScheduler({ db, FieldValue }) {
           userCreatedAt.getTime() <= accountCutoff &&
           joinedAt.getTime() <= membershipCutoff;
       }));
+      const hasImage = typeof group.imageUrl === "string" && group.imageUrl.length > 0;
+      const hasDescription = typeof group.description === "string" &&
+        group.description.trim().length >= 20;
+      const hasRules = typeof group.rules === "string" && group.rules.trim().length >= 20;
       const score = calculateActivityScore({
         messages: messages.docs.map((doc) => doc.data() || {}),
         memberCount: group.membersCount || 0,
-        hasImage: typeof group.imageUrl === "string" && group.imageUrl.length > 0,
-        hasDescription: typeof group.description === "string" &&
-          group.description.trim().length >= 20,
-        hasRules: typeof group.rules === "string" && group.rules.trim().length >= 20,
+        hasImage,
+        hasDescription,
+        hasRules,
         qualifyingActorIds,
         now,
       });
       const createdAt = dateValue(group.createdAt);
       const ageDays = (now.getTime() - createdAt.getTime()) /
         (24 * 60 * 60 * 1000);
+      const membersSnap = await groupDoc.ref.collection("members").limit(200).get();
+      const joinsInWindow = membersSnap.docs.filter((doc) =>
+        dateValue(doc.data()?.joinedAt).getTime() >= cutoff.getTime()).length;
+      const uniqueActors = qualifyingActorIds.size;
+      const replyRate = (() => {
+        const recent = messages.docs.filter((doc) =>
+          dateValue(doc.data()?.createdAt).getTime() >= cutoff.getTime());
+        const replies = recent.filter((doc) => doc.data()?.replyToMessageId).length;
+        return recent.length === 0 ? 0 : replies / recent.length;
+      })();
+      const risingScore = calculateRisingScore({
+        activityScore: score,
+        uniqueActors,
+        memberCount: group.membersCount || 0,
+        joinsInWindow,
+        ageDays,
+        messagesInWindow: messages.size,
+        qualifyingActors: uniqueActors,
+        completeness: (Number(hasImage) + Number(hasDescription) + Number(hasRules)) / 3 * 100,
+        replyRate,
+        regularity: score > 0 ? Math.min(1, uniqueActors / 7) : 0,
+      });
       const risingEligible = (group.membersCount || 0) >= 2 &&
         (group.membersCount || 0) <= 200 &&
         ageDays <= 180 &&
-        score > 0;
+        risingScore > 0;
       batch.update(groupDoc.ref, {
         activityScore: score,
+        risingScore,
         risingEligible,
         activityScoreUpdatedAt: FieldValue.serverTimestamp(),
         activityMetrics: {
           recentMessageCount: messages.size,
           activeMemberCount: qualifyingActorIds.size,
+          joinsInWindow,
+          risingScore,
           scoreWindowDays: WINDOW_DAYS,
         },
       });
@@ -163,6 +192,7 @@ function createDiscoveryScheduler({ db, FieldValue }) {
 
 module.exports = {
   calculateActivityScore,
+  calculateRisingScore,
   createDiscoveryScheduler,
   onSchedule,
 };

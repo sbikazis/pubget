@@ -9,6 +9,7 @@ const DISPLAY_FIELDS = Object.freeze([
   "equippedFrameId",
   "equippedBadgeId",
   "equippedNameplateId",
+  "favoriteAnimeIds",
 ]);
 
 function buildPublicProfile(data) {
@@ -18,6 +19,8 @@ function buildPublicProfile(data) {
       ? data[field]
       : field === "totalRespect" || field === "fansCount"
         ? 0
+        : field === "favoriteAnimeIds"
+          ? []
         : field.startsWith("equipped")
           ? ""
           : null;

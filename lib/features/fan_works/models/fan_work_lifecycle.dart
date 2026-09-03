@@ -149,4 +149,7 @@ abstract final class FanWorkStrings {
   static const basicInfo = 'Basic information';
   static const mediaContent = 'Media and content';
   static const tagsAnime = 'Tags and anime';
+  static const copyright = 'Copyright and source';
+  static const requestRemoval = 'Request removal';
+  static const revised = 'Revision saved';
 }

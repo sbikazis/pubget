@@ -40,7 +40,8 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
     const ref = db.collection("edits").doc(editId);
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
-        edit.data()?.status !== "processing") return null;
+        !["processing", "uploading"].includes(edit.data()?.status)) return null;
+    await ref.update({ status: "processing", processingStartedAt: new Date() });
     if (object.contentType !== "video/mp4" || Number(object.size || 0) > 250 * 1024 * 1024) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
       return null;
@@ -83,9 +84,16 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
         0,
         Number(creator.data()?.totalRespect || 0) * 0.5,
       ));
+      const published = await db.collection("edits")
+        .where("creatorId", "==", creatorId)
+        .where("status", "==", "published")
+        .limit(6)
+        .get()
+        .catch(() => ({ size: 0, docs: [] }));
       await ref.update({
         videoUrl: processedPath, thumbnailUrl: thumbnailPath, durationSeconds,
         status: "published", score: 20 + creatorQuality, processedAt: new Date(),
+        creatorQuality,
       });
       if (economy && typeof economy.applyReward === "function") {
         await economy.applyReward({
@@ -100,7 +108,7 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
           type: "edit_published",
           userId: creatorId,
           source: "edit",
-          metadata: { editId },
+          metadata: { editId, publishedCount: (published.size || 0) + 1 },
         });
       }
     } catch (error) {

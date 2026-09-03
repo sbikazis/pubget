@@ -102,6 +102,23 @@ function normalizeTags(raw) {
   return out;
 }
 
+function normalizeCopyright(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      originalWorkId: "",
+      sourceTitle: "",
+      credit: "",
+      license: "fan-work",
+    };
+  }
+  return {
+    originalWorkId: optionalString(raw.originalWorkId ?? "", 128) || "",
+    sourceTitle: optionalString(raw.sourceTitle ?? "", 200) || "",
+    credit: optionalString(raw.credit ?? "", 200) || "",
+    license: optionalString(raw.license ?? "fan-work", 64) || "fan-work",
+  };
+}
+
 function normalizeCharacterIds(raw) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set();
@@ -430,6 +447,7 @@ function createFanWorksDomain({
     }
     const tags = normalizeTags(input.tags);
     const characterIds = normalizeCharacterIds(input.characterIds);
+    const copyright = normalizeCopyright(input.copyright);
     const existingId = validString(input.workId, 128) ? input.workId.trim() : null;
     const ref = existingId ? workRef(db, existingId) : db.collection("fanWorks").doc();
     const snapshot = await creatorSnapshot(db, uid);
@@ -453,6 +471,7 @@ function createFanWorksDomain({
           animeId,
           animeTitle,
           characterIds,
+          copyright,
           content,
           creatorSnapshot: snapshot,
           searchTitle: title.toLowerCase(),
@@ -476,6 +495,7 @@ function createFanWorksDomain({
         animeId,
         animeTitle,
         characterIds,
+        copyright,
         visibility: "unpublished",
         status: "draft",
         moderationStatus: "pending",
@@ -541,6 +561,86 @@ function createFanWorksDomain({
       });
     }
     return { workId, alreadyPublished };
+  }
+
+  async function revisePublishedFanWork(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const ref = workRef(db, workId);
+    let version = 1;
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+      const current = snap.data() || {};
+      if (current.creatorId !== uid) {
+        throw new HttpsError("permission-denied", "You cannot revise this Fan Work.");
+      }
+      if (current.status !== "published") {
+        throw new HttpsError("failed-precondition", "Only published Fan Works can be revised.");
+      }
+      version = (Number(current.version) || 1) + 1;
+      const revisionRef = ref.collection("revisions").doc(String(current.version || 1));
+      transaction.set(revisionRef, {
+        version: Number(current.version) || 1,
+        title: current.title || "",
+        description: current.description || "",
+        content: current.content || {},
+        copyright: current.copyright || normalizeCopyright({}),
+        createdAt: FieldValue.serverTimestamp(),
+        creatorId: uid,
+      });
+      const title = optionalString(request.data?.title ?? current.title ?? "", TITLE_MAX);
+      const description = optionalString(
+        request.data?.description ?? current.description ?? "",
+        DESCRIPTION_MAX,
+      );
+      if (title === null || description === null) {
+        throw new HttpsError("invalid-argument", "Revision text is invalid.");
+      }
+      transaction.update(ref, {
+        title,
+        description,
+        copyright: normalizeCopyright(request.data?.copyright || current.copyright),
+        tags: request.data?.tags ? normalizeTags(request.data.tags) : current.tags,
+        updatedAt: FieldValue.serverTimestamp(),
+        version,
+        schemaVersion: SCHEMA_VERSION,
+        searchTitle: (title || current.title || "").toLowerCase(),
+      });
+    });
+    return { workId, version };
+  }
+
+  async function requestFanWorkRemoval(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const details = optionalString(request.data?.details ?? "", 500) || "";
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const ref = workRef(db, workId);
+    const reportRef = ref.collection("reports").doc(`${workId}_${uid}_removal`);
+    await db.runTransaction(async (transaction) => {
+      const [snap, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(reportRef),
+      ]);
+      if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+      if (existing.exists) return;
+      transaction.create(reportRef, {
+        reporterId: uid,
+        reason: "copyright",
+        kind: "removal_request",
+        details,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(ref, {
+        reportsCount: FieldValue.increment(1),
+        moderationStatus: "flagged",
+        removalRequested: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true };
   }
 
   async function archiveFanWork(request) {
@@ -820,6 +920,8 @@ function createFanWorksDomain({
   return {
     saveFanWorkDraft,
     publishFanWork,
+    revisePublishedFanWork,
+    requestFanWorkRemoval,
     archiveFanWork,
     deleteFanWorkDraft,
     startFanWorkMediaUpload,

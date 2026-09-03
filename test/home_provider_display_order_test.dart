@@ -63,6 +63,13 @@ final class _OrderRepository implements HomeRepository {
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async =>
       const Success(DiscoverySearchResults());
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async => const Success(DiscoveryFeed());
 }
 
 Group _group(String id) => Group(

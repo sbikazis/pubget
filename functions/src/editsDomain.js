@@ -34,7 +34,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
       createdAt: FieldValue.serverTimestamp(), originalEditId: null, repostedBy: null,
       originalCreatorId: creatorId,
-      status: "processing",
+      status: "uploading",
     });
     return { editId, videoPath: `edits/${creatorId}/${editId}.mp4` };
   }
@@ -173,6 +173,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       if (!edit.exists || edit.data()?.status !== "published") {
         throw new HttpsError("not-found", "Edit not found.");
       }
+      const isSelf = edit.data()?.creatorId === viewerId;
       const sessionData = session.data() || {};
       const expires = sessionData.expiresAt?.toDate?.()?.getTime?.() || 0;
       if (!session.exists || sessionData.viewerId !== viewerId ||
@@ -194,8 +195,8 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       const last = previous.lastQualifiedAt?.toDate?.()?.getTime?.() || 0;
       // A qualified view is counted once per account/edit/day and is derived
       // from server elapsed time, not from client percentages alone.
-      const qualified = verifiedPercent >= 10 && Date.now() - last >= DAY;
-      const completed = verifiedPercent >= 90 && previous.completed !== true;
+      const qualified = !isSelf && verifiedPercent >= 10 && Date.now() - last >= DAY;
+      const completed = !isSelf && verifiedPercent >= 90 && previous.completed !== true;
       const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
       const watchCredit = increment;
       tx.set(viewerRef, {

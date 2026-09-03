@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
@@ -47,8 +48,9 @@ final class HomeSectionState {
 }
 
 final class HomeProvider extends ChangeNotifier {
-  HomeProvider({required HomeRepository repository})
-    : _repository = repository {
+  HomeProvider({required HomeRepository repository, Analytics? analytics})
+    : _repository = repository,
+      _analytics = analytics {
     _sections = {
       for (final kind in _sectionOrder)
         kind: HomeSectionState(kind: kind, state: LoadingState.initial),
@@ -69,7 +71,9 @@ final class HomeProvider extends ChangeNotifier {
   ];
 
   final HomeRepository _repository;
+  final Analytics? _analytics;
   late Map<HomeSectionKind, HomeSectionState> _sections;
+  DiscoveryFeed _feed = const DiscoveryFeed();
   String? _userId;
   bool _disposed = false;
   static const _pageSize = 8;
@@ -92,8 +96,11 @@ final class HomeProvider extends ChangeNotifier {
     }
     return <HomeSectionKind>[...active, ...empty];
   }
+
   HomeSectionState section(HomeSectionKind kind) => _sections[kind]!;
   String? get userId => _userId;
+  DiscoveryFeed get feed => _feed;
+  bool get coldStart => _feed.coldStart;
 
   void bindUser(String? userId) {
     if (userId == _userId) return;
@@ -103,6 +110,7 @@ final class HomeProvider extends ChangeNotifier {
 
   void resetSession() {
     _userId = null;
+    _feed = const DiscoveryFeed();
     _sections = {
       for (final kind in _sectionOrder)
         kind: HomeSectionState(kind: kind, state: LoadingState.initial),
@@ -112,10 +120,13 @@ final class HomeProvider extends ChangeNotifier {
 
   void load(String userId) {
     _userId = userId;
+    _analytics?.logEvent('home_impression');
+    unawaited(_prefetchFeed());
     ensureLoaded(HomeSectionKind.promotedGroups);
   }
 
   Future<void> refresh() async {
+    unawaited(_prefetchFeed(refresh: true));
     final loaded = _sectionOrder.where(
       (kind) =>
           !_isPlaceholder(kind) && section(kind).state != LoadingState.initial,
@@ -147,6 +158,26 @@ final class HomeProvider extends ChangeNotifier {
     await _loadSection(kind, refresh: false, loadMore: true);
   }
 
+  Future<void> _prefetchFeed({bool refresh = false}) async {
+    final result = await _repository.getDiscoveryFeed(limit: _pageSize);
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (feed) {
+        _feed = feed;
+        _analytics?.logEvent(
+          'home_feed_loaded',
+          parameters: {
+            'coldStart': feed.coldStart ? 1 : 0,
+            'sections': feed.sections.length,
+            if (refresh) 'refresh': 1,
+          },
+        );
+      },
+      onFailure: (_) {},
+    );
+    _safeNotify();
+  }
+
   Future<void> _loadSection(
     HomeSectionKind kind, {
     required bool refresh,
@@ -162,6 +193,10 @@ final class HomeProvider extends ChangeNotifier {
       clearFailure: true,
     );
     _safeNotify();
+    _analytics?.logEvent(
+      'section_impression',
+      parameters: {'section': kind.name},
+    );
     if (kind == HomeSectionKind.recommendedPeople) {
       final result = await _repository.getRecommendedPeople(
         userId: _userId!,

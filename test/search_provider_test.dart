@@ -201,6 +201,13 @@ final class FakeDiscoveryRepository implements HomeRepository {
       ),
     );
   }
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async => const Success(DiscoveryFeed(coldStart: true));
 }
 
 Group _group(String id, String name, {bool searchable = true}) => Group(

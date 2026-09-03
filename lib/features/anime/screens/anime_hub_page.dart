@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -39,7 +40,16 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     final network = context.watch<NetworkService>();
     final searching = _search.text.trim().isNotEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text(AnimeStrings.hubTitle)),
+      appBar: AppBar(
+        title: const Text(AnimeStrings.hubTitle),
+        actions: <Widget>[
+          PubgetTextButton(
+            onPressed: () => AppNavigation.go(context, '/anime/library'),
+            semanticLabel: AnimeStrings.libraryTitle,
+            child: const Text(AnimeStrings.libraryTitle),
+          ),
+        ],
+      ),
       body: searching ? _searchBody(list) : _hubBody(hub, network),
     );
   }

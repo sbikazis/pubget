@@ -910,3 +910,33 @@ test("clients cannot mutate economy, catalog, inventory, or premium", async () =
   await assertFails(db("alice").doc("users/bob").update({ coinsBalance: 0 }));
   await assertFails(db("alice").doc("users/alice/economyRate/purchase").set({ count: 0 }));
 });
+
+test("clients cannot write anime lists, ranking scores, or edit metrics", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("users/alice/anime_lists/21").set({
+      animeId: "21", userId: "alice", status: "watching",
+    });
+    await admin.doc("edits/e1").set({
+      creatorId: "alice", status: "published", viewsCount: 2, score: 4,
+    });
+    await admin.doc("groups/g1").update({ risingScore: 12, activityScore: 12 });
+    await admin.doc("fanWorks/fw-public/revisions/1").set({
+      version: 1, title: "old", creatorId: "alice",
+    });
+  });
+  await assertSucceeds(db("alice").doc("users/alice/anime_lists/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_lists/21").get());
+  await assertFails(db("alice").doc("users/alice/anime_lists/21").set({
+    animeId: "21", status: "completed", rating: 10,
+  }));
+  await assertFails(db("alice").doc("users/alice/character_favorites/luffy").set({
+    characterId: "luffy",
+  }));
+  await assertFails(db("alice").doc("edits/e1").update({ viewsCount: 99, score: 99 }));
+  await assertFails(db("alice").doc("groups/g1").update({ risingScore: 99 }));
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/revisions/1").get());
+  await assertFails(db("alice").doc("fanWorks/fw-public/revisions/2").set({
+    version: 2, title: "forged",
+  }));
+});

@@ -160,4 +160,11 @@ final class _FakeHomeRepository implements HomeRepository {
       ],
     ),
   );
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async => const Success(DiscoveryFeed(coldStart: true));
 }

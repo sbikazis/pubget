@@ -48,6 +48,19 @@ abstract interface class FanWorkRepository {
     String details,
   });
 
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  });
+
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details,
+  });
+
   Stream<Result<FanWork>> watchWork(String workId);
 
   Future<Result<FanWork>> getWork(String workId);

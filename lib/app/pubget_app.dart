@@ -62,6 +62,11 @@ import '../features/anime/repositories/jikan_anime_repository.dart';
 import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
+import '../features/anime/screens/anime_library_page.dart';
+import '../features/anime/providers/anime_library_provider.dart';
+import '../features/anime/repositories/anime_library_repository.dart';
+import '../features/anime/repositories/firebase_anime_library_repository.dart';
+import '../features/anime/repositories/unavailable_anime_library_repository.dart';
 import '../features/events/providers/event_providers.dart';
 import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
@@ -182,6 +187,18 @@ class PubgetApp extends StatelessWidget {
         ),
         provider.Provider<GameRepository>.value(value: repositories.$14),
         provider.Provider<FanWorkRepository>.value(value: repositories.$15),
+        provider.Provider<AnimeLibraryRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseAnimeLibraryRepository(
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableAnimeLibraryRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<EconomyRepository>.value(value: repositories.$16),
         provider.Provider<MafiaRepository>.value(value: repositories.$17),
         provider.Provider<AchievementRepository>.value(value: repositories.$18),
@@ -235,8 +252,10 @@ class PubgetApp extends StatelessWidget {
               ChatProvider(repository: context.read<ChatRepository>()),
         ),
         provider.ChangeNotifierProxyProvider<AuthProvider, HomeProvider>(
-          create: (context) =>
-              HomeProvider(repository: context.read<HomeRepository>()),
+          create: (context) => HomeProvider(
+            repository: context.read<HomeRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
           update: (_, auth, home) {
             home!.bindUser(auth.currentUser?.id);
             return home;
@@ -329,6 +348,20 @@ class PubgetApp extends StatelessWidget {
             profiles: context.read<ProfileRepository>(),
             analytics: context.read<Analytics>(),
           ),
+        ),
+        provider.ChangeNotifierProxyProvider<AuthProvider, AnimeLibraryProvider>(
+          create: (context) {
+            final library = AnimeLibraryProvider(
+              repository: context.read<AnimeLibraryRepository>(),
+              analytics: context.read<Analytics>(),
+            );
+            library.bindUser(context.read<AuthProvider>().currentUser?.id);
+            return library;
+          },
+          update: (_, auth, library) {
+            library!.bindUser(auth.currentUser?.id);
+            return library;
+          },
         ),
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>
@@ -533,7 +566,10 @@ class PubgetApp extends StatelessWidget {
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
         messaging: FirebaseMessaging.instance,
       ),
-      FirebaseHomeRepository(firestore: FirebaseFirestore.instance),
+      FirebaseHomeRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
       FirebaseEditsRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
@@ -641,6 +677,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/groups/create': const CreateGroupWizardPage(),
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
+        '/anime/library': const AnimeLibraryPage(),
         '/fan-works': const FanWorkFeedPage(),
         '/store': const StorePage(),
         '/inventory': const InventoryPage(),
@@ -699,6 +736,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           year: int.tryParse(parameters['year'] ?? ''),
           season: AnimeSeason.tryParse(parameters['season']),
         ),
+        '/anime/library': (parameters) => const AnimeLibraryPage(),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
         '/mafia': (parameters) =>

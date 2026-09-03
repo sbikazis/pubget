@@ -255,6 +255,21 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   }) async => const Success<void>(null);
 
   @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  @override
   Future<Result<String>> saveDraft(FanWorkDraft draft) async {
     if (saveFailure != null) return FailureResult(saveFailure!);
     final id = draft.workId ?? 'draft-1';

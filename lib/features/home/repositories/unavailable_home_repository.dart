@@ -45,4 +45,11 @@ final class UnavailableHomeRepository implements HomeRepository {
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async =>
       _failure();
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async => _failure();
 }

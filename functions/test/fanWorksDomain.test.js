@@ -447,3 +447,35 @@ test("unauthenticated mutations fail", async () => {
     (error) => error.code === "unauthenticated",
   );
 });
+
+test("copyright metadata, published revision, and removal request are server-owned", async () => {
+  const { domain, db } = handlers();
+  const created = await domain.saveFanWorkDraft(authed("alice", {
+    type: "story",
+    title: "Log pose",
+    description: "Nami charts a new route across the Grand Line.",
+    body: "The sea stretched farther than any map she had drawn before.",
+    copyright: {
+      originalWorkId: "one-piece",
+      sourceTitle: "One Piece",
+      credit: "Fan work inspired by Eiichiro Oda",
+    },
+  }));
+  await domain.publishFanWork(authed("alice", { workId: created.workId }));
+  const published = db.store.get(`fanWorks/${created.workId}`);
+  assert.equal(published.copyright.originalWorkId, "one-piece");
+  const revised = await domain.revisePublishedFanWork(authed("alice", {
+    workId: created.workId,
+    title: "Log pose revised",
+    copyright: { originalWorkId: "one-piece", sourceTitle: "One Piece", credit: "Nami" },
+  }));
+  assert.equal(revised.version, (published.version || 1) + 1);
+  assert.ok(db.store.get(`fanWorks/${created.workId}/revisions/${published.version || 1}`));
+  await domain.requestFanWorkRemoval(authed("bob", {
+    workId: created.workId,
+    details: "Please take this down",
+  }));
+  const flagged = db.store.get(`fanWorks/${created.workId}`);
+  assert.equal(flagged.removalRequested, true);
+  assert.equal(flagged.moderationStatus, "flagged");
+});

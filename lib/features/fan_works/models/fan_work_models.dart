@@ -345,6 +345,52 @@ final class FanWorkPreview {
   }
 }
 
+final class FanWorkCopyright {
+  const FanWorkCopyright({
+    this.originalWorkId = '',
+    this.sourceTitle = '',
+    this.credit = '',
+    this.license = 'fan-work',
+  });
+
+  final String originalWorkId;
+  final String sourceTitle;
+  final String credit;
+  final String license;
+
+  bool get isEmpty =>
+      originalWorkId.isEmpty && sourceTitle.isEmpty && credit.isEmpty;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'originalWorkId': originalWorkId,
+    'sourceTitle': sourceTitle,
+    'credit': credit,
+    'license': license,
+  };
+
+  factory FanWorkCopyright.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const FanWorkCopyright();
+    return FanWorkCopyright(
+      originalWorkId: map['originalWorkId'] as String? ?? '',
+      sourceTitle: map['sourceTitle'] as String? ?? '',
+      credit: map['credit'] as String? ?? '',
+      license: map['license'] as String? ?? 'fan-work',
+    );
+  }
+
+  FanWorkCopyright copyWith({
+    String? originalWorkId,
+    String? sourceTitle,
+    String? credit,
+    String? license,
+  }) => FanWorkCopyright(
+    originalWorkId: originalWorkId ?? this.originalWorkId,
+    sourceTitle: sourceTitle ?? this.sourceTitle,
+    credit: credit ?? this.credit,
+    license: license ?? this.license,
+  );
+}
+
 final class FanWork {
   const FanWork({
     required this.id,
@@ -370,6 +416,8 @@ final class FanWork {
     this.publishedAt,
     this.version = 1,
     this.schemaVersion = 1,
+    this.copyright = const FanWorkCopyright(),
+    this.removalRequested = false,
   });
 
   final String id;
@@ -395,6 +443,8 @@ final class FanWork {
   final DateTime? publishedAt;
   final int version;
   final int schemaVersion;
+  final FanWorkCopyright copyright;
+  final bool removalRequested;
 
   bool get isDraft => status == FanWorkStatus.draft;
   bool get isPublished => status == FanWorkStatus.published;
@@ -430,6 +480,8 @@ final class FanWork {
     'publishedAt': publishedAt?.toUtc().toIso8601String(),
     'version': version,
     'schemaVersion': schemaVersion,
+    'copyright': copyright.toMap(),
+    'removalRequested': removalRequested,
     'searchTitle': title.trim().toLowerCase(),
   };
 
@@ -482,6 +534,12 @@ final class FanWork {
       publishedAt: _date(map['publishedAt']),
       version: (map['version'] as num?)?.toInt() ?? 1,
       schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
+      copyright: FanWorkCopyright.fromMap(
+        map['copyright'] is Map
+            ? Map<String, dynamic>.from(map['copyright'] as Map)
+            : null,
+      ),
+      removalRequested: map['removalRequested'] == true,
     );
   }
 
@@ -499,6 +557,9 @@ final class FanWork {
     FanWorkStatus? status,
     FanWorkModerationStatus? moderationStatus,
     FanWorkVisibility? visibility,
+    FanWorkCopyright? copyright,
+    int? version,
+    bool? removalRequested,
   }) => FanWork(
     id: id,
     creatorId: creatorId,
@@ -521,8 +582,10 @@ final class FanWork {
     createdAt: createdAt,
     updatedAt: updatedAt,
     publishedAt: publishedAt,
-    version: version,
+    version: version ?? this.version,
     schemaVersion: schemaVersion,
+    copyright: copyright ?? this.copyright,
+    removalRequested: removalRequested ?? this.removalRequested,
   );
 }
 
@@ -550,6 +613,7 @@ final class FanWorkDraft {
     this.pageCaptions = const <String, String>{},
     this.imageIds = const <String>[],
     this.clearCover = false,
+    this.copyright = const FanWorkCopyright(),
   });
 
   final String? workId;
@@ -574,6 +638,7 @@ final class FanWorkDraft {
   final Map<String, String> pageCaptions;
   final List<String> imageIds;
   final bool clearCover;
+  final FanWorkCopyright copyright;
 
   Map<String, dynamic> toCallableMap() => <String, dynamic>{
     if (workId != null && workId!.isNotEmpty) 'workId': workId,
@@ -598,6 +663,7 @@ final class FanWorkDraft {
     'pageCaptions': pageCaptions,
     'imageIds': imageIds,
     'clearCover': clearCover,
+    'copyright': copyright.toMap(),
   };
 
   factory FanWorkDraft.fromWork(FanWork work) => FanWorkDraft(
@@ -624,6 +690,7 @@ final class FanWorkDraft {
       for (final page in work.content.pages) page.mediaId: page.caption,
     },
     imageIds: work.content.images.map((image) => image.mediaId).toList(),
+    copyright: work.copyright,
   );
 
   FanWorkDraft copyWith({
@@ -649,6 +716,7 @@ final class FanWorkDraft {
     Map<String, String>? pageCaptions,
     List<String>? imageIds,
     bool? clearCover,
+    FanWorkCopyright? copyright,
   }) => FanWorkDraft(
     workId: workId ?? this.workId,
     type: type ?? this.type,
@@ -672,6 +740,7 @@ final class FanWorkDraft {
     pageCaptions: pageCaptions ?? this.pageCaptions,
     imageIds: imageIds ?? this.imageIds,
     clearCover: clearCover ?? this.clearCover,
+    copyright: copyright ?? this.copyright,
   );
 }
 

@@ -62,6 +62,21 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) async => _fail();
+
+  @override
   Stream<Result<FanWork>> watchWork(String workId) =>
       Stream<Result<FanWork>>.value(_fail());
 
