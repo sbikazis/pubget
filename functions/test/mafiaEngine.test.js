@@ -151,3 +151,14 @@ test("win check uses private teams and mafia parity", () => {
   assert.equal(winnerFromAliveTeams(["mafias", "citizens", "citizens"]), null);
   assert.equal(winnerFromAliveTeams([]), null);
 });
+
+test("mafia lobby and role-assignment copy is English", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const role = fs.readFileSync(path.join(__dirname, "../src/mafia/roleAssigner.js"), "utf8");
+  const lobby = fs.readFileSync(path.join(__dirname, "../src/mafia/lobbyManager.js"), "utf8");
+  assert.match(role, /Roles have been assigned\. Night 1 has begun\./);
+  assert.match(lobby, /Mafia was cancelled because not enough players joined\./);
+  assert.equal(role.includes("تم توزيع"), false);
+  assert.equal(lobby.includes("تم إلغاء"), false);
+});

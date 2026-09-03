@@ -799,3 +799,222 @@ test("quiz configuration accepts multiple ordered questions", () => {
   assert.equal(config.questions[1].correctOptionId, "opt-2");
   assert.equal(config.allowUpdate, false);
 });
+
+test("character comparison requires catalog IDs and rejects duplicates", () => {
+  const valid = validateConfiguration("characterComparison", {
+    criterion: "Who would win?",
+    candidates: [{ characterId: "luffy" }, { characterId: "naruto" }],
+  });
+  assert.ok(valid);
+  assert.equal(valid.comparisonType, "character");
+  assert.equal(valid.options[0].characterId, "luffy");
+  assert.equal(valid.options[0].label, "Monkey D. Luffy");
+  assert.equal(
+    validateConfiguration("characterComparison", {
+      criterion: "Who would win?",
+      candidates: [{ characterId: "not-a-character" }, { characterId: "luffy" }],
+    }),
+    null,
+  );
+  assert.equal(
+    validateConfiguration("characterComparison", {
+      criterion: "Who would win?",
+      candidates: [{ characterId: "luffy" }, { characterId: "luffy" }],
+    }),
+    null,
+  );
+});
+
+test("anime comparison requires catalog titles and image comparison needs metadata", () => {
+  const anime = validateConfiguration("animeComparison", {
+    criterion: "Best worldbuilding?",
+    candidates: [{ animeId: "one_piece" }, { animeId: "naruto" }],
+  });
+  assert.ok(anime);
+  assert.equal(anime.options[0].label, "One Piece");
+  assert.equal(
+    validateConfiguration("animeComparison", {
+      criterion: "Best?",
+      candidates: [{ animeId: "missing" }, { animeId: "naruto" }],
+    }),
+    null,
+  );
+  const image = validateConfiguration("imageComparison", {
+    criterion: "Better composition?",
+    candidates: [
+      {
+        imageUrl: "https://cdn.pubget.test/a.jpg",
+        mimeType: "image/jpeg",
+        license: "cc0",
+        attribution: "Pubget fixture A",
+      },
+      {
+        imageUrl: "https://cdn.pubget.test/b.png",
+        mimeType: "image/png",
+        license: "cc-by",
+        attribution: "Pubget fixture B",
+      },
+    ],
+  });
+  assert.ok(image);
+  assert.equal(image.comparisonType, "image");
+  assert.equal(
+    validateConfiguration("imageComparison", {
+      criterion: "Better?",
+      candidates: [
+        { imageUrl: "http://insecure.test/a.jpg", mimeType: "image/jpeg", license: "cc0", attribution: "A" },
+        { imageUrl: "https://cdn.pubget.test/b.png", mimeType: "image/png", license: "cc-by", attribution: "B" },
+      ],
+    }),
+    null,
+  );
+});
+
+test("comparison result calculation is type-aware and archival", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "characterComparison",
+      title: "Best captain",
+      groupId: "g1",
+      criterion: "Who is the better captain?",
+      candidates: [{ characterId: "luffy" }, { characterId: "levi" }],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "luffy" } },
+  });
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  const ended = db.store.get(`events/${draft.eventId}`);
+  assert.equal(ended.result.kind, "characterComparison");
+  assert.equal(ended.result.criterion, "Who is the better captain?");
+  assert.deepEqual(ended.result.winnerIds, ["luffy"]);
+  assert.equal(ended.result.winners[0].characterId, "luffy");
+  await events.archiveEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(db.store.get(`events/${draft.eventId}`).status, "archived");
+  assert.ok(db.store.get(`events/${draft.eventId}`).result);
+});
+
+test("challenge completion ignores completed=true and verifies server evidence", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "user_achievements/bob/items/community_milestone": {
+        achievementId: "community_milestone",
+      },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Finish a match",
+      groupId: "g1",
+      prompt: "Finish any Pubget game.",
+      challengeKind: "finish_game",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, responseData: { completed: true } },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { completed: true } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}/responses/bob`);
+  assert.equal(stored.responseData.verified, true);
+  assert.equal(stored.responseData.completed, undefined);
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId: draft.eventId, responseData: { completed: true } },
+    }),
+    (error) => error.code === "already-exists",
+  );
+});
+
+test("wrong user, expired challenge, and self-report stay honest", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Emoji night",
+      groupId: "g1",
+      prompt: "Post an emoji in real life.",
+      challengeKind: "self_report",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { text: "done", completed: true } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}/responses/bob`);
+  assert.equal(stored.responseData.verified, false);
+  assert.equal(stored.responseData.verification, "self_reported");
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "charlie" },
+      data: { eventId: draft.eventId, responseData: { text: "hi" } },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  const other = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Late",
+      groupId: "g1",
+      prompt: "Finish a game",
+      challengeKind: "finish_game",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: other.eventId,
+      startAt: new Date(Date.now() - 2000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: other.eventId } });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId: other.eventId, responseData: {} },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});

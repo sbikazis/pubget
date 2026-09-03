@@ -66,6 +66,25 @@ service cloud.firestore {
     function mafiaGame(gameId) {
       return get(/databases/$(database)/documents/mafia_games/$(gameId));
     }
+    function mafiaPhaseOpen(gameId) {
+      return !('phaseEndsAt' in mafiaGame(gameId).data) ||
+        mafiaGame(gameId).data.phaseEndsAt == null ||
+        request.time < mafiaGame(gameId).data.phaseEndsAt;
+    }
+    function mafiaPrivateRole(gameId, uid) {
+      return get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(uid)/private/data).data.role;
+    }
+    function mafiaNightTargetAllowed(gameId) {
+      return exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data) &&
+        exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)/private/data) &&
+        (
+          mafiaPrivateRole(gameId, request.auth.uid) != 'mafia' ||
+          (
+            request.resource.data.targetId != request.auth.uid &&
+            mafiaPrivateRole(gameId, request.resource.data.targetId) != 'mafia'
+          )
+        );
+    }
     function mafiaPublicPlayerDefaults(gameId, uid) {
       return request.resource.data.keys().hasOnly([
         'userId','username','avatar','isAlive','isDisconnected','isMuted',
@@ -869,8 +888,11 @@ service cloud.firestore {
           request.resource.data.keys().hasAll(['playerId','targetId','nightNumber','submittedAt']) &&
           request.resource.data.nightNumber is int &&
           request.resource.data.nightNumber == mafiaGame(gameId).data.currentNight &&
+          request.resource.data.submittedAt is timestamp &&
+          mafiaPhaseOpen(gameId) &&
           exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true &&
+          mafiaNightTargetAllowed(gameId);
         allow update, delete: if false;
       }
       match /votes/{voteId} {
@@ -884,7 +906,10 @@ service cloud.firestore {
           voteId == request.auth.uid + '_d' + string(request.resource.data.dayNumber) &&
           request.resource.data.voterId == request.auth.uid &&
           request.resource.data.keys().hasOnly(['voterId','targetId','dayNumber','time']) &&
+          request.resource.data.dayNumber is int &&
           request.resource.data.dayNumber == mafiaGame(gameId).data.currentDay &&
+          request.resource.data.time is timestamp &&
+          mafiaPhaseOpen(gameId) &&
           exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
           get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
         allow update, delete: if false;

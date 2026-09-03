@@ -1,6 +1,7 @@
 "use strict";
 
 const catalog = require("../gameCatalog");
+const characterArt = require("../characterArt");
 const {
   clampInt,
   isExpired,
@@ -52,6 +53,10 @@ function writeRound(transaction, {
   const nextUsed = usedIds.includes(character.id)
     ? usedIds
     : [...usedIds, character.id];
+  const artworkRaw = characterArt.publicArtwork(character.id);
+  const artwork = artworkRaw && characterArt.assertArtworkSafe(artworkRaw, character)
+    ? artworkRaw
+    : null;
   const publicState = {
     engine: "guessCharacter",
     phase: "round",
@@ -61,6 +66,7 @@ function writeRound(transaction, {
       question: "Who is this character?",
       clue: character.clue,
       choices: publicChoices(character, distractors, random),
+      artwork,
     },
     scores,
     answeredPlayerIds: [],

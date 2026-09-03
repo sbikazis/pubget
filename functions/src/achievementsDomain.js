@@ -73,10 +73,63 @@ const CATALOG = Object.freeze([
     icon: "community",
     rewardCoins: 5,
   },
+  {
+    id: "autumn_2026_rally",
+    type: "seasonal",
+    title: "Autumn Rally",
+    description: "Win a game during the Autumn 2026 season.",
+    icon: "season",
+    rewardCoins: 10,
+    trigger: "game_won",
+    season: {
+      id: "autumn_2026",
+      startAt: "2026-09-01T00:00:00.000Z",
+      endAt: "2026-11-30T23:59:59.999Z",
+    },
+  },
 ]);
 
 function byId(id) {
   return CATALOG.find((item) => item.id === id) || null;
+}
+
+function toDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (typeof value.toMillis === "function") return new Date(value.toMillis());
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function seasonStateOf(spec, now) {
+  if (!spec || !spec.season) return "evergreen";
+  const start = toDate(spec.season.startAt);
+  const end = toDate(spec.season.endAt);
+  if (!start || !end) return "evergreen";
+  const t = now.getTime();
+  if (t < start.getTime()) return "upcoming";
+  if (t > end.getTime()) return "ended";
+  return "active";
+}
+
+function publicSpec(spec, now, unlockedDoc) {
+  const seasonState = seasonStateOf(spec, now);
+  return {
+    id: spec.id,
+    type: spec.type,
+    title: spec.title,
+    description: spec.description,
+    icon: spec.icon,
+    rewardCoins: spec.rewardCoins,
+    trigger: spec.trigger || null,
+    seasonId: spec.season ? spec.season.id : null,
+    seasonStartAt: spec.season ? spec.season.startAt : null,
+    seasonEndAt: spec.season ? spec.season.endAt : null,
+    seasonState,
+    unlocked: Boolean(unlockedDoc),
+    unlockedAt: unlockedDoc ? unlockedDoc.unlockedAt : null,
+  };
 }
 
 function userItemRef(db, uid, achievementId) {
@@ -85,12 +138,21 @@ function userItemRef(db, uid, achievementId) {
 }
 
 function createAchievementsDomain({
-  db, FieldValue, HttpsError, economy, notificationBuilder,
+  db, FieldValue, HttpsError, economy, notificationBuilder, clock,
 }) {
+  const nowOf = () => (clock && typeof clock.now === "function" ? clock.now() : new Date());
+
   async function unlock(userId, achievementId, { source = "", metadata = {} } = {}) {
     const spec = byId(achievementId);
     if (!spec || typeof userId !== "string" || !userId) {
       return { unlocked: false, reason: "invalid" };
+    }
+    const seasonState = seasonStateOf(spec, nowOf());
+    if (seasonState === "upcoming") {
+      return { unlocked: false, reason: "season_not_started", achievementId };
+    }
+    if (seasonState === "ended") {
+      return { unlocked: false, reason: "season_ended", achievementId };
     }
     const ref = userItemRef(db, userId, achievementId);
     let created = false;
@@ -109,6 +171,7 @@ function createAchievementsDomain({
         version: 1,
         source: typeof source === "string" ? source.slice(0, 40) : "",
         metadata,
+        seasonId: spec.season ? spec.season.id : null,
       });
     });
     if (!created) return { unlocked: false, reason: "already_unlocked", achievementId };
@@ -175,6 +238,7 @@ function createAchievementsDomain({
       case "game_won":
         for (const uid of event.userIds || []) {
           await grant(uid, "first_game_win");
+          await grant(uid, "autumn_2026_rally");
         }
         break;
       case "game_completed":
@@ -202,12 +266,9 @@ function createAchievementsDomain({
     (snap.docs || []).forEach((doc) => {
       unlocked[doc.id] = doc.data();
     });
+    const now = nowOf();
     return {
-      items: CATALOG.map((item) => ({
-        ...item,
-        unlocked: Boolean(unlocked[item.id]),
-        unlockedAt: unlocked[item.id] ? unlocked[item.id].unlockedAt : null,
-      })),
+      items: CATALOG.map((item) => publicSpec(item, now, unlocked[item.id] || null)),
     };
   }
 
@@ -222,4 +283,5 @@ function createAchievementsDomain({
 module.exports = {
   CATALOG,
   createAchievementsDomain,
+  seasonStateOf,
 };

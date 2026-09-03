@@ -17,6 +17,28 @@ const FieldValue = {
   increment: (value) => ({ _increment: value }),
 };
 
+function millisOf(value) {
+  if (value == null) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function matchesFilter(data, filter) {
+  const val = data[filter.field];
+  if (filter.op === "==") return val === filter.value;
+  const left = millisOf(val);
+  const right = millisOf(filter.value);
+  if (left == null || right == null) return false;
+  if (filter.op === "<=") return left <= right;
+  if (filter.op === "<") return left < right;
+  if (filter.op === ">=") return left >= right;
+  if (filter.op === ">") return left > right;
+  return false;
+}
+
 function clone(value) {
   if (value === null || typeof value !== "object") return value;
   if (value instanceof Date) return new Date(value.getTime());
@@ -78,11 +100,14 @@ function createFakeDb(seed = {}) {
       return query(base, []).get();
     },
   });
-  function query(base, filters) {
+  function query(base, filters, orders = []) {
     const chainQuery = {
       _limit: 100,
       where(field, op, value) {
-        return query(base, [...filters, { field, op, value }]);
+        return query(base, [...filters, { field, op, value }], orders);
+      },
+      orderBy(field, direction = "asc") {
+        return query(base, filters, [...orders, { field, direction }]);
       },
       limit(n) {
         chainQuery._limit = n;
@@ -93,18 +118,25 @@ function createFakeDb(seed = {}) {
         const docs = [];
         for (const [path, data] of store.entries()) {
           if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) continue;
-          let ok = true;
-          for (const filter of filters) {
-            if (filter.op === "==" && data[filter.field] !== filter.value) ok = false;
-          }
-          if (ok) {
-            const id = path.slice(prefix.length);
-            docs.push({
-              id,
-              ref: makeCollection(base).doc(id),
-              data: () => clone(data),
-            });
-          }
+          if (!filters.every((filter) => matchesFilter(data, filter))) continue;
+          const id = path.slice(prefix.length);
+          docs.push({
+            id,
+            ref: makeCollection(base).doc(id),
+            data: () => clone(data),
+            _data: data,
+          });
+        }
+        if (orders.length > 0) {
+          docs.sort((a, b) => {
+            for (const order of orders) {
+              const av = millisOf(a._data[order.field]) ?? 0;
+              const bv = millisOf(b._data[order.field]) ?? 0;
+              if (av === bv) continue;
+              return order.direction === "desc" ? bv - av : av - bv;
+            }
+            return 0;
+          });
         }
         return { docs: docs.slice(0, chainQuery._limit) };
       },
@@ -264,6 +296,59 @@ test("guess character timeout advances the round without client clocks", async (
   const after = db.store.get(`games/${gameId}`);
   assert.ok(after.publicState.roundNumber >= 2 || after.status === "completed");
   assert.equal(after.publicState.scores.alice, 0);
+});
+
+test("guess character artwork is catalog-backed and does not leak the answer", async () => {
+  const art = require("../src/characterArt");
+  const db = createFakeDb(seed());
+  const games = domain(db);
+  const gameId = await startGuess(db, games);
+  const publicState = db.store.get(`games/${gameId}`).publicState;
+  const secret = db.store.get(`games/${gameId}/secret/round`);
+  const artwork = publicState.prompt.artwork;
+  assert.ok(artwork);
+  assert.equal(art.isOpaqueAssetId(artwork.assetId), true);
+  assert.equal(art.assertArtworkSafe(artwork, catalog.characterById(secret.correctId)), true);
+  const blob = JSON.stringify(artwork).toLowerCase();
+  assert.equal(blob.includes(secret.correctId.toLowerCase()), false);
+  assert.equal(blob.includes(secret.correctName.toLowerCase()), false);
+  const expected = art.artworkForCharacter(secret.correctId);
+  assert.equal(artwork.assetId, expected.assetId);
+  assert.equal(artwork.license, "pubget-original");
+  publicState.prompt.artwork = { assetId: "not-valid", portrait: { background: "#000000", shapes: [] } };
+  await games.submitGameAction({
+    auth: { uid: "alice" },
+    data: {
+      gameId,
+      actionType: "guess",
+      payload: { choiceId: secret.correctId },
+      clientActionId: "art-1",
+    },
+  });
+  const after = db.store.get(`games/${gameId}`);
+  assert.ok(after.publicState.answeredPlayerIds.includes("alice"));
+});
+
+test("missing artwork does not break a guess character round", async () => {
+  const art = require("../src/characterArt");
+  const original = art.publicArtwork;
+  art.publicArtwork = () => null;
+  try {
+    const db = createFakeDb(seed());
+    const games = domain(db);
+    const gameId = await startGuess(db, games);
+    const publicState = db.store.get(`games/${gameId}`).publicState;
+    assert.equal(publicState.prompt.artwork, null);
+    assert.ok(publicState.prompt.clue);
+    const choice = publicState.prompt.choices[0].id;
+    await games.submitGameAction({
+      auth: { uid: "alice" },
+      data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a1" },
+    });
+    assert.ok(db.store.get(`games/${gameId}`).publicState.answeredPlayerIds.includes("alice"));
+  } finally {
+    art.publicArtwork = original;
+  }
 });
 
 test("anime chain validates studio/character relations and turn order", async () => {

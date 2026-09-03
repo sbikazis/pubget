@@ -25,6 +25,28 @@ const FieldValue = {
   increment: (value) => ({ _increment: value }),
 };
 
+function millisOf(value) {
+  if (value == null) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function matchesFilter(data, filter) {
+  const val = data[filter.field];
+  if (filter.op === "==") return val === filter.value;
+  const left = millisOf(val);
+  const right = millisOf(filter.value);
+  if (left == null || right == null) return false;
+  if (filter.op === "<=") return left <= right;
+  if (filter.op === "<") return left < right;
+  if (filter.op === ">=") return left >= right;
+  if (filter.op === ">") return left > right;
+  return false;
+}
+
 function clone(value) {
   if (value === null || typeof value !== "object") return value;
   if (value instanceof Date) return new Date(value.getTime());
@@ -86,11 +108,14 @@ function createFakeDb(seed = {}) {
       return query(base, []).get();
     },
   });
-  function query(base, filters) {
+  function query(base, filters, orders = []) {
     const chainQuery = {
       _limit: 25,
       where(field, op, value) {
-        return query(base, [...filters, { field, op, value }]);
+        return query(base, [...filters, { field, op, value }], orders);
+      },
+      orderBy(field, direction = "asc") {
+        return query(base, filters, [...orders, { field, direction }]);
       },
       limit(n) {
         chainQuery._limit = n;
@@ -103,18 +128,25 @@ function createFakeDb(seed = {}) {
           if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) {
             continue;
           }
-          let ok = true;
-          for (const filter of filters) {
-            if (filter.op === "==" && data[filter.field] !== filter.value) ok = false;
-          }
-          if (ok) {
-            const id = path.slice(prefix.length);
-            docs.push({
-              id,
-              ref: makeCollection(base).doc(id),
-              data: () => clone(data),
-            });
-          }
+          if (!filters.every((filter) => matchesFilter(data, filter))) continue;
+          const id = path.slice(prefix.length);
+          docs.push({
+            id,
+            ref: makeCollection(base).doc(id),
+            data: () => clone(data),
+            _data: data,
+          });
+        }
+        if (orders.length > 0) {
+          docs.sort((a, b) => {
+            for (const order of orders) {
+              const av = millisOf(a._data[order.field]) ?? 0;
+              const bv = millisOf(b._data[order.field]) ?? 0;
+              if (av === bv) continue;
+              return order.direction === "desc" ? bv - av : av - bv;
+            }
+            return 0;
+          });
         }
         return { docs: docs.slice(0, chainQuery._limit) };
       },
@@ -457,4 +489,50 @@ test("games never write group chat messages", async () => {
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   const chatWrites = [...db.store.keys()].filter((path) => path.includes("/messages/"));
   assert.equal(chatWrites.length, 0);
+});
+
+test("processExpiredGames queries eligible deadlines and stays bounded", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const seed = seedGroup();
+  for (let index = 0; index < 60; index += 1) {
+    seed[`games/old-${index}`] = {
+      status: "active",
+      type: "guessCharacter",
+      deadlineAt: new Date("2026-09-03T11:00:00Z"),
+      publicState: { engine: "guessCharacter", phase: "waiting" },
+    };
+  }
+  seed["games/future"] = {
+    status: "active",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T13:00:00Z"),
+    publicState: { engine: "guessCharacter", phase: "round" },
+  };
+  seed["games/done"] = {
+    status: "completed",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  seed["games/cancel"] = {
+    status: "cancelled",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  const db = createFakeDb(seed);
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+  });
+  const first = await games.processExpiredGames();
+  assert.equal(first.limit, 50);
+  assert.equal(first.scanned, 50);
+  assert.equal(first.expired, 50);
+  const future = db.store.get("games/future");
+  assert.equal(future.status, "active");
+  assert.equal(db.store.get("games/done").status, "completed");
+  assert.equal(db.store.get("games/cancel").status, "cancelled");
+  const second = await games.processExpiredGames();
+  assert.ok(second.scanned <= 50);
 });

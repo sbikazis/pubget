@@ -89,12 +89,13 @@ class _AchievementTile extends StatelessWidget {
         subtitle: Text(
           [
             item.description,
+            if (item.isSeasonal) 'Season ${item.seasonId}',
             if (item.unlocked && item.unlockedAt != null)
               'Unlocked ${item.unlockedAt!.toLocal().toIso8601String().split('T').first}',
             if (item.rewardCoins > 0) '${item.rewardCoins} coins',
           ].join('\n'),
         ),
-        trailing: PubgetBadge(label: item.unlocked ? 'Unlocked' : 'Locked'),
+        trailing: PubgetBadge(label: item.statusLabel),
       ),
     );
   }

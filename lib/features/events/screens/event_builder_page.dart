@@ -25,9 +25,15 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
   final _description = TextEditingController();
   final _question = TextEditingController();
   final _completionRule = TextEditingController();
+  final _targetEventId = TextEditingController();
+  String _challengeKind = 'finish_game';
   final List<TextEditingController> _options = <TextEditingController>[
     TextEditingController(text: 'Option A'),
     TextEditingController(text: 'Option B'),
+  ];
+  final List<_ImageCandidateForm> _images = <_ImageCandidateForm>[
+    _ImageCandidateForm(),
+    _ImageCandidateForm(),
   ];
   final List<_QuizQuestionForm> _quizQuestions = <_QuizQuestionForm>[
     _QuizQuestionForm(id: 'q-1'),
@@ -62,6 +68,13 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
         ? draft.configuration.question
         : draft.configuration.prompt;
     _completionRule.text = draft.configuration.completionRule;
+    _challengeKind = draft.configuration.challengeKind.isEmpty
+        ? 'finish_game'
+        : draft.configuration.challengeKind;
+    _targetEventId.text = draft.configuration.targetEventId;
+    if (draft.configuration.criterion.isNotEmpty) {
+      _question.text = draft.configuration.criterion;
+    }
     _allowMultiple = draft.configuration.allowMultiple;
     if (draft.configuration.options.isNotEmpty) {
       for (final controller in _options) {
@@ -95,8 +108,12 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     _description.dispose();
     _question.dispose();
     _completionRule.dispose();
+    _targetEventId.dispose();
     for (final controller in _options) {
       controller.dispose();
+    }
+    for (final form in _images) {
+      form.dispose();
     }
     for (final form in _quizQuestions) {
       form.dispose();
@@ -204,14 +221,22 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 if (spec.usesOptions || spec.usesTextResponse)
                   PubgetTextField(
                     controller: _question,
-                    label: spec.usesTextResponse ? 'Prompt' : 'Question',
+                    label: spec.type == EventType.characterComparison ||
+                            spec.type == EventType.animeComparison ||
+                            spec.type == EventType.imageComparison
+                        ? 'Criterion'
+                        : (spec.usesTextResponse ? 'Prompt' : 'Question'),
                   ),
-                if (spec.usesOptions) ...[
+                if (spec.usesOptions && spec.type != EventType.imageComparison) ...[
                   const SizedBox(height: AppSpacing.sm),
                   for (var i = 0; i < _options.length; i++) ...[
                     PubgetTextField(
                       controller: _options[i],
-                      label: spec.type == EventType.versus
+                      label: spec.type == EventType.characterComparison
+                          ? 'Character ID ${i + 1}'
+                          : spec.type == EventType.animeComparison
+                          ? 'Anime ID ${i + 1}'
+                          : spec.type == EventType.versus
                           ? 'Candidate ${i + 1}'
                           : 'Option ${i + 1}',
                     ),
@@ -233,11 +258,78 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                           setState(() => _allowMultiple = value),
                     ),
                 ],
-                if (spec.usesTextResponse && spec.type == EventType.challenge)
+                if (spec.type == EventType.imageComparison) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  for (var i = 0; i < _images.length; i++) ...[
+                    Text('Image ${i + 1}', style: Theme.of(context).textTheme.titleSmall),
+                    PubgetTextField(
+                      controller: _images[i].url,
+                      label: 'HTTPS image URL',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].mimeType,
+                      label: 'MIME type (image/jpeg)',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].license,
+                      label: 'License',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].attribution,
+                      label: 'Attribution',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (_images.length < 10)
+                    PubgetTextButton(
+                      onPressed: () =>
+                          setState(() => _images.add(_ImageCandidateForm())),
+                      semanticLabel: 'Add image candidate',
+                      child: const Text('Add image candidate'),
+                    ),
+                ],
+                if (spec.usesTextResponse && spec.type == EventType.challenge) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  DropdownButtonFormField<String>(
+                    value: _challengeKind,
+                    decoration: const InputDecoration(labelText: 'Challenge type'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'finish_game',
+                        child: Text('Finish a game'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'publish_edit',
+                        child: Text('Publish an edit'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'create_group',
+                        child: Text('Create a group'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'participate_event',
+                        child: Text('Participate in another event'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'self_report',
+                        child: Text('Self-reported (not server-verified)'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _challengeKind = value);
+                    },
+                  ),
+                  if (_challengeKind == 'participate_event')
+                    PubgetTextField(
+                      controller: _targetEventId,
+                      label: 'Target event ID',
+                    ),
                   PubgetTextField(
                     controller: _completionRule,
-                    label: 'Completion rule',
+                    label: 'Display rule (not used as authority)',
                   ),
+                ],
                 if (spec.usesQuiz) _quizEditor(),
               ],
             ),
@@ -409,7 +501,42 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
   void _syncDraft(EventBuilderProvider builder) {
     final spec = EventTypeRegistry.of(builder.draft.type);
     var configuration = builder.draft.configuration;
-    if (spec.usesOptions) {
+    if (spec.type == EventType.imageComparison) {
+      configuration = EventConfiguration(
+        question: _question.text,
+        criterion: _question.text,
+        options: [
+          for (var i = 0; i < _images.length; i++)
+            EventOption(
+              id: 'img-${i + 1}',
+              label: 'Image ${i + 1}',
+              imageUrl: _images[i].url.text.trim(),
+              mimeType: _images[i].mimeType.text.trim(),
+              license: _images[i].license.text.trim(),
+              attribution: _images[i].attribution.text.trim(),
+            ),
+        ],
+      );
+    } else if (spec.type == EventType.characterComparison ||
+        spec.type == EventType.animeComparison) {
+      configuration = EventConfiguration(
+        question: _question.text,
+        criterion: _question.text,
+        options: [
+          for (var i = 0; i < _options.length; i++)
+            EventOption(
+              id: _options[i].text.trim().isEmpty ? 'opt-${i + 1}' : _options[i].text.trim(),
+              label: _options[i].text.trim(),
+              characterId: spec.type == EventType.characterComparison
+                  ? _options[i].text.trim()
+                  : '',
+              animeId: spec.type == EventType.animeComparison
+                  ? _options[i].text.trim()
+                  : '',
+            ),
+        ],
+      );
+    } else if (spec.usesOptions) {
       configuration = EventConfiguration(
         question: _question.text,
         allowMultiple: _allowMultiple,
@@ -423,6 +550,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
       configuration = EventConfiguration(
         prompt: _question.text,
         completionRule: _completionRule.text,
+        challengeKind: spec.type == EventType.challenge ? _challengeKind : '',
+        targetEventId: _targetEventId.text.trim(),
       );
     } else if (spec.usesQuiz) {
       configuration = EventConfiguration(
@@ -707,5 +836,25 @@ class _DurationChip extends StatelessWidget {
       selected: selected,
       onSelected: (_) => onSelected(),
     );
+  }
+}
+
+class _ImageCandidateForm {
+  _ImageCandidateForm()
+    : url = TextEditingController(),
+      mimeType = TextEditingController(text: 'image/jpeg'),
+      license = TextEditingController(),
+      attribution = TextEditingController();
+
+  final TextEditingController url;
+  final TextEditingController mimeType;
+  final TextEditingController license;
+  final TextEditingController attribution;
+
+  void dispose() {
+    url.dispose();
+    mimeType.dispose();
+    license.dispose();
+    attribution.dispose();
   }
 }
