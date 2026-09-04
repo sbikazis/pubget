@@ -76,3 +76,56 @@ test("group capacity is server-entitled, not client-chosen", () => {
   assert.equal(entitledMaxMembers({ customMaxMembersLimit: 999 }), 500);
   assert.equal(entitledMaxMembers({ customMaxMembersLimit: -4 }), 100);
 });
+
+test("group settings, unban, and roleplay callables authenticate first", async () => {
+  await assert.rejects(
+    handlers().updateGroupSettings({ data: { groupId: "g1", name: "x" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  await assert.rejects(
+    handlers().unbanMember({ data: { groupId: "g1", uid: "u2" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  await assert.rejects(
+    handlers().reserveRoleplayCharacter({ data: { groupId: "g1" } }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+test("group settings validation runs before any database access", async () => {
+  await assert.rejects(
+    handlers().updateGroupSettings({
+      auth: { uid: "alice" },
+      data: { groupId: "g1" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().updateGroupSettings({
+      auth: { uid: "alice" },
+      data: { groupId: "g1", joinPolicy: "bogus" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().updateGroupSettings({
+      auth: { uid: "alice" },
+      data: { groupId: "g1", isSearchable: "yes" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("roleplay reservation rejects characters outside the fixed catalog", async () => {
+  await assert.rejects(
+    handlers().reserveRoleplayCharacter({
+      auth: { uid: "alice" },
+      data: {
+        groupId: "g1",
+        characterKey: "hero",
+        character: { name: "Not The Hero" },
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});

@@ -278,6 +278,11 @@ exports.rejectJoinRequest = onCall(
   groupsDomain.rejectJoinRequest,
 );
 exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.updateGroupSettings = onCall(
+  { region: "us-central1" },
+  groupsDomain.updateGroupSettings,
+);
+exports.unbanMember = onCall({ region: "us-central1" }, groupsDomain.unbanMember);
 exports.updateRolePermissions = onCall(
   { region: "us-central1" },
   groupsDomain.updateRolePermissions,

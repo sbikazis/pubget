@@ -1,6 +1,7 @@
 "use strict";
 
 const GROUP_TYPES = ["public", "animeRoleplay", "openRoleplay"];
+const ROLEPLAY_GROUP_TYPES = new Set(["animeRoleplay", "openRoleplay"]);
 const JOIN_POLICIES = ["open", "approval", "inviteOnly"];
 const ROLES = ["founder", "shogun", "commander", "captain", "sensei", "senpai", "member"];
 const ROLE_POSITIONS = Object.fromEntries(ROLES.map((role, index) => [role, ROLES.length - index]));
@@ -515,6 +516,72 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     return { ok: true, confirmationToken: token };
   }
 
+  async function updateGroupSettings(request) {
+    const uid = authUid(request, HttpsError);
+    const groupId = requireGroupId(request);
+    const data = request.data || {};
+    const updates = {};
+    if (data.name !== undefined) {
+      if (!validString(data.name, 80)) {
+        throw new HttpsError("invalid-argument", "Group name is invalid.");
+      }
+      updates.name = data.name.trim();
+      updates.searchName = data.name.trim().toLowerCase();
+    }
+    if (data.description !== undefined) {
+      if (typeof data.description !== "string" || data.description.length > 500) {
+        throw new HttpsError("invalid-argument", "Group description is invalid.");
+      }
+      updates.description = data.description.trim();
+    }
+    if (data.rules !== undefined) {
+      if (typeof data.rules !== "string" || data.rules.length > 4000) {
+        throw new HttpsError("invalid-argument", "Group rules are invalid.");
+      }
+      updates.rules = data.rules.trim();
+    }
+    if (data.joinPolicy !== undefined) {
+      if (!JOIN_POLICIES.includes(data.joinPolicy)) {
+        throw new HttpsError("invalid-argument", "joinPolicy is invalid.");
+      }
+      updates.joinPolicy = data.joinPolicy;
+    }
+    if (data.isSearchable !== undefined) {
+      if (typeof data.isSearchable !== "boolean") {
+        throw new HttpsError("invalid-argument", "isSearchable must be a boolean.");
+      }
+      updates.isSearchable = data.isSearchable;
+    }
+    if (Object.keys(updates).length === 0) {
+      throw new HttpsError("invalid-argument", "No supported settings were provided.");
+    }
+    await db.runTransaction(async (transaction) => {
+      const context = await actorContext(transaction, groupId, uid);
+      const role = await transaction.get(rolePath(db, groupId, context.data.role));
+      if (!permissionFor(context.data, role.data(), "manageSettings")) {
+        throw new HttpsError("permission-denied", "You cannot manage group settings.");
+      }
+      transaction.update(groupPath(db, groupId), updates);
+    });
+    return { ok: true };
+  }
+
+  async function unbanMember(request) {
+    const { uid, groupId, targetUid } = await requestContext(request, "manageMembers");
+    await db.runTransaction(async (transaction) => {
+      const context = await actorContext(transaction, groupId, uid);
+      const actorRole = await transaction.get(rolePath(db, groupId, context.data.role));
+      const banRef = groupPath(db, groupId).collection("bans").doc(targetUid);
+      const ban = await transaction.get(banRef);
+      if (!permissionFor(context.data, actorRole.data(), "manageMembers")) {
+        throw new HttpsError("permission-denied", "You cannot manage members.");
+      }
+      if (!ban.exists) return;
+      transaction.delete(banRef);
+    });
+    return { ok: true };
+  }
+
   async function reserveRoleplayCharacter(request) {
     const uid = authUid(request, HttpsError);
     const groupId = requireGroupId(request);
@@ -535,6 +602,12 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       ]);
       if (!group.exists || !member.exists) {
         throw new HttpsError("permission-denied", "You must be a member to reserve a character.");
+      }
+      if (!ROLEPLAY_GROUP_TYPES.has((group.data() || {}).type)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Characters can only be reserved in roleplay groups.",
+        );
       }
       if (reserved.exists && reserved.data().reservedByUid !== uid) {
         throw new HttpsError("already-exists", "This character is already reserved.");
@@ -630,6 +703,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     requestToJoin,
     reserveRoleplayCharacter,
     transferOwnership,
+    unbanMember,
+    updateGroupSettings,
     updateRolePermissions,
   };
 }

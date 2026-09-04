@@ -2,6 +2,7 @@
 
 const DISPLAY_FIELDS = Object.freeze([
   "username",
+  "displayName",
   "avatarUrl",
   "bio",
   "totalRespect",
