@@ -12,7 +12,7 @@ const {
   assertFails,
   assertSucceeds,
 } = require("@firebase/rules-unit-testing");
-const { serverTimestamp } = require("firebase/firestore");
+const { serverTimestamp, Timestamp } = require("firebase/firestore");
 
 let env;
 const rules = fs.readFileSync(path.join(__dirname, "..", "..", "firestore.rules"), "utf8");
@@ -796,9 +796,19 @@ test("a server deletion marker closes all client group access during cleanup", a
 });
 
 test("group chat previews and aggregate receipts are server-authoritative", async () => {
-  await assertSucceeds(db("bob").doc("groups/g1").update({
+  await assertFails(db("bob").doc("groups/g1").update({
     lastMessageAt: new Date(), lastMessageText: "A safe preview",
   }));
+  await assertFails(db("alice").doc("groups/g1").update({
+    lastMessageAt: new Date(), lastMessageText: "founder spoof",
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1").update({
+      lastMessageAt: new Date(), lastMessageText: "from callable",
+    });
+  });
+  const preview = await db("bob").doc("groups/g1").get();
+  assert.equal(preview.data().lastMessageText, "from callable");
   await assertFails(db("bob").doc("groups/g1").update({
     lastMessageAt: new Date(), lastMessageText: "safe", founderId: "bob",
   }));
@@ -974,4 +984,64 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("fanWorks/fw-public").update({
     ratingsAverage: 10,
   }));
+});
+
+function pubgetUserToMap(overrides = {}) {
+  return {
+    email: "fan@example.com",
+    username: "anime_fan",
+    displayName: "Anime Fan",
+    avatarUrl: "https://example.com/avatar.jpg",
+    bio: "Mystery enthusiast",
+    favoriteAnimes: ["Mystery"],
+    favoriteAnimeIds: ["21"],
+    profileVisibility: "public",
+    activityVisibility: "public",
+    whoCanMessageMe: "related",
+    createdAt: Timestamp.now(),
+    isProfileCompleted: true,
+    hasSkippedOnboarding: false,
+    ...overrides,
+  };
+}
+
+test("PubgetUser.toMap() create and update persist displayName and whoCanMessageMe", async () => {
+  const created = pubgetUserToMap();
+  await assertSucceeds(db("carol").doc("users/carol").set(created));
+  const afterCreate = await db("carol").doc("users/carol").get();
+  assert.equal(afterCreate.data().displayName, "Anime Fan");
+  assert.equal(afterCreate.data().whoCanMessageMe, "related");
+  assert.equal(afterCreate.data().username, "anime_fan");
+  await assertSucceeds(db("carol").doc("users/carol").update({
+    displayName: "Carol Fan",
+    whoCanMessageMe: "friends",
+  }));
+  const afterUpdate = await db("carol").doc("users/carol").get();
+  assert.equal(afterUpdate.data().displayName, "Carol Fan");
+  assert.equal(afterUpdate.data().whoCanMessageMe, "friends");
+  await assertFails(db("carol").doc("users/carol").update({ coinsBalance: 999999 }));
+  await assertFails(db("carol").doc("users/carol").set({
+    ...pubgetUserToMap({ coinsBalance: 50 }),
+  }));
+});
+
+test("hakusho is not a moderator role and nested group games are client-unwritable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("users/mallory").set({ username: "Mallory", coinsBalance: 0 });
+    await admin.doc("groups/g1/members/mallory").set({
+      userId: "mallory", groupId: "g1", role: "hakusho", displayName: "Mallory",
+    });
+    await admin.doc("groups/g1/requests/eve").set({
+      userId: "eve", groupId: "g1", role: "member", requestId: "r1",
+    });
+    await admin.doc("groups/g1/games/legacy").set({ type: "guessCharacter" });
+  });
+  await assertFails(db("mallory").doc("groups/g1/requests/eve").get());
+  await assertFails(db("mallory").doc("groups/g1/games/forged").set({ type: "guessCharacter" }));
+  await assertFails(db("alice").doc("groups/g1/games/forged").set({ type: "guessCharacter" }));
+  await assertFails(db("bob").doc("groups/g1/games/legacy").update({ type: "mafia" }));
+  await assertFails(db("alice").doc("groups/g1/games/legacy").delete());
+  await assertSucceeds(db("bob").doc("groups/g1/games/legacy").get());
+  await assertFails(db("charlie").doc("groups/g1/games/legacy").get());
 });

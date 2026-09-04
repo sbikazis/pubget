@@ -164,6 +164,9 @@ final class GroupMember {
       defaultRolePermissions[role]?.contains(GroupPermission.manageGames) ??
       false;
 
+  /// Client UX gate. Server `kickMember` / `banMember` remain authoritative.
+  bool get canManageMembers => memberCanManageMembers(this);
+
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(
       uid: uid,
@@ -208,6 +211,18 @@ bool memberCanManageEvents(
       defaultRolePermissions[member.role] ??
       const <GroupPermission>{};
   return granted.contains(GroupPermission.manageEvents);
+}
+
+/// Client mirror of server member-management authorization. Server remains
+/// authoritative; this is UX gating only.
+bool memberCanManageMembers(GroupMember? member) {
+  if (member == null) return false;
+  if (member.role == GroupRole.founder) return true;
+  final granted =
+      member.effectivePermissions ??
+      defaultRolePermissions[member.role] ??
+      const <GroupPermission>{};
+  return granted.contains(GroupPermission.manageMembers);
 }
 
 final class GroupRoleDefinition {
