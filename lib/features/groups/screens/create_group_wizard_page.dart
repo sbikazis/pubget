@@ -25,6 +25,8 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   JoinPolicy _policy = JoinPolicy.open;
   bool _searchable = true;
 
+  static const _lastStep = 4;
+
   @override
   void dispose() {
     _name.dispose();
@@ -42,7 +44,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       body: Stepper(
         currentStep: _step,
         onStepTapped: (value) => setState(() => _step = value),
-        onStepContinue: _step == 4 ? () => _create(provider) : _next,
+        onStepContinue: _step == _lastStep ? () => _create(provider) : _next,
         onStepCancel: _step == 0 ? null : () => setState(() => _step--),
         controlsBuilder: (context, details) => Padding(
           padding: const EdgeInsets.only(top: AppSpacing.lg),
@@ -50,9 +52,9 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             children: <Widget>[
               PubgetPrimaryButton(
                 onPressed: details.onStepContinue,
-                semanticLabel: _step == 4 ? 'Create group' : 'Continue',
+                semanticLabel: _step == _lastStep ? 'Create group' : 'Continue',
                 loading: provider.state.name == 'loading',
-                child: Text(_step == 4 ? 'Create group' : 'Continue'),
+                child: Text(_step == _lastStep ? 'Create group' : 'Continue'),
               ),
               if (details.onStepCancel != null) ...[
                 const SizedBox(width: AppSpacing.sm),
@@ -67,7 +69,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         ),
         steps: <Step>[
           Step(
-            title: const Text('Basic identity'),
+            title: const Text('Identity'),
             content: Column(
               children: <Widget>[
                 PubgetTextField(controller: _name, label: 'Group name'),
@@ -85,10 +87,39 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
                     value: type,
                     groupValue: _type,
                     onChanged: (value) => setState(() => _type = value!),
-                    title: Text(type.name),
+                    title: Text(_typeLabel(type)),
+                    subtitle: Text(_typeHint(type)),
                   ),
                 if (_type == GroupType.animeRoleplay)
-                  PubgetTextField(controller: _animeId, label: 'Anime ID'),
+                  PubgetTextField(
+                    controller: _animeId,
+                    label: 'Anime ID',
+                  ),
+              ],
+            ),
+          ),
+          Step(
+            title: const Text('Privacy and join'),
+            content: Column(
+              children: <Widget>[
+                DropdownButtonFormField<JoinPolicy>(
+                  value: _policy,
+                  items: JoinPolicy.values
+                      .map(
+                        (policy) => DropdownMenuItem(
+                          value: policy,
+                          child: Text(_joinLabel(policy)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() => _policy = value!),
+                  decoration: const InputDecoration(labelText: 'Join policy'),
+                ),
+                SwitchListTile(
+                  value: _searchable,
+                  onChanged: (value) => setState(() => _searchable = value),
+                  title: const Text('Show in search and Discover'),
+                ),
               ],
             ),
           ),
@@ -101,43 +132,28 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             ),
           ),
           Step(
-            title: const Text('Customization'),
+            title: const Text('Review'),
             content: const PubgetCard(
-              child: Text(
-                'Group image and chat background customization will be '
-                'enabled after creation. Chat itself arrives in PROMPT 07.',
-              ),
-            ),
-          ),
-          Step(
-            title: const Text('Permissions defaults'),
-            content: Column(
-              children: <Widget>[
-                DropdownButtonFormField<JoinPolicy>(
-                  value: _policy,
-                  items: JoinPolicy.values
-                      .map(
-                        (policy) => DropdownMenuItem(
-                          value: policy,
-                          child: Text(policy.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => _policy = value!),
-                  decoration: const InputDecoration(labelText: 'Join policy'),
-                ),
-                SwitchListTile(
-                  value: _searchable,
-                  onChanged: (value) => setState(() => _searchable = value),
-                  title: const Text('Show in search'),
-                ),
-                const PubgetCard(
-                  child: Text(
-                    'Founder, Shogun, Commander, Captain, Sensei, Senpai and '
-                    'Member roles will be created with editable permission sets.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Member capacity is set by your account entitlement '
+                    '(100 by default, higher with a Store extension). '
+                    'The server, not this screen, is the source of truth.',
                   ),
-                ),
-              ],
+                  SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Avatar, chat background, and welcome customization '
+                    'are available from group settings after creation.',
+                  ),
+                  SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Roles: Founder, Shogun, Commander, Captain, Sensei, '
+                    'Senpai, and Member. Permissions stay group-scoped.',
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -145,8 +161,31 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     );
   }
 
+  static String _typeLabel(GroupType type) => switch (type) {
+    GroupType.public => 'Public group',
+    GroupType.animeRoleplay => 'Anime roleplay',
+    GroupType.openRoleplay => 'Open roleplay',
+  };
+
+  static String _typeHint(GroupType type) => switch (type) {
+    GroupType.public => 'A community around shared interests.',
+    GroupType.animeRoleplay => 'Roleplay with a chosen anime identity.',
+    GroupType.openRoleplay => 'Roleplay without a required franchise.',
+  };
+
+  static String _joinLabel(JoinPolicy policy) => switch (policy) {
+    JoinPolicy.open => 'Open join',
+    JoinPolicy.approval => 'Request to join',
+    JoinPolicy.inviteOnly => 'Invite only',
+  };
+
   void _next() {
     if (_step == 0 && _name.text.trim().isEmpty) return;
+    if (_step == 1 &&
+        _type == GroupType.animeRoleplay &&
+        _animeId.text.trim().isEmpty) {
+      return;
+    }
     setState(() => _step++);
   }
 

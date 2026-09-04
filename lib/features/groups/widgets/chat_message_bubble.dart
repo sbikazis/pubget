@@ -133,7 +133,10 @@ class ChatMessageBubble extends StatelessWidget {
                             ),
                           if (isMine) ...[
                             const SizedBox(width: AppSpacing.xs),
-                            _DeliveryDot(message: message),
+                            MessageDeliveryIndicator(
+                              sendState: message.sendState,
+                              deliveryState: message.deliveryState,
+                            ),
                           ],
                         ],
                       ),
@@ -242,33 +245,6 @@ class _MessageContent extends StatelessWidget {
       );
     }
     return Text(message.text ?? '', style: TextStyle(color: textColor));
-  }
-}
-
-class _DeliveryDot extends StatelessWidget {
-  const _DeliveryDot({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final (color, label) = switch (message.sendState) {
-      ChatSendState.pending => (Colors.orange, 'Sending'),
-      ChatSendState.failed => (Colors.red, 'Not delivered'),
-      ChatSendState.sent => switch (message.deliveryState) {
-        ChatDeliveryState.notDelivered => (Colors.red, 'Not delivered'),
-        ChatDeliveryState.delivered => (Colors.amber, 'Delivered'),
-        ChatDeliveryState.read => (Colors.green, 'Read'),
-      },
-    };
-    return Tooltip(
-      message: label,
-      child: Container(
-        width: 9,
-        height: 9,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-    );
   }
 }
 

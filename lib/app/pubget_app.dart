@@ -46,14 +46,12 @@ import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
 import '../features/groups/screens/group_members_page.dart';
 import '../features/groups/screens/group_media_page.dart';
-import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
-import '../features/edits/screens/edit_feed_page.dart';
 import '../features/edits/screens/edit_upload_page.dart';
 import '../features/anime/data/anime_http_client.dart';
 import '../features/anime/models/anime_models.dart';
@@ -95,12 +93,12 @@ import '../features/home/providers/home_provider.dart';
 import '../features/home/repositories/firebase_home_repository.dart';
 import '../features/home/repositories/home_repository.dart';
 import '../features/home/repositories/unavailable_home_repository.dart';
-import '../features/home/screens/home_page.dart';
 import '../features/search/search_provider.dart';
 import '../features/search/screens/search_page.dart';
 import '../features/settings/settings_provider.dart';
 import '../features/settings/settings_repository.dart';
 import '../features/settings/shared_preferences_settings_store.dart';
+import '../features/settings/screens/guide_page.dart';
 import '../features/settings/screens/settings_page.dart';
 import '../features/notifications/providers/notification_provider.dart';
 import '../features/notifications/providers/unread_engine.dart';
@@ -114,7 +112,6 @@ import '../features/private_chat/repositories/firebase_private_chat_repository.d
 import '../features/private_chat/repositories/private_chat_repository.dart';
 import '../features/private_chat/repositories/unavailable_private_chat_repository.dart';
 import '../features/private_chat/screens/private_chat_screen.dart';
-import '../features/private_chat/screens/private_chats_list_screen.dart';
 import '../features/social/providers/profile_provider.dart';
 import '../features/social/providers/social_provider.dart';
 import '../features/social/repositories/firebase_profile_repository.dart';
@@ -128,6 +125,7 @@ import '../features/social/screens/friend_requests_page.dart';
 import '../features/social/screens/profile_page.dart';
 import 'app_route.dart';
 import 'app_router.dart';
+import 'app_shell.dart';
 import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
 import 'unknown_link_page.dart';
@@ -571,18 +569,19 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/forgot-password': const ForgotPasswordPage(),
         '/terms': const TermsPage(),
         '/onboarding': const OnboardingPage(),
-        '/home': const HomePage(),
+        '/home': const AppShell(),
         '/search': const SearchPage(),
         '/settings': const SettingsPage(),
+        '/guide': const GuidePage(),
         '/unknown': const UnknownLinkPage(),
         '/profile/edit': const EditProfilePage(),
         '/friend-requests': const FriendRequestsPage(),
         '/notifications': const NotificationInboxPage(),
-        '/edits': const EditFeedPage(),
+        '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
-        '/groups': const GroupsHomePage(),
+        '/groups': const AppShell(),
         '/groups/create': const CreateGroupWizardPage(),
-        '/private': const PrivateChatsListScreen(),
+        '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
         '/fan-works': const FanWorkFeedPage(),
         '/store': const StorePage(),

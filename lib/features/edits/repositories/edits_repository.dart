@@ -25,6 +25,7 @@ abstract interface class EditsRepository {
   Future<Result<void>> addComment({
     required String editId,
     required String text,
+    String? replyToCommentId,
   });
   Future<Result<void>> recordView({
     required String editId,
@@ -33,7 +34,11 @@ abstract interface class EditsRepository {
     required double watchSeconds,
   });
   Future<Result<String>> startPlayback(String editId);
-  Future<Result<List<EditComment>>> getComments(String editId);
+  Future<Result<List<EditComment>>> getComments(
+    String editId, {
+    EditComment? after,
+    int limit = 30,
+  });
   Future<Result<void>> commentAction({
     required String editId,
     required String commentId,

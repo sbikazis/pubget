@@ -129,5 +129,16 @@ void main() {
       ),
       isNull,
     );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/guide',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
   });
 }

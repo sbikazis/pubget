@@ -111,7 +111,13 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
     const authorId = uid(request);
     const editId = string(request.data?.editId, 128);
     const text = string(request.data?.text, 500);
-    const replyToCommentId = request.data?.replyToCommentId || null;
+    const replyRaw = request.data?.replyToCommentId;
+    const replyToCommentId = replyRaw == null || replyRaw === ""
+      ? null
+      : string(replyRaw, 128);
+    if (replyRaw && !replyToCommentId) {
+      throw new HttpsError("invalid-argument", "Reply target is invalid.");
+    }
     if (!editId || !text || text.length === 0) {
       throw new HttpsError("invalid-argument", "A comment is required.");
     }
@@ -122,6 +128,12 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
     }
     const commentRef = ref.collection("comments").doc();
     await db.runTransaction(async (tx) => {
+      if (replyToCommentId) {
+        const parent = await tx.get(ref.collection("comments").doc(replyToCommentId));
+        if (!parent.exists) {
+          throw new HttpsError("not-found", "The comment you are replying to is gone.");
+        }
+      }
       tx.create(commentRef, {
         authorId, text, likesCount: 0, replyToCommentId,
         createdAt: FieldValue.serverTimestamp(),

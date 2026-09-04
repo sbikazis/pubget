@@ -5,6 +5,7 @@ const test = require("node:test");
 const {
   ROLE_PERMISSIONS,
   createGroupsDomain,
+  entitledMaxMembers,
   inviteRankForCount,
 } = require("../src/groupsDomain");
 
@@ -66,4 +67,12 @@ test("founder permissions include all sensitive group actions", () => {
   assert.ok(ROLE_PERMISSIONS.founder.includes("manageRoles"));
   assert.ok(ROLE_PERMISSIONS.founder.includes("manageSettings"));
   assert.deepEqual(ROLE_PERMISSIONS.member, []);
+});
+
+test("group capacity is server-entitled, not client-chosen", () => {
+  assert.equal(entitledMaxMembers({}), 100);
+  assert.equal(entitledMaxMembers({ customMaxMembersLimit: 0 }), 100);
+  assert.equal(entitledMaxMembers({ customMaxMembersLimit: 350 }), 350);
+  assert.equal(entitledMaxMembers({ customMaxMembersLimit: 999 }), 500);
+  assert.equal(entitledMaxMembers({ customMaxMembersLimit: -4 }), 100);
 });

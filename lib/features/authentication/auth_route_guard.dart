@@ -20,6 +20,7 @@ abstract final class AuthRouteGuard {
     '/home',
     '/search',
     '/settings',
+    '/guide',
     '/onboarding',
     '/profile',
     '/profile/edit',
