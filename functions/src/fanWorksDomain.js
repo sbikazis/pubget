@@ -55,6 +55,8 @@ const MAX_MEDIA_ID = 128;
 const MAX_PATH = 256;
 const MIN_STORY_CHARS = 20;
 const MIN_OTHER_CHARS = 20;
+const COMMENT_MAX = 500;
+const COMMENT_COOLDOWN_MS = 2000;
 
 function requireAuth(request, HttpsError) {
   if (!request.auth || !request.auth.uid) {
@@ -100,6 +102,23 @@ function normalizeTags(raw) {
     if (out.length >= MAX_TAGS) break;
   }
   return out;
+}
+
+function normalizeCopyright(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      originalWorkId: "",
+      sourceTitle: "",
+      credit: "",
+      license: "fan-work",
+    };
+  }
+  return {
+    originalWorkId: optionalString(raw.originalWorkId ?? "", 128) || "",
+    sourceTitle: optionalString(raw.sourceTitle ?? "", 200) || "",
+    credit: optionalString(raw.credit ?? "", 200) || "",
+    license: optionalString(raw.license ?? "fan-work", 64) || "fan-work",
+  };
 }
 
 function normalizeCharacterIds(raw) {
@@ -347,6 +366,20 @@ function isPubliclyListed(work) {
     work.visibility === "public";
 }
 
+function extractMentions(text) {
+  const matches = String(text || "").match(/@([A-Za-z0-9_]{2,32})/g) || [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of matches) {
+    const handle = raw.slice(1).toLowerCase();
+    if (seen.has(handle)) continue;
+    seen.add(handle);
+    out.push(handle);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 async function creatorSnapshot(db, uid) {
   const snap = await db.collection("users").doc(uid).get();
   const data = (snap.exists && snap.data()) || {};
@@ -430,6 +463,7 @@ function createFanWorksDomain({
     }
     const tags = normalizeTags(input.tags);
     const characterIds = normalizeCharacterIds(input.characterIds);
+    const copyright = normalizeCopyright(input.copyright);
     const existingId = validString(input.workId, 128) ? input.workId.trim() : null;
     const ref = existingId ? workRef(db, existingId) : db.collection("fanWorks").doc();
     const snapshot = await creatorSnapshot(db, uid);
@@ -453,6 +487,7 @@ function createFanWorksDomain({
           animeId,
           animeTitle,
           characterIds,
+          copyright,
           content,
           creatorSnapshot: snapshot,
           searchTitle: title.toLowerCase(),
@@ -476,12 +511,17 @@ function createFanWorksDomain({
         animeId,
         animeTitle,
         characterIds,
+        copyright,
         visibility: "unpublished",
         status: "draft",
         moderationStatus: "pending",
         likesCount: 0,
+        commentsCount: 0,
         bookmarksCount: 0,
         reportsCount: 0,
+        ratingsCount: 0,
+        ratingsSum: 0,
+        ratingsAverage: 0,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         publishedAt: null,
@@ -541,6 +581,86 @@ function createFanWorksDomain({
       });
     }
     return { workId, alreadyPublished };
+  }
+
+  async function revisePublishedFanWork(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const ref = workRef(db, workId);
+    let version = 1;
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+      const current = snap.data() || {};
+      if (current.creatorId !== uid) {
+        throw new HttpsError("permission-denied", "You cannot revise this Fan Work.");
+      }
+      if (current.status !== "published") {
+        throw new HttpsError("failed-precondition", "Only published Fan Works can be revised.");
+      }
+      version = (Number(current.version) || 1) + 1;
+      const revisionRef = ref.collection("revisions").doc(String(current.version || 1));
+      transaction.set(revisionRef, {
+        version: Number(current.version) || 1,
+        title: current.title || "",
+        description: current.description || "",
+        content: current.content || {},
+        copyright: current.copyright || normalizeCopyright({}),
+        createdAt: FieldValue.serverTimestamp(),
+        creatorId: uid,
+      });
+      const title = optionalString(request.data?.title ?? current.title ?? "", TITLE_MAX);
+      const description = optionalString(
+        request.data?.description ?? current.description ?? "",
+        DESCRIPTION_MAX,
+      );
+      if (title === null || description === null) {
+        throw new HttpsError("invalid-argument", "Revision text is invalid.");
+      }
+      transaction.update(ref, {
+        title,
+        description,
+        copyright: normalizeCopyright(request.data?.copyright || current.copyright),
+        tags: request.data?.tags ? normalizeTags(request.data.tags) : current.tags,
+        updatedAt: FieldValue.serverTimestamp(),
+        version,
+        schemaVersion: SCHEMA_VERSION,
+        searchTitle: (title || current.title || "").toLowerCase(),
+      });
+    });
+    return { workId, version };
+  }
+
+  async function requestFanWorkRemoval(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const details = optionalString(request.data?.details ?? "", 500) || "";
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const ref = workRef(db, workId);
+    const reportRef = ref.collection("reports").doc(`${workId}_${uid}_removal`);
+    await db.runTransaction(async (transaction) => {
+      const [snap, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(reportRef),
+      ]);
+      if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+      if (existing.exists) return;
+      transaction.create(reportRef, {
+        reporterId: uid,
+        reason: "copyright",
+        kind: "removal_request",
+        details,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(ref, {
+        reportsCount: FieldValue.increment(1),
+        moderationStatus: "flagged",
+        removalRequested: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true };
   }
 
   async function archiveFanWork(request) {
@@ -817,9 +937,200 @@ function createFanWorksDomain({
     return { ok: true };
   }
 
+  async function rateFanWork(request) {
+    const actor = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const rating = Number(request.data?.rating);
+    if (!workId || !Number.isInteger(rating) || rating < 1 || rating > 10) {
+      throw new HttpsError("invalid-argument", "Rating must be an integer from 1 to 10.");
+    }
+    const ref = workRef(db, workId);
+    const ratingRef = ref.collection("ratings").doc(actor);
+    await db.runTransaction(async (transaction) => {
+      const [work, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(ratingRef),
+      ]);
+      if (!work.exists || !isPubliclyListed(work.data())) {
+        throw new HttpsError("not-found", "Fan Work not found.");
+      }
+      const current = work.data() || {};
+      let count = Number(current.ratingsCount) || 0;
+      let sum = Number(current.ratingsSum) || 0;
+      const previous = existing.exists ? Number(existing.data()?.rating) : 0;
+      if (existing.exists && previous === rating) return;
+      if (existing.exists) {
+        sum -= previous;
+      } else {
+        count += 1;
+      }
+      sum += rating;
+      transaction.set(ratingRef, {
+        userId: actor,
+        rating,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(ref, {
+        ratingsCount: count,
+        ratingsSum: sum,
+        ratingsAverage: count > 0 ? Math.round((sum / count) * 10) / 10 : 0,
+      });
+    });
+    return { ok: true, rating };
+  }
+
+  async function commentFanWork(request) {
+    const authorId = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const text = validString(request.data?.text, COMMENT_MAX) ? request.data.text.trim() : null;
+    const replyRaw = request.data?.replyToCommentId;
+    const replyToCommentId = replyRaw == null || replyRaw === ""
+      ? null
+      : (validString(replyRaw, 128) ? String(replyRaw).trim() : null);
+    if (replyRaw && !replyToCommentId) {
+      throw new HttpsError("invalid-argument", "Reply target is invalid.");
+    }
+    const eventId = validString(request.data?.eventId, 128)
+      ? request.data.eventId.trim()
+      : null;
+    if (!workId || !text) {
+      throw new HttpsError("invalid-argument", "A comment is required.");
+    }
+    const ref = workRef(db, workId);
+    const commentRef = eventId
+      ? ref.collection("comments").doc(eventId)
+      : ref.collection("comments").doc();
+    const rateRef = ref.collection("commentRate").doc(authorId);
+    let created = false;
+    let creatorId = "";
+    let title = "";
+    await db.runTransaction(async (transaction) => {
+      const [work, existing, rate] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(commentRef),
+        transaction.get(rateRef),
+      ]);
+      if (!work.exists || !isPubliclyListed(work.data())) {
+        throw new HttpsError("not-found", "Fan Work not found.");
+      }
+      creatorId = work.data().creatorId || "";
+      title = work.data().title || "";
+      if (existing.exists) {
+        if (existing.data()?.authorId !== authorId) {
+          throw new HttpsError("already-exists", "That comment id is already used.");
+        }
+        return;
+      }
+      const lastAtMs = Number(rate.data()?.lastAtMs) || 0;
+      if (lastAtMs && Date.now() - lastAtMs < COMMENT_COOLDOWN_MS) {
+        throw new HttpsError("resource-exhausted", "Wait a moment before commenting again.");
+      }
+      if (replyToCommentId) {
+        const parent = await transaction.get(ref.collection("comments").doc(replyToCommentId));
+        if (!parent.exists) {
+          throw new HttpsError("not-found", "The comment you are replying to is gone.");
+        }
+      }
+      transaction.create(commentRef, {
+        authorId,
+        text,
+        likesCount: 0,
+        replyToCommentId,
+        mentions: extractMentions(text),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(rateRef, {
+        userId: authorId,
+        lastAtMs: Date.now(),
+        lastText: text,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(ref, {
+        commentsCount: FieldValue.increment(1),
+      });
+      created = true;
+    });
+    if (created && creatorId && creatorId !== authorId) {
+      await notifySafe(notificationBuilder, {
+        id: `fan-work-comment-${workId}-${commentRef.id}`,
+        recipientIds: [creatorId],
+        type: "fan_work_commented",
+        actorId: authorId,
+        targetId: workId,
+        action: "commented",
+        destination: `/fan-work/${workId}`,
+        metadata: { workId, commentId: commentRef.id },
+        title: "New comment on your Fan Work",
+        body: title || "Someone commented on your Fan Work.",
+        pushWorthy: false,
+      });
+    }
+    return { commentId: commentRef.id };
+  }
+
+  async function fanWorkCommentAction(request) {
+    const actor = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    const commentId = validString(request.data?.commentId, 128)
+      ? request.data.commentId.trim()
+      : null;
+    const action = request.data?.action;
+    if (!workId || !commentId || !["like", "unlike", "delete", "report"].includes(action)) {
+      throw new HttpsError("invalid-argument", "Comment action is invalid.");
+    }
+    const ref = workRef(db, workId);
+    const commentRef = ref.collection("comments").doc(commentId);
+    await db.runTransaction(async (transaction) => {
+      const [work, comment] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(commentRef),
+      ]);
+      if (!work.exists || !isPubliclyListed(work.data())) {
+        throw new HttpsError("not-found", "Fan Work not found.");
+      }
+      if (!comment.exists) return;
+      if (action === "delete") {
+        if (comment.data()?.authorId !== actor) {
+          throw new HttpsError("permission-denied", "Only the author can delete this comment.");
+        }
+        transaction.delete(commentRef);
+        transaction.update(ref, {
+          commentsCount: FieldValue.increment(-1),
+        });
+        return;
+      }
+      if (action === "report") {
+        const reportRef = commentRef.collection("reports").doc(actor);
+        const existing = await transaction.get(reportRef);
+        if (existing.exists) return;
+        if (comment.data()?.authorId === actor) {
+          throw new HttpsError("failed-precondition", "You cannot report your own comment.");
+        }
+        transaction.create(reportRef, {
+          reporterId: actor,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        transaction.update(commentRef, { reported: true });
+        return;
+      }
+      const likeRef = commentRef.collection("likes").doc(actor);
+      const existing = await transaction.get(likeRef);
+      if (action === "like" && !existing.exists) {
+        transaction.create(likeRef, { actor, createdAt: FieldValue.serverTimestamp() });
+        transaction.update(commentRef, { likesCount: FieldValue.increment(1) });
+      } else if (action === "unlike" && existing.exists) {
+        transaction.delete(likeRef);
+        transaction.update(commentRef, { likesCount: FieldValue.increment(-1) });
+      }
+    });
+    return { ok: true };
+  }
+
   return {
     saveFanWorkDraft,
     publishFanWork,
+    revisePublishedFanWork,
+    requestFanWorkRemoval,
     archiveFanWork,
     deleteFanWorkDraft,
     startFanWorkMediaUpload,
@@ -827,6 +1138,9 @@ function createFanWorksDomain({
     likeFanWork,
     bookmarkFanWork,
     reportFanWork,
+    rateFanWork,
+    commentFanWork,
+    fanWorkCommentAction,
     TYPES,
     REPORT_REASONS,
     publishValidationError,

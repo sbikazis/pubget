@@ -261,7 +261,10 @@ AppRoute _routeFromUri(Uri uri) {
       return ParameterizedRoute(path: '/anime', parameters: query);
     }
     final second = segments[1];
-    if (second == 'browse' || second == 'genre' || second == 'season') {
+    if (second == 'browse' ||
+        second == 'genre' ||
+        second == 'season' ||
+        second == 'library') {
       return ParameterizedRoute(path: '/anime/$second', parameters: query);
     }
     return entity(path: '/anime/details', key: 'animeId', id: second);

@@ -32,10 +32,9 @@ const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
 const { createNotificationTriggers } = require("./src/notificationTriggers");
-const {
-  createDiscoveryScheduler,
-  onSchedule,
-} = require("./src/discoveryEngine");
+const { createDiscoveryScheduler, onSchedule } = require("./src/discoveryEngine");
+const { createRecommendationEngine } = require("./src/recommendationEngine");
+const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
@@ -172,6 +171,15 @@ const discoveryScheduler = createDiscoveryScheduler({
   db: getFirestore(),
   FieldValue,
 });
+const recommendationEngine = createRecommendationEngine({
+  db: getFirestore(),
+  HttpsError,
+});
+const animeListsDomain = createAnimeListsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
@@ -182,6 +190,30 @@ const editsDomain = createEditsDomain({
 exports.refreshGroupActivityScores = onSchedule(
   { schedule: "every 1 hours", region: "us-central1" },
   discoveryScheduler.updateScores,
+);
+exports.getDiscoveryFeed = onCall(
+  { region: "us-central1" },
+  recommendationEngine.getDiscoveryFeed,
+);
+exports.setAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setAnimeListEntry,
+);
+exports.removeAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.removeAnimeListEntry,
+);
+exports.getAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getAnimeList,
+);
+exports.setCharacterFavorite = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setCharacterFavorite,
+);
+exports.getCharacterFavorites = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCharacterFavorites,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },
@@ -428,6 +460,14 @@ exports.publishFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.publishFanWork,
 );
+exports.revisePublishedFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.revisePublishedFanWork,
+);
+exports.requestFanWorkRemoval = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.requestFanWorkRemoval,
+);
 exports.archiveFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.archiveFanWork,
@@ -455,6 +495,18 @@ exports.bookmarkFanWork = onCall(
 exports.reportFanWork = onCall(
   { region: "us-central1" },
   fanWorksDomain.reportFanWork,
+);
+exports.rateFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.rateFanWork,
+);
+exports.addFanWorkComment = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.commentFanWork,
+);
+exports.fanWorkCommentAction = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.fanWorkCommentAction,
 );
 exports.getEconomy = onCall(
   { region: "us-central1" },

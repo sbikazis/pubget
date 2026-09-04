@@ -74,6 +74,22 @@ const CATALOG = Object.freeze([
     rewardCoins: 5,
   },
   {
+    id: "edit_milestone",
+    type: "creator",
+    title: "Cut Five",
+    description: "Publish five edits.",
+    icon: "edit",
+    rewardCoins: 5,
+  },
+  {
+    id: "creator_fan_milestone",
+    type: "creator",
+    title: "First Circle of Fans",
+    description: "Earn a fan as a creator.",
+    icon: "fan",
+    rewardCoins: 5,
+  },
+  {
     id: "autumn_2026_rally",
     type: "seasonal",
     title: "Autumn Rally",
@@ -218,6 +234,9 @@ function createAchievementsDomain({
         break;
       case "edit_published":
         await grant(event.userId, "first_edit");
+        if ((Number(event.metadata && event.metadata.publishedCount) || 0) >= 5) {
+          await grant(event.userId, "edit_milestone");
+        }
         break;
       case "friend_accepted":
         for (const uid of event.userIds || [event.userId]) {
@@ -226,6 +245,7 @@ function createAchievementsDomain({
         break;
       case "fan_gained":
         await grant(event.userId, "first_fan");
+        await grant(event.userId, "creator_fan_milestone");
         break;
       case "event_participated":
         await grant(event.userId, "first_event_participation");

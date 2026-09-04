@@ -161,15 +161,29 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   Failure? _failure;
   bool _liked = false;
   bool _bookmarked = false;
+  int? _myRating;
   bool _acting = false;
   bool _disposed = false;
+  final List<FanWorkComment> _comments = <FanWorkComment>[];
+  bool _commentsLoading = false;
+  bool _commentsLoadingMore = false;
+  bool _commentsHasMore = false;
+  Failure? _commentsFailure;
+  FanWorkComment? _replyTo;
 
   FanWork? get work => _work;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get liked => _liked;
   bool get bookmarked => _bookmarked;
+  int? get myRating => _myRating;
   bool get acting => _acting;
+  List<FanWorkComment> get comments => List<FanWorkComment>.unmodifiable(_comments);
+  bool get commentsLoading => _commentsLoading;
+  bool get commentsLoadingMore => _commentsLoadingMore;
+  bool get commentsHasMore => _commentsHasMore;
+  Failure? get commentsFailure => _commentsFailure;
+  FanWorkComment? get replyTo => _replyTo;
 
   Future<void> open({required String workId, required String userId}) async {
     _state = LoadingState.loading;
@@ -181,8 +195,11 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
       workId: workId,
       userId: userId,
     );
+    final rating = await _repository.myRating(workId: workId, userId: userId);
     _liked = liked.valueOrNull ?? false;
     _bookmarked = bookmarked.valueOrNull ?? false;
+    _myRating = rating.valueOrNull;
+    await loadComments(workId);
     _subscription = _repository.watchWork(workId).listen((result) {
       if (_disposed) return;
       result.fold(
@@ -225,6 +242,20 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
     });
   }
 
+  Future<Result<void>> rate({required String workId, required int rating}) {
+    return _act(() async {
+      final result = await _repository.rate(workId: workId, rating: rating);
+      if (result.isSuccess) {
+        _myRating = rating;
+        _analytics.logEvent(
+          'fan_work_rated',
+          parameters: {'workId': workId, 'rating': rating},
+        );
+      }
+      return result;
+    });
+  }
+
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,
@@ -248,6 +279,132 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
 
   Future<Result<void>> archive(String workId) {
     return _act(() => _repository.archive(workId));
+  }
+
+  Future<Result<void>> requestRemoval({
+    required String workId,
+    String details = '',
+  }) {
+    return _act(() async {
+      final result = await _repository.requestRemoval(
+        workId: workId,
+        details: details,
+      );
+      if (result.isSuccess) {
+        _analytics.logEvent('fan_work_removal_requested', parameters: {
+          'workId': workId,
+        });
+      }
+      return result;
+    });
+  }
+
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+  }) {
+    return _act(() async {
+      final result = await _repository.revisePublished(
+        workId: workId,
+        title: title,
+        description: description,
+        copyright: copyright,
+      );
+      if (result.isSuccess) {
+        _analytics.logEvent('fan_work_revised', parameters: {'workId': workId});
+      }
+      return result;
+    });
+  }
+
+  void setReplyTo(FanWorkComment? comment) {
+    _replyTo = comment;
+    _safeNotify();
+  }
+
+  Future<void> loadComments(String workId, {bool more = false}) async {
+    if (more) {
+      if (_commentsLoadingMore || !_commentsHasMore || _comments.isEmpty) {
+        return;
+      }
+      _commentsLoadingMore = true;
+    } else {
+      _commentsLoading = true;
+      _commentsFailure = null;
+    }
+    _safeNotify();
+    final result = await _repository.getComments(
+      workId,
+      after: more ? _comments.last : null,
+    );
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (items) {
+        if (more) {
+          _comments.addAll(items);
+        } else {
+          _comments
+            ..clear()
+            ..addAll(items);
+        }
+        _commentsHasMore = items.length >= 30;
+        _commentsLoading = false;
+        _commentsLoadingMore = false;
+        _commentsFailure = null;
+      },
+      onFailure: (failure) {
+        _commentsFailure = failure;
+        _commentsLoading = false;
+        _commentsLoadingMore = false;
+      },
+    );
+    _safeNotify();
+  }
+
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+  }) {
+    return _act(() async {
+      final result = await _repository.addComment(
+        workId: workId,
+        text: text,
+        replyToCommentId: _replyTo?.id,
+        eventId: '${workId}_${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (result.isSuccess) {
+        _replyTo = null;
+        _analytics.logEvent(
+          'fan_work_commented',
+          parameters: {'workId': workId},
+        );
+        await loadComments(workId);
+      }
+      return result;
+    });
+  }
+
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) {
+    return _act(() async {
+      final result = await _repository.commentAction(
+        workId: workId,
+        commentId: commentId,
+        action: action,
+      );
+      if (result.isSuccess) {
+        if (action == 'delete') {
+          _comments.removeWhere((comment) => comment.id == commentId);
+        }
+        await loadComments(workId);
+      }
+      return result;
+    });
   }
 
   Future<Result<T>> _act<T>(Future<Result<T>> Function() action) async {
@@ -586,6 +743,11 @@ final class FanWorkEditorProvider extends ChangeNotifier {
       imageIds:
           (data['imageIds'] as List<Object?>?)?.whereType<String>().toList() ??
           const <String>[],
+      copyright: FanWorkCopyright.fromMap(
+        data['copyright'] is Map
+            ? Map<String, dynamic>.from(data['copyright'] as Map)
+            : null,
+      ),
     );
     if (_draft.type != FanWorkType.drawing || _draft.title.isNotEmpty) {
       _step = FanWorkEditorStep.details;

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -11,10 +12,15 @@ import '../models/home_models.dart';
 import 'home_repository.dart';
 
 final class FirebaseHomeRepository implements HomeRepository {
-  FirebaseHomeRepository({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  FirebaseHomeRepository({
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _functions =
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
   Query<Map<String, dynamic>> _groups() =>
       _firestore.collection('groups').where('isSearchable', isEqualTo: true);
@@ -54,12 +60,12 @@ final class FirebaseHomeRepository implements HomeRepository {
   Future<Result<List<Group>>> getRisingGroups({int limit = 10, Group? after}) {
     var query = _groups()
         .where('risingEligible', isEqualTo: true)
-        .orderBy('activityScore', descending: true)
+        .orderBy('risingScore', descending: true)
         .orderBy('createdAt', descending: true)
         .orderBy(FieldPath.documentId, descending: true);
     if (after != null) {
       query = query.startAfter(<Object?>[
-        after.activityScore,
+        after.risingScore,
         after.createdAt,
         after.id,
       ]);
@@ -71,7 +77,22 @@ final class FirebaseHomeRepository implements HomeRepository {
   Future<Result<List<Group>>> getRecommendedGroups({
     int limit = 10,
     Group? after,
-  }) {
+  }) async {
+    final ranked = await getDiscoveryFeed(
+      section: 'recommendedGroups',
+      cursor: after?.id,
+      limit: limit,
+    );
+    if (ranked.isSuccess) {
+      final groups = ranked.valueOrNull
+              ?.section('recommendedGroups')
+              .items
+              .map(_groupFromItem)
+              .whereType<Group>()
+              .toList(growable: false) ??
+          const <Group>[];
+      if (groups.isNotEmpty) return Success(groups);
+    }
     var query = _groups()
         .orderBy('createdAt', descending: true)
         .orderBy(FieldPath.documentId, descending: true);
@@ -101,6 +122,21 @@ final class FirebaseHomeRepository implements HomeRepository {
     int limit = 10,
     PublicProfile? after,
   }) async {
+    final ranked = await getDiscoveryFeed(
+      section: 'recommendedPeople',
+      cursor: after?.uid,
+      limit: limit,
+    );
+    if (ranked.isSuccess) {
+      final people = ranked.valueOrNull
+              ?.section('recommendedPeople')
+              .items
+              .map(_personFromItem)
+              .where((person) => person.uid != userId)
+              .toList(growable: false) ??
+          const <PublicProfile>[];
+      if (people.isNotEmpty) return Success(people);
+    }
     try {
       var query = _firestore
           .collection('public_profiles')
@@ -117,6 +153,27 @@ final class FirebaseHomeRepository implements HomeRepository {
             .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
             .toList(growable: false),
       );
+    } on Object catch (error) {
+      return FailureResult(_failure(error));
+    }
+  }
+
+  @override
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  }) async {
+    try {
+      final result = await _functions.httpsCallable('getDiscoveryFeed').call(
+        <String, dynamic>{
+          'section': ?section,
+          'cursor': ?cursor,
+          'limit': limit,
+        },
+      );
+      final data = Map<String, dynamic>.from(result.data as Map);
+      return Success(DiscoveryFeed.fromMap(data));
     } on Object catch (error) {
       return FailureResult(_failure(error));
     }
@@ -198,6 +255,16 @@ final class FirebaseHomeRepository implements HomeRepository {
       return FailureResult(_failure(error));
     }
   }
+}
+
+Group? _groupFromItem(DiscoveryItem item) {
+  final data = Map<String, dynamic>.from(item.metadata);
+  if (item.targetId.isEmpty) return null;
+  return Group.fromMap(data, id: item.targetId);
+}
+
+PublicProfile _personFromItem(DiscoveryItem item) {
+  return PublicProfile.fromMap(item.metadata, uid: item.targetId);
 }
 
 List<T> _uniqueBy<T>(Iterable<T> items, String Function(T value) idOf) {

@@ -7,7 +7,9 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
+import '../providers/anime_library_provider.dart';
 import '../providers/anime_providers.dart';
 import '../widgets/anime_widgets.dart';
 
@@ -32,7 +34,11 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
       favoriteIds: onboarding.profile?.favoriteAnimeIds ?? const <String>[],
       onboarding: onboarding,
     );
-    Future<void>.microtask(() => details.load(widget.animeId));
+    final library = maybeAnimeLibrary(context, listen: false);
+    Future<void>.microtask(() async {
+      await details.load(widget.animeId);
+      await library?.load();
+    });
   }
 
   @override
@@ -110,6 +116,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                       ],
                     ),
                   ),
+                  _AnimeListControls(anime: anime),
                   if (anime.alternativeTitles.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -370,6 +377,82 @@ class _CharactersSection extends StatelessWidget {
                   actor.name,
                   if (actor.language != null) actor.language!,
                 ].join(' · '),
+              ),
+            const SizedBox(height: AppSpacing.md),
+            PubgetSecondaryButton(
+              onPressed: () {
+                maybeAnimeLibrary(context, listen: false)?.toggleCharacter(
+                  characterId: character.id,
+                  name: character.name,
+                );
+              },
+              semanticLabel: AnimeStrings.favorite,
+              child: Text(
+                maybeAnimeLibrary(context)?.isCharacterFavorite(character.id) ==
+                        true
+                    ? AnimeStrings.favorited
+                    : 'Favorite character',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimeListControls extends StatelessWidget {
+  const _AnimeListControls({required this.anime});
+
+  final Anime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final library = maybeAnimeLibrary(context);
+    if (library == null) return const SizedBox.shrink();
+    final current = library.entryFor(anime.id);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        0,
+      ),
+      child: PubgetCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              AnimeStrings.listStatus,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                for (final status in AnimeListStatus.values)
+                  PubgetSelectionChip(
+                    label: status.label,
+                    selected: current?.status == status,
+                    onSelected: library.saving
+                        ? null
+                        : (_) => library.setStatus(
+                            animeId: anime.id,
+                            status: status,
+                            title: anime.title,
+                            rating: current?.rating,
+                          ),
+                  ),
+              ],
+            ),
+            if (current != null)
+              PubgetTextButton(
+                onPressed: library.saving
+                    ? null
+                    : () => library.remove(anime.id),
+                semanticLabel: AnimeStrings.removeFromList,
+                child: const Text(AnimeStrings.removeFromList),
               ),
           ],
         ),

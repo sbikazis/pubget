@@ -115,6 +115,44 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(details.state, LoadingState.offline);
   });
+
+  test('details loads comments and posts a new one', () async {
+    final repository = _FakeFanWorkRepository()
+      ..watchWorkResult = Success(_work('w1'))
+      ..comments.add(
+        const FanWorkComment(id: 'c1', authorId: 'bob', text: 'Loved this'),
+      );
+    final details = FanWorkDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+
+    await details.open(workId: 'w1', userId: 'alice');
+    expect(details.comments.map((comment) => comment.text), <String>['Loved this']);
+
+    await details.addComment(workId: 'w1', text: 'Thanks @bob');
+    expect(repository.addedComments, contains('Thanks @bob'));
+    expect(
+      details.comments.any((comment) => comment.text == 'Thanks @bob'),
+      isTrue,
+    );
+
+    await details.commentAction(
+      workId: 'w1',
+      commentId: 'c1',
+      action: 'delete',
+    );
+    expect(details.comments.any((comment) => comment.id == 'c1'), isFalse);
+  });
+
+  test('details rating is stored through the repository', () async {
+    final repository = _FakeFanWorkRepository()
+      ..watchWorkResult = Success(_work('w1'));
+    final details = FanWorkDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.open(workId: 'w1', userId: 'alice');
+    await details.rate(workId: 'w1', rating: 8);
+    expect(details.myRating, 8);
+    expect(repository.storedRating, 8);
+  });
 }
 
 FanWork _work(String id) => FanWork(
@@ -154,6 +192,20 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String workId,
     required bool bookmark,
   }) async => const Success<void>(null);
+
+  int? storedRating;
+
+  @override
+  Future<Result<void>> rate({required String workId, required int rating}) async {
+    storedRating = rating;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) async => Success(storedRating);
 
   @override
   Future<Result<void>> confirmMedia({
@@ -251,6 +303,65 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  final List<FanWorkComment> comments = <FanWorkComment>[];
+  final List<String> addedComments = <String>[];
+
+  @override
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  }) async {
+    comments.add(
+      FanWorkComment(
+        id: eventId ?? 'c-${comments.length + 1}',
+        authorId: 'alice',
+        text: text,
+        replyToCommentId: replyToCommentId,
+      ),
+    );
+    addedComments.add(text);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  }) async {
+    if (after != null) return const Success(<FanWorkComment>[]);
+    return Success(List<FanWorkComment>.from(comments));
+  }
+
+  @override
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) async {
+    if (action == 'delete') {
+      comments.removeWhere((comment) => comment.id == commentId);
+    }
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
     String details = '',
   }) async => const Success<void>(null);
 

@@ -72,7 +72,7 @@ void main() {
     expect(find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)), findsOneWidget);
     await tester.tap(find.text(FanWorkTypeCatalog.label(FanWorkType.character)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-work-character-name')), findsOneWidget);
+    expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
   });
 
   testWidgets('manga viewer keeps page order and an indicator', (tester) async {
@@ -118,6 +118,40 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('village far away'), findsOneWidget);
+  });
+
+  testWidgets('details shows comments and accepts a new comment', (tester) async {
+    final auth = await _auth();
+    final repository = _FakeFanWorkRepository()
+      ..watchWorkResult = Success(_story())
+      ..comments.add(
+        const FanWorkComment(id: 'c1', authorId: 'bob', text: 'Loved this'),
+      );
+    final details = FanWorkDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    addTearDown(auth.dispose);
+    await details.open(workId: 'story-1', userId: 'alice');
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+        ],
+        child: const MaterialApp(home: FanWorkDetailsPage(workId: 'story-1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Loved this'), findsOneWidget);
+    expect(find.byKey(const Key('fan-work-comment-field')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('fan-work-comment-field')),
+      'Thanks',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(repository.addedComments, contains('Thanks'));
+    expect(find.text('Thanks'), findsOneWidget);
   });
 }
 
@@ -186,6 +220,20 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required bool bookmark,
   }) async => const Success<void>(null);
 
+  int? storedRating;
+
+  @override
+  Future<Result<void>> rate({required String workId, required int rating}) async {
+    storedRating = rating;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<int?>> myRating({
+    required String workId,
+    required String userId,
+  }) async => Success(storedRating);
+
   @override
   Future<Result<void>> confirmMedia({
     required String workId,
@@ -248,6 +296,65 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Future<Result<void>> report({
     required String workId,
     required FanWorkReportReason reason,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  final List<FanWorkComment> comments = <FanWorkComment>[];
+  final List<String> addedComments = <String>[];
+
+  @override
+  Future<Result<void>> addComment({
+    required String workId,
+    required String text,
+    String? replyToCommentId,
+    String? eventId,
+  }) async {
+    comments.add(
+      FanWorkComment(
+        id: eventId ?? 'c-${comments.length + 1}',
+        authorId: 'alice',
+        text: text,
+        replyToCommentId: replyToCommentId,
+      ),
+    );
+    addedComments.add(text);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<List<FanWorkComment>>> getComments(
+    String workId, {
+    FanWorkComment? after,
+    int limit = 30,
+  }) async {
+    if (after != null) return const Success(<FanWorkComment>[]);
+    return Success(List<FanWorkComment>.from(comments));
+  }
+
+  @override
+  Future<Result<void>> commentAction({
+    required String workId,
+    required String commentId,
+    required String action,
+  }) async {
+    if (action == 'delete') {
+      comments.removeWhere((comment) => comment.id == commentId);
+    }
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> revisePublished({
+    required String workId,
+    String? title,
+    String? description,
+    FanWorkCopyright? copyright,
+    List<String>? tags,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> requestRemoval({
+    required String workId,
     String details = '',
   }) async => const Success<void>(null);
 

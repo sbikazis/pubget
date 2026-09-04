@@ -2,6 +2,8 @@
 
 Games, Events, and Achievements are separate domains. They share Economy and Notifications through integration services. They never write group chat documents.
 
+Discovery ranking for Home, Rising Groups, Edits, Fan Works, Anime Hub, and people is documented in `docs/DISCOVERY.md`.
+
 ## Game engine architecture
 
 Generic lobby state lives in `games/{gameId}`. Specialized rules live in Cloud Functions (`functions/src/gameEngines/`). Flutter renders `publicState` and a self-only `private/{uid}` projection. Secret answers live in `games/{id}/secret` and are not client-readable.

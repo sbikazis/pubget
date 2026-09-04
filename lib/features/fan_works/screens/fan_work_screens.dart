@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -198,9 +199,11 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
     super.initState();
     final details = context.read<FanWorkDetailsProvider>();
     final uid = context.read<AuthProvider>().currentUser?.id ?? '';
-    Future<void>.microtask(
-      () => details.open(workId: widget.workId, userId: uid),
-    );
+    if (details.state == LoadingState.initial) {
+      Future<void>.microtask(
+        () => details.open(workId: widget.workId, userId: uid),
+      );
+    }
   }
 
   @override
@@ -237,6 +240,7 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
                 isOwner: details.work!.creatorId == uid,
                 liked: details.liked,
                 bookmarked: details.bookmarked,
+                myRating: details.myRating,
                 acting: details.acting,
               ),
       ),
@@ -250,6 +254,7 @@ class _DetailsBody extends StatelessWidget {
     required this.isOwner,
     required this.liked,
     required this.bookmarked,
+    required this.myRating,
     required this.acting,
   });
 
@@ -257,15 +262,18 @@ class _DetailsBody extends StatelessWidget {
   final bool isOwner;
   final bool liked;
   final bool bookmarked;
+  final int? myRating;
   final bool acting;
 
   @override
   Widget build(BuildContext context) {
     final details = context.read<FanWorkDetailsProvider>();
     final theme = Theme.of(context);
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.md),
-      children: <Widget>[
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
         if (work.cover?.path.isNotEmpty ?? false)
           AspectRatio(
             aspectRatio: 3 / 4,
@@ -307,6 +315,17 @@ class _DetailsBody extends StatelessWidget {
             style: theme.textTheme.bodyMedium,
           ),
         ],
+        if (!work.copyright.isEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(FanWorkStrings.copyright, style: theme.textTheme.titleSmall),
+          if (work.copyright.sourceTitle.isNotEmpty)
+            Text('Source: ${work.copyright.sourceTitle}'),
+          if (work.copyright.originalWorkId.isNotEmpty)
+            Text('Original ID: ${work.copyright.originalWorkId}'),
+          if (work.copyright.credit.isNotEmpty)
+            Text('Credit: ${work.copyright.credit}'),
+          Text('Revision ${work.version}'),
+        ],
         if (work.characterIds.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           Text('Character refs: ${work.characterIds.join(', ')}'),
@@ -315,7 +334,8 @@ class _DetailsBody extends StatelessWidget {
         FanWorkTagWrap(tags: work.tags),
         const SizedBox(height: AppSpacing.md),
         Text(
-          '${work.likesCount} likes · ${work.bookmarksCount} saves',
+          '${work.likesCount} likes · ${work.commentsCount} comments · ${work.bookmarksCount} saves'
+          '${work.ratingsCount > 0 ? ' · ${work.ratingsAverage.toStringAsFixed(1)} rating' : ''}',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -373,6 +393,23 @@ class _DetailsBody extends StatelessWidget {
             ),
           ),
         const SizedBox(height: AppSpacing.lg),
+        Text(FanWorkStrings.rating, style: theme.textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.sm,
+          children: [
+            for (var score = 1; score <= 10; score++)
+              PubgetSelectionChip(
+                key: Key('fan-work-rate-$score'),
+                label: '$score',
+                selected: myRating == score,
+                onSelected: acting
+                    ? null
+                    : (_) => details.rate(workId: work.id, rating: score),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
         Row(
           children: <Widget>[
             Expanded(
@@ -402,6 +439,26 @@ class _DetailsBody extends StatelessWidget {
           semanticLabel: FanWorkStrings.report,
           child: const Text(FanWorkStrings.report),
         ),
+        PubgetTextButton(
+          onPressed: acting
+              ? null
+              : () => details.requestRemoval(workId: work.id),
+          semanticLabel: FanWorkStrings.requestRemoval,
+          child: const Text(FanWorkStrings.requestRemoval),
+        ),
+        if (isOwner && work.isPublished)
+          PubgetSecondaryButton(
+            onPressed: acting
+                ? null
+                : () => details.revisePublished(
+                    workId: work.id,
+                    title: work.title,
+                    description: work.description,
+                    copyright: work.copyright,
+                  ),
+            semanticLabel: FanWorkStrings.revised,
+            child: const Text('Save revision metadata'),
+          ),
         if (isOwner && work.isPublished)
           PubgetSecondaryButton(
             onPressed: acting ? null : () => details.archive(work.id),
@@ -417,7 +474,10 @@ class _DetailsBody extends StatelessWidget {
             semanticLabel: 'Edit draft',
             child: const Text('Edit draft'),
           ),
+        const SizedBox(height: AppSpacing.xl),
+        _FanWorkCommentsSection(workId: work.id),
       ],
+      ),
     );
   }
 
@@ -445,6 +505,170 @@ class _DetailsBody extends StatelessWidget {
   }
 }
 
+class _FanWorkCommentsSection extends StatefulWidget {
+  const _FanWorkCommentsSection({required this.workId});
+
+  final String workId;
+
+  @override
+  State<_FanWorkCommentsSection> createState() => _FanWorkCommentsSectionState();
+}
+
+class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    final result = await context.read<FanWorkDetailsProvider>().addComment(
+      workId: widget.workId,
+      text: text,
+    );
+    if (!mounted) return;
+    if (result.isSuccess) _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final details = context.watch<FanWorkDetailsProvider>();
+    final uid = context.watch<AuthProvider>().currentUser?.id;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(FanWorkStrings.comments, style: theme.textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.sm),
+        if (details.replyTo != null)
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Replying to ${details.replyTo!.text}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cancel reply',
+                onPressed: () => details.setReplyTo(null),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: PubgetTextField(
+                key: const Key('fan-work-comment-field'),
+                controller: _controller,
+                hint: FanWorkStrings.addComment,
+                minLines: 1,
+                maxLines: 1,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+              ),
+            ),
+            IconButton(
+              key: const Key('fan-work-comment-send'),
+              tooltip: FanWorkStrings.sendComment,
+              onPressed: _send,
+              icon: const Icon(Icons.send),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (details.commentsLoading)
+          const PubgetSkeleton.card(height: 72)
+        else if (details.commentsFailure != null && details.comments.isEmpty)
+          PubgetErrorState(
+            message: details.commentsFailure!.message,
+            onRetry: () => details.loadComments(widget.workId),
+          )
+        else if (details.comments.isEmpty)
+          const PubgetEmptyState(
+            compact: true,
+            icon: Icons.chat_bubble_outline,
+            title: FanWorkStrings.noComments,
+            message: FanWorkStrings.noCommentsMessage,
+          )
+        else
+          for (final comment in details.comments)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(comment.text),
+              subtitle: Text(
+                [
+                  if (comment.replyToCommentId != null) 'Reply',
+                  if (comment.mentions.isNotEmpty)
+                    comment.mentions.map((handle) => '@$handle').join(' '),
+                  '${comment.likesCount} likes',
+                ].join(' · '),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    tooltip: FanWorkStrings.reply,
+                    onPressed: () => details.setReplyTo(comment),
+                    icon: const Icon(Icons.reply),
+                  ),
+                  IconButton(
+                    tooltip: FanWorkStrings.likeComment,
+                    onPressed: details.acting
+                        ? null
+                        : () => details.commentAction(
+                            workId: widget.workId,
+                            commentId: comment.id,
+                            action: 'like',
+                          ),
+                    icon: const Icon(Icons.favorite_border),
+                  ),
+                  if (comment.authorId == uid)
+                    IconButton(
+                      tooltip: FanWorkStrings.deleteComment,
+                      onPressed: details.acting
+                          ? null
+                          : () => details.commentAction(
+                              workId: widget.workId,
+                              commentId: comment.id,
+                              action: 'delete',
+                            ),
+                      icon: const Icon(Icons.delete_outline),
+                    )
+                  else
+                    IconButton(
+                      tooltip: FanWorkStrings.reportComment,
+                      onPressed: details.acting
+                          ? null
+                          : () => details.commentAction(
+                              workId: widget.workId,
+                              commentId: comment.id,
+                              action: 'report',
+                            ),
+                      icon: const Icon(Icons.flag_outlined),
+                    ),
+                ],
+              ),
+            ),
+        if (details.commentsHasMore)
+          PubgetTextButton(
+            onPressed: details.commentsLoadingMore
+                ? null
+                : () => details.loadComments(widget.workId, more: true),
+            semanticLabel: 'Load more comments',
+            child: Text(details.commentsLoadingMore ? 'Loading…' : 'Load more'),
+          ),
+      ],
+    );
+  }
+}
+
 class FanWorkEditorPage extends StatefulWidget {
   const FanWorkEditorPage({this.workId, super.key});
 
@@ -466,6 +690,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
   late final TextEditingController _abilities;
   late final TextEditingController _background;
   late final TextEditingController _lore;
+  late final TextEditingController _originalWorkId;
+  late final TextEditingController _sourceTitle;
+  late final TextEditingController _credit;
   final _picker = ImagePicker();
 
   @override
@@ -483,6 +710,13 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities = TextEditingController(text: editor.draft.abilities);
     _background = TextEditingController(text: editor.draft.background);
     _lore = TextEditingController(text: editor.draft.lore);
+    _originalWorkId = TextEditingController(
+      text: editor.draft.copyright.originalWorkId,
+    );
+    _sourceTitle = TextEditingController(
+      text: editor.draft.copyright.sourceTitle,
+    );
+    _credit = TextEditingController(text: editor.draft.copyright.credit);
     Future<void>.microtask(() async {
       await editor.start(workId: widget.workId);
       if (!mounted) return;
@@ -502,6 +736,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities.text = draft.abilities;
     _background.text = draft.background;
     _lore.text = draft.lore;
+    _originalWorkId.text = draft.copyright.originalWorkId;
+    _sourceTitle.text = draft.copyright.sourceTitle;
+    _credit.text = draft.copyright.credit;
   }
 
   FanWorkDraft _collected(FanWorkEditorProvider editor) {
@@ -517,6 +754,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
       abilities: _abilities.text,
       background: _background.text,
       lore: _lore.text,
+      copyright: editor.draft.copyright.copyWith(
+        originalWorkId: _originalWorkId.text.trim(),
+        sourceTitle: _sourceTitle.text.trim(),
+        credit: _credit.text.trim(),
+      ),
     );
   }
 
@@ -533,6 +775,9 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     _abilities.dispose();
     _background.dispose();
     _lore.dispose();
+    _originalWorkId.dispose();
+    _sourceTitle.dispose();
+    _credit.dispose();
     super.dispose();
   }
 
@@ -589,9 +834,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
               ),
             ),
           Expanded(
-            child: ListView(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(AppSpacing.md),
-              children: <Widget>[
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
                 if (editor.step == FanWorkEditorStep.type)
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -644,6 +891,33 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                     key: const Key('fan-work-anime-title'),
                     controller: _animeTitle,
                     label: 'Related anime title',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-original-id'),
+                    controller: _originalWorkId,
+                    label: 'Original work ID',
+                    hint: 'Optional source identifier',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-source-title'),
+                    controller: _sourceTitle,
+                    label: 'Source title',
+                    hint: 'Original series or work',
+                    onChanged: (_) =>
+                        editor.updateDraft(_collected(editor)),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetTextField(
+                    key: const Key('fan-work-credit'),
+                    controller: _credit,
+                    label: 'Credit',
+                    hint: 'How this work should be credited',
                     onChanged: (_) =>
                         editor.updateDraft(_collected(editor)),
                   ),
@@ -737,6 +1011,7 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                   ],
                 ],
               ],
+              ),
             ),
           ),
           SafeArea(
