@@ -371,6 +371,7 @@ module.exports = {
   scoreFanWork,
   scoreEvent,
   scoreAnime,
+  editEngagement,
   calculateRisingScore,
   applyDiversity,
   isColdStart,

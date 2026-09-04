@@ -937,7 +937,26 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
     characterId: "luffy",
   }));
   await assertFails(db("alice").doc("edits/e1").update({ viewsCount: 99, score: 99 }));
+  await assertFails(db("alice").doc("edits/e1").update({
+    status: "published", qualifiedViewsCount: 99, rankingScore: 99,
+  }));
+  await assertFails(db("bob").doc("edits/e1/playbackSessions/alice").set({
+    viewerId: "alice", consumed: false, creditedSeconds: 99,
+  }));
+  await assertFails(db("alice").doc("edits/e1/viewers/bob").set({
+    lastPercent: 100, creditedWatchSeconds: 99,
+  }));
   await assertFails(db("alice").doc("groups/g1").update({ risingScore: 99 }));
+  await assertFails(db("alice").doc("groups/g1").update({
+    risingEligible: true, activityScore: 99,
+  }));
+  await assertFails(db("bob").doc("friendships/alice_creator").set({
+    userA: "alice", userB: "creator", userIds: ["alice", "creator"],
+    status: "blocked", blockedBy: "bob",
+  }));
+  await assertFails(db("alice").doc("fanWorks/fw-public").update({
+    status: "published", moderationStatus: "approved",
+  }));
   await assertSucceeds(db("bob").doc("fanWorks/fw-public/revisions/1").get());
   await assertFails(db("alice").doc("fanWorks/fw-public/revisions/2").set({
     version: 2, title: "forged",

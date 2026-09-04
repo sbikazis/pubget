@@ -68,8 +68,13 @@ function calculateActivityScore({
   )));
 }
 
-function createDiscoveryScheduler({ db, FieldValue }) {
+function createDiscoveryScheduler({ db, FieldValue, clock }) {
+  function nowDate() {
+    return clock && typeof clock.now === "function" ? clock.now() : new Date();
+  }
+
   async function updateScores() {
+    const now = nowDate();
     const stateRef = db.collection("_system").doc("discoveryScheduler");
     const state = await stateRef.get();
     const cursor = state.data()?.lastGroupId;
@@ -90,7 +95,7 @@ function createDiscoveryScheduler({ db, FieldValue }) {
     let writes = 0;
     for (const groupDoc of groups.docs) {
       const group = groupDoc.data() || {};
-      const cutoff = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
       const messages = await groupDoc.ref.collection("messages")
         .where("createdAt", ">=", cutoff)
         .orderBy("createdAt", "desc")
@@ -103,7 +108,6 @@ function createDiscoveryScheduler({ db, FieldValue }) {
       const userRefs = actorIds.map((uid) => db.collection("users").doc(uid));
       const memberDocs = memberRefs.length ? await db.getAll(...memberRefs) : [];
       const userDocs = userRefs.length ? await db.getAll(...userRefs) : [];
-      const now = new Date();
       const accountCutoff = now.getTime() -
         MIN_ACCOUNT_AGE_DAYS * 24 * 60 * 60 * 1000;
       const membershipCutoff = now.getTime() -

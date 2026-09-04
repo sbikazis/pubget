@@ -376,7 +376,7 @@ function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
         ? legacy
         : null;
       const existing = relation.exists ? relation : matchingLegacy;
-      if (existing.exists &&
+      if (existing && existing.exists &&
           existing.data().status === "blocked" &&
           existing.data().blockedBy !== uid) {
         throw new HttpsError(
@@ -389,9 +389,9 @@ function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
         userB,
         userIds: [userA, userB],
         status: "blocked",
-        requestedBy: existing.exists ? existing.data().requestedBy : uid,
+        requestedBy: existing && existing.exists ? existing.data().requestedBy : uid,
         blockedBy: uid,
-        createdAt: existing.exists
+        createdAt: existing && existing.exists
           ? existing.data().createdAt
           : FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -419,7 +419,7 @@ function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
         ? legacy
         : null;
       const existing = relation.exists ? relation : matchingLegacy;
-      if (!existing.exists || existing.data().status !== "blocked") return;
+      if (!existing || !existing.exists || existing.data().status !== "blocked") return;
       if (existing.data().blockedBy !== uid) {
         throw new HttpsError(
           "permission-denied",

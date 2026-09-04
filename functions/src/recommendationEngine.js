@@ -127,6 +127,17 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
     return (snap.docs || []).map((doc) => ({ id: doc.id, data: doc.data() || {}, ref: doc.ref }));
   }
 
+  function visibleToViewer(entry, profile) {
+    if (!entry || entry.score <= 0) return false;
+    const blocked = profile.blockedIds;
+    if (!blocked || blocked.size === 0) return true;
+    const creatorId = entry.creatorId || (entry.metadata && entry.metadata.creatorId);
+    if (creatorId && blocked.has(creatorId)) return false;
+    if (entry.type === "person" && blocked.has(entry.targetId)) return false;
+    if (entry.type === "creator" && blocked.has(entry.targetId)) return false;
+    return true;
+  }
+
   function paginate(items, cursor, limit) {
     const start = cursor
       ? items.findIndex((item) => item.targetId === cursor || item.id === cursor) + 1
@@ -161,7 +172,7 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
           creatorId: doc.id,
         });
       })
-      .filter((entry) => entry.score > 0 && !profile.blockedIds.has(entry.targetId))
+      .filter((entry) => visibleToViewer(entry, profile))
       .sort((a, b) => b.score - a.score));
 
     const groupsRanked = applyDiversity(groups
@@ -176,7 +187,7 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
         createdAt: dateOf(doc.data.createdAt),
         source: coldStart ? "cold_start" : "ranking",
       }))
-      .filter((entry) => entry.score > 0)
+      .filter((entry) => visibleToViewer(entry, profile))
       .sort((a, b) => b.score - a.score));
 
     const editsRanked = mixExploration(applyDiversity(edits
@@ -190,7 +201,7 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
         creatorId: doc.data.creatorId,
         createdAt: dateOf(doc.data.createdAt),
       }))
-      .filter((entry) => entry.score > 0)
+      .filter((entry) => visibleToViewer(entry, profile))
       .sort((a, b) => b.score - a.score)));
 
     const fanWorksRanked = applyDiversity(fanWorks
@@ -206,7 +217,7 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
         creatorId: doc.data.creatorId,
         createdAt: dateOf(doc.data.publishedAt || doc.data.createdAt),
       }))
-      .filter((entry) => entry.score > 0)
+      .filter((entry) => visibleToViewer(entry, profile))
       .sort((a, b) => b.score - a.score));
 
     const eventsRanked = events
@@ -261,7 +272,8 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
         targetId: creatorId,
         creatorId,
         metadata: {},
-      }));
+      }))
+      .filter((entry) => visibleToViewer(entry, profile));
 
     return {
       coldStart,

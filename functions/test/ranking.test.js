@@ -12,6 +12,7 @@ const {
   isColdStart,
   overlapScore,
   scoreAnime,
+  editEngagement,
 } = require("../src/ranking");
 
 const now = new Date("2026-09-03T12:00:00Z");
@@ -29,6 +30,13 @@ test("edit ranking prefers relevant qualified watches over raw impressions", () 
     likesCount: 1, durationSeconds: 20, totalWatchSeconds: 40,
   }, profile, now);
   assert.ok(relevant > unrelated);
+});
+
+test("qualified views raise the edit engagement component used by ranking", () => {
+  const none = editEngagement({ qualifiedViewsCount: 0, likesCount: 0 });
+  const one = editEngagement({ qualifiedViewsCount: 1, likesCount: 0 });
+  assert.ok(one > none);
+  assert.equal(one - none, 2);
 });
 
 test("self views and negative feedback cannot dominate edit ranking", () => {

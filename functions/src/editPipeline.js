@@ -31,6 +31,16 @@ function probe(binary, source) {
   });
 }
 
+function ffmpegBinary() {
+  try {
+    const packed = require("ffmpeg-static");
+    if (packed && fs.existsSync(packed)) return packed;
+  } catch (_) {
+    // ffmpeg-static is optional when a system ffmpeg is available.
+  }
+  return "ffmpeg";
+}
+
 function createEditPipeline({ db, bucket, economy, achievements }) {
   return async function processEdit(event) {
     const object = event.data || {};
@@ -52,7 +62,7 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
     const processed = path.join(dir, "processed.mp4");
     try {
       await bucket.file(object.name).download({ destination: source });
-      const ffmpeg = require("ffmpeg-static");
+      const ffmpeg = ffmpegBinary();
       const durationSeconds = await probe(ffmpeg, source);
       if (durationSeconds <= 0 || durationSeconds > 180) {
         throw new Error("Video duration is outside the 180 second limit");
