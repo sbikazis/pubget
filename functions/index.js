@@ -252,7 +252,7 @@ exports.editCommentAction = onCall(
   editsDomain.commentAction,
 );
 exports.processEditVideo = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   createEditPipeline({
     db: getFirestore(),
     bucket: getStorage().bucket(),
@@ -549,7 +549,7 @@ exports.processEventLifecycle = onSchedule(
   eventsDomain.processEventLifecycle,
 );
 exports.processGroupChatMedia = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   createGroupMediaPipeline({
     db: getFirestore(),
     bucket: getStorage().bucket(),
