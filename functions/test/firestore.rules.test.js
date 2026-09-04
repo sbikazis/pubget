@@ -64,7 +64,7 @@ test.beforeEach(async () => {
       canVote: true, canSpeak: true,
     });
     await admin.doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" });
-    await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "mafia" });
+    await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
     await admin.doc("privateChats/c1").set({
       userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
       lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
@@ -498,6 +498,89 @@ test("a living player can submit canonical vote and chat intent in its phase", a
   await assertSucceeds(db("alice").doc("mafia_games/m1/chat/c1").set({
     senderId: "alice", sender: "Alice", senderAvatar: "", text: "hello",
     time: new Date(), type: "player",
+  }));
+});
+
+test("mafia night and vote attacks are rejected", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob/private/data").set({ role: "mafia" });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/bob_n1").set({
+    playerId: "bob", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "alice", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n0").set({
+    playerId: "alice", targetId: "bob", nightNumber: 0, submittedAt: new Date(),
+  }));
+  await assertFails(db("mallory").doc("mafia_games/m1/night_actions/mallory_n1").set({
+    playerId: "mallory", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1/members/eve").set({
+      userId: "eve", groupId: "g1", role: "member", displayName: "Eve",
+      realUserName: "Eve", realUserImageUrl: "", isPremium: false,
+    });
+  });
+  await assertFails(db("eve").doc("mafia_games/m1/night_actions/eve_n1").set({
+    playerId: "eve", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+    playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").update({
+    targetId: "alice",
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: false });
+  });
+  await assertFails(db("bob").doc("mafia_games/m1/night_actions/bob_n1").set({
+    playerId: "bob", targetId: "alice", nightNumber: 1, submittedAt: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1").update({
+      status: "voting", currentPhase: "voting", currentDay: 1,
+      phaseEndsAt: new Date(Date.now() - 60 * 1000),
+    });
+    await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: true });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("mafia_games/m1").update({ phaseEndsAt: null });
+  });
+  await assertFails(db("alice").doc("mafia_games/m1/votes/bob_d1").set({
+    voterId: "bob", targetId: "alice", dayNumber: 1, time: new Date(),
+  }));
+  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+    voterId: "alice", targetId: "alice", dayNumber: 1, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").update({
+    targetId: "alice",
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d2").set({
+    voterId: "alice", targetId: "bob", dayNumber: 2, time: new Date(),
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1").update({
+    winner: "mafia", status: "finished", currentPhase: "finished",
+    phaseEndsAt: new Date(), rewardsDistributed: true,
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").update({
+    role: "citizen",
   }));
 });
 

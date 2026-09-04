@@ -142,7 +142,7 @@ async function assignRoles(gameId, gameData) {
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     tx.set(gameRef.collection("events").doc("roles-assigned"), {
-      type: "RolesAssigned", message: "تم توزيع الأدوار، وبدأت الليلة الأولى في المافيا...",
+      type: "RolesAssigned", message: "Roles have been assigned. Night 1 has begun.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { playersCount: activePlayers.length, version: gameData.version || "classic" },
     });

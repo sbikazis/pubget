@@ -22,16 +22,31 @@ final class EventOption {
     required this.id,
     required this.label,
     this.imageUrl = '',
+    this.characterId = '',
+    this.animeId = '',
+    this.mimeType = '',
+    this.license = '',
+    this.attribution = '',
   });
 
   final String id;
   final String label;
   final String imageUrl;
+  final String characterId;
+  final String animeId;
+  final String mimeType;
+  final String license;
+  final String attribution;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'id': id,
     'label': label,
-    'imageUrl': imageUrl,
+    if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+    if (characterId.isNotEmpty) 'characterId': characterId,
+    if (animeId.isNotEmpty) 'animeId': animeId,
+    if (mimeType.isNotEmpty) 'mimeType': mimeType,
+    if (license.isNotEmpty) 'license': license,
+    if (attribution.isNotEmpty) 'attribution': attribution,
   };
 
   factory EventOption.fromMap(Map<String, dynamic> map, {required int index}) {
@@ -39,6 +54,11 @@ final class EventOption {
       id: map['id'] as String? ?? 'opt-${index + 1}',
       label: map['label'] as String? ?? map['name'] as String? ?? '',
       imageUrl: map['imageUrl'] as String? ?? '',
+      characterId: map['characterId'] as String? ?? '',
+      animeId: map['animeId'] as String? ?? '',
+      mimeType: map['mimeType'] as String? ?? '',
+      license: map['license'] as String? ?? '',
+      attribution: map['attribution'] as String? ?? '',
     );
   }
 }
@@ -102,6 +122,9 @@ final class EventConfiguration {
     this.allowUpdate = false,
     this.allowVoting = false,
     this.completionRule = '',
+    this.criterion = '',
+    this.challengeKind = '',
+    this.targetEventId = '',
   });
 
   final String question;
@@ -113,6 +136,9 @@ final class EventConfiguration {
   final bool allowUpdate;
   final bool allowVoting;
   final String completionRule;
+  final String criterion;
+  final String challengeKind;
+  final String targetEventId;
 
   EventConfiguration copyWith({
     String? question,
@@ -124,6 +150,9 @@ final class EventConfiguration {
     bool? allowUpdate,
     bool? allowVoting,
     String? completionRule,
+    String? criterion,
+    String? challengeKind,
+    String? targetEventId,
   }) => EventConfiguration(
     question: question ?? this.question,
     prompt: prompt ?? this.prompt,
@@ -134,6 +163,9 @@ final class EventConfiguration {
     allowUpdate: allowUpdate ?? this.allowUpdate,
     allowVoting: allowVoting ?? this.allowVoting,
     completionRule: completionRule ?? this.completionRule,
+    criterion: criterion ?? this.criterion,
+    challengeKind: challengeKind ?? this.challengeKind,
+    targetEventId: targetEventId ?? this.targetEventId,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -146,6 +178,9 @@ final class EventConfiguration {
     'allowUpdate': allowUpdate,
     'allowVoting': allowVoting,
     'completionRule': completionRule,
+    if (criterion.isNotEmpty) 'criterion': criterion,
+    if (challengeKind.isNotEmpty) 'challengeKind': challengeKind,
+    if (targetEventId.isNotEmpty) 'targetEventId': targetEventId,
   };
 
   factory EventConfiguration.fromMap(Map<String, dynamic>? map) {
@@ -171,6 +206,9 @@ final class EventConfiguration {
       allowUpdate: map['allowUpdate'] == true,
       allowVoting: map['allowVoting'] == true,
       completionRule: map['completionRule'] as String? ?? '',
+      criterion: map['criterion'] as String? ?? map['question'] as String? ?? '',
+      challengeKind: map['challengeKind'] as String? ?? '',
+      targetEventId: map['targetEventId'] as String? ?? '',
     );
   }
 }
@@ -512,6 +550,11 @@ final class EventDraft {
       'candidates': configuration.options.map((item) => item.toMap()).toList(),
       'items': configuration.options.map((item) => item.toMap()).toList(),
       'questions': configuration.questions.map((item) => item.toMap()).toList(),
+      if (configuration.criterion.isNotEmpty) 'criterion': configuration.criterion,
+      if (configuration.challengeKind.isNotEmpty)
+        'challengeKind': configuration.challengeKind,
+      if (configuration.targetEventId.isNotEmpty)
+        'targetEventId': configuration.targetEventId,
     };
   }
 }

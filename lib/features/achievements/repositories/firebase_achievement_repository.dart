@@ -6,7 +6,7 @@ import '../../../core/errors/result.dart';
 import '../models/achievement_models.dart';
 import 'achievement_repository.dart';
 
-const _catalog = <AchievementItem>[
+final _catalog = <AchievementItem>[
   AchievementItem(
     id: 'first_group',
     type: 'community',
@@ -80,6 +80,20 @@ const _catalog = <AchievementItem>[
     icon: 'community',
     unlocked: false,
   ),
+  AchievementItem(
+    id: 'autumn_2026_rally',
+    type: 'seasonal',
+    title: 'Autumn Rally',
+    description: 'Win a game during the Autumn 2026 season.',
+    icon: 'season',
+    unlocked: false,
+    rewardCoins: 10,
+    seasonId: 'autumn_2026',
+    seasonStartAt: DateTime.utc(2026, 9, 1),
+    seasonEndAt: DateTime.utc(2026, 11, 30, 23, 59, 59, 999),
+    seasonState: 'active',
+    trigger: 'game_won',
+  ),
 ];
 
 final class FirebaseAchievementRepository implements AchievementRepository {
@@ -132,6 +146,11 @@ final class FirebaseAchievementRepository implements AchievementRepository {
                     unlocked: data != null,
                     unlockedAt: _date(data?['unlockedAt']),
                     rewardCoins: item.rewardCoins,
+                    seasonId: item.seasonId,
+                    seasonStartAt: item.seasonStartAt,
+                    seasonEndAt: item.seasonEndAt,
+                    seasonState: item.seasonState,
+                    trigger: item.trigger,
                   );
                 })
                 .toList(growable: false),
@@ -155,6 +174,11 @@ AchievementItem _fromMap(Map<dynamic, dynamic> raw) {
     unlocked: map['unlocked'] == true,
     unlockedAt: _date(map['unlockedAt']),
     rewardCoins: (map['rewardCoins'] as num?)?.toInt() ?? 0,
+    seasonId: map['seasonId'] as String?,
+    seasonStartAt: _date(map['seasonStartAt']),
+    seasonEndAt: _date(map['seasonEndAt']),
+    seasonState: map['seasonState'] as String? ?? 'evergreen',
+    trigger: map['trigger'] as String?,
   );
 }
 

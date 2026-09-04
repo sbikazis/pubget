@@ -43,9 +43,21 @@ History is written after completion without exposing live private roles.
 
 `functions/src/eventsDomain.js` owns create, participate, expire, and finalize. Maximum lifetime is 7 days. Participation is idempotent and rejected after `endAt`. `processEventLifecycle` finalizes expired events, writes results, and notifies. UI hides submit when `isInteractable()` is false; the backend still enforces expiry.
 
+Comparison events (`characterComparison`, `animeComparison`, `imageComparison`) validate canonical catalog or licensed image candidates. Results include the criterion and winner references, not generic option labels alone.
+
+Challenge completion is server-verified for Pubget-observable kinds (`finish_game`, `publish_edit`, `create_group`, `participate_event`). Client `completed=true` is ignored. `self_report` is stored as unverified.
+
 ## Achievement architecture
 
-Catalog and unlocks are server-side (`achievementsDomain.js`). Triggers: first group, first edit, first friend, first fan, first event participation/win, first game win, creator milestone (fan work), community milestone (finish a game). Grants are idempotent on `user_achievements/{uid}/items/{id}`.
+Catalog and unlocks are server-side (`achievementsDomain.js`). Triggers: first group, first edit, first friend, first fan, first event participation/win, first game win, creator milestone (fan work), community milestone (finish a game), and seasonal `autumn_2026_rally` (win a game during Autumn 2026). Grants are idempotent on `user_achievements/{uid}/items/{id}`. Seasonal unlocks use server time and cannot newly unlock outside the season window.
+
+## Guess Character artwork
+
+Public round state includes a Pubget-owned geometric silhouette (`prompt.artwork`) with an opaque `assetId`. The mapping from character → asset stays server-side. Failed or missing artwork falls back to the text clue.
+
+## Recovery
+
+Interrupted transitions resume from persisted `status`, `currentPhase`, `stateVersion`, and deadlines. `processExpiredGames` queries `status == active AND deadlineAt <= now` (indexed, batches of 50). Mafia `phaseScheduler` advances expired phases. A vanished client cannot leave a game stuck.
 
 ## Reward integration
 
@@ -62,10 +74,6 @@ Game actions use `clientActionId`. Mafia night/vote docs overwrite the same id. 
 - Mafia private role docs: self-read only
 - `user_achievements/{uid}`: self-read, no client write
 - Scores, winners, phases, timers, rewards: Functions-only writes
-
-## Recovery
-
-Interrupted transitions resume from persisted `status`, `currentPhase`, `stateVersion`, and deadlines. `processExpiredGames` (every minute) advances timed-out quiz/chain/emoji rounds. Mafia `phaseScheduler` advances expired phases. A vanished client cannot leave a game stuck.
 
 ## Chat isolation
 

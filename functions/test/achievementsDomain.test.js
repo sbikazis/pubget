@@ -136,3 +136,45 @@ test("evaluate maps domain events and getAchievements is self-only", async () =>
     (error) => error.code === "unauthenticated",
   );
 });
+
+test("seasonal achievements obey server time and stay idempotent", async () => {
+  let now = new Date("2026-08-15T00:00:00Z");
+  const db = createFakeDb();
+  const rewards = [];
+  const domain = createAchievementsDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+    economy: {
+      applyReward: async (spec) => {
+        rewards.push(spec);
+        return { applied: true };
+      },
+    },
+  });
+  const before = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
+  const seasonalBefore = before.find((item) => item.achievementId === "autumn_2026_rally");
+  assert.equal(seasonalBefore.unlocked, false);
+  assert.equal(seasonalBefore.reason, "season_not_started");
+  now = new Date("2026-09-03T12:00:00Z");
+  const during = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
+  assert.equal(during.find((item) => item.achievementId === "autumn_2026_rally").unlocked, true);
+  const duplicate = await domain.unlock("alice", "autumn_2026_rally");
+  assert.equal(duplicate.reason, "already_unlocked");
+  assert.equal(rewards.filter((item) => item.referenceId === "autumn_2026_rally").length, 1);
+  const listed = await domain.getAchievements({ auth: { uid: "alice" } });
+  const rally = listed.items.find((item) => item.id === "autumn_2026_rally");
+  assert.equal(rally.seasonState, "active");
+  assert.equal(rally.unlocked, true);
+  now = new Date("2026-12-15T00:00:00Z");
+  const after = await domain.unlock("bob", "autumn_2026_rally");
+  assert.equal(after.unlocked, false);
+  assert.equal(after.reason, "season_ended");
+  const historical = await domain.getAchievements({ auth: { uid: "alice" } });
+  const ended = historical.items.find((item) => item.id === "autumn_2026_rally");
+  assert.equal(ended.seasonState, "ended");
+  assert.equal(ended.unlocked, true);
+  const invalid = await domain.unlock("alice", "not-real");
+  assert.equal(invalid.reason, "invalid");
+});

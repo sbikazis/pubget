@@ -8,6 +8,11 @@ final class AchievementItem {
     required this.unlocked,
     this.unlockedAt,
     this.rewardCoins = 0,
+    this.seasonId,
+    this.seasonStartAt,
+    this.seasonEndAt,
+    this.seasonState = 'evergreen',
+    this.trigger,
   });
 
   final String id;
@@ -18,4 +23,19 @@ final class AchievementItem {
   final bool unlocked;
   final DateTime? unlockedAt;
   final int rewardCoins;
+  final String? seasonId;
+  final DateTime? seasonStartAt;
+  final DateTime? seasonEndAt;
+  final String seasonState;
+  final String? trigger;
+
+  bool get isSeasonal => seasonId != null && seasonId!.isNotEmpty;
+
+  String get statusLabel {
+    if (unlocked) return 'Unlocked';
+    if (seasonState == 'upcoming') return 'Upcoming';
+    if (seasonState == 'ended') return 'Ended';
+    if (seasonState == 'active') return 'In season';
+    return 'Locked';
+  }
 }

@@ -180,10 +180,11 @@ class GuessCharacterPlay extends StatelessWidget {
             prompt['question'] as String? ?? 'Who is this character?',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          if (prompt['clue'] is String) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(prompt['clue'] as String),
-          ],
+          const SizedBox(height: AppSpacing.md),
+          CharacterArtworkView(
+            artwork: prompt['artwork'],
+            fallbackClue: prompt['clue'] as String?,
+          ),
           const SizedBox(height: AppSpacing.md),
           if (already)
             const Text('Answer locked in. Waiting for the round to resolve.'),
@@ -219,6 +220,151 @@ class GuessCharacterPlay extends StatelessWidget {
       ),
     );
   }
+}
+
+class CharacterArtworkView extends StatelessWidget {
+  const CharacterArtworkView({
+    required this.artwork,
+    this.fallbackClue,
+    super.key,
+  });
+
+  final Object? artwork;
+  final String? fallbackClue;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = _parseArtwork(artwork);
+    if (parsed == null) {
+      if (fallbackClue == null || fallbackClue!.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return Text(fallbackClue!);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Semantics(
+          label: 'Character portrait',
+          child: SizedBox(
+            height: 180,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _SilhouettePainter(parsed),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          parsed.attribution,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (fallbackClue != null && fallbackClue!.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(fallbackClue!),
+        ],
+      ],
+    );
+  }
+}
+
+final class _ArtworkPortrait {
+  const _ArtworkPortrait({
+    required this.background,
+    required this.shapes,
+    required this.attribution,
+  });
+
+  final Color background;
+  final List<Map<String, dynamic>> shapes;
+  final String attribution;
+}
+
+_ArtworkPortrait? _parseArtwork(Object? raw) {
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  final portrait = map['portrait'];
+  if (portrait is! Map) return null;
+  final portraitMap = Map<String, dynamic>.from(portrait);
+  final background = _colorOf(portraitMap['background']);
+  final shapesRaw = portraitMap['shapes'];
+  if (background == null || shapesRaw is! List || shapesRaw.isEmpty) {
+    return null;
+  }
+  final shapes = <Map<String, dynamic>>[];
+  for (final item in shapesRaw) {
+    if (item is Map) shapes.add(Map<String, dynamic>.from(item));
+  }
+  if (shapes.isEmpty) return null;
+  return _ArtworkPortrait(
+    background: background,
+    shapes: shapes,
+    attribution: map['attribution'] as String? ?? 'Original Pubget silhouette',
+  );
+}
+
+Color? _colorOf(Object? value) {
+  if (value is! String || !value.startsWith('#') || value.length < 7) {
+    return null;
+  }
+  final hex = int.tryParse(value.substring(1), radix: 16);
+  if (hex == null) return null;
+  return Color(0xFF000000 | hex);
+}
+
+class _SilhouettePainter extends CustomPainter {
+  const _SilhouettePainter(this.portrait);
+
+  final _ArtworkPortrait portrait;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = portrait.background);
+    final sx = size.width / 100;
+    final sy = size.height / 100;
+    for (final shape in portrait.shapes) {
+      final color = _colorOf(shape['color']) ?? Colors.white;
+      final paint = Paint()..color = color;
+      final type = shape['type'] as String? ?? 'rect';
+      if (type == 'circle') {
+        canvas.drawCircle(
+          Offset(_num(shape['x']) * sx, _num(shape['y']) * sy),
+          _num(shape['r']) * sx,
+          paint,
+        );
+      } else if (type == 'ellipse') {
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(_num(shape['x']) * sx, _num(shape['y']) * sy),
+            width: _num(shape['rx']) * 2 * sx,
+            height: _num(shape['ry']) * 2 * sy,
+          ),
+          paint,
+        );
+      } else {
+        final rect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            _num(shape['x']) * sx,
+            _num(shape['y']) * sy,
+            _num(shape['w']) * sx,
+            _num(shape['h']) * sy,
+          ),
+          Radius.circular(_num(shape['r']) * sx),
+        );
+        canvas.drawRRect(rect, paint);
+      }
+    }
+  }
+
+  double _num(Object? value) {
+    if (value is num) return value.toDouble();
+    return 0;
+  }
+
+  @override
+  bool shouldRepaint(covariant _SilhouettePainter oldDelegate) =>
+      oldDelegate.portrait != portrait;
 }
 
 class AnimeChainPlay extends StatefulWidget {

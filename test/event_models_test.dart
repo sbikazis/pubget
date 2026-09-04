@@ -188,4 +188,33 @@ void main() {
       isNull,
     );
   });
+
+  test('comparison events require canonical candidates', () {
+    expect(
+      EventValidation.configuration(
+        EventType.characterComparison,
+        const EventConfiguration(
+          criterion: 'Who wins?',
+          options: <EventOption>[
+            EventOption(id: 'luffy', label: 'luffy', characterId: 'luffy'),
+            EventOption(id: 'naruto', label: 'naruto', characterId: 'naruto'),
+          ],
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      EventValidation.configuration(
+        EventType.characterComparison,
+        const EventConfiguration(
+          criterion: 'Who wins?',
+          options: <EventOption>[
+            EventOption(id: 'luffy', label: 'luffy', characterId: 'luffy'),
+            EventOption(id: 'luffy-2', label: 'luffy', characterId: 'luffy'),
+          ],
+        ),
+      ),
+      isNotNull,
+    );
+  });
 }

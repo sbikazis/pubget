@@ -55,8 +55,10 @@ void main() {
 
     expect(find.text('First Circle'), findsOneWidget);
     expect(find.text('First Victory'), findsOneWidget);
+    expect(find.text('Autumn Rally'), findsOneWidget);
     expect(find.text('Unlocked'), findsOneWidget);
     expect(find.text('Locked'), findsOneWidget);
+    expect(find.text('In season'), findsOneWidget);
   });
 
   testWidgets('mafia lobby hides a start button that would fail', (
@@ -105,10 +107,64 @@ void main() {
 
     expect(find.text('Who is this character?'), findsOneWidget);
     expect(find.text('Luffy'), findsOneWidget);
+    expect(find.text('Original Pubget silhouette'), findsOneWidget);
+    expect(find.byType(CustomPaint), findsWidgets);
     expect(
       find.text('Answer locked in. Waiting for the round to resolve.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('guess character artwork falls back to the clue', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CharacterArtworkView(
+            artwork: <String, dynamic>{'assetId': 'bad'},
+            fallbackClue: 'Use the written clue instead.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Use the written clue instead.'), findsOneWidget);
+    expect(find.text('Original Pubget silhouette'), findsNothing);
+  });
+
+  testWidgets('guess character artwork paints a licensed silhouette', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CharacterArtworkView(
+            artwork: <String, dynamic>{
+              'assetId': 'pgart_3f8c1a92b4e0',
+              'license': 'pubget-original',
+              'attribution': 'Original Pubget silhouette',
+              'source': 'pubget',
+              'portrait': <String, dynamic>{
+                'background': '#4C1D95',
+                'shapes': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'type': 'rect',
+                    'x': 8,
+                    'y': 8,
+                    'w': 84,
+                    'h': 84,
+                    'r': 18,
+                    'color': '#F5D76E',
+                  },
+                ],
+              },
+            },
+            fallbackClue: 'A straw hat pirate.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Original Pubget silhouette'), findsOneWidget);
+    expect(find.byType(CustomPaint), findsWidgets);
+    expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
   testWidgets('game create exposes implemented options including Mafia', (
@@ -231,6 +287,27 @@ PubgetGame _guessGame({bool completed = false}) {
       'prompt': <String, dynamic>{
         'question': 'Who is this character?',
         'clue': 'Straw hat pirate',
+        'artwork': <String, dynamic>{
+          'assetId': 'pgart_3f8c1a92b4e0',
+          'license': 'pubget-original',
+          'attribution': 'Original Pubget silhouette',
+          'source': 'pubget',
+          'version': 1,
+          'portrait': <String, dynamic>{
+            'background': '#4C1D95',
+            'shapes': <Map<String, Object>>[
+              <String, Object>{
+                'type': 'rect',
+                'x': 8,
+                'y': 8,
+                'w': 84,
+                'h': 84,
+                'r': 18,
+                'color': '#4C1D95',
+              },
+            ],
+          },
+        },
         'choices': <Map<String, String>>[
           <String, String>{'id': 'a', 'name': 'Luffy'},
           <String, String>{'id': 'b', 'name': 'Zoro'},
@@ -274,6 +351,16 @@ final class _FakeAchievementRepository implements AchievementRepository {
           description: 'Win your first game.',
           icon: 'game',
           unlocked: false,
+        ),
+        AchievementItem(
+          id: 'autumn_2026_rally',
+          type: 'seasonal',
+          title: 'Autumn Rally',
+          description: 'Win a game during the Autumn 2026 season.',
+          icon: 'season',
+          unlocked: false,
+          seasonId: 'autumn_2026',
+          seasonState: 'active',
         ),
       ]),
     );

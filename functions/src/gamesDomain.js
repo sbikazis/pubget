@@ -950,19 +950,23 @@ function createGamesDomain({
   }
 
   async function processExpiredGames() {
+    const now = nowOf();
     const snapshot = await db.collection("games")
       .where("status", "==", "active")
-      .limit(100)
+      .where("deadlineAt", "<=", now)
+      .orderBy("deadlineAt", "asc")
+      .limit(50)
       .get();
-    const now = nowOf();
-    const docs = (snapshot.docs || []).filter((doc) => {
-      const data = doc.data() || {};
-      return isExpired(data.deadlineAt, now);
-    });
+    const docs = snapshot.docs || [];
     for (const doc of docs) {
       await resolveExpiredGame(doc.id);
     }
-    return { ok: true, scanned: (snapshot.docs || []).length, expired: docs.length };
+    return {
+      ok: true,
+      scanned: docs.length,
+      expired: docs.length,
+      limit: 50,
+    };
   }
 
   return {

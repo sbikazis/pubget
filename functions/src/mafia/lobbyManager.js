@@ -70,7 +70,7 @@ async function cancelLobby(gameId, gameData) {
 
   await sendSystemMessage({
     groupId: gameData.groupId,
-    text: "❌ تم إلغاء مباراة المافيا لعدم اكتمال عدد اللاعبين.",
+    text: "Mafia was cancelled because not enough players joined.",
     systemEventType: "mafiaGameCancelled",
     gameId,
   });
