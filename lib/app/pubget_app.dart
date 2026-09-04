@@ -69,6 +69,11 @@ import '../features/events/repositories/unavailable_event_repository.dart';
 import '../features/events/screens/event_builder_page.dart';
 import '../features/events/screens/event_details_screen.dart';
 import '../features/events/screens/event_list_screen.dart';
+import '../features/achievements/providers/achievement_provider.dart';
+import '../features/achievements/repositories/achievement_repository.dart';
+import '../features/achievements/repositories/firebase_achievement_repository.dart';
+import '../features/achievements/repositories/unavailable_achievement_repository.dart';
+import '../features/achievements/screens/achievements_page.dart';
 import '../features/games/providers/game_providers.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
@@ -76,6 +81,11 @@ import '../features/games/repositories/unavailable_game_repository.dart';
 import '../features/games/screens/game_create_page.dart';
 import '../features/games/screens/game_details_screen.dart';
 import '../features/games/screens/game_list_screen.dart';
+import '../features/mafia/providers/mafia_provider.dart';
+import '../features/mafia/repositories/firebase_mafia_repository.dart';
+import '../features/mafia/repositories/mafia_repository.dart';
+import '../features/mafia/repositories/unavailable_mafia_repository.dart';
+import '../features/mafia/screens/mafia_game_screen.dart';
 import '../features/fan_works/providers/fan_work_providers.dart';
 import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
@@ -173,6 +183,8 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<GameRepository>.value(value: repositories.$14),
         provider.Provider<FanWorkRepository>.value(value: repositories.$15),
         provider.Provider<EconomyRepository>.value(value: repositories.$16),
+        provider.Provider<MafiaRepository>.value(value: repositories.$17),
+        provider.Provider<AchievementRepository>.value(value: repositories.$18),
         provider.Provider<Analytics>.value(value: const LoggingAnalytics()),
         provider.ChangeNotifierProvider<AuthDraftStore>(
           create: (_) => AuthDraftStore(),
@@ -322,17 +334,51 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               GameListProvider(repository: context.read<GameRepository>()),
         ),
-        provider.ChangeNotifierProvider<GameProvider>(
-          create: (context) => GameProvider(
-            repository: context.read<GameRepository>(),
-            analytics: context.read<Analytics>(),
-          ),
+        provider.ChangeNotifierProxyProvider<AuthProvider, GameProvider>(
+          create: (context) {
+            final games = GameProvider(
+              repository: context.read<GameRepository>(),
+              analytics: context.read<Analytics>(),
+            );
+            games.bindUser(context.read<AuthProvider>().currentUser?.id);
+            return games;
+          },
+          update: (_, auth, games) {
+            games!.bindUser(auth.currentUser?.id);
+            return games;
+          },
         ),
         provider.ChangeNotifierProvider<GameCreateProvider>(
           create: (context) => GameCreateProvider(
             repository: context.read<GameRepository>(),
             analytics: context.read<Analytics>(),
           ),
+        ),
+        provider.ChangeNotifierProxyProvider<AuthProvider, MafiaProvider>(
+          create: (context) {
+            final mafia = MafiaProvider(
+              repository: context.read<MafiaRepository>(),
+            );
+            mafia.bindUser(context.read<AuthProvider>().currentUser?.id);
+            return mafia;
+          },
+          update: (_, auth, mafia) {
+            mafia!.bindUser(auth.currentUser?.id);
+            return mafia;
+          },
+        ),
+        provider.ChangeNotifierProxyProvider<AuthProvider, AchievementProvider>(
+          create: (context) {
+            final achievements = AchievementProvider(
+              repository: context.read<AchievementRepository>(),
+            );
+            achievements.bindUser(context.read<AuthProvider>().currentUser?.id);
+            return achievements;
+          },
+          update: (_, auth, achievements) {
+            achievements!.bindUser(auth.currentUser?.id);
+            return achievements;
+          },
         ),
         provider.ChangeNotifierProvider<FanWorkFeedProvider>(
           create: (context) => FanWorkFeedProvider(
@@ -420,6 +466,8 @@ class PubgetApp extends StatelessWidget {
     GameRepository,
     FanWorkRepository,
     EconomyRepository,
+    MafiaRepository,
+    AchievementRepository,
   )
   _createRepositories() {
     if (!firebaseState.isReady) {
@@ -442,6 +490,8 @@ class PubgetApp extends StatelessWidget {
         UnavailableGameRepository(message),
         UnavailableFanWorkRepository(message),
         UnavailableEconomyRepository(message),
+        UnavailableMafiaRepository(message),
+        UnavailableAchievementRepository(message),
       );
     }
     return (
@@ -508,6 +558,14 @@ class PubgetApp extends StatelessWidget {
         storage: FirebaseStorage.instance,
       ),
       FirebaseEconomyRepository(
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseMafiaRepository(
+        firestore: FirebaseFirestore.instance,
+        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
+      ),
+      FirebaseAchievementRepository(
+        firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
     );
@@ -643,6 +701,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         ),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
+        '/mafia': (parameters) =>
+            MafiaGameScreen(gameId: parameters['gameId'] ?? ''),
+        '/achievements': (parameters) =>
+            AchievementsPage(highlightId: parameters['id']),
         '/games': (parameters) {
           final groupId = parameters['groupId'];
           return GameListScreen(

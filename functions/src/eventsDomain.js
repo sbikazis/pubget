@@ -464,7 +464,7 @@ function uniqueRecipientIds(ids) {
 }
 
 function createEventsDomain({
-  db, FieldValue, HttpsError, notificationBuilder, economy,
+  db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
 }) {
   async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
     if (!validString(eventId, EVENT_ID_MAX)) return;
@@ -959,6 +959,14 @@ function createEventsDomain({
       if (joinedNow) eventUpdate.participantsCount = FieldValue.increment(1);
       transaction.update(ref, eventUpdate);
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_participated",
+        userId: uid,
+        source: "event",
+        metadata: { eventId: eventId.trim() },
+      });
+    }
     return { ok: true };
   }
 
@@ -1038,6 +1046,14 @@ function createEventsDomain({
       source: "event",
       metadata: { eventType: event.type || "" },
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_won",
+        userIds: winners,
+        source: "event",
+        metadata: { eventId },
+      });
+    }
   }
 
   return {

@@ -31,7 +31,7 @@ function probe(binary, source) {
   });
 }
 
-function createEditPipeline({ db, bucket, economy }) {
+function createEditPipeline({ db, bucket, economy, achievements }) {
   return async function processEdit(event) {
     const object = event.data || {};
     const match = /^edits\/([^/]+)\/([^/]+)\.mp4$/.exec(object.name || "");
@@ -93,6 +93,14 @@ function createEditPipeline({ db, bucket, economy }) {
           type: "earn_publish",
           referenceId: editId,
           source: "edit",
+        });
+      }
+      if (achievements && typeof achievements.evaluate === "function") {
+        await achievements.evaluate({
+          type: "edit_published",
+          userId: creatorId,
+          source: "edit",
+          metadata: { editId },
         });
       }
     } catch (error) {

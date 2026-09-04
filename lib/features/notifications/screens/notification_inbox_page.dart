@@ -129,6 +129,9 @@ class _NotificationTile extends StatelessWidget {
     'join_request' => Icons.group_add_outlined,
     'friend_request' => Icons.person_add_outlined,
     'respect_received' => Icons.favorite_outline,
+    'game_invite' || 'game_started' || 'game_completed' =>
+      Icons.sports_esports_outlined,
+    'achievement_unlocked' => Icons.emoji_events_outlined,
     _ => Icons.notifications_none,
   };
 
@@ -138,6 +141,10 @@ class _NotificationTile extends StatelessWidget {
     'request_accepted' => 'Request accepted',
     'friend_request' => 'Friend request',
     'respect_received' => 'Respect received',
+    'game_invite' => 'Game invite',
+    'game_started' => 'Game starting',
+    'game_completed' => 'Game result',
+    'achievement_unlocked' => 'Achievement unlocked',
     _ => 'Notification',
   };
 }

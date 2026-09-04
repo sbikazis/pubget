@@ -45,6 +45,28 @@ void main() {
     expect(repository.createCalls, 0);
   });
 
+  test('generic create rejects Mafia drafts', () async {
+    final repository = _FakeGameRepository();
+    final provider = GameCreateProvider(repository: repository);
+    addTearDown(provider.dispose);
+    provider.start(groupId: 'g1');
+    provider.selectType(GameType.mafia);
+    provider.update(provider.draft.copyWith(title: 'Night in the village'));
+    final result = await provider.create();
+    expect(result, isA<FailureResult<PubgetGame>>());
+    expect(repository.createCalls, 0);
+  });
+
+  test('bindUser clears private game state for the next account', () async {
+    final repository = _FakeGameRepository();
+    final provider = GameProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open('g1', userId: 'alice');
+    provider.bindUser('bob');
+    expect(provider.game, isNull);
+    expect(provider.privateState, isEmpty);
+  });
+
   test('list loadHome stays loaded when every bucket is empty', () async {
     final repository = _FakeGameRepository();
     final provider = GameListProvider(repository: repository);
@@ -138,4 +160,10 @@ final class _FakeGameRepository implements GameRepository {
   @override
   Stream<Result<List<GameParticipant>>> watchParticipants(String gameId) =>
       const Stream<Result<List<GameParticipant>>>.empty();
+
+  @override
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  }) => const Stream<Result<Map<String, dynamic>>>.empty();
 }

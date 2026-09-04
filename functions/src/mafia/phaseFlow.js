@@ -1,13 +1,15 @@
 // functions/src/mafia/phaseFlow.js
 //
-// نسخة مطابقة تماماً لـ lib/core/mafia/mafia_game_engine.dart (MafiaPhaseFlow)
-// من ناحية ترتيب المراحل ومددها بالثواني.
+// Play loop: night → day → discussion → voting → execution → night.
+// Waiting/starting are lobby phases and never re-entered after play begins.
 
-const ORDER = ['waiting', 'starting', 'night', 'day', 'discussion', 'voting', 'execution']; // تم اضافة waiting, starting
+const LOBBY_ORDER = ["waiting", "starting"];
+const PLAY_ORDER = ["night", "day", "discussion", "voting", "execution"];
+const ORDER = [...LOBBY_ORDER, ...PLAY_ORDER];
 
 const DURATIONS_SECONDS = {
-  waiting: 120, // lobbyWaitSeconds من Flutter - دقيقتين
-  starting: 10, // startingCountdownSeconds
+  waiting: 120,
+  starting: 10,
   night: 45,
   day: 20,
   discussion: 90,
@@ -16,29 +18,36 @@ const DURATIONS_SECONDS = {
 };
 
 function nextPhase(current) {
-  const idx = ORDER.indexOf(current);
-  if (idx === -1) return 'waiting'; // نبدأ من waiting
-  return ORDER[(idx + 1) % ORDER.length];
+  if (current === "waiting") return "starting";
+  if (current === "starting") return "night";
+  if (current === "finished" || current === "cancelled") return current;
+  const idx = PLAY_ORDER.indexOf(current);
+  if (idx === -1) return "night";
+  return PLAY_ORDER[(idx + 1) % PLAY_ORDER.length];
 }
 
 function durationOf(phase) {
   return DURATIONS_SECONDS[phase] || 0;
 }
 
-const ARABIC_MESSAGES = {
-  waiting: '⏳ في انتظار اكتمال اللاعبين...',
-  starting: '🚀 ستبدأ اللعبة خلال لحظات!',
-  night: '🌙 هبط الظلام على القرية، وبدأت الليلة...',
-  day: '☀️ أشرقت الشمس، والقرية تترقب ما حدث الليلة الماضية.',
-  discussion: '💬 فُتح باب النقاش بين الأهالي.',
-  voting: '🗳️ بدأ التصويت لتحديد المشتبه به.',
-  execution: '⚖️ حان وقت تنفيذ حكم القرية.',
+const PHASE_MESSAGES = {
+  waiting: "Waiting for players to join.",
+  starting: "Roles are being assigned.",
+  night: "Night falls. The village sleeps.",
+  day: "Morning. The village learns what happened overnight.",
+  discussion: "Discussion is open.",
+  voting: "Voting has begun.",
+  execution: "The village carries out its decision.",
 };
+
+const ARABIC_MESSAGES = PHASE_MESSAGES;
 
 module.exports = {
   ORDER,
+  PLAY_ORDER,
   DURATIONS_SECONDS,
   nextPhase,
   durationOf,
-  ARABIC_MESSAGES
+  PHASE_MESSAGES,
+  ARABIC_MESSAGES,
 };

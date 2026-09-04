@@ -24,6 +24,7 @@ void main() {
     expect(EventLinks.canonical('abc 1'), PubgetLinks.event('abc 1'));
     expect(FanWorkLinks.canonical('w 1'), PubgetLinks.fanWork('w 1'));
     expect(GameLinks.canonical('g1'), 'https://pubget-aaf27.web.app/game/g1');
+    expect(PubgetLinks.mafia('m1'), 'https://pubget-aaf27.web.app/mafia/m1');
     expect(AnimeLinks.canonical('21'), 'https://pubget-aaf27.web.app/anime/21');
     expect(PubgetLinks.group('grp'), 'https://pubget-aaf27.web.app/group/grp');
     expect(

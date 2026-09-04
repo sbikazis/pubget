@@ -31,6 +31,11 @@ abstract interface class GameRepository {
 
   Stream<Result<List<GameParticipant>>> watchParticipants(String gameId);
 
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  });
+
   Future<Result<List<PubgetGame>>> getActiveGames({int limit = 20});
 
   Future<Result<List<PubgetGame>>> getWaitingGames({int limit = 20});

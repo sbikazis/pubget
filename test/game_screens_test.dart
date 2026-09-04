@@ -153,6 +153,14 @@ final class _FakeGameRepository implements GameRepository {
       Stream<Result<List<GameParticipant>>>.value(
         const Success(<GameParticipant>[]),
       );
+
+  @override
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  }) => Stream<Result<Map<String, dynamic>>>.value(
+    const Success(<String, dynamic>{}),
+  );
 }
 
 final class _FakeGroupRepository implements GroupRepository {

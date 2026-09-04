@@ -163,6 +163,22 @@ void main() {
     expect(parameterized.parameters['ref'], 'share');
   });
 
+  test('route parser maps /mafia/{id} and /achievements deep links', () async {
+    final parser = AppRouteInformationParser();
+    final mafia = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/mafia/m-1')),
+    );
+    expect(mafia, isA<ParameterizedRoute>());
+    expect((mafia as ParameterizedRoute).path, '/mafia');
+    expect(mafia.parameters['gameId'], 'm-1');
+    final achievements = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/achievements?id=first_group')),
+    );
+    expect(achievements, isA<ParameterizedRoute>());
+    expect((achievements as ParameterizedRoute).path, '/achievements');
+    expect(achievements.parameters['id'], 'first_group');
+  });
+
   test(
     'pending game deep link is restored after the guard allows it',
     () async {
@@ -266,6 +282,7 @@ void main() {
     expect(asRoute(AppRouter.routeFromString('/event/')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/event')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/game/')).path, '/unknown');
+    expect(asRoute(AppRouter.routeFromString('/mafia/')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/fan-work/')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/store/item')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/not-a-real-route')).path, '/not-a-real-route');

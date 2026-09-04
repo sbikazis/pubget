@@ -287,6 +287,16 @@ final class PubgetEvent {
       status == EventStatus.archived ||
       status == EventStatus.cancelled;
 
+  /// UI hint. The backend still rejects expired participation.
+  bool isExpired([DateTime? now]) {
+    final end = endAt;
+    if (end == null) return false;
+    return !end.isAfter(now ?? DateTime.now());
+  }
+
+  bool isInteractable([DateTime? now]) =>
+      status == EventStatus.active && !isExpired(now);
+
   Duration? remaining(DateTime now) {
     if (endAt == null) return null;
     final left = endAt!.difference(now);

@@ -97,6 +97,18 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/actions/a1").set({
       playerId: "bob", actionType: "guess", payload: { value: "Luffy" },
     });
+    await admin.doc("games/game1/secret/round").set({
+      roundNumber: 1, correctId: "luffy", correctName: "Monkey D. Luffy",
+    });
+    await admin.doc("games/game1/private/alice").set({
+      note: "alice-only",
+    });
+    await admin.doc("user_achievements/alice/items/first_game_win").set({
+      achievementId: "first_game_win", title: "First Victory",
+    });
+    await admin.doc("game_history/game1").set({
+      gameId: "game1", type: "guessCharacter", result: { winnerIds: ["alice"] },
+    });
     await admin.doc("fanWorks/fw-public").set({
       creatorId: "alice", type: "drawing", title: "Public drawing",
       status: "published", moderationStatus: "approved", visibility: "public",
@@ -260,6 +272,21 @@ test("games are readable by group members and never client-writable", async () =
     creatorId: "alice", groupId: "g1", type: "guessCharacter", status: "active",
   }));
   await assertSucceeds(db("bob").doc("games/game1/participants/alice").get());
+  await assertFails(db("alice").doc("games/game1/secret/round").get());
+  await assertFails(db("bob").doc("games/game1/secret/round").get());
+  await assertFails(db("alice").doc("games/game1/secret/round").set({ correctId: "spoof" }));
+  await assertSucceeds(db("alice").doc("games/game1/private/alice").get());
+  await assertFails(db("bob").doc("games/game1/private/alice").get());
+  await assertFails(db("alice").doc("games/game1/private/alice").set({ score: 99 }));
+  await assertFails(db("alice").doc("games/game1").update({
+    result: { winnerIds: ["alice"], scores: { alice: 99 } },
+  }));
+  await assertSucceeds(db("alice").doc("user_achievements/alice/items/first_game_win").get());
+  await assertFails(db("bob").doc("user_achievements/alice/items/first_game_win").get());
+  await assertFails(db("alice").doc("user_achievements/alice/items/forged").set({
+    achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {

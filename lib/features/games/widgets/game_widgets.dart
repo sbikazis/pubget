@@ -37,6 +37,15 @@ abstract final class GameLinks {
   static void open(BuildContext context, String gameId) {
     AppNavigation.go(context, path(gameId));
   }
+
+  static void openMafia(BuildContext context, String gameId) {
+    AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
+  }
+
+  static void openCreate(BuildContext context, {String? groupId}) {
+    final suffix = groupId == null || groupId.isEmpty ? '' : '?groupId=$groupId';
+    AppNavigation.go(context, '/games/create$suffix');
+  }
 }
 
 class GameStatusBadge extends StatelessWidget {

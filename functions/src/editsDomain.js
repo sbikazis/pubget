@@ -9,7 +9,7 @@ function string(value, max) {
     : null;
 }
 
-function createEditsDomain({ db, FieldValue, HttpsError }) {
+function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
   function uid(request) {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
     return request.auth.uid;
@@ -61,6 +61,14 @@ function createEditsDomain({ db, FieldValue, HttpsError }) {
       completionCount: 0, score: 10, status: "published",
       sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "edit_published",
+        userId: creatorId,
+        source: "edit",
+        metadata: { editId: ref.id },
+      });
+    }
     return { editId: ref.id };
   }
 

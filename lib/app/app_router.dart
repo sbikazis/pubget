@@ -269,6 +269,9 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'game') {
     return entity(path: '/game', key: 'gameId', id: segments[1]);
   }
+  if (segments.length == 2 && segments.first == 'mafia') {
+    return entity(path: '/mafia', key: 'gameId', id: segments[1]);
+  }
   if (segments.length == 2 && segments.first == 'fan-work') {
     return entity(path: '/fan-work', key: 'workId', id: segments[1]);
   }
@@ -293,6 +296,7 @@ AppRoute _routeFromUri(Uri uri) {
 const _requiredEntityKeys = <String, String>{
   '/event': 'eventId',
   '/game': 'gameId',
+  '/mafia': 'gameId',
   '/fan-work': 'workId',
   '/group': 'groupId',
   '/anime/details': 'animeId',

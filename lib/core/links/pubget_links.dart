@@ -43,6 +43,11 @@ abstract final class PubgetLinks {
 
   static String game(String gameId) => canonical(gamePath(gameId));
 
+  static String mafiaPath(String gameId) =>
+      _encodedPath('/mafia', gameId) ?? '';
+
+  static String mafia(String gameId) => canonical(mafiaPath(gameId));
+
   static String animePath(String animeId) =>
       _encodedPath('/anime', animeId) ?? '';
 

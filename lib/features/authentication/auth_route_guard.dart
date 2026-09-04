@@ -50,6 +50,8 @@ abstract final class AuthRouteGuard {
     '/games',
     '/games/create',
     '/game',
+    '/mafia',
+    '/achievements',
     '/fan-works',
     '/fan-works/create',
     '/fan-work',

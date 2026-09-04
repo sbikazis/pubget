@@ -84,6 +84,31 @@ void main() {
     );
   });
 
+  test('mafia and achievement routes are protected', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/mafia',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/achievements',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+  });
+
   test('store, search, and settings routes are protected', () {
     expect(
       AuthRouteGuard.resolve(

@@ -7,7 +7,7 @@
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
-const { nextPhase, durationOf, ARABIC_MESSAGES } = require("./phaseFlow");
+const { nextPhase, durationOf, PHASE_MESSAGES } = require("./phaseFlow");
 const { resolveNight } = require("./nightResolver");
 const { resolveVotes } = require("./voteResolver");
 const { checkWinCondition } = require("./winConditionChecker");
@@ -103,7 +103,7 @@ async function advancePhase(gameId, gameData) {
   batch.update(gameRef, updateData);
   batch.set(gameRef.collection("events").doc(`phase-${current}-${gameData.currentNight || gameData.currentDay || 0}`), {
     type: "PhaseChanged",
-    message: ARABIC_MESSAGES[next] || `انتقلت المباراة إلى مرحلة ${next}`,
+    message: PHASE_MESSAGES[next] || `The game moved to ${next}.`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     payload: { from: current, to: next },
   });
