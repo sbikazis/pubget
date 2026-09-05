@@ -3,9 +3,22 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
+import '../providers/group_provider.dart';
 import 'role_permissions_page.dart';
+
+/// Menu values for a non-founder member row. Kick/ban are omitted when the
+/// viewer cannot manage members (server still enforces the callable).
+List<String> groupMemberMenuActions({required bool canManageMembers}) {
+  return <String>[
+    'role',
+    if (canManageMembers) 'kick',
+    if (canManageMembers) 'ban',
+    'transfer',
+  ];
+}
 
 class GroupMembersPage extends StatefulWidget {
   const GroupMembersPage({required this.groupId, super.key});
@@ -17,6 +30,8 @@ class GroupMembersPage extends StatefulWidget {
 }
 
 class _GroupMembersPageState extends State<GroupMembersPage> {
+  var _requestedGroupLoad = false;
+
   @override
   void initState() {
     super.initState();
@@ -25,8 +40,22 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_requestedGroupLoad) return;
+    final userId = context.read<AuthProvider>().currentUser?.id;
+    if (userId == null) return;
+    _requestedGroupLoad = true;
+    final groups = context.read<GroupProvider>();
+    Future<void>.microtask(
+      () => groups.load(groupId: widget.groupId, userId: userId),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
+    final canManageMembers = _viewerCanManageMembers(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Members'),
@@ -70,11 +99,20 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
                 child: const Text('Load more'),
               );
             }
-            return _MemberCard(member: provider.members[index]);
+            return _MemberCard(
+              member: provider.members[index],
+              canManageMembers: canManageMembers,
+            );
           },
         ),
       ),
     );
+  }
+
+  bool _viewerCanManageMembers(BuildContext context) {
+    final groups = context.watch<GroupProvider>();
+    if (groups.group?.id != widget.groupId) return false;
+    return groups.membership?.canManageMembers ?? false;
   }
 
   Future<void> _showInvite(
@@ -124,13 +162,15 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
 }
 
 class _MemberCard extends StatelessWidget {
-  const _MemberCard({required this.member});
+  const _MemberCard({required this.member, required this.canManageMembers});
 
   final GroupMember member;
+  final bool canManageMembers;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.read<GroupMembersProvider>();
+    final actions = groupMemberMenuActions(canManageMembers: canManageMembers);
     return PubgetCard(
       child: Row(
         children: <Widget>[
@@ -149,21 +189,29 @@ class _MemberCard extends StatelessWidget {
           ),
           if (member.role != GroupRole.founder)
             PopupMenuButton<String>(
+              key: Key('member-menu-${member.uid}'),
               onSelected: (action) => _act(context, provider, action),
-              itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                PopupMenuItem(value: 'role', child: Text('Change role')),
-                PopupMenuItem(value: 'kick', child: Text('Kick')),
-                PopupMenuItem(value: 'ban', child: Text('Ban')),
-                PopupMenuItem(
-                  value: 'transfer',
-                  child: Text('Transfer ownership'),
-                ),
-              ],
+              itemBuilder: (_) => actions
+                  .map(
+                    (value) => PopupMenuItem<String>(
+                      value: value,
+                      child: Text(_menuLabel(value)),
+                    ),
+                  )
+                  .toList(growable: false),
             ),
         ],
       ),
     );
   }
+
+  String _menuLabel(String value) => switch (value) {
+    'role' => 'Change role',
+    'kick' => 'Kick',
+    'ban' => 'Ban',
+    'transfer' => 'Transfer ownership',
+    _ => value,
+  };
 
   Future<void> _act(
     BuildContext context,
@@ -171,7 +219,23 @@ class _MemberCard extends StatelessWidget {
     String action,
   ) async {
     if (action == 'role') {
-      await provider.changeRole(member.uid, GroupRole.senpai);
+      final role = await showDialog<GroupRole>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Change role'),
+          children: GroupRole.values
+              .map(
+                (role) => SimpleDialogOption(
+                  key: Key('pick-role-${role.name}'),
+                  onPressed: () => Navigator.pop(dialogContext, role),
+                  child: Text(groupRoleLabel(role)),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      );
+      if (role == null || !context.mounted) return;
+      await provider.changeRole(member.uid, role);
       return;
     }
     final confirmed = await PubgetConfirmationDialog.show(

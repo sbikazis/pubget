@@ -52,7 +52,7 @@ service cloud.firestore {
     function groupModerator(groupId) {
       return signedIn() && groupExists(groupId) && groupMember(groupId) &&
         get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
-          in ['founder', 'sensei', 'hakusho', 'senpai'];
+          in ['founder', 'sensei', 'senpai'];
     }
     function mafiaGroupMember(gameId) {
       return signedIn() && groupMember(
@@ -366,7 +366,7 @@ service cloud.firestore {
       allow list: if false;
       allow create: if self(uid) &&
         request.resource.data.keys().hasOnly([
-          'email','username','nickname','avatarUrl','bio','favoriteAnimes','age',
+          'email','username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age',
           'country','isProfileCompleted','createdAt','updatedAt','invitedBy',
           'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
           'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
@@ -392,13 +392,17 @@ service cloud.firestore {
         request.resource.data.get('hasClaimedReferral', false) == false &&
         request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('activityVisibility', 'public') in ['public','private'] &&
-        request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'];
+        request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'] &&
+        (!request.resource.data.keys().hasAny(['displayName']) ||
+         request.resource.data.displayName == null ||
+         (request.resource.data.displayName is string &&
+          request.resource.data.displayName.size() <= 80));
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
         ((changedOnly([
-          'username','nickname','avatarUrl','bio','favoriteAnimes','age','country',
-          'favoriteAnimeIds','activityVisibility',
+          'username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age','country',
+          'favoriteAnimeIds','activityVisibility','whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt'
         ]) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
@@ -408,10 +412,16 @@ service cloud.firestore {
           (!request.resource.data.keys().hasAny(['favoriteAnimeIds']) ||
            (request.resource.data.favoriteAnimeIds is list &&
             request.resource.data.favoriteAnimeIds.size() <= 50)) &&
+          (!request.resource.data.keys().hasAny(['displayName']) ||
+           request.resource.data.displayName == null ||
+           (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() <= 80)) &&
           request.resource.data.get('profileVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('activityVisibility', 'public')
-            in ['public','private']) ||
+            in ['public','private'] &&
+          request.resource.data.get('whoCanMessageMe', 'related')
+            in ['related','friends']) ||
          false);
       allow delete: if false;
 
@@ -509,13 +519,8 @@ service cloud.firestore {
         ]) ||
         membershipIncrement(groupId) ||
         membershipDecrement(groupId) ||
-        // Message sends update this preview in a separate write. It cannot
-        // alter membership or any other group authority.
-        (groupMember(groupId) &&
-         changedOnly(['lastMessageAt','lastMessageText']) &&
-         request.resource.data.lastMessageAt is timestamp &&
-         request.resource.data.lastMessageText is string &&
-         request.resource.data.lastMessageText.size() <= 80) ||
+        // lastMessageAt / lastMessageText are written only by sendGroupMessage
+        // (Admin SDK). Direct client preview spoofing is rejected.
         // A lobby creator may only claim the group's active-game marker in
         // the same atomic write that creates their waiting game.
         signedIn() && groupMember(groupId) && changedOnly([
@@ -626,7 +631,9 @@ service cloud.firestore {
       }
       match /games/{gameId} {
         allow read: if groupMember(groupId);
-        allow create, update, delete: if groupModerator(groupId);
+        // Product games live at top-level games/{gameId} (client writes false).
+        // Nothing in lib/ writes this nested path; keep it non-writable.
+        allow create, update, delete: if false;
       }
       match /characters/{characterId} {
         allow read: if groupMember(groupId);

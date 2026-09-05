@@ -46,6 +46,40 @@ void main() {
     expect(memberCanManageEvents(null), isFalse);
   });
 
+  test('founder and shogun can manage members; members cannot', () {
+    expect(
+      const GroupMember(uid: 'a1', role: GroupRole.founder).canManageMembers,
+      isTrue,
+    );
+    expect(
+      const GroupMember(uid: 'a2', role: GroupRole.shogun).canManageMembers,
+      isTrue,
+    );
+    expect(
+      const GroupMember(uid: 'c1', role: GroupRole.commander).canManageMembers,
+      isTrue,
+    );
+    expect(
+      const GroupMember(uid: 'm1', role: GroupRole.member).canManageMembers,
+      isFalse,
+    );
+    expect(
+      const GroupMember(uid: 's1', role: GroupRole.senpai).canManageMembers,
+      isFalse,
+    );
+    expect(memberCanManageMembers(null), isFalse);
+  });
+
+  test('founder can manage members even with an empty role document', () {
+    expect(
+      const GroupMember(
+        uid: 'a1',
+        role: GroupRole.founder,
+      ).withEffectivePermissions(const <GroupPermission>{}).canManageMembers,
+      isTrue,
+    );
+  });
+
   test('founder and admin-equivalent roles can manage events', () {
     expect(
       const GroupMember(uid: 'a1', role: GroupRole.founder).canManageEvents,
