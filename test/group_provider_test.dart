@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
@@ -46,6 +47,19 @@ void main() {
       expect(provider.failure?.message, 'offline');
     },
   );
+
+  test('loadJoined uses memberships, not the discover search list', () async {
+    final repository = _FakeGroupRepository();
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.search('');
+    expect(provider.searchResults.single.id, 'g1');
+
+    await provider.loadJoined('alice');
+    expect(provider.joinedGroups, isEmpty);
+    expect(provider.joinedState, LoadingState.empty);
+  });
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -100,4 +114,8 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
       Success(<Group>[group]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      const Success(<Group>[]);
 }

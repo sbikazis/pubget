@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_router.dart';
+import '../../../app/app_shell_scope.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -40,13 +41,20 @@ class _EditFeedPageState extends State<EditFeedPage> {
     final provider = context.watch<EditsProvider>();
     if (provider.state == LoadingState.loading ||
         provider.state == LoadingState.initial) {
-      return const Scaffold(
-        body: Center(child: PubgetSkeleton.card(width: 240, height: 320)),
+      return Scaffold(
+        appBar: AppBar(
+          leading: const AppShellMenuButton(),
+          title: const Text('Edits'),
+        ),
+        body: const Center(child: PubgetSkeleton.card(width: 240, height: 320)),
       );
     }
     if (provider.state == LoadingState.empty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Edits')),
+        appBar: AppBar(
+          leading: const AppShellMenuButton(),
+          title: const Text('Edits'),
+        ),
         body: PubgetEmptyState(
           title: 'No Edits yet',
           message: 'Be the first creator to share a video.',
@@ -62,7 +70,10 @@ class _EditFeedPageState extends State<EditFeedPage> {
     }
     if (provider.state == LoadingState.error) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Edits')),
+        appBar: AppBar(
+          leading: const AppShellMenuButton(),
+          title: const Text('Edits'),
+        ),
         body: PubgetErrorState(
           message: provider.failure?.message ?? 'Edits could not load.',
           onRetry: provider.load,
@@ -72,6 +83,7 @@ class _EditFeedPageState extends State<EditFeedPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        leading: const AppShellMenuButton(),
         title: const Text('Edits'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,

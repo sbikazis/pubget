@@ -29,6 +29,7 @@ abstract final class AuthRouteGuard {
     '/edits',
     '/edits/upload',
     '/groups',
+    '/joined',
     '/groups/create',
     '/group',
     '/group-invite',

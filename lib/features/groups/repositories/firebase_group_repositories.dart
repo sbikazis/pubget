@@ -77,6 +77,28 @@ final class FirebaseGroupRepository implements GroupRepository {
   });
 
   @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) => _guard(() async {
+    final snapshot = await _firestore
+        .collectionGroup('members')
+        .where('uid', isEqualTo: userId)
+        .limit(50)
+        .get();
+    final groupIds = <String>{};
+    for (final doc in snapshot.docs) {
+      final groupId = doc.reference.parent.parent?.id;
+      if (groupId != null) groupIds.add(groupId);
+    }
+    if (groupIds.isEmpty) return const <Group>[];
+    final snaps = await Future.wait(
+      groupIds.map((id) => _firestore.collection('groups').doc(id).get()),
+    );
+    return snaps
+        .where((snap) => snap.exists && snap.data() != null)
+        .map((snap) => Group.fromMap(snap.data()!, id: snap.id))
+        .toList(growable: false);
+  });
+
+  @override
   Future<Result<void>> joinGroup({required String groupId, String? inviteId}) =>
       _guard(() async {
         await _callVoid('joinGroup', <String, dynamic>{

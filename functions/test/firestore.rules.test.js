@@ -44,11 +44,11 @@ test.beforeEach(async () => {
       founderId: "alice", name: "G", membersCount: 2, maxMembers: 100,
     });
     await admin.doc("groups/g1/members/alice").set({
-      userId: "alice", groupId: "g1", role: "founder", displayName: "Alice",
+      uid: "alice", userId: "alice", groupId: "g1", role: "founder", displayName: "Alice",
       realUserName: "Alice", realUserImageUrl: "", isPremium: false,
     });
     await admin.doc("groups/g1/members/bob").set({
-      userId: "bob", groupId: "g1", role: "member", displayName: "Bob",
+      uid: "bob", userId: "bob", groupId: "g1", role: "member", displayName: "Bob",
       realUserName: "Bob", realUserImageUrl: "", isPremium: false,
     });
     await admin.doc("mafia_games/m1").set({
@@ -1045,3 +1045,15 @@ test("hakusho is not a moderator role and nested group games are client-unwritab
   await assertSucceeds(db("bob").doc("groups/g1/games/legacy").get());
   await assertFails(db("charlie").doc("groups/g1/games/legacy").get());
 });
+
+test("collection-group members queries only return the caller's own membership", async () => {
+  await assertSucceeds(
+    db("bob").collectionGroup("members").where("uid", "==", "bob").get(),
+  );
+  await assertFails(
+    db("bob").collectionGroup("members").where("uid", "==", "alice").get(),
+  );
+  await assertFails(db("bob").collectionGroup("members").get());
+  await assertSucceeds(db("bob").doc("groups/g1/members/alice").get());
+});
+

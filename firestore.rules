@@ -963,5 +963,13 @@ service cloud.firestore {
       }
     }
     match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }
+
+    // Joined tab: collection-group *list* of `members` is own-uid only.
+    // `get` stays on nested groups/{groupId}/members/{uid} so a
+    // deletionPending group still closes direct member reads (spec of
+    // Prompt 02). `read` here would OR with nested gets and reopen that.
+    match /{path=**}/members/{memberId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }
