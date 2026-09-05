@@ -13,6 +13,13 @@ void main() {
     expect((route as ParameterizedRoute).path, '/guide');
   });
 
+  test('joined remains a shell path and group deep links still parse', () {
+    expect(AppRouter.shellPaths.contains('/joined'), isTrue);
+    final group = AppRouter.routeFromString('/group/g-1') as ParameterizedRoute;
+    expect(group.path, '/group');
+    expect(group.parameters['groupId'], 'g-1');
+  });
+
   test('route parser retains path and query parameters', () async {
     final parser = AppRouteInformationParser();
 

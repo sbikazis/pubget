@@ -240,4 +240,8 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
       Success(<Group>[group]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      const Success(<Group>[]);
 }

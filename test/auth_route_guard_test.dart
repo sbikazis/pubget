@@ -134,6 +134,17 @@ void main() {
     );
     expect(
       AuthRouteGuard.resolve(
+        path: '/joined',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/login',
+    );
+    expect(
+      AuthRouteGuard.resolve(
         path: '/settings',
         isInitialized: true,
         authState: LoadingState.loaded,

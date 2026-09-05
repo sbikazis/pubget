@@ -674,6 +674,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
+        '/joined': const AppShell(),
         '/groups/create': const CreateGroupWizardPage(),
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),

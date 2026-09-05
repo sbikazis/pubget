@@ -963,5 +963,12 @@ service cloud.firestore {
       }
     }
     match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }
+
+    // Joined tab: a signed-in user may list only their own membership docs
+    // across groups. Nested groups/{groupId}/members/{uid} rules still govern
+    // direct reads of other members inside a known group.
+    match /{path=**}/members/{memberId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }

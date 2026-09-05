@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../app/app_shell_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -57,6 +58,7 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
     final uid = context.watch<AuthProvider>().currentUser?.id ?? '';
     return Scaffold(
       appBar: AppBar(
+        leading: const AppShellMenuButton(),
         title: UnreadBadge(
           count: context.watch<UnreadEngine>().privateChats,
           child: const Text('Private'),

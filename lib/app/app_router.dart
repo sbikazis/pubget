@@ -160,7 +160,13 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     return Navigator(
       key: navigatorKey,
       pages: <Page<void>>[MaterialPage<void>(key: pageKey, child: page)],
-      onDidRemovePage: (_) {
+      onDidRemovePage: (page) {
+        // Overlay routes (Drawer) share this Navigator. Ignore those pops.
+        // When the declared page itself is popped (system back on the last
+        // route), reset to splash so Android back still leaves the app shell.
+        if (page.key != pageKey) {
+          return;
+        }
         _route = const FoundationRoute();
         notifyListeners();
       },
@@ -180,6 +186,7 @@ final class AppRouter {
   static const shellPaths = <String>{
     '/home',
     '/groups',
+    '/joined',
     '/private',
     '/edits',
   };

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../app/app_shell_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../models/group_models.dart';
 import '../providers/group_provider.dart';
+import '../widgets/group_list_card.dart';
 
 class GroupsHomePage extends StatefulWidget {
   const GroupsHomePage({super.key});
@@ -34,7 +35,10 @@ class _GroupsHomePageState extends State<GroupsHomePage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Groups')),
+      appBar: AppBar(
+        leading: const AppShellMenuButton(),
+        title: const Text('Groups'),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => AppNavigation.go(context, '/groups/create'),
         icon: const Icon(Icons.add),
@@ -83,44 +87,12 @@ class _GroupsHomePageState extends State<GroupsHomePage> {
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) =>
-                      _GroupCard(group: provider.searchResults[index]),
+                      GroupListCard(group: provider.searchResults[index]),
                 ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.group});
-
-  final Group group;
-
-  @override
-  Widget build(BuildContext context) {
-    return PubgetCard(
-      onTap: () => AppNavigation.go(context, '/group?groupId=${group.id}'),
-      child: Row(
-        children: <Widget>[
-          const Icon(Icons.groups_outlined, size: 36),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  group.name,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text('${group.membersCount}/${group.maxMembers} members'),
-              ],
-            ),
-          ),
-          Text(group.type.name),
-        ],
       ),
     );
   }

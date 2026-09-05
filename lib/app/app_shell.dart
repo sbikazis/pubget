@@ -4,24 +4,55 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_motion.dart';
 import '../features/edits/screens/edit_feed_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
+import '../features/groups/screens/joined_groups_page.dart';
 import '../features/home/screens/home_page.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/widgets/unread_badge.dart';
 import '../features/private_chat/screens/private_chats_list_screen.dart';
 import 'app_route.dart';
 import 'app_router.dart';
+import 'app_shell_drawer.dart';
+import 'app_shell_scope.dart';
 import 'app_shell_tab.dart';
 
-/// Persistent four-tab shell. Tab switches keep the [IndexedStack] alive so
-/// Home / Groups / Private / Edits state is not destroyed.
+/// Persistent five-tab shell. Tab switches keep the [IndexedStack] alive so
+/// Discover / Groups / Joined / Private / Edits state is not destroyed.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, this.pages});
+
+  /// Production pages when null. Tests may inject five lightweight children.
+  final List<Widget>? pages;
 
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  AppRouterDelegate? _delegate;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final delegate = Router.of(context).routerDelegate;
+    if (delegate is! AppRouterDelegate || identical(delegate, _delegate)) {
+      return;
+    }
+    _delegate?.removeListener(_onRouteChanged);
+    _delegate = delegate;
+    _delegate!.addListener(_onRouteChanged);
+  }
+
+  void _onRouteChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _delegate?.removeListener(_onRouteChanged);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final path = switch (Router.of(context).routerDelegate) {
@@ -33,59 +64,69 @@ class _AppShellState extends State<AppShell> {
     };
     final tab = AppShellTabX.fromPath(path);
     final unread = context.watch<UnreadEngine>();
-
-    return Scaffold(
-      body: IndexedStack(
-        index: tab.index,
-        children: const [
+    final pages = widget.pages ??
+        const <Widget>[
           HomePage(),
           GroupsHomePage(),
+          JoinedGroupsPage(),
           PrivateChatsListScreen(),
           EditFeedPage(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab.index,
-        animationDuration: AppMotion.medium,
-        onDestinationSelected: (index) {
-          final next = AppShellTab.values[index];
-          if (next.path == path) return;
-          AppNavigation.go(context, next.path);
-        },
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.explore_outlined),
-            selectedIcon: const Icon(Icons.explore),
-            label: AppShellTab.discover.label,
-          ),
-          NavigationDestination(
-            icon: UnreadBadge(
-              count: unread.groups,
-              child: const Icon(Icons.groups_outlined),
+        ];
+
+    return AppShellScope(
+      openDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+      child: Scaffold(
+        key: _scaffoldKey,
+        drawer: const AppShellDrawer(),
+        body: IndexedStack(index: tab.index, children: pages),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: tab.index,
+          animationDuration: AppMotion.medium,
+          onDestinationSelected: (index) {
+            final next = AppShellTab.values[index];
+            if (next.path == path) return;
+            AppNavigation.go(context, next.path);
+          },
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.explore_outlined),
+              selectedIcon: const Icon(Icons.explore),
+              label: AppShellTab.discover.label,
             ),
-            selectedIcon: UnreadBadge(
-              count: unread.groups,
-              child: const Icon(Icons.groups),
+            NavigationDestination(
+              icon: UnreadBadge(
+                count: unread.groups,
+                child: const Icon(Icons.groups_outlined),
+              ),
+              selectedIcon: UnreadBadge(
+                count: unread.groups,
+                child: const Icon(Icons.groups),
+              ),
+              label: AppShellTab.groups.label,
             ),
-            label: AppShellTab.groups.label,
-          ),
-          NavigationDestination(
-            icon: UnreadBadge(
-              count: unread.privateChats,
-              child: const Icon(Icons.forum_outlined),
+            NavigationDestination(
+              icon: const Icon(Icons.group_outlined),
+              selectedIcon: const Icon(Icons.group),
+              label: AppShellTab.joined.label,
             ),
-            selectedIcon: UnreadBadge(
-              count: unread.privateChats,
-              child: const Icon(Icons.forum),
+            NavigationDestination(
+              icon: UnreadBadge(
+                count: unread.privateChats,
+                child: const Icon(Icons.forum_outlined),
+              ),
+              selectedIcon: UnreadBadge(
+                count: unread.privateChats,
+                child: const Icon(Icons.forum),
+              ),
+              label: AppShellTab.private.label,
             ),
-            label: AppShellTab.private.label,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.movie_filter_outlined),
-            selectedIcon: const Icon(Icons.movie_filter),
-            label: AppShellTab.edits.label,
-          ),
-        ],
+            NavigationDestination(
+              icon: const Icon(Icons.movie_filter_outlined),
+              selectedIcon: const Icon(Icons.movie_filter),
+              label: AppShellTab.edits.label,
+            ),
+          ],
+        ),
       ),
     );
   }
