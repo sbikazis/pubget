@@ -26,12 +26,6 @@ abstract final class AppShellDrawerDestinations {
       path: '/joined',
     ),
     (
-      id: 'notifications',
-      label: 'Notifications',
-      icon: Icons.notifications_outlined,
-      path: '/notifications',
-    ),
-    (
       id: 'suggested',
       label: 'Suggested Groups',
       icon: Icons.explore_outlined,

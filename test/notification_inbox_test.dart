@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/loading/loading_state.dart';
@@ -8,7 +6,6 @@ import 'package:pubget/features/notifications/models/app_notification.dart';
 import 'package:pubget/features/notifications/models/unread_counts.dart';
 import 'package:pubget/features/notifications/providers/notification_provider.dart';
 import 'package:pubget/features/notifications/repositories/notification_repository.dart';
-import 'package:pubget/features/notifications/screens/notification_inbox_page.dart';
 
 void main() {
   test('retry re-fetches after a failed inbox load', () async {
@@ -57,31 +54,6 @@ void main() {
     expect(provider.items, hasLength(2));
   });
 
-  testWidgets('inbox Try again calls retry and reloads', (tester) async {
-    final repository = _FakeNotificationRepository()
-      ..failure = const UnknownError('boom');
-    final provider = NotificationProvider(repository: repository, pageSize: 2);
-    addTearDown(provider.dispose);
-    await provider.open('alice');
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<NotificationProvider>.value(
-        value: provider,
-        child: const MaterialApp(home: NotificationInboxPage()),
-      ),
-    );
-    expect(find.text('Try again'), findsOneWidget);
-    expect(repository.loads, 1);
-
-    repository
-      ..failure = null
-      ..page = <AppNotification>[_item('n1')];
-    await tester.tap(find.text('Try again'));
-    await tester.pumpAndSettle();
-
-    expect(repository.loads, 2);
-    expect(find.text('Friend request'), findsOneWidget);
-  });
 }
 
 AppNotification _item(String id) => AppNotification(

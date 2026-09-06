@@ -48,10 +48,14 @@ final class NotificationProvider extends ChangeNotifier {
     _state = LoadingState.loading;
     _hasMore = false;
     _loadedMore = false;
-    notifyListeners();
+    _safeNotify();
+    final firstPage = Completer<void>();
     _itemsSubscription = _repository
         .getNotifications(uid, limit: pageSize)
-        .listen(_receive);
+        .listen((result) {
+          _receive(result);
+          if (!firstPage.isCompleted) firstPage.complete();
+        });
     _countSubscription = _repository.watchUnreadCounts(uid).listen((result) {
       result.fold(
         onSuccess: (counts) {
@@ -67,6 +71,7 @@ final class NotificationProvider extends ChangeNotifier {
         },
       );
     });
+    await firstPage.future;
   }
 
   Future<void> loadMore() async {
