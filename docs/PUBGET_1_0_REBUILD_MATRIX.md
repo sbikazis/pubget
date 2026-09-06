@@ -84,9 +84,10 @@ Actions:
 
 ## This phase (honest scope)
 
-Home / Drawer / Groups list / Joined / Profile chrome landed on `main`
-via PR #36. The next rebuild surface is Group Details + Group Chat +
-Members chrome on **existing** contracts.
+Home command chrome, official Torii logo, promoted/suggested/events/fan
+works Home cards, and Explore/Groups/+/Private/Clips live on this
+branch. Joined stays in the drawer. Group Details/Chat/Members already
+landed via PR #37.
 
 In scope now:
 

@@ -23,25 +23,25 @@ void main() {
     expect(find.text('Discover body count 0'), findsOneWidget);
     expect(find.textContaining('Groups body'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.group_outlined));
+    await tester.tap(find.byKey(const Key('shell-tab-groups')));
     await tester.pumpAndSettle();
-    expect(find.text('Joined body count 0'), findsOneWidget);
+    expect(find.text('Groups body count 0'), findsOneWidget);
     expect(
       (env.delegate.currentConfiguration as ParameterizedRoute).path,
-      '/joined',
+      '/groups',
     );
 
-    await tester.tap(find.byIcon(Icons.forum_outlined));
+    await tester.tap(find.byKey(const Key('shell-tab-private')));
     await tester.pumpAndSettle();
     expect(find.text('Private body count 0'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.movie_filter_outlined));
+    await tester.tap(find.byKey(const Key('shell-tab-edits')));
     await tester.pumpAndSettle();
     expect(find.text('Edits body count 0'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.groups_outlined));
+    await tester.tap(find.byKey(const Key('shell-create')));
     await tester.pumpAndSettle();
-    expect(find.text('Groups body count 0'), findsOneWidget);
+    expect(find.text('Create a group'), findsOneWidget);
     expect(AppShellTab.values, hasLength(5));
   });
 
@@ -136,9 +136,9 @@ void main() {
     await tester.pump();
     expect(find.text('Discover body count 1'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.group_outlined));
+    await tester.tap(find.byKey(const Key('shell-tab-groups')));
     await tester.pumpAndSettle();
-    expect(find.text('Joined body count 0'), findsOneWidget);
+    expect(find.text('Groups body count 0'), findsOneWidget);
 
     await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
