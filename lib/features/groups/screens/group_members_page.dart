@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -65,6 +66,15 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
             tooltip: 'Create invitation',
             onPressed: () => _showInvite(context, provider),
           ),
+          if (canManageMembers)
+            PubgetIconButton(
+              icon: Icons.block_outlined,
+              tooltip: 'Banned users',
+              onPressed: () => AppNavigation.go(
+                context,
+                '/group-bans?groupId=${widget.groupId}',
+              ),
+            ),
           PubgetIconButton(
             icon: Icons.admin_panel_settings_outlined,
             tooltip: 'Edit role permissions',

@@ -14,6 +14,7 @@ final class GroupMembersProvider extends ChangeNotifier {
   List<GroupMember> _members = const <GroupMember>[];
   List<JoinRequest> _requests = const <JoinRequest>[];
   List<GroupRoleDefinition> _roles = const <GroupRoleDefinition>[];
+  List<GroupBan> _bans = const <GroupBan>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   String? _groupId;
@@ -22,6 +23,7 @@ final class GroupMembersProvider extends ChangeNotifier {
   List<GroupMember> get members => _members;
   List<JoinRequest> get requests => _requests;
   List<GroupRoleDefinition> get roles => _roles;
+  List<GroupBan> get bans => _bans;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
@@ -146,6 +148,33 @@ final class GroupMembersProvider extends ChangeNotifier {
         confirmationToken: prepared.valueOrNull!,
       ),
     );
+  }
+
+  Future<void> loadBans(String groupId) async {
+    _groupId = groupId;
+    _state = LoadingState.loading;
+    notifyListeners();
+    final result = await _repository.getBans(groupId);
+    result.fold(
+      onSuccess: (bans) {
+        _bans = bans;
+        _state = bans.isEmpty ? LoadingState.empty : LoadingState.loaded;
+        notifyListeners();
+      },
+      onFailure: _setFailure,
+    );
+  }
+
+  Future<Result<void>> unban(String uid) async {
+    _state = LoadingState.refreshing;
+    notifyListeners();
+    final result = await _repository.unbanMember(groupId: _groupId!, uid: uid);
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    if (_groupId != null) await loadBans(_groupId!);
+    return result;
   }
 
   Future<Result<void>> decideRequest(String uid, {required bool accept}) =>

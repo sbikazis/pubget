@@ -132,4 +132,10 @@ final class _SplitGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
       Success(<Group>[joined]);
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
 }

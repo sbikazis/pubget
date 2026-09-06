@@ -9,25 +9,12 @@ import 'package:pubget/features/groups/providers/group_members_provider.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_members_repository.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
-import 'package:pubget/features/groups/screens/group_members_page.dart';
+import 'package:pubget/features/groups/screens/group_bans_page.dart';
 
 import 'authentication_test_support.dart';
 
 void main() {
-  test('kick and ban stay out of the menu without manageMembers', () {
-    expect(
-      groupMemberMenuActions(canManageMembers: false),
-      <String>['role', 'transfer'],
-    );
-    expect(
-      groupMemberMenuActions(canManageMembers: true),
-      <String>['role', 'kick', 'ban', 'transfer'],
-    );
-  });
-
-  testWidgets('change-role dialog sends each picked role to the callable', (
-    tester,
-  ) async {
+  testWidgets('authorized user can unban a banned member', (tester) async {
     final members = _FakeMembersRepository();
     final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
     await tester.pumpWidget(
@@ -35,19 +22,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final role in GroupRole.values) {
-      members.changeRoleCalls.clear();
-      await tester.tap(find.byKey(const Key('member-menu-bob')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Change role'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(Key('pick-role-${role.name}')));
-      await tester.pumpAndSettle();
-      expect(members.changeRoleCalls, <GroupRole>[role]);
-    }
+    expect(find.text('carol'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('unban-carol')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Unban').last);
+    await tester.pumpAndSettle();
+
+    expect(members.unbanCalls, <String>['carol']);
+    expect(find.text('carol'), findsNothing);
+    expect(find.text('No banned users'), findsOneWidget);
   });
 
-  testWidgets('unauthorized member does not see kick or ban', (tester) async {
+  testWidgets('unauthorized user cannot unban', (tester) async {
     final members = _FakeMembersRepository();
     final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
     await tester.pumpWidget(
@@ -55,52 +41,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('member-menu-bob')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Change role'), findsOneWidget);
-    expect(find.text('Kick'), findsNothing);
-    expect(find.text('Ban'), findsNothing);
-    expect(find.text('Transfer ownership'), findsOneWidget);
-  });
-
-  testWidgets('banned users action is hidden without manageMembers', (
-    tester,
-  ) async {
-    final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
-    await tester.pumpWidget(
-      await _harness(members: members, groups: groups),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byTooltip('Banned users'), findsNothing);
-  });
-
-  testWidgets('authorized member can open banned users', (tester) async {
-    final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
-    await tester.pumpWidget(
-      await _harness(members: members, groups: groups),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byTooltip('Banned users'), findsOneWidget);
-  });
-
-  testWidgets('authorized member sees kick and ban', (tester) async {
-    final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
-    await tester.pumpWidget(
-      await _harness(members: members, groups: groups),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('member-menu-bob')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Kick'), findsOneWidget);
-    expect(find.text('Ban'), findsOneWidget);
+    expect(find.text('You cannot manage bans'), findsOneWidget);
+    expect(find.byKey(const Key('unban-carol')), findsNothing);
+    expect(members.unbanCalls, isEmpty);
   });
 }
 
@@ -113,32 +56,32 @@ Future<Widget> _harness({
   );
   final auth = AuthProvider(repository: authRepository);
   await auth.initialize();
-  final membersProvider = GroupMembersProvider(repository: members);
-  final groupProvider = GroupProvider(repository: groups);
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
-      ChangeNotifierProvider<GroupProvider>.value(value: groupProvider),
-      ChangeNotifierProvider<GroupMembersProvider>.value(value: membersProvider),
+      ChangeNotifierProvider<GroupProvider>.value(
+        value: GroupProvider(repository: groups),
+      ),
+      ChangeNotifierProvider<GroupMembersProvider>.value(
+        value: GroupMembersProvider(repository: members),
+      ),
     ],
-    child: const MaterialApp(home: GroupMembersPage(groupId: 'g1')),
+    child: const MaterialApp(home: GroupBansPage(groupId: 'g1')),
   );
 }
 
 final class _FakeMembersRepository implements GroupMembersRepository {
-  final changeRoleCalls = <GroupRole>[];
+  final unbanCalls = <String>[];
+  var _bans = <GroupBan>[
+    const GroupBan(uid: 'carol', bannedByUid: 'alice'),
+  ];
 
   @override
   Future<Result<List<GroupMember>>> getMembers(
     String groupId, {
     int limit = 25,
     String? afterUid,
-  }) async {
-    return const Success<List<GroupMember>>([
-      GroupMember(uid: 'alice', role: GroupRole.founder),
-      GroupMember(uid: 'bob', role: GroupRole.member),
-    ]);
-  }
+  }) async => const Success<List<GroupMember>>([]);
 
   @override
   Future<Result<List<JoinRequest>>> getJoinRequests(String groupId) async =>
@@ -166,10 +109,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String uid,
     required GroupRole role,
-  }) async {
-    changeRoleCalls.add(role);
-    return const Success<void>(null);
-  }
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<void>> kickMember({
@@ -210,13 +150,17 @@ final class _FakeMembersRepository implements GroupMembersRepository {
 
   @override
   Future<Result<List<GroupBan>>> getBans(String groupId) async =>
-      const Success<List<GroupBan>>([]);
+      Success<List<GroupBan>>(List<GroupBan>.from(_bans));
 
   @override
   Future<Result<void>> unbanMember({
     required String groupId,
     required String uid,
-  }) async => const Success<void>(null);
+  }) async {
+    unbanCalls.add(uid);
+    _bans = _bans.where((ban) => ban.uid != uid).toList(growable: false);
+    return const Success<void>(null);
+  }
 }
 
 final class _FakeGroupRepository implements GroupRepository {

@@ -705,4 +705,10 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
       const Success(<Group>[]);
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
 }

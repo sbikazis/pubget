@@ -40,6 +40,8 @@ final class GroupProvider extends ChangeNotifier {
   bool get isMember => _membership != null;
   bool get isFounder => _membership?.role == GroupRole.founder;
   bool get canManageEvents => memberCanManageEvents(_membership);
+  bool get canManageSettings => memberCanManageSettings(_membership);
+  bool get canManageMembers => memberCanManageMembers(_membership);
 
   Future<Result<Group>> create(GroupDraft draft) async {
     _start();
@@ -116,20 +118,41 @@ final class GroupProvider extends ChangeNotifier {
     );
   }
 
-  Future<Result<void>> join(String groupId, {String? inviteId}) async {
+  Future<Result<void>> join(
+    String groupId, {
+    required String userId,
+    String? inviteId,
+  }) async {
     _start();
     final result = await _repository.joinGroup(
       groupId: groupId,
       inviteId: inviteId,
     );
-    result.fold(
-      onSuccess: (_) {
-        _membership = const GroupMember(uid: '', role: GroupRole.member);
-        _state = LoadingState.loaded;
-        notifyListeners();
-      },
-      onFailure: _setFailure,
-    );
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    // joinGroup returns {ok: true} only. Read the real membership document.
+    final membershipResult = await _repository.getMembership(groupId, userId);
+    if (!membershipResult.isSuccess) {
+      _setFailure(membershipResult.failureOrNull!);
+      return FailureResult<void>(membershipResult.failureOrNull!);
+    }
+    final membership = membershipResult.valueOrNull;
+    if (membership == null) {
+      const failure = UnknownError(
+        'Membership was not available after joining.',
+      );
+      _setFailure(failure);
+      return const FailureResult<void>(failure);
+    }
+    _membership = membership;
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess) {
+      _group = groupResult.valueOrNull;
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
     return result;
   }
 
@@ -143,6 +166,41 @@ final class GroupProvider extends ChangeNotifier {
       },
       onFailure: _setFailure,
     );
+    return result;
+  }
+
+  Future<Result<void>> updateSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async {
+    _failure = null;
+    _state = LoadingState.refreshing;
+    notifyListeners();
+    final result = await _repository.updateGroupSettings(
+      groupId: groupId,
+      settings: settings,
+    );
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess && groupResult.valueOrNull != null) {
+      _group = groupResult.valueOrNull;
+    } else {
+      final current = _group;
+      if (current != null && current.id == groupId) {
+        _group = current.copyWith(
+          name: settings.name,
+          description: settings.description,
+          rules: settings.rules,
+          joinPolicy: settings.joinPolicy,
+          isSearchable: settings.isSearchable,
+        );
+      }
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
     return result;
   }
 

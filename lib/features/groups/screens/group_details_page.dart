@@ -182,6 +182,28 @@ class _Details extends StatelessWidget {
           ],
           const SizedBox(height: AppSpacing.lg),
         ],
+        if (provider.canManageSettings) ...[
+          PubgetPrimaryButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              '/group-settings?groupId=${group.id}',
+            ),
+            semanticLabel: 'Open group settings',
+            child: const Text('Group settings'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        if (provider.canManageMembers) ...[
+          PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(
+              context,
+              '/group-bans?groupId=${group.id}',
+            ),
+            semanticLabel: 'Open banned users',
+            child: const Text('Banned users'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (!provider.isMember) _JoinAction(group: group),
         if (provider.isFounder) ...[
           PubgetPrimaryButton(
@@ -262,12 +284,13 @@ class _JoinAction extends StatelessWidget {
       );
     }
     final approval = group.joinPolicy == JoinPolicy.approval;
+    final userId = context.read<AuthProvider>().currentUser?.id;
     return PubgetPrimaryButton(
-      onPressed: provider.state == LoadingState.loading
+      onPressed: provider.state == LoadingState.loading || userId == null
           ? null
           : () => approval
                 ? provider.requestToJoin(group.id)
-                : provider.join(group.id),
+                : provider.join(group.id, userId: userId),
       semanticLabel: approval ? 'Request to join group' : 'Join group',
       child: Text(approval ? 'Request to join' : 'Join group'),
     );

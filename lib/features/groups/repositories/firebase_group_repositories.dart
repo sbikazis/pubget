@@ -127,6 +127,14 @@ final class FirebaseGroupRepository implements GroupRepository {
     });
   });
 
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) => _guard(() async {
+    await _callVoid('updateGroupSettings', settings.toMap(groupId: groupId));
+  });
+
   Future<Group> _callGroup(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call(data);
     final group = result.data['group'] as Map<dynamic, dynamic>;
@@ -301,6 +309,24 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   }) => _guard(
     () => _call('rejectJoinRequest', {'groupId': groupId, 'uid': uid}),
   );
+
+  @override
+  Future<Result<List<GroupBan>>> getBans(String groupId) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('bans')
+        .get();
+    return snapshot.docs
+        .map((doc) => GroupBan.fromMap(doc.data(), uid: doc.id))
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<void>> unbanMember({
+    required String groupId,
+    required String uid,
+  }) => _guard(() => _call('unbanMember', {'groupId': groupId, 'uid': uid}));
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
