@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../settings/widgets/language_picker.dart';
 import '../widgets/auth_atmosphere.dart';
 import '../widgets/auth_brand_header.dart';
 
@@ -56,7 +58,7 @@ class AuthPageShell extends StatelessWidget {
                         child: leading ?? const SizedBox.shrink(),
                       ),
                       const Spacer(),
-                      if (trailing != null) trailing!,
+                      trailing ?? const AuthLanguagePicker(),
                     ],
                   ),
                 ),
@@ -177,18 +179,18 @@ class _AuthPanel extends StatelessWidget {
 class AuthBackButton extends StatelessWidget {
   const AuthBackButton({
     required this.onPressed,
-    this.tooltip = 'Back',
+    this.tooltip,
     super.key,
   });
 
   final VoidCallback onPressed;
-  final String tooltip;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     return PubgetIconButton(
       icon: Icons.arrow_back,
-      tooltip: tooltip,
+      tooltip: tooltip ?? AppStrings.of(context).back,
       onPressed: onPressed,
     );
   }

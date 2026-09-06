@@ -38,7 +38,7 @@ Evidence abbreviations: **CSM** = `docs/CURRENT_STATE_MASTER.md`.
 |---|---|---|---|---|
 | 2.1 Personality: Anime, Premium, Social, Dynamic, Youthful, Immersive, Professional | Design system + Royal Purple/Gold + splash copy “Premium Anime Community” (CSM §1.2, §22.1; `lib/core/README.md` in live tree) | 🔵 IMPROVE | Systemic | Tokens and copy aim at the identity. Placeholders (“Sponsored”, “later Pubget prompt”) and draft terms undercut Premium/Professional. |
 | 2.2 Royal Purple + Gold; Dark + Light; unified system not per-screen invention | Settings theme System/Light/Dark; design-system widgets; debug `/design-system` (CSM §19, §4.5) | 🟡 PARTIAL | Systemic | Unified widgets exist. Spec still wants every screen on that system; CSM does not prove visual QA across all domains. |
-| 2.3 Arabic + English; real RTL **and** translated UI, not chrome-only | `supportedLocales` en/ar; no `.arb` / `lib/l10n`; feature copy is English literals; RTL Material chrome applies (CSM §26) | 🟠 MAJOR GAP | Systemic | Locked decision (§122). Choosing العربية flips direction, not product copy. |
+| 2.3 Arabic + English; real RTL **and** translated UI, not chrome-only | First-run Arabic; login + Settings language share `SettingsProvider`; auth/settings/shell use `AppStrings` (CSM §26). Feature bodies still English. | 🟡 PARTIAL | Systemic | Locked decision (§122). Login/settings/chrome are bilingual. Groups/chat/home cards/guide still English. |
 
 ---
 

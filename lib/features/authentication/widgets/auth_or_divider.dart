@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 
 class AuthOrDivider extends StatelessWidget {
-  const AuthOrDivider({this.label = 'or', super.key});
+  const AuthOrDivider({this.label, super.key});
 
-  final String label;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +20,7 @@ class AuthOrDivider extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           child: Text(
-            label,
+            label ?? AppStrings.of(context).orDivider,
             style: theme.textTheme.labelMedium?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
             ),

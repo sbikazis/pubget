@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../../core/loading/loading_state.dart';
@@ -73,7 +74,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: const AppShellMenuButton(),
-        title: const Text('Discover'),
+        title: Text(AppStrings.of(context).tabDiscover),
         actions: <Widget>[
           if (economy != null)
             Padding(
@@ -88,13 +89,13 @@ class _HomePageState extends State<HomePage> {
             count: unread.notifications,
             child: PubgetIconButton(
               icon: Icons.notifications_none,
-              tooltip: 'Notifications',
+              tooltip: AppStrings.of(context).notifications,
               onPressed: () => AppNavigation.go(context, '/notifications'),
             ),
           ),
           PubgetIconButton(
             icon: Icons.settings_outlined,
-            tooltip: 'Settings',
+            tooltip: AppStrings.of(context).settings,
             onPressed: () => AppNavigation.go(context, '/settings'),
           ),
           const SizedBox(width: AppSpacing.xs),

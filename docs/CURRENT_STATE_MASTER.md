@@ -857,7 +857,7 @@ Block checks absent in audited client queries: Home promoted/rising/community Fi
 
 - Account: email display; Privacy and profile → `/profile/edit`; Send password reset (disabled without email); Sign out → `/login`
 - Appearance: System / Light / Dark → SharedPreferences `pubget.settings.themeMode`
-- Language: System / English / العربية → `pubget.settings.locale`
+- Language: System / English / العربية → `pubget.settings.locale` (first-run default **arabic**; login chips and Settings radios share `SettingsProvider`)
 - Help: Guide `/guide`; Terms `/terms`
 - About: version string `1.0.2+18`
 
@@ -1051,17 +1051,14 @@ Functions unit files (22): socialGraph, avatarPrivacy, groupsDomain, groupChat, 
 
 ## 26. Localization / RTL
 
-`MaterialApp.router` `supportedLocales`: `en`, `ar` (`pubget_app.dart` 634). Delegates: Material, Widgets, Cupertino. No `.arb` / `lib/l10n` generated catalog exists.
+`MaterialApp.router` `supportedLocales`: `en`, `ar`. Delegates: Material, Widgets, Cupertino. Product catalog is `lib/core/l10n/app_strings.dart` (no generated `.arb`). First-run locale is **Arabic**. Unknown device locales fall back to `ar`, not `en`.
 
-Locale comes from `SettingsProvider` (`system` → null, `english` → `Locale('en')`, `arabic` → `Locale('ar')`). Choosing العربية applies Flutter’s Arabic Material localizations (system chrome, some widgets RTL). Feature copy is English string literals throughout `lib/`.
+Locale comes from `SettingsProvider` (`system` → null / device, `english` → `Locale('en')`, `arabic` → `Locale('ar')`). Login, register, forgot-password, and terms show `AuthLanguagePicker` (العربية | English). Settings language radios sit above Appearance and write the same `SettingsProvider`. Auth + Settings + shell chrome (tabs, Drawer, Home title) read `AppStrings`.
 
-Examples of English (or mixed) UI that remain when locale is `ar`:
+Examples of English UI that remain when locale is `ar` (feature bodies, not chrome):
 
-- Splash `Premium Anime Community` / `Preparing your experience…` (`splash_page.dart`)
-- Login `Welcome back`, `Sign in`, `Forgot password?` (`login_page.dart`)
-- Home AppBar `Discover` (`home_page.dart` 74)
-- Settings section titles Account / Appearance / Language / Help / About; only the Arabic option label is `العربية` (`settings_page.dart` 161–164)
 - Guide topics and bodies all English (`guide_page.dart`)
+- Home section cards still mixed English (`home_page.dart`)
 - Chat placeholder snackbar `This action is prepared for a later Pubget prompt.` (`group_chat_page.dart` 310–315)
 - Economy `Sponsored`, `Real payments are not connected in this build.` (`economy_types.dart`)
 - Notification titles `New group message`, etc. (`notification_inbox_page.dart` 138–148)

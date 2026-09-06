@@ -6,6 +6,7 @@ import '../features/edits/screens/edit_feed_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/joined_groups_page.dart';
 import '../features/home/screens/home_page.dart';
+import '../core/l10n/app_strings.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/widgets/unread_badge.dart';
 import '../features/private_chat/screens/private_chats_list_screen.dart';
@@ -64,6 +65,7 @@ class _AppShellState extends State<AppShell> {
     };
     final tab = AppShellTabX.fromPath(path);
     final unread = context.watch<UnreadEngine>();
+    final copy = AppStrings.of(context);
     final pages = widget.pages ??
         const <Widget>[
           HomePage(),
@@ -91,7 +93,7 @@ class _AppShellState extends State<AppShell> {
             NavigationDestination(
               icon: const Icon(Icons.explore_outlined),
               selectedIcon: const Icon(Icons.explore),
-              label: AppShellTab.discover.label,
+              label: copy.tabDiscover,
             ),
             NavigationDestination(
               icon: UnreadBadge(
@@ -102,7 +104,7 @@ class _AppShellState extends State<AppShell> {
                 count: unread.groups,
                 child: const Icon(Icons.groups),
               ),
-              label: AppShellTab.groups.label,
+              label: copy.tabGroups,
             ),
             NavigationDestination(
               icon: UnreadBadge(
@@ -113,7 +115,7 @@ class _AppShellState extends State<AppShell> {
                 count: unread.groups,
                 child: const Icon(Icons.group),
               ),
-              label: AppShellTab.joined.label,
+              label: copy.tabJoined,
             ),
             NavigationDestination(
               icon: UnreadBadge(
@@ -124,12 +126,12 @@ class _AppShellState extends State<AppShell> {
                 count: unread.privateChats,
                 child: const Icon(Icons.forum),
               ),
-              label: AppShellTab.private.label,
+              label: copy.tabPrivate,
             ),
             NavigationDestination(
               icon: const Icon(Icons.movie_filter_outlined),
               selectedIcon: const Icon(Icons.movie_filter),
-              label: AppShellTab.edits.label,
+              label: copy.tabEdits,
             ),
           ],
         ),

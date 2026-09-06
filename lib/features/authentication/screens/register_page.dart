@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -61,30 +62,31 @@ class _RegisterPageState extends State<RegisterPage> {
     final auth = context.watch<AuthProvider>();
     final draft = context.watch<AuthDraftStore>();
     final network = context.watch<NetworkService>();
+    final copy = AppStrings.of(context);
     final loading = auth.isBusy;
     final offline = network.isOffline;
     return AuthPageShell(
-      title: 'Create your account',
-      subtitle: 'Join Pubget. You can finish your profile after registration.',
+      title: copy.createYourAccount,
+      subtitle: copy.registerSubtitle,
       compactBrand: true,
       footer: PubgetTextButton(
         onPressed: loading ? null : () => AppNavigation.go(context, '/login'),
-        semanticLabel: 'Return to sign in',
-        child: const Text('Already have an account? Sign in'),
+        semanticLabel: copy.returnToSignIn,
+        child: Text(copy.alreadyHaveAccount),
       ),
       child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             if (offline)
-              const PubgetInlineBanner(
-                title: 'You are offline',
-                message: 'Reconnect before creating an account.',
+              PubgetInlineBanner(
+                title: copy.youAreOffline,
+                message: copy.reconnectBeforeRegister,
                 icon: Icons.cloud_off_outlined,
               )
             else if (auth.failure != null)
               PubgetInlineBanner.error(
-                title: 'Registration failed',
+                title: copy.registrationFailed,
                 message: auth.failure!.message,
               ),
             if (offline || auth.failure != null)
@@ -92,7 +94,7 @@ class _RegisterPageState extends State<RegisterPage> {
             PubgetTextField(
               key: const Key('register-email'),
               controller: _email,
-              label: 'Email',
+              label: copy.email,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               errorText: _emailError,
@@ -107,11 +109,11 @@ class _RegisterPageState extends State<RegisterPage> {
             AuthPasswordField(
               key: const Key('register-password'),
               controller: _password,
-              label: 'Password',
+              label: copy.password,
               errorText: _passwordError,
               enabled: !loading,
               showStrength: true,
-              helperText: 'At least 6 characters.',
+              helperText: copy.passwordHint,
               textInputAction: TextInputAction.next,
               autofillHints: const <String>[AutofillHints.newPassword],
             ),
@@ -119,7 +121,7 @@ class _RegisterPageState extends State<RegisterPage> {
             AuthPasswordField(
               key: const Key('register-confirmation'),
               controller: _confirmation,
-              label: 'Confirm password',
+              label: copy.confirmPassword,
               errorText: _confirmationError,
               enabled: !loading,
               autofillHints: const <String>[AutofillHints.newPassword],
@@ -133,7 +135,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 onChanged: loading
                     ? null
                     : (value) => draft.setAcceptedTerms(value ?? false),
-                title: const Text('I agree to the terms'),
+                title: Text(copy.agreeToTerms),
                 controlAffinity: ListTileControlAffinity.leading,
               ),
             ),
@@ -141,24 +143,24 @@ class _RegisterPageState extends State<RegisterPage> {
               alignment: AlignmentDirectional.centerStart,
               child: PubgetTextButton(
                 onPressed: () => _openTerms(draft),
-                semanticLabel: 'Read the terms',
-                child: const Text('Read the terms'),
+                semanticLabel: copy.readTheTerms,
+                child: Text(copy.readTheTerms),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             PubgetPrimaryButton(
               key: const Key('register-submit'),
               onPressed: offline || loading ? null : _submit,
-              semanticLabel: 'Create account with email',
+              semanticLabel: copy.createAccountWithEmail,
               loading: loading,
-              child: const Text('Create account'),
+              child: Text(copy.createAccount),
             ),
             const SizedBox(height: AppSpacing.lg),
             const AuthOrDivider(),
             const SizedBox(height: AppSpacing.lg),
             AuthGoogleButton(
               onPressed: offline || loading ? null : _google,
-              semanticLabel: 'Create account with Google',
+              semanticLabel: copy.createAccountWithGoogle,
             ),
           ],
         ),
@@ -197,16 +199,18 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   bool _validate() {
+    final copy = AppStrings.of(context);
     setState(() {
-      _emailError = AuthValidators.email(_email.text);
-      _passwordError = AuthValidators.password(_password.text);
+      _emailError = AuthValidators.email(_email.text, copy);
+      _passwordError = AuthValidators.password(_password.text, copy);
       _confirmationError = AuthValidators.confirmation(
         _password.text,
         _confirmation.text,
+        copy,
       );
     });
     if (!context.read<AuthDraftStore>().acceptedTerms) {
-      PubgetSnackbars.showError(context, 'Accept the terms to continue.');
+      PubgetSnackbars.showError(context, copy.acceptTermsToContinue);
     }
     return _emailError == null &&
         _passwordError == null &&
@@ -226,7 +230,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _google() async {
     if (!context.read<AuthDraftStore>().acceptedTerms) {
-      PubgetSnackbars.showError(context, 'Accept the terms to continue.');
+      PubgetSnackbars.showError(
+        context,
+        AppStrings.of(context).acceptTermsToContinue,
+      );
       return;
     }
     final result = await context.read<AuthProvider>().signInWithGoogle();

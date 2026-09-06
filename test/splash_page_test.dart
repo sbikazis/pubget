@@ -10,6 +10,7 @@ import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
 import 'package:pubget/features/authentication/screens/login_page.dart';
 import 'package:pubget/features/authentication/screens/splash_page.dart';
+import 'package:pubget/features/settings/settings_provider.dart';
 
 import 'authentication_test_support.dart';
 
@@ -49,6 +50,8 @@ void main() {
     final network = NetworkService(probe: () async => true);
     addTearDown(network.dispose);
     await network.refresh();
+    final settings = await englishSettingsProvider();
+    addTearDown(settings.dispose);
     final delegate = AppRouterDelegate(
       homePage: const SplashPage(
         firebaseState: FirebaseInitializationState.initializedForTests(),
@@ -69,10 +72,12 @@ void main() {
           ChangeNotifierProvider<OnboardingProvider>(
             create: (_) => OnboardingProvider(repository: FakeUserRepository()),
           ),
+          ChangeNotifierProvider<SettingsProvider>.value(value: settings),
         ],
         child: MaterialApp(
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
+          locale: settings.locale,
           home: Router(
             routerDelegate: delegate,
             routeInformationParser: AppRouteInformationParser(),

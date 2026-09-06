@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/l10n/app_strings.dart';
 import '../features/authentication/providers/auth_provider.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/widgets/unread_badge.dart';
@@ -56,6 +57,7 @@ class AppShellDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unread = context.watch<UnreadEngine>();
+    final copy = AppStrings.of(context);
     return Drawer(
       child: SafeArea(
         child: ListView(
@@ -74,7 +76,7 @@ class AppShellDrawer extends StatelessWidget {
                   count: unreadCountFor(item.id, unread),
                   child: Icon(item.icon),
                 ),
-                title: Text(item.label),
+                title: Text(copy.drawerLabel(item.id)),
                 onTap: () => _open(context, item),
               ),
           ],

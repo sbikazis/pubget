@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -65,7 +66,9 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
             icon: _hidden
                 ? Icons.visibility_outlined
                 : Icons.visibility_off_outlined,
-            tooltip: _hidden ? 'Show password' : 'Hide password',
+            tooltip: _hidden
+                ? AppStrings.of(context).showPassword
+                : AppStrings.of(context).hidePassword,
             onPressed: widget.enabled
                 ? () => setState(() => _hidden = !_hidden)
                 : null,
@@ -93,11 +96,12 @@ class _PasswordStrengthMeter extends StatelessWidget {
       PasswordStrength.fair => 2,
       PasswordStrength.strong => 3,
     };
+    final copy = AppStrings.of(context);
     final label = switch (strength) {
       PasswordStrength.empty => '',
-      PasswordStrength.short => 'Too short',
-      PasswordStrength.fair => 'Good',
-      PasswordStrength.strong => 'Strong',
+      PasswordStrength.short => copy.passwordShort,
+      PasswordStrength.fair => copy.passwordFair,
+      PasswordStrength.strong => copy.passwordStrong,
     };
     final color = switch (strength) {
       PasswordStrength.empty => AppColors.lightOutline,
