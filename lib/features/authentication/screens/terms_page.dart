@@ -16,7 +16,7 @@ class TermsPage extends StatelessWidget {
       subtitle: copy.termsSubtitle,
       compactBrand: true,
       leading: AuthBackButton(
-        onPressed: () => AppNavigation.go(context, '/register'),
+        onPressed: () => AppNavigation.back(context),
         tooltip: copy.backToRegistration,
       ),
       child: Column(

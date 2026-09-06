@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -67,7 +68,9 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
     }
     final allowed = provider.canManageSettings && group?.id == widget.groupId;
     return Scaffold(
-      appBar: AppBar(title: const Text('Group settings')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Group settings')),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => _reload(context),

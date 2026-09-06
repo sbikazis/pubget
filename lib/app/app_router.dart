@@ -40,10 +40,10 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     AppRoute initialRoute = const FoundationRoute(),
     this.routeGuard,
     this.refreshListenable,
-  }) : _route = initialRoute,
+  }) : _stack = <AppRoute>[initialRoute],
        navigatorKey = navigatorKey ?? GlobalKey<NavigatorState>() {
     refreshListenable?.addListener(_refreshGuard);
-    _route = _guard(initialRoute);
+    _replace(_guard(initialRoute));
   }
 
   final Widget homePage;
@@ -54,9 +54,11 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   final Listenable? refreshListenable;
   @override
   final GlobalKey<NavigatorState> navigatorKey;
-  AppRoute _route;
+  final List<AppRoute> _stack;
   AppRoute? _pendingRoute;
   var _sessionHadProtectedAccess = false;
+
+  AppRoute get _route => _stack.last;
 
   static const _authFlowPaths = <String>{
     '/login',
@@ -73,10 +75,53 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @visibleForTesting
   AppRoute? get pendingRoute => _pendingRoute;
 
+  bool get canPop =>
+      _stack.length > 1 || !AppRouter.isRoot(_stack.last);
+
+  @visibleForTesting
+  List<AppRoute> get stack => List<AppRoute>.unmodifiable(_stack);
+
   @override
   Future<void> setNewRoutePath(AppRoute configuration) async {
-    _route = _guard(configuration);
+    _replace(_guard(configuration));
+  }
+
+  Future<void> navigate(AppRoute configuration) async {
+    final next = _guard(configuration);
+    if (AppRouter.isRoot(next) || _stack.isEmpty) {
+      _replace(next);
+      return;
+    }
+    if (_sameRoute(next, _stack.last)) return;
+    _stack.add(next);
     notifyListeners();
+  }
+
+  void popStack() {
+    if (_stack.length > 1) {
+      _stack.removeLast();
+      notifyListeners();
+      return;
+    }
+    if (!AppRouter.isRoot(_stack.last)) {
+      _replace(const ParameterizedRoute(path: '/home'));
+    }
+  }
+
+  void _replace(AppRoute route) {
+    _stack
+      ..clear()
+      ..add(route);
+    notifyListeners();
+  }
+
+  @override
+  Future<bool> popRoute() async {
+    if (canPop) {
+      popStack();
+      return true;
+    }
+    return false;
   }
 
   void clearPending() {
@@ -118,7 +163,11 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   void _refreshGuard() {
     final guarded = _guard(_route);
     if (_sameRoute(guarded, _route)) return;
-    _route = guarded;
+    if (AppRouter.isRoot(guarded)) {
+      _replace(guarded);
+      return;
+    }
+    _stack[_stack.length - 1] = guarded;
     notifyListeners();
   }
 
@@ -162,13 +211,10 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
       pages: <Page<void>>[MaterialPage<void>(key: pageKey, child: page)],
       onDidRemovePage: (page) {
         // Overlay routes (Drawer) share this Navigator. Ignore those pops.
-        // When the declared page itself is popped (system back on the last
-        // route), reset to splash so Android back still leaves the app shell.
+        // In-app back is handled by [popStack]; do not reset to splash.
         if (page.key != pageKey) {
           return;
         }
-        _route = const FoundationRoute();
-        notifyListeners();
       },
     );
   }
@@ -189,6 +235,19 @@ final class AppRouter {
     '/joined',
     '/private',
     '/edits',
+  };
+
+  /// Destinations that reset history. No back arrow on these screens.
+  static const rootPaths = <String>{
+    '/splash',
+    '/login',
+    '/onboarding',
+    ...shellPaths,
+  };
+
+  static bool isRoot(AppRoute route) => switch (route) {
+    FoundationRoute() => true,
+    ParameterizedRoute(:final path) => rootPaths.contains(path),
   };
 
   static AppRoute routeFromUri(Uri uri) {
@@ -235,7 +294,24 @@ final class AppRouter {
 abstract final class AppNavigation {
   static Future<void> go(BuildContext context, String path) {
     final delegate = Router.of(context).routerDelegate as AppRouterDelegate;
-    return delegate.setNewRoutePath(AppRouter.routeFromString(path));
+    return delegate.navigate(AppRouter.routeFromString(path));
+  }
+
+  static Future<void> back(BuildContext context) async {
+    final delegate = Router.maybeOf(context)?.routerDelegate;
+    if (delegate is AppRouterDelegate) {
+      delegate.popStack();
+      return;
+    }
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) navigator.pop();
+  }
+
+  static bool canPop(BuildContext context) {
+    final delegate = Router.maybeOf(context)?.routerDelegate;
+    if (delegate is AppRouterDelegate) return delegate.canPop;
+    final navigator = Navigator.maybeOf(context);
+    return navigator != null && navigator.canPop();
   }
 }
 

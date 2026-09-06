@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -47,6 +48,7 @@ class _GameListScreenState extends State<GameListScreen> {
       length: groupId == null ? 3 : 1,
       child: Scaffold(
         appBar: AppBar(
+          leading: AppBackButton.maybeOf(context),
           title: Text(groupId == null ? 'Games' : GameStrings.groupGames),
           bottom: groupId == null
               ? const TabBar(

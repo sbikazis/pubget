@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -65,6 +66,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     if (event != null) _maybeLoadGroup(event);
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(event?.title ?? 'Event'),
         actions: [
           IconButton(

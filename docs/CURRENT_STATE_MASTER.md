@@ -369,6 +369,8 @@ There is no app-wide `Drawer`. `AppShell` uses a bottom `NavigationBar` (`app_sh
 
 These four paths share navigator key `app-shell` (`app_router.dart` 180–185).
 
+`AppNavigation.go` **pushes** non-root routes onto a history stack. Root paths (`/splash`, `/login`, `/onboarding`, shell tabs) **replace** the stack. `AppBackButton` appears on every pushed page AppBar; tapping it (or Android back) calls `AppNavigation.back`. A deep-linked detail with no history falls back to `/home`. Login, splash, onboarding, and the five shell tabs have no back arrow (menu / auth chrome instead).
+
 ### 4.2 Domain routes (`pubget_app.dart` 659–685)
 
 `/splash`, `/login`, `/register`, `/forgot-password`, `/terms`, `/onboarding`, `/home`, `/search`, `/settings`, `/guide`, `/unknown`, `/profile/edit`, `/friend-requests`, `/notifications`, `/edits`, `/edits/upload`, `/groups`, `/groups/create`, `/private`, `/anime`, `/anime/library`, `/fan-works`, `/store`, `/inventory`, `/premium`, `/economy/history`.

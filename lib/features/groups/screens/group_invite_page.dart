@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -21,7 +22,9 @@ class GroupInvitePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Group invitation')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Group invitation')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
