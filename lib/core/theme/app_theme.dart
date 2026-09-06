@@ -1,3 +1,6 @@
+// Required on Flutter 3.44+: CupertinoPageTransitionsBuilder left Material.
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
