@@ -8,6 +8,7 @@ export 'pubget_bottom_sheet.dart';
 export 'pubget_buttons.dart';
 export 'pubget_card.dart';
 export 'pubget_dialogs.dart';
+export 'pubget_discovery.dart';
 export 'pubget_inputs.dart';
 export 'pubget_skeleton.dart';
 export 'pubget_selection_chip.dart';

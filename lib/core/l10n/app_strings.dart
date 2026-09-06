@@ -224,7 +224,7 @@ final class AppStrings {
   String get drawerGroups => pick('My Groups', 'مجموعاتي');
   String get drawerJoined => pick('Joined Groups', 'المجموعات المنضم إليها');
   String get drawerSuggested => pick('Suggested Groups', 'مجموعات مقترحة');
-  String get drawerStore => pick('Store', 'المتجر');
+  String get drawerStore => pick('Dragon Store', 'متجر التنين');
   String get drawerPremium => pick('Premium', 'بريميوم');
   String get drawerSettings => pick('Settings', 'الإعدادات');
   String get drawerGuide => pick('Guide', 'الدليل');
@@ -252,4 +252,115 @@ final class AppStrings {
     'edits' => tabEdits,
     _ => id,
   };
+
+  String get seeAll => pick('See all', 'عرض الكل');
+  String get loadMore => pick('Load more', 'تحميل المزيد');
+  String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
+  String get communityFallback => pick('A Pubget community', 'مجتمع على Pubget');
+  String get pubgetUser => pick('Pubget user', 'مستخدم Pubget');
+
+  String get homeGreeting => pick('Your anime world', 'عالمك في الأنمي');
+  String welcomeUser(String name) =>
+      pick('Welcome back, $name', 'مرحباً بعودتك يا $name');
+  String get homeWhatNow => pick(
+    'What should I do right now?',
+    'ماذا أفعل الآن؟',
+  );
+  String get homeHeroSubtitle => pick(
+    'Discover people, groups, edits, and games in one place.',
+    'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
+  );
+  String get nowJoinGroup => pick('Join a group', 'انضم لمجموعة');
+  String get nowWatchEdits => pick('Watch Edits', 'شاهد المقاطع');
+  String get nowPlay => pick('Play', 'العب');
+  String get nowEvents => pick('Events', 'الفعاليات');
+  String get nowPeople => pick('People', 'أشخاص');
+  String get nowAnime => pick('Anime', 'أنمي');
+
+  String get coldStartBanner => pick(
+    'Fresh start: we mix quality, trending, and rising groups until your taste is clearer.',
+    'بداية جديدة: نمزج الجودة والشائع والمجموعات الصاعدة حتى تتضح ذائقتك.',
+  );
+
+  String get sectionPromoted => pick('Promoted groups', 'مجموعات مروّجة');
+  String get sectionRising => pick('Rising groups', 'مجموعات صاعدة');
+  String get sectionRecommended =>
+      pick('Recommended groups', 'مجموعات مقترحة');
+  String get sectionCommunity =>
+      pick('Recent community activity', 'نشاط المجتمع الأخير');
+  String get sectionPeople => pick('People to discover', 'أشخاص لاكتشافهم');
+  String get sectionEdits => pick('Trending Edits', 'مقاطع رائجة');
+  String get sectionEvents => pick('Events', 'الفعاليات');
+  String get sectionGames => pick('Games', 'الألعاب');
+  String get sectionFanWorks => pick('Fan Works', 'أعمال المعجبين');
+  String get sectionAnime => pick('Anime Hub', 'مركز الأنمي');
+
+  String get reasonPromoted => pick('Promoted', 'مروّج');
+  String get reasonRising => pick('Rising now', 'يصعد الآن');
+  String get reasonForYou => pick('For you', 'لك');
+
+  String get nothingHereYet => pick('Nothing here yet', 'لا شيء هنا بعد');
+  String get findPeopleHint =>
+      pick('Find people through search and Respect.', 'ابحث عن أشخاص عبر البحث والاحترام.');
+  String get discoverGroupsHint => pick(
+    'Discover groups or start one of your own.',
+    'اكتشف مجموعات أو أنشئ مجموعتك.',
+  );
+  String get searchPeople => pick('Search people', 'ابحث عن أشخاص');
+  String get exploreGroups => pick('Explore groups', 'استكشف المجموعات');
+  String get sectionFailed =>
+      pick('This section could not load.', 'تعذّر تحميل هذا القسم.');
+
+  String get groupsTitle => pick('My Groups', 'مجموعاتي');
+  String get joinedTitle => pick('Joined', 'المنضم إليها');
+  String get searchGroups => pick('Search groups', 'ابحث عن مجموعات');
+  String get createGroup => pick('Create', 'إنشاء');
+  String get createAGroup => pick('Create a group', 'أنشئ مجموعة');
+  String get noGroupsFound => pick('No groups found', 'لا توجد مجموعات');
+  String get noGroupsMessage => pick(
+    'Discover a community or create the first group on Pubget.',
+    'اكتشف مجتمعاً أو أنشئ أول مجموعة على Pubget.',
+  );
+  String get groupsFailed => pick('Groups could not load.', 'تعذّر تحميل المجموعات.');
+  String get noJoinedGroups => pick('No joined groups', 'لا مجموعات منضم إليها');
+  String get noJoinedMessage => pick(
+    'Join a community from Groups or Discover.',
+    'انضم لمجتمع من المجموعات أو الاستكشاف.',
+  );
+  String get findGroups => pick('Find groups', 'ابحث عن مجموعات');
+  String get joinedFailed =>
+      pick('Joined groups could not load.', 'تعذّر تحميل المجموعات المنضم إليها.');
+
+  String groupTypeLabel(String type) => switch (type) {
+    'public' => pick('Public', 'عامة'),
+    'animeRoleplay' => pick('Anime Roleplay', 'تمثيل أنمي'),
+    'openRoleplay' => pick('Open Roleplay', 'تمثيل مفتوح'),
+    _ => type,
+  };
+
+  String membersCount(int count) =>
+      pick('$count members', '$count أعضاء');
+
+  String membersCapacity(int count, int max) =>
+      pick('$count/$max members', '$count/$max أعضاء');
+
+  String get myProfile => pick('My profile', 'ملفي');
+  String get profile => pick('Profile', 'الملف');
+  String get editProfile => pick('Edit profile', 'تعديل الملف');
+  String get shareProfile => pick('Share profile', 'مشاركة الملف');
+  String get copyLink => pick('Copy link', 'نسخ الرابط');
+  String get respect => pick('Respect', 'احترام');
+  String get fans => pick('Fans', 'المعجبون');
+  String get friends => pick('Friends', 'الأصدقاء');
+  String get friendRequests => pick('Friend requests', 'طلبات الصداقة');
+  String get achievements => pick('Achievements', 'الإنجازات');
+  String get store => pick('Store', 'المتجر');
+  String get profileUnavailable =>
+      pick('Profile not available', 'الملف غير متاح');
+  String get profilePrivate => pick(
+    'This user may have made their profile private.',
+    'قد يكون هذا المستخدم جعل ملفه خاصاً.',
+  );
+  String get profileFailed =>
+      pick('The profile could not load.', 'تعذّر تحميل الملف.');
 }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_radius.dart';
@@ -325,23 +326,10 @@ class AnimeHomeStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    AnimeStrings.hubTitle,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AnimeLinks.openHub(context),
-                  semanticLabel: AnimeStrings.seeAll,
-                  child: const Text(AnimeStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionAnime,
+            actionLabel: AnimeStrings.seeAll,
+            onAction: () => AnimeLinks.openHub(context),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (hub.state == LoadingState.loading && trending.isEmpty)

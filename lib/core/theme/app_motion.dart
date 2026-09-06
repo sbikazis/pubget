@@ -8,4 +8,7 @@ abstract final class AppMotion {
   static const slow = Duration(milliseconds: 480);
 
   static const curve = Curves.easeOutCubic;
+  static const enter = Curves.easeOutCubic;
+  static const exit = Curves.easeInCubic;
+  static const emphasized = Curves.easeOutBack;
 }

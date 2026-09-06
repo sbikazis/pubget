@@ -11,6 +11,7 @@ import '../core/widgets/pubget_bottom_sheet.dart';
 import '../core/widgets/pubget_buttons.dart';
 import '../core/widgets/pubget_card.dart';
 import '../core/widgets/pubget_dialogs.dart';
+import '../core/widgets/pubget_discovery.dart';
 import '../core/widgets/pubget_inputs.dart';
 import '../core/widgets/pubget_skeleton.dart';
 import '../core/widgets/pubget_snackbars.dart';
@@ -205,6 +206,37 @@ class _DesignSystemShowcasePageState extends State<DesignSystemShowcasePage> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                  _ShowcaseSection(
+                    title: 'Command center',
+                    description:
+                        'Home hero, now-actions, and discovery tiles share one language.',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        const PubgetHeroBanner(
+                          title: 'Your anime world',
+                          subtitle: 'Discover people, groups, edits, and games.',
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        PubgetNowActions(
+                          actions: <PubgetNowActionData>[
+                            PubgetNowActionData(
+                              id: 'groups',
+                              label: 'Join a group',
+                              icon: Icons.groups_outlined,
+                              onPressed: () {},
+                            ),
+                            PubgetNowActionData(
+                              id: 'edits',
+                              label: 'Watch Edits',
+                              icon: Icons.movie_filter_outlined,
+                              onPressed: () {},
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   _ShowcaseSection(

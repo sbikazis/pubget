@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/l10n/app_strings.dart';
+import '../core/theme/app_colors.dart';
+import '../core/theme/app_spacing.dart';
+import '../core/widgets/pubget_design_system.dart';
 import '../features/authentication/providers/auth_provider.dart';
+import '../features/authentication/providers/onboarding_provider.dart';
+import '../features/economy/providers/economy_provider.dart';
+import '../features/economy/widgets/economy_widgets.dart';
 import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/widgets/unread_badge.dart';
 import 'app_router.dart';
@@ -32,7 +38,7 @@ abstract final class AppShellDrawerDestinations {
       icon: Icons.explore_outlined,
       path: '/home',
     ),
-    (id: 'store', label: 'Store', icon: Icons.storefront_outlined, path: '/store'),
+    (id: 'store', label: 'Dragon Store', icon: Icons.storefront_outlined, path: '/store'),
     (id: 'premium', label: 'Premium', icon: Icons.workspace_premium_outlined, path: '/premium'),
     (
       id: 'settings',
@@ -58,28 +64,51 @@ class AppShellDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final unread = context.watch<UnreadEngine>();
     final copy = AppStrings.of(context);
+    final auth = context.watch<AuthProvider>();
+    OnboardingProvider? onboarding;
+    try {
+      onboarding = Provider.of<OnboardingProvider>(context);
+    } on ProviderNotFoundException {
+      onboarding = null;
+    }
+    final profile = onboarding?.profile;
+    final economy = maybeEconomy(context);
+    final name = profile?.displayName ??
+        profile?.username ??
+        auth.currentUser?.displayName ??
+        auth.currentUser?.email;
     return Drawer(
-      child: SafeArea(
-        child: ListView(
-          children: <Widget>[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 24, 16, 16),
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Text('Pubget'),
-              ),
-            ),
-            for (final item in AppShellDrawerDestinations.items)
-              ListTile(
-                key: Key('drawer-${item.id}'),
-                leading: UnreadBadge(
-                  count: unreadCountFor(item.id, unread),
-                  child: Icon(item.icon),
+      child: PubgetAtmosphere(
+        child: SafeArea(
+          child: ListView(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                child: PubgetHeroBanner(
+                  title: 'Pubget',
+                  subtitle: name ?? copy.brandTagline,
+                  leading: EquippedAvatar(
+                    imageUrl:
+                        profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
+                    name: name,
+                    frameId: economy?.equipped.frameId,
+                    size: PubgetAvatarSize.medium,
+                  ),
                 ),
-                title: Text(copy.drawerLabel(item.id)),
-                onTap: () => _open(context, item),
               ),
-          ],
+              for (final item in AppShellDrawerDestinations.items)
+                ListTile(
+                  key: Key('drawer-${item.id}'),
+                  leading: UnreadBadge(
+                    count: unreadCountFor(item.id, unread),
+                    child: Icon(item.icon, color: AppColors.gold),
+                  ),
+                  title: Text(copy.drawerLabel(item.id)),
+                  onTap: () => _open(context, item),
+                ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ),
         ),
       ),
     );
