@@ -10,6 +10,7 @@ if (admin.apps.length === 0) {
 
 const { nextPhase, durationOf, PLAY_ORDER } = require("../src/mafia/phaseFlow");
 const { computeRoleDistribution } = require("../src/mafia/roleAssigner");
+const { getAbility } = require("../src/mafia/abilities");
 const { planNightResolution, pickMajorityTarget } = require("../src/mafia/nightResolver");
 const { planVoteResolution } = require("../src/mafia/voteResolver");
 const { winnerFromAliveTeams } = require("../src/mafia/winConditionChecker");
@@ -150,6 +151,31 @@ test("win check uses private teams and mafia parity", () => {
   assert.equal(winnerFromAliveTeams(["mafias", "citizens"]), "mafias");
   assert.equal(winnerFromAliveTeams(["mafias", "citizens", "citizens"]), null);
   assert.equal(winnerFromAliveTeams([]), null);
+});
+
+test("good_boy is a citizen-aligned role assigned at eight players", () => {
+  const ability = getAbility("good_boy");
+  assert.equal(ability.team, "citizens");
+  assert.equal(ability.hasNightAction, false);
+  const sevenClassic = computeRoleDistribution(7, "classic");
+  const eightClassic = computeRoleDistribution(8, "classic");
+  const sevenAdvanced = computeRoleDistribution(7, "advanced");
+  const eightAdvanced = computeRoleDistribution(8, "advanced");
+  const nineAdvanced = computeRoleDistribution(9, "advanced");
+  assert.equal(sevenClassic.includes("good_boy"), false);
+  assert.equal(eightClassic.filter((role) => role === "good_boy").length, 1);
+  assert.equal(sevenAdvanced.includes("good_boy"), false);
+  assert.equal(eightAdvanced.includes("good_boy"), true);
+  assert.equal(eightAdvanced.includes("sniper"), false);
+  assert.equal(nineAdvanced.includes("sniper"), true);
+  assert.equal(
+    winnerFromAliveTeams(["mafias", "citizens"]),
+    "mafias",
+  );
+  assert.equal(
+    winnerFromAliveTeams(["citizens", "citizens"]),
+    "citizens",
+  );
 });
 
 test("mafia lobby and role-assignment copy is English", () => {

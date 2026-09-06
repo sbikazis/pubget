@@ -11,6 +11,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../events/widgets/event_widgets.dart';
+import '../../games/widgets/game_widgets.dart';
 import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../data/sticker_store.dart';
 import '../models/chat_models.dart';
@@ -150,6 +151,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     onMediaTap: _openMedia,
                     onAudioTap: _playAudio,
                     onEventTap: (eventId) => EventLinks.open(context, eventId),
+                    onGameTap: _openGameCard,
                   ),
                 ),
                 if (chat.uploadProgress.isNotEmpty)
@@ -359,6 +361,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
     return displayName?.trim().isNotEmpty == true ? displayName! : email;
   }
 
+  void _openGameCard(ChatMessage message) {
+    final gameId = (message.mediaId ?? '').trim();
+    if (gameId.isEmpty) return;
+    if (message.gameActivity?.isMafia == true) {
+      GameLinks.openMafia(context, gameId);
+      return;
+    }
+    GameLinks.open(context, gameId);
+  }
+
   void _openMedia(ChatMessage message) {
     final media = context
         .read<ChatProvider>()
@@ -547,6 +559,7 @@ class _MessageList extends StatelessWidget {
     required this.onMediaTap,
     required this.onAudioTap,
     required this.onEventTap,
+    required this.onGameTap,
   });
 
   final ChatProvider chat;
@@ -557,6 +570,7 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<ChatMessage> onMediaTap;
   final ValueChanged<ChatMessage> onAudioTap;
   final ValueChanged<String> onEventTap;
+  final ValueChanged<ChatMessage> onGameTap;
 
   @override
   Widget build(BuildContext context) {
@@ -610,6 +624,11 @@ class _MessageList extends StatelessWidget {
               message.type == ChatMessageType.event &&
                   (message.mediaId ?? '').isNotEmpty
               ? () => onEventTap(message.mediaId!)
+              : null,
+          onGameTap:
+              message.type == ChatMessageType.game &&
+                  (message.mediaId ?? '').isNotEmpty
+              ? () => onGameTap(message)
               : null,
         );
       },

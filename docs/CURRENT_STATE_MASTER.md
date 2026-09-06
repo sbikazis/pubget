@@ -545,7 +545,7 @@ Server user-sendable (`groupChat.js` 3–9): text, image, video, sticker, gif, a
 | emoji button | appends ` 😊` into the text field (`group_chat_page.dart` 468–471) | sent as text |
 | system | render only | user send blocked |
 | event | tap if `mediaId` set → event route | `eventsDomain.postEventChatActivity` writes `type: "event"`, `senderId: "system"` |
-| game | bubble label `Game card` | no writer in `functions/src` except tests. **UNVERIFIED** production writers |
+| game | bubble label + Join / View result; tap → `/game/{id}` or `/mafia/{id}` | `chatCardWriter.postFromActivity` via `toGameActivity` / `toMafiaActivity`; Admin `writeAdminChatCard` (`senderId: "system"`, `type: "game"`). User send rejected. |
 
 ### 8.2 Actions (`group_chat_page.dart` 244–315)
 
@@ -591,7 +591,7 @@ Firestore: `privateChats` and subcollections read if participant; all client wri
 
 ### 10.1 Shared infrastructure
 
-Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Registry marks trivia three `implemented: true`; **mafia `implemented: false`** (59). Client `GameTypeRegistry` marks mafia `implemented: true` (`game_type_registry.dart` 92–104).
+Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Both registries mark all four `implemented: true`. Mafia is `genericCreate: false` on server and client — `createGame` rejects it; the dedicated `createMafiaGame` / `MafiaProvider.create` path is the only creator. `GameTypeRegistry.implemented` still lists Mafia on the create hub because that page branches; `genericCreate` is the list that would call `createGame`.
 
 Statuses: draft, waiting, active, paused, completed, cancelled (`gamesDomain.js` 64–77).
 
@@ -649,8 +649,8 @@ Client create/join/start/leave: callables. Rules also allow a constrained client
 
 ### 11.3 Roles (`abilities/index.js`, `roleAssigner.js`)
 
-Assigned: mafia, doctor, detective, citizen filler; sniper if advanced ≥9; silencer if advanced ≥10.  
-Registered but never assigned: `good_boy`. **INCOMPLETE/MOCK** assignment.
+Assigned: mafia, doctor, detective, citizen filler; `good_boy` at ≥8 (classic and advanced); sniper if advanced ≥9; silencer if advanced ≥10.  
+`good_boy` is a citizen-aligned named villager (`abilities/good_boy.js`): no night action, town win condition. Live `createMafiaGame` stores `version: 1` (classic), so the classic ≥8 gate is what actually assigns it.
 
 Night resolution (`nightResolver.js`): mafia majority kill vs doctor save; sniper one bullet; silencer `canSpeak: false` (reset next night); detective writes `lastInvestigationResult` on private doc.
 
@@ -664,7 +664,7 @@ Roles live under `players/{uid}/private/data` (client read self only).
 
 Night action, vote, and mafia chat are **client Firestore writes** gated by rules (`firebase_mafia_repository.dart` 52–97; `firestore.rules` 888–955). Phase advance, role assignment, night/vote resolution, rewards: schedulers / Admin SDK.
 
-Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable exists; `MafiaGameScreen` does not call leave. **INCOMPLETE/MOCK** leave UI.
+Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable: starting (cancel if below min, else decrement) or active night/day/discussion/voting (mark eliminated, then win check). Waiting and execution are `unsupported`. `MafiaGameScreen` leave + confirmation matches that server behavior.
 
 Rewards: `rewardDistributor.js` `earn_game` source `mafia`, idempotent `rewardsDistributed`. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history`.
 
@@ -924,9 +924,9 @@ Anime catalog is HTTP Jikan behind `CachedAnimeRepository`, not Firestore, excep
 
 ### 22.2 Domain isolation (games / mafia / chat)
 
-Trivia games use collection `games/{gameId}` and callables in `gamesDomain.js`. They do not import `ChatProvider` or `sendGroupMessage`. No production writer of `type: "game"` group messages was found in `functions/src`.
+Trivia games use collection `games/{gameId}` and callables in `gamesDomain.js`. They do not import `groupChat` internals. Create/complete emit `toGameActivity`; `chatCardWriter` posts `type: "game"` cards through `writeAdminChatCard`.
 
-Events write group chat cards via Admin `postEventChatActivity` (`eventsDomain.js` 661–688) — coupling from events domain to `groups/{id}/messages`.
+Events write group chat cards via Admin `postEventChatActivity` (`eventsDomain.js` 661–688) — coupling from events domain to `groups/{id}/messages`. Mafia create/finish uses the same writer via `toMafiaActivity`.
 
 Mafia uses `mafia_games/{id}/chat` (separate from group chat). `mafiaDomain.js` imports `ROLE_PERMISSIONS` from `groupsDomain.js` (line 3) for `manageGames`. Client heartbeat/night/vote/chat write Firestore directly.
 
@@ -1090,11 +1090,8 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | INCOMPLETE/MOCK | `updateGroupSettings`, `unbanMember` | Server + tests; no `lib/` UI |
 | INCOMPLETE/MOCK | `group_members_page.dart` 174 | Change role always senpai |
 | INCOMPLETE/MOCK | `group_provider.dart` 97–101 | Join sets `uid: ''` |
-| INCOMPLETE/MOCK | `gamesDomain.js` mafia `implemented: false` vs client `true` | Dual registry |
 | INCOMPLETE/MOCK | game `difficulty` | Stored, unused by engines |
 | INCOMPLETE/MOCK | `GameStrings.reconnecting` | Unused |
-| INCOMPLETE/MOCK | mafia `good_boy` | Registered, never assigned |
-| INCOMPLETE/MOCK | mafia leave | Callable + repo; no screen control |
 | INCOMPLETE/MOCK | edit moderation | Absent in pipeline |
 | INCOMPLETE/MOCK | `economy_widgets.dart` 144–161 | Sponsored ad placeholder |
 | INCOMPLETE/MOCK | `restorePremiumPurchases` | deferred, provider not configured |
@@ -1103,7 +1100,7 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | INCOMPLETE/MOCK | `notification_inbox_page.dart` 28, 35 | `onRetry: () {}` |
 | INCOMPLETE/MOCK | Home section names `*Placeholder` | Real strips, still named placeholder in enum |
 | INCOMPLETE/MOCK | `ScoringStrategyRegistry` | No-op client scoring |
-| INCOMPLETE/MOCK | type `game` group cards | Render only |
+| Observed | Mafia waiting/execution leave | Server `leaveTransition` returns `unsupported`; UI hides leave in those phases |
 | Observed | `notification_provider.dart` 27, 80, 135–147 | `hasMore` init true; last page if non-empty keeps true; `close` does not reset it |
 | Observed | `firestore.rules` vs `PubgetUser.toMap` | create/update keys vs `displayName` / `whoCanMessageMe` |
 | Unexported | `index.js` 814–950 | `legacyOnNewGroupMessage`, `legacyOnJoinRequest` not in `exports` |

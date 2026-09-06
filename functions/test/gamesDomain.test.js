@@ -241,9 +241,11 @@ test("state machine allows documented transitions and rejects the rest", () => {
   );
 });
 
-test("mafia is registered but not implemented", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, false);
+test("mafia is implemented only on the dedicated create path", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.mafia.genericCreate, false);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.guessCharacter.genericCreate, true);
 });
 
 test("action shape validation rejects empty types and oversized payloads", () => {
@@ -339,6 +341,18 @@ test("founder can create, members can join once, and start is idempotent", async
   assert.equal(startedEvents.length, 1);
   assert.ok(notifications.sent.some((item) => item.type === "game_invite"));
   assert.ok(notifications.sent.some((item) => item.type === "game_started"));
+  const createdCard = db.store.get(
+    `groups/g1/messages/card-game-${created.gameId}-created`,
+  );
+  assert.equal(createdCard.type, "game");
+  assert.equal(createdCard.senderId, "system");
+  assert.equal(createdCard.gameActivity.kind, "created");
+  await games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const doneCard = db.store.get(
+    `groups/g1/messages/card-game-${created.gameId}-completed`,
+  );
+  assert.equal(doneCard.type, "game");
+  assert.equal(doneCard.gameActivity.kind, "completed");
 });
 
 test("join after start and actions from non-participants are rejected", async () => {
@@ -478,7 +492,13 @@ test("initialize moves a draft to waiting", async () => {
   assert.equal(db.store.get(`games/${created.gameId}`).status, "waiting");
 });
 
-test("games never write group chat messages", async () => {
+test("games post chat cards through the activity contract, not groupChat internals", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/gamesDomain.js"), "utf8");
+  assert.equal(source.includes('require("./groupChat")'), false);
+  assert.equal(source.includes('require("./chatCardWriter")'), true);
+
   const db = createFakeDb(seedGroup());
   const games = handlers(db);
   const created = await games.createGame({
@@ -487,8 +507,11 @@ test("games never write group chat messages", async () => {
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  const chatWrites = [...db.store.keys()].filter((path) => path.includes("/messages/"));
-  assert.equal(chatWrites.length, 0);
+  const chatWrites = [...db.store.entries()].filter(([key]) => key.includes("/messages/"));
+  assert.equal(chatWrites.length, 1);
+  assert.equal(chatWrites[0][1].type, "game");
+  assert.equal(chatWrites[0][1].senderId, "system");
+  assert.equal(chatWrites[0][1].gameActivity.kind, "created");
 });
 
 test("processExpiredGames queries eligible deadlines and stays bounded", async () => {

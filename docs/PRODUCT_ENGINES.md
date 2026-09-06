@@ -1,6 +1,6 @@
 # Pubget product engines
 
-Games, Events, and Achievements are separate domains. They share Economy and Notifications through integration services. They never write group chat documents.
+Games, Events, and Achievements are separate domains. They share Economy and Notifications through integration services. Games and Mafia do not import chat internals; they emit an activity contract and `chatCardWriter` posts Admin system cards.
 
 Discovery ranking for Home, Rising Groups, Edits, Fan Works, Anime Hub, and people is documented in `docs/DISCOVERY.md`.
 
@@ -15,7 +15,7 @@ Generic lobby state lives in `games/{gameId}`. Specialized rules live in Cloud F
 | Emoji Anime Guess | `games` | 2–4 | `emojiAnimeGuess.js` — server-owned catalog emoji clues, one guesser per turn |
 | Mafia | `mafia_games` | 4–16 | `mafia/` |
 
-Mafia is not created through `createGame`. The Flutter registry marks it implemented and routes to `/mafia/{id}` via `createMafiaGame`.
+Mafia is not created through `createGame` (`genericCreate: false` on both registries). The Flutter create hub still lists it because that page branches to `/mafia/{id}` via `createMafiaGame`.
 
 ## State machine
 
@@ -35,7 +35,7 @@ Timers use server `deadlineAt` / `phaseEndsAt`. Clients only render countdowns.
 
 Components: `lobbyManager`, `roleAssigner`, `phaseFlow`, `phaseScheduler`, `nightResolver`, `voteResolver`, `winConditionChecker`, `rewardDistributor`, `historyWriter`, `disconnectHandler`.
 
-Roles (server-assigned, private under `mafia_games/{id}/players/{uid}/private/data`): Mafia, Citizen, Detective, Doctor when player count supports them.
+Roles (server-assigned, private under `mafia_games/{id}/players/{uid}/private/data`): Mafia, Citizen, Detective, Doctor when player count supports them; Good Boy at ≥8; Sniper/Silencer on advanced ≥9/≥10.
 
 Night actions and votes are idempotent document IDs (`uid_n{n}`, `uid_d{d}`). Vote ties spare everyone. Town wins when no Mafia remain. Mafia wins at parity/majority. Disconnects set `isDisconnected`; the scheduler does not freeze the game on a missing client.
 
