@@ -24,6 +24,21 @@ abstract interface class ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
+  });
+
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  });
+
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
   });
 
   Future<Result<ChatMessage>> editMessage({

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
 import 'chat_contrast_theme.dart';
 
@@ -14,6 +15,8 @@ class ChatMessageBubble extends StatelessWidget {
     required this.onLongPress,
     required this.onMediaTap,
     this.onEventTap,
+    this.onAudioTap,
+    this.replyPreview,
     this.showSenderRole = true,
     super.key,
   });
@@ -24,6 +27,8 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback? onMediaTap;
   final VoidCallback? onEventTap;
+  final VoidCallback? onAudioTap;
+  final String? replyPreview;
   final bool showSenderRole;
 
   @override
@@ -110,10 +115,27 @@ class ChatMessageBubble extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.xs),
+                      if (message.forwardedFrom != null)
+                        Text(
+                          'Forwarded',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: textColor,
+                                fontStyle: FontStyle.italic,
+                              ),
+                        ),
+                      if ((replyPreview ?? message.replyPreview) != null) ...[
+                        _ReplyQuote(
+                          text: replyPreview ?? message.replyPreview!,
+                          textColor: textColor,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                      ],
                       _MessageContent(
                         message: message,
                         textColor: textColor,
                         onMediaTap: onMediaTap,
+                        onAudioTap: onAudioTap,
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       Row(
@@ -185,11 +207,13 @@ class _MessageContent extends StatelessWidget {
     required this.message,
     required this.textColor,
     required this.onMediaTap,
+    this.onAudioTap,
   });
 
   final ChatMessage message;
   final Color textColor;
   final VoidCallback? onMediaTap;
+  final VoidCallback? onAudioTap;
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +221,12 @@ class _MessageContent extends StatelessWidget {
       return Text(
         'Message deleted',
         style: TextStyle(color: textColor, fontStyle: FontStyle.italic),
+      );
+    }
+    if (message.isCatalogSticker) {
+      return Padding(
+        padding: const EdgeInsets.all(4),
+        child: StickerMark(stickerKey: message.stickerKey ?? '', size: 112),
       );
     }
     if (message.type == ChatMessageType.image ||
@@ -235,16 +265,48 @@ class _MessageContent extends StatelessWidget {
       );
     }
     if (message.type == ChatMessageType.audio) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(Icons.play_circle_fill, color: textColor),
-          const SizedBox(width: AppSpacing.sm),
-          Text('Voice message', style: TextStyle(color: textColor)),
-        ],
+      return InkWell(
+        key: Key('audio-play-${message.id}'),
+        onTap: onAudioTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.play_circle_fill, color: textColor),
+            const SizedBox(width: AppSpacing.sm),
+            Text('Voice message', style: TextStyle(color: textColor)),
+          ],
+        ),
       );
     }
     return Text(message.text ?? '', style: TextStyle(color: textColor));
+  }
+}
+
+class _ReplyQuote extends StatelessWidget {
+  const _ReplyQuote({required this.text, required this.textColor});
+
+  final String text;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: textColor, width: 3)),
+      ),
+      child: Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: textColor),
+      ),
+    );
   }
 }
 

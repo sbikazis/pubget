@@ -1046,6 +1046,47 @@ test("hakusho is not a moderator role and nested group games are client-unwritab
   await assertFails(db("charlie").doc("groups/g1/games/legacy").get());
 });
 
+test("group bans are readable by manageMembers roles, not sensei/senpai/members", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("groups/g1/bans/carol").set({
+      uid: "carol", bannedByUid: "alice", createdAt: new Date(),
+    });
+    await admin.doc("groups/g1/members/shogun").set({
+      userId: "shogun", groupId: "g1", role: "shogun", displayName: "Shogun",
+    });
+    await admin.doc("groups/g1/members/commander").set({
+      userId: "commander", groupId: "g1", role: "commander", displayName: "Commander",
+    });
+    await admin.doc("groups/g1/members/sensei").set({
+      userId: "sensei", groupId: "g1", role: "sensei", displayName: "Sensei",
+    });
+    await admin.doc("groups/g1/members/senpai").set({
+      userId: "senpai", groupId: "g1", role: "senpai", displayName: "Senpai",
+    });
+  });
+  await assertSucceeds(db("alice").collection("groups/g1/bans").get());
+  await assertSucceeds(db("shogun").doc("groups/g1/bans/carol").get());
+  await assertSucceeds(db("commander").collection("groups/g1/bans").get());
+  await assertFails(db("bob").doc("groups/g1/bans/carol").get());
+  await assertFails(db("sensei").collection("groups/g1/bans").get());
+  await assertFails(db("senpai").doc("groups/g1/bans/carol").get());
+  await assertSucceeds(db("carol").doc("groups/g1/bans/carol").get());
+});
+
+test("message reports are readable by the reporter and not client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1/messageReports/m1_bob").set({
+      reporterId: "bob", messageId: "m1", reason: "spam", status: "open",
+    });
+  });
+  await assertSucceeds(db("bob").doc("groups/g1/messageReports/m1_bob").get());
+  await assertFails(db("alice").doc("groups/g1/messageReports/m1_bob").get());
+  await assertFails(db("bob").doc("groups/g1/messageReports/forged").set({
+    reporterId: "bob", messageId: "m2", reason: "spam", status: "open",
+  }));
+});
+
 test("collection-group members queries only return the caller's own membership", async () => {
   await assertSucceeds(
     db("bob").collectionGroup("members").where("uid", "==", "bob").get(),

@@ -54,6 +54,17 @@ service cloud.firestore {
         get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
           in ['founder', 'sensei', 'senpai'];
     }
+    function memberRoleName(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role;
+    }
+    function canManageGroupMembers(groupId) {
+      return groupMember(groupId) && (
+        memberRoleName(groupId) in ['founder', 'shogun', 'commander'] ||
+        (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId))) &&
+         get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId)))
+           .data.permissions.hasAny(['manageMembers']))
+      );
+    }
     function mafiaGroupMember(gameId) {
       return signedIn() && groupMember(
         get(/databases/$(database)/documents/mafia_games/$(gameId)).data.groupId
@@ -612,7 +623,12 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /bans/{uid} {
-        allow read: if self(uid) || groupModerator(groupId);
+        allow read: if self(uid) || canManageGroupMembers(groupId);
+        allow create, update, delete: if false;
+      }
+      match /messageReports/{reportId} {
+        allow read: if signedIn() &&
+          resource.data.reporterId == request.auth.uid;
         allow create, update, delete: if false;
       }
       match /transferConfirmations/{uid} {

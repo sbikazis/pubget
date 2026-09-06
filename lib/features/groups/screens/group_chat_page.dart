@@ -11,19 +11,35 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../events/widgets/event_widgets.dart';
+import '../../private_chat/providers/private_chat_list_provider.dart';
+import '../data/sticker_store.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
 import '../providers/chat_provider.dart';
 import '../providers/group_provider.dart';
+import '../services/chat_audio_player.dart';
+import '../services/default_voice_capture.dart';
+import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
 import '../widgets/chat_message_bubble.dart';
+import '../widgets/sticker_picker_sheet.dart';
+import '../widgets/voice_recorder_sheet.dart';
 import 'chat_background_picker_page.dart';
 import 'media_viewer_page.dart';
 
 class GroupChatPage extends StatefulWidget {
-  const GroupChatPage({required this.groupId, super.key});
+  const GroupChatPage({
+    required this.groupId,
+    this.voiceCapture,
+    this.audioPlayer,
+    this.stickerStore,
+    super.key,
+  });
 
   final String groupId;
+  final VoiceCapture? voiceCapture;
+  final ChatAudioPlayer? audioPlayer;
+  final StickerStore? stickerStore;
 
   @override
   State<GroupChatPage> createState() => _GroupChatPageState();
@@ -40,19 +56,22 @@ class _GroupChatPageState extends State<GroupChatPage> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    final user = context.read<AuthProvider>().currentUser;
-    if (user == null) return;
-    final groupProvider = context.read<GroupProvider>();
-    if (groupProvider.group?.id != widget.groupId) {
-      unawaited(groupProvider.load(groupId: widget.groupId, userId: user.id));
-    }
-    unawaited(
-      context.read<ChatProvider>().open(
-        groupId: widget.groupId,
-        currentUserId: user.id,
-      ),
-    );
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final user = context.read<AuthProvider>().currentUser;
+      if (user == null) return;
+      final groupProvider = context.read<GroupProvider>();
+      if (groupProvider.group?.id != widget.groupId) {
+        unawaited(groupProvider.load(groupId: widget.groupId, userId: user.id));
+      }
+      unawaited(
+        context.read<ChatProvider>().open(
+          groupId: widget.groupId,
+          currentUserId: user.id,
+        ),
+      );
+    });
   }
 
   @override
@@ -129,6 +148,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     controller: _scrollController,
                     onAction: _showActions,
                     onMediaTap: _openMedia,
+                    onAudioTap: _playAudio,
                     onEventTap: (eventId) => EventLinks.open(context, eventId),
                   ),
                 ),
@@ -136,11 +156,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   LinearProgressIndicator(
                     value: chat.uploadProgress.values.first,
                   ),
+                if (chat.replyTarget != null)
+                  _ReplyComposerBar(
+                    message: chat.replyTarget!,
+                    onClear: chat.clearReplyTarget,
+                  ),
                 _Composer(
                   controller: _controller,
                   onSend: _sendText,
                   onMedia: _pickMedia,
-                  onPlaceholder: _showPlaceholder,
+                  onGif: _pickGif,
+                  onSticker: _pickSticker,
+                  onVoice: _recordVoice,
                   onEvents: () => AppNavigation.go(
                     context,
                     '/events?groupId=${Uri.encodeComponent(widget.groupId)}',
@@ -189,6 +216,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
       senderAvatar: user.avatarUrl ?? '',
       senderRole: member.role.name,
       text: text,
+      replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
     );
   }
 
@@ -205,7 +233,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final extension = selected.name.split('.').last.toLowerCase();
     final contentType = video
         ? (extension == 'webm' ? 'video/webm' : 'video/mp4')
-        : (extension == 'png' ? 'image/png' : 'image/jpeg');
+        : (extension == 'gif'
+              ? 'image/gif'
+              : extension == 'png'
+              ? 'image/png'
+              : 'image/jpeg');
     if (!mounted) return;
     await context.read<ChatProvider>().sendMedia(
       groupId: widget.groupId,
@@ -217,6 +249,106 @@ class _GroupChatPageState extends State<GroupChatPage> {
       fileName: selected.name,
       contentType: contentType,
     );
+  }
+
+  Future<void> _pickGif() async {
+    final picker = ImagePicker();
+    final selected = await picker.pickImage(source: ImageSource.gallery);
+    if (selected == null || !mounted) return;
+    final bytes = await selected.readAsBytes();
+    final type = chatMediaTypeFor(
+      contentType: selected.mimeType ?? 'image/gif',
+      fileName: selected.name,
+    );
+    if (type != ChatMessageType.gif) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a .gif file to send a GIF.')),
+      );
+      return;
+    }
+    await _sendPickedBytes(
+      bytes: bytes,
+      fileName: selected.name,
+      contentType: 'image/gif',
+    );
+  }
+
+  Future<void> _pickSticker() async {
+    final key = await StickerPickerSheet.show(
+      context,
+      store: widget.stickerStore,
+    );
+    if (key == null || !mounted) return;
+    final user = context.read<AuthProvider>().currentUser;
+    final member = context.read<GroupProvider>().membership;
+    if (user == null || member == null) return;
+    await context.read<ChatProvider>().sendSticker(
+      groupId: widget.groupId,
+      senderId: user.id,
+      senderName: _senderName(user.displayName, user.email, member),
+      senderAvatar: user.avatarUrl ?? '',
+      senderRole: member.role.name,
+      stickerKey: key,
+    );
+  }
+
+  Future<void> _recordVoice() async {
+    final capture = widget.voiceCapture ?? createDeviceVoiceCapture();
+    final player = widget.audioPlayer ?? StorageChatAudioPlayer();
+    final clip = await VoiceRecorderSheet.show(
+      context,
+      capture: capture,
+      onPreview: (voice) => player.playBytes(voice.bytes),
+    );
+    if (clip == null || !mounted) return;
+    if (clip.exceedsLimits) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Voice notes are limited to 60 seconds and 10 MB.'),
+        ),
+      );
+      return;
+    }
+    await _sendPickedBytes(
+      bytes: clip.bytes,
+      fileName: clip.fileName,
+      contentType: clip.contentType,
+    );
+  }
+
+  Future<void> _sendPickedBytes({
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+  }) async {
+    final user = context.read<AuthProvider>().currentUser;
+    final member = context.read<GroupProvider>().membership;
+    if (user == null || member == null) return;
+    await context.read<ChatProvider>().sendMedia(
+      groupId: widget.groupId,
+      senderId: user.id,
+      senderName: _senderName(user.displayName, user.email, member),
+      senderAvatar: user.avatarUrl ?? '',
+      senderRole: member.role.name,
+      bytes: Uint8List.fromList(bytes),
+      fileName: fileName,
+      contentType: contentType,
+    );
+  }
+
+  Future<void> _playAudio(ChatMessage message) async {
+    final path = message.mediaUrl;
+    if (path == null || path.isEmpty) return;
+    final player = widget.audioPlayer ?? StorageChatAudioPlayer();
+    try {
+      await player.play(path);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Voice message could not be played.')),
+      );
+    }
   }
 
   String _senderName(String? displayName, String email, GroupMember member) {
@@ -247,52 +379,63 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: <Widget>[
-            if (message.text?.isNotEmpty == true)
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: <Widget>[
+              if (message.text?.isNotEmpty == true)
+                ListTile(
+                  key: const Key('chat-action-copy'),
+                  leading: const Icon(Icons.copy_outlined),
+                  title: const Text('Copy'),
+                  onTap: () => Navigator.pop(context, 'copy'),
+                ),
               ListTile(
-                leading: const Icon(Icons.copy_outlined),
-                title: const Text('Copy'),
-                onTap: () => Navigator.pop(context, 'copy'),
+                key: const Key('chat-action-reply'),
+                leading: const Icon(Icons.reply),
+                title: const Text('Reply'),
+                onTap: () => Navigator.pop(context, 'reply'),
               ),
-            ListTile(
-              leading: const Icon(Icons.reply),
-              title: const Text('Reply'),
-              onTap: () => Navigator.pop(context, 'reply'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite_outline),
-              title: const Text('React'),
-              onTap: () => Navigator.pop(context, 'react'),
-            ),
-            ListTile(
-              leading: Icon(
-                message.pinnedAt == null
-                    ? Icons.push_pin_outlined
-                    : Icons.push_pin,
+              ListTile(
+                key: const Key('chat-action-react'),
+                leading: const Icon(Icons.favorite_outline),
+                title: const Text('React'),
+                onTap: () => Navigator.pop(context, 'react'),
               ),
-              title: Text(message.pinnedAt == null ? 'Pin' : 'Unpin'),
-              onTap: () => Navigator.pop(context, 'pin'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete'),
-              onTap: () => Navigator.pop(context, 'delete'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.forward_outlined),
-              title: const Text('Forward / share'),
-              onTap: () => Navigator.pop(context, 'forward'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: const Text('Report'),
-              onTap: () => Navigator.pop(context, 'report'),
-            ),
-          ],
-        ),
-      ),
+              ListTile(
+                key: const Key('chat-action-pin'),
+                leading: Icon(
+                  message.pinnedAt == null
+                      ? Icons.push_pin_outlined
+                      : Icons.push_pin,
+                ),
+                title: Text(message.pinnedAt == null ? 'Pin' : 'Unpin'),
+                onTap: () => Navigator.pop(context, 'pin'),
+              ),
+              ListTile(
+                key: const Key('chat-action-delete'),
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Delete'),
+                onTap: () => Navigator.pop(context, 'delete'),
+              ),
+              ListTile(
+                key: const Key('chat-action-forward'),
+                leading: const Icon(Icons.forward_outlined),
+                title: const Text('Forward / share'),
+                onTap: () => Navigator.pop(context, 'forward'),
+              ),
+              ListTile(
+                key: const Key('chat-action-report'),
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text('Report'),
+                onTap: () => Navigator.pop(context, 'report'),
+              ),
+            ],
+          ),
+        );
+      },
     );
     if (!mounted || action == null) return;
     final chat = context.read<ChatProvider>();
@@ -304,15 +447,91 @@ class _GroupChatPageState extends State<GroupChatPage> {
       await chat.pinMessage(message.id, message.pinnedAt == null);
     } else if (action == 'react') {
       await chat.addReaction(message.id, '❤️');
-    } else {
-      _showPlaceholder();
+    } else if (action == 'reply') {
+      chat.setReplyTarget(message);
+    } else if (action == 'forward') {
+      await _forwardMessage(message);
+    } else if (action == 'report') {
+      await _reportMessage(message);
     }
   }
 
-  void _showPlaceholder() {
+  Future<void> _forwardMessage(ChatMessage message) async {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+    final groups = context.read<GroupProvider>();
+    final chats = context.read<PrivateChatListProvider>();
+    await Future.wait<void>([groups.loadJoined(user.id), chats.open(user.id)]);
+    if (!mounted) return;
+    final destination = await showModalBottomSheet<_ForwardTarget>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _ForwardSheet(
+        currentGroupId: widget.groupId,
+        groups: groups,
+        chats: chats,
+        currentUserId: user.id,
+      ),
+    );
+    if (destination == null || !mounted) return;
+    final result = await context.read<ChatProvider>().forwardMessage(
+      messageId: message.id,
+      destinationGroupId: destination.groupId,
+      destinationChatId: destination.chatId,
+    );
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('This action is prepared for a later Pubget prompt.'),
+      SnackBar(
+        content: Text(
+          result.isSuccess
+              ? 'Message forwarded'
+              : result.failureOrNull?.message ?? 'Forward failed.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reportMessage(ChatMessage message) async {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user != null && message.senderId == user.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot report your own message.')),
+      );
+      return;
+    }
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Report message')),
+            for (final item in reportReasons)
+              ListTile(
+                key: Key('report-reason-$item'),
+                title: Text(item),
+                onTap: () => Navigator.pop(context, item),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (reason == null || !mounted) return;
+    final result = await context.read<ChatProvider>().reportMessage(
+      messageId: message.id,
+      reason: reason,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.isSuccess
+              ? 'Report submitted'
+              : result.failureOrNull?.message ?? 'Report failed.',
+        ),
       ),
     );
   }
@@ -326,6 +545,7 @@ class _MessageList extends StatelessWidget {
     required this.controller,
     required this.onAction,
     required this.onMediaTap,
+    required this.onAudioTap,
     required this.onEventTap,
   });
 
@@ -335,6 +555,7 @@ class _MessageList extends StatelessWidget {
   final ScrollController controller;
   final ValueChanged<ChatMessage> onAction;
   final ValueChanged<ChatMessage> onMediaTap;
+  final ValueChanged<ChatMessage> onAudioTap;
   final ValueChanged<String> onEventTap;
 
   @override
@@ -382,6 +603,9 @@ class _MessageList extends StatelessWidget {
           contrast: contrast,
           onLongPress: () => onAction(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
+          onAudioTap: message.type == ChatMessageType.audio
+              ? () => onAudioTap(message)
+              : null,
           onEventTap:
               message.type == ChatMessageType.event &&
                   (message.mediaId ?? '').isNotEmpty
@@ -433,14 +657,18 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     required this.onMedia,
-    required this.onPlaceholder,
+    required this.onGif,
+    required this.onSticker,
+    required this.onVoice,
     required this.onEvents,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final void Function(ImageSource source, bool video) onMedia;
-  final VoidCallback onPlaceholder;
+  final VoidCallback onGif;
+  final VoidCallback onSticker;
+  final VoidCallback onVoice;
   final VoidCallback onEvents;
 
   @override
@@ -453,18 +681,34 @@ class _Composer extends StatelessWidget {
         child: Row(
           children: <Widget>[
             PopupMenuButton<String>(
+              key: const Key('composer-attach'),
               tooltip: 'Attachments',
               icon: const Icon(Icons.add_circle_outline),
               onSelected: (value) {
                 if (value == 'image') onMedia(ImageSource.gallery, false);
                 if (value == 'video') onMedia(ImageSource.gallery, true);
-                if (value == 'sticker' || value == 'audio') onPlaceholder();
+                if (value == 'gif') onGif();
+                if (value == 'sticker') onSticker();
+                if (value == 'audio') onVoice();
               },
               itemBuilder: (_) => const <PopupMenuEntry<String>>[
                 PopupMenuItem(value: 'image', child: Text('Image')),
                 PopupMenuItem(value: 'video', child: Text('Video')),
-                PopupMenuItem(value: 'sticker', child: Text('Sticker')),
-                PopupMenuItem(value: 'audio', child: Text('Voice message')),
+                PopupMenuItem(
+                  key: Key('composer-gif'),
+                  value: 'gif',
+                  child: Text('GIF'),
+                ),
+                PopupMenuItem(
+                  key: Key('composer-sticker'),
+                  value: 'sticker',
+                  child: Text('Sticker'),
+                ),
+                PopupMenuItem(
+                  key: Key('composer-audio'),
+                  value: 'audio',
+                  child: Text('Voice message'),
+                ),
               ],
             ),
             IconButton(
@@ -718,6 +962,104 @@ class _MarqueeTitleState extends State<_MarqueeTitle> {
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
       child: Text(widget.text, maxLines: 1),
+    );
+  }
+}
+
+class _ReplyComposerBar extends StatelessWidget {
+  const _ReplyComposerBar({required this.message, required this.onClear});
+
+  final ChatMessage message;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview =
+        message.replyPreview ??
+        message.text ??
+        (message.isCatalogSticker ? '[sticker]' : '[${message.type.name}]');
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: ListTile(
+        key: const Key('reply-composer-bar'),
+        dense: true,
+        leading: const Icon(Icons.reply),
+        title: Text(
+          'Replying to ${message.senderName}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: IconButton(
+          key: const Key('reply-composer-clear'),
+          tooltip: 'Cancel reply',
+          onPressed: onClear,
+          icon: const Icon(Icons.close),
+        ),
+      ),
+    );
+  }
+}
+
+final class _ForwardTarget {
+  const _ForwardTarget({this.groupId, this.chatId});
+
+  final String? groupId;
+  final String? chatId;
+}
+
+class _ForwardSheet extends StatelessWidget {
+  const _ForwardSheet({
+    required this.currentGroupId,
+    required this.groups,
+    required this.chats,
+    required this.currentUserId,
+  });
+
+  final String currentGroupId;
+  final GroupProvider groups;
+  final PrivateChatListProvider chats;
+  final String currentUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListenableBuilder(
+        listenable: Listenable.merge(<Listenable>[groups, chats]),
+        builder: (context, _) {
+          final destinations = <Widget>[
+            const ListTile(title: Text('Forward to')),
+            ...groups.joinedGroups
+                .where((group) => group.id != currentGroupId)
+                .map(
+                  (group) => ListTile(
+                    key: Key('forward-group-${group.id}'),
+                    leading: const Icon(Icons.groups_outlined),
+                    title: Text(group.name),
+                    onTap: () => Navigator.pop(
+                      context,
+                      _ForwardTarget(groupId: group.id),
+                    ),
+                  ),
+                ),
+            ...chats.chats.map(
+              (chat) => ListTile(
+                key: Key('forward-chat-${chat.id}'),
+                leading: const Icon(Icons.chat_bubble_outline),
+                title: Text(chat.otherDisplayName(currentUserId)),
+                onTap: () =>
+                    Navigator.pop(context, _ForwardTarget(chatId: chat.id)),
+              ),
+            ),
+          ];
+          if (destinations.length == 1) {
+            destinations.add(
+              const ListTile(title: Text('No other groups or chats available')),
+            );
+          }
+          return ListView(shrinkWrap: true, children: destinations);
+        },
+      ),
     );
   }
 }
