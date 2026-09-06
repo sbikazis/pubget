@@ -122,12 +122,13 @@ void main() {
 
     expect(find.text(MafiaLeaveCopy.leave), findsOneWidget);
     await tester.tap(find.text(MafiaLeaveCopy.leave));
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(find.text(MafiaLeaveCopy.title), findsOneWidget);
     expect(find.text(MafiaLeaveCopy.bodyFor('night')), findsOneWidget);
     await tester.tap(find.text(MafiaLeaveCopy.confirm));
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(repository.leaveCalls, 1);
+    mafia.dispose();
   });
 
   testWidgets('guess character play locks a submitted answer', (tester) async {
@@ -465,7 +466,7 @@ final class _FakeMafiaRepository implements MafiaRepository {
   @override
   Stream<Result<MafiaGame>> watchGame(String gameId) =>
       Stream<Result<MafiaGame>>.value(
-        const Success(
+        Success(
           MafiaGame(
             id: 'm1',
             groupId: 'g1',

@@ -125,6 +125,14 @@ function domain(db) {
   });
 }
 
+test("mafia domain posts cards via contract and does not import groupChat", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/mafia/mafiaDomain.js"), "utf8");
+  assert.equal(source.includes('require("../groupChat")'), false);
+  assert.equal(source.includes('require("../chatCardWriter")'), true);
+});
+
 test("mafia lobby create is server-side and join is idempotent", async () => {
   const db = createFakeDb(seed());
   const mafia = domain(db);

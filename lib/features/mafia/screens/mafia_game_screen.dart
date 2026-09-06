@@ -59,7 +59,7 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
       appBar: AppBar(
         title: const Text('Mafia'),
         actions: <Widget>[
-          if (canLeave && game != null)
+          if (canLeave)
             TextButton(
               onPressed: state.busy
                   ? null
