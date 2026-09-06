@@ -71,6 +71,7 @@ final class Group {
     this.risingScore = 0,
     this.imageUrl,
     this.lastActivityAt,
+    this.viewerLastReadAt,
     this.promotionExpiresAt,
   });
 
@@ -91,9 +92,19 @@ final class Group {
   final num risingScore;
   final String? imageUrl;
   final DateTime? lastActivityAt;
+  final DateTime? viewerLastReadAt;
   final DateTime? promotionExpiresAt;
 
   bool get isFull => membersCount >= maxMembers;
+
+  /// Unread from existing group `lastMessageAt` vs member `lastReadAt`.
+  bool get hasUnread {
+    final last = lastActivityAt;
+    if (last == null) return false;
+    final readAt = viewerLastReadAt;
+    if (readAt == null) return true;
+    return last.isAfter(readAt);
+  }
 
   Group copyWith({
     String? name,
@@ -121,11 +132,16 @@ final class Group {
       risingScore: risingScore,
       imageUrl: imageUrl,
       lastActivityAt: lastActivityAt,
+      viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: promotionExpiresAt,
     );
   }
 
-  factory Group.fromMap(Map<String, dynamic> map, {required String id}) {
+  factory Group.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+    DateTime? viewerLastReadAt,
+  }) {
     final createdAt = map['createdAt'];
     return Group(
       id: id,
@@ -151,6 +167,7 @@ final class Group {
       risingScore: (map['risingScore'] as num?) ?? 0,
       imageUrl: map['imageUrl'] as String?,
       lastActivityAt: _date(map['lastMessageAt']),
+      viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: _date(map['promotionExpiresAt']),
     );
   }
@@ -165,6 +182,7 @@ final class GroupMember {
     this.joinedAt,
     this.inviteCount = 0,
     this.lastActiveAt,
+    this.lastReadAt,
     this.effectivePermissions,
   });
 
@@ -175,6 +193,7 @@ final class GroupMember {
   final DateTime? joinedAt;
   final int inviteCount;
   final DateTime? lastActiveAt;
+  final DateTime? lastReadAt;
 
   /// Permissions from the group role document, when loaded.
   /// `null` means fall back to [defaultRolePermissions] for [role].
@@ -214,6 +233,7 @@ final class GroupMember {
       joinedAt: _date(map['joinedAt']),
       inviteCount: (map['inviteCount'] as num?)?.toInt() ?? 0,
       lastActiveAt: _date(map['lastActiveAt']),
+      lastReadAt: _date(map['lastReadAt']),
     );
   }
 
@@ -226,6 +246,7 @@ final class GroupMember {
         joinedAt: joinedAt,
         inviteCount: inviteCount,
         lastActiveAt: lastActiveAt,
+        lastReadAt: lastReadAt,
         effectivePermissions: permissions,
       );
 }

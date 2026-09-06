@@ -125,7 +125,14 @@ void main() {
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(9));
+    expect(AppShellDrawerDestinations.items, hasLength(10));
+
+    await env.delegate.setNewRoutePath(
+      const ParameterizedRoute(path: '/home'),
+    );
+    await tester.pumpAndSettle();
+    await openAndTap('notifications');
+    expect(find.text('Notifications page'), findsOneWidget);
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {
@@ -206,6 +213,7 @@ Future<_ShellEnv> _pumpShell(
       '/premium': const Text('Premium page'),
       '/settings': const Text('Settings page'),
       '/guide': const Text('Guide page'),
+      '/notifications': const Text('Notifications page'),
     },
     parameterizedPages: <String, ParameterizedPageBuilder>{
       '/profile': (parameters) => Text('Profile ${parameters['uid'] ?? 'self'}'),

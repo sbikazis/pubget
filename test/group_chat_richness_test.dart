@@ -466,6 +466,10 @@ final class _FakeGroupRepository implements GroupRepository {
       Success(<Group>[current, other]);
 
   @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
   Future<Result<void>> updateGroupSettings({
     required String groupId,
     required GroupSettingsUpdate settings,

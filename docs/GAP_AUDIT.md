@@ -206,9 +206,9 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 |---|---|---|---|---|
 | Central inbox for join, roles, group events, disband, likes, comments, replies, view milestones, new edits, respect, fans, friends, messages, events, games, premium, store | Built types listed in CSM §16.1; missing as first-class: role changes, likes/comments/views milestones, new edits, premium, many store events | 🟡 PARTIAL | Local | Core social/group/game/event/economy subset exists. |
 | Each notification routes to the right place | `destination` + `AppNavigation.go` (CSM §16.1–16.2) | 🟡 PARTIAL | Local | Built types route. Inbox title switch falls through to generic `Notification` for others (CSM §16.2). Disband write is not via `notificationBuilder` (CSM §16.1). |
-| Unread red badges by context (Groups, Joined, Private, Notifications, …) | Private unread computed; group-list unread from `lastReadAt` **not implemented** (CSM §8.3, §9) | 🟠 MAJOR GAP | Systemic | Spec unread system is cross-shell. Shell has no Joined tab and no documented Groups badge. |
+| Unread red badges by context (Groups, Joined, Private, Notifications, …) | Shared `UnreadEngine`: private `lastMessageAt` vs `lastReadAt`; groups/joined from member `lastReadAt` vs group `lastMessageAt`; notifications from `unreadNotificationsCount`. Tabs + Drawer read that one source (CSM §8.3, §9, §16.2) | 🟢 PASS | Systemic | Same domain count on tab and matching Drawer row. |
 | Android push, tap routing, deep links, session-safe | FCM register; PUSH_TYPES subset; pending-route on guarded deep links (CSM §1.1, §16.1, §21) | 🟡 PARTIAL | Local | Push exists for some types. `event_ended` and several economy types are not pushWorthy. |
-| Inbox retry and pagination must work | `onRetry: () {}`; `_hasMore` starts true and a short last page can stay true; `close()` does not reset (CSM §16.2, §27) | 🟠 MAJOR GAP | Local | Neglected error/pagination states (§1.3). Not a security issue. |
+| Inbox retry and pagination must work | Retry re-fetches; `hasMore` is false when a page is shorter than `pageSize`; `close()` resets pagination (CSM §16.2) | 🟢 PASS | Local | Inbox type coverage is still a subset (separate row). |
 
 ---
 
@@ -432,7 +432,7 @@ Coins-remove-ads remnant in **active** `lib/`: **not found**. Classification: no
 - **Shell IA (🟠/⚪):** five-tab spec (Discover / My Groups / Joined / Private / Edits) + app-wide Drawer (Profile, chats, groups, store, premium, settings, guide). One navigation prompt, not per-screen.
 - **Bilingual copy (🟠):** `.arb` (or equivalent) + RTL layout already partly present. Every screen inherits.
 - **Placeholder action component (🟠):** replace “later Pubget prompt” snackbars with either real actions or a single honest “coming in a later release” pattern that is not mistaken for a working control — then implement Chat richness in a dedicated prompt.
-- **Unread engine across shell (🟠):** `lastReadAt` already stored for groups; wire badges for Groups/Private/Notifications (and Joined once it exists).
+- **Unread engine across shell (🟢):** Groups/Joined/Private/Notifications badges share `UnreadEngine`.
 - **Block filter on non-discovery lists (🟡→systemic):** promoted/rising/community, edits feed, fan-works public list (CSM §18).
 - **Production-state / analytics / migration absences (🟠/⚪):** LoggingAnalytics stub; no Old→New migration; uneven empty/error/offline.
 - **Widget-layer product bugs (🟡 architecture):** join stub, hardcoded senpai, skip-offline success — symptoms of business shortcuts in UI/providers; fix with domain-layer contracts once, then screens consume them.
@@ -450,7 +450,7 @@ Coins-remove-ads remnant in **active** `lib/`: **not found**. Classification: no
 - **Edits visual/audio moderation (🟡)** — caption/tag keyword gate shipped; no vendor frame model.
 - **Respect on edits (🟢)** — feed uses existing `giveRespect`.
 - **Private chat `whoCanMessageMe` preflight + copy (🟡).**
-- **Notification inbox retry/`hasMore` (🟠); missing types (🟡).**
+- **Notification inbox retry/`hasMore` (🟢); missing types (🟡).**
 - **Ads SDK + placements (🟠)** — after product decisions on network and premium-adFree vs “reduced friction.”
 - **Premium provider seam (🟡)** — keep no-op until authorized; don’t fake charges.
 - **Home session-varying order + block filters (🟡).**
@@ -492,8 +492,8 @@ Authorization stops (like Prompt 20) are called out. No implementation in this p
 7. **Edits moderation + Respect on edits** — **done (Prompt 07)**  
    Closed: automated caption/tag gate (no human queue); Respect on feed via `socialGraph`. Remaining: visual/audio vendor.
 
-8. **Notifications unread + inbox repair + missing types**  
-   Closes: 🟠 retry/hasMore, 🟠 shell badges, 🟡 missing event types.
+8. **Notifications unread + inbox repair + missing types** — **done for retry/badges (Prompt 08)**  
+   Closed: inbox retry/`hasMore`; shell + Drawer unread badges. Remaining: missing notification types.
 
 9. **First 10 minutes + Home session mix + block filters**  
    Closes: 🟠 first-session, 🟡 Home order, systemic block holes.

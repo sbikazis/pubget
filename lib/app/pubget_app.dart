@@ -236,9 +236,18 @@ class PubgetApp extends StatelessWidget {
             return social;
           },
         ),
-        provider.ChangeNotifierProvider<GroupProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, GroupProvider>(
           create: (context) =>
               GroupProvider(repository: context.read<GroupRepository>()),
+          update: (_, auth, groups) {
+            final uid = auth.currentUser?.id;
+            if (uid != null) {
+              groups!.openJoined(uid);
+            } else {
+              groups!.closeJoined();
+            }
+            return groups;
+          },
         ),
         provider.ChangeNotifierProvider<GroupMembersProvider>(
           create: (context) => GroupMembersProvider(
@@ -460,22 +469,18 @@ class PubgetApp extends StatelessWidget {
             return notifications;
           },
         ),
-        provider.ChangeNotifierProxyProvider2<
+        provider.ChangeNotifierProxyProvider3<
           NotificationProvider,
           PrivateChatListProvider,
+          GroupProvider,
           UnreadEngine
         >(
           create: (_) => UnreadEngine(),
-          update: (_, notifications, list, unread) {
-            final conversationUnread = list.unreadCount;
+          update: (_, notifications, list, groups, unread) {
             unread!.sync(
               notifications: notifications.unreadCount,
-              groups: notifications.groupsUnreadCount,
-              privateChats:
-                  notifications.privateUnreadCount > conversationUnread
-                  ? notifications.privateUnreadCount
-                  : conversationUnread,
-              mentions: notifications.mentionsUnreadCount,
+              groups: groups.unreadCount,
+              privateChats: list.unreadCount,
             );
             return unread;
           },

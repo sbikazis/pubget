@@ -291,7 +291,7 @@ Firestore create allowlist (`firestore.rules` 368–377) includes `nickname` and
 
 ### 3.1 Screen
 
-`HomePage` (`home_page.dart`): AppBar title `Discover`. Actions: coin chip → `/store`; notifications → `/notifications`; settings → `/settings`; avatar → `/profile` (own profile when `uid` omitted).
+`HomePage` (`home_page.dart`): AppBar title `Discover`. Actions: coin chip → `/store`; notifications icon with `UnreadEngine.notifications` badge → `/notifications`; settings → `/settings`; avatar → `/profile` (own profile when `uid` omitted).
 
 Body: `RefreshIndicator` + `CustomScrollView`. Optional home ad slot (`_HomeAdSlot`) when `economy.showAd(AdPlacement.homeFeed)` is true.
 
@@ -559,7 +559,7 @@ Client does not hide pin/delete based on permissions.
 
 Live: Firestore `limit 40`, `orderBy createdAt desc, id desc`. Older: `getOlderMessages` when scroll offset < 180 or “Load older messages”.
 
-Delivery/read: client batches up to 50 ids; server sets `deliveredBy`/`readBy` and `members/{uid}.lastReadAt`. Group list unread from `lastReadAt` is not implemented in `lib/features/groups`.
+Delivery/read: client batches up to 50 ids; server sets `deliveredBy`/`readBy` and `members/{uid}.lastReadAt`. Group-list unread is `groups.lastMessageAt` vs `members/{uid}.lastReadAt` (`Group.hasUnread` / `GroupProvider.unreadCount`), streamed via `watchJoinedGroups`. That count is the shared Groups/Joined tab and Drawer source through `UnreadEngine`.
 
 `lastMessageAt` / `lastMessageText`: written by `sendMessage` transaction (`groupChat.js` 188–193). Rules still allow a member to update only those two fields (`firestore.rules` 514–518). Messages subcollection: client create/update/delete false.
 
@@ -807,7 +807,7 @@ FCM tokens: `registerFcmToken` / `unregisterFcmToken`; `users/{uid}/fcmTokens` c
 
 ### 16.2 Client inbox
 
-Stream first 30 by `createdAt` desc. `loadMore` older 30. `_hasMore` initialized `true` (`notification_provider.dart` 27). After a page, `_hasMore = older.isNotEmpty` (80) — a short last page keeps hasMore true. `close()` does not reset `_hasMore`. Inbox `onRetry: () {}` (`notification_inbox_page.dart` 28, 35). Observed behavior: retry control does nothing; load-more may keep requesting when a short page returns.
+Stream first 30 by `createdAt` desc. `loadMore` older 30. `_hasMore` is true only when a page returns `>= pageSize`; a short last page sets it false. `close()` / sign-out resets pagination (`hasMore`, items, counts). Inbox retry calls `NotificationProvider.retry()` (re-subscribes). Home app-bar, Drawer Notifications, Groups/Joined tabs, and Private tab/Drawer all read `UnreadEngine` (notifications count from `users.unreadNotificationsCount`; groups from joined `lastReadAt`; private from `lastMessageAt` vs `participants[uid].lastReadAt`).
 
 Tap: `AppNavigation.go(item.destination)`.
 
@@ -1096,11 +1096,11 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | INCOMPLETE/MOCK | `restorePremiumPurchases` | deferred, provider not configured |
 | INCOMPLETE/MOCK | `admin_adjustment` / `refund` | Enum only |
 | INCOMPLETE/MOCK | Ad placements groupEntry, storeFooter | Configured, not placed |
-| INCOMPLETE/MOCK | `notification_inbox_page.dart` 28, 35 | `onRetry: () {}` |
+| Observed | notification inbox | Retry re-fetches; `hasMore` follows page size |
 | INCOMPLETE/MOCK | Home section names `*Placeholder` | Real strips, still named placeholder in enum |
 | INCOMPLETE/MOCK | `ScoringStrategyRegistry` | No-op client scoring |
 | Observed | Mafia waiting/execution leave | Server `leaveTransition` returns `unsupported`; UI hides leave in those phases |
-| Observed | `notification_provider.dart` 27, 80, 135–147 | `hasMore` init true; last page if non-empty keeps true; `close` does not reset it |
+| Observed | `UnreadEngine` | Shared shell/Drawer unread; no visual/audio vendor; inbox types still a subset |
 | Observed | `firestore.rules` vs `PubgetUser.toMap` | create/update keys vs `displayName` / `whoCanMessageMe` |
 | Unexported | `index.js` 814–950 | `legacyOnNewGroupMessage`, `legacyOnJoinRequest` not in `exports` |
 

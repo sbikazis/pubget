@@ -19,6 +19,8 @@ final class GroupProvider extends ChangeNotifier {
   GroupMember? _membership;
   List<Group> _searchResults = const <Group>[];
   List<Group> _joinedGroups = const <Group>[];
+  StreamSubscription<Result<List<Group>>>? _joinedSubscription;
+  String? _joinedUserId;
   LoadingState _state = LoadingState.initial;
   LoadingState _joinedState = LoadingState.initial;
   Failure? _failure;
@@ -42,6 +44,8 @@ final class GroupProvider extends ChangeNotifier {
   bool get canManageEvents => memberCanManageEvents(_membership);
   bool get canManageSettings => memberCanManageSettings(_membership);
   bool get canManageMembers => memberCanManageMembers(_membership);
+  int get unreadCount =>
+      _joinedGroups.where((group) => group.hasUnread).length;
 
   Future<Result<Group>> create(GroupDraft draft) async {
     _start();
@@ -96,26 +100,51 @@ final class GroupProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> loadJoined(String userId) async {
+  Future<void> loadJoined(String userId) => openJoined(userId);
+
+  Future<void> openJoined(String userId) async {
+    if (_joinedUserId == userId && _joinedSubscription != null) return;
+    await _joinedSubscription?.cancel();
+    _joinedUserId = userId;
     _joinedFailure = null;
     _joinedState = LoadingState.loading;
     notifyListeners();
-    final result = await _repository.listJoinedGroups(userId);
-    if (_disposed) return;
-    result.fold(
-      onSuccess: (groups) {
-        _joinedGroups = groups;
-        _joinedState = groups.isEmpty ? LoadingState.empty : LoadingState.loaded;
+    final first = Completer<void>();
+    _joinedSubscription = _repository.watchJoinedGroups(userId).listen(
+      (result) {
+        if (_disposed) return;
+        result.fold(
+          onSuccess: (groups) {
+            _joinedGroups = groups;
+            _joinedFailure = null;
+            _joinedState =
+                groups.isEmpty ? LoadingState.empty : LoadingState.loaded;
+          },
+          onFailure: (failure) {
+            _joinedFailure = failure;
+            _joinedState = failure is NetworkError
+                ? LoadingState.offline
+                : LoadingState.error;
+          },
+        );
+        if (!first.isCompleted) first.complete();
         notifyListeners();
       },
-      onFailure: (failure) {
-        _joinedFailure = failure;
-        _joinedState = failure is NetworkError
-            ? LoadingState.offline
-            : LoadingState.error;
-        notifyListeners();
+      onError: (_) {
+        if (!first.isCompleted) first.complete();
       },
     );
+    await first.future;
+  }
+
+  Future<void> closeJoined() async {
+    await _joinedSubscription?.cancel();
+    _joinedSubscription = null;
+    _joinedUserId = null;
+    _joinedGroups = const <Group>[];
+    _joinedFailure = null;
+    _joinedState = LoadingState.initial;
+    if (!_disposed) notifyListeners();
   }
 
   Future<Result<void>> join(
@@ -269,6 +298,7 @@ final class GroupProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_joinedSubscription?.cancel());
     super.dispose();
   }
 }

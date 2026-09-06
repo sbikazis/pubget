@@ -25,16 +25,16 @@ class NotificationInboxPage extends StatelessWidget {
       ),
       body: PubgetLoadingStateView(
         state: provider.state,
-        onRetry: () {},
+        onRetry: provider.retry,
         empty: const PubgetEmptyState(
           title: 'No notifications',
           message: 'Important activity will appear here.',
         ),
         error: PubgetErrorState(
           message: provider.failure?.message ?? 'Notifications could not load.',
-          onRetry: () {},
+          onRetry: provider.retry,
         ),
-        offline: const PubgetOfflineState(),
+        offline: PubgetOfflineState(onRetry: provider.retry),
         child: NotificationListener<ScrollNotification>(
           onNotification: (event) {
             if (event.metrics.extentAfter < 240) provider.loadMore();
