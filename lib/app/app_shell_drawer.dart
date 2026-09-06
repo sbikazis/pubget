@@ -64,7 +64,12 @@ class AppShellDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final unread = context.watch<UnreadEngine>();
     final copy = AppStrings.of(context);
-    final auth = context.watch<AuthProvider>();
+    AuthProvider? auth;
+    try {
+      auth = Provider.of<AuthProvider>(context);
+    } on ProviderNotFoundException {
+      auth = null;
+    }
     OnboardingProvider? onboarding;
     try {
       onboarding = Provider.of<OnboardingProvider>(context);
@@ -75,30 +80,38 @@ class AppShellDrawer extends StatelessWidget {
     final economy = maybeEconomy(context);
     final name = profile?.displayName ??
         profile?.username ??
-        auth.currentUser?.displayName ??
-        auth.currentUser?.email;
+        auth?.currentUser?.displayName ??
+        auth?.currentUser?.email;
     return Drawer(
       child: PubgetAtmosphere(
         child: SafeArea(
           child: ListView(
             children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                child: PubgetHeroBanner(
-                  title: 'Pubget',
-                  subtitle: name ?? copy.brandTagline,
-                  leading: EquippedAvatar(
-                    imageUrl:
-                        profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
-                    name: name,
-                    frameId: economy?.equipped.frameId,
-                    size: PubgetAvatarSize.medium,
-                  ),
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                leading: EquippedAvatar(
+                  imageUrl: profile?.avatarUrl ?? auth?.currentUser?.avatarUrl,
+                  name: name,
+                  frameId: economy?.equipped.frameId,
+                  size: PubgetAvatarSize.small,
+                ),
+                title: Text(
+                  'Pubget',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                subtitle: Text(
+                  name ?? copy.brandTagline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const Divider(height: 1),
               for (final item in AppShellDrawerDestinations.items)
                 ListTile(
                   key: Key('drawer-${item.id}'),
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
                   leading: UnreadBadge(
                     count: unreadCountFor(item.id, unread),
                     child: Icon(item.icon, color: AppColors.gold),
