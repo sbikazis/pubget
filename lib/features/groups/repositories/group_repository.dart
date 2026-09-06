@@ -66,6 +66,7 @@ abstract interface class GroupRepository {
   Future<Result<GroupMember?>> getMembership(String groupId, String userId);
   Future<Result<List<Group>>> searchGroups(String query);
   Future<Result<List<Group>>> listJoinedGroups(String userId);
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId);
   Future<Result<void>> joinGroup({required String groupId, String? inviteId});
   Future<Result<void>> requestToJoin({required String groupId});
   Future<Result<void>> leaveGroup(String groupId);

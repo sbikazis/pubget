@@ -26,6 +26,9 @@ final class UnavailableGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async => _fail();
   @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.value(_fail());
+  @override
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,

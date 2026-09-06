@@ -134,6 +134,10 @@ final class _SplitGroupRepository implements GroupRepository {
       Success(<Group>[joined]);
 
   @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
   Future<Result<void>> updateGroupSettings({
     required String groupId,
     required GroupSettingsUpdate settings,

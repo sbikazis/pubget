@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../features/authentication/providers/auth_provider.dart';
+import '../features/notifications/providers/unread_engine.dart';
+import '../features/notifications/widgets/unread_badge.dart';
 import 'app_router.dart';
 
 typedef AppShellDrawerItem = ({String id, String label, IconData icon, String path});
@@ -44,8 +46,16 @@ abstract final class AppShellDrawerDestinations {
 class AppShellDrawer extends StatelessWidget {
   const AppShellDrawer({super.key});
 
+  static int unreadCountFor(String id, UnreadEngine unread) => switch (id) {
+    'private' => unread.privateChats,
+    'groups' || 'joined' => unread.groups,
+    'notifications' => unread.notifications,
+    _ => 0,
+  };
+
   @override
   Widget build(BuildContext context) {
+    final unread = context.watch<UnreadEngine>();
     return Drawer(
       child: SafeArea(
         child: ListView(
@@ -60,7 +70,10 @@ class AppShellDrawer extends StatelessWidget {
             for (final item in AppShellDrawerDestinations.items)
               ListTile(
                 key: Key('drawer-${item.id}'),
-                leading: Icon(item.icon),
+                leading: UnreadBadge(
+                  count: unreadCountFor(item.id, unread),
+                  child: Icon(item.icon),
+                ),
                 title: Text(item.label),
                 onTap: () => _open(context, item),
               ),

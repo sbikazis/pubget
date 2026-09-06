@@ -83,20 +83,47 @@ final class FirebaseGroupRepository implements GroupRepository {
         .where('uid', isEqualTo: userId)
         .limit(50)
         .get();
-    final groupIds = <String>{};
+    return _groupsFromMemberships(snapshot);
+  });
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) => _firestore
+      .collectionGroup('members')
+      .where('uid', isEqualTo: userId)
+      .limit(50)
+      .snapshots()
+      .asyncMap((snapshot) async {
+        try {
+          return Success(await _groupsFromMemberships(snapshot));
+        } on Object catch (error) {
+          return FailureResult<List<Group>>(_groupFailure(error));
+        }
+      });
+
+  Future<List<Group>> _groupsFromMemberships(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) async {
+    final lastReadByGroup = <String, DateTime?>{};
     for (final doc in snapshot.docs) {
       final groupId = doc.reference.parent.parent?.id;
-      if (groupId != null) groupIds.add(groupId);
+      if (groupId == null) continue;
+      lastReadByGroup[groupId] = _memberDate(doc.data()['lastReadAt']);
     }
-    if (groupIds.isEmpty) return const <Group>[];
+    if (lastReadByGroup.isEmpty) return const <Group>[];
     final snaps = await Future.wait(
-      groupIds.map((id) => _firestore.collection('groups').doc(id).get()),
+      lastReadByGroup.keys.map((id) => _firestore.collection('groups').doc(id).get()),
     );
     return snaps
         .where((snap) => snap.exists && snap.data() != null)
-        .map((snap) => Group.fromMap(snap.data()!, id: snap.id))
+        .map(
+          (snap) => Group.fromMap(
+            snap.data()!,
+            id: snap.id,
+            viewerLastReadAt: lastReadByGroup[snap.id],
+          ),
+        )
         .toList(growable: false);
-  });
+  }
 
   @override
   Future<Result<void>> joinGroup({required String groupId, String? inviteId}) =>
@@ -402,6 +429,12 @@ const _mockCharacters = <RoleplayCharacter>[
   RoleplayCharacter(key: 'mentor', name: 'The Mentor', avatarUrl: ''),
   RoleplayCharacter(key: 'trickster', name: 'The Trickster', avatarUrl: ''),
 ];
+
+DateTime? _memberDate(Object? value) {
+  if (value is DateTime) return value;
+  if (value is Timestamp) return value.toDate();
+  return null;
+}
 
 Failure _groupFailure(Object error) {
   if (error is FirebaseFunctionsException) {

@@ -105,8 +105,14 @@ class _AppShellState extends State<AppShell> {
               label: AppShellTab.groups.label,
             ),
             NavigationDestination(
-              icon: const Icon(Icons.group_outlined),
-              selectedIcon: const Icon(Icons.group),
+              icon: UnreadBadge(
+                count: unread.groups,
+                child: const Icon(Icons.group_outlined),
+              ),
+              selectedIcon: UnreadBadge(
+                count: unread.groups,
+                child: const Icon(Icons.group),
+              ),
               label: AppShellTab.joined.label,
             ),
             NavigationDestination(
