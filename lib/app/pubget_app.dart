@@ -639,6 +639,16 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       themeMode: settings.themeMode,
       locale: settings.locale,
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localeListResolutionCallback: (locales, supported) {
+        final chosen = settings.locale;
+        if (chosen != null) return chosen;
+        for (final locale in locales ?? const <Locale>[]) {
+          for (final option in supported) {
+            if (option.languageCode == locale.languageCode) return option;
+          }
+        }
+        return const Locale('ar');
+      },
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

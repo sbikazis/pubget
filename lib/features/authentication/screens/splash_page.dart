@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../../app/firebase_bootstrap.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -39,7 +40,7 @@ class _SplashPageState extends State<SplashPage> {
     if (!widget.firebaseState.isReady) {
       return _MessageScaffold(
         offline: false,
-        title: 'Pubget could not start',
+        title: AppStrings.of(context).pubgetCouldNotStart,
         message:
             widget.firebaseState.message ??
             FirebaseBootstrap.unexpectedInitializationMessage,
@@ -51,8 +52,9 @@ class _SplashPageState extends State<SplashPage> {
         auth.state == LoadingState.offline) {
       return _MessageScaffold(
         offline: auth.state == LoadingState.offline,
-        title: 'Could not start Pubget',
-        message: auth.failure?.message ?? 'Please try opening Pubget again.',
+        title: AppStrings.of(context).couldNotStartPubget,
+        message:
+            auth.failure?.message ?? AppStrings.of(context).tryOpeningAgain,
         onRetry: _retry,
       );
     }
@@ -61,10 +63,10 @@ class _SplashPageState extends State<SplashPage> {
         onboarding.state == LoadingState.offline) {
       return _MessageScaffold(
         offline: onboarding.state == LoadingState.offline,
-        title: 'Could not load your profile',
+        title: AppStrings.of(context).couldNotLoadProfile,
         message:
             onboarding.failure?.message ??
-            'Please try loading your profile again.',
+            AppStrings.of(context).tryLoadingProfileAgain,
         onRetry: _retry,
       );
     }
@@ -88,7 +90,7 @@ class _SplashPageState extends State<SplashPage> {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Premium Anime Community',
+                AppStrings.of(context).brandTagline,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   letterSpacing: 1.4,
                   color: AppColors.goldSheen,
@@ -108,7 +110,7 @@ class _SplashPageState extends State<SplashPage> {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Preparing your experience…',
+                AppStrings.of(context).preparingExperience,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppColors.goldPale.withValues(alpha: 0.86),
                 ),
@@ -205,7 +207,7 @@ class _MessageScaffold extends StatelessWidget {
                     const SizedBox(height: AppSpacing.xl),
                     if (offline)
                       PubgetInlineBanner(
-                        title: 'You are offline',
+                        title: AppStrings.of(context).youAreOffline,
                         message: message,
                         icon: Icons.cloud_off_outlined,
                         onRetry: onRetry,

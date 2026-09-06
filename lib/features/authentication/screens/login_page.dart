@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -56,32 +57,32 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final network = context.watch<NetworkService>();
+    final copy = AppStrings.of(context);
     final loading = auth.isBusy;
     final offline = network.isOffline;
     return AuthPageShell(
-      title: 'Welcome back',
-      subtitle:
-          'Sign in to continue your story in the premium anime community.',
+      title: copy.welcomeBack,
+      subtitle: copy.loginSubtitle,
       footer: PubgetTextButton(
         onPressed: loading
             ? null
             : () => AppNavigation.go(context, '/register'),
-        semanticLabel: 'Create a new account',
-        child: const Text('New to Pubget? Create an account'),
+        semanticLabel: copy.createAccountSemantic,
+        child: Text(copy.createAccountCta),
       ),
       child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             if (offline)
-              const PubgetInlineBanner(
-                title: 'You are offline',
-                message: 'Reconnect before signing in.',
+              PubgetInlineBanner(
+                title: copy.youAreOffline,
+                message: copy.reconnectBeforeSignIn,
                 icon: Icons.cloud_off_outlined,
               )
             else if (auth.failure != null)
               PubgetInlineBanner.error(
-                title: 'Sign-in failed',
+                title: copy.signInFailed,
                 message: auth.failure!.message,
               ),
             if (offline || auth.failure != null)
@@ -89,7 +90,7 @@ class _LoginPageState extends State<LoginPage> {
             PubgetTextField(
               key: const Key('login-email'),
               controller: _email,
-              label: 'Email',
+              label: copy.email,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               errorText: _emailError,
@@ -104,7 +105,7 @@ class _LoginPageState extends State<LoginPage> {
             AuthPasswordField(
               key: const Key('login-password'),
               controller: _password,
-              label: 'Password',
+              label: copy.password,
               errorText: _passwordError,
               enabled: !loading,
               onSubmitted: (_) => _submit(),
@@ -113,28 +114,28 @@ class _LoginPageState extends State<LoginPage> {
               alignment: AlignmentDirectional.centerEnd,
               child: PubgetTextButton(
                 onPressed: loading ? null : _openReset,
-                semanticLabel: 'Reset forgotten password',
-                child: const Text('Forgot password?'),
+                semanticLabel: copy.resetForgottenPassword,
+                child: Text(copy.forgotPassword),
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
             PubgetPrimaryButton(
               key: const Key('login-submit'),
               onPressed: offline || loading ? null : _submit,
-              semanticLabel: 'Sign in with email',
+              semanticLabel: copy.signInWithEmail,
               loading: loading,
-              child: const Text('Sign in'),
+              child: Text(copy.signIn),
             ),
             const SizedBox(height: AppSpacing.lg),
             const AuthOrDivider(),
             const SizedBox(height: AppSpacing.lg),
             AuthGoogleButton(
               onPressed: offline || loading ? null : _signInWithGoogle,
-              semanticLabel: 'Continue with Google',
+              semanticLabel: copy.continueWithGoogle,
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'You stay signed in on this device.',
+              copy.staySignedIn,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -145,9 +146,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   bool _validate() {
+    final copy = AppStrings.of(context);
     setState(() {
-      _emailError = AuthValidators.email(_email.text);
-      _passwordError = AuthValidators.password(_password.text);
+      _emailError = AuthValidators.email(_email.text, copy);
+      _passwordError = AuthValidators.password(_password.text, copy);
     });
     return _emailError == null && _passwordError == null;
   }

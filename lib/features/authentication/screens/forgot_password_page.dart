@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -50,16 +51,15 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final network = context.watch<NetworkService>();
+    final copy = AppStrings.of(context);
     final sending = auth.isResetting;
     final offline = network.isOffline;
     return AuthPageShell(
-      title: _sent ? 'Check your email' : 'Reset your password',
-      subtitle: _sent
-          ? 'If an account exists for that address, a reset link is on its way.'
-          : 'Enter the email you use for Pubget. We will send a reset link.',
+      title: _sent ? copy.checkYourEmail : copy.resetPassword,
+      subtitle: _sent ? copy.resetLinkOnTheWay : copy.resetPasswordSubtitle,
       leading: AuthBackButton(
         onPressed: () => AppNavigation.go(context, '/login'),
-        tooltip: 'Back to sign in',
+        tooltip: copy.backToSignIn,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -75,21 +75,21 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             const SizedBox(height: AppSpacing.xl),
             PubgetPrimaryButton(
               onPressed: () => AppNavigation.go(context, '/login'),
-              semanticLabel: 'Return to sign in',
-              child: const Text('Back to sign in'),
+              semanticLabel: copy.returnToSignIn,
+              child: Text(copy.backToSignIn),
             ),
           ] else ...[
             if (offline)
-              const PubgetInlineBanner(
-                title: 'You are offline',
-                message: 'Reconnect to send a reset link.',
+              PubgetInlineBanner(
+                title: copy.youAreOffline,
+                message: copy.reconnectToReset,
                 icon: Icons.cloud_off_outlined,
               ),
             if (offline) const SizedBox(height: AppSpacing.md),
             PubgetTextField(
               key: const Key('forgot-email'),
               controller: _email,
-              label: 'Email',
+              label: copy.email,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.done,
               errorText: _emailError,
@@ -105,9 +105,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             PubgetPrimaryButton(
               key: const Key('forgot-submit'),
               onPressed: offline || sending ? null : _submit,
-              semanticLabel: 'Send password reset email',
+              semanticLabel: copy.sendPasswordResetEmail,
               loading: sending,
-              child: const Text('Send reset link'),
+              child: Text(copy.sendResetLink),
             ),
           ],
         ],
@@ -116,7 +116,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   }
 
   Future<void> _submit() async {
-    final error = AuthValidators.email(_email.text);
+    final error = AuthValidators.email(_email.text, AppStrings.of(context));
     setState(() => _emailError = error);
     if (error != null) return;
     final email = AuthValidators.normalizeEmail(_email.text);
