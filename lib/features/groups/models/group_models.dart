@@ -95,6 +95,36 @@ final class Group {
 
   bool get isFull => membersCount >= maxMembers;
 
+  Group copyWith({
+    String? name,
+    String? description,
+    String? rules,
+    JoinPolicy? joinPolicy,
+    bool? isSearchable,
+    int? membersCount,
+  }) {
+    return Group(
+      id: id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      type: type,
+      animeId: animeId,
+      founderId: founderId,
+      membersCount: membersCount ?? this.membersCount,
+      maxMembers: maxMembers,
+      joinPolicy: joinPolicy ?? this.joinPolicy,
+      isSearchable: isSearchable ?? this.isSearchable,
+      createdAt: createdAt,
+      chatBackgroundUrl: chatBackgroundUrl,
+      rules: rules ?? this.rules,
+      activityScore: activityScore,
+      risingScore: risingScore,
+      imageUrl: imageUrl,
+      lastActivityAt: lastActivityAt,
+      promotionExpiresAt: promotionExpiresAt,
+    );
+  }
+
   factory Group.fromMap(Map<String, dynamic> map, {required String id}) {
     final createdAt = map['createdAt'];
     return Group(
@@ -167,6 +197,9 @@ final class GroupMember {
   /// Client UX gate. Server `kickMember` / `banMember` remain authoritative.
   bool get canManageMembers => memberCanManageMembers(this);
 
+  /// Client UX gate. Server `updateGroupSettings` remains authoritative.
+  bool get canManageSettings => memberCanManageSettings(this);
+
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(
       uid: uid,
@@ -225,6 +258,18 @@ bool memberCanManageMembers(GroupMember? member) {
   return granted.contains(GroupPermission.manageMembers);
 }
 
+/// Client mirror of server settings authorization. Server remains
+/// authoritative; this is UX gating only. Founder always manages settings.
+bool memberCanManageSettings(GroupMember? member) {
+  if (member == null) return false;
+  if (member.role == GroupRole.founder) return true;
+  final granted =
+      member.effectivePermissions ??
+      defaultRolePermissions[member.role] ??
+      const <GroupPermission>{};
+  return granted.contains(GroupPermission.manageSettings);
+}
+
 final class GroupRoleDefinition {
   const GroupRoleDefinition({
     required this.id,
@@ -263,6 +308,25 @@ final class GroupRoleDefinition {
       position: (map['position'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+final class GroupBan {
+  const GroupBan({
+    required this.uid,
+    this.bannedByUid,
+    this.createdAt,
+  });
+
+  final String uid;
+  final String? bannedByUid;
+  final DateTime? createdAt;
+
+  factory GroupBan.fromMap(Map<String, dynamic> map, {required String uid}) =>
+      GroupBan(
+        uid: uid,
+        bannedByUid: map['bannedByUid'] as String?,
+        createdAt: _date(map['createdAt']),
+      );
 }
 
 final class JoinRequest {
@@ -306,6 +370,12 @@ DateTime? _date(dynamic value) {
     return null;
   }
 }
+
+String groupJoinPolicyLabel(JoinPolicy policy) => switch (policy) {
+  JoinPolicy.open => 'Open join',
+  JoinPolicy.approval => 'Request to join',
+  JoinPolicy.inviteOnly => 'Invite only',
+};
 
 String groupRoleLabel(GroupRole role) => switch (role) {
   GroupRole.founder => 'Founder',

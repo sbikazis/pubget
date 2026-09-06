@@ -44,8 +44,10 @@ import '../features/groups/screens/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
+import '../features/groups/screens/group_bans_page.dart';
 import '../features/groups/screens/group_members_page.dart';
 import '../features/groups/screens/group_media_page.dart';
+import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
@@ -699,6 +701,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             GroupMediaPage(groupId: parameters['groupId'] ?? ''),
         '/group-members': (parameters) =>
             GroupMembersPage(groupId: parameters['groupId'] ?? ''),
+        '/group-settings': (parameters) =>
+            GroupSettingsPage(groupId: parameters['groupId'] ?? ''),
+        '/group-bans': (parameters) =>
+            GroupBansPage(groupId: parameters['groupId'] ?? ''),
         '/group-requests': (parameters) =>
             JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
         '/group-roleplay': (parameters) =>

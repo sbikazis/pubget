@@ -78,6 +78,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
         groupId: widget.groupId,
         group: group,
         isFounder: groupProvider.isFounder,
+        canManageSettings: groupProvider.canManageSettings,
+        canManageMembers: groupProvider.canManageMembers,
       ),
       appBar: AppBar(
         leading: IconButton(
@@ -504,11 +506,15 @@ class _GroupMenu extends StatelessWidget {
     required this.groupId,
     required this.group,
     required this.isFounder,
+    required this.canManageSettings,
+    required this.canManageMembers,
   });
 
   final String groupId;
   final Group? group;
   final bool isFounder;
+  final bool canManageSettings;
+  final bool canManageMembers;
 
   @override
   Widget build(BuildContext context) {
@@ -582,6 +588,22 @@ class _GroupMenu extends StatelessWidget {
               onTap: () =>
                   AppNavigation.go(context, '/group-members?groupId=$groupId'),
             ),
+            if (canManageSettings)
+              _MenuTile(
+                icon: Icons.settings_outlined,
+                label: 'Group settings',
+                onTap: () => AppNavigation.go(
+                  context,
+                  '/group-settings?groupId=$groupId',
+                ),
+              ),
+            if (canManageMembers)
+              _MenuTile(
+                icon: Icons.block_outlined,
+                label: 'Banned users',
+                onTap: () =>
+                    AppNavigation.go(context, '/group-bans?groupId=$groupId'),
+              ),
             if (isFounder)
               _MenuTile(
                 icon: Icons.edit_outlined,

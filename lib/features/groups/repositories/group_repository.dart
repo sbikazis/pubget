@@ -34,6 +34,32 @@ final class GroupDraft {
   };
 }
 
+/// Fields accepted by the `updateGroupSettings` callable. No extras.
+final class GroupSettingsUpdate {
+  const GroupSettingsUpdate({
+    required this.name,
+    required this.description,
+    required this.rules,
+    required this.joinPolicy,
+    required this.isSearchable,
+  });
+
+  final String name;
+  final String description;
+  final String rules;
+  final JoinPolicy joinPolicy;
+  final bool isSearchable;
+
+  Map<String, dynamic> toMap({required String groupId}) => <String, dynamic>{
+    'groupId': groupId,
+    'name': name.trim(),
+    'description': description.trim(),
+    'rules': rules.trim(),
+    'joinPolicy': joinPolicy.name,
+    'isSearchable': isSearchable,
+  };
+}
+
 abstract interface class GroupRepository {
   Future<Result<Group>> createGroup(GroupDraft draft);
   Future<Result<Group>> getGroup(String groupId);
@@ -44,4 +70,8 @@ abstract interface class GroupRepository {
   Future<Result<void>> requestToJoin({required String groupId});
   Future<Result<void>> leaveGroup(String groupId);
   Future<Result<void>> disbandGroup(String groupId);
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  });
 }

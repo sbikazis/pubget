@@ -37,6 +37,11 @@ final class UnavailableGroupRepository implements GroupRepository {
   Future<Result<void>> leaveGroup(String groupId) async => _fail();
   @override
   Future<Result<void>> disbandGroup(String groupId) async => _fail();
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => _fail();
 }
 
 final class UnavailableGroupMembersRepository
@@ -104,6 +109,13 @@ final class UnavailableGroupMembersRepository
   }) async => _fail();
   @override
   Future<Result<void>> rejectJoinRequest({
+    required String groupId,
+    required String uid,
+  }) async => _fail();
+  @override
+  Future<Result<List<GroupBan>>> getBans(String groupId) async => _fail();
+  @override
+  Future<Result<void>> unbanMember({
     required String groupId,
     required String uid,
   }) async => _fail();
