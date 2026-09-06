@@ -56,19 +56,22 @@ class _GroupChatPageState extends State<GroupChatPage> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    final user = context.read<AuthProvider>().currentUser;
-    if (user == null) return;
-    final groupProvider = context.read<GroupProvider>();
-    if (groupProvider.group?.id != widget.groupId) {
-      unawaited(groupProvider.load(groupId: widget.groupId, userId: user.id));
-    }
-    unawaited(
-      context.read<ChatProvider>().open(
-        groupId: widget.groupId,
-        currentUserId: user.id,
-      ),
-    );
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final user = context.read<AuthProvider>().currentUser;
+      if (user == null) return;
+      final groupProvider = context.read<GroupProvider>();
+      if (groupProvider.group?.id != widget.groupId) {
+        unawaited(groupProvider.load(groupId: widget.groupId, userId: user.id));
+      }
+      unawaited(
+        context.read<ChatProvider>().open(
+          groupId: widget.groupId,
+          currentUserId: user.id,
+        ),
+      );
+    });
   }
 
   @override
@@ -376,52 +379,63 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: <Widget>[
-            if (message.text?.isNotEmpty == true)
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: <Widget>[
+              if (message.text?.isNotEmpty == true)
+                ListTile(
+                  key: const Key('chat-action-copy'),
+                  leading: const Icon(Icons.copy_outlined),
+                  title: const Text('Copy'),
+                  onTap: () => Navigator.pop(context, 'copy'),
+                ),
               ListTile(
-                leading: const Icon(Icons.copy_outlined),
-                title: const Text('Copy'),
-                onTap: () => Navigator.pop(context, 'copy'),
+                key: const Key('chat-action-reply'),
+                leading: const Icon(Icons.reply),
+                title: const Text('Reply'),
+                onTap: () => Navigator.pop(context, 'reply'),
               ),
-            ListTile(
-              leading: const Icon(Icons.reply),
-              title: const Text('Reply'),
-              onTap: () => Navigator.pop(context, 'reply'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite_outline),
-              title: const Text('React'),
-              onTap: () => Navigator.pop(context, 'react'),
-            ),
-            ListTile(
-              leading: Icon(
-                message.pinnedAt == null
-                    ? Icons.push_pin_outlined
-                    : Icons.push_pin,
+              ListTile(
+                key: const Key('chat-action-react'),
+                leading: const Icon(Icons.favorite_outline),
+                title: const Text('React'),
+                onTap: () => Navigator.pop(context, 'react'),
               ),
-              title: Text(message.pinnedAt == null ? 'Pin' : 'Unpin'),
-              onTap: () => Navigator.pop(context, 'pin'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete'),
-              onTap: () => Navigator.pop(context, 'delete'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.forward_outlined),
-              title: const Text('Forward / share'),
-              onTap: () => Navigator.pop(context, 'forward'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: const Text('Report'),
-              onTap: () => Navigator.pop(context, 'report'),
-            ),
-          ],
-        ),
-      ),
+              ListTile(
+                key: const Key('chat-action-pin'),
+                leading: Icon(
+                  message.pinnedAt == null
+                      ? Icons.push_pin_outlined
+                      : Icons.push_pin,
+                ),
+                title: Text(message.pinnedAt == null ? 'Pin' : 'Unpin'),
+                onTap: () => Navigator.pop(context, 'pin'),
+              ),
+              ListTile(
+                key: const Key('chat-action-delete'),
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Delete'),
+                onTap: () => Navigator.pop(context, 'delete'),
+              ),
+              ListTile(
+                key: const Key('chat-action-forward'),
+                leading: const Icon(Icons.forward_outlined),
+                title: const Text('Forward / share'),
+                onTap: () => Navigator.pop(context, 'forward'),
+              ),
+              ListTile(
+                key: const Key('chat-action-report'),
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text('Report'),
+                onTap: () => Navigator.pop(context, 'report'),
+              ),
+            ],
+          ),
+        );
+      },
     );
     if (!mounted || action == null) return;
     final chat = context.read<ChatProvider>();
@@ -452,6 +466,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final destination = await showModalBottomSheet<_ForwardTarget>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (_) => _ForwardSheet(
         currentGroupId: widget.groupId,
         groups: groups,
@@ -488,9 +503,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final reason = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             const ListTile(title: Text('Report message')),
             for (final item in reportReasons)

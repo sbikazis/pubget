@@ -151,6 +151,7 @@ void main() {
         ),
       ),
     );
+    await groups.loadJoined('alice');
     await tester.pump();
     chatRepo.stream.add(Success(<ChatMessage>[_bobText()]));
     await tester.pumpAndSettle();
@@ -166,9 +167,9 @@ void main() {
     expect(chatRepo.sent.last['type'], ChatMessageType.sticker);
     expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
 
-    await tester.longPress(find.text('hello from bob'));
+    await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reply'));
+    await tester.tap(find.byKey(const Key('chat-action-reply')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('reply-composer-bar')), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'Quoted reply');
@@ -177,19 +178,23 @@ void main() {
     expect(chatRepo.sent.last['text'], 'Quoted reply');
     expect(chatRepo.sent.last['replyToMessageId'], 'm-bob');
 
-    await tester.longPress(find.text('hello from bob'));
+    await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Report'));
+    await tester.ensureVisible(find.byKey(const Key('chat-action-report')));
+    await tester.tap(find.byKey(const Key('chat-action-report')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('report-reason-spam')));
     await tester.pumpAndSettle();
     expect(chatRepo.reports.single.reason, 'spam');
     expect(chatRepo.reports.single.messageId, 'm-bob');
     expect(find.text('Report submitted'), findsOneWidget);
-
-    await tester.longPress(find.text('hello from bob'));
+    await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Forward / share'));
+
+    await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('chat-action-forward')));
+    await tester.tap(find.byKey(const Key('chat-action-forward')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('forward-group-g2')));
     await tester.pumpAndSettle();
