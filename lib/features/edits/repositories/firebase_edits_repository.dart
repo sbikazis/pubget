@@ -26,6 +26,8 @@ final class FirebaseEditsRepository implements EditsRepository {
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
       return Success(await action());
+    } on Failure catch (error) {
+      return FailureResult(error);
     } on Object catch (error) {
       return FailureResult(
         error is FirebaseException && error.code == 'unavailable'
@@ -59,17 +61,23 @@ final class FirebaseEditsRepository implements EditsRepository {
     await task;
     onProgress?.call(1);
     final editId = start.data['editId'] as String;
+    const terminals = <String>{'published', 'failed', 'rejected', 'deleted'};
     final completed = await _firestore
         .collection('edits')
         .doc(editId)
         .snapshots()
-        .firstWhere((doc) => doc.data()?['status'] != 'processing')
+        .firstWhere((doc) => terminals.contains(doc.data()?['status']))
         .timeout(const Duration(minutes: 5));
     final data = completed.data();
-    if (data == null || data['status'] != 'published') {
-      throw StateError(
-        'Video processing failed. Choose a valid MP4 and retry.',
-      );
+    final failure = Edit.uploadTerminalFailure(
+      status: data?['status'] as String?,
+      moderationReason: data?['moderationReason'] as String?,
+    );
+    if (data == null || failure != null) {
+      throw failure ??
+          const ValidationError(
+            'Video processing failed. Choose a valid MP4 and retry.',
+          );
     }
     return Edit.fromMap(data, id: editId);
   });

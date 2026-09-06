@@ -697,17 +697,16 @@ Trigger: `/events/create?groupId=` from group details when `canManageEvents`.
 Upload (`edit_upload_page.dart`, `editsDomain.js`, `editPipeline.js`):
 
 1. Gallery video pick (client)
-2. `startEditUpload` creates doc `status: uploading`, path `edits/{creatorId}/{editId}.mp4`; caption ≤1000, animeTag ≤128
+2. `startEditUpload` creates doc `status: uploading`, `moderationStatus: pending`, path `edits/{creatorId}/{editId}.mp4`; caption ≤1000, animeTag ≤128. Client-supplied `status` / `moderationStatus` are ignored.
 3. Client Storage upload
-4. Wait until status leaves `processing` (5 min timeout)
+4. Client waits for a terminal status (`published` | `failed` | `rejected` | `deleted`; 5 min timeout)
 5. `processEditVideo` onObjectFinalized europe-west3: reject non-mp4 or size > 250MiB; duration ≤0 or >180s fails; ffmpeg scale max 1080, libx264 crf 25; thumbnail at 0.5s max 720px
-6. Publish `status: published`, `score: 20 + creatorQuality`; `earn_publish`; achievement `edit_published`
+6. Automated pre-publish gate (`contentFilter.js` `moderateEditCopy` via `decideEditPublication`): caption + `animeTag` against a banned-term list. Fan Works / Group Chat had report *reasons* only — no reusable word-list existed. Clean copy → `status: published`, `moderationStatus: approved`; `earn_publish`; achievement `edit_published`. Flagged copy → `status: rejected`, `moderationStatus: flagged`, creator-visible `moderationReason`; no rewards. Client cannot override. No human review queue. No visual/audio vendor is wired (`sharp` is resize-only in chat media).
+7. Repost re-runs the same caption/tag filter and refuses flagged source copy.
 
-No moderation step in `editPipeline.js` or `editsDomain.js`. **INCOMPLETE/MOCK** (absent)
+Feed query: `status == published`, `orderBy score desc, createdAt desc` (`firebase_edits_repository.dart`). Discovery uses `scoreEdit` (`ranking.js` 142–165).
 
-Feed query: `status == published`, `orderBy score desc, createdAt desc` (`firebase_edits_repository.dart` 80–85). Discovery uses `scoreEdit` (`ranking.js` 142–165).
-
-Interactions: view (`startEditPlayback` + `recordEditView`: not self, ≥10% of server elapsed, once per day, completion ≥90%), like, comment, reply, comment like, repost (30-day window), share signal weight 3, save signal weight 5. Negative signal has no feed UI. Respect is not an edits action. Delete callable exists; not on the feed UI.
+Interactions: view (`startEditPlayback` + `recordEditView`: not self, ≥10% of server elapsed, once per day, completion ≥90%), like, comment, reply, comment like, repost (30-day window), share signal weight 3, save signal weight 5, Respect via existing `SocialProvider.giveRespect` → `socialGraph.giveRespect` (same 0–7 total, 3000 ms cooldown, self-block, relationship block; no parallel edits Respect store). Negative signal has no feed UI. Delete callable exists; not on the feed UI.
 
 Rules: `edits` documents and aggregates client-unwritable.
 
@@ -1018,7 +1017,7 @@ Auth: HTTPS handlers checked in this audit use `request.auth` / `authUid` / `req
 
 **Economy:** if already loaded and offline, shows cached snapshot (`economy_provider.dart` 73–77); purchases require connection.
 
-**Edits upload:** waits on processing snapshot; 5 minute timeout then client-side failure.
+**Edits upload:** waits for `published` / `failed` / `rejected` / `deleted`; rejected surfaces `moderationReason`; 5 minute timeout then client-side failure.
 
 **App restart:** Firebase Auth restores session; splash reloads profile; onboarding skip flags persist only if Firestore write succeeded (or local skip until process death). SharedPreferences holds theme/locale.
 
@@ -1092,7 +1091,7 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | INCOMPLETE/MOCK | `group_provider.dart` 97–101 | Join sets `uid: ''` |
 | INCOMPLETE/MOCK | game `difficulty` | Stored, unused by engines |
 | INCOMPLETE/MOCK | `GameStrings.reconnecting` | Unused |
-| INCOMPLETE/MOCK | edit moderation | Absent in pipeline |
+| Observed | edit moderation | Caption/tag keyword gate before publish; no visual/audio vendor |
 | INCOMPLETE/MOCK | `economy_widgets.dart` 144–161 | Sponsored ad placeholder |
 | INCOMPLETE/MOCK | `restorePremiumPurchases` | deferred, provider not configured |
 | INCOMPLETE/MOCK | `admin_adjustment` / `refund` | Enum only |
