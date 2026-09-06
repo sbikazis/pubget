@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -57,6 +58,7 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
         !state.self!.hasLeft;
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text('Mafia'),
         actions: <Widget>[
           if (canLeave)

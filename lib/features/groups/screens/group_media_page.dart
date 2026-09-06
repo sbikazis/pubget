@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/chat_models.dart';
@@ -20,7 +21,9 @@ class GroupMediaPage extends StatelessWidget {
         .where((message) => message.isMedia && !message.isDeleted)
         .toList(growable: false);
     return Scaffold(
-      appBar: AppBar(title: const Text('Group media')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Group media')),
       body: media.isEmpty
           ? const PubgetEmptyState(
               title: 'No shared media',

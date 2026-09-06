@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/errors/result.dart';
@@ -62,27 +64,30 @@ class _ProfilePageState extends State<ProfilePage> {
     final profile = context.watch<ProfileProvider>();
     final currentUserId = context.watch<AuthProvider>().currentUser?.id;
     final profileId = widget.userId ?? currentUserId ?? '';
+    final copy = AppStrings.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(profile.isOwner ? 'My profile' : 'Profile'),
+        leading: AppBackButton.maybeOf(context),
+        title: Text(profile.isOwner ? copy.myProfile : copy.profile),
         actions: <Widget>[
           if (profileId.isNotEmpty) ...<Widget>[
             PubgetIconButton(
               icon: Icons.share_outlined,
-              tooltip: 'Share profile',
+              tooltip: copy.shareProfile,
               onPressed: () => PubgetLinks.share(
                 context,
                 url: PubgetLinks.profile(profileId),
                 title:
                     profile.publicProfile?.username ??
                     profile.ownProfile?.username ??
-                    'Pubget profile',
+                    copy.profile,
                 type: 'profile',
               ),
             ),
             PubgetIconButton(
               icon: Icons.copy_outlined,
-              tooltip: 'Copy link',
+              tooltip: copy.copyLink,
               onPressed: () => PubgetLinks.copy(
                 context,
                 PubgetLinks.profile(profileId),
@@ -93,29 +98,31 @@ class _ProfilePageState extends State<ProfilePage> {
           if (profile.isOwner)
             PubgetIconButton(
               icon: Icons.edit_outlined,
-              tooltip: 'Edit profile',
+              tooltip: copy.editProfile,
               onPressed: () => AppNavigation.go(context, '/profile/edit'),
             ),
         ],
       ),
-      body: SafeArea(
+      body: PubgetAtmosphere(
+        child: SafeArea(
         child: PubgetLoadingStateView(
           state: profile.state,
           onRetry: () => _reload(profileId),
           error: PubgetErrorState(
-            message: profile.failure?.message ?? 'The profile could not load.',
+            message: profile.failure?.message ?? copy.profileFailed,
             onRetry: () => _reload(profileId),
           ),
           offline: PubgetOfflineState(onRetry: () => _reload(profileId)),
-          empty: const PubgetEmptyState(
-            title: 'Profile not available',
-            message: 'This user may have made their profile private.',
+          empty: PubgetEmptyState(
+            title: copy.profileUnavailable,
+            message: copy.profilePrivate,
           ),
           child: _ProfileContent(
             profileId: profileId,
             respect: _respect,
             onRespectChanged: (value) => setState(() => _respect = value),
           ),
+        ),
         ),
       ),
     );
@@ -167,45 +174,37 @@ class _ProfileContent extends StatelessWidget {
         ? economy?.equipped.badgeId
         : public?.equippedBadgeId;
 
+    final copy = AppStrings.of(context);
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: <Widget>[
-        Center(
-          child: EquippedAvatar(
+        PubgetHeroBanner(
+          title: name ?? copy.pubgetUser,
+          subtitle: bio == null || bio.trim().isEmpty ? copy.brandTagline : bio,
+          leading: EquippedAvatar(
             imageUrl: avatarUrl,
             name: name,
             frameId: frameId,
             size: PubgetAvatarSize.large,
           ),
+          trailing: badgeId == null || badgeId.isEmpty
+              ? null
+              : PubgetBadge(label: badgeId, compact: true),
         ),
-        if (badgeId != null && badgeId.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Center(child: PubgetBadge(label: badgeId, compact: true)),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          name ?? 'Pubget user',
-          style: Theme.of(context).textTheme.headlineSmall,
-          textAlign: TextAlign.center,
-        ),
-        if (bio != null && bio.trim().isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Text(bio, textAlign: TextAlign.center),
-        ],
         const SizedBox(height: AppSpacing.lg),
         Row(
           children: <Widget>[
             Expanded(
-              child: _Stat(label: 'Respect', value: totalRespect),
+              child: _Stat(label: copy.respect, value: totalRespect),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-              child: _Stat(label: 'Fans', value: fansCount),
+              child: _Stat(label: copy.fans, value: fansCount),
             ),
             if (profile.isOwner) ...[
               const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: _Stat(label: 'Friends', value: social.friends.length),
+                child: _Stat(label: copy.friends, value: social.friends.length),
               ),
             ],
           ],
@@ -224,38 +223,38 @@ class _ProfileContent extends StatelessWidget {
         if (profile.isOwner) ...[
           PubgetPrimaryButton(
             onPressed: () => AppNavigation.go(context, '/profile/edit'),
-            semanticLabel: 'Edit my public profile',
+            semanticLabel: copy.editProfile,
             leadingIcon: Icons.edit_outlined,
-            child: const Text('Edit profile'),
+            child: Text(copy.editProfile),
           ),
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: () => AppNavigation.go(context, '/friend-requests'),
-            semanticLabel: 'Open friend requests',
+            semanticLabel: copy.friendRequests,
             leadingIcon: Icons.person_add_alt_1_outlined,
-            child: Text('Friend requests (${social.incomingRequests.length})'),
+            child: Text('${copy.friendRequests} (${social.incomingRequests.length})'),
           ),
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: () => AppNavigation.go(context, '/achievements'),
-            semanticLabel: 'Open achievements',
+            semanticLabel: copy.achievements,
             leadingIcon: Icons.emoji_events_outlined,
-            child: const Text('Achievements'),
+            child: Text(copy.achievements),
           ),
           if (economy != null) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               onPressed: () => AppNavigation.go(context, '/store'),
-              semanticLabel: 'Open the cosmetics store',
+              semanticLabel: copy.store,
               leadingIcon: Icons.storefront_outlined,
-              child: const Text('Store'),
+              child: Text(copy.store),
             ),
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               onPressed: () => AppNavigation.go(context, '/premium'),
-              semanticLabel: 'Open Premium',
+              semanticLabel: copy.drawerPremium,
               leadingIcon: Icons.workspace_premium_outlined,
-              child: const Text('Premium'),
+              child: Text(copy.drawerPremium),
             ),
           ],
         ] else ...[

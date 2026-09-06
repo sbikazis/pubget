@@ -1,6 +1,13 @@
 # PUBGET — PRODUCT COMPLIANCE & GAP AUDIT
 
-Spec of record: `docs/PUBGET_1_0_SPEC.md` (Prompt 01 paste, unmodified).
+**Historical.** This audit was written against `docs/CURRENT_STATE_MASTER.md`
+at commit `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e` (PR #21). Several rows
+are now stale (five-tab shell, Drawer, unread badges, Arabic chrome).
+
+Live classification for the locked spec is
+`docs/PUBGET_1_0_REBUILD_MATRIX.md`.
+
+Spec of record: `docs/PUBGET_1_0_SPEC.md` (LOCKED).
 Current state of record: `docs/CURRENT_STATE_MASTER.md` at commit
 `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e` (PR #21). Claims below treat that
 document as fact. Re-checks against live code are noted when used.

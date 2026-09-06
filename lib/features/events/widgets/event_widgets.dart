@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -87,23 +88,10 @@ class EventHomeStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Events',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/events'),
-                  semanticLabel: EventStrings.seeAll,
-                  child: const Text(EventStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionEvents,
+            actionLabel: EventStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/events'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && events.isEmpty)

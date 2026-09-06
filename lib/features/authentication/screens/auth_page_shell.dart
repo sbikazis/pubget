@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
@@ -55,7 +56,14 @@ class AuthPageShell extends StatelessWidget {
                     children: <Widget>[
                       SizedBox(
                         width: 48,
-                        child: leading ?? const SizedBox.shrink(),
+                        child:
+                            leading ??
+                            (AppNavigation.canPop(context)
+                                ? AuthBackButton(
+                                    onPressed: () =>
+                                        AppNavigation.back(context),
+                                  )
+                                : const SizedBox.shrink()),
                       ),
                       const Spacer(),
                       trailing ?? const AuthLanguagePicker(),

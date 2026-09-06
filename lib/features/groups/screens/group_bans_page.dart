@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -48,7 +49,9 @@ class _GroupBansPageState extends State<GroupBansPage> {
     final allowed =
         groups.group?.id == widget.groupId && groups.canManageMembers;
     return Scaffold(
-      appBar: AppBar(title: const Text('Banned users')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Banned users')),
       body: !allowed && groups.state == LoadingState.loaded
           ? const PubgetEmptyState(
               title: 'You cannot manage bans',

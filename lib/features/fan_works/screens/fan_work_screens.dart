@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -40,6 +41,7 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          leading: AppBackButton.maybeOf(context),
           title: const Text(FanWorkStrings.feedTitle),
           bottom: const TabBar(
             tabs: <Widget>[
@@ -212,6 +214,7 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
     final uid = context.watch<AuthProvider>().currentUser?.id;
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(details.work?.title ?? FanWorkStrings.feedTitle),
         actions: <Widget>[
           if (details.work != null)
@@ -809,6 +812,7 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     final editor = context.watch<FanWorkEditorProvider>();
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(
           widget.workId == null
               ? FanWorkStrings.create
@@ -1111,7 +1115,9 @@ class _MangaViewerPageState extends State<MangaViewerPage> {
     final details = context.watch<FanWorkDetailsProvider>();
     final pages = details.work?.content.orderedPages ?? const <FanWorkPage>[];
     return Scaffold(
-      appBar: AppBar(title: Text(details.work?.title ?? 'Manga')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(details.work?.title ?? 'Manga')),
       body: pages.isEmpty
           ? const PubgetEmptyState(
               title: 'No pages yet',
@@ -1179,7 +1185,9 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
         ? (work?.content.body ?? '')
         : chapters[_chapter.clamp(0, chapters.length - 1)].body;
     return Scaffold(
-      appBar: AppBar(title: Text(work?.title ?? 'Story')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(work?.title ?? 'Story')),
       body: work == null
           ? const PubgetSkeleton.card(width: double.infinity)
           : ListView(

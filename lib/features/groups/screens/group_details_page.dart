@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
@@ -50,6 +51,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     }
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text('Group details'),
         actions: <Widget>[
           PubgetIconButton(

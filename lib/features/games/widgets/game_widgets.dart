@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -257,23 +258,10 @@ class GameHomeStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Games',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/games'),
-                  semanticLabel: GameStrings.seeAll,
-                  child: const Text(GameStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionGames,
+            actionLabel: GameStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/games'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && games.isEmpty)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -37,7 +38,9 @@ class _AchievementsPageState extends State<AchievementsPage> {
     final state = context.watch<AchievementProvider>();
     final uid = context.watch<AuthProvider>().currentUser?.id;
     return Scaffold(
-      appBar: AppBar(title: const Text('Achievements')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Achievements')),
       body: PubgetLoadingStateView(
         state: state.state,
         onRetry: uid == null
