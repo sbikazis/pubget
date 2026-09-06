@@ -49,9 +49,9 @@ Actions:
 | §7.3 Rising groups | Server rising score + client strip | KEEP | |
 | §8 Navigation | Five tabs: Discover / Groups / Joined / Private / Edits | KEEP | GAP_AUDIT “four tabs” is stale. |
 | §9 Drawer | Real drawer with required destinations + unread | REBUILD chrome | Rename Store → Dragon Store. |
-| §10–14 Groups | Types, create wizard, member→chat, details exist. Settings/unban UI historically weak. | KEEP logic / REBUILD lists | Do not invent settings backends. |
-| §19 Avatar → Profile | Used in several places; not proven everywhere | FIX incrementally | |
-| §22–29 Chat | Working group chat + delivery colors + pagination. Richness incomplete. | KEEP backend / REBUILD later | Do not rewrite chat internals here. |
+| §10–14 Groups | Types, create wizard, member→chat, details/chat/members chrome rebuilt on this branch. Settings/unban stay existing pages. | KEEP logic / REBUILD chrome | Do not invent settings backends. |
+| §19 Avatar → Profile | Group chat + members avatars now open `/profile?uid=`. Other surfaces later. | FIX incrementally | |
+| §22–29 Chat | Working group chat + delivery colors + pagination. Header/menu/role badge rebuilt. Bubble richness still incomplete. | KEEP backend / REBUILD chrome | Do not rewrite chat internals here. |
 | §30–37 Games / Mafia | Isolated domains, contracts, emoji guess type exists | KEEP | No new game modes. |
 | §38–41 Events | Independent domain, 7-day cap, home strip | KEEP | |
 | §42–49 Edits | Video feed, upload, moderation, respect | KEEP | Feed UI still not TikTok-level. Later REBUILD. |
@@ -84,15 +84,21 @@ Actions:
 
 ## This phase (honest scope)
 
+Home / Drawer / Groups list / Joined / Profile chrome landed on `main`
+via PR #36. The next rebuild surface is Group Details + Group Chat +
+Members chrome on **existing** contracts.
+
 In scope now:
 
-1. Lock the spec.
-2. Publish this live matrix.
-3. Strengthen the centralized design system.
-4. Rebuild Home as a command center on **existing** discovery data.
-5. Rebuild Drawer / Groups / Joined / Profile chrome without new backends.
-6. Expand Arabic for the surfaces we touch.
-7. Tests for the new chrome.
+1. Rebuild Group Details identity (hero, localized type/policy, founder
+   actions, member Open chat, visitor join). Keep member→chat redirect.
+2. Rebuild Group Chat header (avatar → details, marquee, three-dot menu)
+   and §83 menu items. Canonical group links via `PubgetLinks`.
+3. Avatar tap on chat/members → `/profile?uid=`. Do not invent names.
+4. Localize the chrome we touch. Keep English defaults that tests pin
+   (`Send message`, `Banned users`, `Change role`, `Kick`, `Ban`,
+   `Transfer ownership`, `Report submitted`, `Message forwarded`).
+5. Double-confirm disband. Confirm leave. Do not rewrite `ChatProvider`.
 
 Out of scope / not 10/10 yet:
 
@@ -102,6 +108,6 @@ Out of scope / not 10/10 yet:
 - Real ad network
 - Play Billing
 - Complete Arabic product copy
-- Chat / Edits / Mafia visual rewrite
+- TikTok-level chat/Edits visual rewrite
 - Data migration
 - Production APK certification of the whole product
