@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../repositories/edits_repository.dart';
@@ -30,7 +31,9 @@ class _EditUploadPageState extends State<EditUploadPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Upload Edit')),
+    appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Upload Edit')),
     body: ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: <Widget>[

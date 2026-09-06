@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -22,7 +23,9 @@ class SettingsPage extends StatelessWidget {
     final profile = context.watch<OnboardingProvider>().profile;
     final copy = AppStrings.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(copy.settings)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(copy.settings)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: <Widget>[

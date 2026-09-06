@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -53,7 +54,9 @@ class _GameCreatePageState extends State<GameCreatePage> {
     final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;
     final isMafia = creator.draft.type == GameType.mafia;
     return Scaffold(
-      appBar: AppBar(title: const Text(GameStrings.create)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text(GameStrings.create)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: <Widget>[

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -78,11 +79,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     });
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: () => AppNavigation.go(context, '/private'),
-          icon: const Icon(Icons.arrow_back),
-        ),
+        leading: AppBackButton.maybeOf(context) ??
+            AppBackButton(
+              onPressed: () => AppNavigation.go(context, '/private'),
+            ),
         titleSpacing: 0,
         title: Row(
           children: <Widget>[

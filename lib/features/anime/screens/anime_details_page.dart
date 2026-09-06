@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -48,6 +49,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
     final anime = details.anime;
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(anime?.title ?? AnimeStrings.hubTitle),
         actions: <Widget>[
           if (anime != null) ...<Widget>[

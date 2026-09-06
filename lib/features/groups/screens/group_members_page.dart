@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -59,6 +60,7 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
     final canManageMembers = _viewerCanManageMembers(context);
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text('Members'),
         actions: <Widget>[
           PubgetIconButton(

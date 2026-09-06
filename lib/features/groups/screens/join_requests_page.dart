@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/group_members_provider.dart';
@@ -26,7 +27,9 @@ class _JoinRequestsPageState extends State<JoinRequestsPage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Join requests')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Join requests')),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => provider.loadRequests(widget.groupId),

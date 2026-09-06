@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -126,7 +127,9 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     final builder = context.watch<EventBuilderProvider>();
     final spec = EventTypeRegistry.of(builder.draft.type);
     return Scaffold(
-      appBar: AppBar(title: const Text(EventStrings.create)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text(EventStrings.create)),
       body: Stepper(
         currentStep: _step,
         onStepTapped: (value) => setState(() => _step = value),

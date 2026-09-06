@@ -58,7 +58,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       title: _sent ? copy.checkYourEmail : copy.resetPassword,
       subtitle: _sent ? copy.resetLinkOnTheWay : copy.resetPasswordSubtitle,
       leading: AuthBackButton(
-        onPressed: () => AppNavigation.go(context, '/login'),
+        onPressed: () => AppNavigation.back(context),
         tooltip: copy.backToSignIn,
       ),
       child: Column(

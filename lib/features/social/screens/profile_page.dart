@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
@@ -64,6 +65,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final profileId = widget.userId ?? currentUserId ?? '';
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(profile.isOwner ? 'My profile' : 'Profile'),
         actions: <Widget>[
           if (profileId.isNotEmpty) ...<Widget>[

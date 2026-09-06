@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
@@ -41,6 +42,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     final searching = _search.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text(AnimeStrings.hubTitle),
         actions: <Widget>[
           PubgetTextButton(
