@@ -27,6 +27,7 @@ final class ChatProvider extends ChangeNotifier {
   bool _loadingMore = false;
   bool _disposed = false;
   bool _readInFlight = false;
+  ChatMessage? _replyTarget;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   Map<String, double> get uploadProgress => Map.unmodifiable(_uploadProgress);
@@ -34,6 +35,21 @@ final class ChatProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
   String? get groupId => _groupId;
+  ChatMessage? get replyTarget => _replyTarget;
+
+  void setReplyTarget(ChatMessage? message) {
+    _replyTarget = message == null || message.isDeleted ? null : message;
+    notifyListeners();
+  }
+
+  void clearReplyTarget() => setReplyTarget(null);
+
+  ChatMessage? messageById(String? id) {
+    if (id == null) return null;
+    final index = _messageIndex[id];
+    if (index == null) return null;
+    return _messages[index];
+  }
 
   Future<void> open({
     required String groupId,
@@ -110,6 +126,7 @@ final class ChatProvider extends ChangeNotifier {
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    final replyId = replyToMessageId ?? _replyTarget?.id;
     final pending = ChatMessage.optimistic(
       id: _newId(),
       senderId: senderId,
@@ -118,7 +135,8 @@ final class ChatProvider extends ChangeNotifier {
       senderRole: senderRole,
       type: ChatMessageType.text,
       text: trimmed,
-      replyToMessageId: replyToMessageId,
+      replyToMessageId: replyId,
+      replyPreview: _previewFor(_replyTarget),
     );
     _upsert(pending);
     final result = await _repository.sendMessage(
@@ -126,8 +144,43 @@ final class ChatProvider extends ChangeNotifier {
       messageId: pending.id,
       type: ChatMessageType.text,
       text: trimmed,
-      replyToMessageId: replyToMessageId,
+      replyToMessageId: replyId,
     );
+    if (result.isSuccess) clearReplyTarget();
+    _finishSend(pending.id, result);
+  }
+
+  Future<void> sendSticker({
+    required String groupId,
+    required String senderId,
+    required String senderName,
+    required String senderAvatar,
+    required String senderRole,
+    required String stickerKey,
+    String? replyToMessageId,
+  }) async {
+    final replyId = replyToMessageId ?? _replyTarget?.id;
+    final pending = ChatMessage.optimistic(
+      id: _newId(),
+      senderId: senderId,
+      senderName: senderName,
+      senderAvatar: senderAvatar,
+      senderRole: senderRole,
+      type: ChatMessageType.sticker,
+      text: null,
+      stickerKey: stickerKey,
+      replyToMessageId: replyId,
+      replyPreview: _previewFor(_replyTarget),
+    );
+    _upsert(pending);
+    final result = await _repository.sendMessage(
+      groupId: groupId,
+      messageId: pending.id,
+      type: ChatMessageType.sticker,
+      stickerKey: stickerKey,
+      replyToMessageId: replyId,
+    );
+    if (result.isSuccess) clearReplyTarget();
     _finishSend(pending.id, result);
   }
 
@@ -142,9 +195,7 @@ final class ChatProvider extends ChangeNotifier {
     required String contentType,
   }) async {
     final mediaId = _newId();
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
+    final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final pending = ChatMessage.optimistic(
       id: mediaId,
       senderId: senderId,
@@ -154,6 +205,8 @@ final class ChatProvider extends ChangeNotifier {
       type: type,
       text: null,
       mediaId: mediaId,
+      replyToMessageId: _replyTarget?.id,
+      replyPreview: _previewFor(_replyTarget),
     );
     _pendingUploads[mediaId] = _PendingMediaUpload(
       groupId: groupId,
@@ -200,6 +253,8 @@ final class ChatProvider extends ChangeNotifier {
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
+          replyToMessageId: _replyTarget?.id,
+          replyPreview: _previewFor(_replyTarget),
         );
         _upsert(pending);
         final result = await _repository.sendMessage(
@@ -209,7 +264,9 @@ final class ChatProvider extends ChangeNotifier {
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
+          replyToMessageId: pending.replyToMessageId,
         );
+        if (result.isSuccess) clearReplyTarget();
         _finishSend(mediaId, result);
         if (result.isSuccess) _pendingUploads.remove(mediaId);
       },
@@ -246,8 +303,43 @@ final class ChatProvider extends ChangeNotifier {
       thumbnailUrl: message.thumbnailUrl,
       mediaId: message.mediaId,
       replyToMessageId: message.replyToMessageId,
+      stickerKey: message.stickerKey,
     );
     _finishSend(message.id, result);
+  }
+
+  Future<Result<ChatMessage>> forwardMessage({
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async {
+    final groupId = _groupId;
+    if (groupId == null) {
+      return const FailureResult(UnknownError());
+    }
+    return _repository.forwardMessage(
+      sourceGroupId: groupId,
+      messageId: messageId,
+      destinationGroupId: destinationGroupId,
+      destinationChatId: destinationChatId,
+    );
+  }
+
+  Future<Result<void>> reportMessage({
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) async {
+    final groupId = _groupId;
+    if (groupId == null) {
+      return const FailureResult(UnknownError());
+    }
+    return _repository.reportMessage(
+      groupId: groupId,
+      messageId: messageId,
+      reason: reason,
+      details: details,
+    );
   }
 
   void removeFailed(String messageId) {
@@ -447,6 +539,17 @@ final class ChatProvider extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  String? _previewFor(ChatMessage? message) {
+    if (message == null) return null;
+    if (message.isDeleted) return 'Original message unavailable';
+    if (message.type == ChatMessageType.text &&
+        (message.text ?? '').trim().isNotEmpty) {
+      return message.text!.trim();
+    }
+    if (message.isCatalogSticker) return '[sticker]';
+    return '[${message.type.name}]';
   }
 
   String _newId() =>

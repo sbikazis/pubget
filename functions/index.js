@@ -89,6 +89,8 @@ const groupChat = createGroupChat({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+  bucket: getStorage().bucket(),
+  randomUUID,
 });
 const privateChat = createPrivateChat({
   db: getFirestore(),
@@ -336,6 +338,14 @@ exports.markGroupMessagesDelivered = onCall(
 exports.updateGroupChatBackground = onCall(
   { region: "us-central1" },
   groupChat.updateBackground,
+);
+exports.forwardGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.forwardMessage,
+);
+exports.reportGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.reportMessage,
 );
 exports.startPrivateChat = onCall(
   { region: "us-central1" },

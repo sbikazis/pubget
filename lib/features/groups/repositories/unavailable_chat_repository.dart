@@ -35,6 +35,23 @@ final class UnavailableChatRepository implements ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
+  }) async => _fail();
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
   }) async => _fail();
 
   @override
