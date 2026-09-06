@@ -124,7 +124,7 @@ void main() {
 
     expect(settings.localeOption, AppLocaleOption.arabic);
     expect(find.text('الإعدادات'), findsWidgets);
-    expect(find.text('اللغة'), findsOneWidget);
     expect(find.text('Settings'), findsNothing);
+    expect(find.text('اللغة', skipOffstage: false), findsOneWidget);
   });
 }
