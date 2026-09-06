@@ -31,6 +31,27 @@ import 'authentication_test_support.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('game system cards parse join affordance from server activity', () {
+    final message = ChatMessage.fromMap(
+      <String, dynamic>{
+        'senderId': 'system',
+        'senderName': 'Pubget',
+        'senderRole': 'system',
+        'type': 'game',
+        'text': 'A Mafia lobby is waiting. Tap to join.',
+        'mediaId': 'm1',
+        'gameActivity': <String, dynamic>{
+          'kind': 'created',
+          'gameType': 'mafia',
+        },
+      },
+      id: 'card-1',
+    );
+    expect(message.gameActivity?.isCreated, isTrue);
+    expect(message.gameActivity?.isMafia, isTrue);
+    expect(message.gameActivity?.actionLabel, 'Join');
+  });
+
   test('chatMediaTypeFor classifies gif, audio, video, and images', () {
     expect(
       chatMediaTypeFor(contentType: 'image/gif', fileName: 'x.bin'),

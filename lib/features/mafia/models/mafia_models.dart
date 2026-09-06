@@ -49,6 +49,12 @@ final class MafiaGame {
 
   bool get isLobby => status == 'waiting';
   bool get isFinished => status == 'finished' || status == 'cancelled';
+  bool get canLeaveViaServer =>
+      status == 'starting' ||
+      status == 'night' ||
+      status == 'day' ||
+      status == 'discussion' ||
+      status == 'voting';
 
   factory MafiaGame.fromMap(Map<String, dynamic> map, {required String id}) {
     return MafiaGame(

@@ -112,6 +112,8 @@ final class MafiaProvider extends ChangeNotifier {
 
   Future<Result<void>> start() => _run(() => _repository.start(_gameId!));
 
+  Future<Result<void>> leave() => _run(() => _repository.leave(_gameId!));
+
   Future<Result<void>> nightAction(String targetId) {
     final night = _game?.currentNight ?? 0;
     return _run(

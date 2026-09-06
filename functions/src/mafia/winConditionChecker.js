@@ -3,6 +3,8 @@
 const admin = require("firebase-admin");
 const { distributeRewards } = require("./rewardDistributor");
 const { writeHistory } = require("./historyWriter");
+const { postFromActivity } = require("../chatCardWriter");
+const { toMafiaActivity } = require("./mafiaActivity");
 
 const db = admin.firestore();
 
@@ -90,6 +92,19 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     payload: { winner },
   });
+
+  try {
+    await postFromActivity(
+      admin.firestore(),
+      admin.firestore.FieldValue,
+      toMafiaActivity(
+        { type: "GameFinished", actorId: "system", payload: { winner } },
+        { id: gameId, groupId, type: "mafia" },
+      ),
+    );
+  } catch (_) {
+    // Result card is best-effort; history and rewards still proceed.
+  }
 
   await writeHistory(gameId, gameRef, winner, playersSnap);
 

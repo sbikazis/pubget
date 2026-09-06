@@ -4,12 +4,13 @@
 //
 // Architecture: UI → Provider → Repository → this engine → Firestore.
 // Game-specific rules (Mafia roles, guess scoring, etc.) do NOT belong here.
-// Chat is never written from this module. Callers may later consume
-// toGameActivity(event) through the existing system-activity contract.
+// Chat documents are never constructed here. Create/complete emit a
+// toGameActivity contract; chatCardWriter posts the system card.
 
 const { ROLE_PERMISSIONS } = require("./groupsDomain");
 const { engineFor } = require("./gameEngines");
 const { secretRef, isExpired } = require("./gameEngines/helpers");
+const { postFromActivity } = require("./chatCardWriter");
 
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
@@ -30,6 +31,7 @@ const GAME_TYPE_REGISTRY = {
     name: "Guess the Character",
     version: 1,
     implemented: true,
+    genericCreate: true,
     capabilities: {
       usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 2,
       defaultRounds: 5, defaultTimer: 20,
@@ -39,6 +41,7 @@ const GAME_TYPE_REGISTRY = {
     name: "Anime Chain",
     version: 1,
     implemented: true,
+    genericCreate: true,
     capabilities: {
       usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 8,
       defaultRounds: 8, defaultTimer: 25,
@@ -48,6 +51,7 @@ const GAME_TYPE_REGISTRY = {
     name: "Emoji Anime Guess",
     version: 1,
     implemented: true,
+    genericCreate: true,
     capabilities: {
       usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 4,
       defaultRounds: 1, defaultTimer: 25,
@@ -56,7 +60,8 @@ const GAME_TYPE_REGISTRY = {
   mafia: {
     name: "Mafia",
     version: 1,
-    implemented: false,
+    implemented: true,
+    genericCreate: false,
     capabilities: { usesRounds: true, usesScoring: false, minPlayers: 4, maxPlayers: 16 },
   },
 };
@@ -243,13 +248,20 @@ function buildGameEvent({
 
 function toGameActivity(event, game) {
   if (!event || !game) return null;
+  const payload = event.payload || {};
   return {
+    domain: "game",
     gameId: game.id || event.gameId,
     gameType: game.type,
     groupId: game.groupId || null,
     eventType: event.type,
     actor: event.actorId,
-    metadata: event.payload || {},
+    metadata: {
+      ...payload,
+      title: game.title || payload.title,
+      winnerIds: (game.result && game.result.winnerIds) || payload.winnerIds,
+      winner: payload.winner,
+    },
     timestamp: event.createdAt || null,
   };
 }
@@ -334,10 +346,24 @@ function writeEvent(transaction, db, FieldValue, {
 
 function createGamesDomain({
   db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
-  clock, random,
+  clock, random, postChatCard,
 }) {
   const nowOf = () => (clock && typeof clock.now === "function" ? clock.now() : new Date());
   const rng = typeof random === "function" ? random : Math.random;
+
+  async function emitChatCard(event, game) {
+    const activity = toGameActivity(event, game);
+    if (!activity) return;
+    try {
+      if (typeof postChatCard === "function") {
+        await postChatCard(activity);
+        return;
+      }
+      await postFromActivity(db, FieldValue, activity);
+    } catch (_) {
+      // Chat cards must not roll back game mutations.
+    }
+  }
 
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
@@ -428,6 +454,20 @@ function createGamesDomain({
         metadata: { gameId },
       });
     }
+    await emitChatCard(
+      buildGameEvent({
+        eventId: `${gameId}_completed`,
+        gameId,
+        type: "game_completed",
+        actorId: game.creatorId,
+        payload: { winnerIds },
+      }),
+      {
+        ...game,
+        id: gameId,
+        result: { ...(game.result || {}), winnerIds },
+      },
+    );
   }
 
   async function initializeEngine(gameId) {
@@ -502,8 +542,11 @@ function createGamesDomain({
     if (!spec || !GAME_TYPES.includes(input.type)) {
       throw new HttpsError("invalid-argument", "Unknown game type.");
     }
-    if (!spec.implemented) {
-      throw new HttpsError("failed-precondition", "This game is not available yet.");
+    if (!spec.implemented || spec.genericCreate === false) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This game is not available through createGame.",
+      );
     }
     if (!validString(input.title, TITLE_MAX)) {
       throw new HttpsError("invalid-argument", "A valid title is required.");
@@ -580,6 +623,21 @@ function createGamesDomain({
         title,
         type: input.type,
       });
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${ref.id}_created`,
+          gameId: ref.id,
+          type: "game_created",
+          actorId: uid,
+          payload: { status, type: input.type },
+        }),
+        {
+          id: ref.id,
+          type: input.type,
+          groupId: input.groupId.trim(),
+          title,
+        },
+      );
     }
     return { gameId: ref.id, status };
   }

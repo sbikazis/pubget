@@ -46,6 +46,8 @@ class _GameCreatePageState extends State<GameCreatePage> {
   @override
   Widget build(BuildContext context) {
     final creator = context.watch<GameCreateProvider>();
+    // Hub for playable types. Trivia goes through createGame; Mafia
+    // branches to createMafiaGame below and is excluded from genericCreate.
     final types = GameTypeRegistry.implemented;
     final spec = GameTypeRegistry.of(creator.draft.type);
     final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;

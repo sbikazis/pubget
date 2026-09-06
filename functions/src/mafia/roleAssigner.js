@@ -50,6 +50,8 @@ function computeRoleDistribution(playersCount, version) {
     distribution.push("mafia", "mafia");
     if (playersCount >= 6) distribution.push("doctor");
     if (playersCount >= 7) distribution.push("detective");
+    // Named villager after core town roles, before combat roles.
+    if (playersCount >= 8) distribution.push("good_boy");
     if (playersCount >= 9) distribution.push("sniper");
     if (playersCount >= 10) distribution.push("silencer");
   } else if (playersCount <= 4) {
@@ -60,6 +62,9 @@ function computeRoleDistribution(playersCount, version) {
     distribution.push("mafia", "mafia");
     if (playersCount >= 5) distribution.push("doctor");
     if (playersCount >= 6) distribution.push("detective");
+    // Live createMafiaGame stores version: 1 (classic). Gate here so the
+    // role is actually assigned, not only on the unused "advanced" path.
+    if (playersCount >= 8) distribution.push("good_boy");
   }
 
   while (distribution.length < playersCount) {

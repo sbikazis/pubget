@@ -67,6 +67,7 @@ final class ChatMessage {
     required this.isOptimistic,
     required this.sendState,
     this.failureMessage,
+    this.gameActivity,
   });
 
   factory ChatMessage.optimistic({
@@ -110,6 +111,7 @@ final class ChatMessage {
       readCount: 0,
       isOptimistic: true,
       sendState: ChatSendState.pending,
+      gameActivity: null,
     );
   }
 
@@ -157,6 +159,7 @@ final class ChatMessage {
       readCount: (map['readCount'] as num?)?.toInt() ?? 0,
       isOptimistic: false,
       sendState: sendState,
+      gameActivity: ChatGameActivity.tryParse(map['gameActivity']),
     );
   }
 
@@ -185,6 +188,7 @@ final class ChatMessage {
   final bool isOptimistic;
   final ChatSendState sendState;
   final String? failureMessage;
+  final ChatGameActivity? gameActivity;
 
   bool get isDeleted => deletedAt != null;
   bool get isCatalogSticker =>
@@ -239,6 +243,38 @@ final class ChatMessage {
       isOptimistic: isOptimistic ?? this.isOptimistic,
       sendState: sendState ?? this.sendState,
       failureMessage: failureMessage ?? this.failureMessage,
+      gameActivity: gameActivity,
+    );
+  }
+}
+
+final class ChatGameActivity {
+  const ChatGameActivity({
+    required this.kind,
+    required this.gameType,
+    this.title,
+    this.winnerLabel,
+  });
+
+  final String kind;
+  final String gameType;
+  final String? title;
+  final String? winnerLabel;
+
+  bool get isCreated => kind == 'created';
+  bool get isMafia => gameType == 'mafia';
+  String get actionLabel => isCreated ? 'Join' : 'View result';
+
+  static ChatGameActivity? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final kind = raw['kind'] as String? ?? '';
+    final gameType = raw['gameType'] as String? ?? '';
+    if (kind.isEmpty && gameType.isEmpty) return null;
+    return ChatGameActivity(
+      kind: kind,
+      gameType: gameType,
+      title: raw['title'] as String?,
+      winnerLabel: raw['winnerLabel'] as String?,
     );
   }
 }

@@ -15,6 +15,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.onLongPress,
     required this.onMediaTap,
     this.onEventTap,
+    this.onGameTap,
     this.onAudioTap,
     this.replyPreview,
     this.showSenderRole = true,
@@ -27,6 +28,7 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback? onMediaTap;
   final VoidCallback? onEventTap;
+  final VoidCallback? onGameTap;
   final VoidCallback? onAudioTap;
   final String? replyPreview;
   final bool showSenderRole;
@@ -39,7 +41,11 @@ class ChatMessageBubble extends StatelessWidget {
       return _SystemCard(
         message: message,
         contrast: contrast,
-        onTap: message.type == ChatMessageType.event ? onEventTap : null,
+        onTap: message.type == ChatMessageType.event
+            ? onEventTap
+            : message.type == ChatMessageType.game
+            ? onGameTap
+            : null,
       );
     }
     final sticker = message.type == ChatMessageType.sticker;
@@ -328,6 +334,9 @@ class _SystemCard extends StatelessWidget {
       ChatMessageType.game => 'Game card',
       _ => 'Group update',
     };
+    final action = message.type == ChatMessageType.game
+        ? (message.gameActivity?.actionLabel ?? 'Open')
+        : null;
     return Center(
       child: GestureDetector(
         onTap: onTap,
@@ -343,9 +352,24 @@ class _SystemCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.pill),
             border: Border.all(color: contrast.border),
           ),
-          child: Text(
-            message.text?.isNotEmpty == true ? message.text! : label,
-            style: TextStyle(color: contrast.incomingText),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                message.text?.isNotEmpty == true ? message.text! : label,
+                style: TextStyle(color: contrast.incomingText),
+              ),
+              if (action != null && onTap != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  action,
+                  style: TextStyle(
+                    color: contrast.incomingText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

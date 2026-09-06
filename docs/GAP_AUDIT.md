@@ -134,7 +134,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Header: avatar, name, back, menu; long name marquee | Group chat scaffold + endDrawer three-dot (CSM §4.4, §8). Marquee not documented in CSM | 🟡 PARTIAL | Local | Menu exists. Marquee/scrolling title has no CSM evidence. |
 | Per-group background; default Pubget background; change by permission | Menu “chat background”; server `updateBackground` requires `manageBackground` (CSM §5.5, §4.4) | 🟡 PARTIAL | Local | Path exists. Default-on-first-entry and quality of the picker are not evidenced as complete. |
 | WhatsApp-like bubble: avatar, name, role badge/color, text, time, delivery 🔴🟡🟢 | Delivery/read batched to `deliveredBy`/`readBy`; `message delivery indicator` tests exist (CSM §8.3, §25) | 🟡 PARTIAL | Local | Status plumbing exists. Full WhatsApp parity (role color on every bubble, failed/sent/read UX) is not claimed complete by CSM. |
-| Message types: text, image, video, sticker, GIF, audio, replies, system, game/event cards | Enum includes them. Composer implements text/image/video; event cards from events domain; game cards render-only, no production writer (CSM §8.1, §22.2, §27) | 🟠 MAJOR GAP | Local | See placeholders. Game→chat contract is unfulfilled in production. |
+| Message types: text, image, video, sticker, GIF, audio, replies, system, game/event cards | Composer implements text/image/video/sticker/gif/audio plus reply/forward/report; event and game cards are Admin-written (CSM §8.1, §22.2) | 🟢 PASS | Local | Game create/complete cards post via `chatCardWriter`. |
 | Actions: reply, copy, delete, pin, edit, react, forward where logical | Copy/react/pin/delete real; reply/forward/report placeholder; `editGroupMessage` no UI (CSM §8.2) | 🟠 MAJOR GAP | Local | Pin/delete not hidden by permission on the client (CSM §8.2). |
 | Stickers: picker, saved/recent/categories, future custom | Snackbar only; rules allow `users/.../stickers` (CSM §8.1, §23.1) | ⚪ MISSING | Local | Storage path is not a product. |
 | Performance: paginated, cached, incremental; no thousands of messages | Live limit 40 + load older (CSM §8.3) | 🟡 PARTIAL | Local | Pagination exists. Group-list unread from `lastReadAt` not implemented in `lib/features/groups` (CSM §8.3). |
@@ -146,15 +146,15 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 
 | Requirement | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
-| Games do not own Chat; flow Game → menu → create → announcement card → waiting → private room → engine → results → chat card | Group details/chat menu → `/games`; results/rewards server-side; **no production writer** of group `type: "game"` cards (CSM §10.1, §22.2) | 🟠 MAJOR GAP | Local | Isolation is good. The chat announcement/results contract is missing. |
+| Games do not own Chat; flow Game → menu → create → announcement card → waiting → private room → engine → results → chat card | Group details/chat menu → `/games`; `toGameActivity` / `toMafiaActivity` → `chatCardWriter` Admin cards on create and complete (CSM §8.1, §10.1, §22.2) | 🟢 PASS | Local | Domains emit a contract; they do not import `groupChat` internals. |
 | Each game independent, state-driven, recoverable, no chat internals mutation | Trivia on `games/{id}` callables; snapshots on `open()` (CSM §10.1, §22.2) | 🟡 PARTIAL | Local | Architecture matches. `difficulty` stored unused; reconnect string unused (CSM §10.1, §27). |
 | Guess Character 1v1: waiting, rounds, timer, score, result, anti-abuse, replayability | 2 players, timer, secret round, artwork (CSM §10.2) | 🟡 PARTIAL | Local | No auto-matchmaking (CSM §10.1). Engine is real. |
 | Anime Chain: turns, timeout, score, cancel, recovery | 2–8, turn/game_over, timeout skip (CSM §10.3) | 🟡 PARTIAL | Local | Core loop exists. |
 | Emoji Anime Guess 2–4: 3–4 emojis, guess, rotate, timer, anti-spam, end state | 2–4, guess/game_over, timeout advances (CSM §10.4) | 🟡 PARTIAL | Local | Core loop exists. Catalog is 16 anime (CSM §10.1). |
 | Mafia independent, server-authoritative, phase/timer/reconnect/disconnect/role/action/anti-cheat; full phase list; per-role logic | Separate `mafia_games`; schedulers; private roles; heartbeat 25s / disconnect 90s (CSM §11) | 🟡 PARTIAL | Local | Substantial engine. Night/vote/mafia-chat are **client intent writes** gated by rules (CSM §11.4) — acceptable if resolution stays server-side, but not fully “action-safe” in the strictest reading. |
-| Mafia UX: waiting room, role presentation, banners, timers, sheets, voting, results, suspense, history | `MafiaGameScreen` exists; no leave-game UI despite callable (CSM §11.4, §27) | 🟠 MAJOR GAP | Local | Leave is a real game action, not a nice-to-have. |
-| `good_boy` registered but never assigned | CSM §11.3, §27 | 🟡 PARTIAL | Local | Dead role in the registry. Does not break live assignment of mafia/doctor/detective/citizen. |
-| Client registry `mafia implemented: true` vs server `implemented: false` | CSM §10.1, §27 | 🟠 MAJOR GAP | Local | Dual contract. Dedicated `/mafia` path works; `createGame` catalog would hide/reject Mafia. Product logic is inconsistent. |
+| Mafia UX: waiting room, role presentation, banners, timers, sheets, voting, results, suspense, history | `MafiaGameScreen` leave UI + confirmation matching `leaveMafiaGame` (CSM §11.4) | 🟢 PASS | Local | Waiting/execution remain unleaveable because the callable rejects them. |
+| `good_boy` registered but never assigned | Assigned at ≥8 classic and advanced; citizen-aligned no night action (CSM §11.3) | 🟢 PASS | Local | Ability already existed; assignment was the gap. |
+| Client registry `mafia implemented: true` vs server `implemented: false` | Both `implemented: true`, both `genericCreate: false` (CSM §10.1) | 🟢 PASS | Local | Dedicated `/mafia` create only; `createGame` still rejects Mafia. |
 
 ---
 
@@ -287,7 +287,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Requirement | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
 | UI → Provider → Repository → Firebase/API; no business logic in widgets | Wiring matches (CSM §22.1). Widgets still own join stub, hardcoded senpai, chat placeholders, onboarding skip success, notification retry no-op | 🟡 PARTIAL | Systemic | Direction is right. Several product bugs live in widget/provider shortcuts. |
-| Domain isolation; Mafia/Games/Events talk to Chat via contracts, not internals | Trivia does not import ChatProvider; Events Admin-write chat cards; Mafia has its own chat collection; no production game cards (CSM §22.2) | 🟡 PARTIAL | Systemic | Isolation mostly holds. Missing game cards. Nested `groups/{id}/games` client-writable for `groupModerator` is a stray path (CSM §22.2, §23.1). |
+| Domain isolation; Mafia/Games/Events talk to Chat via contracts, not internals | Trivia/Mafia emit activity contracts; `chatCardWriter` Admin-writes cards; Events still write inline (CSM §22.2) | 🟢 PASS | Systemic | Nested `groups/{id}/games` client-writable for `groupModerator` remains a stray path (CSM §22.2, §23.1). |
 | Keep useful legacy data, not legacy architecture; extract/map/validate/migrate/verify | No Old→New migration pipeline documented (CSM §28) | ⚪ MISSING | Systemic | Spec §101. Production still uses `pubget-aaf27` (CSM §0.5) without a documented mapping layer. |
 | `lib_legacy/` kept, not imported by new architecture | Grep `lib/` → no `lib_legacy` matches; dormant tree (CSM §28) | 🟢 PASS | Systemic | Isolation honored. Do not delete in this audit. |
 | Each data type: Old Schema → Mapping → New Schema | Not present (CSM §28) | ⚪ MISSING | Systemic | Same as migration row. |
@@ -403,7 +403,7 @@ Each item is classified on its own, not bulk-tagged CRITICAL.
 
 | Finding | Classification | Why |
 |---|---|---|
-| Mafia dual registry (server `implemented: false`, client `true`) | 🟠 MAJOR GAP | Logic/contract split. Dedicated Mafia path works; catalog/createGame would not. Breaks product consistency, not the night resolver. |
+| Mafia dual registry (server `implemented: false`, client `true`) | 🟢 PASS | Both mark `implemented: true` and `genericCreate: false`. Dedicated create only. |
 | `lastMessageAt` / `lastMessageText` still member-writable | 🔴 CRITICAL | Security + Home activity integrity. Server already writes them; client write is leftover trust. |
 | Private Start-Chat skips `whoCanMessageMe` (server still enforces) | 🟡 PARTIAL | UX/logic gap. Not a bypass. Spec wants a clear control, not a surprising failure. |
 | `PubgetUser.toMap()` sends `displayName` / `whoCanMessageMe`; rules omit them | 🔴 CRITICAL | Create/update allowlist mismatch. Can drop identity/privacy fields or fail onboarding writes. |
@@ -412,7 +412,7 @@ Each item is classified on its own, not bulk-tagged CRITICAL.
 | `updateGroupSettings` / `unbanMember` server-only, no Flutter UI | 🟠 MAJOR GAP | Founder cannot operate the group in-app. Server readiness is not a product. |
 | Change-role UI always sends `senpai` | 🔴 CRITICAL | Breaks role/permission logic. The control is false. |
 | Join success stores `uid: ''` | 🟠 MAJOR GAP | Corrupts local membership state after a real server success. |
-| Mafia `good_boy` never assigned | 🟡 PARTIAL | Dead registry entry. Live roles still assign. |
+| Mafia `good_boy` never assigned | 🟢 PASS | Assigned at ≥8; citizen-aligned no night action. |
 | No Mafia leave-game UI | 🟠 MAJOR GAP | Callable exists; player cannot leave. Conflicts with disconnect-safe UX. |
 | Edits pipeline has no moderation | 🟠 MAJOR GAP | Required publish stage missing. Not a rules bypass of coins, but a pillar hole. |
 | No payment provider; `restorePremiumPurchases` no-op | 🟡 PARTIAL | Spec currently forbids requiring Play Billing. Honest deferred restore. Needs a real seam before monetize prompts. |

@@ -241,9 +241,11 @@ test("state machine allows documented transitions and rejects the rest", () => {
   );
 });
 
-test("mafia is registered but not implemented", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, false);
+test("mafia is implemented only on the dedicated create path", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.mafia.genericCreate, false);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.guessCharacter.genericCreate, true);
 });
 
 test("action shape validation rejects empty types and oversized payloads", () => {
@@ -339,6 +341,18 @@ test("founder can create, members can join once, and start is idempotent", async
   assert.equal(startedEvents.length, 1);
   assert.ok(notifications.sent.some((item) => item.type === "game_invite"));
   assert.ok(notifications.sent.some((item) => item.type === "game_started"));
+  const createdCard = db.store.get(
+    `groups/g1/messages/card-game-${created.gameId}-created`,
+  );
+  assert.equal(createdCard.type, "game");
+  assert.equal(createdCard.senderId, "system");
+  assert.equal(createdCard.gameActivity.kind, "created");
+  await games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const doneCard = db.store.get(
+    `groups/g1/messages/card-game-${created.gameId}-completed`,
+  );
+  assert.equal(doneCard.type, "game");
+  assert.equal(doneCard.gameActivity.kind, "completed");
 });
 
 test("join after start and actions from non-participants are rejected", async () => {

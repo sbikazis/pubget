@@ -743,7 +743,57 @@ async function copyMediaRecord({
   };
 }
 
+const ADMIN_CARD_TYPES = new Set(["system", "event", "game"]);
+
+function adminChatCardDocument({ type, text, mediaId, extra }) {
+  return {
+    senderId: "system",
+    senderName: "Pubget",
+    senderAvatar: "",
+    senderRole: "system",
+    type,
+    text: String(text || "").slice(0, 200),
+    mediaId: mediaId || null,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    replyToMessageId: null,
+    createdAt: null,
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    reactions: {},
+    reactionUsers: {},
+    recipientCount: 0,
+    deliveredCount: 0,
+    readCount: 0,
+    deliveredBy: {},
+    readBy: {},
+    ...(extra && typeof extra === "object" ? extra : {}),
+  };
+}
+
+async function writeAdminChatCard(db, FieldValue, {
+  groupId, type, text, mediaId, messageId, extra,
+}) {
+  if (!validString(groupId, 128) || !ADMIN_CARD_TYPES.has(type)) return null;
+  const id = validString(messageId, 128) ? messageId.trim() : undefined;
+  const ref = groupRef(db, groupId.trim()).collection("messages").doc(id);
+  const message = adminChatCardDocument({ type, text, mediaId, extra });
+  message.createdAt = FieldValue.serverTimestamp();
+  await ref.set(message);
+  try {
+    await groupRef(db, groupId.trim()).update({
+      lastMessageAt: FieldValue.serverTimestamp(),
+      lastMessageText: String(text || `[${type}]`).slice(0, 80),
+    });
+  } catch (_) {
+    // Card write is authoritative even if the group preview update is skipped.
+  }
+  return ref.id;
+}
+
 module.exports = {
+  ADMIN_CARD_TYPES,
   AUDIO_MAX_BYTES,
   AUDIO_MAX_DURATION_SECONDS,
   MEDIA_TYPES,
@@ -751,8 +801,10 @@ module.exports = {
   REPORT_REASONS,
   STICKER_CATALOG,
   USER_MESSAGE_TYPES,
+  adminChatCardDocument,
   createGroupChat,
   expectedMediaType,
   validString,
   validateMessage,
+  writeAdminChatCard,
 };
