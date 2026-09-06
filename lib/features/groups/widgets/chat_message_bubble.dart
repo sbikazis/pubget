@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -13,6 +14,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.isMine,
     required this.contrast,
     required this.onLongPress,
+    this.onAvatarTap,
     required this.onMediaTap,
     this.onEventTap,
     this.onGameTap,
@@ -26,6 +28,7 @@ class ChatMessageBubble extends StatelessWidget {
   final bool isMine;
   final ChatContrastTheme contrast;
   final VoidCallback onLongPress;
+  final VoidCallback? onAvatarTap;
   final VoidCallback? onMediaTap;
   final VoidCallback? onEventTap;
   final VoidCallback? onGameTap;
@@ -93,6 +96,7 @@ class ChatMessageBubble extends StatelessWidget {
                     imageUrl: message.senderAvatar,
                     name: message.senderName,
                     size: PubgetAvatarSize.small,
+                    onTap: onAvatarTap,
                   ),
                   const SizedBox(width: AppSpacing.sm),
                 ],
@@ -117,7 +121,11 @@ class ChatMessageBubble extends StatelessWidget {
                           ),
                           const SizedBox(width: AppSpacing.xs),
                           if (showSenderRole)
-                            PubgetBadge(label: message.senderRole),
+                            PubgetBadge(
+                              label: AppStrings.of(context)
+                                  .roleLabel(message.senderRole),
+                              compact: true,
+                            ),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.xs),

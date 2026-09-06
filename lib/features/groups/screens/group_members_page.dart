@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -33,6 +34,13 @@ class GroupMembersPage extends StatefulWidget {
 
 class _GroupMembersPageState extends State<GroupMembersPage> {
   var _requestedGroupLoad = false;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -58,20 +66,28 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
     final canManageMembers = _viewerCanManageMembers(context);
+    final copy = AppStrings.of(context);
+    final query = _search.text.trim().toLowerCase();
+    final visible = query.isEmpty
+        ? provider.members
+        : provider.members
+            .where((member) => member.uid.toLowerCase().contains(query))
+            .toList(growable: false);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Members'),
+        title: Text(copy.members),
         actions: <Widget>[
           PubgetIconButton(
             icon: Icons.person_add_alt,
-            tooltip: 'Create invitation',
+            tooltip: copy.addMembers,
             onPressed: () => _showInvite(context, provider),
           ),
           if (canManageMembers)
             PubgetIconButton(
               icon: Icons.block_outlined,
-              tooltip: 'Banned users',
+              tooltip: copy.bannedUsers,
               onPressed: () => AppNavigation.go(
                 context,
                 '/group-bans?groupId=${widget.groupId}',
@@ -88,34 +104,60 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
           ),
         ],
       ),
-      body: PubgetLoadingStateView(
-        state: provider.state,
-        onRetry: () => provider.load(widget.groupId),
-        empty: const PubgetEmptyState(title: 'No members'),
-        error: PubgetErrorState(
-          message: provider.failure?.message ?? 'Members could not load.',
-          onRetry: () => provider.load(widget.groupId),
-        ),
-        offline: PubgetOfflineState(
-          onRetry: () => provider.load(widget.groupId),
-        ),
-        child: ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          itemCount: provider.members.length + (provider.hasMore ? 1 : 0),
-          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (context, index) {
-            if (index == provider.members.length) {
-              return PubgetSecondaryButton(
-                onPressed: provider.loadMore,
-                semanticLabel: 'Load more members',
-                child: const Text('Load more'),
-              );
-            }
-            return _MemberCard(
-              member: provider.members[index],
-              canManageMembers: canManageMembers,
-            );
-          },
+      body: PubgetAtmosphere(
+        child: Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                0,
+              ),
+              child: PubgetSearchField(
+                controller: _search,
+                hint: copy.searchMembers,
+                onChanged: (_) => setState(() {}),
+                onClear: () {
+                  _search.clear();
+                  setState(() {});
+                },
+              ),
+            ),
+            Expanded(
+              child: PubgetLoadingStateView(
+                state: provider.state,
+                onRetry: () => provider.load(widget.groupId),
+                empty: PubgetEmptyState(title: copy.noMembers),
+                error: PubgetErrorState(
+                  message: provider.failure?.message ?? copy.membersFailed,
+                  onRetry: () => provider.load(widget.groupId),
+                ),
+                offline: PubgetOfflineState(
+                  onRetry: () => provider.load(widget.groupId),
+                ),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  itemCount: visible.length + (provider.hasMore ? 1 : 0),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
+                  itemBuilder: (context, index) {
+                    if (index == visible.length) {
+                      return PubgetSecondaryButton(
+                        onPressed: provider.loadMore,
+                        semanticLabel: copy.loadMore,
+                        child: Text(copy.loadMore),
+                      );
+                    }
+                    return _MemberCard(
+                      member: visible[index],
+                      canManageMembers: canManageMembers,
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -183,10 +225,15 @@ class _MemberCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.read<GroupMembersProvider>();
     final actions = groupMemberMenuActions(canManageMembers: canManageMembers);
+    final copy = AppStrings.of(context);
     return PubgetCard(
       child: Row(
         children: <Widget>[
-          PubgetAvatar(name: member.uid),
+          PubgetAvatar(
+            name: member.uid,
+            onTap: () =>
+                AppNavigation.go(context, '/profile?uid=${member.uid}'),
+          ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
@@ -194,7 +241,7 @@ class _MemberCard extends StatelessWidget {
               children: <Widget>[
                 Text(member.uid),
                 Text(
-                  '${groupRoleLabel(member.role)} • ${member.inviteCount} invites',
+                  '${copy.roleLabel(member.role.name)} • ${member.inviteCount} invites',
                 ),
               ],
             ),
@@ -207,7 +254,7 @@ class _MemberCard extends StatelessWidget {
                   .map(
                     (value) => PopupMenuItem<String>(
                       value: value,
-                      child: Text(_menuLabel(value)),
+                      child: Text(_menuLabel(context, value)),
                     ),
                   )
                   .toList(growable: false),
@@ -217,13 +264,16 @@ class _MemberCard extends StatelessWidget {
     );
   }
 
-  String _menuLabel(String value) => switch (value) {
-    'role' => 'Change role',
-    'kick' => 'Kick',
-    'ban' => 'Ban',
-    'transfer' => 'Transfer ownership',
-    _ => value,
-  };
+  String _menuLabel(BuildContext context, String value) {
+    final copy = AppStrings.of(context);
+    return switch (value) {
+      'role' => copy.changeRole,
+      'kick' => copy.kick,
+      'ban' => copy.ban,
+      'transfer' => copy.transferOwnership,
+      _ => value,
+    };
+  }
 
   Future<void> _act(
     BuildContext context,

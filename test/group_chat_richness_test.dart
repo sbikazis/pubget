@@ -178,6 +178,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hello from bob'), findsOneWidget);
+    expect(find.byKey(const Key('group-chat-menu')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('composer-attach')));
     await tester.pumpAndSettle();

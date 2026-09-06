@@ -363,4 +363,114 @@ final class AppStrings {
   );
   String get profileFailed =>
       pick('The profile could not load.', 'تعذّر تحميل الملف.');
+
+  String get groupDetails => pick('Group details', 'تفاصيل المجموعة');
+  String get shareGroup => pick('Share group', 'مشاركة المجموعة');
+  String get groupUnavailable => pick('Group unavailable', 'المجموعة غير متاحة');
+  String get groupFailed => pick('Group could not load.', 'تعذّر تحميل المجموعة.');
+  String get rules => pick('Rules', 'القوانين');
+  String get openChat => pick('Open chat', 'فتح الدردشة');
+  String get groupEvents => pick('Group events', 'فعاليات المجموعة');
+  String get createEvent => pick('Create event', 'إنشاء فعالية');
+  String get groupGames => pick('Group games', 'ألعاب المجموعة');
+  String get createGame => pick('Create game', 'إنشاء لعبة');
+  String get groupSettings => pick('Group settings', 'إعدادات المجموعة');
+  String get bannedUsers => pick('Banned users', 'المحظورون');
+  String get manageMembers => pick('Manage members', 'إدارة الأعضاء');
+  String get joinRequests => pick('Join requests', 'طلبات الانضمام');
+  String get roleplayCharacters =>
+      pick('Roleplay characters', 'شخصيات التمثيل');
+  String get joinGroup => pick('Join group', 'الانضمام للمجموعة');
+  String get requestToJoin => pick('Request to join', 'طلب الانضمام');
+  String get groupIsFull => pick('Group is full', 'المجموعة ممتلئة');
+  String get groupFullMessage => pick(
+    'Try again when a place becomes available.',
+    'حاول لاحقاً عندما تتوفر مكان.',
+  );
+  String get invitationRequired =>
+      pick('Invitation required', 'الدعوة مطلوبة');
+  String get invitationRequiredMessage => pick(
+    'Use a valid group invitation to join.',
+    'استخدم دعوة صالحة للانضمام.',
+  );
+  String get disbandGroup => pick('Disband group', 'تفكيك المجموعة');
+  String disbandTitle(String name) =>
+      pick('Disband $name?', 'تفكيك $name؟');
+  String get disbandMessage => pick(
+    'This removes the group and cannot be undone.',
+    'سيُحذف المجتمع ولا يمكن التراجع.',
+  );
+  String get continueLabel => pick('Continue', 'متابعة');
+  String get cancel => pick('Cancel', 'إلغاء');
+  String get finalConfirmation =>
+      pick('Final confirmation', 'تأكيد أخير');
+  String get disbandFinalMessage => pick(
+    'All members will be notified. Disband this group now?',
+    'سيُبلَّغ كل الأعضاء. هل تفكك المجموعة الآن؟',
+  );
+  String get disband => pick('Disband', 'تفكيك');
+  String get keepGroup => pick('Keep group', 'الإبقاء على المجموعة');
+  String get leaveGroup => pick('Leave group', 'مغادرة المجموعة');
+  String get leaveGroupMessage => pick(
+    'You will leave this community and its chat.',
+    'ستغادر هذا المجتمع ودردشته.',
+  );
+  String get leave => pick('Leave', 'مغادرة');
+
+  String joinPolicyLabel(String policy) => switch (policy) {
+    'open' => pick('Open', 'مفتوحة'),
+    'approval' => pick('Request', 'بطلب'),
+    'inviteOnly' => pick('Invite', 'بدعوة'),
+    _ => policy,
+  };
+
+  String roleLabel(String role) => switch (role) {
+    'founder' => pick('Founder', 'المؤسس'),
+    'shogun' => pick('Shogun', 'شوغون'),
+    'commander' => pick('Commander', 'قائد'),
+    'captain' => pick('Captain', 'كابتن'),
+    'sensei' => pick('Sensei', 'سينسي'),
+    'senpai' => pick('Senpai', 'سينباي'),
+    'member' => pick('Member', 'عضو'),
+    _ => role,
+  };
+
+  String get members => pick('Members', 'الأعضاء');
+  String get searchMembers => pick('Search members', 'ابحث في الأعضاء');
+  String get noMembers => pick('No members', 'لا أعضاء');
+  String get membersFailed =>
+      pick('Members could not load.', 'تعذّر تحميل الأعضاء.');
+  String get addMembers => pick('Add members', 'إضافة أعضاء');
+  String get copyGroupLink => pick('Copy group link', 'نسخ رابط المجموعة');
+  String get groupInformation => pick('Group information', 'معلومات المجموعة');
+  String get groupMedia => pick('Group media', 'وسائط المجموعة');
+  String get editGroup => pick('Edit group', 'تعديل المجموعة');
+  String get chatBackground => pick('Chat background', 'خلفية الدردشة');
+  String get groupMenu => pick('Group menu', 'قائمة المجموعة');
+  String get groupChat => pick('Group chat', 'دردشة المجموعة');
+  String get sendMessage => pick('Send message', 'إرسال رسالة');
+  String get messageHint => pick('Message the group', 'اكتب للمجموعة');
+  String get attachments => pick('Attachments', 'مرفقات');
+  String get copy => pick('Copy', 'نسخ');
+  String get reply => pick('Reply', 'رد');
+  String get react => pick('React', 'تفاعل');
+  String get pin => pick('Pin', 'تثبيت');
+  String get unpin => pick('Unpin', 'إلغاء التثبيت');
+  String get delete => pick('Delete', 'حذف');
+  String get forwardShare => pick('Forward / share', 'إعادة توجيه / مشاركة');
+  String get report => pick('Report', 'إبلاغ');
+  String get reportMessage => pick('Report message', 'الإبلاغ عن الرسالة');
+  String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
+  String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
+  String get messageForwarded => pick('Message forwarded', 'أُعيد توجيه الرسالة');
+  String get forwardFailed => pick('Forward failed.', 'فشل إعادة التوجيه.');
+  String get cannotReportOwn => pick(
+    'You cannot report your own message.',
+    'لا يمكنك الإبلاغ عن رسالتك.',
+  );
+  String get changeRole => pick('Change role', 'تغيير الرتبة');
+  String get kick => pick('Kick', 'طرد');
+  String get ban => pick('Ban', 'حظر');
+  String get transferOwnership =>
+      pick('Transfer ownership', 'نقل الملكية');
 }
