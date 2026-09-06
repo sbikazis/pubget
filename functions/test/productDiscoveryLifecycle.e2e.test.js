@@ -4,8 +4,9 @@
 // Emulator Suite. This is not hosted production E2E.
 //
 // Production Edit state machine (see editsDomain.startUpload + editPipeline):
-//   uploading → processing → published | failed
-// There is no READY or PENDING_MODERATION state. Tests assert the real
+//   uploading → processing → published | failed | rejected
+// Rejected is the automated caption/keyword gate (moderationStatus: flagged).
+// There is no READY or human PENDING_MODERATION queue. Tests assert the real
 // transitions rather than inventing extra statuses.
 
 const assert = require("node:assert/strict");
@@ -333,6 +334,7 @@ test("creator publishes an edit through the production pipeline", { timeout: 120
   const started = await startEdit();
   const uploading = (await db.doc(`edits/${started.editId}`).get()).data();
   assert.equal(uploading.status, "uploading");
+  assert.equal(uploading.moderationStatus, "pending");
   assert.equal(uploading.creatorId, CREATOR);
   assert.equal(uploading.videoPath, `edits/${CREATOR}/${started.editId}.mp4`);
   assert.match(uploading.videoPath, new RegExp(`^edits/${CREATOR}/`));
@@ -349,6 +351,8 @@ test("creator publishes an edit through the production pipeline", { timeout: 120
   await runProcessEdit(started.videoPath, videoBytes);
   const published = (await db.doc(`edits/${started.editId}`).get()).data();
   assert.equal(published.status, "published");
+  assert.equal(published.moderationStatus, "approved");
+  assert.equal(published.moderationReason, null);
   assert.equal(published.creatorId, CREATOR);
   assert.ok(published.durationSeconds > 20);
   assert.ok(String(published.videoUrl).startsWith("edits-processed/"));
@@ -369,6 +373,16 @@ test("creator publishes an edit through the production pipeline", { timeout: 120
   assert.equal(failed.status, "failed");
   const aliceFailed = await recs().getDiscoveryFeed({ ...auth(ALICE) });
   assert.equal(feedHas(aliceFailed, "recommendedEdits", failedStart.editId), false);
+
+  const flaggedStart = await startEdit("Join this crypto giveaway today");
+  await uploadEditBytes(flaggedStart.videoPath, videoBytes);
+  await runProcessEdit(flaggedStart.videoPath, videoBytes);
+  const flagged = (await db.doc(`edits/${flaggedStart.editId}`).get()).data();
+  assert.equal(flagged.status, "rejected");
+  assert.equal(flagged.moderationStatus, "flagged");
+  assert.match(String(flagged.moderationReason), /prohibited language/);
+  const aliceFlagged = await recs().getDiscoveryFeed({ ...auth(ALICE) });
+  assert.equal(feedHas(aliceFlagged, "recommendedEdits", flaggedStart.editId), false);
 });
 
 test("bob discovers, watches, and a qualified view changes ranking", { timeout: 120000 }, async () => {

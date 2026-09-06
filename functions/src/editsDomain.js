@@ -1,5 +1,7 @@
 "use strict";
 
+const { moderateEditCopy } = require("./contentFilter");
+
 const DAY = 24 * 60 * 60 * 1000;
 const MAX_CAPTION = 1000;
 
@@ -35,6 +37,8 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       createdAt: FieldValue.serverTimestamp(), originalEditId: null, repostedBy: null,
       originalCreatorId: creatorId,
       status: "uploading",
+      moderationStatus: "pending",
+      moderationReason: null,
     });
     return { editId, videoPath: `edits/${creatorId}/${editId}.mp4` };
   }
@@ -48,6 +52,15 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       throw new HttpsError("not-found", "Edit not found.");
     }
     const source = original.data();
+    const decision = moderateEditCopy({
+      caption: source.caption, animeTag: source.animeTag,
+    });
+    if (decision.flagged) {
+      throw new HttpsError(
+        "failed-precondition",
+        decision.reason || "This Edit cannot be reposted.",
+      );
+    }
     const createdAt = source.createdAt?.toDate?.()?.getTime?.() || 0;
     if (!createdAt || Date.now() - createdAt > 30 * DAY) {
       throw new HttpsError("failed-precondition", "Reposts are available for 30 days.");
@@ -60,6 +73,8 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       viewsCount: 0, qualifiedViewsCount: 0, totalWatchSeconds: 0,
       completionCount: 0, score: 10, status: "published",
       sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
+      moderationStatus: "approved",
+      moderationReason: null,
     });
     if (achievements && typeof achievements.evaluate === "function") {
       await achievements.evaluate({
