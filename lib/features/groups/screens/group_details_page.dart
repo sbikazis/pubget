@@ -189,7 +189,7 @@ class _Details extends StatelessWidget {
             semanticLabel: copy.groupEvents,
             child: Text(copy.groupEvents),
           ),
-          if (provider.canManageEvents) ...[
+          if (provider.canCreateEvents) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               onPressed: () => AppNavigation.go(

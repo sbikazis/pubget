@@ -132,12 +132,8 @@ class HomePersonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
-    final name = person.username?.trim().isNotEmpty == true
-        ? person.username!
-        : copy.pubgetUser;
-    final handle = person.username?.trim().isNotEmpty == true
-        ? '@${person.username}'
-        : person.uid;
+    final name = person.primaryName(fallback: copy.pubgetUser);
+    final handle = person.distinctHandle;
     return SizedBox(
       width: 156,
       child: Material(
@@ -178,14 +174,15 @@ class HomePersonCard extends StatelessWidget {
                     color: const Color(0xFF083832),
                   ),
                 ),
-                Text(
-                  handle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: const Color(0xFF0F4C46),
+                if (handle != null)
+                  Text(
+                    handle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFF0F4C46),
+                    ),
                   ),
-                ),
                 Text(
                   copy.fansCount(person.fansCount),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(

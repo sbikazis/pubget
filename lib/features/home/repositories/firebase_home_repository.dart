@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
-import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
@@ -9,6 +8,7 @@ import '../../fan_works/models/fan_work_models.dart';
 import '../../search/search_query.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
+import 'discovery_errors.dart';
 import 'home_repository.dart';
 
 final class FirebaseHomeRepository implements HomeRepository {
@@ -32,11 +32,12 @@ final class FirebaseHomeRepository implements HomeRepository {
       final snapshot = await query.get();
       return Success(
         snapshot.docs
+            .where((doc) => doc.data()['deletionPending'] != true)
             .map((doc) => Group.fromMap(doc.data(), id: doc.id))
             .toList(growable: false),
       );
     } on Object catch (error) {
-      return FailureResult(_failure(error));
+      return FailureResult(discoveryFailureFrom(error));
     }
   }
 
@@ -77,6 +78,16 @@ final class FirebaseHomeRepository implements HomeRepository {
   Future<Result<List<Group>>> getRecommendedGroups({
     int limit = 10,
     Group? after,
+  }) {
+    return rankedOrFallback(
+      ranked: _recommendedGroupsFromCallable(limit: limit, after: after),
+      fallback: () => _recommendedGroupsFromFirestore(limit: limit, after: after),
+    );
+  }
+
+  Future<Result<List<Group>>> _recommendedGroupsFromCallable({
+    int limit = 10,
+    Group? after,
   }) async {
     final ranked = await getDiscoveryFeed(
       section: 'recommendedGroups',
@@ -97,6 +108,19 @@ final class FirebaseHomeRepository implements HomeRepository {
     );
   }
 
+  Future<Result<List<Group>>> _recommendedGroupsFromFirestore({
+    int limit = 10,
+    Group? after,
+  }) {
+    var query = _groups()
+        .orderBy('createdAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true);
+    if (after != null) {
+      query = query.startAfter(<Object?>[after.createdAt, after.id]);
+    }
+    return _groupQuery(query.limit(limit));
+  }
+
   @override
   Future<Result<List<Group>>> getCommunityActivity({
     int limit = 10,
@@ -113,6 +137,18 @@ final class FirebaseHomeRepository implements HomeRepository {
 
   @override
   Future<Result<List<PublicProfile>>> getRecommendedPeople({
+    required String userId,
+    int limit = 10,
+    PublicProfile? after,
+  }) {
+    return rankedOrFallback(
+      ranked: _peopleFromCallable(userId: userId, limit: limit, after: after),
+      fallback: () =>
+          _peopleFromFirestore(userId: userId, limit: limit, after: after),
+    );
+  }
+
+  Future<Result<List<PublicProfile>>> _peopleFromCallable({
     required String userId,
     int limit = 10,
     PublicProfile? after,
@@ -136,6 +172,32 @@ final class FirebaseHomeRepository implements HomeRepository {
     );
   }
 
+  Future<Result<List<PublicProfile>>> _peopleFromFirestore({
+    required String userId,
+    int limit = 10,
+    PublicProfile? after,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection('public_profiles')
+          .limit(limit + 8)
+          .get();
+      var people = snapshot.docs
+          .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
+          .where((person) => person.uid != userId)
+          .toList();
+      if (after != null) {
+        final index = people.indexWhere((person) => person.uid == after.uid);
+        if (index >= 0) {
+          people = people.sublist(index + 1);
+        }
+      }
+      return Success(people.take(limit).toList(growable: false));
+    } on Object catch (error) {
+      return FailureResult(discoveryFailureFrom(error));
+    }
+  }
+
   @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({
     String? section,
@@ -153,7 +215,7 @@ final class FirebaseHomeRepository implements HomeRepository {
       final data = Map<String, dynamic>.from(result.data as Map);
       return Success(DiscoveryFeed.fromMap(data));
     } on Object catch (error) {
-      return FailureResult(_failure(error));
+      return FailureResult(discoveryFailureFrom(error));
     }
   }
 
@@ -230,7 +292,7 @@ final class FirebaseHomeRepository implements HomeRepository {
         ),
       );
     } on Object catch (error) {
-      return FailureResult(_failure(error));
+      return FailureResult(discoveryFailureFrom(error));
     }
   }
 }
@@ -256,17 +318,3 @@ List<T> _uniqueBy<T>(Iterable<T> items, String Function(T value) idOf) {
   return List<T>.unmodifiable(unique);
 }
 
-Failure _failure(Object error) {
-  if (error is FirebaseException) {
-    return switch (error.code) {
-      'unavailable' || 'deadline-exceeded' => const NetworkError(
-        'Check your connection and try again.',
-      ),
-      'permission-denied' => const PermissionError(
-        'Discovery is not available for this account.',
-      ),
-      _ => const UnknownError('Discovery could not load.'),
-    };
-  }
-  return const UnknownError('Discovery could not load.');
-}

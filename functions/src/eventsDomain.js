@@ -829,10 +829,10 @@ function createEventsDomain({
       if (groupId && access.missingGroup) {
         throw new HttpsError("not-found", "Group not found.");
       }
-      if (groupId && !access.manageEvents) {
+      if (groupId && !access.member) {
         throw new HttpsError(
           "permission-denied",
-          "You need the Manage Events permission to create events.",
+          "Join the group to create events.",
         );
       }
       if (!groupId) {
@@ -907,11 +907,11 @@ function createEventsDomain({
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
       const access = await loadPermissions(transaction, db, current.groupId, uid);
+      if (!access.member) {
+        throw new HttpsError("permission-denied", "Join the group to publish events.");
+      }
       if (current.creatorId !== uid && !access.manageEvents) {
         throw new HttpsError("permission-denied", "You cannot publish this event.");
-      }
-      if (!access.manageEvents) {
-        throw new HttpsError("permission-denied", "You need Manage Events to publish.");
       }
       if (current.status !== "draft" && current.status !== "scheduled") {
         if (current.status === "active" || current.status === "scheduled") {

@@ -42,6 +42,7 @@ final class GroupProvider extends ChangeNotifier {
   bool get isMember => _membership != null;
   bool get isFounder => _membership?.role == GroupRole.founder;
   bool get canManageEvents => memberCanManageEvents(_membership);
+  bool get canCreateEvents => memberCanCreateEvents(_membership);
   bool get canManageSettings => memberCanManageSettings(_membership);
   bool get canManageMembers => memberCanManageMembers(_membership);
   int get unreadCount =>

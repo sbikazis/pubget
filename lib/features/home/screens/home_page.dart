@@ -60,7 +60,7 @@ class _HomePageState extends State<HomePage> {
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: _HomeTopBar(
+      appBar: HomeTopBar(
         name: name,
         avatarUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
         frameId: economy?.equipped.frameId,
@@ -120,13 +120,14 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
-  const _HomeTopBar({
+class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
+  const HomeTopBar({
     required this.name,
     required this.avatarUrl,
     required this.frameId,
     required this.coins,
     required this.notifyCount,
+    super.key,
   });
 
   final String? name;
@@ -145,41 +146,62 @@ class _HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       toolbarHeight: 72,
       titleSpacing: AppSpacing.sm,
-      title: Row(
-        children: <Widget>[
-          GestureDetector(
-            key: const Key('home-avatar'),
-            onTap: () => AppNavigation.go(context, '/profile'),
-            child: EquippedAvatar(
-              imageUrl: avatarUrl,
-              name: name,
-              frameId: frameId,
-              size: PubgetAvatarSize.medium,
+      title: SizedBox(
+        height: 72,
+        width: double.infinity,
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            const IgnorePointer(
+              child: PubgetLogoMark(key: Key('home-logo'), size: 42),
             ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          PubgetLuxurySettingsButton(
-            tooltip: copy.settings,
-            onPressed: () => AppNavigation.go(context, '/settings'),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          PubgetLuxuryNotifyButton(
-            tooltip: copy.notifications,
-            badge: notifyCount,
-            onPressed: () => AppNavigation.go(context, '/notifications'),
-          ),
-          const Spacer(),
-          if (coins != null)
-            PubgetKatanaCoinChip(
-              balance: coins!,
-              tooltip: copy.store,
-              onPressed: () => AppNavigation.go(context, '/store'),
+            Row(
+              children: <Widget>[
+                const AppShellMenuButton(),
+                const Spacer(),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (coins != null)
+                        PubgetKatanaCoinChip(
+                          balance: coins!,
+                          tooltip: copy.store,
+                          onPressed: () =>
+                              AppNavigation.go(context, '/store'),
+                        ),
+                      const SizedBox(width: AppSpacing.sm),
+                      PubgetLuxuryNotifyButton(
+                        tooltip: copy.notifications,
+                        badge: notifyCount,
+                        onPressed: () =>
+                            AppNavigation.go(context, '/notifications'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      PubgetLuxurySettingsButton(
+                        tooltip: copy.settings,
+                        onPressed: () =>
+                            AppNavigation.go(context, '/settings'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      GestureDetector(
+                        key: const Key('home-avatar'),
+                        onTap: () => AppNavigation.go(context, '/profile'),
+                        child: EquippedAvatar(
+                          imageUrl: avatarUrl,
+                          name: name,
+                          frameId: frameId,
+                          size: PubgetAvatarSize.medium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          const SizedBox(width: AppSpacing.sm),
-          const PubgetLogoMark(key: Key('home-logo'), size: 42),
-          const SizedBox(width: AppSpacing.xs),
-          const AppShellMenuButton(),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -280,17 +302,34 @@ class _EditsSection extends StatelessWidget {
     }
     final copy = AppStrings.of(context);
     final items = _editsForHome(home, edits);
+    Widget child;
+    if (items.isNotEmpty) {
+      child = HomeHorizontalStrip(
+        height: 228,
+        itemCount: items.length,
+        itemBuilder: (context, index) =>
+            HomeEditPreviewCard(edit: items[index]),
+      );
+    } else if (edits.state == LoadingState.loading ||
+        edits.state == LoadingState.initial ||
+        edits.state == LoadingState.refreshing) {
+      child = const _SkeletonSection();
+    } else if (edits.state == LoadingState.error) {
+      child = PubgetErrorState(
+        title: copy.sectionFailed,
+        message: edits.failure?.message ?? copy.tryAgainShort,
+        onRetry: () => edits.load(refresh: true, limit: 8),
+      );
+    } else {
+      child = PubgetEmptyState(
+        compact: true,
+        title: copy.nothingHereYet,
+      );
+    }
     return _SectionFrame(
       key: const Key('home-edits'),
       title: copy.sectionEdits,
-      child: items.isEmpty
-          ? const _SkeletonSection()
-          : HomeHorizontalStrip(
-              height: 228,
-              itemCount: items.length,
-              itemBuilder: (context, index) =>
-                  HomeEditPreviewCard(edit: items[index]),
-            ),
+      child: child,
     );
   }
 
@@ -439,7 +478,8 @@ Widget _stateChild(
   }
   if (state.state == LoadingState.error && !state.hasContent) {
     return PubgetErrorState(
-      message: state.failure?.message ?? copy.sectionFailed,
+      title: copy.sectionFailed,
+      message: state.failure?.message ?? copy.tryAgainShort,
       onRetry: () => home.retrySection(kind),
     );
   }

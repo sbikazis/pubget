@@ -310,6 +310,8 @@ final class AppStrings {
   String get exploreGroups => pick('Explore groups', 'استكشف المجموعات');
   String get sectionFailed =>
       pick('This section could not load.', 'تعذّر تحميل هذا القسم.');
+  String get tryAgainShort => pick('Please try again.', 'حاول مرة أخرى.');
+  String get couldNotLoad => pick("Couldn't load this", 'تعذّر التحميل');
 
   String get groupsTitle => pick('My Groups', 'مجموعاتي');
   String get joinedTitle => pick('Joined', 'المنضم إليها');
@@ -348,9 +350,15 @@ final class AppStrings {
   String get seeMore => pick('See more', 'مشاهدة المزيد');
   String get createNew => pick('Create', 'إنشاء');
   String get createGroupAction => pick('Create a group', 'إنشاء مجموعة');
+  String get createVideoClip => pick('Create video clip', 'إنشاء مقطع فيديو');
   String get uploadClip => pick('Upload a clip', 'رفع مقطع');
   String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
   String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
+  String get pickHostGroup => pick('Choose a host group', 'اختر المجموعة المضيفة');
+  String get joinGroupToCreateEvent => pick(
+    'Join a group to create an event.',
+    'انضم إلى مجموعة لإنشاء فعالية.',
+  );
   String get hostGroup => pick('Host group', 'المجموعة المضيفة');
   String get eventEnded => pick('Ended', 'انتهت');
   String get justStarted => pick('Just started', 'بدأت للتو');

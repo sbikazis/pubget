@@ -251,6 +251,8 @@ final class GroupMember {
       );
 }
 
+bool memberCanCreateEvents(GroupMember? member) => member != null;
+
 /// Client mirror of server event-management authorization. Server remains
 /// authoritative; this is UX gating only.
 bool memberCanManageEvents(

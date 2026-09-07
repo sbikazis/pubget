@@ -738,6 +738,7 @@ exports.disbandGroup = onCall({ region: "us-central1" }, async (request) => {
       if (current.deletionPending !== true) {
         transaction.update(groupRef, {
           deletionPending: true,
+          isSearchable: false,
           deletionRequestedBy: uid,
           deletionMode: mode,
           deletionMarkedAt: FieldValue.serverTimestamp(),

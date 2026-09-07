@@ -490,16 +490,28 @@ service cloud.firestore {
     }
 
     match /public_profiles/{uid} {
-      allow read: if signedIn() &&
+      // GET still honors users/{uid}.profileVisibility so a stale projection
+      // cannot be opened after the owner goes private.
+      // LIST must not call get(users/{uid}): a missing user doc or one private
+      // leftover poisons the entire Home/search query (permission-denied).
+      // This collection is a server projection; private profiles are deleted
+      // by syncPublicProfile.
+      allow get: if signedIn() &&
+        exists(/databases/$(database)/documents/users/$(uid)) &&
         get(/databases/$(database)/documents/users/$(uid))
           .data.get('profileVisibility', 'public') == 'public';
+      allow list: if signedIn();
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
       allow create, update, delete: if false;
     }
 
     match /groups/{groupId} {
-      allow read: if signedIn() && groupExists(groupId);
+      allow get: if signedIn() && groupExists(groupId);
+      // LIST must not use groupExists()/get(): one deletionPending document
+      // in a discovery query fails the whole list (Home promoted/rising).
+      // Direct get of a pending-deletion group remains denied above.
+      allow list: if signedIn();
       // New Groups domain records are created by createGroup only. The
       // legacy-compatible create branch below intentionally does not accept
       // the new joinPolicy/search/rules/activity fields.
