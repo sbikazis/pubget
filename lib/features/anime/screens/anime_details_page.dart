@@ -531,13 +531,14 @@ class _CharacterProfileSheet extends StatefulWidget {
 class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
   late AnimeCharacter _character;
   CharacterCommunityStats? _stats;
-  var _loadingProfile = true;
+  var _loadingProfile = false;
 
   @override
   void initState() {
     super.initState();
     _character = widget.preview;
-    _loadingProfile = widget.preview.id.isNotEmpty;
+    _loadingProfile =
+        widget.preview.id.isNotEmpty && !widget.preview.hasFullProfile;
     Future<void>.microtask(_hydrate);
   }
 
@@ -564,10 +565,11 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
     final library = maybeAnimeLibrary(context);
     final favorited = library?.isCharacterFavorite(character.id) == true;
     final theme = Theme.of(context);
+    final about = CharacterAboutSections.parse(character.about);
     return ConstrainedBox(
       key: const Key('character-sheet'),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.82,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -583,7 +585,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                       thumbnailUrl: character.imageUrl,
                       largeUrl: character.imageUrl,
                     ),
-                    memCacheWidth: 640,
+                    memCacheWidth: 720,
                   ),
                 ),
               ),
@@ -604,25 +606,43 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               Widget
             >[
               const SizedBox(height: AppSpacing.xs),
-              Text(character.role!, style: theme.textTheme.labelLarge),
+              Text(
+                '${AnimeStrings.characterRole}: ${character.role}',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: AppColors.goldSheen,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
             if (_loadingProfile) ...<Widget>[
               const SizedBox(height: AppSpacing.md),
-              const PubgetSkeleton.card(height: 72),
-            ],
-            if (character.favorites != null && character.favorites! > 0) ...<
-              Widget
-            >[
-              const SizedBox(height: AppSpacing.md),
               Text(
-                '${AnimeStrings.malFavorites}: ${character.favorites}',
-                style: theme.textTheme.titleSmall,
+                AnimeStrings.loadingProfile,
+                style: theme.textTheme.bodySmall,
               ),
             ],
-            if (stats != null && stats.favoritesCount > 0) ...<Widget>[
-              const SizedBox(height: AppSpacing.xs),
-              Text('${stats.favoritesCount} Pubget favorites'),
-            ],
+            const SizedBox(height: AppSpacing.md),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: <Widget>[
+                _factChip(theme, AnimeStrings.characterMalId, character.id),
+                if (character.favorites != null)
+                  _factChip(
+                    theme,
+                    AnimeStrings.malFavorites,
+                    '${character.favorites}',
+                  ),
+                if (stats != null)
+                  _factChip(
+                    theme,
+                    AnimeStrings.pubgetFavorites,
+                    '${stats.favoritesCount}',
+                  ),
+                if (character.role != null && character.role!.isNotEmpty)
+                  _factChip(theme, AnimeStrings.characterRole, character.role!),
+              ],
+            ),
             if (character.nicknames.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
@@ -630,18 +650,58 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(character.nicknames.join(' · ')),
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: <Widget>[
+                  for (final name in character.nicknames)
+                    Chip(label: Text(name)),
+                ],
+              ),
             ],
-            if (character.about != null && character.about!.isNotEmpty) ...<
-              Widget
-            >[
+            if (about.facts.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterFacts,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              for (final fact in about.facts)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      SizedBox(
+                        width: 108,
+                        child: Text(
+                          fact.label,
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      Expanded(child: SelectableText(fact.value)),
+                    ],
+                  ),
+                ),
+            ],
+            if (about.narrative.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
                 AnimeStrings.characterAbout,
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(character.about!),
+              SelectableText(about.narrative),
+            ] else if (character.about != null &&
+                character.about!.isNotEmpty &&
+                about.facts.isEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterAbout,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SelectableText(character.about!),
             ],
             ..._appearanceBlock(
               theme,
@@ -723,6 +783,13 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _factChip(ThemeData theme, String label, String value) {
+    return Chip(
+      label: Text('$label: $value'),
+      visualDensity: VisualDensity.compact,
     );
   }
 

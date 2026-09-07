@@ -104,7 +104,11 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
   bool alwaysThrow = false;
 
   @override
-  Future<AnimeHttpResponse> get(Uri uri, {Duration? timeout}) async {
+  Future<AnimeHttpResponse> get(
+    Uri uri, {
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
     calls.add(uri);
     if (failuresBeforeSuccess > 0) {
       failuresBeforeSuccess -= 1;

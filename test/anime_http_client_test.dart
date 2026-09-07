@@ -71,13 +71,44 @@ void main() {
     expect(delays, isNotEmpty);
     expect(attempt, 0);
   });
+
+  test('interactive requests jump ahead of queued catalog fetches', () async {
+    final inner = _HoldHttpClient();
+    final client = ResilientAnimeHttpClient(
+      inner: inner,
+      minInterval: Duration.zero,
+      delay: (_) async {},
+    );
+    final catalogA = client.get(
+      Uri.parse('https://example.test/v4/seasons/now'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final catalogB = client.get(
+      Uri.parse('https://example.test/v4/top/anime'),
+    );
+    final search = client.get(
+      Uri.parse('https://example.test/v4/anime'),
+      priority: AnimeRequestPriority.interactive,
+    );
+    inner.releaseAll();
+    await Future.wait(<Future<AnimeHttpResponse>>[catalogA, catalogB, search]);
+    expect(inner.started, <String>[
+      '/v4/seasons/now',
+      '/v4/anime',
+      '/v4/top/anime',
+    ]);
+  });
 }
 
 final class _SequenceHttpClient implements AnimeHttpClient {
   int _calls = 0;
 
   @override
-  Future<AnimeHttpResponse> get(Uri uri, {Duration? timeout}) async {
+  Future<AnimeHttpResponse> get(
+    Uri uri, {
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
     _calls++;
     if (_calls == 1) {
       return const AnimeHttpResponse(
@@ -87,5 +118,25 @@ final class _SequenceHttpClient implements AnimeHttpClient {
       );
     }
     return const AnimeHttpResponse(statusCode: 200, body: '{"ok":true}');
+  }
+}
+
+final class _HoldHttpClient implements AnimeHttpClient {
+  final started = <String>[];
+  final Completer<void> _ready = Completer<void>();
+
+  @override
+  Future<AnimeHttpResponse> get(
+    Uri uri, {
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    started.add(uri.path);
+    await _ready.future;
+    return const AnimeHttpResponse(statusCode: 200, body: '{}');
+  }
+
+  void releaseAll() {
+    if (!_ready.isCompleted) _ready.complete();
   }
 }

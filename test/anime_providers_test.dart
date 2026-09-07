@@ -100,4 +100,25 @@ void main() {
     await list.openCatalog(AnimeCatalogKind.top);
     expect(list.state, LoadingState.offline);
   });
+
+  test('character profiles are prefetched and reused instantly', () async {
+    const preview = AnimeCharacter(
+      id: '10',
+      name: 'Frieren',
+      role: 'Main',
+    );
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[preview],
+    );
+    final details = AnimeDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.load('52991');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.characterDetailsCalls, 1);
+    final profile = await details.characterProfile(preview);
+    expect(profile.about, 'An elf mage.');
+    expect(profile.nameKanji, 'フリーレン');
+    expect(profile.role, 'Main');
+    expect(repository.characterDetailsCalls, 1);
+  });
 }

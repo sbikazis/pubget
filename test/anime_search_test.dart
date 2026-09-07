@@ -30,7 +30,7 @@ void main() {
     expect(list.items, isNotEmpty);
   });
 
-  test('empty and short queries do not hit the repository', () async {
+  test('empty queries do not hit the repository', () async {
     final repository = FakeAnimeRepository();
     final list = AnimeListProvider(
       repository: repository,
@@ -38,9 +38,21 @@ void main() {
     );
     addTearDown(list.dispose);
     list.searchChanged('');
-    list.searchChanged('a');
+    list.searchChanged('  ');
     await Future<void>.delayed(Duration.zero);
     expect(repository.searchCalls, 0);
+  });
+
+  test('single-character names search immediately', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.searchChanged('a');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.searchCalls, 1);
   });
 
   test('valid query loads results', () async {
@@ -160,6 +172,28 @@ void main() {
     expect(search.results.groups, isNotEmpty);
     expect(search.results.anime, isNotEmpty);
     expect(search.hits, isNotEmpty);
+  });
+
+  test('catalog filters keep matching titles and drop mismatches', () {
+    const tvFall = AnimeSearchFilter(
+      type: AnimeTypeFilter.tv,
+      season: AnimeSeason.fall,
+      year: 2023,
+    );
+    expect(tvFall.matchesCatalog(sampleAnime()), isTrue);
+    expect(
+      tvFall
+          .copyWith(type: AnimeTypeFilter.movie)
+          .matchesCatalog(sampleAnime()),
+      isFalse,
+    );
+    expect(
+      const AnimeSearchFilter(
+        season: AnimeSeason.winter,
+        year: 2023,
+      ).matchesCatalog(sampleAnime()),
+      isFalse,
+    );
   });
 }
 

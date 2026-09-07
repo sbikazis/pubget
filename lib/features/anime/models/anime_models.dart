@@ -89,6 +89,34 @@ final class AnimeSearchFilter {
       (season != null && year != null);
   bool get hasConstraints => hasQuery || hasNonTextConstraints;
 
+  bool matchesCatalog(Anime anime) {
+    if (type != null) {
+      final animeType = anime.type?.trim().toLowerCase();
+      if (animeType != null &&
+          animeType.isNotEmpty &&
+          animeType != type!.name) {
+        return false;
+      }
+    }
+    final genre = genreId?.trim();
+    if (genre != null && genre.isNotEmpty && anime.genres.isNotEmpty) {
+      if (!anime.genres.any((item) => item.id == genre)) return false;
+    }
+    if (season != null && anime.season != null && anime.season != season) {
+      return false;
+    }
+    if (year != null && anime.year != null && anime.year != year) {
+      return false;
+    }
+    return true;
+  }
+
+  AnimePage constrain(AnimePage page) {
+    final items = page.items.where(matchesCatalog).toList(growable: false);
+    if (items.length == page.items.length) return page;
+    return page.copyWith(items: items);
+  }
+
   AnimeSearchFilter copyWith({
     String? text,
     String? genreId,
@@ -239,6 +267,82 @@ final class AnimeCharacter {
     animeography: animeography ?? this.animeography,
     mangaography: mangaography ?? this.mangaography,
   );
+
+  AnimeCharacter mergeDetails(AnimeCharacter details) {
+    return copyWith(
+      name: details.name,
+      about: details.about ?? about,
+      nameKanji: details.nameKanji ?? nameKanji,
+      nicknames: details.nicknames.isNotEmpty ? details.nicknames : nicknames,
+      imageUrl: details.imageUrl ?? imageUrl,
+      favorites: details.favorites ?? favorites,
+      url: details.url ?? url,
+      voiceActors: details.voiceActors.isNotEmpty
+          ? details.voiceActors
+          : voiceActors,
+      animeography: details.animeography.isNotEmpty
+          ? details.animeography
+          : animeography,
+      mangaography: details.mangaography.isNotEmpty
+          ? details.mangaography
+          : mangaography,
+    );
+  }
+
+  bool get hasFullProfile =>
+      (about != null && about!.trim().isNotEmpty) ||
+      nameKanji != null ||
+      nicknames.isNotEmpty ||
+      animeography.isNotEmpty ||
+      mangaography.isNotEmpty;
+}
+
+final class CharacterAboutSections {
+  const CharacterAboutSections({
+    required this.facts,
+    required this.narrative,
+  });
+
+  final List<({String label, String value})> facts;
+  final String narrative;
+
+  static CharacterAboutSections parse(String? about) {
+    final text = about?.trim() ?? '';
+    if (text.isEmpty) {
+      return const CharacterAboutSections(
+        facts: <({String label, String value})>[],
+        narrative: '',
+      );
+    }
+    final facts = <({String label, String value})>[];
+    final narrative = <String>[];
+    for (final rawLine in text.split(RegExp(r'\r?\n'))) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        if (narrative.isNotEmpty && narrative.last.isNotEmpty) {
+          narrative.add('');
+        }
+        continue;
+      }
+      final separator = line.indexOf(':');
+      if (separator > 0 && separator < 40 && separator < line.length - 1) {
+        final label = line.substring(0, separator).trim();
+        final value = line.substring(separator + 1).trim();
+        if (label.isNotEmpty &&
+            value.isNotEmpty &&
+            !label.contains('http') &&
+            label.length <= 32) {
+          facts.add((label: label, value: value));
+          continue;
+        }
+      }
+      narrative.add(line);
+    }
+    return CharacterAboutSections(
+      facts: List<({String label, String value})>.unmodifiable(facts),
+      narrative: narrative.join('\n').trim(),
+    );
+  }
 }
 
 final class Anime {
@@ -424,5 +528,13 @@ abstract final class AnimeStrings {
   static const characterAnime = 'Anime appearances';
   static const characterManga = 'Manga appearances';
   static const characterVoices = 'Voice actors';
+  static const characterFacts = 'Profile facts';
+  static const characterMalId = 'MAL ID';
+  static const characterRole = 'Role';
+  static const loadingProfile = 'Loading full profile…';
   static const malFavorites = 'MAL favorites';
+  static const pubgetFavorites = 'Pubget favorites';
+  static const thisSeasonSubtitle =
+      'Airing this cour — posters, scores, and studios.';
+  static const popularSubtitle = 'The titles everyone is watching and saving.';
 }

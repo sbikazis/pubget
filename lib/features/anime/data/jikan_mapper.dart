@@ -90,10 +90,11 @@ AnimeCharacter? mapJikanCharacterFull(Object? raw) {
   final name = _string(map['name']);
   if (id == null || name == null || name.isEmpty) return null;
   final voices = map['voices'] ?? map['voice_actors'];
+  final images = _images(map['images']);
   return AnimeCharacter(
     id: id,
     name: name,
-    imageUrl: _images(map['images']).displayUrl,
+    imageUrl: images.largeUrl ?? images.displayUrl,
     favorites: _int(map['favorites']),
     url: _string(map['url']),
     about: _string(map['about']),
