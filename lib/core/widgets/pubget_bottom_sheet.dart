@@ -48,7 +48,7 @@ class PubgetBottomSheet extends StatelessWidget {
           children: <Widget>[
             if (title != null) Text(title!, style: theme.textTheme.titleLarge),
             if (title != null) const SizedBox(height: AppSpacing.lg),
-            child,
+            Flexible(fit: FlexFit.loose, child: child),
             if (actions != null) ...[
               const SizedBox(height: AppSpacing.lg),
               Wrap(

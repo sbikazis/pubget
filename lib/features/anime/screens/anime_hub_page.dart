@@ -225,6 +225,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     return RefreshIndicator(
       onRefresh: () => hub.load(refresh: true),
       child: CustomScrollView(
+        cacheExtent: 800,
         slivers: <Widget>[
           SliverToBoxAdapter(child: _searchField(list)),
           SliverToBoxAdapter(child: _filters(hub, list)),
