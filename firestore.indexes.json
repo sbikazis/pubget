@@ -654,16 +654,6 @@
           "order": "DESCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "character_stats",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "favoritesCount",
-          "order": "DESCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": [
