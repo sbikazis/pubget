@@ -96,6 +96,14 @@ void main() {
     expect(sections.narrative, contains('An elf mage'));
   });
 
+  test('parses unlabeled height and age lines from Jikan about', () {
+    final sections = CharacterAboutSections.parse(
+      'Height 158 cm\nAge 1000+\n\nAn ancient elf.',
+    );
+    expect(sections.facts.map((item) => item.label), containsAll(<String>['Height', 'Age']));
+    expect(sections.narrative, contains('An ancient elf'));
+  });
+
   test('skips malformed anime entries instead of throwing', () {
     final items = mapJikanAnimeList(<Object?>[
       <String, Object?>{'mal_id': 1},

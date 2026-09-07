@@ -193,7 +193,7 @@ final class AnimeListProvider extends ChangeNotifier {
   AnimeListProvider({
     required AnimeRepository repository,
     Analytics? analytics,
-    this.debounce = const Duration(milliseconds: 50),
+    this.debounce = const Duration(milliseconds: 30),
     this.minQueryLength = 1,
   }) : _repository = repository,
        _analytics = analytics;
@@ -272,20 +272,20 @@ final class AnimeListProvider extends ChangeNotifier {
   void searchChanged(String query) {
     _searchDebounce?.cancel();
     _query = query;
-    _filter = _filter.copyWith(text: query);
+    _filter = _filter.copyWith(text: query, sort: AnimeSearchSort.members);
     _scheduleSearch();
   }
 
   void searchSubmitted(String query) {
     _searchDebounce?.cancel();
     _query = query;
-    _filter = _filter.copyWith(text: query);
+    _filter = _filter.copyWith(text: query, sort: AnimeSearchSort.members);
     _scheduleSearch(immediate: true);
   }
 
   void applyFilter(AnimeSearchFilter filter) {
     _searchDebounce?.cancel();
-    _filter = filter.copyWith(text: _query);
+    _filter = filter.copyWith(text: _query, sort: AnimeSearchSort.members);
     _scheduleSearch(immediate: true);
   }
 
@@ -569,8 +569,10 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     OnboardingProvider? onboarding,
   }) {
     _userId = userId;
-    _favoriteIds = List<String>.unmodifiable(favoriteIds);
     _onboarding = onboarding;
+    if (_savingFavorite) return;
+    if (onboarding?.profile == null) return;
+    _favoriteIds = List<String>.unmodifiable(favoriteIds);
   }
 
   Future<void> load(String animeId, {bool refresh = false}) async {

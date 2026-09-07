@@ -18,6 +18,7 @@ import 'package:pubget/features/authentication/providers/onboarding_provider.dar
 
 import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
+import 'social_test_support.dart';
 
 void main() {
   testWidgets('hub shows loading then trending titles', (tester) async {
@@ -75,6 +76,8 @@ void main() {
       _harness(repository: repository, child: const AnimeHubPage()),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('hub-open-search')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'zzz');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
@@ -88,6 +91,9 @@ void main() {
     await tester.pumpWidget(
       _harness(repository: repository, child: const AnimeHubPage()),
     );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('filter-type-tv')), findsNothing);
+    await tester.tap(find.byKey(const Key('hub-search-cta')));
     await tester.pumpAndSettle();
     final search = find.byKey(const Key('anime-hub-search'));
     final element = tester.element(search);
@@ -105,6 +111,9 @@ void main() {
     await tester.pumpWidget(
       _harness(repository: repository, child: const AnimeHubPage()),
     );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('filter-season-fall')), findsNothing);
+    await tester.tap(find.byKey(const Key('hub-open-search')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('filter-type-tv')));
     await tester.pumpAndSettle();
@@ -133,6 +142,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
+  });
+
+  testWidgets('favorite toggle highlights immediately and persists ids', (
+    tester,
+  ) async {
+    final profiles = FakeProfileRepository();
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(),
+        profiles: profiles,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('favorite-anime')));
+    await tester.pump();
+    expect(find.text(AnimeStrings.favorited), findsWidgets);
+    await tester.pumpAndSettle();
+    expect(profiles.lastUpdate?.favoriteAnimeIds, contains('52991'));
   });
 
   testWidgets('character sheet opens immediately then fills in Jikan details', (
@@ -245,6 +273,7 @@ Widget _harness({
   required Widget child,
   ThemeData? theme,
   TextDirection textDirection = TextDirection.ltr,
+  FakeProfileRepository? profiles,
 }) {
   final network = NetworkService(probe: () async => true);
   final hub = AnimeHubProvider(repository: repository);
@@ -252,7 +281,10 @@ Widget _harness({
     repository: repository,
     debounce: Duration.zero,
   );
-  final details = AnimeDetailsProvider(repository: repository);
+  final details = AnimeDetailsProvider(
+    repository: repository,
+    profiles: profiles,
+  );
   final auth = AuthProvider(
     repository: FakeAuthRepository(
       user: const AuthUser(id: 'user-1', email: 'fan@example.com'),

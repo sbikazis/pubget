@@ -331,10 +331,18 @@ final class CharacterAboutSections {
         if (label.isNotEmpty &&
             value.isNotEmpty &&
             !label.contains('http') &&
-            label.length <= 32) {
+            label.length <= 40) {
           facts.add((label: label, value: value));
           continue;
         }
+      }
+      final labeled = RegExp(
+        r'^(Age|Birthday|Height|Weight|Blood type|Hair color|Eye color|Gender|Species|Affiliation|Occupation)\s+(.+)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (labeled != null) {
+        facts.add((label: labeled.group(1)!, value: labeled.group(2)!.trim()));
+        continue;
       }
       narrative.add(line);
     }
@@ -470,6 +478,10 @@ abstract final class AnimeStrings {
   static const hubTitle = 'Anime Hub';
   static const seeAll = 'See all';
   static const searchHint = 'Search anime';
+  static const openSearch = 'Search';
+  static const closeSearch = 'Close search';
+  static const ratingAppBadge = 'A';
+  static const ratingMalBadge = 'M';
   static const searchHomeHint =
       'Search groups, people, events, anime, and Fan Works';
   static const nothingFound = 'Nothing found';

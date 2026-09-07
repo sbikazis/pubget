@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/anime_models.dart';
+import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
 import '../widgets/anime_widgets.dart';
 
@@ -21,12 +22,17 @@ class AnimeHubPage extends StatefulWidget {
 
 class _AnimeHubPageState extends State<AnimeHubPage> {
   final _search = TextEditingController();
+  var _searchOpen = false;
 
   @override
   void initState() {
     super.initState();
     final hub = context.read<AnimeHubProvider>();
     Future<void>.microtask(hub.load);
+    final social = maybeAnimeHubSocial(context, listen: false);
+    if (social != null) {
+      Future<void>.microtask(social.loadTopRated);
+    }
   }
 
   @override
@@ -40,12 +46,27 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     final hub = context.watch<AnimeHubProvider>();
     final list = context.watch<AnimeListProvider>();
     final network = context.watch<NetworkService>();
-    final searching = list.isSearching || _search.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
-        leading: AppBackButton.maybeOf(context),
-        title: const Text(AnimeStrings.hubTitle),
+        leading: _searchOpen
+            ? IconButton(
+                key: const Key('hub-close-search'),
+                tooltip: AnimeStrings.closeSearch,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => _closeSearch(list),
+              )
+            : AppBackButton.maybeOf(context),
+        title: Text(
+          _searchOpen ? AnimeStrings.openSearch : AnimeStrings.hubTitle,
+        ),
         actions: <Widget>[
+          if (!_searchOpen)
+            IconButton(
+              key: const Key('hub-open-search'),
+              tooltip: AnimeStrings.openSearch,
+              icon: const Icon(Icons.search),
+              onPressed: _openSearch,
+            ),
           PubgetTextButton(
             onPressed: () => AppNavigation.go(context, '/anime/library'),
             semanticLabel: AnimeStrings.libraryTitle,
@@ -54,19 +75,27 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
         ],
       ),
       body: PubgetAtmosphere(
-        child: Column(
-          children: <Widget>[
-            _searchField(list),
-            _filters(hub, list),
-            Expanded(
-              child: searching
-                  ? _searchResults(list)
-                  : _hubBody(hub, network),
-            ),
-          ],
-        ),
+        child: _searchOpen
+            ? Column(
+                children: <Widget>[
+                  _searchField(list),
+                  _filters(hub, list),
+                  Expanded(child: _searchResults(list)),
+                ],
+              )
+            : _hubBody(hub, network),
       ),
     );
+  }
+
+  void _openSearch() {
+    setState(() => _searchOpen = true);
+  }
+
+  void _closeSearch(AnimeListProvider list) {
+    _search.clear();
+    list.clearSearch();
+    setState(() => _searchOpen = false);
   }
 
   Widget _searchField(AnimeListProvider list) {
@@ -261,6 +290,23 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
       child: CustomScrollView(
         cacheExtent: 800,
         slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.sm,
+              ),
+              child: PubgetPrimaryButton(
+                key: const Key('hub-search-cta'),
+                onPressed: _openSearch,
+                semanticLabel: AnimeStrings.openSearch,
+                leadingIcon: Icons.search,
+                child: const Text(AnimeStrings.openSearch),
+              ),
+            ),
+          ),
           if (hub.fromCache)
             SliverToBoxAdapter(
               child: AnimeCachedBanner(offline: !network.isOnline),
@@ -382,12 +428,18 @@ class _SeasonHero extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
+                      AnimeScoreBadge(
+                        malScore: anime.score,
+                        community: maybeAnimeHubSocial(
+                          context,
+                        )?.statsFor(anime.id),
+                        large: true,
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         [
                           if (anime.subtitle.isNotEmpty) anime.subtitle,
                           if (anime.studios.isNotEmpty) anime.studios.first,
-                          if (anime.score != null)
-                            'MAL ${anime.score!.toStringAsFixed(1)}',
                         ].join(' · '),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
