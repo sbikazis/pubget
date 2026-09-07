@@ -34,6 +34,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text('Top rated'), findsNothing);
+    expect(find.text('Trending'), findsNothing);
+    expect(find.text('Upcoming'), findsNothing);
+    expect(find.text('This season'), findsWidgets);
+    expect(find.text('Most popular'), findsWidgets);
   });
 
   testWidgets('hub empty state', (tester) async {
@@ -91,6 +95,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
+  });
+
+  testWidgets('character sheet opens immediately then fills in Jikan details', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[
+        AnimeCharacter(
+          id: '10',
+          name: 'Frieren',
+          role: 'Main',
+          imageUrl: 'https://example.test/char.jpg',
+        ),
+      ],
+    )..characterDetailsGate = gate;
+    await tester.pumpWidget(
+      _harness(
+        repository: repository,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('character-10')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const Key('character-sheet')), findsOneWidget);
+    expect(find.byKey(const Key('character-sheet-name')), findsOneWidget);
+    expect(find.text('An elf mage.'), findsNothing);
+    expect(repository.characterDetailsCalls, 1);
+    gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('An elf mage.'), findsWidgets);
+    expect(find.text('フリーレン'), findsWidgets);
+    expect(find.text(AnimeStrings.characterAbout), findsWidgets);
+    expect(find.text(AnimeStrings.characterAnime), findsWidgets);
+    expect(find.textContaining(AnimeStrings.malFavorites), findsWidgets);
   });
 
   testWidgets('details missing anime', (tester) async {

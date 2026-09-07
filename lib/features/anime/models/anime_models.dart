@@ -45,7 +45,7 @@ enum AnimeCatalogKind {
 
   String get label => switch (this) {
     AnimeCatalogKind.trending => 'Trending',
-    AnimeCatalogKind.popular => 'Popular',
+    AnimeCatalogKind.popular => 'Most popular',
     AnimeCatalogKind.top => 'Top rated',
     AnimeCatalogKind.airing => 'Currently airing',
     AnimeCatalogKind.thisSeason => 'This season',
@@ -54,12 +54,10 @@ enum AnimeCatalogKind {
 
   String get routeValue => name;
 
-  /// Hub home does not load Jikan "top"/score charts — Pubget ratings own that.
+  /// Hub home is exactly this season and most popular.
   static const hubHome = <AnimeCatalogKind>[
-    AnimeCatalogKind.trending,
     AnimeCatalogKind.thisSeason,
     AnimeCatalogKind.popular,
-    AnimeCatalogKind.upcoming,
   ];
 }
 
@@ -160,12 +158,30 @@ final class VoiceActor {
     required this.name,
     this.language,
     this.imageUrl,
+    this.animeTitle,
   });
 
   final String id;
   final String name;
   final String? language;
   final String? imageUrl;
+  final String? animeTitle;
+}
+
+final class CharacterAppearance {
+  const CharacterAppearance({
+    required this.id,
+    required this.title,
+    this.role,
+    this.imageUrl,
+    this.url,
+  });
+
+  final String id;
+  final String title;
+  final String? role;
+  final String? imageUrl;
+  final String? url;
 }
 
 final class AnimeCharacter {
@@ -180,6 +196,8 @@ final class AnimeCharacter {
     this.nameKanji,
     this.nicknames = const <String>[],
     this.voiceActors = const <VoiceActor>[],
+    this.animeography = const <CharacterAppearance>[],
+    this.mangaography = const <CharacterAppearance>[],
   });
 
   final String id;
@@ -192,26 +210,34 @@ final class AnimeCharacter {
   final String? nameKanji;
   final List<String> nicknames;
   final List<VoiceActor> voiceActors;
+  final List<CharacterAppearance> animeography;
+  final List<CharacterAppearance> mangaography;
 
   AnimeCharacter copyWith({
+    String? name,
     String? about,
     String? nameKanji,
     List<String>? nicknames,
     String? imageUrl,
     String? role,
     int? favorites,
+    String? url,
     List<VoiceActor>? voiceActors,
+    List<CharacterAppearance>? animeography,
+    List<CharacterAppearance>? mangaography,
   }) => AnimeCharacter(
     id: id,
-    name: name,
+    name: name ?? this.name,
     imageUrl: imageUrl ?? this.imageUrl,
     role: role ?? this.role,
     favorites: favorites ?? this.favorites,
-    url: url,
+    url: url ?? this.url,
     about: about ?? this.about,
     nameKanji: nameKanji ?? this.nameKanji,
     nicknames: nicknames ?? this.nicknames,
     voiceActors: voiceActors ?? this.voiceActors,
+    animeography: animeography ?? this.animeography,
+    mangaography: mangaography ?? this.mangaography,
   );
 }
 
@@ -393,4 +419,10 @@ abstract final class AnimeStrings {
   static const sortFavorites = 'Most favorited';
   static const searchFiltersHint = 'Search by name, or filter by season and genre.';
   static const noRatingsYet = 'Be the first to rate this anime on Pubget.';
+  static const characterAbout = 'About';
+  static const characterNicknames = 'Nicknames';
+  static const characterAnime = 'Anime appearances';
+  static const characterManga = 'Manga appearances';
+  static const characterVoices = 'Voice actors';
+  static const malFavorites = 'MAL favorites';
 }

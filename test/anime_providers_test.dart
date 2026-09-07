@@ -16,7 +16,9 @@ void main() {
     addTearDown(hub.dispose);
     await hub.load();
     expect(hub.state, LoadingState.loaded);
-    expect(hub.section(AnimeCatalogKind.trending).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.thisSeason).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.popular).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.trending).items, isEmpty);
     expect(hub.genres, isNotEmpty);
     expect(hub.seasons, isNotEmpty);
     expect(hub.section(AnimeCatalogKind.top).items, isEmpty);
@@ -27,10 +29,10 @@ void main() {
     final hub = AnimeHubProvider(repository: repository);
     addTearDown(hub.dispose);
     await hub.load();
-    expect(repository.trendingCalls, 1);
+    expect(repository.trendingCalls, 0);
     expect(repository.thisSeasonCalls, 1);
     expect(repository.popularCalls, 1);
-    expect(repository.upcomingCalls, 1);
+    expect(repository.upcomingCalls, 0);
     expect(repository.topCalls, 0);
     expect(repository.airingCalls, 0);
   });

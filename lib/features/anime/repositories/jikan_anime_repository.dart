@@ -28,6 +28,28 @@ final class JikanAnimeRepository implements AnimeRepository {
     if (!resolved.hasConstraints) {
       return Future<Result<AnimePage>>.value(const Success(AnimePage.empty));
     }
+    final text = resolved.text.trim();
+    if (text.isEmpty && resolved.year != null && resolved.season != null) {
+      return _page(
+        _uri('seasons/${resolved.year}/${resolved.season!.apiValue}', {
+          'page': '$page',
+          'limit': '${_limit(limit)}',
+          'sfw': 'true',
+          if (resolved.type != null) 'filter': resolved.type!.name,
+        }),
+        page: page,
+      );
+    }
+    if (text.isEmpty &&
+        resolved.genreId != null &&
+        resolved.genreId!.trim().isNotEmpty &&
+        resolved.type == null) {
+      return getByGenre(
+        resolved.genreId!.trim(),
+        page: page,
+        limit: limit,
+      );
+    }
     return _page(_uri('anime', _searchQuery(resolved, page, limit)), page: page);
   }
 
@@ -216,21 +238,7 @@ final class JikanAnimeRepository implements AnimeRepository {
     final genreId = filter.genreId?.trim();
     if (genreId != null && genreId.isNotEmpty) query['genres'] = genreId;
     if (filter.type != null) query['type'] = filter.type!.name;
-    if (filter.season != null && filter.year != null) {
-      final range = _seasonRange(filter.year!, filter.season!);
-      query['start_date'] = range.$1;
-      query['end_date'] = range.$2;
-    }
     return query;
-  }
-
-  (String, String) _seasonRange(int year, AnimeSeason season) {
-    return switch (season) {
-      AnimeSeason.winter => ('$year-01-01', '$year-03-31'),
-      AnimeSeason.spring => ('$year-04-01', '$year-06-30'),
-      AnimeSeason.summer => ('$year-07-01', '$year-09-30'),
-      AnimeSeason.fall => ('$year-10-01', '$year-12-31'),
-    };
   }
 
   Uri _uri(String path, [Map<String, String> query = const <String, String>{}]) {

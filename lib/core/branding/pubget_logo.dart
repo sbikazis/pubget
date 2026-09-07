@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 /// Official Pubget torii mark (user-supplied brand asset).
 abstract final class PubgetLogo {
   static const asset = 'assets/branding/pubget_torii.png';
+  static const settingsAsset = 'assets/branding/pubget_settings.png';
+  static const coinAsset = 'assets/branding/pubget_coin.png';
 }
 
 class PubgetLogoMark extends StatelessWidget {

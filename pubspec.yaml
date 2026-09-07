@@ -38,3 +38,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/pubget_torii.png
+    - assets/branding/pubget_settings.png
+    - assets/branding/pubget_coin.png

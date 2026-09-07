@@ -142,6 +142,7 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    const logoSize = 48.0;
     return AppBar(
       automaticallyImplyLeading: false,
       toolbarHeight: 72,
@@ -149,58 +150,56 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       title: SizedBox(
         height: 72,
         width: double.infinity,
-        child: Stack(
-          alignment: Alignment.center,
-          children: <Widget>[
-            const IgnorePointer(
-              child: PubgetLogoMark(key: Key('home-logo'), size: 42),
-            ),
-            Row(
-              children: <Widget>[
-                const AppShellMenuButton(),
-                const Spacer(),
-                Directionality(
-                  textDirection: TextDirection.ltr,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      if (coins != null)
-                        PubgetKatanaCoinChip(
-                          balance: coins!,
-                          tooltip: copy.store,
-                          onPressed: () =>
-                              AppNavigation.go(context, '/store'),
-                        ),
-                      const SizedBox(width: AppSpacing.sm),
-                      PubgetLuxuryNotifyButton(
-                        tooltip: copy.notifications,
-                        badge: notifyCount,
-                        onPressed: () =>
-                            AppNavigation.go(context, '/notifications'),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      PubgetLuxurySettingsButton(
-                        tooltip: copy.settings,
-                        onPressed: () =>
-                            AppNavigation.go(context, '/settings'),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      GestureDetector(
-                        key: const Key('home-avatar'),
-                        onTap: () => AppNavigation.go(context, '/profile'),
-                        child: EquippedAvatar(
-                          imageUrl: avatarUrl,
-                          name: name,
-                          frameId: frameId,
-                          size: PubgetAvatarSize.medium,
-                        ),
-                      ),
-                    ],
-                  ),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              if (coins != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    PubgetKatanaCoinChip(
+                      balance: coins!,
+                      tooltip: copy.store,
+                      onPressed: () => AppNavigation.go(context, '/store'),
+                    ),
+                    const SizedBox(width: 8),
+                    const SizedBox(width: logoSize, height: logoSize),
+                  ],
                 ),
-              ],
-            ),
-          ],
+              const IgnorePointer(
+                child: PubgetLogoMark(key: Key('home-logo'), size: logoSize),
+              ),
+              Row(
+                children: <Widget>[
+                  GestureDetector(
+                    key: const Key('home-avatar'),
+                    onTap: () => AppNavigation.go(context, '/profile'),
+                    child: EquippedAvatar(
+                      imageUrl: avatarUrl,
+                      name: name,
+                      frameId: frameId,
+                      size: PubgetAvatarSize.medium,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  PubgetLuxuryNotifyButton(
+                    tooltip: copy.notifications,
+                    badge: notifyCount,
+                    onPressed: () =>
+                        AppNavigation.go(context, '/notifications'),
+                  ),
+                  const Expanded(child: IgnorePointer(child: SizedBox.expand())),
+                  PubgetLuxurySettingsButton(
+                    tooltip: copy.settings,
+                    onPressed: () => AppNavigation.go(context, '/settings'),
+                  ),
+                  const AppShellMenuButton(),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

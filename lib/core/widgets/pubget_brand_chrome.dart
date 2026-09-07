@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../branding/pubget_logo.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import 'pubget_tooltip.dart';
 
-/// Settings control: silver → royal purple metallic wash.
+/// Settings control: user-supplied Japanese emblem.
 class PubgetLuxurySettingsButton extends StatelessWidget {
   const PubgetLuxurySettingsButton({
     required this.tooltip,
@@ -27,24 +28,36 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
           onTap: onPressed,
           customBorder: const CircleBorder(),
           child: Ink(
-            width: 42,
-            height: 42,
-            decoration: const BoxDecoration(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  Color(0xFFF4F1F8),
-                  Color(0xFFB7A9C9),
-                  AppColors.royalPurpleLight,
-                  AppColors.royalPurple,
-                ],
+              border: Border.all(
+                color: AppColors.goldSheen.withValues(alpha: 0.78),
               ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: AppColors.royalPurple.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                ),
+              ],
             ),
-            child: const CustomPaint(
-              size: Size(22, 22),
-              painter: _LuxuryGearPainter(),
+            child: ClipOval(
+              child: Image.asset(
+                PubgetLogo.settingsAsset,
+                width: 46,
+                height: 46,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (_, _, _) => const ColoredBox(
+                  color: AppColors.royalDusk,
+                  child: Icon(
+                    Icons.settings_outlined,
+                    color: AppColors.goldPale,
+                    size: 22,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -142,7 +155,17 @@ class PubgetCoinIcon extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: const CustomPaint(painter: PubgetCoinPainter()),
+      child: Image.asset(
+        PubgetLogo.coinAsset,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (_, _, _) => CustomPaint(
+          size: Size(size, size),
+          painter: const PubgetCoinPainter(),
+        ),
+      ),
     );
   }
 }
@@ -246,46 +269,6 @@ class PubgetKatanaCoinChip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _LuxuryGearPainter extends CustomPainter {
-  const _LuxuryGearPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final stroke = Paint()
-      ..color = const Color(0xFF1B1028)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.15
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-    final outer = Path();
-    const teeth = 8;
-    for (var i = 0; i < teeth; i++) {
-      final angle = (i / teeth) * 6.28318530718 - 0.2;
-      final next = ((i + 0.45) / teeth) * 6.28318530718 - 0.2;
-      final valley = ((i + 0.72) / teeth) * 6.28318530718 - 0.2;
-      final outerR = size.shortestSide * 0.46;
-      final innerR = size.shortestSide * 0.34;
-      final p1 = center + Offset.fromDirection(angle, innerR);
-      final p2 = center + Offset.fromDirection(angle + 0.08, outerR);
-      final p3 = center + Offset.fromDirection(next, outerR);
-      final p4 = center + Offset.fromDirection(valley, innerR);
-      if (i == 0) {
-        outer.moveTo(p1.dx, p1.dy);
-      }
-      outer.lineTo(p2.dx, p2.dy);
-      outer.lineTo(p3.dx, p3.dy);
-      outer.lineTo(p4.dx, p4.dy);
-    }
-    outer.close();
-    canvas.drawPath(outer, stroke);
-    canvas.drawCircle(center, size.shortestSide * 0.16, stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _LuxuryBellPainter extends CustomPainter {
