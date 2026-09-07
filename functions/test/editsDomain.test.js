@@ -4,6 +4,29 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createEditsDomain } = require("../src/editsDomain");
 
+function createFakeDb() {
+  const store = new Map();
+  let auto = 0;
+  return {
+    store,
+    collection(name) {
+      return {
+        doc(id) {
+          const resolvedId = id || `auto-${++auto}`;
+          const path = `${name}/${resolvedId}`;
+          return {
+            id: resolvedId,
+            path,
+            async create(data) {
+              store.set(path, { ...data });
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 class TestHttpsError extends Error {
   constructor(code, message) {
     super(message);
@@ -35,6 +58,30 @@ test("edit mutations reject unauthenticated requests before database access", as
       (error) => error.code === "unauthenticated",
     );
   }
+});
+
+test("startUpload ignores client moderation fields and starts pending", async () => {
+  const db = createFakeDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  const started = await domain.startUpload({
+    auth: { uid: "alice" },
+    data: {
+      caption: "Clean edit",
+      animeTag: "one_piece",
+      moderationStatus: "approved",
+      moderationReason: "forged",
+      status: "published",
+    },
+  });
+  const stored = db.store.get(`edits/${started.editId}`);
+  assert.equal(stored.status, "uploading");
+  assert.equal(stored.moderationStatus, "pending");
+  assert.equal(stored.moderationReason, null);
+  assert.equal(stored.caption, "Clean edit");
 });
 
 test("view and signal validation rejects client-controlled invalid values", async () => {

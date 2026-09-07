@@ -1,3 +1,6 @@
+// Required on Flutter 3.44+: CupertinoPageTransitionsBuilder left Material.
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
@@ -170,12 +173,21 @@ abstract final class AppTheme {
         ),
         textStyle: typography.bodySmall?.copyWith(color: colors.text),
       ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: <TargetPlatform, PageTransitionsBuilder>{
+          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+        },
+      ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
         indicatorColor: colors.primaryContainer,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        height: 68,
+        height: 72,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return typography.labelMedium?.copyWith(

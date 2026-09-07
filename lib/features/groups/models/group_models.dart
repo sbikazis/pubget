@@ -71,6 +71,7 @@ final class Group {
     this.risingScore = 0,
     this.imageUrl,
     this.lastActivityAt,
+    this.viewerLastReadAt,
     this.promotionExpiresAt,
   });
 
@@ -91,11 +92,56 @@ final class Group {
   final num risingScore;
   final String? imageUrl;
   final DateTime? lastActivityAt;
+  final DateTime? viewerLastReadAt;
   final DateTime? promotionExpiresAt;
 
   bool get isFull => membersCount >= maxMembers;
 
-  factory Group.fromMap(Map<String, dynamic> map, {required String id}) {
+  /// Unread from existing group `lastMessageAt` vs member `lastReadAt`.
+  bool get hasUnread {
+    final last = lastActivityAt;
+    if (last == null) return false;
+    final readAt = viewerLastReadAt;
+    if (readAt == null) return true;
+    return last.isAfter(readAt);
+  }
+
+  Group copyWith({
+    String? name,
+    String? description,
+    String? rules,
+    JoinPolicy? joinPolicy,
+    bool? isSearchable,
+    int? membersCount,
+  }) {
+    return Group(
+      id: id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      type: type,
+      animeId: animeId,
+      founderId: founderId,
+      membersCount: membersCount ?? this.membersCount,
+      maxMembers: maxMembers,
+      joinPolicy: joinPolicy ?? this.joinPolicy,
+      isSearchable: isSearchable ?? this.isSearchable,
+      createdAt: createdAt,
+      chatBackgroundUrl: chatBackgroundUrl,
+      rules: rules ?? this.rules,
+      activityScore: activityScore,
+      risingScore: risingScore,
+      imageUrl: imageUrl,
+      lastActivityAt: lastActivityAt,
+      viewerLastReadAt: viewerLastReadAt,
+      promotionExpiresAt: promotionExpiresAt,
+    );
+  }
+
+  factory Group.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+    DateTime? viewerLastReadAt,
+  }) {
     final createdAt = map['createdAt'];
     return Group(
       id: id,
@@ -121,6 +167,7 @@ final class Group {
       risingScore: (map['risingScore'] as num?) ?? 0,
       imageUrl: map['imageUrl'] as String?,
       lastActivityAt: _date(map['lastMessageAt']),
+      viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: _date(map['promotionExpiresAt']),
     );
   }
@@ -135,6 +182,7 @@ final class GroupMember {
     this.joinedAt,
     this.inviteCount = 0,
     this.lastActiveAt,
+    this.lastReadAt,
     this.effectivePermissions,
   });
 
@@ -145,6 +193,7 @@ final class GroupMember {
   final DateTime? joinedAt;
   final int inviteCount;
   final DateTime? lastActiveAt;
+  final DateTime? lastReadAt;
 
   /// Permissions from the group role document, when loaded.
   /// `null` means fall back to [defaultRolePermissions] for [role].
@@ -167,6 +216,9 @@ final class GroupMember {
   /// Client UX gate. Server `kickMember` / `banMember` remain authoritative.
   bool get canManageMembers => memberCanManageMembers(this);
 
+  /// Client UX gate. Server `updateGroupSettings` remains authoritative.
+  bool get canManageSettings => memberCanManageSettings(this);
+
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
     return GroupMember(
       uid: uid,
@@ -181,6 +233,7 @@ final class GroupMember {
       joinedAt: _date(map['joinedAt']),
       inviteCount: (map['inviteCount'] as num?)?.toInt() ?? 0,
       lastActiveAt: _date(map['lastActiveAt']),
+      lastReadAt: _date(map['lastReadAt']),
     );
   }
 
@@ -193,9 +246,12 @@ final class GroupMember {
         joinedAt: joinedAt,
         inviteCount: inviteCount,
         lastActiveAt: lastActiveAt,
+        lastReadAt: lastReadAt,
         effectivePermissions: permissions,
       );
 }
+
+bool memberCanCreateEvents(GroupMember? member) => member != null;
 
 /// Client mirror of server event-management authorization. Server remains
 /// authoritative; this is UX gating only.
@@ -223,6 +279,18 @@ bool memberCanManageMembers(GroupMember? member) {
       defaultRolePermissions[member.role] ??
       const <GroupPermission>{};
   return granted.contains(GroupPermission.manageMembers);
+}
+
+/// Client mirror of server settings authorization. Server remains
+/// authoritative; this is UX gating only. Founder always manages settings.
+bool memberCanManageSettings(GroupMember? member) {
+  if (member == null) return false;
+  if (member.role == GroupRole.founder) return true;
+  final granted =
+      member.effectivePermissions ??
+      defaultRolePermissions[member.role] ??
+      const <GroupPermission>{};
+  return granted.contains(GroupPermission.manageSettings);
 }
 
 final class GroupRoleDefinition {
@@ -263,6 +331,25 @@ final class GroupRoleDefinition {
       position: (map['position'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+final class GroupBan {
+  const GroupBan({
+    required this.uid,
+    this.bannedByUid,
+    this.createdAt,
+  });
+
+  final String uid;
+  final String? bannedByUid;
+  final DateTime? createdAt;
+
+  factory GroupBan.fromMap(Map<String, dynamic> map, {required String uid}) =>
+      GroupBan(
+        uid: uid,
+        bannedByUid: map['bannedByUid'] as String?,
+        createdAt: _date(map['createdAt']),
+      );
 }
 
 final class JoinRequest {
@@ -306,6 +393,12 @@ DateTime? _date(dynamic value) {
     return null;
   }
 }
+
+String groupJoinPolicyLabel(JoinPolicy policy) => switch (policy) {
+  JoinPolicy.open => 'Open join',
+  JoinPolicy.approval => 'Request to join',
+  JoinPolicy.inviteOnly => 'Invite only',
+};
 
 String groupRoleLabel(GroupRole role) => switch (role) {
   GroupRole.founder => 'Founder',

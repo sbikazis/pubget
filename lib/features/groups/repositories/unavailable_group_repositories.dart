@@ -26,6 +26,9 @@ final class UnavailableGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async => _fail();
   @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.value(_fail());
+  @override
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
@@ -37,6 +40,11 @@ final class UnavailableGroupRepository implements GroupRepository {
   Future<Result<void>> leaveGroup(String groupId) async => _fail();
   @override
   Future<Result<void>> disbandGroup(String groupId) async => _fail();
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => _fail();
 }
 
 final class UnavailableGroupMembersRepository
@@ -104,6 +112,13 @@ final class UnavailableGroupMembersRepository
   }) async => _fail();
   @override
   Future<Result<void>> rejectJoinRequest({
+    required String groupId,
+    required String uid,
+  }) async => _fail();
+  @override
+  Future<Result<List<GroupBan>>> getBans(String groupId) async => _fail();
+  @override
+  Future<Result<void>> unbanMember({
     required String groupId,
     required String uid,
   }) async => _fail();

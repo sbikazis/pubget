@@ -3,28 +3,27 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
+import '../../../core/branding/pubget_logo.dart';
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../../../core/loading/loading_state.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
-import '../../groups/models/group_models.dart';
+import '../../edits/models/edit_models.dart';
 import '../../edits/providers/edits_provider.dart';
-import '../../events/widgets/event_widgets.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/widgets/anime_widgets.dart';
-import '../../games/widgets/game_widgets.dart';
-import '../../fan_works/widgets/fan_work_widgets.dart';
 import '../../economy/models/economy_types.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
+import '../../events/models/event_models.dart';
+import '../../events/providers/event_providers.dart';
+import '../../events/widgets/home_event_card.dart';
+import '../../fan_works/providers/fan_work_providers.dart';
+import '../../fan_works/widgets/home_fan_work_card.dart';
 import '../../notifications/providers/unread_engine.dart';
-import '../../notifications/widgets/unread_badge.dart';
-import '../../search/search_provider.dart';
-import '../../search/screens/search_page.dart';
-import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
+import '../widgets/home_luxury_tiles.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -34,9 +33,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _search = TextEditingController();
-  final _scroll = ScrollController();
-
   @override
   void initState() {
     super.initState();
@@ -53,112 +49,483 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
-  void dispose() {
-    _search.dispose();
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final profile = context.watch<OnboardingProvider>().profile;
     final auth = context.watch<AuthProvider>();
     final home = context.watch<HomeProvider>();
-    final search = context.watch<SearchProvider>();
     final unread = context.watch<UnreadEngine>();
     final economy = maybeEconomy(context);
+    final copy = AppStrings.of(context);
     final name =
         profile?.displayName ?? profile?.username ?? auth.currentUser?.email;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        leading: const AppShellMenuButton(),
-        title: const Text('Discover'),
-        actions: <Widget>[
-          if (economy != null)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: AppSpacing.sm),
-              child: CoinBalanceChip(
-                balance: economy.coins,
-                cached: economy.offlineCached,
-                onPressed: () => AppNavigation.go(context, '/store'),
-              ),
-            ),
-          UnreadBadge(
-            count: unread.notifications,
-            child: PubgetIconButton(
-              icon: Icons.notifications_none,
-              tooltip: 'Notifications',
-              onPressed: () => AppNavigation.go(context, '/notifications'),
-            ),
-          ),
-          PubgetIconButton(
-            icon: Icons.settings_outlined,
-            tooltip: 'Settings',
-            onPressed: () => AppNavigation.go(context, '/settings'),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          GestureDetector(
-            onTap: () => AppNavigation.go(context, '/profile'),
-            child: EquippedAvatar(
-              imageUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
-              name: name,
-              frameId: economy?.equipped.frameId,
-              size: PubgetAvatarSize.small,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-        ],
+      appBar: HomeTopBar(
+        name: name,
+        avatarUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
+        frameId: economy?.equipped.frameId,
+        coins: economy?.coins,
+        notifyCount: unread.notifications,
       ),
       body: PubgetAtmosphere(
         child: RefreshIndicator(
           onRefresh: home.refresh,
           child: CustomScrollView(
-            controller: _scroll,
             slivers: <Widget>[
-              SliverToBoxAdapter(child: _SearchBar(controller: _search)),
+              _groupSliver(
+                key: const Key('home-promoted'),
+                title: copy.sectionPromoted,
+                kind: HomeSectionKind.promotedGroups,
+                finish: HomeGroupFinish.gold,
+              ),
+              const SliverToBoxAdapter(child: _EditsSection()),
+              _peopleSliver(),
               if (economy != null)
                 const SliverToBoxAdapter(child: _HomeAdSlot()),
-              if (home.coldStart && _search.text.trim().isEmpty)
-                const SliverToBoxAdapter(child: _ColdStartBanner()),
-              if (_search.text.trim().isNotEmpty)
-                SliverToBoxAdapter(
-                  child: SearchResultsView(search: search, shrinkWrap: true),
-                ),
-              if (_search.text.trim().isEmpty)
-                SliverList.builder(
-                  itemCount: home.displayOrder.length,
-                  itemBuilder: (context, index) => _SectionView(
-                    key: ValueKey(home.displayOrder[index]),
-                    kind: home.displayOrder[index],
-                    provider: home,
-                  ),
-                ),
+              const SliverToBoxAdapter(child: _EventsSection()),
+              _groupSliver(
+                key: const Key('home-suggested'),
+                title: copy.sectionRecommended,
+                kind: HomeSectionKind.recommendedGroups,
+                finish: HomeGroupFinish.silver,
+              ),
+              _groupSliver(
+                key: const Key('home-rising'),
+                title: copy.sectionRising,
+                kind: HomeSectionKind.risingGroups,
+                finish: HomeGroupFinish.rising,
+              ),
+              const SliverToBoxAdapter(child: _FanWorksSection()),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _groupSliver({
+    required Key key,
+    required String title,
+    required HomeSectionKind kind,
+    required HomeGroupFinish finish,
+  }) {
+    return SliverToBoxAdapter(
+      child: _GroupSection(key: key, title: title, kind: kind, finish: finish),
+    );
+  }
+
+  Widget _peopleSliver() {
+    return const SliverToBoxAdapter(child: _PeopleSection());
+  }
 }
 
-class _ColdStartBanner extends StatelessWidget {
-  const _ColdStartBanner();
+class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
+  const HomeTopBar({
+    required this.name,
+    required this.avatarUrl,
+    required this.frameId,
+    required this.coins,
+    required this.notifyCount,
+    super.key,
+  });
+
+  final String? name;
+  final String? avatarUrl;
+  final String? frameId;
+  final int? coins;
+  final int notifyCount;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(72);
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    return AppBar(
+      automaticallyImplyLeading: false,
+      toolbarHeight: 72,
+      titleSpacing: AppSpacing.sm,
+      title: SizedBox(
+        height: 72,
+        width: double.infinity,
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            const IgnorePointer(
+              child: PubgetLogoMark(key: Key('home-logo'), size: 42),
+            ),
+            Row(
+              children: <Widget>[
+                const AppShellMenuButton(),
+                const Spacer(),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (coins != null)
+                        PubgetKatanaCoinChip(
+                          balance: coins!,
+                          tooltip: copy.store,
+                          onPressed: () =>
+                              AppNavigation.go(context, '/store'),
+                        ),
+                      const SizedBox(width: AppSpacing.sm),
+                      PubgetLuxuryNotifyButton(
+                        tooltip: copy.notifications,
+                        badge: notifyCount,
+                        onPressed: () =>
+                            AppNavigation.go(context, '/notifications'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      PubgetLuxurySettingsButton(
+                        tooltip: copy.settings,
+                        onPressed: () =>
+                            AppNavigation.go(context, '/settings'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      GestureDetector(
+                        key: const Key('home-avatar'),
+                        onTap: () => AppNavigation.go(context, '/profile'),
+                        child: EquippedAvatar(
+                          imageUrl: avatarUrl,
+                          name: name,
+                          frameId: frameId,
+                          size: PubgetAvatarSize.medium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupSection extends StatelessWidget {
+  const _GroupSection({
+    required this.title,
+    required this.kind,
+    required this.finish,
+    super.key,
+  });
+
+  final String title;
+  final HomeSectionKind kind;
+  final HomeGroupFinish finish;
+
+  @override
+  Widget build(BuildContext context) {
+    final home = context.watch<HomeProvider>();
+    final state = home.section(kind);
+    if (state.state == LoadingState.initial) {
+      Future<void>.microtask(() => home.ensureLoaded(kind));
+    }
+    return _SectionFrame(
+      title: title,
+      child: _stateChild(
+        context,
+        state: state,
+        kind: kind,
+        loaded: HomeHorizontalStrip(
+          height: 214,
+          itemCount: state.groups.length + (state.hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= state.groups.length) {
+              return _MoreCell(
+                loading: state.state == LoadingState.loadingMore,
+                onPressed: () => home.loadMore(kind),
+              );
+            }
+            return HomeSquareGroupCard(
+              group: state.groups[index],
+              finish: finish,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PeopleSection extends StatelessWidget {
+  const _PeopleSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final home = context.watch<HomeProvider>();
+    const kind = HomeSectionKind.recommendedPeople;
+    final state = home.section(kind);
+    if (state.state == LoadingState.initial) {
+      Future<void>.microtask(() => home.ensureLoaded(kind));
+    }
+    final copy = AppStrings.of(context);
+    return _SectionFrame(
+      key: const Key('home-people'),
+      title: copy.sectionPeople,
+      child: _stateChild(
+        context,
+        state: state,
+        kind: kind,
+        loaded: HomeHorizontalStrip(
+          height: 188,
+          itemCount: state.people.length + (state.hasMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            if (index >= state.people.length) {
+              return _MoreCell(
+                loading: state.state == LoadingState.loadingMore,
+                onPressed: () => home.loadMore(kind),
+              );
+            }
+            return HomePersonCard(person: state.people[index]);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _EditsSection extends StatelessWidget {
+  const _EditsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final home = context.watch<HomeProvider>();
+    final edits = context.watch<EditsProvider>();
+    if (edits.state == LoadingState.initial) {
+      Future<void>.microtask(() => edits.load(limit: 8));
+    }
+    final copy = AppStrings.of(context);
+    final items = _editsForHome(home, edits);
+    Widget child;
+    if (items.isNotEmpty) {
+      child = HomeHorizontalStrip(
+        height: 228,
+        itemCount: items.length,
+        itemBuilder: (context, index) =>
+            HomeEditPreviewCard(edit: items[index]),
+      );
+    } else if (edits.state == LoadingState.loading ||
+        edits.state == LoadingState.initial ||
+        edits.state == LoadingState.refreshing) {
+      child = const _SkeletonSection();
+    } else if (edits.state == LoadingState.error) {
+      child = PubgetErrorState(
+        title: copy.sectionFailed,
+        message: edits.failure?.message ?? copy.tryAgainShort,
+        onRetry: () => edits.load(refresh: true, limit: 8),
+      );
+    } else {
+      child = PubgetEmptyState(
+        compact: true,
+        title: copy.nothingHereYet,
+      );
+    }
+    return _SectionFrame(
+      key: const Key('home-edits'),
+      title: copy.sectionEdits,
+      child: child,
+    );
+  }
+
+  List<Edit> _editsForHome(HomeProvider home, EditsProvider edits) {
+    if (edits.items.isNotEmpty) return edits.items.take(8).toList();
+    return home.feed.section('recommendedEdits').items.map((item) {
+      final meta = item.metadata;
+      return Edit(
+        id: item.targetId.isEmpty ? item.id : item.targetId,
+        creatorId: meta['creatorId'] as String? ?? '',
+        videoUrl: meta['videoUrl'] as String? ?? '',
+        thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
+        caption: meta['title'] as String? ?? meta['caption'] as String? ?? '',
+        animeTag: meta['animeTag'] as String? ?? '',
+        likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
+        commentsCount: 0,
+        viewsCount: 0,
+        score: item.score,
+        createdAt: item.createdAt,
+        status: 'published',
+      );
+    }).toList(growable: false);
+  }
+}
+
+class _EventsSection extends StatelessWidget {
+  const _EventsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final list = context.watch<EventListProvider>();
+    if (list.state == LoadingState.initial) {
+      Future<void>.microtask(list.loadHome);
+    }
+    final copy = AppStrings.of(context);
+    if (list.state == LoadingState.loading &&
+        list.active.isEmpty &&
+        list.upcoming.isEmpty) {
+      return _SectionFrame(
+        title: copy.sectionEvents,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: PubgetSkeleton.card(height: 160),
+        ),
+      );
+    }
+    final now = DateTime.now();
+    final recent = list.recent.where((event) {
+      final end = event.endAt;
+      return end != null && now.difference(end) <= const Duration(hours: 24);
+    });
+    final picked = HomeEventsSection.pickHome(
+      <PubgetEvent>[...list.active, ...list.upcoming, ...recent],
+      now,
+    );
+    if (picked.isEmpty) {
+      return _SectionFrame(
+        title: copy.sectionEvents,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: PubgetEmptyState(
+            compact: true,
+            title: copy.nothingHereYet,
+            action: PubgetTextButton(
+              onPressed: () => AppNavigation.go(context, '/events'),
+              semanticLabel: copy.seeMore,
+              child: Text(copy.seeMore),
+            ),
+          ),
+        ),
+      );
+    }
+    return HomeEventsSection(events: picked);
+  }
+}
+
+class _FanWorksSection extends StatelessWidget {
+  const _FanWorksSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final feed = context.watch<FanWorkFeedProvider>();
+    if (feed.state == LoadingState.initial) {
+      Future<void>.microtask(feed.load);
+    }
+    final copy = AppStrings.of(context);
+    final works = diversifyFanWorks(feed.items);
+    return _SectionFrame(
+      key: const Key('home-fan-works'),
+      title: copy.sectionFanWorks,
+      child: feed.state == LoadingState.loading && feed.items.isEmpty
+          ? const _SkeletonSection()
+          : works.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: PubgetEmptyState(
+                compact: true,
+                title: copy.nothingHereYet,
+              ),
+            )
+          : HomeHorizontalStrip(
+              height: 286,
+              itemCount: works.length + 1,
+              itemBuilder: (context, index) {
+                if (index == works.length) {
+                  return const HomeFanWorksSeeAllCard();
+                }
+                return HomeFanWorkCard(work: works[index]);
+              },
+            ),
+    );
+  }
+}
+
+class _SectionFrame extends StatelessWidget {
+  const _SectionFrame({required this.title, required this.child, super.key});
+
+  final String title;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        0,
-        AppSpacing.md,
-        AppSpacing.sm,
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          PubgetSectionHeader(title: title),
+          child,
+        ],
       ),
-      child: PubgetCard(
-        child: Text(
-          'Fresh start: we are mixing quality, trending, and rising groups until your taste is clearer.',
-          style: Theme.of(context).textTheme.bodyMedium,
+    );
+  }
+}
+
+Widget _stateChild(
+  BuildContext context, {
+  required HomeSectionState state,
+  required HomeSectionKind kind,
+  required Widget loaded,
+}) {
+  final copy = AppStrings.of(context);
+  final home = context.read<HomeProvider>();
+  if (state.state == LoadingState.loading && !state.hasContent) {
+    return const _SkeletonSection();
+  }
+  if (state.state == LoadingState.error && !state.hasContent) {
+    return PubgetErrorState(
+      title: copy.sectionFailed,
+      message: state.failure?.message ?? copy.tryAgainShort,
+      onRetry: () => home.retrySection(kind),
+    );
+  }
+  if (state.state == LoadingState.empty) {
+    return PubgetEmptyState(
+      compact: true,
+      title: copy.nothingHereYet,
+      message: kind == HomeSectionKind.recommendedPeople
+          ? copy.findPeopleHint
+          : copy.discoverGroupsHint,
+      action: PubgetTextButton(
+        onPressed: () => AppNavigation.go(
+          context,
+          kind == HomeSectionKind.recommendedPeople ? '/search' : '/groups',
         ),
+        semanticLabel: kind == HomeSectionKind.recommendedPeople
+            ? copy.searchPeople
+            : copy.exploreGroups,
+        child: Text(
+          kind == HomeSectionKind.recommendedPeople
+              ? copy.searchPeople
+              : copy.exploreGroups,
+        ),
+      ),
+    );
+  }
+  return loaded;
+}
+
+class _MoreCell extends StatelessWidget {
+  const _MoreCell({required this.loading, required this.onPressed});
+
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 120,
+      child: Center(
+        child: loading
+            ? const CircularProgressIndicator()
+            : TextButton(
+                onPressed: onPressed,
+                child: Text(AppStrings.of(context).loadMore),
+              ),
       ),
     );
   }
@@ -197,371 +564,20 @@ class _HomeAdSlotState extends State<_HomeAdSlot> {
   }
 }
 
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({required this.controller});
-
-  final TextEditingController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = context.read<SearchProvider>();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.sm,
-      ),
-      child: PubgetSearchField(
-        controller: controller,
-        hint: AnimeStrings.searchHomeHint,
-        onChanged: provider.searchChanged,
-        onClear: () {
-          controller.clear();
-          provider.searchChanged('');
-        },
-      ),
-    );
-  }
-}
-
-class _SectionView extends StatelessWidget {
-  const _SectionView({required this.kind, required this.provider, super.key});
-
-  final HomeSectionKind kind;
-  final HomeProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    if (kind == HomeSectionKind.editsPlaceholder) {
-      final ranked = provider.feed.section('recommendedEdits').items;
-      if (ranked.isNotEmpty) {
-        return _SectionShell(
-          title: 'Trending Edits',
-          child: SizedBox(
-            height: 150,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              scrollDirection: Axis.horizontal,
-              itemCount: ranked.length,
-              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-              itemBuilder: (context, index) {
-                final item = ranked[index];
-                final thumb = item.metadata['thumbnailUrl'] as String? ?? '';
-                return SizedBox(
-                  width: 120,
-                  child: PubgetCard(
-                    onTap: () => AppNavigation.go(context, '/edits'),
-                    child: thumb.isEmpty
-                        ? const Icon(Icons.movie_filter_outlined)
-                        : AppImageLoader(imageUrl: thumb, fit: BoxFit.cover),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
-      final edits = context.watch<EditsProvider>();
-      if (edits.state == LoadingState.initial) {
-        Future<void>.microtask(() => edits.load(limit: 4));
-      }
-      return _SectionShell(
-        title: 'Trending Edits',
-        child: SizedBox(
-          height: 150,
-          child: edits.items.isEmpty
-              ? const _SkeletonSection()
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: edits.items.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(width: AppSpacing.sm),
-                  itemBuilder: (context, index) => SizedBox(
-                    width: 120,
-                    child: PubgetCard(
-                      onTap: () => AppNavigation.go(context, '/edits'),
-                      child: AppImageLoader(
-                        imageUrl: edits.items[index].thumbnailUrl,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                ),
-        ),
-      );
-    }
-    if (kind == HomeSectionKind.eventsPlaceholder) {
-      return const EventHomeStrip();
-    }
-    if (kind == HomeSectionKind.gamesPlaceholder) {
-      return const GameHomeStrip();
-    }
-    if (kind == HomeSectionKind.fanWorksPlaceholder) {
-      return const FanWorkHomeStrip();
-    }
-    if (kind == HomeSectionKind.animePlaceholder) {
-      return const AnimeHomeStrip();
-    }
-    final state = provider.section(kind);
-    if (state.state == LoadingState.initial) {
-      Future<void>.microtask(() => provider.ensureLoaded(kind));
-    }
-    final title = switch (kind) {
-      HomeSectionKind.promotedGroups => 'Promoted groups',
-      HomeSectionKind.risingGroups => 'Small groups rising',
-      HomeSectionKind.recommendedGroups => 'Recommended groups',
-      HomeSectionKind.communityActivity => 'Recent community activity',
-      HomeSectionKind.recommendedPeople => 'People to discover',
-      _ => 'Discover',
-    };
-    if (state.state == LoadingState.loading && !state.hasContent) {
-      return _SectionShell(title: title, child: const _SkeletonSection());
-    }
-    if (state.state == LoadingState.error && !state.hasContent) {
-      return _SectionShell(
-        title: title,
-        child: PubgetErrorState(
-          message: state.failure?.message ?? 'This section could not load.',
-          onRetry: () => provider.retrySection(kind),
-        ),
-      );
-    }
-    if (state.state == LoadingState.empty) {
-      return _SectionShell(
-        title: title,
-        child: PubgetEmptyState(
-          compact: true,
-          icon: kind == HomeSectionKind.recommendedPeople
-              ? Icons.person_search_outlined
-              : Icons.groups_outlined,
-          title: 'Nothing here yet',
-          message: kind == HomeSectionKind.recommendedPeople
-              ? 'Find people through search and Respect.'
-              : 'Discover groups or start one of your own.',
-          action: PubgetTextButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              kind == HomeSectionKind.recommendedPeople ? '/search' : '/groups',
-            ),
-            semanticLabel: kind == HomeSectionKind.recommendedPeople
-                ? 'Search people'
-                : 'Explore groups',
-            child: Text(
-              kind == HomeSectionKind.recommendedPeople
-                  ? 'Search people'
-                  : 'Explore groups',
-            ),
-          ),
-        ),
-      );
-    }
-    return _SectionShell(
-      title: title,
-      child: state.groups.isNotEmpty
-          ? _GroupCarousel(
-              groups: state.groups,
-              hasMore: state.hasMore,
-              isLoadingMore: state.state == LoadingState.loadingMore,
-              onLoadMore: () => provider.loadMore(kind),
-            )
-          : _PeopleCarousel(
-              people: state.people,
-              hasMore: state.hasMore,
-              isLoadingMore: state.state == LoadingState.loadingMore,
-              onLoadMore: () => provider.loadMore(kind),
-            ),
-    );
-  }
-}
-
-class _SectionShell extends StatelessWidget {
-  const _SectionShell({required this.title, required this.child});
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: AppSpacing.md),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        PubgetSectionHeader(title: title),
-        child,
-      ],
-    ),
-  );
-}
-
-class _GroupCarousel extends StatelessWidget {
-  const _GroupCarousel({
-    required this.groups,
-    required this.hasMore,
-    required this.isLoadingMore,
-    required this.onLoadMore,
-  });
-  final List<Group> groups;
-  final bool hasMore;
-  final bool isLoadingMore;
-  final VoidCallback onLoadMore;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 142,
-    child: ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-      scrollDirection: Axis.horizontal,
-      itemCount: groups.length + (hasMore ? 1 : 0),
-      separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-      itemBuilder: (context, index) {
-        if (index == groups.length) {
-          return SizedBox(
-            width: 120,
-            child: Center(
-              child: isLoadingMore
-                  ? const CircularProgressIndicator()
-                  : TextButton(
-                      onPressed: onLoadMore,
-                      child: const Text('Load more'),
-                    ),
-            ),
-          );
-        }
-        final group = groups[index];
-        return SizedBox(
-          width: 240,
-          child: PubgetCard(
-            onTap: () =>
-                AppNavigation.go(context, '/group?groupId=${group.id}'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  group.name,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  group.description.isEmpty
-                      ? 'A Pubget community'
-                      : group.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const Spacer(),
-                Text(
-                  '${group.membersCount} members · rising ${group.risingScore.toStringAsFixed(0)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    ),
-  );
-}
-
-class _PeopleCarousel extends StatelessWidget {
-  const _PeopleCarousel({
-    required this.people,
-    required this.hasMore,
-    required this.isLoadingMore,
-    required this.onLoadMore,
-  });
-  final List<PublicProfile> people;
-  final bool hasMore;
-  final bool isLoadingMore;
-  final VoidCallback onLoadMore;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 142,
-    child: ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-      scrollDirection: Axis.horizontal,
-      itemCount: people.length + (hasMore ? 1 : 0),
-      separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-      itemBuilder: (context, index) {
-        if (index == people.length) {
-          return SizedBox(
-            width: 120,
-            child: Center(
-              child: isLoadingMore
-                  ? const CircularProgressIndicator()
-                  : TextButton(
-                      onPressed: onLoadMore,
-                      child: const Text('Load more'),
-                    ),
-            ),
-          );
-        }
-        return SizedBox(
-          width: 180,
-          child: PubgetCard(
-            onTap: () =>
-                AppNavigation.go(context, '/profile?uid=${people[index].uid}'),
-            child: _PersonRow(person: people[index], compact: true),
-          ),
-        );
-      },
-    ),
-  );
-}
-
-class _PersonRow extends StatelessWidget {
-  const _PersonRow({required this.person, this.compact = false});
-  final PublicProfile person;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: <Widget>[
-      PubgetAvatar(
-        imageUrl: person.avatarUrl,
-        name: person.username,
-        size: compact ? PubgetAvatarSize.small : PubgetAvatarSize.medium,
-      ),
-      const SizedBox(width: AppSpacing.sm),
-      Expanded(
-        child: Text(
-          person.username ?? 'Pubget user',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    ],
-  );
-}
-
 class _SkeletonSection extends StatelessWidget {
   const _SkeletonSection();
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 142,
+    height: 214,
     child: ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       scrollDirection: Axis.horizontal,
       itemCount: 2,
       separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-      itemBuilder: (_, _) => SizedBox(
-        width: 240,
-        child: PubgetCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const PubgetSkeleton(height: 18, width: 150),
-              const SizedBox(height: AppSpacing.sm),
-              const PubgetSkeleton(height: 14, width: 200),
-              const SizedBox(height: AppSpacing.xs),
-              const PubgetSkeleton(height: 14, width: 170),
-            ],
-          ),
-        ),
+      itemBuilder: (_, _) => const SizedBox(
+        width: 168,
+        child: PubgetSkeleton.card(height: 200),
       ),
     ),
   );

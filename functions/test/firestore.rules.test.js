@@ -206,6 +206,16 @@ test("a stale public projection is denied immediately after privacy changes", as
     db("alice").doc("users/alice").update({ profileVisibility: "public" }),
   );
 });
+test("public profile lists are not poisoned by a missing user document", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("public_profiles/ghost").set({
+      username: "ghost", displayName: "Ghost",
+    });
+  });
+  await assertFails(db("bob").doc("public_profiles/ghost").get());
+  await assertSucceeds(db("bob").collection("public_profiles").get());
+});
 test("mafia lifecycle and private roles are not client writable", async () => {
   await assertFails(db("alice").doc("mafia_games/m1").update({ status: "finished", winner: "mafia" }));
   await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" }));
@@ -795,6 +805,20 @@ test("a server deletion marker closes all client group access during cleanup", a
   await assertFails(db("bob").doc("groups/g1/messages/bob-message").delete());
 });
 
+test("discovery group lists stay readable when another group is pending deletion", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("groups/g-live").set({
+      founderId: "alice", name: "Live", isSearchable: true, deletionPending: false,
+    });
+    await admin.doc("groups/g1").update({ deletionPending: true, isSearchable: false });
+  });
+  await assertFails(db("bob").doc("groups/g1").get());
+  const listed = await assertSucceeds(db("bob").collection("groups").get());
+  const ids = listed.docs.map((doc) => doc.id);
+  assert.ok(ids.includes("g-live"));
+});
+
 test("group chat previews and aggregate receipts are server-authoritative", async () => {
   await assertFails(db("bob").doc("groups/g1").update({
     lastMessageAt: new Date(), lastMessageText: "A safe preview",
@@ -939,7 +963,7 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
     });
   });
   await assertSucceeds(db("alice").doc("users/alice/anime_lists/21").get());
-  await assertFails(db("bob").doc("users/alice/anime_lists/21").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_lists/21").get());
   await assertFails(db("alice").doc("users/alice/anime_lists/21").set({
     animeId: "21", status: "completed", rating: 10,
   }));
@@ -1046,6 +1070,47 @@ test("hakusho is not a moderator role and nested group games are client-unwritab
   await assertFails(db("charlie").doc("groups/g1/games/legacy").get());
 });
 
+test("group bans are readable by manageMembers roles, not sensei/senpai/members", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("groups/g1/bans/carol").set({
+      uid: "carol", bannedByUid: "alice", createdAt: new Date(),
+    });
+    await admin.doc("groups/g1/members/shogun").set({
+      userId: "shogun", groupId: "g1", role: "shogun", displayName: "Shogun",
+    });
+    await admin.doc("groups/g1/members/commander").set({
+      userId: "commander", groupId: "g1", role: "commander", displayName: "Commander",
+    });
+    await admin.doc("groups/g1/members/sensei").set({
+      userId: "sensei", groupId: "g1", role: "sensei", displayName: "Sensei",
+    });
+    await admin.doc("groups/g1/members/senpai").set({
+      userId: "senpai", groupId: "g1", role: "senpai", displayName: "Senpai",
+    });
+  });
+  await assertSucceeds(db("alice").collection("groups/g1/bans").get());
+  await assertSucceeds(db("shogun").doc("groups/g1/bans/carol").get());
+  await assertSucceeds(db("commander").collection("groups/g1/bans").get());
+  await assertFails(db("bob").doc("groups/g1/bans/carol").get());
+  await assertFails(db("sensei").collection("groups/g1/bans").get());
+  await assertFails(db("senpai").doc("groups/g1/bans/carol").get());
+  await assertSucceeds(db("carol").doc("groups/g1/bans/carol").get());
+});
+
+test("message reports are readable by the reporter and not client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("groups/g1/messageReports/m1_bob").set({
+      reporterId: "bob", messageId: "m1", reason: "spam", status: "open",
+    });
+  });
+  await assertSucceeds(db("bob").doc("groups/g1/messageReports/m1_bob").get());
+  await assertFails(db("alice").doc("groups/g1/messageReports/m1_bob").get());
+  await assertFails(db("bob").doc("groups/g1/messageReports/forged").set({
+    reporterId: "bob", messageId: "m2", reason: "spam", status: "open",
+  }));
+});
+
 test("collection-group members queries only return the caller's own membership", async () => {
   await assertSucceeds(
     db("bob").collectionGroup("members").where("uid", "==", "bob").get(),
@@ -1055,5 +1120,39 @@ test("collection-group members queries only return the caller's own membership",
   );
   await assertFails(db("bob").collectionGroup("members").get());
   await assertSucceeds(db("bob").doc("groups/g1/members/alice").get());
+});
+
+test("anime hub aggregates are readable but never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("anime_stats/16498").set({
+      animeId: "16498", averageScore: 8.5, ratingCount: 2, scoreSum: 17,
+    });
+    await admin.doc("anime_stats/16498/reviews/alice").set({
+      userId: "alice", overall: 8.5, comment: "Great",
+    });
+    await admin.doc("character_stats/luffy").set({
+      characterId: "luffy", favoritesCount: 4, name: "Luffy",
+    });
+    await admin.doc("users/alice/anime_ratings/16498").set({
+      userId: "alice", overall: 8.5,
+    });
+  });
+  await assertSucceeds(db("bob").doc("anime_stats/16498").get());
+  await assertSucceeds(db("bob").doc("anime_stats/16498/reviews/alice").get());
+  await assertSucceeds(db("bob").doc("character_stats/luffy").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_ratings/16498").get());
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    averageScore: 10, ratingCount: 99, scoreSum: 990,
+  }));
+  await assertFails(db("alice").doc("character_stats/luffy").set({
+    favoritesCount: 99,
+  }));
+  await assertFails(db("alice").doc("users/alice/anime_ratings/16498").set({
+    overall: 10,
+  }));
+  await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
+    lastAt: new Date(),
+  }));
 });
 

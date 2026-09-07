@@ -19,6 +19,20 @@ void main() {
     expect(hub.section(AnimeCatalogKind.trending).items, isNotEmpty);
     expect(hub.genres, isNotEmpty);
     expect(hub.seasons, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.top).items, isEmpty);
+  });
+
+  test('hub does not fetch Jikan top-rated or currently-airing strips', () async {
+    final repository = FakeAnimeRepository();
+    final hub = AnimeHubProvider(repository: repository);
+    addTearDown(hub.dispose);
+    await hub.load();
+    expect(repository.trendingCalls, 1);
+    expect(repository.thisSeasonCalls, 1);
+    expect(repository.popularCalls, 1);
+    expect(repository.upcomingCalls, 1);
+    expect(repository.topCalls, 0);
+    expect(repository.airingCalls, 0);
   });
 
   test('hub error without content becomes error state', () async {

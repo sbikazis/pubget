@@ -60,10 +60,114 @@ void main() {
     expect(provider.joinedGroups, isEmpty);
     expect(provider.joinedState, LoadingState.empty);
   });
+
+  test('join success stores the follow-up membership, not a stub uid', () async {
+    final repository = _FakeGroupRepository(
+      membershipAfterJoin: const GroupMember(
+        uid: 'alice',
+        role: GroupRole.commander,
+      ),
+    );
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final result = await provider.join('g1', userId: 'alice');
+
+    expect(result.isSuccess, isTrue);
+    expect(provider.membership?.uid, 'alice');
+    expect(provider.membership?.uid, isNotEmpty);
+    expect(provider.membership?.role, GroupRole.commander);
+    expect(provider.isMember, isTrue);
+    expect(provider.isFounder, isFalse);
+    expect(provider.canManageMembers, isTrue);
+    expect(provider.canManageSettings, isFalse);
+    expect(repository.membershipReads, <String>['g1:alice']);
+  });
+
+  test('join membership drives details-vs-chat: members are not founders', () async {
+    final repository = _FakeGroupRepository(
+      membershipAfterJoin: const GroupMember(
+        uid: 'alice',
+        role: GroupRole.member,
+      ),
+    );
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.join('g1', userId: 'alice');
+
+    // GroupDetailsPage redirects to chat when isMember && !isFounder.
+    expect(provider.isMember, isTrue);
+    expect(provider.isFounder, isFalse);
+    expect(provider.membership?.uid, 'alice');
+  });
+
+  test('requestToJoin does not fabricate a membership', () async {
+    final repository = _FakeGroupRepository();
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final result = await provider.requestToJoin('g1');
+
+    expect(result.isSuccess, isTrue);
+    expect(provider.membership, isNull);
+    expect(provider.isMember, isFalse);
+    expect(repository.membershipReads, isEmpty);
+  });
+
+  test('join does not keep a stub when the membership read fails', () async {
+    final repository = _FakeGroupRepository(failMembershipRead: true);
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    final result = await provider.join('g1', userId: 'alice');
+
+    expect(result.isSuccess, isFalse);
+    expect(provider.membership, isNull);
+    expect(provider.membership?.uid, isNot(''));
+    expect(provider.state, LoadingState.error);
+  });
+
+  test('updateSettings persists callable fields onto the group', () async {
+    final repository = _FakeGroupRepository();
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.load(groupId: 'g1', userId: 'alice');
+
+    final result = await provider.updateSettings(
+      groupId: 'g1',
+      settings: const GroupSettingsUpdate(
+        name: 'Renamed',
+        description: 'New desc',
+        rules: 'Be kind',
+        joinPolicy: JoinPolicy.approval,
+        isSearchable: false,
+      ),
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(repository.settingsUpdates.single.name, 'Renamed');
+    expect(repository.settingsUpdates.single.joinPolicy, JoinPolicy.approval);
+    expect(provider.group?.name, 'Renamed');
+    expect(provider.group?.description, 'New desc');
+    expect(provider.group?.rules, 'Be kind');
+    expect(provider.group?.joinPolicy, JoinPolicy.approval);
+    expect(provider.group?.isSearchable, isFalse);
+  });
 }
 
 final class _FakeGroupRepository implements GroupRepository {
+  _FakeGroupRepository({
+    this.membershipAfterJoin,
+    this.failMembershipRead = false,
+  });
+
   final leaveCompleter = Completer<Result<void>>();
+  final GroupMember? membershipAfterJoin;
+  final bool failMembershipRead;
+  final membershipReads = <String>[];
+  final settingsUpdates = <GroupSettingsUpdate>[];
+  Group _group = group;
 
   static final group = Group(
     id: 'g1',
@@ -90,13 +194,22 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<Group>> getGroup(String groupId) async => Success(group);
+  Future<Result<Group>> getGroup(String groupId) async => Success(_group);
 
   @override
   Future<Result<GroupMember?>> getMembership(
     String groupId,
     String userId,
-  ) async => Success(GroupMember(uid: userId, role: GroupRole.member));
+  ) async {
+    membershipReads.add('$groupId:$userId');
+    if (failMembershipRead) {
+      return const FailureResult(UnknownError('membership missing'));
+    }
+    return Success(
+      membershipAfterJoin ??
+          GroupMember(uid: userId, role: GroupRole.member),
+    );
+  }
 
   @override
   Future<Result<void>> joinGroup({
@@ -118,4 +231,24 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
       const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async {
+    settingsUpdates.add(settings);
+    _group = _group.copyWith(
+      name: settings.name,
+      description: settings.description,
+      rules: settings.rules,
+      joinPolicy: settings.joinPolicy,
+      isSearchable: settings.isSearchable,
+    );
+    return const Success<void>(null);
+  }
 }

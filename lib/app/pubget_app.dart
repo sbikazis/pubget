@@ -44,8 +44,10 @@ import '../features/groups/screens/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
+import '../features/groups/screens/group_bans_page.dart';
 import '../features/groups/screens/group_members_page.dart';
 import '../features/groups/screens/group_media_page.dart';
+import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
@@ -63,15 +65,23 @@ import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
+import '../features/anime/screens/anime_my_page.dart';
+import '../features/anime/screens/anime_popular_characters_page.dart';
+import '../features/anime/screens/anime_ratings_page.dart';
+import '../features/anime/providers/anime_hub_social_provider.dart';
 import '../features/anime/providers/anime_library_provider.dart';
+import '../features/anime/repositories/anime_hub_social_repository.dart';
 import '../features/anime/repositories/anime_library_repository.dart';
+import '../features/anime/repositories/firebase_anime_hub_social_repository.dart';
 import '../features/anime/repositories/firebase_anime_library_repository.dart';
+import '../features/anime/repositories/unavailable_anime_hub_social_repository.dart';
 import '../features/anime/repositories/unavailable_anime_library_repository.dart';
 import '../features/events/providers/event_providers.dart';
 import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
 import '../features/events/repositories/unavailable_event_repository.dart';
 import '../features/events/screens/event_builder_page.dart';
+import '../features/events/screens/create_event_entry_page.dart';
 import '../features/events/screens/event_details_screen.dart';
 import '../features/events/screens/event_list_screen.dart';
 import '../features/achievements/providers/achievement_provider.dart';
@@ -199,6 +209,19 @@ class PubgetApp extends StatelessWidget {
                       'Firebase is unavailable in this build.',
                 ),
         ),
+        provider.Provider<AnimeHubSocialRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseAnimeHubSocialRepository(
+                  firestore: FirebaseFirestore.instance,
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableAnimeHubSocialRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<EconomyRepository>.value(value: repositories.$16),
         provider.Provider<MafiaRepository>.value(value: repositories.$17),
         provider.Provider<AchievementRepository>.value(value: repositories.$18),
@@ -234,9 +257,18 @@ class PubgetApp extends StatelessWidget {
             return social;
           },
         ),
-        provider.ChangeNotifierProvider<GroupProvider>(
+        provider.ChangeNotifierProxyProvider<AuthProvider, GroupProvider>(
           create: (context) =>
               GroupProvider(repository: context.read<GroupRepository>()),
+          update: (_, auth, groups) {
+            final uid = auth.currentUser?.id;
+            if (uid != null) {
+              groups!.openJoined(uid);
+            } else {
+              groups!.closeJoined();
+            }
+            return groups;
+          },
         ),
         provider.ChangeNotifierProvider<GroupMembersProvider>(
           create: (context) => GroupMembersProvider(
@@ -363,6 +395,11 @@ class PubgetApp extends StatelessWidget {
             return library;
           },
         ),
+        provider.ChangeNotifierProvider<AnimeHubSocialProvider>(
+          create: (context) => AnimeHubSocialProvider(
+            repository: context.read<AnimeHubSocialRepository>(),
+          ),
+        ),
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>
               GameListProvider(repository: context.read<GameRepository>()),
@@ -458,22 +495,18 @@ class PubgetApp extends StatelessWidget {
             return notifications;
           },
         ),
-        provider.ChangeNotifierProxyProvider2<
+        provider.ChangeNotifierProxyProvider3<
           NotificationProvider,
           PrivateChatListProvider,
+          GroupProvider,
           UnreadEngine
         >(
           create: (_) => UnreadEngine(),
-          update: (_, notifications, list, unread) {
-            final conversationUnread = list.unreadCount;
+          update: (_, notifications, list, groups, unread) {
             unread!.sync(
               notifications: notifications.unreadCount,
-              groups: notifications.groupsUnreadCount,
-              privateChats:
-                  notifications.privateUnreadCount > conversationUnread
-                  ? notifications.privateUnreadCount
-                  : conversationUnread,
-              mentions: notifications.mentionsUnreadCount,
+              groups: groups.unreadCount,
+              privateChats: list.unreadCount,
             );
             return unread;
           },
@@ -632,6 +665,16 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       themeMode: settings.themeMode,
       locale: settings.locale,
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localeListResolutionCallback: (locales, supported) {
+        final chosen = settings.locale;
+        if (chosen != null) return chosen;
+        for (final locale in locales ?? const <Locale>[]) {
+          for (final option in supported) {
+            if (option.languageCode == locale.languageCode) return option;
+          }
+        }
+        return const Locale('ar');
+      },
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -679,6 +722,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
         '/anime/library': const AnimeLibraryPage(),
+        '/anime/ratings': const AnimeRatingsPage(),
+        '/anime/characters': const AnimePopularCharactersPage(),
         '/fan-works': const FanWorkFeedPage(),
         '/store': const StorePage(),
         '/inventory': const InventoryPage(),
@@ -699,6 +744,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             GroupMediaPage(groupId: parameters['groupId'] ?? ''),
         '/group-members': (parameters) =>
             GroupMembersPage(groupId: parameters['groupId'] ?? ''),
+        '/group-settings': (parameters) =>
+            GroupSettingsPage(groupId: parameters['groupId'] ?? ''),
+        '/group-bans': (parameters) =>
+            GroupBansPage(groupId: parameters['groupId'] ?? ''),
         '/group-requests': (parameters) =>
             JoinRequestsPage(groupId: parameters['groupId'] ?? ''),
         '/group-roleplay': (parameters) =>
@@ -715,10 +764,16 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
           );
         },
-        '/events/create': (parameters) => EventBuilderPage(
-          groupId: parameters['groupId'],
-          templateId: parameters['templateId'],
-        ),
+        '/events/create': (parameters) {
+          final groupId = parameters['groupId'];
+          if (groupId == null || groupId.isEmpty) {
+            return CreateEventEntryPage(templateId: parameters['templateId']);
+          }
+          return EventBuilderPage(
+            groupId: groupId,
+            templateId: parameters['templateId'],
+          );
+        },
         '/anime/details': (parameters) =>
             AnimeDetailsPage(animeId: parameters['animeId'] ?? ''),
         '/anime/browse': (parameters) {
@@ -738,6 +793,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           season: AnimeSeason.tryParse(parameters['season']),
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
+        '/anime/ratings': (parameters) => const AnimeRatingsPage(),
+        '/anime/characters': (parameters) =>
+            const AnimePopularCharactersPage(),
+        '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
         '/mafia': (parameters) =>

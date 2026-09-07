@@ -37,7 +37,7 @@ class PubgetEmptyState extends StatelessWidget {
 
 class PubgetErrorState extends StatelessWidget {
   const PubgetErrorState({
-    this.title = 'Something went wrong',
+    this.title = "Couldn't load this",
     this.message = 'Please try again.',
     this.onRetry,
     this.retryLabel = 'Try again',

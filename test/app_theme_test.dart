@@ -1,3 +1,5 @@
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/theme/app_colors.dart';
@@ -11,6 +13,13 @@ void main() {
     expect(AppTheme.dark.colorScheme.primary, AppColors.royalPurpleLight);
     expect(AppTheme.light.colorScheme.secondary, AppColors.gold);
     expect(AppTheme.dark.colorScheme.secondary, AppColors.goldLight);
+  });
+
+  test('iOS page transitions resolve from Cupertino', () {
+    expect(
+      AppTheme.light.pageTransitionsTheme.builders[TargetPlatform.iOS],
+      isA<CupertinoPageTransitionsBuilder>(),
+    );
   });
 
   test('typography keeps readable body metrics', () {

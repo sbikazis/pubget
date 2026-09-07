@@ -5,6 +5,7 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { moderateEditCopy } = require("./contentFilter");
 
 function run(binary, args) {
   return new Promise((resolve, reject) => {
@@ -39,6 +40,36 @@ function ffmpegBinary() {
     // ffmpeg-static is optional when a system ffmpeg is available.
   }
   return "ffmpeg";
+}
+
+function decideEditPublication(editData, processingFields) {
+  const decision = moderateEditCopy({
+    caption: editData && editData.caption,
+    animeTag: editData && editData.animeTag,
+  });
+  if (decision.flagged) {
+    return {
+      update: {
+        ...processingFields,
+        status: "rejected",
+        moderationStatus: "flagged",
+        moderationReason: decision.reason,
+        processedAt: new Date(),
+      },
+      publish: false,
+      reason: decision.reason,
+    };
+  }
+  return {
+    update: {
+      ...processingFields,
+      status: "published",
+      moderationStatus: "approved",
+      moderationReason: null,
+    },
+    publish: true,
+    reason: null,
+  };
 }
 
 function createEditPipeline({ db, bucket, economy, achievements }) {
@@ -100,11 +131,13 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
         .limit(6)
         .get()
         .catch(() => ({ size: 0, docs: [] }));
-      await ref.update({
+      const decision = decideEditPublication(edit.data() || {}, {
         videoUrl: processedPath, thumbnailUrl: thumbnailPath, durationSeconds,
-        status: "published", score: 20 + creatorQuality, processedAt: new Date(),
+        score: 20 + creatorQuality, processedAt: new Date(),
         creatorQuality,
       });
+      await ref.update(decision.update);
+      if (!decision.publish) return null;
       if (economy && typeof economy.applyReward === "function") {
         await economy.applyReward({
           userId: creatorId,
@@ -131,4 +164,4 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
   };
 }
 
-module.exports = { createEditPipeline };
+module.exports = { createEditPipeline, decideEditPublication };

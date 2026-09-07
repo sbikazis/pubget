@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../games/models/game_type_registry.dart';
 import '../../games/widgets/game_play_panels.dart';
 import '../../games/widgets/game_widgets.dart';
+import '../models/mafia_leave_copy.dart';
 import '../models/mafia_models.dart';
 import '../providers/mafia_provider.dart';
 
@@ -49,8 +51,25 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     final state = context.watch<MafiaProvider>();
     final game = state.game;
     final uid = context.watch<AuthProvider>().currentUser?.id;
+    final canLeave = game != null &&
+        !game.isFinished &&
+        MafiaLeaveCopy.canLeave(game.status) &&
+        state.self != null &&
+        !state.self!.hasLeft;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mafia')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Mafia'),
+        actions: <Widget>[
+          if (canLeave)
+            TextButton(
+              onPressed: state.busy
+                  ? null
+                  : () => _confirmLeave(context, game.status),
+              child: const Text(MafiaLeaveCopy.leave),
+            ),
+        ],
+      ),
       body: PubgetLoadingStateView(
         state: state.state,
         onRetry: uid == null
@@ -113,6 +132,30 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
               ),
       ),
     );
+  }
+
+  Future<void> _confirmLeave(BuildContext context, String status) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(MafiaLeaveCopy.title),
+          content: Text(MafiaLeaveCopy.bodyFor(status)),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(MafiaLeaveCopy.stay),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(MafiaLeaveCopy.confirm),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) return;
+    await context.read<MafiaProvider>().leave();
   }
 
   bool _canChat(MafiaGame game, MafiaPlayer? self) {

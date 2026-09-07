@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -44,6 +45,7 @@ class _EventListScreenState extends State<EventListScreen> {
       length: groupId == null ? 4 : 1,
       child: Scaffold(
         appBar: AppBar(
+          leading: AppBackButton.maybeOf(context),
           title: Text(groupId == null ? 'Events' : 'Group events'),
           bottom: groupId == null
               ? const TabBar(
@@ -59,7 +61,7 @@ class _EventListScreenState extends State<EventListScreen> {
         ),
         floatingActionButton:
             groupId == null ||
-                context.watch<GroupProvider>().canManageEvents != true
+                context.watch<GroupProvider>().canCreateEvents != true
             ? null
             : FloatingActionButton.extended(
                 onPressed: () => AppNavigation.go(
@@ -80,7 +82,7 @@ class _EventListScreenState extends State<EventListScreen> {
             icon: Icons.celebration_outlined,
             action:
                 groupId != null &&
-                    context.watch<GroupProvider>().canManageEvents == true
+                    context.watch<GroupProvider>().canCreateEvents == true
                 ? PubgetPrimaryButton(
                     onPressed: () => AppNavigation.go(
                       context,

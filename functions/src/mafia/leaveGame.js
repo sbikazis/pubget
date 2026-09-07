@@ -2,7 +2,7 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { checkWinCondition } = require("./winConditionChecker");
-const { leaveTransition, validGameId } = require("./leaveTransition");
+const { leaveTransition, validGameId, activeLeavePlayerUpdate } = require("./leaveTransition");
 
 async function leaveMafiaGame(request) {
   if (!request.auth) {
@@ -45,15 +45,7 @@ async function leaveMafiaGame(request) {
       throw new HttpsError("failed-precondition", "This game can no longer be left.");
     }
 
-    const playerUpdate = {
-      hasLeft: true,
-      isAlive: false,
-      canVote: false,
-      canSpeak: false,
-      canUseAbility: false,
-      isDisconnected: true,
-      leftAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    const playerUpdate = activeLeavePlayerUpdate(admin.firestore.FieldValue);
     tx.update(playerRef, playerUpdate);
 
     if (transition.kind === "active-left") {
@@ -102,4 +94,9 @@ async function leaveMafiaGame(request) {
   return { ok: true, outcome };
 }
 
-module.exports = { leaveMafiaGame, leaveTransition, validGameId };
+module.exports = {
+  leaveMafiaGame,
+  leaveTransition,
+  validGameId,
+  activeLeavePlayerUpdate,
+};

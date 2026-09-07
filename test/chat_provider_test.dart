@@ -143,6 +143,85 @@ void main() {
       orderedEquals(<String>['a', 'b', 'c']),
     );
   });
+
+  test('reply target is attached to the next text send', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('one')]));
+    await pumpEventQueue();
+    provider.setReplyTarget(provider.messages.single);
+
+    final operation = provider.sendText(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      text: 'Replied',
+    );
+    expect(provider.messages.last.replyToMessageId, 'one');
+    expect(provider.messages.last.replyPreview, 'one');
+    repository.sendCompleter.complete(Success(_serverMessage('reply')));
+    await operation;
+    expect(provider.replyTarget, isNull);
+  });
+
+  test('catalog sticker send goes through the repository', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+    final operation = provider.sendSticker(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      stickerKey: 'reactions/heart',
+    );
+    expect(provider.messages.single.type, ChatMessageType.sticker);
+    expect(provider.messages.single.stickerKey, 'reactions/heart');
+    repository.sendCompleter.complete(
+      Success(
+        ChatMessage.fromMap(<String, dynamic>{
+          'senderId': 'alice',
+          'senderName': 'Alice',
+          'senderAvatar': '',
+          'senderRole': 'member',
+          'type': 'sticker',
+          'stickerKey': 'reactions/heart',
+          'createdAt': DateTime(2026),
+          'recipientCount': 1,
+          'deliveredCount': 0,
+          'readCount': 0,
+          'reactions': <String, int>{},
+        }, id: provider.messages.single.id),
+      ),
+    );
+    await operation;
+    expect(provider.messages.single.sendState, ChatSendState.sent);
+  });
+
+  test('forward and report surface repository permission errors', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+    final forwarded = await provider.forwardMessage(
+      messageId: 'm1',
+      destinationGroupId: 'g2',
+    );
+    expect(forwarded.isSuccess, isFalse);
+    expect(forwarded.failureOrNull, isA<PermissionError>());
+    final reported = await provider.reportMessage(
+      messageId: 'm1',
+      reason: 'spam',
+    );
+    expect(reported.isSuccess, isFalse);
+    expect(reported.failureOrNull, isA<PermissionError>());
+  });
 }
 
 ChatMessage _serverMessage(String id) => ChatMessage.fromMap(<String, dynamic>{
@@ -195,7 +274,24 @@ final class _FakeChatRepository implements ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
   }) => sendCompleter.future;
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async => const FailureResult(PermissionError('not a destination member'));
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) async => const FailureResult(PermissionError('unauthenticated'));
 
   @override
   Future<Result<List<ChatMessage>>> getOlderMessages({

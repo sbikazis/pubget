@@ -7,10 +7,13 @@ import '../../../app/app_shell_scope.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
+import '../../groups/services/storage_video_controller.dart';
+import '../../social/providers/social_provider.dart';
+import '../../social/widgets/give_respect_sheet.dart';
 import '../models/edit_models.dart';
 import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
-import '../../groups/services/storage_video_controller.dart';
 import '../widgets/edit_comments_sheet.dart';
 
 class EditFeedPage extends StatefulWidget {
@@ -296,6 +299,27 @@ class _EditVideoItemState extends State<_EditVideoItem> {
                     type: 'save',
                   ),
                 ),
+                if (widget.edit.canReceiveRespectFrom(
+                  context.watch<AuthProvider>().currentUser?.id,
+                ))
+                  _Action(
+                    icon: Icons.stars,
+                    label: 'Respect',
+                    onTap: () {
+                      final given = context
+                          .read<SocialProvider>()
+                          .snapshot
+                          .givenRespect
+                          .where(
+                            (item) => item.toUserId == widget.edit.creatorId,
+                          );
+                      showGiveRespectSheet(
+                        context,
+                        toUserId: widget.edit.creatorId,
+                        initialValue: given.isEmpty ? 5 : given.first.value,
+                      );
+                    },
+                  ),
               ],
             ),
           ),

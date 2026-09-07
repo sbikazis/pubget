@@ -24,7 +24,7 @@ class PubgetInlineBanner extends StatelessWidget {
 
   factory PubgetInlineBanner.error({
     required String message,
-    String title = 'Something went wrong',
+    String title = "Couldn't load this",
     VoidCallback? onRetry,
   }) {
     return PubgetInlineBanner(

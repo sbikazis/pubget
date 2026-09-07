@@ -1,6 +1,13 @@
 # PUBGET — PRODUCT COMPLIANCE & GAP AUDIT
 
-Spec of record: `docs/PUBGET_1_0_SPEC.md` (Prompt 01 paste, unmodified).
+**Historical.** This audit was written against `docs/CURRENT_STATE_MASTER.md`
+at commit `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e` (PR #21). Several rows
+are now stale (five-tab shell, Drawer, unread badges, Arabic chrome).
+
+Live classification for the locked spec is
+`docs/PUBGET_1_0_REBUILD_MATRIX.md`.
+
+Spec of record: `docs/PUBGET_1_0_SPEC.md` (LOCKED).
 Current state of record: `docs/CURRENT_STATE_MASTER.md` at commit
 `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e` (PR #21). Claims below treat that
 document as fact. Re-checks against live code are noted when used.
@@ -38,7 +45,7 @@ Evidence abbreviations: **CSM** = `docs/CURRENT_STATE_MASTER.md`.
 |---|---|---|---|---|
 | 2.1 Personality: Anime, Premium, Social, Dynamic, Youthful, Immersive, Professional | Design system + Royal Purple/Gold + splash copy “Premium Anime Community” (CSM §1.2, §22.1; `lib/core/README.md` in live tree) | 🔵 IMPROVE | Systemic | Tokens and copy aim at the identity. Placeholders (“Sponsored”, “later Pubget prompt”) and draft terms undercut Premium/Professional. |
 | 2.2 Royal Purple + Gold; Dark + Light; unified system not per-screen invention | Settings theme System/Light/Dark; design-system widgets; debug `/design-system` (CSM §19, §4.5) | 🟡 PARTIAL | Systemic | Unified widgets exist. Spec still wants every screen on that system; CSM does not prove visual QA across all domains. |
-| 2.3 Arabic + English; real RTL **and** translated UI, not chrome-only | `supportedLocales` en/ar; no `.arb` / `lib/l10n`; feature copy is English literals; RTL Material chrome applies (CSM §26) | 🟠 MAJOR GAP | Systemic | Locked decision (§122). Choosing العربية flips direction, not product copy. |
+| 2.3 Arabic + English; real RTL **and** translated UI, not chrome-only | First-run Arabic; login + Settings language share `SettingsProvider`; auth/settings/shell use `AppStrings` (CSM §26). Feature bodies still English. | 🟡 PARTIAL | Systemic | Locked decision (§122). Login/settings/chrome are bilingual. Groups/chat/home cards/guide still English. |
 
 ---
 
@@ -134,7 +141,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Header: avatar, name, back, menu; long name marquee | Group chat scaffold + endDrawer three-dot (CSM §4.4, §8). Marquee not documented in CSM | 🟡 PARTIAL | Local | Menu exists. Marquee/scrolling title has no CSM evidence. |
 | Per-group background; default Pubget background; change by permission | Menu “chat background”; server `updateBackground` requires `manageBackground` (CSM §5.5, §4.4) | 🟡 PARTIAL | Local | Path exists. Default-on-first-entry and quality of the picker are not evidenced as complete. |
 | WhatsApp-like bubble: avatar, name, role badge/color, text, time, delivery 🔴🟡🟢 | Delivery/read batched to `deliveredBy`/`readBy`; `message delivery indicator` tests exist (CSM §8.3, §25) | 🟡 PARTIAL | Local | Status plumbing exists. Full WhatsApp parity (role color on every bubble, failed/sent/read UX) is not claimed complete by CSM. |
-| Message types: text, image, video, sticker, GIF, audio, replies, system, game/event cards | Enum includes them. Composer implements text/image/video; event cards from events domain; game cards render-only, no production writer (CSM §8.1, §22.2, §27) | 🟠 MAJOR GAP | Local | See placeholders. Game→chat contract is unfulfilled in production. |
+| Message types: text, image, video, sticker, GIF, audio, replies, system, game/event cards | Composer implements text/image/video/sticker/gif/audio plus reply/forward/report; event and game cards are Admin-written (CSM §8.1, §22.2) | 🟢 PASS | Local | Game create/complete cards post via `chatCardWriter`. |
 | Actions: reply, copy, delete, pin, edit, react, forward where logical | Copy/react/pin/delete real; reply/forward/report placeholder; `editGroupMessage` no UI (CSM §8.2) | 🟠 MAJOR GAP | Local | Pin/delete not hidden by permission on the client (CSM §8.2). |
 | Stickers: picker, saved/recent/categories, future custom | Snackbar only; rules allow `users/.../stickers` (CSM §8.1, §23.1) | ⚪ MISSING | Local | Storage path is not a product. |
 | Performance: paginated, cached, incremental; no thousands of messages | Live limit 40 + load older (CSM §8.3) | 🟡 PARTIAL | Local | Pagination exists. Group-list unread from `lastReadAt` not implemented in `lib/features/groups` (CSM §8.3). |
@@ -146,15 +153,15 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 
 | Requirement | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
-| Games do not own Chat; flow Game → menu → create → announcement card → waiting → private room → engine → results → chat card | Group details/chat menu → `/games`; results/rewards server-side; **no production writer** of group `type: "game"` cards (CSM §10.1, §22.2) | 🟠 MAJOR GAP | Local | Isolation is good. The chat announcement/results contract is missing. |
+| Games do not own Chat; flow Game → menu → create → announcement card → waiting → private room → engine → results → chat card | Group details/chat menu → `/games`; `toGameActivity` / `toMafiaActivity` → `chatCardWriter` Admin cards on create and complete (CSM §8.1, §10.1, §22.2) | 🟢 PASS | Local | Domains emit a contract; they do not import `groupChat` internals. |
 | Each game independent, state-driven, recoverable, no chat internals mutation | Trivia on `games/{id}` callables; snapshots on `open()` (CSM §10.1, §22.2) | 🟡 PARTIAL | Local | Architecture matches. `difficulty` stored unused; reconnect string unused (CSM §10.1, §27). |
 | Guess Character 1v1: waiting, rounds, timer, score, result, anti-abuse, replayability | 2 players, timer, secret round, artwork (CSM §10.2) | 🟡 PARTIAL | Local | No auto-matchmaking (CSM §10.1). Engine is real. |
 | Anime Chain: turns, timeout, score, cancel, recovery | 2–8, turn/game_over, timeout skip (CSM §10.3) | 🟡 PARTIAL | Local | Core loop exists. |
 | Emoji Anime Guess 2–4: 3–4 emojis, guess, rotate, timer, anti-spam, end state | 2–4, guess/game_over, timeout advances (CSM §10.4) | 🟡 PARTIAL | Local | Core loop exists. Catalog is 16 anime (CSM §10.1). |
 | Mafia independent, server-authoritative, phase/timer/reconnect/disconnect/role/action/anti-cheat; full phase list; per-role logic | Separate `mafia_games`; schedulers; private roles; heartbeat 25s / disconnect 90s (CSM §11) | 🟡 PARTIAL | Local | Substantial engine. Night/vote/mafia-chat are **client intent writes** gated by rules (CSM §11.4) — acceptable if resolution stays server-side, but not fully “action-safe” in the strictest reading. |
-| Mafia UX: waiting room, role presentation, banners, timers, sheets, voting, results, suspense, history | `MafiaGameScreen` exists; no leave-game UI despite callable (CSM §11.4, §27) | 🟠 MAJOR GAP | Local | Leave is a real game action, not a nice-to-have. |
-| `good_boy` registered but never assigned | CSM §11.3, §27 | 🟡 PARTIAL | Local | Dead role in the registry. Does not break live assignment of mafia/doctor/detective/citizen. |
-| Client registry `mafia implemented: true` vs server `implemented: false` | CSM §10.1, §27 | 🟠 MAJOR GAP | Local | Dual contract. Dedicated `/mafia` path works; `createGame` catalog would hide/reject Mafia. Product logic is inconsistent. |
+| Mafia UX: waiting room, role presentation, banners, timers, sheets, voting, results, suspense, history | `MafiaGameScreen` leave UI + confirmation matching `leaveMafiaGame` (CSM §11.4) | 🟢 PASS | Local | Waiting/execution remain unleaveable because the callable rejects them. |
+| `good_boy` registered but never assigned | Assigned at ≥8 classic and advanced; citizen-aligned no night action (CSM §11.3) | 🟢 PASS | Local | Ability already existed; assignment was the gap. |
+| Client registry `mafia implemented: true` vs server `implemented: false` | Both `implemented: true`, both `genericCreate: false` (CSM §10.1) | 🟢 PASS | Local | Dedicated `/mafia` create only; `createGame` still rejects Mafia. |
 
 ---
 
@@ -172,10 +179,10 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 
 | Requirement | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
-| Video-only platform: upload, validation, processing, compression, thumbnail, metadata, **moderation**, publish | Pipeline ffmpeg/thumbnail/duration/size; publish + `earn_publish`; **no moderation step** (CSM §13, §27) | 🟠 MAJOR GAP | Local | Pipeline is real except moderation, which the spec lists as a required stage, not a later extra. |
+| Video-only platform: upload, validation, processing, compression, thumbnail, metadata, **moderation**, publish | Pipeline ffmpeg/thumbnail/duration/size; automated caption/`animeTag` keyword gate before publish (`contentFilter.js`, `decideEditPublication`); flagged → `rejected` + `moderationStatus: flagged` + reason; no visual/audio vendor (CSM §13, §27) | 🟡 PARTIAL | Local | Required publish-stage gate exists. Video-frame/audio inspection needs a vendor integration that is not in this stack. |
 | Ranking feed; no content-killing; diversity | `orderBy score`; `scoreEdit` + `mixExploration` 20% tail (CSM §13; `docs/DISCOVERY.md`) | 🟡 PARTIAL | Local | Ranking + diversity exist. Feed query itself is score/createdAt, not the full discovery mix unless Home uses `recommendedEdits`. |
 | TikTok-level interaction + Pubget identity | Feed + upload pages exist (CSM §13) | 🔵 IMPROVE | Local | CSM does not claim TikTok-level motion/interaction quality. |
-| View, Like, Comment, Reply, Share, Save, Creator profile, Respect | View/like/comment/reply/share/save signals; Respect is **not** an edits action; delete not on feed UI (CSM §13) | 🟡 PARTIAL | Local | Respect gap vs spec list. |
+| View, Like, Comment, Reply, Share, Save, Creator profile, Respect | View/like/comment/reply/share/save + Respect via existing `giveRespect` (same total/cooldown/self/block); delete not on feed UI; no dedicated creator-profile control on the feed chrome (CSM §13) | 🟡 PARTIAL | Local | Respect gap closed. Creator-profile navigation is still not a dedicated feed action. |
 | Comments: replies, likes, stickers, sort, pagination, loading, empty, moderation | Comment/reply/like exist; stickers/moderation in comments not evidenced (CSM §13) | 🟡 PARTIAL | Local | Social comments exist; not a full spec comments space. |
 | Views anti-cheat: not +1 per open; qualified rules | `recordEditView`: not self, ≥10% elapsed, once/day, completion ≥90% (CSM §13; `docs/DISCOVERY.md`) | 🟢 PASS | Local | Clear view contract. |
 
@@ -206,9 +213,9 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 |---|---|---|---|---|
 | Central inbox for join, roles, group events, disband, likes, comments, replies, view milestones, new edits, respect, fans, friends, messages, events, games, premium, store | Built types listed in CSM §16.1; missing as first-class: role changes, likes/comments/views milestones, new edits, premium, many store events | 🟡 PARTIAL | Local | Core social/group/game/event/economy subset exists. |
 | Each notification routes to the right place | `destination` + `AppNavigation.go` (CSM §16.1–16.2) | 🟡 PARTIAL | Local | Built types route. Inbox title switch falls through to generic `Notification` for others (CSM §16.2). Disband write is not via `notificationBuilder` (CSM §16.1). |
-| Unread red badges by context (Groups, Joined, Private, Notifications, …) | Private unread computed; group-list unread from `lastReadAt` **not implemented** (CSM §8.3, §9) | 🟠 MAJOR GAP | Systemic | Spec unread system is cross-shell. Shell has no Joined tab and no documented Groups badge. |
+| Unread red badges by context (Groups, Joined, Private, Notifications, …) | Shared `UnreadEngine`: private `lastMessageAt` vs `lastReadAt`; groups/joined from member `lastReadAt` vs group `lastMessageAt`; notifications from `unreadNotificationsCount`. Tabs + Drawer read that one source (CSM §8.3, §9, §16.2) | 🟢 PASS | Systemic | Same domain count on tab and matching Drawer row. |
 | Android push, tap routing, deep links, session-safe | FCM register; PUSH_TYPES subset; pending-route on guarded deep links (CSM §1.1, §16.1, §21) | 🟡 PARTIAL | Local | Push exists for some types. `event_ended` and several economy types are not pushWorthy. |
-| Inbox retry and pagination must work | `onRetry: () {}`; `_hasMore` starts true and a short last page can stay true; `close()` does not reset (CSM §16.2, §27) | 🟠 MAJOR GAP | Local | Neglected error/pagination states (§1.3). Not a security issue. |
+| Inbox retry and pagination must work | Retry re-fetches; `hasMore` is false when a page is shorter than `pageSize`; `close()` resets pagination (CSM §16.2) | 🟢 PASS | Local | Inbox type coverage is still a subset (separate row). |
 
 ---
 
@@ -276,9 +283,9 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Unified Design System (buttons, cards, fields, dialogs, sheets, snackbars, empty/error/loading, avatars, badges, …) | `lib/core/widgets/pubget_*`; debug showcase (CSM §4.5, §25) | 🟡 PARTIAL | Systemic | System exists. Placeholders and English snackbars are not on-system empty/error patterns. |
 | Visual quality / meaningful motion / accessibility (scaling, targets, contrast, RTL, sizes, keyboard, motion) | Accessibility tests exist; RTL chrome without translated copy (CSM §25–26) | 🔵 IMPROVE | Systemic | Technical a11y tests ≠ bilingual, visually QA’d product. |
 | Sensitive coins/rewards/premium/roles/permissions/game results/economy/ownership **server-authoritative** | Most mutations are callables; exceptions: `lastMessage*`, Mafia night/vote/chat client writes, nested `groups/.../games` moderator-writable, `user_seen` client-writable, avatarUrl client update, `PubgetUser.toMap` vs allowlist (CSM §23) | 🔴 CRITICAL | Systemic | Multiple trust-boundary leaks. Spec: backend must prevent the wrong request, not hope the client omits it. |
-| Storage validated, size/type limited, access-controlled, organized, moderated where needed | Named Storage rules with size/MIME (CSM §23.2) | 🟡 PARTIAL | Systemic | Limits exist. Edits/chat moderation of blobs is pipeline/absent (CSM §13). |
+| Storage validated, size/type limited, access-controlled, organized, moderated where needed | Named Storage rules with size/MIME (CSM §23.2) | 🟡 PARTIAL | Systemic | Limits exist. Edits caption/tag is gated; video blobs and chat media are not visually inspected (CSM §13). |
 | Anti-abuse: spam, respect farm, coin farm, fake views/likes, malicious upload, message/game/referral abuse | Caps, cooldowns, qualified views, idempotent economy ids, game `clientActionId` (CSM §10.1, §13, §15, §18) | 🟡 PARTIAL | Systemic | Partial. Message abuse / report is a placeholder (CSM §8.2). |
-| Moderation structure: report, moderation, blocking, removal, restrictions | Block + Fan Work report flag; group chat report placeholder; edits none (CSM §8.2, §13, §14, §18) | 🟠 MAJOR GAP | Systemic | Blocking exists. Content moderation is not a platform. |
+| Moderation structure: report, moderation, blocking, removal, restrictions | Block + Fan Work report flag; group chat report placeholder; Edits caption/tag keyword gate, no human queue (CSM §8.2, §13, §14, §18) | 🟡 PARTIAL | Systemic | Blocking exists. Platform-wide report/removal is still not a full moderation product. Video-frame inspection is not automated. |
 
 ---
 
@@ -287,7 +294,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Requirement | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
 | UI → Provider → Repository → Firebase/API; no business logic in widgets | Wiring matches (CSM §22.1). Widgets still own join stub, hardcoded senpai, chat placeholders, onboarding skip success, notification retry no-op | 🟡 PARTIAL | Systemic | Direction is right. Several product bugs live in widget/provider shortcuts. |
-| Domain isolation; Mafia/Games/Events talk to Chat via contracts, not internals | Trivia does not import ChatProvider; Events Admin-write chat cards; Mafia has its own chat collection; no production game cards (CSM §22.2) | 🟡 PARTIAL | Systemic | Isolation mostly holds. Missing game cards. Nested `groups/{id}/games` client-writable for `groupModerator` is a stray path (CSM §22.2, §23.1). |
+| Domain isolation; Mafia/Games/Events talk to Chat via contracts, not internals | Trivia/Mafia emit activity contracts; `chatCardWriter` Admin-writes cards; Events still write inline (CSM §22.2) | 🟢 PASS | Systemic | Nested `groups/{id}/games` client-writable for `groupModerator` remains a stray path (CSM §22.2, §23.1). |
 | Keep useful legacy data, not legacy architecture; extract/map/validate/migrate/verify | No Old→New migration pipeline documented (CSM §28) | ⚪ MISSING | Systemic | Spec §101. Production still uses `pubget-aaf27` (CSM §0.5) without a documented mapping layer. |
 | `lib_legacy/` kept, not imported by new architecture | Grep `lib/` → no `lib_legacy` matches; dormant tree (CSM §28) | 🟢 PASS | Systemic | Isolation honored. Do not delete in this audit. |
 | Each data type: Old Schema → Mapping → New Schema | Not present (CSM §28) | ⚪ MISSING | Systemic | Same as migration row. |
@@ -310,7 +317,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 |---|---|---|---|---|
 | Retention loop (friend activity, new edit/event, group discussion, anime, fan work, game, respect, notification, achievement) without spam | Partial notification set + home strips (CSM §3, §16) | 🟠 MAJOR GAP | Systemic | Pieces exist; not a designed loop. Missing several notification types. |
 | Discovery loop: see → interact → discover → join → participate → create → respect/fans/friends → coins → spend → return | Ranking + social + economy exist as separate engines (CSM §3, §15, §18) | 🟠 MAJOR GAP | Systemic | Spend catalog thin; RP/chat richness/ads/first-session gaps break the loop. |
-| Creator loop: publish → discovery → views → social → respect → fans → more creation | Edits/fan works publish + ranking + respect on profiles (CSM §13–14, §18) | 🟡 PARTIAL | Systemic | No Respect on Edits (CSM §13). Auto-approve fan works. |
+| Creator loop: publish → discovery → views → social → respect → fans → more creation | Edits/fan works publish + ranking + Respect on profiles and from the Edits feed via `socialGraph.giveRespect` (CSM §13–14, §18) | 🟡 PARTIAL | Systemic | Respect on Edits is the shared mechanic. Auto-approve fan works remains. |
 | Group loop: discover → join → chat → friends → events → games → identity | Join + chat + events + games paths exist (CSM §5, §8, §10, §12) | 🟡 PARTIAL | Systemic | Broken by chat placeholders, stub join uid, missing settings/unban, game cards. |
 | Economy loop: contribute → earn → spend cosmetics/extensions → more participation; **no pay-to-win** | Earn table + cosmetics; Guide pay-to-win language (CSM §15; `guide_page.dart` cited in CSM §15.4) | 🟡 PARTIAL | Systemic | No pay-to-win in active economy. Extensions catalog missing. |
 | 110. We will not do: pay-to-win, gambling, loot boxes, crypto, P2P money, coins-remove-ads | Active `lib/`: Guide forbids coins-remove-ads; `rewardedCoinsEnabled: false`; Premium `adFree` is membership, not coin spend (CSM §15.4). No loot-box/crypto/P2P in CSM | 🟢 PASS | Systemic | No ⚫ in the **active** app. Do not revive coins-remove-ads. If `lib_legacy` still contains old ad/coin experiments, keep it dormant (CSM §28). |
@@ -365,7 +372,7 @@ No single CSM section maps 1:1 to spec §3; evidence is the union of CSM §1–2
 | Locked decision | Current State (evidence) | Classification | Scope | Notes |
 |---|---|---|---|---|
 | Anime social platform; quality first; speed non-negotiable | Placeholders + no-op retries (CSM §27, §16.2) | 🟠 MAJOR GAP | Systemic | Decisions are documented; the app does not yet honor speed/quality as non-negotiable. |
-| Groups + Chat + Edits + Events are pillars | All four have domains; Chat richness and Edits moderation lag (CSM §8, §12, §13) | 🟠 MAJOR GAP | Systemic | Pillars exist as modules, not as finished products. |
+| Groups + Chat + Edits + Events are pillars | All four have domains; Chat richness still lags; Edits now have a caption/tag publish gate (CSM §8, §12, §13) | 🟡 PARTIAL | Systemic | Pillars exist as modules. Chat richness and visual Edit moderation remain open. |
 | Home dynamic; small groups get discovery | Rising + ranked feed (CSM §3.3) | 🟡 PARTIAL | Local | Rising PASS; Home order still canonical. |
 | Three group types stay; RP specialized join | Types PASS; RP mock (CSM §5.1, §7) | 🟠 MAJOR GAP | Local | Type lock held; RP join lock not. |
 | Chat is rich; Games isolated; Mafia highly organized | Chat placeholders; games isolated; Mafia engine real but dual registry / no leave (CSM §8, §10–11) | 🟠 MAJOR GAP | Local | |
@@ -403,7 +410,7 @@ Each item is classified on its own, not bulk-tagged CRITICAL.
 
 | Finding | Classification | Why |
 |---|---|---|
-| Mafia dual registry (server `implemented: false`, client `true`) | 🟠 MAJOR GAP | Logic/contract split. Dedicated Mafia path works; catalog/createGame would not. Breaks product consistency, not the night resolver. |
+| Mafia dual registry (server `implemented: false`, client `true`) | 🟢 PASS | Both mark `implemented: true` and `genericCreate: false`. Dedicated create only. |
 | `lastMessageAt` / `lastMessageText` still member-writable | 🔴 CRITICAL | Security + Home activity integrity. Server already writes them; client write is leftover trust. |
 | Private Start-Chat skips `whoCanMessageMe` (server still enforces) | 🟡 PARTIAL | UX/logic gap. Not a bypass. Spec wants a clear control, not a surprising failure. |
 | `PubgetUser.toMap()` sends `displayName` / `whoCanMessageMe`; rules omit them | 🔴 CRITICAL | Create/update allowlist mismatch. Can drop identity/privacy fields or fail onboarding writes. |
@@ -412,9 +419,9 @@ Each item is classified on its own, not bulk-tagged CRITICAL.
 | `updateGroupSettings` / `unbanMember` server-only, no Flutter UI | 🟠 MAJOR GAP | Founder cannot operate the group in-app. Server readiness is not a product. |
 | Change-role UI always sends `senpai` | 🔴 CRITICAL | Breaks role/permission logic. The control is false. |
 | Join success stores `uid: ''` | 🟠 MAJOR GAP | Corrupts local membership state after a real server success. |
-| Mafia `good_boy` never assigned | 🟡 PARTIAL | Dead registry entry. Live roles still assign. |
+| Mafia `good_boy` never assigned | 🟢 PASS | Assigned at ≥8; citizen-aligned no night action. |
 | No Mafia leave-game UI | 🟠 MAJOR GAP | Callable exists; player cannot leave. Conflicts with disconnect-safe UX. |
-| Edits pipeline has no moderation | 🟠 MAJOR GAP | Required publish stage missing. Not a rules bypass of coins, but a pillar hole. |
+| Edits pipeline moderation is caption/keyword only | 🟡 PARTIAL | Automated gate exists (`contentFilter.js`). Video-frame/audio needs a vendor that is not wired. |
 | No payment provider; `restorePremiumPurchases` no-op | 🟡 PARTIAL | Spec currently forbids requiring Play Billing. Honest deferred restore. Needs a real seam before monetize prompts. |
 | Ads = static Sponsored card; Vungle Gradle leftover; no Dart SDK | 🟠 MAJOR GAP | Ads are a locked income source and are fake. Gradle artifact is leftover, not a working mediation. |
 | Notification retry no-op; `hasMore` can stick true | 🟠 MAJOR GAP | Broken production states on a central surface. |
@@ -432,7 +439,7 @@ Coins-remove-ads remnant in **active** `lib/`: **not found**. Classification: no
 - **Shell IA (🟠/⚪):** five-tab spec (Discover / My Groups / Joined / Private / Edits) + app-wide Drawer (Profile, chats, groups, store, premium, settings, guide). One navigation prompt, not per-screen.
 - **Bilingual copy (🟠):** `.arb` (or equivalent) + RTL layout already partly present. Every screen inherits.
 - **Placeholder action component (🟠):** replace “later Pubget prompt” snackbars with either real actions or a single honest “coming in a later release” pattern that is not mistaken for a working control — then implement Chat richness in a dedicated prompt.
-- **Unread engine across shell (🟠):** `lastReadAt` already stored for groups; wire badges for Groups/Private/Notifications (and Joined once it exists).
+- **Unread engine across shell (🟢):** Groups/Joined/Private/Notifications badges share `UnreadEngine`.
 - **Block filter on non-discovery lists (🟡→systemic):** promoted/rising/community, edits feed, fan-works public list (CSM §18).
 - **Production-state / analytics / migration absences (🟠/⚪):** LoggingAnalytics stub; no Old→New migration; uneven empty/error/offline.
 - **Widget-layer product bugs (🟡 architecture):** join stub, hardcoded senpai, skip-offline success — symptoms of business shortcuts in UI/providers; fix with domain-layer contracts once, then screens consume them.
@@ -447,9 +454,10 @@ Coins-remove-ads remnant in **active** `lib/`: **not found**. Classification: no
 - **Chat composer: sticker/GIF/audio/reply/edit/forward/report (🟠)** and game activity cards (🟠).
 - **Group media library (🟠)** — not “messages currently in RAM.”
 - **Mafia registry alignment + leave UI (🟠); `good_boy` assign or remove (🟡).**
-- **Edits moderation step (🟠); Respect on edits (🟡).**
+- **Edits visual/audio moderation (🟡)** — caption/tag keyword gate shipped; no vendor frame model.
+- **Respect on edits (🟢)** — feed uses existing `giveRespect`.
 - **Private chat `whoCanMessageMe` preflight + copy (🟡).**
-- **Notification inbox retry/`hasMore` (🟠); missing types (🟡).**
+- **Notification inbox retry/`hasMore` (🟢); missing types (🟡).**
 - **Ads SDK + placements (🟠)** — after product decisions on network and premium-adFree vs “reduced friction.”
 - **Premium provider seam (🟡)** — keep no-op until authorized; don’t fake charges.
 - **Home session-varying order + block filters (🟡).**
@@ -488,12 +496,11 @@ Authorization stops (like Prompt 20) are called out. No implementation in this p
    Closes: 🟠 no game cards, 🟠 dual registry, 🟠 leave UI, 🟡 `good_boy`.  
    Auth needed: is `good_boy` a real role or dead code? Confirm Mafia in the generic create-game menu.
 
-7. **Edits moderation + Respect on edits**  
-   Closes: 🟠 no moderation, 🟡 missing Respect action.  
-   Auth needed: human queue vs automated policy vs “flag + hide” only for 1.0.
+7. **Edits moderation + Respect on edits** — **done (Prompt 07)**  
+   Closed: automated caption/tag gate (no human queue); Respect on feed via `socialGraph`. Remaining: visual/audio vendor.
 
-8. **Notifications unread + inbox repair + missing types**  
-   Closes: 🟠 retry/hasMore, 🟠 shell badges, 🟡 missing event types.
+8. **Notifications unread + inbox repair + missing types** — **done for retry/badges (Prompt 08)**  
+   Closed: inbox retry/`hasMore`; shell + Drawer unread badges. Remaining: missing notification types.
 
 9. **First 10 minutes + Home session mix + block filters**  
    Closes: 🟠 first-session, 🟡 Home order, systemic block holes.

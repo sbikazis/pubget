@@ -1,6 +1,7 @@
 export 'app_image_loader.dart';
 export 'message_delivery_indicator.dart';
 export 'pubget_atmosphere.dart';
+export 'pubget_brand_chrome.dart';
 export 'pubget_avatar.dart';
 export 'pubget_badge.dart';
 export 'pubget_banners.dart';
@@ -8,6 +9,7 @@ export 'pubget_bottom_sheet.dart';
 export 'pubget_buttons.dart';
 export 'pubget_card.dart';
 export 'pubget_dialogs.dart';
+export 'pubget_discovery.dart';
 export 'pubget_inputs.dart';
 export 'pubget_skeleton.dart';
 export 'pubget_selection_chip.dart';

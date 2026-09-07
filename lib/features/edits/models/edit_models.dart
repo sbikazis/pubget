@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/errors/failure.dart';
+
 final class Edit {
   const Edit({
     required this.id,
@@ -16,6 +18,8 @@ final class Edit {
     required this.status,
     this.originalEditId,
     this.repostedBy,
+    this.moderationStatus = 'pending',
+    this.moderationReason,
   });
 
   final String id;
@@ -32,6 +36,8 @@ final class Edit {
   final String status;
   final String? originalEditId;
   final String? repostedBy;
+  final String moderationStatus;
+  final String? moderationReason;
 
   factory Edit.fromMap(Map<String, dynamic> map, {required String id}) {
     final date = map['createdAt'];
@@ -54,6 +60,29 @@ final class Edit {
       status: map['status'] as String? ?? 'processing',
       originalEditId: map['originalEditId'] as String?,
       repostedBy: map['repostedBy'] as String?,
+      moderationStatus: map['moderationStatus'] as String? ?? 'pending',
+      moderationReason: map['moderationReason'] as String?,
+    );
+  }
+
+  bool canReceiveRespectFrom(String? viewerId) {
+    return viewerId != null &&
+        viewerId.isNotEmpty &&
+        viewerId != creatorId;
+  }
+
+  static Failure? uploadTerminalFailure({
+    required String? status,
+    String? moderationReason,
+  }) {
+    if (status == 'published') return null;
+    if (status == 'rejected') {
+      return ValidationError(
+        moderationReason ?? 'This Edit was flagged and was not published.',
+      );
+    }
+    return const ValidationError(
+      'Video processing failed. Choose a valid MP4 and retry.',
     );
   }
 

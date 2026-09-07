@@ -97,17 +97,20 @@ final class CharacterFavorite {
   const CharacterFavorite({
     required this.characterId,
     this.name = '',
+    this.imageUrl,
     this.rating,
   });
 
   final String characterId;
   final String name;
+  final String? imageUrl;
   final int? rating;
 
   factory CharacterFavorite.fromMap(Map<String, dynamic> map, {String? id}) {
     return CharacterFavorite(
       characterId: id ?? map['characterId'] as String? ?? '',
       name: map['name'] as String? ?? '',
+      imageUrl: map['imageUrl'] as String?,
       rating: (map['rating'] as num?)?.toInt(),
     );
   }

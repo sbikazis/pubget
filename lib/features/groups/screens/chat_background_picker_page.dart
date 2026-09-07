@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../providers/chat_provider.dart';
@@ -14,7 +15,9 @@ class ChatBackgroundPickerPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat background')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Chat background')),
       body: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.lg),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

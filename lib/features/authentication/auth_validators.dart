@@ -1,35 +1,41 @@
+import '../../core/l10n/app_strings.dart';
+
 abstract final class AuthValidators {
   static final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
 
   static String normalizeEmail(String value) => value.trim();
 
-  static String? email(String value) {
+  static String? email(String value, [AppStrings copy = AppStrings.english]) {
     final email = normalizeEmail(value);
     if (email.isEmpty || !_emailPattern.hasMatch(email)) {
-      return 'Enter a valid email.';
+      return copy.emailInvalid;
     }
     return null;
   }
 
-  static String? password(String value) {
+  static String? password(String value, [AppStrings copy = AppStrings.english]) {
     if (value.length < 6) {
-      return 'Password must be at least 6 characters.';
+      return copy.passwordTooShort;
     }
     return null;
   }
 
-  static String? confirmation(String password, String confirmation) {
+  static String? confirmation(
+    String password,
+    String confirmation, [
+    AppStrings copy = AppStrings.english,
+  ]) {
     if (password != confirmation) {
-      return 'Passwords do not match.';
+      return copy.passwordsDoNotMatch;
     }
     return null;
   }
 
-  static String? username(String value) {
+  static String? username(String value, [AppStrings copy = AppStrings.english]) {
     final username = value.trim();
     if (username.isEmpty) return null;
     if (username.length < 3) {
-      return 'Use at least 3 characters.';
+      return copy.usernameTooShort;
     }
     return null;
   }

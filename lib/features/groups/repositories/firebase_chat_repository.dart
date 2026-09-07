@@ -79,6 +79,7 @@ final class FirebaseChatRepository implements ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
   }) => _guard(() async {
     final result = await _functions
         .httpsCallable('sendGroupMessage')
@@ -89,6 +90,7 @@ final class FirebaseChatRepository implements ChatRepository {
           'text': ?text,
           'mediaId': ?mediaId,
           'replyToMessageId': ?replyToMessageId,
+          'stickerKey': ?stickerKey,
         });
     return ChatMessage.fromMap(
       Map<String, dynamic>.from(result.data['message'] as Map),
@@ -163,6 +165,40 @@ final class FirebaseChatRepository implements ChatRepository {
   });
 
   @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('forwardGroupMessage')
+        .call(<String, dynamic>{
+          'sourceGroupId': sourceGroupId,
+          'messageId': messageId,
+          'destinationGroupId': ?destinationGroupId,
+          'destinationChatId': ?destinationChatId,
+        });
+    return ChatMessage.fromMap(
+      Map<String, dynamic>.from(result.data['message'] as Map),
+      id: result.data['messageId'] as String,
+    );
+  });
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) => _call('reportGroupMessage', {
+    'groupId': groupId,
+    'messageId': messageId,
+    'reason': reason,
+    'details': details,
+  });
+
+  @override
   Future<Result<void>> updateChatBackground({
     required String groupId,
     required String? backgroundUrl,
@@ -181,9 +217,7 @@ final class FirebaseChatRepository implements ChatRepository {
     required void Function(double progress) onProgress,
   }) => _guard(() async {
     final extension = _extension(fileName, contentType);
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
+    final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final path = 'groups/$groupId/media/${mediaId}_original.$extension';
     final reference = _storage.ref(path);
     final task = reference.putData(
@@ -233,7 +267,10 @@ final class FirebaseChatRepository implements ChatRepository {
     if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {
       return candidate;
     }
-    return contentType == 'image/png' ? 'png' : 'jpg';
+    if (contentType.startsWith('audio/')) return 'm4a';
+    if (contentType == 'image/gif') return 'gif';
+    if (contentType == 'image/png') return 'png';
+    return 'jpg';
   }
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>

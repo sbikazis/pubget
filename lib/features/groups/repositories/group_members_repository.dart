@@ -49,4 +49,9 @@ abstract interface class GroupMembersRepository {
     required String groupId,
     required String uid,
   });
+  Future<Result<List<GroupBan>>> getBans(String groupId);
+  Future<Result<void>> unbanMember({
+    required String groupId,
+    required String uid,
+  });
 }

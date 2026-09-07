@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -60,6 +61,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
             context.watch<GroupProvider>().membership?.canManageGames == true);
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(game?.title ?? 'Game'),
         actions: [
           IconButton(

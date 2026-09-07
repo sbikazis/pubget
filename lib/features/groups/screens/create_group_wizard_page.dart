@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -40,7 +41,9 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Create group')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Create group')),
       body: Stepper(
         currentStep: _step,
         onStepTapped: (value) => setState(() => _step = value),

@@ -82,6 +82,7 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     required String characterId,
     required bool favorite,
     String name = '',
+    String? imageUrl,
     int? rating,
   }) => _guard(() async {
     final result = await _functions.httpsCallable('setCharacterFavorite').call(
@@ -89,6 +90,7 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
         'characterId': characterId,
         'favorite': favorite,
         'name': name,
+        'imageUrl': ?imageUrl,
         'rating': ?rating,
       },
     );
@@ -96,6 +98,7 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     return CharacterFavorite(
       characterId: data['characterId'] as String? ?? characterId,
       name: name,
+      imageUrl: imageUrl,
       rating: (data['rating'] as num?)?.toInt() ?? rating,
     );
   });

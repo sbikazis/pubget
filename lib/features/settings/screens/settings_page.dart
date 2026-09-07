@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../settings_provider.dart';
-import '../settings_store.dart';
+import '../widgets/language_picker.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({this.appVersion = '1.0.2+18', super.key});
@@ -19,12 +21,15 @@ class SettingsPage extends StatelessWidget {
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthProvider>();
     final profile = context.watch<OnboardingProvider>().profile;
+    final copy = AppStrings.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(copy.settings)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: <Widget>[
-          Text('Account', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.account, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           PubgetCard(
             child: Column(
@@ -32,15 +37,15 @@ class SettingsPage extends StatelessWidget {
               children: <Widget>[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Signed in as'),
+                  title: Text(copy.signedInAs),
                   subtitle: Text(
                     profile?.email ?? auth.currentUser?.email ?? '—',
                   ),
                 ),
                 PubgetTextButton(
                   onPressed: () => AppNavigation.go(context, '/profile/edit'),
-                  semanticLabel: 'Open privacy and profile settings',
-                  child: const Text('Privacy and profile'),
+                  semanticLabel: copy.openPrivacyAndProfile,
+                  child: Text(copy.privacyAndProfile),
                 ),
                 PubgetTextButton(
                   onPressed: auth.currentUser == null ||
@@ -53,22 +58,26 @@ class SettingsPage extends StatelessWidget {
                           if (!context.mounted) return;
                           PubgetSnackbars.showInfo(
                             context,
-                            'Password reset email sent, if the account exists.',
+                            AppStrings.of(context).passwordResetSent,
                           );
                         },
-                  semanticLabel: 'Send a password reset email',
-                  child: const Text('Send password reset'),
+                  semanticLabel: copy.sendPasswordResetEmail,
+                  child: Text(copy.sendPasswordReset),
                 ),
                 PubgetSecondaryButton(
                   onPressed: () => _signOut(context),
-                  semanticLabel: 'Sign out',
-                  child: const Text('Sign out'),
+                  semanticLabel: copy.signOut,
+                  child: Text(copy.signOut),
                 ),
               ],
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.language, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          const PubgetCard(child: SettingsLanguageRadios()),
+          const SizedBox(height: AppSpacing.xl),
+          Text(copy.appearance, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           PubgetCard(
             child: Column(
@@ -76,30 +85,11 @@ class SettingsPage extends StatelessWidget {
                 for (final mode in ThemeMode.values)
                   RadioListTile<ThemeMode>(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(_themeLabel(mode)),
+                    title: Text(_themeLabel(copy, mode)),
                     value: mode,
                     groupValue: settings.themeMode,
                     onChanged: (value) {
                       if (value != null) settings.setThemeMode(value);
-                    },
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          Text('Language', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetCard(
-            child: Column(
-              children: <Widget>[
-                for (final option in AppLocaleOption.values)
-                  RadioListTile<AppLocaleOption>(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(_localeLabel(option)),
-                    value: option,
-                    groupValue: settings.localeOption,
-                    onChanged: (value) {
-                      if (value != null) settings.setLocaleOption(value);
                     },
                   ),
               ],
@@ -113,7 +103,7 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.xl),
-          Text('Help', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.help, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           PubgetCard(
             child: Column(
@@ -121,19 +111,19 @@ class SettingsPage extends StatelessWidget {
               children: <Widget>[
                 PubgetTextButton(
                   onPressed: () => AppNavigation.go(context, '/guide'),
-                  semanticLabel: 'Open the Pubget guide',
-                  child: const Text('Guide'),
+                  semanticLabel: copy.openGuide,
+                  child: Text(copy.guide),
                 ),
                 PubgetTextButton(
                   onPressed: () => AppNavigation.go(context, '/terms'),
-                  semanticLabel: 'Open community terms',
-                  child: const Text('Terms'),
+                  semanticLabel: copy.openTerms,
+                  child: Text(copy.terms),
                 ),
               ],
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          Text('About', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.about, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           PubgetCard(
             child: Column(
@@ -141,7 +131,7 @@ class SettingsPage extends StatelessWidget {
               children: <Widget>[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Version'),
+                  title: Text(copy.version),
                   subtitle: Text(appVersion),
                 ),
               ],
@@ -152,16 +142,10 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  static String _themeLabel(ThemeMode mode) => switch (mode) {
-    ThemeMode.system => 'System',
-    ThemeMode.light => 'Light',
-    ThemeMode.dark => 'Dark',
-  };
-
-  static String _localeLabel(AppLocaleOption option) => switch (option) {
-    AppLocaleOption.system => 'System',
-    AppLocaleOption.english => 'English',
-    AppLocaleOption.arabic => 'العربية',
+  static String _themeLabel(AppStrings copy, ThemeMode mode) => switch (mode) {
+    ThemeMode.system => copy.themeSystem,
+    ThemeMode.light => copy.themeLight,
+    ThemeMode.dark => copy.themeDark,
   };
 
   static Future<void> _signOut(BuildContext context) async {

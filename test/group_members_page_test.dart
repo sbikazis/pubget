@@ -64,6 +64,30 @@ void main() {
     expect(find.text('Transfer ownership'), findsOneWidget);
   });
 
+  testWidgets('banned users action is hidden without manageMembers', (
+    tester,
+  ) async {
+    final members = _FakeMembersRepository();
+    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
+    await tester.pumpWidget(
+      await _harness(members: members, groups: groups),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Banned users'), findsNothing);
+  });
+
+  testWidgets('authorized member can open banned users', (tester) async {
+    final members = _FakeMembersRepository();
+    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    await tester.pumpWidget(
+      await _harness(members: members, groups: groups),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Banned users'), findsOneWidget);
+  });
+
   testWidgets('authorized member sees kick and ban', (tester) async {
     final members = _FakeMembersRepository();
     final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
@@ -183,6 +207,16 @@ final class _FakeMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String uid,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<GroupBan>>> getBans(String groupId) async =>
+      const Success<List<GroupBan>>([]);
+
+  @override
+  Future<Result<void>> unbanMember({
+    required String groupId,
+    required String uid,
+  }) async => const Success<void>(null);
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -244,4 +278,14 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
       const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
 }

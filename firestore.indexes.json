@@ -640,6 +640,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "anime_stats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "averageScore",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "ratingCount",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

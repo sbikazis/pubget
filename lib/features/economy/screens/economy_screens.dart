@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -40,6 +41,7 @@ class _StorePageState extends State<StorePage>
     final economy = context.watch<EconomyProvider>();
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text(EconomyStrings.storeTitle),
         actions: <Widget>[
           CoinBalanceChip(
@@ -192,7 +194,9 @@ class _StoreItemDetailsPageState extends State<StoreItemDetailsPage> {
     final economy = context.watch<EconomyProvider>();
     final item = economy.snapshot?.itemById(widget.itemId);
     return Scaffold(
-      appBar: AppBar(title: Text(item?.title ?? EconomyStrings.storeTitle)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(item?.title ?? EconomyStrings.storeTitle)),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -239,7 +243,10 @@ class _ItemDetails extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         Text(item.description),
         const SizedBox(height: AppSpacing.md),
-        Text('${item.price} ${EconomyStrings.coins}'),
+        PubgetCoinAmount(
+          amount: item.price,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         if (item.premiumOnly) ...[
           const SizedBox(height: AppSpacing.sm),
           const PubgetBadge(label: EconomyStrings.premiumRequired),
@@ -324,7 +331,9 @@ class _InventoryPageState extends State<InventoryPage> {
         .where((item) => economy.snapshot?.owns(item.id) == true)
         .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text(EconomyStrings.inventory)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text(EconomyStrings.inventory)),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -392,7 +401,9 @@ class _PremiumPageState extends State<PremiumPage> {
       PremiumStatus.inactive => EconomyStrings.premiumInactive,
     };
     return Scaffold(
-      appBar: AppBar(title: const Text(EconomyStrings.premiumTitle)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text(EconomyStrings.premiumTitle)),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -452,6 +463,7 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
     final economy = context.watch<EconomyProvider>();
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text(EconomyStrings.history),
         actions: <Widget>[
           CoinBalanceChip(balance: economy.coins, cached: economy.offlineCached),
@@ -481,7 +493,16 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(transactionTypeLabel(tx.type)),
                 subtitle: Text(tx.createdAt?.toLocal().toString() ?? ''),
-                trailing: Text('$sign${tx.amount}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(sign),
+                    PubgetCoinAmount(
+                      amount: tx.amount.abs(),
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ],
+                ),
               ),
             );
           },

@@ -48,6 +48,9 @@ function createFakeDb() {
           };
         },
         create(ref, data) { store.set(pathOf(ref), { ...data }); },
+        set(ref, data) {
+          store.set(pathOf(ref), { ...(store.get(pathOf(ref)) || {}), ...data });
+        },
         update(ref, data) {
           store.set(pathOf(ref), { ...(store.get(pathOf(ref)) || {}), ...data });
         },
@@ -163,4 +166,18 @@ test("character favorite listing is owner-scoped", async () => {
   });
   const page = await lists.getCharacterFavorites({ auth: { uid: "alice" } });
   assert.equal(page.items.some((item) => item.characterId === "nami" || item.id === "nami"), true);
+});
+
+test("character favorites maintain a server-side aggregate count", async () => {
+  const { lists, db } = domain();
+  await lists.setCharacterFavorite({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", name: "Luffy", imageUrl: "https://example.test/l.png" },
+  });
+  assert.equal(db.store.get("character_stats/luffy").favoritesCount, 1);
+  await lists.setCharacterFavorite({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", favorite: false },
+  });
+  assert.equal(db.store.get("character_stats/luffy").favoritesCount, 0);
 });

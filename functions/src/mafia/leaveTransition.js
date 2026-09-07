@@ -19,4 +19,16 @@ function leaveTransition(status, player, playersCount, minPlayers) {
   return { kind: "unsupported" };
 }
 
-module.exports = { leaveTransition, validGameId };
+function activeLeavePlayerUpdate(FieldValue) {
+  return {
+    hasLeft: true,
+    isAlive: false,
+    canVote: false,
+    canSpeak: false,
+    canUseAbility: false,
+    isDisconnected: true,
+    leftAt: FieldValue.serverTimestamp(),
+  };
+}
+
+module.exports = { leaveTransition, validGameId, activeLeavePlayerUpdate };

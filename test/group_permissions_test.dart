@@ -13,6 +13,14 @@ void main() {
     );
   });
 
+  test('plain members can create events without manageEvents', () {
+    expect(
+      memberCanCreateEvents(const GroupMember(uid: 'm1', role: GroupRole.member)),
+      isTrue,
+    );
+    expect(memberCanCreateEvents(null), isFalse);
+  });
+
   test('default role without manageEvents cannot manage events', () {
     expect(
       const GroupMember(uid: 'm1', role: GroupRole.member).canManageEvents,
@@ -68,6 +76,44 @@ void main() {
       isFalse,
     );
     expect(memberCanManageMembers(null), isFalse);
+  });
+
+  test('founder and shogun can manage settings; members cannot', () {
+    expect(
+      const GroupMember(uid: 'a1', role: GroupRole.founder).canManageSettings,
+      isTrue,
+    );
+    expect(
+      const GroupMember(uid: 'a2', role: GroupRole.shogun).canManageSettings,
+      isTrue,
+    );
+    expect(
+      const GroupMember(uid: 'c1', role: GroupRole.commander).canManageSettings,
+      isFalse,
+    );
+    expect(
+      const GroupMember(uid: 'm1', role: GroupRole.member).canManageSettings,
+      isFalse,
+    );
+    expect(memberCanManageSettings(null), isFalse);
+  });
+
+  test('founder can manage settings even with an empty role document', () {
+    expect(
+      const GroupMember(
+        uid: 'a1',
+        role: GroupRole.founder,
+      ).withEffectivePermissions(const <GroupPermission>{}).canManageSettings,
+      isTrue,
+    );
+  });
+
+  test('custom role with manageSettings can manage settings', () {
+    final member = const GroupMember(
+      uid: 'm1',
+      role: GroupRole.member,
+    ).withEffectivePermissions({GroupPermission.manageSettings});
+    expect(member.canManageSettings, isTrue);
   });
 
   test('founder can manage members even with an empty role document', () {

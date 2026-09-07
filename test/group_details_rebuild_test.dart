@@ -1,0 +1,145 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
+import 'package:pubget/features/authentication/models/auth_user.dart';
+import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/features/groups/models/group_models.dart';
+import 'package:pubget/features/groups/providers/group_provider.dart';
+import 'package:pubget/features/groups/repositories/group_repository.dart';
+import 'package:pubget/features/groups/screens/group_details_page.dart';
+
+import 'authentication_test_support.dart';
+
+void main() {
+  test('group chrome copy is bilingual', () {
+    expect(AppStrings.english.groupDetails, 'Group details');
+    expect(AppStrings.arabic.groupDetails, 'تفاصيل المجموعة');
+    expect(AppStrings.english.openChat, 'Open chat');
+    expect(AppStrings.arabic.addMembers, 'إضافة أعضاء');
+    expect(AppStrings.english.roleLabel('shogun'), 'Shogun');
+    expect(AppStrings.arabic.joinPolicyLabel('approval'), 'بطلب');
+  });
+
+  testWidgets('founder details show identity, type, and open chat', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      await _harness(role: GroupRole.founder),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('group-details-hero')), findsOneWidget);
+    expect(find.text('Rising Crew'), findsOneWidget);
+    expect(find.text('Anime Roleplay'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Open chat'), findsOneWidget);
+    expect(find.byKey(const Key('group-details-disband')), findsOneWidget);
+    expect(find.text('Disband group'), findsOneWidget);
+    expect(find.text('Manage members'), findsOneWidget);
+    expect(find.text('animeRoleplay'), findsNothing);
+  });
+
+  testWidgets('visitor sees join, not chat redirect', (tester) async {
+    await tester.pumpWidget(await _harness(role: null));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Join group'), findsOneWidget);
+    expect(find.text('Open chat'), findsNothing);
+    expect(find.text('Disband group'), findsNothing);
+  });
+}
+
+Future<Widget> _harness({required GroupRole? role}) async {
+  final authRepository = FakeAuthRepository(
+    user: const AuthUser(id: 'alice', email: 'alice@example.com'),
+  );
+  final auth = AuthProvider(repository: authRepository);
+  await auth.initialize();
+  final groups = _FakeGroupRepository(viewerRole: role);
+  final groupProvider = GroupProvider(repository: groups);
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AuthProvider>.value(value: auth),
+      ChangeNotifierProvider<GroupProvider>.value(value: groupProvider),
+    ],
+    child: const MaterialApp(home: GroupDetailsPage(groupId: 'g1')),
+  );
+}
+
+final class _FakeGroupRepository implements GroupRepository {
+  _FakeGroupRepository({required this.viewerRole});
+
+  final GroupRole? viewerRole;
+
+  static final group = Group(
+    id: 'g1',
+    name: 'Rising Crew',
+    description: 'A roleplay room',
+    type: GroupType.animeRoleplay,
+    animeId: 'a1',
+    founderId: 'alice',
+    membersCount: 4,
+    maxMembers: 40,
+    joinPolicy: JoinPolicy.open,
+    isSearchable: true,
+    createdAt: DateTime(2026),
+    chatBackgroundUrl: null,
+    rules: 'Be kind',
+    activityScore: 1,
+  );
+
+  @override
+  Future<Result<Group>> getGroup(String groupId) async => Success(group);
+
+  @override
+  Future<Result<GroupMember?>> getMembership(
+    String groupId,
+    String userId,
+  ) async {
+    if (viewerRole == null) return const Success(null);
+    return Success(GroupMember(uid: userId, role: viewerRole!));
+  }
+
+  @override
+  Future<Result<Group>> createGroup(GroupDraft draft) async => Success(group);
+
+  @override
+  Future<Result<void>> disbandGroup(String groupId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> joinGroup({
+    required String groupId,
+    String? inviteId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> leaveGroup(String groupId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> requestToJoin({required String groupId}) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<List<Group>>> searchGroups(String query) async =>
+      const Success(<Group>[]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      const Stream.empty();
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
+}

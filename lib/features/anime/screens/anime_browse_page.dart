@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/anime_models.dart';
@@ -54,7 +55,9 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
   Widget build(BuildContext context) {
     final list = context.watch<AnimeListProvider>();
     return Scaffold(
-      appBar: AppBar(title: Text(list.title)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: Text(list.title)),
       body: PubgetLoadingStateView(
         state: list.state == LoadingState.loadingMore ||
                 list.state == LoadingState.refreshing

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import 'pubget_torii_mark.dart';
@@ -46,7 +47,7 @@ class AuthBrandHeader extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          'Premium Anime Community',
+          AppStrings.of(context).brandTagline,
           textAlign: TextAlign.center,
           style: theme.textTheme.labelSmall?.copyWith(
             letterSpacing: 1.4,

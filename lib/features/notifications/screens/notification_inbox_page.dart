@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/app_notification.dart';
@@ -15,6 +19,7 @@ class NotificationInboxPage extends StatelessWidget {
     final provider = context.watch<NotificationProvider>();
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text('Notifications'),
         actions: <Widget>[
           TextButton(
@@ -25,16 +30,20 @@ class NotificationInboxPage extends StatelessWidget {
       ),
       body: PubgetLoadingStateView(
         state: provider.state,
-        onRetry: () {},
+        onRetry: () => unawaited(provider.retry()),
         empty: const PubgetEmptyState(
           title: 'No notifications',
           message: 'Important activity will appear here.',
         ),
         error: PubgetErrorState(
+          key: const Key('notification-inbox-retry'),
           message: provider.failure?.message ?? 'Notifications could not load.',
-          onRetry: () {},
+          onRetry: () => unawaited(provider.retry()),
         ),
-        offline: const PubgetOfflineState(),
+        offline: PubgetOfflineState(
+          key: const Key('notification-inbox-retry-offline'),
+          onRetry: () => unawaited(provider.retry()),
+        ),
         child: NotificationListener<ScrollNotification>(
           onNotification: (event) {
             if (event.metrics.extentAfter < 240) provider.loadMore();
@@ -59,7 +68,9 @@ class NotificationInboxPage extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: provider.state == LoadingState.loaded ||
+              provider.state == LoadingState.loadingMore
+          ? FloatingActionButton.extended(
         onPressed: () async {
           final result = await provider.enablePush();
           if (!context.mounted) return;
@@ -77,7 +88,8 @@ class NotificationInboxPage extends StatelessWidget {
         },
         icon: const Icon(Icons.notifications_active_outlined),
         label: const Text('Enable push'),
-      ),
+      )
+          : null,
     );
   }
 }

@@ -53,6 +53,63 @@ enum AnimeCatalogKind {
   };
 
   String get routeValue => name;
+
+  /// Hub home does not load Jikan "top"/score charts — Pubget ratings own that.
+  static const hubHome = <AnimeCatalogKind>[
+    AnimeCatalogKind.trending,
+    AnimeCatalogKind.thisSeason,
+    AnimeCatalogKind.popular,
+    AnimeCatalogKind.upcoming,
+  ];
+}
+
+enum AnimeSearchSort { members, title, newest, favorites }
+
+enum AnimeTypeFilter { tv, movie, ova, special, ona }
+
+final class AnimeSearchFilter {
+  const AnimeSearchFilter({
+    this.text = '',
+    this.genreId,
+    this.type,
+    this.season,
+    this.year,
+    this.sort = AnimeSearchSort.members,
+  });
+
+  final String text;
+  final String? genreId;
+  final AnimeTypeFilter? type;
+  final AnimeSeason? season;
+  final int? year;
+  final AnimeSearchSort sort;
+
+  bool get hasQuery => text.trim().isNotEmpty;
+  bool get hasNonTextConstraints =>
+      (genreId != null && genreId!.isNotEmpty) ||
+      type != null ||
+      (season != null && year != null);
+  bool get hasConstraints => hasQuery || hasNonTextConstraints;
+
+  AnimeSearchFilter copyWith({
+    String? text,
+    String? genreId,
+    bool clearGenre = false,
+    AnimeTypeFilter? type,
+    bool clearType = false,
+    AnimeSeason? season,
+    bool clearSeason = false,
+    int? year,
+    bool clearYear = false,
+    AnimeSearchSort? sort,
+  }) => AnimeSearchFilter(
+    text: text ?? this.text,
+    genreId: clearGenre ? null : genreId ?? this.genreId,
+    type: clearType ? null : type ?? this.type,
+    season: clearSeason ? null : season ?? this.season,
+    year: clearYear ? null : year ?? this.year,
+    sort: sort ?? this.sort,
+  );
 }
 
 final class AnimeImages {
@@ -119,6 +176,9 @@ final class AnimeCharacter {
     this.role,
     this.favorites,
     this.url,
+    this.about,
+    this.nameKanji,
+    this.nicknames = const <String>[],
     this.voiceActors = const <VoiceActor>[],
   });
 
@@ -128,7 +188,31 @@ final class AnimeCharacter {
   final String? role;
   final int? favorites;
   final String? url;
+  final String? about;
+  final String? nameKanji;
+  final List<String> nicknames;
   final List<VoiceActor> voiceActors;
+
+  AnimeCharacter copyWith({
+    String? about,
+    String? nameKanji,
+    List<String>? nicknames,
+    String? imageUrl,
+    String? role,
+    int? favorites,
+    List<VoiceActor>? voiceActors,
+  }) => AnimeCharacter(
+    id: id,
+    name: name,
+    imageUrl: imageUrl ?? this.imageUrl,
+    role: role ?? this.role,
+    favorites: favorites ?? this.favorites,
+    url: url,
+    about: about ?? this.about,
+    nameKanji: nameKanji ?? this.nameKanji,
+    nicknames: nicknames ?? this.nicknames,
+    voiceActors: voiceActors ?? this.voiceActors,
+  );
 }
 
 final class Anime {
@@ -284,6 +368,29 @@ abstract final class AnimeStrings {
   static const libraryEmpty = 'No titles in this list yet';
   static const libraryEmptyMessage =
       'Add anime from a details page. Lists are saved on the server.';
-  static const listStatus = 'List status';
+  static const listStatus = 'Your list';
   static const removeFromList = 'Remove from list';
+  static const rateAnime = 'Rate this anime';
+  static const editRating = 'Edit rating';
+  static const communityScore = 'Pubget score';
+  static const malScore = 'MAL';
+  static const ratingsTitle = 'Ratings';
+  static const popularCharactersTitle = 'Popular characters';
+  static const myAnimeTitle = 'My Anime';
+  static const theirAnimeTitle = 'Anime';
+  static const reviewsTitle = 'Reviews';
+  static const writeReview = 'Write a review';
+  static const reviewHint = 'Share what you thought (optional)';
+  static const submitRating = 'Save rating';
+  static const favoriteCharacter = 'Favorite character';
+  static const filterGenre = 'Genre';
+  static const filterType = 'Type';
+  static const filterSeason = 'Season';
+  static const filterSort = 'Sort';
+  static const sortMembers = 'Popularity';
+  static const sortTitle = 'Title';
+  static const sortNewest = 'Newest';
+  static const sortFavorites = 'Most favorited';
+  static const searchFiltersHint = 'Search by name, or filter by season and genre.';
+  static const noRatingsYet = 'Be the first to rate this anime on Pubget.';
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import 'auth_google_mark.dart';
@@ -8,13 +9,13 @@ class AuthGoogleButton extends StatelessWidget {
   const AuthGoogleButton({
     required this.onPressed,
     required this.semanticLabel,
-    this.label = 'Continue with Google',
+    this.label,
     super.key,
   });
 
   final VoidCallback? onPressed;
   final String semanticLabel;
-  final String label;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +28,9 @@ class AuthGoogleButton extends StatelessWidget {
         children: <Widget>[
           const AuthGoogleMark(),
           const SizedBox(width: AppSpacing.sm),
-          Flexible(child: Text(label)),
+          Flexible(
+            child: Text(label ?? AppStrings.of(context).continueWithGoogle),
+          ),
         ],
       ),
     );

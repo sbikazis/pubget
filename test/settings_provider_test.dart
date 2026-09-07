@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/loading/loading_state.dart';
@@ -24,8 +25,8 @@ void main() {
 
     await provider.load();
     expect(provider.themeMode, ThemeMode.system);
-    expect(provider.localeOption, AppLocaleOption.system);
-    expect(provider.locale, isNull);
+    expect(provider.localeOption, AppLocaleOption.arabic);
+    expect(provider.locale, const Locale('ar'));
 
     expect(await provider.setThemeMode(ThemeMode.dark), isTrue);
     expect(await provider.setLocaleOption(AppLocaleOption.arabic), isTrue);
@@ -113,23 +114,25 @@ void main() {
           ),
           ChangeNotifierProvider<SettingsProvider>.value(value: settings),
         ],
-        child: MaterialApp(
-          builder: (context, child) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: child!,
-          ),
-          home: const SettingsPage(),
+        child: Consumer<SettingsProvider>(
+          builder: (context, liveSettings, _) {
+            return MaterialApp(
+              locale: liveSettings.locale ?? const Locale('ar'),
+              supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+              localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              home: const SettingsPage(),
+            );
+          },
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Sign out'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('العربية'),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('العربية'), findsOneWidget);
+    expect(find.text('تسجيل الخروج'), findsOneWidget);
+    expect(find.text('العربية'), findsWidgets);
     expect(
       Directionality.of(tester.element(find.byType(SettingsPage))),
       TextDirection.rtl,

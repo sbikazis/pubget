@@ -35,6 +35,7 @@ const { createNotificationTriggers } = require("./src/notificationTriggers");
 const { createDiscoveryScheduler, onSchedule } = require("./src/discoveryEngine");
 const { createRecommendationEngine } = require("./src/recommendationEngine");
 const { createAnimeListsDomain } = require("./src/animeListsDomain");
+const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
@@ -89,6 +90,8 @@ const groupChat = createGroupChat({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+  bucket: getStorage().bucket(),
+  randomUUID,
 });
 const privateChat = createPrivateChat({
   db: getFirestore(),
@@ -180,6 +183,11 @@ const animeListsDomain = createAnimeListsDomain({
   FieldValue,
   HttpsError,
 });
+const animeHubDomain = createAnimeHubDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
@@ -214,6 +222,18 @@ exports.setCharacterFavorite = onCall(
 exports.getCharacterFavorites = onCall(
   { region: "us-central1" },
   animeListsDomain.getCharacterFavorites,
+);
+exports.upsertAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.upsertAnimeRating,
+);
+exports.deleteAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.deleteAnimeRating,
+);
+exports.reportAnimeReview = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnimeReview,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },
@@ -336,6 +356,14 @@ exports.markGroupMessagesDelivered = onCall(
 exports.updateGroupChatBackground = onCall(
   { region: "us-central1" },
   groupChat.updateBackground,
+);
+exports.forwardGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.forwardMessage,
+);
+exports.reportGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.reportMessage,
 );
 exports.startPrivateChat = onCall(
   { region: "us-central1" },
@@ -728,6 +756,7 @@ exports.disbandGroup = onCall({ region: "us-central1" }, async (request) => {
       if (current.deletionPending !== true) {
         transaction.update(groupRef, {
           deletionPending: true,
+          isSearchable: false,
           deletionRequestedBy: uid,
           deletionMode: mode,
           deletionMarkedAt: FieldValue.serverTimestamp(),

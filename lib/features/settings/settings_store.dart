@@ -5,7 +5,7 @@ enum AppLocaleOption { system, english, arabic }
 final class SettingsSnapshot {
   const SettingsSnapshot({
     this.themeMode = ThemeMode.system,
-    this.localeOption = AppLocaleOption.system,
+    this.localeOption = AppLocaleOption.arabic,
   });
 
   final ThemeMode themeMode;
@@ -38,7 +38,7 @@ final class SettingsSnapshot {
       ),
       localeOption: AppLocaleOption.values.firstWhere(
         (value) => value.name == values['locale'],
-        orElse: () => AppLocaleOption.system,
+        orElse: () => AppLocaleOption.arabic,
       ),
     );
   }

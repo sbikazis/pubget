@@ -54,6 +54,17 @@ service cloud.firestore {
         get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
           in ['founder', 'sensei', 'senpai'];
     }
+    function memberRoleName(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role;
+    }
+    function canManageGroupMembers(groupId) {
+      return groupMember(groupId) && (
+        memberRoleName(groupId) in ['founder', 'shogun', 'commander'] ||
+        (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId))) &&
+         get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId)))
+           .data.permissions.hasAny(['manageMembers']))
+      );
+    }
     function mafiaGroupMember(gameId) {
       return signedIn() && groupMember(
         get(/databases/$(database)/documents/mafia_games/$(gameId)).data.groupId
@@ -459,16 +470,40 @@ service cloud.firestore {
       match /economyRate/{id} { allow read, write: if false; }
       match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
       match /anime_lists/{animeId} {
-        allow read: if self(uid);
+        allow read: if signedIn();
         allow create, update, delete: if false;
       }
       match /character_favorites/{characterId} {
-        allow read: if self(uid);
+        allow read: if signedIn();
         allow create, update, delete: if false;
       }
+      match /anime_ratings/{animeId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+      match /animeHubRate/{id} { allow read, write: if false; }
     }
 
     match /storeCatalog/{itemId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /anime_stats/{animeId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /reviews/{reviewUid} {
+        allow read: if signedIn();
+        allow write: if false;
+        match /reports/{reportId} {
+          allow read: if isAdmin();
+          allow create: if signedIn() &&
+            request.auth.uid == request.resource.data.reporterId &&
+            reportId == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+    }
+    match /character_stats/{characterId} {
       allow read: if signedIn();
       allow write: if false;
     }
@@ -479,16 +514,28 @@ service cloud.firestore {
     }
 
     match /public_profiles/{uid} {
-      allow read: if signedIn() &&
+      // GET still honors users/{uid}.profileVisibility so a stale projection
+      // cannot be opened after the owner goes private.
+      // LIST must not call get(users/{uid}): a missing user doc or one private
+      // leftover poisons the entire Home/search query (permission-denied).
+      // This collection is a server projection; private profiles are deleted
+      // by syncPublicProfile.
+      allow get: if signedIn() &&
+        exists(/databases/$(database)/documents/users/$(uid)) &&
         get(/databases/$(database)/documents/users/$(uid))
           .data.get('profileVisibility', 'public') == 'public';
+      allow list: if signedIn();
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
       allow create, update, delete: if false;
     }
 
     match /groups/{groupId} {
-      allow read: if signedIn() && groupExists(groupId);
+      allow get: if signedIn() && groupExists(groupId);
+      // LIST must not use groupExists()/get(): one deletionPending document
+      // in a discovery query fails the whole list (Home promoted/rising).
+      // Direct get of a pending-deletion group remains denied above.
+      allow list: if signedIn();
       // New Groups domain records are created by createGroup only. The
       // legacy-compatible create branch below intentionally does not accept
       // the new joinPolicy/search/rules/activity fields.
@@ -612,7 +659,12 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /bans/{uid} {
-        allow read: if self(uid) || groupModerator(groupId);
+        allow read: if self(uid) || canManageGroupMembers(groupId);
+        allow create, update, delete: if false;
+      }
+      match /messageReports/{reportId} {
+        allow read: if signedIn() &&
+          resource.data.reporterId == request.auth.uid;
         allow create, update, delete: if false;
       }
       match /transferConfirmations/{uid} {

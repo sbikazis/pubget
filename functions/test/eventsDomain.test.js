@@ -265,16 +265,21 @@ test("unauthenticated event mutations are rejected", async () => {
   );
 });
 
-test("members without manageEvents cannot create an event", async () => {
+test("plain members can create and publish their own event", async () => {
   const db = createFakeDb(seedGroup());
   const events = handlers(db);
-  await assert.rejects(
-    events.saveEventDraft({
-      auth: { uid: "bob" },
-      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
-    }),
-    (error) => error.code === "permission-denied",
-  );
+  const draft = await events.saveEventDraft({
+    auth: { uid: "bob" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+  const start = new Date(Date.now() - 1000);
+  const end = new Date(Date.now() + 60 * 60 * 1000);
+  const published = await events.publishEvent({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, startAt: start.toISOString(), endAt: end.toISOString() },
+  });
+  assert.equal(published.status, "active");
 });
 
 test("founder can draft, publish, and members can submit once", async () => {
@@ -746,7 +751,7 @@ test("custom role with manageEvents can create an event", async () => {
   assert.ok(draft.eventId);
 });
 
-test("custom role without manageEvents cannot create an event", async () => {
+test("custom role without manageEvents can still create as a member", async () => {
   const db = createFakeDb(seedGroup({
     extra: {
       "groups/g1/roles/captain": { permissions: ["invite"] },
@@ -754,13 +759,11 @@ test("custom role without manageEvents cannot create an event", async () => {
     role: "captain",
   }));
   const events = handlers(db);
-  await assert.rejects(
-    events.saveEventDraft({
-      auth: { uid: "alice" },
-      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
-    }),
-    (error) => error.code === "permission-denied",
-  );
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
 });
 
 test("non-members cannot create an event", async () => {

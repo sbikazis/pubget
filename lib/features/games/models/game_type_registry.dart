@@ -32,6 +32,7 @@ final class GameTypeSpec {
     required this.version,
     required this.implemented,
     required this.capabilities,
+    this.genericCreate = true,
     this.scoringId = ScoringStrategyId.noop,
   });
 
@@ -41,6 +42,9 @@ final class GameTypeSpec {
   final IconData icon;
   final int version;
   final bool implemented;
+  /// True when [createGame] can create this type. Mafia is playable
+  /// (`implemented`) but only through `createMafiaGame`.
+  final bool genericCreate;
   final GameCapabilities capabilities;
   final ScoringStrategyId scoringId;
 }
@@ -96,6 +100,7 @@ abstract final class GameTypeRegistry {
       icon: Icons.nightlight_outlined,
       version: 1,
       implemented: true,
+      genericCreate: false,
       capabilities: GameCapabilities(
         usesRounds: true,
         minPlayers: 4,
@@ -123,6 +128,10 @@ abstract final class GameTypeRegistry {
 
   static List<GameTypeSpec> get implemented =>
       specs.values.where((spec) => spec.implemented).toList(growable: false);
+
+  static List<GameTypeSpec> get genericCreate => specs.values
+      .where((spec) => spec.implemented && spec.genericCreate)
+      .toList(growable: false);
 
   static bool isRegistered(GameType type) => specs.containsKey(type);
 

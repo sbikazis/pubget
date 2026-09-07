@@ -291,7 +291,7 @@ Firestore create allowlist (`firestore.rules` 368–377) includes `nickname` and
 
 ### 3.1 Screen
 
-`HomePage` (`home_page.dart`): AppBar title `Discover`. Actions: coin chip → `/store`; notifications → `/notifications`; settings → `/settings`; avatar → `/profile` (own profile when `uid` omitted).
+`HomePage` (`home_page.dart`): AppBar title `Discover`. Actions: coin chip → `/store`; notifications icon with `UnreadEngine.notifications` badge → `/notifications`; settings → `/settings`; avatar → `/profile` (own profile when `uid` omitted).
 
 Body: `RefreshIndicator` + `CustomScrollView`. Optional home ad slot (`_HomeAdSlot`) when `economy.showAd(AdPlacement.homeFeed)` is true.
 
@@ -368,6 +368,8 @@ There is no app-wide `Drawer`. `AppShell` uses a bottom `NavigationBar` (`app_sh
 | edits | `/edits` | Edits | `EditFeedPage` |
 
 These four paths share navigator key `app-shell` (`app_router.dart` 180–185).
+
+`AppNavigation.go` **pushes** non-root routes onto a history stack. Root paths (`/splash`, `/login`, `/onboarding`, shell tabs) **replace** the stack. `AppBackButton` appears on every pushed page AppBar; tapping it (or Android back) calls `AppNavigation.back`. A deep-linked detail with no history falls back to `/home`. Login, splash, onboarding, and the five shell tabs have no back arrow (menu / auth chrome instead).
 
 ### 4.2 Domain routes (`pubget_app.dart` 659–685)
 
@@ -545,7 +547,7 @@ Server user-sendable (`groupChat.js` 3–9): text, image, video, sticker, gif, a
 | emoji button | appends ` 😊` into the text field (`group_chat_page.dart` 468–471) | sent as text |
 | system | render only | user send blocked |
 | event | tap if `mediaId` set → event route | `eventsDomain.postEventChatActivity` writes `type: "event"`, `senderId: "system"` |
-| game | bubble label `Game card` | no writer in `functions/src` except tests. **UNVERIFIED** production writers |
+| game | bubble label + Join / View result; tap → `/game/{id}` or `/mafia/{id}` | `chatCardWriter.postFromActivity` via `toGameActivity` / `toMafiaActivity`; Admin `writeAdminChatCard` (`senderId: "system"`, `type: "game"`). User send rejected. |
 
 ### 8.2 Actions (`group_chat_page.dart` 244–315)
 
@@ -559,7 +561,7 @@ Client does not hide pin/delete based on permissions.
 
 Live: Firestore `limit 40`, `orderBy createdAt desc, id desc`. Older: `getOlderMessages` when scroll offset < 180 or “Load older messages”.
 
-Delivery/read: client batches up to 50 ids; server sets `deliveredBy`/`readBy` and `members/{uid}.lastReadAt`. Group list unread from `lastReadAt` is not implemented in `lib/features/groups`.
+Delivery/read: client batches up to 50 ids; server sets `deliveredBy`/`readBy` and `members/{uid}.lastReadAt`. Group-list unread is `groups.lastMessageAt` vs `members/{uid}.lastReadAt` (`Group.hasUnread` / `GroupProvider.unreadCount`), streamed via `watchJoinedGroups`. That count is the shared Groups/Joined tab and Drawer source through `UnreadEngine`.
 
 `lastMessageAt` / `lastMessageText`: written by `sendMessage` transaction (`groupChat.js` 188–193). Rules still allow a member to update only those two fields (`firestore.rules` 514–518). Messages subcollection: client create/update/delete false.
 
@@ -591,7 +593,7 @@ Firestore: `privateChats` and subcollections read if participant; all client wri
 
 ### 10.1 Shared infrastructure
 
-Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Registry marks trivia three `implemented: true`; **mafia `implemented: false`** (59). Client `GameTypeRegistry` marks mafia `implemented: true` (`game_type_registry.dart` 92–104).
+Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Both registries mark all four `implemented: true`. Mafia is `genericCreate: false` on server and client — `createGame` rejects it; the dedicated `createMafiaGame` / `MafiaProvider.create` path is the only creator. `GameTypeRegistry.implemented` still lists Mafia on the create hub because that page branches; `genericCreate` is the list that would call `createGame`.
 
 Statuses: draft, waiting, active, paused, completed, cancelled (`gamesDomain.js` 64–77).
 
@@ -649,8 +651,8 @@ Client create/join/start/leave: callables. Rules also allow a constrained client
 
 ### 11.3 Roles (`abilities/index.js`, `roleAssigner.js`)
 
-Assigned: mafia, doctor, detective, citizen filler; sniper if advanced ≥9; silencer if advanced ≥10.  
-Registered but never assigned: `good_boy`. **INCOMPLETE/MOCK** assignment.
+Assigned: mafia, doctor, detective, citizen filler; `good_boy` at ≥8 (classic and advanced); sniper if advanced ≥9; silencer if advanced ≥10.  
+`good_boy` is a citizen-aligned named villager (`abilities/good_boy.js`): no night action, town win condition. Live `createMafiaGame` stores `version: 1` (classic), so the classic ≥8 gate is what actually assigns it.
 
 Night resolution (`nightResolver.js`): mafia majority kill vs doctor save; sniper one bullet; silencer `canSpeak: false` (reset next night); detective writes `lastInvestigationResult` on private doc.
 
@@ -664,7 +666,7 @@ Roles live under `players/{uid}/private/data` (client read self only).
 
 Night action, vote, and mafia chat are **client Firestore writes** gated by rules (`firebase_mafia_repository.dart` 52–97; `firestore.rules` 888–955). Phase advance, role assignment, night/vote resolution, rewards: schedulers / Admin SDK.
 
-Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable exists; `MafiaGameScreen` does not call leave. **INCOMPLETE/MOCK** leave UI.
+Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable: starting (cancel if below min, else decrement) or active night/day/discussion/voting (mark eliminated, then win check). Waiting and execution are `unsupported`. `MafiaGameScreen` leave + confirmation matches that server behavior.
 
 Rewards: `rewardDistributor.js` `earn_game` source `mafia`, idempotent `rewardsDistributed`. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history`.
 
@@ -697,17 +699,16 @@ Trigger: `/events/create?groupId=` from group details when `canManageEvents`.
 Upload (`edit_upload_page.dart`, `editsDomain.js`, `editPipeline.js`):
 
 1. Gallery video pick (client)
-2. `startEditUpload` creates doc `status: uploading`, path `edits/{creatorId}/{editId}.mp4`; caption ≤1000, animeTag ≤128
+2. `startEditUpload` creates doc `status: uploading`, `moderationStatus: pending`, path `edits/{creatorId}/{editId}.mp4`; caption ≤1000, animeTag ≤128. Client-supplied `status` / `moderationStatus` are ignored.
 3. Client Storage upload
-4. Wait until status leaves `processing` (5 min timeout)
+4. Client waits for a terminal status (`published` | `failed` | `rejected` | `deleted`; 5 min timeout)
 5. `processEditVideo` onObjectFinalized europe-west3: reject non-mp4 or size > 250MiB; duration ≤0 or >180s fails; ffmpeg scale max 1080, libx264 crf 25; thumbnail at 0.5s max 720px
-6. Publish `status: published`, `score: 20 + creatorQuality`; `earn_publish`; achievement `edit_published`
+6. Automated pre-publish gate (`contentFilter.js` `moderateEditCopy` via `decideEditPublication`): caption + `animeTag` against a banned-term list. Fan Works / Group Chat had report *reasons* only — no reusable word-list existed. Clean copy → `status: published`, `moderationStatus: approved`; `earn_publish`; achievement `edit_published`. Flagged copy → `status: rejected`, `moderationStatus: flagged`, creator-visible `moderationReason`; no rewards. Client cannot override. No human review queue. No visual/audio vendor is wired (`sharp` is resize-only in chat media).
+7. Repost re-runs the same caption/tag filter and refuses flagged source copy.
 
-No moderation step in `editPipeline.js` or `editsDomain.js`. **INCOMPLETE/MOCK** (absent)
+Feed query: `status == published`, `orderBy score desc, createdAt desc` (`firebase_edits_repository.dart`). Discovery uses `scoreEdit` (`ranking.js` 142–165).
 
-Feed query: `status == published`, `orderBy score desc, createdAt desc` (`firebase_edits_repository.dart` 80–85). Discovery uses `scoreEdit` (`ranking.js` 142–165).
-
-Interactions: view (`startEditPlayback` + `recordEditView`: not self, ≥10% of server elapsed, once per day, completion ≥90%), like, comment, reply, comment like, repost (30-day window), share signal weight 3, save signal weight 5. Negative signal has no feed UI. Respect is not an edits action. Delete callable exists; not on the feed UI.
+Interactions: view (`startEditPlayback` + `recordEditView`: not self, ≥10% of server elapsed, once per day, completion ≥90%), like, comment, reply, comment like, repost (30-day window), share signal weight 3, save signal weight 5, Respect via existing `SocialProvider.giveRespect` → `socialGraph.giveRespect` (same 0–7 total, 3000 ms cooldown, self-block, relationship block; no parallel edits Respect store). Negative signal has no feed UI. Delete callable exists; not on the feed UI.
 
 Rules: `edits` documents and aggregates client-unwritable.
 
@@ -808,7 +809,7 @@ FCM tokens: `registerFcmToken` / `unregisterFcmToken`; `users/{uid}/fcmTokens` c
 
 ### 16.2 Client inbox
 
-Stream first 30 by `createdAt` desc. `loadMore` older 30. `_hasMore` initialized `true` (`notification_provider.dart` 27). After a page, `_hasMore = older.isNotEmpty` (80) — a short last page keeps hasMore true. `close()` does not reset `_hasMore`. Inbox `onRetry: () {}` (`notification_inbox_page.dart` 28, 35). Observed behavior: retry control does nothing; load-more may keep requesting when a short page returns.
+Stream first 30 by `createdAt` desc. `loadMore` older 30. `_hasMore` is true only when a page returns `>= pageSize`; a short last page sets it false. `close()` / sign-out resets pagination (`hasMore`, items, counts). Inbox retry calls `NotificationProvider.retry()` (re-subscribes). Home app-bar, Drawer Notifications, Groups/Joined tabs, and Private tab/Drawer all read `UnreadEngine` (notifications count from `users.unreadNotificationsCount`; groups from joined `lastReadAt`; private from `lastMessageAt` vs `participants[uid].lastReadAt`).
 
 Tap: `AppNavigation.go(item.destination)`.
 
@@ -858,7 +859,7 @@ Block checks absent in audited client queries: Home promoted/rising/community Fi
 
 - Account: email display; Privacy and profile → `/profile/edit`; Send password reset (disabled without email); Sign out → `/login`
 - Appearance: System / Light / Dark → SharedPreferences `pubget.settings.themeMode`
-- Language: System / English / العربية → `pubget.settings.locale`
+- Language: System / English / العربية → `pubget.settings.locale` (first-run default **arabic**; login chips and Settings radios share `SettingsProvider`)
 - Help: Guide `/guide`; Terms `/terms`
 - About: version string `1.0.2+18`
 
@@ -924,9 +925,9 @@ Anime catalog is HTTP Jikan behind `CachedAnimeRepository`, not Firestore, excep
 
 ### 22.2 Domain isolation (games / mafia / chat)
 
-Trivia games use collection `games/{gameId}` and callables in `gamesDomain.js`. They do not import `ChatProvider` or `sendGroupMessage`. No production writer of `type: "game"` group messages was found in `functions/src`.
+Trivia games use collection `games/{gameId}` and callables in `gamesDomain.js`. They do not import `groupChat` internals. Create/complete emit `toGameActivity`; `chatCardWriter` posts `type: "game"` cards through `writeAdminChatCard`.
 
-Events write group chat cards via Admin `postEventChatActivity` (`eventsDomain.js` 661–688) — coupling from events domain to `groups/{id}/messages`.
+Events write group chat cards via Admin `postEventChatActivity` (`eventsDomain.js` 661–688) — coupling from events domain to `groups/{id}/messages`. Mafia create/finish uses the same writer via `toMafiaActivity`.
 
 Mafia uses `mafia_games/{id}/chat` (separate from group chat). `mafiaDomain.js` imports `ROLE_PERMISSIONS` from `groupsDomain.js` (line 3) for `manageGames`. Client heartbeat/night/vote/chat write Firestore directly.
 
@@ -1018,7 +1019,7 @@ Auth: HTTPS handlers checked in this audit use `request.auth` / `authUid` / `req
 
 **Economy:** if already loaded and offline, shows cached snapshot (`economy_provider.dart` 73–77); purchases require connection.
 
-**Edits upload:** waits on processing snapshot; 5 minute timeout then client-side failure.
+**Edits upload:** waits for `published` / `failed` / `rejected` / `deleted`; rejected surfaces `moderationReason`; 5 minute timeout then client-side failure.
 
 **App restart:** Firebase Auth restores session; splash reloads profile; onboarding skip flags persist only if Firestore write succeeded (or local skip until process death). SharedPreferences holds theme/locale.
 
@@ -1052,17 +1053,14 @@ Functions unit files (22): socialGraph, avatarPrivacy, groupsDomain, groupChat, 
 
 ## 26. Localization / RTL
 
-`MaterialApp.router` `supportedLocales`: `en`, `ar` (`pubget_app.dart` 634). Delegates: Material, Widgets, Cupertino. No `.arb` / `lib/l10n` generated catalog exists.
+`MaterialApp.router` `supportedLocales`: `en`, `ar`. Delegates: Material, Widgets, Cupertino. Product catalog is `lib/core/l10n/app_strings.dart` (no generated `.arb`). First-run locale is **Arabic**. Unknown device locales fall back to `ar`, not `en`.
 
-Locale comes from `SettingsProvider` (`system` → null, `english` → `Locale('en')`, `arabic` → `Locale('ar')`). Choosing العربية applies Flutter’s Arabic Material localizations (system chrome, some widgets RTL). Feature copy is English string literals throughout `lib/`.
+Locale comes from `SettingsProvider` (`system` → null / device, `english` → `Locale('en')`, `arabic` → `Locale('ar')`). Login, register, forgot-password, and terms show `AuthLanguagePicker` (العربية | English). Settings language radios sit above Appearance and write the same `SettingsProvider`. Auth + Settings + shell chrome (tabs, Drawer, Home title) read `AppStrings`.
 
-Examples of English (or mixed) UI that remain when locale is `ar`:
+Examples of English UI that remain when locale is `ar` (feature bodies, not chrome):
 
-- Splash `Premium Anime Community` / `Preparing your experience…` (`splash_page.dart`)
-- Login `Welcome back`, `Sign in`, `Forgot password?` (`login_page.dart`)
-- Home AppBar `Discover` (`home_page.dart` 74)
-- Settings section titles Account / Appearance / Language / Help / About; only the Arabic option label is `العربية` (`settings_page.dart` 161–164)
 - Guide topics and bodies all English (`guide_page.dart`)
+- Home section cards still mixed English (`home_page.dart`)
 - Chat placeholder snackbar `This action is prepared for a later Pubget prompt.` (`group_chat_page.dart` 310–315)
 - Economy `Sponsored`, `Real payments are not connected in this build.` (`economy_types.dart`)
 - Notification titles `New group message`, etc. (`notification_inbox_page.dart` 138–148)
@@ -1090,21 +1088,18 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | INCOMPLETE/MOCK | `updateGroupSettings`, `unbanMember` | Server + tests; no `lib/` UI |
 | INCOMPLETE/MOCK | `group_members_page.dart` 174 | Change role always senpai |
 | INCOMPLETE/MOCK | `group_provider.dart` 97–101 | Join sets `uid: ''` |
-| INCOMPLETE/MOCK | `gamesDomain.js` mafia `implemented: false` vs client `true` | Dual registry |
 | INCOMPLETE/MOCK | game `difficulty` | Stored, unused by engines |
 | INCOMPLETE/MOCK | `GameStrings.reconnecting` | Unused |
-| INCOMPLETE/MOCK | mafia `good_boy` | Registered, never assigned |
-| INCOMPLETE/MOCK | mafia leave | Callable + repo; no screen control |
-| INCOMPLETE/MOCK | edit moderation | Absent in pipeline |
+| Observed | edit moderation | Caption/tag keyword gate before publish; no visual/audio vendor |
 | INCOMPLETE/MOCK | `economy_widgets.dart` 144–161 | Sponsored ad placeholder |
 | INCOMPLETE/MOCK | `restorePremiumPurchases` | deferred, provider not configured |
 | INCOMPLETE/MOCK | `admin_adjustment` / `refund` | Enum only |
 | INCOMPLETE/MOCK | Ad placements groupEntry, storeFooter | Configured, not placed |
-| INCOMPLETE/MOCK | `notification_inbox_page.dart` 28, 35 | `onRetry: () {}` |
+| Observed | notification inbox | Retry re-fetches; `hasMore` follows page size |
 | INCOMPLETE/MOCK | Home section names `*Placeholder` | Real strips, still named placeholder in enum |
 | INCOMPLETE/MOCK | `ScoringStrategyRegistry` | No-op client scoring |
-| INCOMPLETE/MOCK | type `game` group cards | Render only |
-| Observed | `notification_provider.dart` 27, 80, 135–147 | `hasMore` init true; last page if non-empty keeps true; `close` does not reset it |
+| Observed | Mafia waiting/execution leave | Server `leaveTransition` returns `unsupported`; UI hides leave in those phases |
+| Observed | `UnreadEngine` | Shared shell/Drawer unread; no visual/audio vendor; inbox types still a subset |
 | Observed | `firestore.rules` vs `PubgetUser.toMap` | create/update keys vs `displayName` / `whoCanMessageMe` |
 | Unexported | `index.js` 814–950 | `legacyOnNewGroupMessage`, `legacyOnJoinRequest` not in `exports` |
 

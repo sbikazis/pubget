@@ -45,6 +45,12 @@ function createFakeDb(seed = {}) {
         collection(name) {
           return makeCollection(`${resolvedPath}/${name}`);
         },
+        async set(data) {
+          store.set(resolvedPath, clone(data));
+        },
+        async update(data) {
+          store.set(resolvedPath, applyUpdate(store.get(resolvedPath), data));
+        },
       };
     },
     async get() {
@@ -119,6 +125,14 @@ function domain(db) {
   });
 }
 
+test("mafia domain posts cards via contract and does not import groupChat", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/mafia/mafiaDomain.js"), "utf8");
+  assert.equal(source.includes('require("../groupChat")'), false);
+  assert.equal(source.includes('require("../chatCardWriter")'), true);
+});
+
 test("mafia lobby create is server-side and join is idempotent", async () => {
   const db = createFakeDb(seed());
   const mafia = domain(db);
@@ -137,6 +151,11 @@ test("mafia lobby create is server-side and join is idempotent", async () => {
   await mafia.joinMafiaGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await mafia.joinMafiaGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`mafia_games/${created.gameId}`).playersCount, 2);
+  const card = db.store.get(`groups/g1/messages/card-game-${created.gameId}-created`);
+  assert.equal(card.type, "game");
+  assert.equal(card.senderId, "system");
+  assert.equal(card.gameActivity.kind, "created");
+  assert.equal(card.gameActivity.gameType, "mafia");
 });
 
 test("mafia start requires the host, min players, and cannot be forced by a client role", async () => {

@@ -56,8 +56,8 @@ final class PackageAnimeHttpClient implements AnimeHttpClient {
 final class ResilientAnimeHttpClient implements AnimeHttpClient {
   ResilientAnimeHttpClient({
     required AnimeHttpClient inner,
-    this.minInterval = const Duration(milliseconds: 350),
-    this.maxRetries = 2,
+    this.minInterval = const Duration(milliseconds: 450),
+    this.maxRetries = 3,
     this.requestTimeout = const Duration(seconds: 10),
     Duration Function(int attempt)? backoff,
     Future<void> Function(Duration delay)? delay,
@@ -152,8 +152,8 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
   Duration _retryDelay(int attempt, Duration? retryAfter) {
     final backoff = _backoff(attempt);
     if (retryAfter == null) return backoff;
-    final capped = retryAfter > const Duration(seconds: 5)
-        ? const Duration(seconds: 5)
+    final capped = retryAfter > const Duration(seconds: 8)
+        ? const Duration(seconds: 8)
         : retryAfter;
     return capped > backoff ? capped : backoff;
   }

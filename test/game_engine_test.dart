@@ -75,8 +75,14 @@ void main() {
     test('registers known types and looks them up', () {
       expect(GameTypeRegistry.isRegistered(GameType.guessCharacter), isTrue);
       expect(GameTypeRegistry.of(GameType.mafia).implemented, isTrue);
+      expect(GameTypeRegistry.of(GameType.mafia).genericCreate, isFalse);
       expect(GameTypeRegistry.of(GameType.animeChain).name, 'Anime Chain');
       expect(GameTypeRegistry.implemented, hasLength(4));
+      expect(GameTypeRegistry.genericCreate, hasLength(3));
+      expect(
+        GameTypeRegistry.genericCreate.map((spec) => spec.type),
+        isNot(contains(GameType.mafia)),
+      );
       expect(
         GameTypeRegistry.configurationFor(GameType.guessCharacter).minPlayers,
         2,
@@ -90,7 +96,15 @@ void main() {
     test('unknown game type lookup returns null', () {
       expect(GameTypeRegistry.byName('unknownGame'), isNull);
       expect(GameTypeRegistry.byName('mafia')?.implemented, isTrue);
-      expect(() => GameEngine.assertCanCreate(GameType.mafia), returnsNormally);
+      expect(GameTypeRegistry.byName('mafia')?.genericCreate, isFalse);
+      expect(
+        () => GameEngine.assertCanCreate(GameType.mafia),
+        throwsA(isA<GameException>()),
+      );
+      expect(
+        () => GameEngine.assertCanCreate(GameType.guessCharacter),
+        returnsNormally,
+      );
     });
   });
 

@@ -26,6 +26,7 @@ import 'package:pubget/features/games/widgets/game_play_panels.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
+import 'package:pubget/features/mafia/models/mafia_leave_copy.dart';
 import 'package:pubget/features/mafia/models/mafia_models.dart';
 import 'package:pubget/features/mafia/providers/mafia_provider.dart';
 import 'package:pubget/features/mafia/repositories/mafia_repository.dart';
@@ -34,6 +35,15 @@ import 'package:pubget/features/mafia/screens/mafia_game_screen.dart';
 import 'authentication_test_support.dart';
 
 void main() {
+  test('mafia leave copy matches server-supported statuses only', () {
+    expect(MafiaLeaveCopy.canLeave('waiting'), isFalse);
+    expect(MafiaLeaveCopy.canLeave('starting'), isTrue);
+    expect(MafiaLeaveCopy.canLeave('night'), isTrue);
+    expect(MafiaLeaveCopy.canLeave('execution'), isFalse);
+    expect(MafiaLeaveCopy.bodyFor('night'), contains('eliminated'));
+    expect(MafiaLeaveCopy.bodyFor('starting'), contains('cancelled'));
+  });
+
   testWidgets('achievements page shows locked and unlocked items', (
     tester,
   ) async {
@@ -86,6 +96,38 @@ void main() {
     );
     expect(start.onPressed, isNull);
     expect(find.textContaining('Your role:'), findsNothing);
+    expect(find.text(MafiaLeaveCopy.leave), findsNothing);
+    mafia.dispose();
+  });
+
+  testWidgets('mafia leave confirms mid-game elimination without role reassignment', (
+    tester,
+  ) async {
+    final auth = await _auth();
+    final repository = _FakeMafiaRepository(status: 'night', phase: 'night');
+    final mafia = MafiaProvider(repository: repository);
+    addTearDown(mafia.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<MafiaProvider>.value(value: mafia),
+        ],
+        child: const MaterialApp(home: MafiaGameScreen(gameId: 'm1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(MafiaLeaveCopy.leave), findsOneWidget);
+    await tester.tap(find.text(MafiaLeaveCopy.leave));
+    await tester.pump();
+    expect(find.text(MafiaLeaveCopy.title), findsOneWidget);
+    expect(find.text(MafiaLeaveCopy.bodyFor('night')), findsOneWidget);
+    await tester.tap(find.text(MafiaLeaveCopy.confirm));
+    await tester.pump();
+    expect(repository.leaveCalls, 1);
     mafia.dispose();
   });
 
@@ -368,6 +410,15 @@ final class _FakeAchievementRepository implements AchievementRepository {
 }
 
 final class _FakeMafiaRepository implements MafiaRepository {
+  _FakeMafiaRepository({
+    this.status = 'waiting',
+    this.phase = 'waiting',
+  });
+
+  final String status;
+  final String phase;
+  var leaveCalls = 0;
+
   @override
   Future<Result<String>> create({
     required String groupId,
@@ -382,7 +433,10 @@ final class _FakeMafiaRepository implements MafiaRepository {
   Future<Result<void>> start(String gameId) async => const Success<void>(null);
 
   @override
-  Future<Result<void>> leave(String gameId) async => const Success<void>(null);
+  Future<Result<void>> leave(String gameId) async {
+    leaveCalls += 1;
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> submitNightAction({
@@ -412,14 +466,14 @@ final class _FakeMafiaRepository implements MafiaRepository {
   @override
   Stream<Result<MafiaGame>> watchGame(String gameId) =>
       Stream<Result<MafiaGame>>.value(
-        const Success(
+        Success(
           MafiaGame(
             id: 'm1',
             groupId: 'g1',
             createdBy: 'alice',
-            status: 'waiting',
-            currentPhase: 'waiting',
-            playersCount: 1,
+            status: status,
+            currentPhase: phase,
+            playersCount: status == 'waiting' ? 1 : 5,
             minPlayers: 4,
             maxPlayers: 8,
           ),
@@ -705,4 +759,14 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
       const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
 }

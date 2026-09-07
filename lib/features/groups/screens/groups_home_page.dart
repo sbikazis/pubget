@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/group_provider.dart';
@@ -34,64 +35,66 @@ class _GroupsHomePageState extends State<GroupsHomePage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
+    final copy = AppStrings.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: const AppShellMenuButton(),
-        title: const Text('Groups'),
+        title: Text(copy.groupsTitle),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => AppNavigation.go(context, '/groups/create'),
         icon: const Icon(Icons.add),
-        label: const Text('Create'),
+        label: Text(copy.createGroup),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: <Widget>[
-            PubgetSearchField(
-              controller: _search,
-              hint: 'Search groups',
-              onChanged: provider.search,
-              onClear: () {
-                _search.clear();
-                provider.search('');
-              },
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: PubgetLoadingStateView(
-                state: provider.state,
-                onRetry: () => provider.search(_search.text),
-                empty: PubgetEmptyState(
-                  title: 'No groups found',
-                  message:
-                      'Discover a community or create the first group on Pubget.',
-                  icon: Icons.groups_outlined,
-                  action: PubgetPrimaryButton(
-                    onPressed: () =>
-                        AppNavigation.go(context, '/groups/create'),
-                    semanticLabel: 'Create a group',
-                    child: const Text('Create a group'),
+      body: PubgetAtmosphere(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            children: <Widget>[
+              PubgetSearchField(
+                controller: _search,
+                hint: copy.searchGroups,
+                onChanged: provider.search,
+                onClear: () {
+                  _search.clear();
+                  provider.search('');
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Expanded(
+                child: PubgetLoadingStateView(
+                  state: provider.state,
+                  onRetry: () => provider.search(_search.text),
+                  empty: PubgetEmptyState(
+                    title: copy.noGroupsFound,
+                    message: copy.noGroupsMessage,
+                    icon: Icons.groups_outlined,
+                    action: PubgetPrimaryButton(
+                      onPressed: () =>
+                          AppNavigation.go(context, '/groups/create'),
+                      semanticLabel: copy.createAGroup,
+                      child: Text(copy.createAGroup),
+                    ),
+                  ),
+                  error: PubgetErrorState(
+                    message: provider.failure?.message ?? copy.groupsFailed,
+                    onRetry: () => provider.search(_search.text),
+                  ),
+                  offline: PubgetOfflineState(
+                    onRetry: () => provider.search(_search.text),
+                  ),
+                  child: ListView.separated(
+                    itemCount: provider.searchResults.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, index) =>
+                        GroupListCard(group: provider.searchResults[index]),
                   ),
                 ),
-                error: PubgetErrorState(
-                  message:
-                      provider.failure?.message ?? 'Groups could not load.',
-                  onRetry: () => provider.search(_search.text),
-                ),
-                offline: PubgetOfflineState(
-                  onRetry: () => provider.search(_search.text),
-                ),
-                child: ListView.separated(
-                  itemCount: provider.searchResults.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) =>
-                      GroupListCard(group: provider.searchResults[index]),
-                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

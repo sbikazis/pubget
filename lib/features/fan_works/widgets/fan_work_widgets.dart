@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -134,23 +135,10 @@ class FanWorkHomeStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    FanWorkStrings.feedTitle,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/fan-works'),
-                  semanticLabel: FanWorkStrings.seeAll,
-                  child: const Text(FanWorkStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionFanWorks,
+            actionLabel: FanWorkStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/fan-works'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (feed.state == LoadingState.loading && feed.items.isEmpty)

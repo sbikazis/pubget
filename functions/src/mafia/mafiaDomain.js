@@ -1,6 +1,8 @@
 "use strict";
 
 const { ROLE_PERMISSIONS } = require("../groupsDomain");
+const { postFromActivity } = require("../chatCardWriter");
+const { toMafiaActivity } = require("./mafiaActivity");
 
 const TITLE_MAX = 80;
 const DEFAULT_MIN = 4;
@@ -52,7 +54,22 @@ function publicPlayer(uid, name, avatar, FieldValue) {
   };
 }
 
-function createMafiaDomain({ db, FieldValue, Timestamp, HttpsError, notificationBuilder }) {
+function createMafiaDomain({
+  db, FieldValue, Timestamp, HttpsError, notificationBuilder, postChatCard,
+}) {
+  async function emitChatCard(event, game) {
+    const activity = toMafiaActivity(event, game);
+    if (!activity) return;
+    try {
+      if (typeof postChatCard === "function") {
+        await postChatCard(activity);
+        return;
+      }
+      await postFromActivity(db, FieldValue, activity);
+    } catch (_) {
+      // Chat cards must not roll back lobby creation.
+    }
+  }
   function gameRef(gameId) {
     return db.collection("mafia_games").doc(gameId);
   }
@@ -181,6 +198,14 @@ function createMafiaDomain({ db, FieldValue, Timestamp, HttpsError, notification
       body: "A Mafia game is waiting.",
       pushWorthy: true,
     });
+    await emitChatCard(
+      {
+        type: "GameCreated",
+        actorId: uid,
+        payload: { minPlayers, maxPlayers },
+      },
+      { id: ref.id, groupId, type: "mafia" },
+    );
     return { gameId: ref.id, status: "waiting" };
   }
 
@@ -282,4 +307,5 @@ function createMafiaDomain({ db, FieldValue, Timestamp, HttpsError, notification
 
 module.exports = {
   createMafiaDomain,
+  toMafiaActivity,
 };

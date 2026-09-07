@@ -10,10 +10,13 @@ import '../models/unread_counts.dart';
 import '../repositories/notification_repository.dart';
 
 final class NotificationProvider extends ChangeNotifier {
-  NotificationProvider({required NotificationRepository repository})
-    : _repository = repository;
+  NotificationProvider({
+    required NotificationRepository repository,
+    this.pageSize = 30,
+  }) : _repository = repository;
 
   final NotificationRepository _repository;
+  final int pageSize;
   final List<AppNotification> _items = <AppNotification>[];
   StreamSubscription<Result<List<AppNotification>>>? _itemsSubscription;
   StreamSubscription<Result<UnreadCounts>>? _countSubscription;
@@ -24,8 +27,9 @@ final class NotificationProvider extends ChangeNotifier {
   int _groupsUnreadCount = 0;
   int _privateUnreadCount = 0;
   int _mentionsUnreadCount = 0;
-  bool _hasMore = true;
+  bool _hasMore = false;
   bool _loadingMore = false;
+  bool _loadedMore = false;
   bool _disposed = false;
 
   List<AppNotification> get items => List.unmodifiable(_items);
@@ -37,13 +41,21 @@ final class NotificationProvider extends ChangeNotifier {
   int get mentionsUnreadCount => _mentionsUnreadCount;
   bool get hasMore => _hasMore;
 
-  Future<void> open(String uid) async {
-    if (_uid == uid) return;
+  Future<void> open(String uid, {bool force = false}) async {
+    if (!force && _uid == uid && _itemsSubscription != null) return;
     await close();
     _uid = uid;
     _state = LoadingState.loading;
-    notifyListeners();
-    _itemsSubscription = _repository.getNotifications(uid).listen(_receive);
+    _hasMore = false;
+    _loadedMore = false;
+    _safeNotify();
+    final firstPage = Completer<void>();
+    _itemsSubscription = _repository
+        .getNotifications(uid, limit: pageSize)
+        .listen((result) {
+          _receive(result);
+          if (!firstPage.isCompleted) firstPage.complete();
+        });
     _countSubscription = _repository.watchUnreadCounts(uid).listen((result) {
       result.fold(
         onSuccess: (counts) {
@@ -59,6 +71,7 @@ final class NotificationProvider extends ChangeNotifier {
         },
       );
     });
+    await firstPage.future;
   }
 
   Future<void> loadMore() async {
@@ -72,12 +85,14 @@ final class NotificationProvider extends ChangeNotifier {
     final result = await _repository.getOlderNotifications(
       uid: uid,
       before: _items.last,
+      limit: pageSize,
     );
     result.fold(
       onSuccess: (older) {
         final known = _items.map((item) => item.id).toSet();
         _items.addAll(older.where((item) => known.add(item.id)));
-        _hasMore = older.isNotEmpty;
+        _loadedMore = true;
+        _hasMore = older.length >= pageSize;
         _state = _items.isEmpty ? LoadingState.empty : LoadingState.loaded;
       },
       onFailure: _setFailure,
@@ -117,6 +132,9 @@ final class NotificationProvider extends ChangeNotifier {
         _items
           ..clear()
           ..addAll(merged);
+        if (!_loadedMore) {
+          _hasMore = incoming.length >= pageSize;
+        }
         _state = _items.isEmpty ? LoadingState.empty : LoadingState.loaded;
         _failure = null;
       },
@@ -132,6 +150,12 @@ final class NotificationProvider extends ChangeNotifier {
         : LoadingState.error;
   }
 
+  Future<void> retry() async {
+    final uid = _uid;
+    if (uid == null) return;
+    await open(uid, force: true);
+  }
+
   Future<void> close() async {
     await _itemsSubscription?.cancel();
     await _countSubscription?.cancel();
@@ -143,6 +167,10 @@ final class NotificationProvider extends ChangeNotifier {
     _groupsUnreadCount = 0;
     _privateUnreadCount = 0;
     _mentionsUnreadCount = 0;
+    _hasMore = false;
+    _loadingMore = false;
+    _loadedMore = false;
+    _failure = null;
     _state = LoadingState.initial;
   }
 
