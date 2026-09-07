@@ -165,6 +165,36 @@ final class AnimeCommunityStats {
   }
 }
 
+enum AnimeScoreSource { app, mal }
+
+final class AnimeDisplayedScore {
+  const AnimeDisplayedScore({required this.value, required this.source});
+
+  final double value;
+  final AnimeScoreSource source;
+
+  String get badge => source == AnimeScoreSource.app ? 'A' : 'M';
+
+  static AnimeDisplayedScore? resolve({
+    double? malScore,
+    AnimeCommunityStats? community,
+  }) {
+    if (community != null && community.hasRatings) {
+      return AnimeDisplayedScore(
+        value: community.averageScore,
+        source: AnimeScoreSource.app,
+      );
+    }
+    if (malScore != null) {
+      return AnimeDisplayedScore(
+        value: malScore,
+        source: AnimeScoreSource.mal,
+      );
+    }
+    return null;
+  }
+}
+
 final class AnimeReview {
   const AnimeReview({
     required this.animeId,

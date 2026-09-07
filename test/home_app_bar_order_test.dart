@@ -41,10 +41,14 @@ void main() {
     final menu = tester.getRect(find.byKey(const Key('app-shell-menu')));
 
     expect(avatar.left, lessThan(notify.left));
+    expect(avatar.right + 11, lessThanOrEqualTo(notify.left));
+    expect(notify.right + 11, lessThanOrEqualTo(coins.left));
     expect(notify.right, lessThan(logo.left));
+    expect(coins.right, lessThan(logo.left));
     expect(coins.center.dx, lessThan(logo.center.dx));
-    expect(logo.center.dx, closeTo(screen.width / 2, 48));
+    expect(logo.center.dx, closeTo(screen.width / 2, 16));
     expect(settings.left, greaterThan(logo.right));
+    expect(settings.right + 11, lessThanOrEqualTo(menu.left));
     expect(menu.left, greaterThan(settings.left));
     expect(menu.center.dx, greaterThan(screen.width * 0.72));
   });

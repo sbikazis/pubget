@@ -109,6 +109,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1));
     expect(repository.searchCalls, 1);
     expect(repository.lastFilter?.genreId, '1');
+    expect(repository.lastFilter?.sort, AnimeSearchSort.members);
     expect(list.items, isNotEmpty);
   });
 

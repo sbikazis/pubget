@@ -11,6 +11,8 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/anime_models.dart';
+import '../models/anime_rating_models.dart';
+import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
 
 abstract final class AnimeLinks {
@@ -118,6 +120,7 @@ class AnimePoster extends StatelessWidget {
     this.width,
     this.height,
     this.memCacheWidth = 240,
+    this.fit = BoxFit.cover,
     super.key,
   });
 
@@ -125,6 +128,7 @@ class AnimePoster extends StatelessWidget {
   final double? width;
   final double? height;
   final int memCacheWidth;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +149,7 @@ class AnimePoster extends StatelessWidget {
       imageUrl: url,
       width: width,
       height: height,
-      fit: BoxFit.cover,
+      fit: fit,
       memCacheWidth: memCacheWidth,
       borderRadius: radius,
     );
@@ -179,31 +183,14 @@ class AnimePosterCard extends StatelessWidget {
                   aspectRatio: 2 / 3,
                   child: AnimePoster(images: anime.images, memCacheWidth: 320),
                 ),
-                if (anime.score != null)
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppColors.royalNight.withValues(alpha: 0.82),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: AppColors.goldSheen),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        child: Text(
-                          anime.score!.toStringAsFixed(1),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.goldPale,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: AnimeScoreBadge(
+                    malScore: anime.score,
+                    community: maybeAnimeHubSocial(context)?.statsFor(anime.id),
                   ),
+                ),
               ],
             ),
             Padding(
@@ -284,15 +271,26 @@ class AnimeResultTile extends StatelessWidget {
                         style: theme.textTheme.bodySmall,
                       ),
                       const Spacer(),
-                      Text(
-                        [
-                          if (anime.score != null)
-                            'MAL ${anime.score!.toStringAsFixed(1)}',
-                          if (anime.studios.isNotEmpty) anime.studios.first,
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall,
+                      Row(
+                        children: <Widget>[
+                          AnimeScoreBadge(
+                            malScore: anime.score,
+                            community: maybeAnimeHubSocial(
+                              context,
+                            )?.statsFor(anime.id),
+                          ),
+                          if (anime.studios.isNotEmpty) ...<Widget>[
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                anime.studios.first,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -546,13 +544,85 @@ class AnimePaginatedList extends StatelessWidget {
   }
 }
 
+class AnimeScoreBadge extends StatelessWidget {
+  const AnimeScoreBadge({
+    this.malScore,
+    this.community,
+    this.large = false,
+    super.key,
+  });
+
+  final double? malScore;
+  final AnimeCommunityStats? community;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = AnimeDisplayedScore.resolve(
+      malScore: malScore,
+      community: community,
+    );
+    if (score == null) return const SizedBox.shrink();
+    final isApp = score.source == AnimeScoreSource.app;
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      key: Key(isApp ? 'score-badge-app' : 'score-badge-mal'),
+      decoration: BoxDecoration(
+        color: AppColors.royalNight.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isApp ? AppColors.goldSheen : const Color(0xFF2E51A2),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: large ? 10 : 8,
+          vertical: large ? 5 : 3,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: large ? 18 : 16,
+              height: large ? 18 : 16,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isApp ? AppColors.gold : const Color(0xFF2E51A2),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                score.badge,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: large ? 11 : 10,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              score.value.toStringAsFixed(1),
+              style: (large
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.labelSmall)
+                  ?.copyWith(
+                    color: AppColors.goldPale,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _meta(Anime anime) {
   final parts = <String>[
     if (anime.type != null && anime.type!.isNotEmpty) anime.type!,
     if (anime.status != null && anime.status!.isNotEmpty) anime.status!,
     if (anime.year != null) '${anime.year}',
     if (anime.season != null) anime.season!.label,
-    if (anime.score != null) anime.score!.toStringAsFixed(1),
   ];
   return parts.join(' · ');
 }

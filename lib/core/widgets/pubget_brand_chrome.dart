@@ -208,12 +208,14 @@ class PubgetKatanaCoinChip extends StatelessWidget {
     required this.balance,
     required this.tooltip,
     required this.onPressed,
+    this.compact = false,
     super.key,
   });
 
   final int balance;
   final String tooltip;
   final VoidCallback onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -227,11 +229,11 @@ class PubgetKatanaCoinChip extends StatelessWidget {
           onTap: onPressed,
           borderRadius: BorderRadius.circular(999),
           child: Ink(
-            padding: const EdgeInsetsDirectional.only(
-              start: 4,
-              end: AppSpacing.md,
-              top: 4,
-              bottom: 4,
+            padding: EdgeInsetsDirectional.only(
+              start: compact ? 3 : 4,
+              end: compact ? AppSpacing.sm : AppSpacing.md,
+              top: compact ? 3 : 4,
+              bottom: compact ? 3 : 4,
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
@@ -252,8 +254,8 @@ class PubgetKatanaCoinChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const PubgetCoinIcon(size: 34),
-                const SizedBox(width: AppSpacing.sm),
+                PubgetCoinIcon(size: compact ? 22 : 34),
+                SizedBox(width: compact ? 6 : AppSpacing.sm),
                 Text(
                   '$balance',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(

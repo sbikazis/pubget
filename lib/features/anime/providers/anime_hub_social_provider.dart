@@ -16,6 +16,8 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
   bool _disposed = false;
 
   AnimeCommunityStats? _stats;
+  final Map<String, AnimeCommunityStats> _statsById =
+      <String, AnimeCommunityStats>{};
   AnimeReview? _myRating;
   List<AnimeReview> _reviews = const <AnimeReview>[];
   LoadingState _animeState = LoadingState.initial;
@@ -40,6 +42,13 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
   String? _userId;
 
   AnimeCommunityStats? get stats => _stats;
+
+  AnimeCommunityStats? statsFor(String animeId) {
+    final id = animeId.trim();
+    if (id.isEmpty) return null;
+    if (_stats?.animeId == id) return _stats;
+    return _statsById[id];
+  }
   AnimeReview? get myRating => _myRating;
   List<AnimeReview> get reviews => _reviews;
   LoadingState get animeState => _animeState;
@@ -70,6 +79,8 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     final reviews = await _repository.listReviews(animeId);
     if (_disposed || _animeId != animeId) return;
     _stats = stats.valueOrNull;
+    final loaded = _stats;
+    if (loaded != null) _statsById[loaded.animeId] = loaded;
     _myRating = mine.valueOrNull;
     _reviews = reviews.valueOrNull ?? const <AnimeReview>[];
     _animeFailure =
@@ -136,6 +147,9 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (items) {
         _topRated = items;
+        for (final item in items) {
+          _statsById[item.animeId] = item;
+        }
         _topState = items.isEmpty ? LoadingState.empty : LoadingState.loaded;
         _topFailure = null;
       },

@@ -36,6 +36,18 @@ void main() {
     await social.loadTopRated();
     expect(social.topState, LoadingState.loaded);
     expect(social.topRated.single.animeId, '16498');
+    expect(social.statsFor('16498')?.hasRatings, isTrue);
+    expect(
+      AnimeDisplayedScore.resolve(
+        malScore: 7.2,
+        community: social.statsFor('16498'),
+      )?.badge,
+      'A',
+    );
+    expect(
+      AnimeDisplayedScore.resolve(malScore: 7.2, community: null)?.badge,
+      'M',
+    );
 
     await social.loadPopularCharacters();
     expect(social.popularCharacters.single.favoritesCount, 42);
