@@ -184,6 +184,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('character-10')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('character-10')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));

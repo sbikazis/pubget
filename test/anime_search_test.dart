@@ -57,6 +57,7 @@ void main() {
 
   test('prefix queries run immediately and keep matching titles', () async {
     final repository = FakeAnimeRepository(
+      filterSearchByQuery: true,
       page: AnimePage(
         items: <Anime>[
           sampleAnime(id: '1', title: 'Demon Slayer'),
