@@ -86,6 +86,16 @@ void main() {
     expect(character.url, 'https://myanimelist.net/character/10');
   });
 
+  test('splits Jikan about text into facts and narrative', () {
+    final sections = CharacterAboutSections.parse(
+      'Birthday: Unknown\nHeight: 150 cm\n\nAn elf mage who has lived for centuries.',
+    );
+    expect(sections.facts, hasLength(2));
+    expect(sections.facts.first.label, 'Birthday');
+    expect(sections.facts.first.value, 'Unknown');
+    expect(sections.narrative, contains('An elf mage'));
+  });
+
   test('skips malformed anime entries instead of throwing', () {
     final items = mapJikanAnimeList(<Object?>[
       <String, Object?>{'mal_id': 1},

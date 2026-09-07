@@ -81,6 +81,44 @@ void main() {
     expect(find.text(AnimeStrings.nothingFound), findsWidgets);
   });
 
+  testWidgets('hub search field stays mounted while typing a name', (
+    tester,
+  ) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    final search = find.byKey(const Key('anime-hub-search'));
+    final element = tester.element(search);
+    await tester.enterText(find.byType(TextField), 'frieren');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(tester.element(search), same(element));
+    await tester.pumpAndSettle();
+    expect(repository.searchCalls, greaterThan(0));
+    expect(find.text('Frieren'), findsWidgets);
+  });
+
+  testWidgets('hub type and season chips search without a name', (tester) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('filter-type-tv')));
+    await tester.pumpAndSettle();
+    expect(repository.searchCalls, greaterThan(0));
+    expect(repository.lastFilter?.type, AnimeTypeFilter.tv);
+    expect(find.text('Frieren'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
+    expect(repository.lastFilter?.season, AnimeSeason.fall);
+    expect(repository.lastFilter?.year, isNotNull);
+    expect(find.text('Frieren'), findsWidgets);
+  });
+
   testWidgets('details success, character failure does not hide anime', (
     tester,
   ) async {

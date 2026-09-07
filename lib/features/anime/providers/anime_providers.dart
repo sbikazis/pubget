@@ -193,8 +193,8 @@ final class AnimeListProvider extends ChangeNotifier {
   AnimeListProvider({
     required AnimeRepository repository,
     Analytics? analytics,
-    this.debounce = const Duration(milliseconds: 120),
-    this.minQueryLength = 2,
+    this.debounce = const Duration(milliseconds: 50),
+    this.minQueryLength = 1,
   }) : _repository = repository,
        _analytics = analytics;
 
@@ -328,6 +328,11 @@ final class AnimeListProvider extends ChangeNotifier {
   void clearSearch() {
     _searchDebounce?.cancel();
     _query = '';
+    _filter = _filter.copyWith(text: '');
+    if (_filter.hasNonTextConstraints) {
+      _scheduleSearch(immediate: true);
+      return;
+    }
     _reset();
     _safeNotify();
   }
@@ -540,6 +545,9 @@ final class AnimeDetailsProvider extends ChangeNotifier {
   List<String> _favoriteIds = const <String>[];
   bool _savingFavorite = false;
   OnboardingProvider? _onboarding;
+  final Map<String, AnimeCharacter> _characterProfiles = <String, AnimeCharacter>{};
+  final Map<String, Future<AnimeCharacter>> _characterInflight =
+      <String, Future<AnimeCharacter>>{};
 
   Anime? get anime => _anime;
   List<AnimeCharacter> get characters => _characters;
@@ -582,6 +590,7 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     if (!refresh) {
       _anime = null;
       _characters = const <AnimeCharacter>[];
+      _characterProfiles.clear();
     }
     _safeNotify();
     _analytics?.logEvent('anime_open', parameters: {'animeId': id});
@@ -617,25 +626,36 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     return _loadCharacters(id);
   }
 
-  Future<AnimeCharacter> characterProfile(AnimeCharacter preview) async {
+  Future<AnimeCharacter> characterProfile(AnimeCharacter preview) {
+    final cached = _characterProfiles[preview.id];
+    if (cached != null && cached.hasFullProfile) {
+      return Future<AnimeCharacter>.value(preview.mergeDetails(cached));
+    }
+    final pending = _characterInflight[preview.id];
+    if (pending != null) {
+      return pending.then(preview.mergeDetails);
+    }
+    final future = _loadCharacterProfile(preview);
+    _characterInflight[preview.id] = future;
+    return future.whenComplete(() => _characterInflight.remove(preview.id));
+  }
+
+  Future<AnimeCharacter> _loadCharacterProfile(AnimeCharacter preview) async {
     final result = await _repository.getCharacterDetails(preview.id);
-    return result.fold(
-      onSuccess: (details) => preview.copyWith(
-        name: details.name,
-        about: details.about,
-        nameKanji: details.nameKanji,
-        nicknames: details.nicknames,
-        imageUrl: details.imageUrl,
-        favorites: details.favorites,
-        url: details.url,
-        voiceActors: details.voiceActors.isNotEmpty
-            ? details.voiceActors
-            : preview.voiceActors,
-        animeography: details.animeography,
-        mangaography: details.mangaography,
-      ),
+    final merged = result.fold(
+      onSuccess: preview.mergeDetails,
       onFailure: (_) => preview,
     );
+    if (merged.hasFullProfile) {
+      _characterProfiles[preview.id] = merged;
+    }
+    return merged;
+  }
+
+  void _prefetchCharacterProfiles(List<AnimeCharacter> characters) {
+    for (final character in characters.take(8)) {
+      unawaited(characterProfile(character));
+    }
   }
 
   Future<void> toggleFavorite() async {
@@ -692,6 +712,9 @@ final class AnimeDetailsProvider extends ChangeNotifier {
             ? LoadingState.empty
             : LoadingState.loaded;
         _charactersFailure = null;
+        if (characters.isNotEmpty) {
+          _prefetchCharacterProfiles(characters);
+        }
       },
       onFailure: (failure) {
         _charactersFailure = failure;

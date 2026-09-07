@@ -26,8 +26,14 @@ final class AnimeHttpResponse {
   }
 }
 
+enum AnimeRequestPriority { interactive, catalog }
+
 abstract interface class AnimeHttpClient {
-  Future<AnimeHttpResponse> get(Uri uri, {Duration? timeout});
+  Future<AnimeHttpResponse> get(
+    Uri uri, {
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  });
 }
 
 final class PackageAnimeHttpClient implements AnimeHttpClient {
@@ -39,6 +45,7 @@ final class PackageAnimeHttpClient implements AnimeHttpClient {
   Future<AnimeHttpResponse> get(
     Uri uri, {
     Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
   }) async {
     final response = await _client
         .get(uri, headers: const <String, String>{'Accept': 'application/json'})
@@ -72,28 +79,58 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
   final Duration Function(int attempt) _backoff;
   final Future<void> Function(Duration delay) _delay;
 
-  Future<void> _queue = Future<void>.value();
+  final List<_QueuedAnimeRequest> _pending = <_QueuedAnimeRequest>[];
+  var _running = false;
   DateTime _nextSlot = DateTime.fromMillisecondsSinceEpoch(0);
 
   static Duration _defaultBackoff(int attempt) =>
       Duration(milliseconds: 400 * (1 << (attempt - 1)));
 
   @override
-  Future<AnimeHttpResponse> get(Uri uri, {Duration? timeout}) {
+  Future<AnimeHttpResponse> get(
+    Uri uri, {
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) {
     final completer = Completer<AnimeHttpResponse>();
-    _queue = _queue
-        .catchError((_) {})
-        .then(
-          (_) => _gated(
-            () => _send(uri, timeout ?? requestTimeout, completer),
-          ),
-        )
-        .catchError((Object error, StackTrace stack) {
-          if (!completer.isCompleted) {
-            completer.completeError(error, stack);
-          }
-        });
+    final job = _QueuedAnimeRequest(
+      uri: uri,
+      timeout: timeout ?? requestTimeout,
+      priority: priority,
+      completer: completer,
+    );
+    if (priority == AnimeRequestPriority.interactive) {
+      final catalogIndex = _pending.indexWhere(
+        (pending) => pending.priority == AnimeRequestPriority.catalog,
+      );
+      if (catalogIndex == -1) {
+        _pending.add(job);
+      } else {
+        _pending.insert(catalogIndex, job);
+      }
+    } else {
+      _pending.add(job);
+    }
+    unawaited(_drain());
     return completer.future;
+  }
+
+  Future<void> _drain() async {
+    if (_running) return;
+    _running = true;
+    while (_pending.isNotEmpty) {
+      final job = _pending.removeAt(0);
+      try {
+        await _gated(
+          () => _send(job.uri, job.timeout, job.completer),
+        );
+      } catch (error, stack) {
+        if (!job.completer.isCompleted) {
+          job.completer.completeError(error, stack);
+        }
+      }
+    }
+    _running = false;
   }
 
   Future<void> _gated(Future<void> Function() send) async {
@@ -193,6 +230,20 @@ Failure mapAnimeHttpFailure(Object error, {int? statusCode, Duration? retryAfter
 abstract final class AnimeNetworkMessages {
   static const offline =
       'Unable to load anime right now. Please check your connection and try again.';
+}
+
+final class _QueuedAnimeRequest {
+  const _QueuedAnimeRequest({
+    required this.uri,
+    required this.timeout,
+    required this.priority,
+    required this.completer,
+  });
+
+  final Uri uri;
+  final Duration timeout;
+  final AnimeRequestPriority priority;
+  final Completer<AnimeHttpResponse> completer;
 }
 
 Result<T> animeHttpFailure<T>(Object error, {int? statusCode, Duration? retryAfter}) {

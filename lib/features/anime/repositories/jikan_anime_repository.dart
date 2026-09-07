@@ -38,19 +38,16 @@ final class JikanAnimeRepository implements AnimeRepository {
           if (resolved.type != null) 'filter': resolved.type!.name,
         }),
         page: page,
+        priority: AnimeRequestPriority.interactive,
+        filter: resolved,
       );
     }
-    if (text.isEmpty &&
-        resolved.genreId != null &&
-        resolved.genreId!.trim().isNotEmpty &&
-        resolved.type == null) {
-      return getByGenre(
-        resolved.genreId!.trim(),
-        page: page,
-        limit: limit,
-      );
-    }
-    return _page(_uri('anime', _searchQuery(resolved, page, limit)), page: page);
+    return _page(
+      _uri('anime', _searchQuery(resolved, page, limit)),
+      page: page,
+      priority: AnimeRequestPriority.interactive,
+      filter: resolved,
+    );
   }
 
   @override
@@ -63,6 +60,7 @@ final class JikanAnimeRepository implements AnimeRepository {
       _uri('anime/${Uri.encodeComponent(normalized)}/full'),
       mapJikanAnime,
       const NotFoundError('This anime could not be found.'),
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -137,6 +135,7 @@ final class JikanAnimeRepository implements AnimeRepository {
     return _list(
       _uri('anime/${Uri.encodeComponent(normalized)}/characters'),
       mapJikanCharacters,
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -152,6 +151,7 @@ final class JikanAnimeRepository implements AnimeRepository {
       _uri('characters/${Uri.encodeComponent(normalized)}/full'),
       mapJikanCharacterFull,
       const NotFoundError('This character could not be found.'),
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -250,18 +250,24 @@ final class JikanAnimeRepository implements AnimeRepository {
 
   int _limit(int limit) => limit.clamp(1, 25);
 
-  Future<Result<AnimePage>> _page(Uri uri, {required int page}) async {
-    final payload = await _get(uri);
+  Future<Result<AnimePage>> _page(
+    Uri uri, {
+    required int page,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+    AnimeSearchFilter? filter,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
           final pagination = mapJikanPagination(body['pagination']);
+          final pageResult = AnimePage(
+            items: mapJikanAnimeList(body['data']),
+            page: pagination.page == 0 ? page : pagination.page,
+            hasNextPage: pagination.hasNextPage,
+          );
           return Success(
-            AnimePage(
-              items: mapJikanAnimeList(body['data']),
-              page: pagination.page == 0 ? page : pagination.page,
-              hasNextPage: pagination.hasNextPage,
-            ),
+            filter == null ? pageResult : filter.constrain(pageResult),
           );
         } on Object catch (error) {
           return animeHttpFailure<AnimePage>(error);
@@ -274,9 +280,10 @@ final class JikanAnimeRepository implements AnimeRepository {
   Future<Result<T>> _object<T>(
     Uri uri,
     T? Function(Object? raw) map,
-    Failure missing,
-  ) async {
-    final payload = await _get(uri);
+    Failure missing, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
@@ -293,9 +300,10 @@ final class JikanAnimeRepository implements AnimeRepository {
 
   Future<Result<List<T>>> _list<T>(
     Uri uri,
-    List<T> Function(Object? raw) map,
-  ) async {
-    final payload = await _get(uri);
+    List<T> Function(Object? raw) map, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
@@ -308,9 +316,12 @@ final class JikanAnimeRepository implements AnimeRepository {
     );
   }
 
-  Future<Result<Map<String, dynamic>>> _get(Uri uri) async {
+  Future<Result<Map<String, dynamic>>> _get(
+    Uri uri, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
     try {
-      final response = await _http.get(uri);
+      final response = await _http.get(uri, priority: priority);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return animeHttpFailure<Map<String, dynamic>>(
           'http ${response.statusCode}',

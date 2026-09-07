@@ -178,6 +178,16 @@ void main() {
     expect(http.calls.single.queryParameters.containsKey('q'), isFalse);
   });
 
+  test('type-only search hits the anime index', () async {
+    final result = await repository.searchAnime(
+      '',
+      filter: const AnimeSearchFilter(type: AnimeTypeFilter.movie),
+    );
+    expect(result.isSuccess, isTrue);
+    expect(http.calls.single.queryParameters['type'], 'movie');
+    expect(http.calls.single.queryParameters.containsKey('q'), isFalse);
+  });
+
   test('character full profile maps about and kanji', () async {
     http.responses['characters/10/full'] = const AnimeHttpResponse(
       statusCode: 200,
