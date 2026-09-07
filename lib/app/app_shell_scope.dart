@@ -26,14 +26,32 @@ final class AppShellScope extends InheritedWidget {
 }
 
 class AppShellMenuButton extends StatelessWidget {
-  const AppShellMenuButton({super.key});
+  const AppShellMenuButton({this.size, super.key});
+
+  /// When set, the control is boxed to [size]×[size] with a matching icon.
+  final double? size;
 
   @override
   Widget build(BuildContext context) {
+    final boxed = size;
     return IconButton(
       key: const Key('app-shell-menu'),
       icon: const Icon(Icons.menu),
+      iconSize: boxed == null ? null : boxed * 0.64,
       tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+      visualDensity: boxed == null ? null : VisualDensity.compact,
+      padding: boxed == null ? null : EdgeInsets.zero,
+      constraints: boxed == null
+          ? null
+          : BoxConstraints.tightFor(width: boxed, height: boxed),
+      style: boxed == null
+          ? null
+          : IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: Size(boxed, boxed),
+              maximumSize: Size(boxed, boxed),
+              padding: EdgeInsets.zero,
+            ),
       onPressed: () => AppShellScope.maybeOf(context)?.openDrawer(),
     );
   }

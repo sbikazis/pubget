@@ -6,6 +6,7 @@ import 'app_image_loader.dart';
 
 enum PubgetAvatarSize {
   small(32),
+  nav(36),
   medium(48),
   large(72);
 

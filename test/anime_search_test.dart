@@ -55,6 +55,31 @@ void main() {
     expect(repository.searchCalls, 1);
   });
 
+  test('prefix queries run immediately and keep matching titles', () async {
+    final repository = FakeAnimeRepository(
+      page: AnimePage(
+        items: <Anime>[
+          sampleAnime(id: '1', title: 'Demon Slayer'),
+          sampleAnime(id: '2', title: "Demashita! Powerpuff Girls Z"),
+          sampleAnime(id: '3', title: 'Frieren'),
+        ],
+      ),
+    );
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.searchChanged('dem');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.searchCalls, 1);
+    expect(repository.lastQuery, 'dem');
+    expect(list.items.map((item) => item.title), <String>[
+      'Demon Slayer',
+      "Demashita! Powerpuff Girls Z",
+    ]);
+  });
+
   test('valid query loads results', () async {
     final repository = FakeAnimeRepository();
     final list = AnimeListProvider(

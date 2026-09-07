@@ -9,6 +9,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../models/anime_rating_models.dart';
@@ -60,15 +61,16 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
       onboarding: onboarding,
     );
     final anime = details.anime;
+    final copy = AnimeCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(anime?.title ?? AnimeStrings.hubTitle),
+        title: Text(anime?.title ?? copy.hubTitle),
         actions: <Widget>[
           if (anime != null) ...<Widget>[
             PubgetIconButton(
               icon: Icons.share_outlined,
-              tooltip: AnimeStrings.share,
+              tooltip: copy.share,
               onPressed: () => AnimeLinks.share(
                 context,
                 widget.animeId,
@@ -77,7 +79,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
             ),
             PubgetIconButton(
               icon: Icons.link_outlined,
-              tooltip: AnimeStrings.copied,
+              tooltip: copy.copied,
               onPressed: () => AnimeLinks.copyCanonical(context, widget.animeId),
             ),
           ],
@@ -86,18 +88,18 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
       body: PubgetLoadingStateView(
         state: details.state,
         onRetry: details.retry,
-        empty: const PubgetEmptyState(
-          title: AnimeStrings.detailsMissing,
+        empty: PubgetEmptyState(
+          title: copy.detailsMissing,
           icon: Icons.movie_filter_outlined,
         ),
         error: PubgetErrorState(
-          title: AnimeStrings.unableToLoad,
-          message: details.failure?.message ?? AnimeStrings.checkConnection,
+          title: copy.unableToLoad,
+          message: details.failure?.message ?? copy.checkConnection,
           onRetry: details.retry,
-          retryLabel: AnimeStrings.retry,
+          retryLabel: copy.retry,
         ),
         offline: PubgetOfflineState(
-          message: AnimeStrings.checkConnection,
+          message: copy.checkConnection,
           onRetry: details.retry,
         ),
         child: anime == null
@@ -164,7 +166,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                             (item) => item.isBrowsable,
                           ))
                             PubgetSelectionChip(
-                              label: genre.name,
+                              label: AnimeCopy.of(context).genre(genre.name),
                               selected: false,
                               onSelected: (_) =>
                                   AnimeLinks.openGenre(context, genre),
@@ -186,7 +188,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              AnimeStrings.synopsisTitle,
+                              AnimeCopy.of(context).synopsisTitle,
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
                             const SizedBox(height: AppSpacing.md),
@@ -211,8 +213,8 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                       child: PubgetSecondaryButton(
                         onPressed: () =>
                             AnimeLinks.copyUrl(context, anime.trailerUrl!),
-                        semanticLabel: AnimeStrings.trailer,
-                        child: const Text(AnimeStrings.trailer),
+                        semanticLabel: AnimeCopy.of(context).trailer,
+                        child: Text(AnimeCopy.of(context).trailer),
                       ),
                     ),
                   if (anime.externalLinks.isNotEmpty)
@@ -228,7 +230,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              AnimeStrings.links,
+                              AnimeCopy.of(context).links,
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: AppSpacing.md),
@@ -284,7 +286,7 @@ class _HeroCopy extends StatelessWidget {
         if (stats != null && stats.hasRatings) ...<Widget>[
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${stats.ratingCount} Pubget ratings',
+            AnimeCopy.of(context).ratingsCount(stats.ratingCount),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -293,7 +295,7 @@ class _HeroCopy extends StatelessWidget {
         if (anime.subtitle.isNotEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.md),
           Text(
-            anime.subtitle,
+            AnimeCopy.of(context).subtitle(anime),
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -302,7 +304,7 @@ class _HeroCopy extends StatelessWidget {
         if (anime.status != null) ...<Widget>[
           const SizedBox(height: AppSpacing.sm),
           Text(
-            anime.status!,
+            AnimeCopy.of(context).status(anime.status),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -336,36 +338,51 @@ class _ActionRow extends StatelessWidget {
                 ? null
                 : () => _openRating(context, anime, social!),
             semanticLabel: social?.myRating == null
-                ? AnimeStrings.rateAnime
-                : AnimeStrings.editRating,
+                ? AnimeCopy.of(context).rateAnime
+                : AnimeCopy.of(context).editRating,
             leadingIcon: Icons.star_outline,
             child: Text(
               social?.myRating == null
-                  ? AnimeStrings.rateAnime
-                  : AnimeStrings.editRating,
+                  ? AnimeCopy.of(context).rateAnime
+                  : AnimeCopy.of(context).editRating,
             ),
           ),
           const SizedBox(height: AppSpacing.md),
           details.isFavorite
-              ? PubgetPrimaryButton(
-                  key: const Key('favorite-anime'),
-                  onPressed: details.savingFavorite
-                      ? null
-                      : details.toggleFavorite,
-                  semanticLabel: AnimeStrings.favorited,
-                  leadingIcon: Icons.favorite,
-                  loading: details.savingFavorite,
-                  child: const Text(AnimeStrings.favorited),
+              ? DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.royalPurple.withValues(alpha: 0.48),
+                        blurRadius: 16,
+                      ),
+                      BoxShadow(
+                        color: AppColors.gold.withValues(alpha: 0.36),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: PubgetPrimaryButton(
+                    key: const Key('favorite-anime'),
+                    onPressed: details.savingFavorite
+                        ? null
+                        : details.toggleFavorite,
+                    semanticLabel: AnimeCopy.of(context).favorited,
+                    leadingIcon: Icons.favorite,
+                    loading: details.savingFavorite,
+                    child: Text(AnimeCopy.of(context).favorited),
+                  ),
                 )
               : PubgetSecondaryButton(
                   key: const Key('favorite-anime'),
                   onPressed: details.savingFavorite
                       ? null
                       : details.toggleFavorite,
-                  semanticLabel: AnimeStrings.favorite,
+                  semanticLabel: AnimeCopy.of(context).favorite,
                   leadingIcon: Icons.favorite_border,
                   loading: details.savingFavorite,
-                  child: const Text(AnimeStrings.favorite),
+                  child: Text(AnimeCopy.of(context).favorite),
                 ),
         ],
       ),
@@ -380,14 +397,22 @@ class _FactsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = <(String, String)>[
-      if (anime.episodes != null) ('Episodes', '${anime.episodes}'),
-      if (anime.duration != null) ('Duration', anime.duration!),
+    final copy = AnimeCopy.of(context);
+    final rows = <(IconData, String, String)>[
+      if (anime.type != null && anime.type!.isNotEmpty)
+        (Icons.movie_filter_outlined, copy.factType, copy.typeLabel(anime.type)),
+      if (anime.episodes != null)
+        (Icons.view_list_outlined, copy.factEpisodes, '${anime.episodes}'),
+      if (anime.duration != null)
+        (Icons.timer_outlined, copy.factDuration, anime.duration!),
       if (anime.startDate != null || anime.endDate != null)
-        ('Aired', _aired(anime)),
-      if (anime.studios.isNotEmpty) ('Studios', anime.studios.join(', ')),
-      if (anime.source != null) ('Source', anime.source!),
-      if (anime.nextEpisodeLabel != null) ('Broadcast', anime.nextEpisodeLabel!),
+        (Icons.calendar_month_outlined, copy.factAired, _aired(anime)),
+      if (anime.studios.isNotEmpty)
+        (Icons.apartment_outlined, copy.factStudios, anime.studios.join(', ')),
+      if (anime.source != null)
+        (Icons.menu_book_outlined, copy.factSource, copy.source(anime.source)),
+      if (anime.nextEpisodeLabel != null)
+        (Icons.podcasts_outlined, copy.factBroadcast, anime.nextEpisodeLabel!),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
@@ -402,9 +427,10 @@ class _FactsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Details',
+            copy.detailsSection,
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w800,
+              color: AppColors.goldPale,
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -421,21 +447,33 @@ class _FactsCard extends StatelessWidget {
                           ? (constraints.maxWidth - AppSpacing.md) / 2
                           : constraints.maxWidth,
                       child: PubgetCard(
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Text(
-                              row.$1,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: AppColors.goldSheen,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.xs),
-                            Text(
-                              row.$2,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
+                            Icon(row.$1, color: AppColors.goldSheen, size: 22),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    row.$2,
+                                    style: theme.textTheme.labelLarge?.copyWith(
+                                      color: AppColors.goldSheen,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Text(
+                                    row.$3,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: AppColors.goldPale,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -486,7 +524,7 @@ class _CharactersSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Text(
-              AnimeStrings.charactersTitle,
+              AnimeCopy.of(context).charactersTitle,
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
@@ -528,7 +566,7 @@ class _CharactersSection extends StatelessWidget {
                               ),
                               if (character.role != null)
                                 Text(
-                                  character.role!,
+                                  AnimeCopy.of(context).role(character.role),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                             ],
@@ -647,12 +685,25 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              character.name,
+              _characterDisplayName(character, about),
               key: const Key('character-sheet-name'),
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
+                height: 1.2,
               ),
             ),
+            if (about.arabicName != null &&
+                about.arabicName!.isNotEmpty &&
+                about.arabicName != character.name) ...<Widget>[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                character.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: AppColors.goldPale,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             if (character.nameKanji != null &&
                 character.nameKanji!.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.xs),
@@ -663,7 +714,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
             >[
               const SizedBox(height: AppSpacing.xs),
               Text(
-                '${AnimeStrings.characterRole}: ${character.role}',
+                '${AnimeCopy.of(context).characterRole}: ${AnimeCopy.of(context).role(character.role)}',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: AppColors.goldSheen,
                   fontWeight: FontWeight.w700,
@@ -673,8 +724,32 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
             if (_loadingProfile) ...<Widget>[
               const SizedBox(height: AppSpacing.md),
               Text(
-                AnimeStrings.loadingProfile,
+                AnimeCopy.of(context).loadingProfile,
                 style: theme.textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            if (about.age != null || about.birthday != null)
+              Text(
+                [
+                  if (about.age != null)
+                    '${AnimeCopy.of(context).age}: ${about.age}',
+                  if (about.birthday != null) about.birthday,
+                ].join(' | '),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            if (about.height != null || about.weight != null) ...<Widget>[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                [
+                  if (about.height != null) about.height,
+                  if (about.weight != null) about.weight,
+                ].join(' | '),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
             const SizedBox(height: AppSpacing.md),
@@ -682,27 +757,35 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
               children: <Widget>[
-                _factChip(theme, AnimeStrings.characterMalId, character.id),
                 if (character.favorites != null)
-                  _factChip(
+                  _favoritesCounter(
                     theme,
-                    AnimeStrings.malFavorites,
-                    '${character.favorites}',
+                    AnimeCopy.of(context).malFavorites,
+                    character.favorites!,
                   ),
                 if (stats != null)
+                  _favoritesCounter(
+                    theme,
+                    AnimeCopy.of(context).pubgetFavorites,
+                    stats.favoritesCount,
+                  ),
+                _factChip(
+                  theme,
+                  AnimeCopy.of(context).characterMalId,
+                  character.id,
+                ),
+                if (character.role != null && character.role!.isNotEmpty)
                   _factChip(
                     theme,
-                    AnimeStrings.pubgetFavorites,
-                    '${stats.favoritesCount}',
+                    AnimeCopy.of(context).characterRole,
+                    AnimeCopy.of(context).role(character.role),
                   ),
-                if (character.role != null && character.role!.isNotEmpty)
-                  _factChip(theme, AnimeStrings.characterRole, character.role!),
               ],
             ),
             if (character.nicknames.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
-                AnimeStrings.characterNicknames,
+                AnimeCopy.of(context).characterNicknames,
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -718,7 +801,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
             if (about.facts.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
-                AnimeStrings.characterFacts,
+                AnimeCopy.of(context).characterFacts,
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -731,8 +814,11 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                       SizedBox(
                         width: 108,
                         child: Text(
-                          fact.label,
-                          style: theme.textTheme.labelLarge,
+                          AnimeCopy.of(context).factLabel(fact.label),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: AppColors.goldSheen,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                       Expanded(child: SelectableText(fact.value)),
@@ -743,36 +829,52 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
             if (about.narrative.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
-                AnimeStrings.characterAbout,
+                AnimeCopy.of(context).characterAbout,
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
-              SelectableText(about.narrative),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    about.narrative,
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ),
+              ),
             ] else if (character.about != null &&
                 character.about!.isNotEmpty &&
                 about.facts.isEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
-                AnimeStrings.characterAbout,
+                AnimeCopy.of(context).characterAbout,
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
-              SelectableText(character.about!),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    character.about!,
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ),
+              ),
             ],
             ..._appearanceBlock(
               theme,
-              title: AnimeStrings.characterAnime,
+              title: AnimeCopy.of(context).characterAnime,
               items: character.animeography,
             ),
             ..._appearanceBlock(
               theme,
-              title: AnimeStrings.characterManga,
+              title: AnimeCopy.of(context).characterManga,
               items: character.mangaography,
             ),
             if (character.voiceActors.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               Text(
-                AnimeStrings.characterVoices,
+                AnimeCopy.of(context).characterVoices,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -784,15 +886,15 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                 children: <Widget>[
                   for (final actor in _sortedVoiceActors(character.voiceActors))
                     SizedBox(
-                      width: 156,
+                      width: 164,
                       child: PubgetCard(
                         padding: const EdgeInsets.all(AppSpacing.sm),
                         child: Column(
                           children: <Widget>[
                             ClipOval(
                               child: SizedBox(
-                                width: 64,
-                                height: 64,
+                                width: 72,
+                                height: 72,
                                 child: actor.imageUrl == null
                                     ? const ColoredBox(
                                         color: AppColors.royalDusk,
@@ -822,7 +924,11 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                               const SizedBox(height: AppSpacing.xs),
                               Chip(
                                 visualDensity: VisualDensity.compact,
-                                label: Text(actor.language!),
+                                label: Text(
+                                  AnimeCopy.of(context).voiceLanguage(
+                                    actor.language,
+                                  ),
+                                ),
                               ),
                             ],
                             if (actor.animeTitle != null)
@@ -844,7 +950,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               const SizedBox(height: AppSpacing.md),
               PubgetTextButton(
                 onPressed: () => AnimeLinks.copyUrl(context, character.url!),
-                semanticLabel: AnimeStrings.copied,
+                semanticLabel: AnimeCopy.of(context).copied,
                 child: Text(
                   character.url!,
                   maxLines: 2,
@@ -861,12 +967,12 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                       name: character.name,
                       imageUrl: character.imageUrl,
                     ),
-              semanticLabel: AnimeStrings.favoriteCharacter,
+              semanticLabel: AnimeCopy.of(context).favoriteCharacter,
               leadingIcon: favorited ? Icons.favorite : Icons.favorite_border,
               child: Text(
                 favorited
-                    ? AnimeStrings.favorited
-                    : AnimeStrings.favoriteCharacter,
+                    ? AnimeCopy.of(context).favorited
+                    : AnimeCopy.of(context).favoriteCharacter,
               ),
             ),
           ],
@@ -884,6 +990,25 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
     }
 
     return [...actors]..sort((a, b) => rank(a).compareTo(rank(b)));
+  }
+
+  String _characterDisplayName(
+    AnimeCharacter character,
+    CharacterAboutSections about,
+  ) {
+    final arabic = about.arabicName?.trim();
+    if (arabic != null && arabic.isNotEmpty) {
+      return '$arabic / ${character.name}';
+    }
+    return character.name;
+  }
+
+  Widget _favoritesCounter(ThemeData theme, String label, int count) {
+    return Chip(
+      avatar: const Icon(Icons.favorite, color: AppColors.gold, size: 16),
+      label: Text('$label: $count'),
+      visualDensity: VisualDensity.compact,
+    );
   }
 
   Widget _factChip(ThemeData theme, String label, String value) {
@@ -956,7 +1081,7 @@ class _ReviewsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            AnimeStrings.reviewsTitle,
+            AnimeCopy.of(context).reviewsTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -1028,7 +1153,7 @@ class _AnimeListControls extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              AnimeStrings.listStatus,
+              AnimeCopy.of(context).listStatus,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -1038,7 +1163,7 @@ class _AnimeListControls extends StatelessWidget {
               children: [
                 for (final status in AnimeListStatus.values)
                   PubgetSelectionChip(
-                    label: status.label,
+                    label: AnimeCopy.of(context).listStatusLabel(status),
                     selected: current?.status == status,
                     onSelected: library.saving
                         ? null
@@ -1057,8 +1182,8 @@ class _AnimeListControls extends StatelessWidget {
                 onPressed: library.saving
                     ? null
                     : () => library.remove(anime.id),
-                semanticLabel: AnimeStrings.removeFromList,
-                child: const Text(AnimeStrings.removeFromList),
+                semanticLabel: AnimeCopy.of(context).removeFromList,
+                child: Text(AnimeCopy.of(context).removeFromList),
               ),
             ],
           ],
@@ -1078,7 +1203,7 @@ Future<void> _openRating(
   await PubgetBottomSheet.show<void>(
     context,
     isScrollControlled: true,
-    title: AnimeStrings.rateAnime,
+    title: AnimeCopy.of(context).rateAnime,
     child: StatefulBuilder(
       builder: (context, setSheetState) {
         return ConstrainedBox(
@@ -1088,14 +1213,16 @@ Future<void> _openRating(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Text(
-                  'Overall ${scores.overall.toStringAsFixed(1)}',
+                  AnimeCopy.of(context).overallScore(
+                    scores.overall.toStringAsFixed(1),
+                  ),
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 for (final criterion in AnimeRatingCriterion.values) ...<
                   Widget
                 >[
-                  Text(criterion.label),
+                  Text(AnimeCopy.of(context).criterion(criterion)),
                   Slider(
                     min: 0,
                     max: 10,
@@ -1111,7 +1238,7 @@ Future<void> _openRating(
                   const SizedBox(height: AppSpacing.sm),
                 ],
                 PubgetTextArea(
-                  hint: AnimeStrings.reviewHint,
+                  hint: AnimeCopy.of(context).reviewHint,
                   onChanged: (value) => comment = value,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -1127,9 +1254,9 @@ Future<void> _openRating(
                           );
                           if (context.mounted) Navigator.of(context).pop();
                         },
-                  semanticLabel: AnimeStrings.submitRating,
+                  semanticLabel: AnimeCopy.of(context).submitRating,
                   loading: social.saving,
-                  child: const Text(AnimeStrings.submitRating),
+                  child: Text(AnimeCopy.of(context).submitRating),
                 ),
               ],
             ),

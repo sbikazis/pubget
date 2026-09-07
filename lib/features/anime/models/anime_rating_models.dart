@@ -175,23 +175,34 @@ final class AnimeDisplayedScore {
 
   String get badge => source == AnimeScoreSource.app ? 'A' : 'M';
 
+  /// Dual hierarchy: App+A then MAL+M when N ≥ 1; MAL+M only when N = 0.
+  static List<AnimeDisplayedScore> resolveAll({
+    double? malScore,
+    AnimeCommunityStats? community,
+  }) {
+    final scores = <AnimeDisplayedScore>[];
+    if (community != null && community.hasRatings) {
+      scores.add(
+        AnimeDisplayedScore(
+          value: community.averageScore,
+          source: AnimeScoreSource.app,
+        ),
+      );
+    }
+    if (malScore != null) {
+      scores.add(
+        AnimeDisplayedScore(value: malScore, source: AnimeScoreSource.mal),
+      );
+    }
+    return scores;
+  }
+
   static AnimeDisplayedScore? resolve({
     double? malScore,
     AnimeCommunityStats? community,
   }) {
-    if (community != null && community.hasRatings) {
-      return AnimeDisplayedScore(
-        value: community.averageScore,
-        source: AnimeScoreSource.app,
-      );
-    }
-    if (malScore != null) {
-      return AnimeDisplayedScore(
-        value: malScore,
-        source: AnimeScoreSource.mal,
-      );
-    }
-    return null;
+    final scores = resolveAll(malScore: malScore, community: community);
+    return scores.isEmpty ? null : scores.first;
   }
 }
 

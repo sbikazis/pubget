@@ -5,6 +5,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../widgets/anime_widgets.dart';
@@ -32,20 +33,20 @@ class _AnimePopularCharactersPageState
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(AnimeStrings.popularCharactersTitle),
+        title: Text(AnimeCopy.of(context).popularCharactersTitle),
       ),
       body: PubgetLoadingStateView(
         state: social?.popularCharactersState ?? LoadingState.empty,
         onRetry: social?.loadPopularCharacters,
-        empty: const PubgetEmptyState(
-          title: 'No character favorites yet',
+        empty: PubgetEmptyState(
+          title: AnimeCopy.of(context).noRatingsYet,
           icon: Icons.people_outline,
         ),
         error: PubgetErrorState(
-          title: AnimeStrings.unableToLoad,
+          title: AnimeCopy.of(context).unableToLoad,
           message:
               social?.popularCharactersFailure?.message ??
-              AnimeStrings.checkConnection,
+              AnimeCopy.of(context).checkConnection,
           onRetry: social?.loadPopularCharacters,
         ),
         child: ListView.separated(

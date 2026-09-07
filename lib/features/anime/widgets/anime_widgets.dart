@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
+import '../l10n/anime_copy.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
@@ -57,7 +58,7 @@ abstract final class AnimeLinks {
         context,
         canonical(animeId),
         type: 'anime',
-        message: AnimeStrings.copied,
+        message: AnimeCopy.of(context).copied,
       );
 
   static Future<void> share(
@@ -74,7 +75,7 @@ abstract final class AnimeLinks {
   static Future<void> copyUrl(BuildContext context, String url) async {
     await Clipboard.setData(ClipboardData(text: url));
     if (!context.mounted) return;
-    PubgetSnackbars.showInfo(context, AnimeStrings.copied);
+    PubgetSnackbars.showInfo(context, AnimeCopy.of(context).copied);
   }
 }
 
@@ -103,7 +104,9 @@ class AnimeCachedBanner extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                offline ? AnimeStrings.offlineCached : AnimeStrings.cachedBanner,
+                offline
+                    ? AnimeCopy.of(context).offlineCached
+                    : AnimeCopy.of(context).cachedBanner,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
@@ -208,7 +211,7 @@ class AnimePosterCard extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    _meta(anime),
+                    AnimeCopy.of(context).meta(anime),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall,
@@ -265,7 +268,7 @@ class AnimeResultTile extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       Text(
-                        _meta(anime),
+                        AnimeCopy.of(context).meta(anime),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall,
@@ -384,8 +387,8 @@ class AnimeHorizontalStrip extends StatelessWidget {
                 if (onSeeAll != null)
                   PubgetTextButton(
                     onPressed: onSeeAll,
-                    semanticLabel: AnimeStrings.seeAll,
-                    child: const Text(AnimeStrings.seeAll),
+                    semanticLabel: AnimeCopy.of(context).seeAll,
+                    child: Text(AnimeCopy.of(context).seeAll),
                   ),
               ],
             ),
@@ -400,17 +403,17 @@ class AnimeHorizontalStrip extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: PubgetErrorState(
-                title: AnimeStrings.unableToLoad,
-                message: failure ?? AnimeStrings.checkConnection,
+                title: AnimeCopy.of(context).unableToLoad,
+                message: failure ?? AnimeCopy.of(context).checkConnection,
                 onRetry: onRetry,
-                retryLabel: AnimeStrings.retry,
+                retryLabel: AnimeCopy.of(context).retry,
               ),
             )
           else if (items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: PubgetEmptyState(
-                title: AnimeStrings.emptyCatalog,
+                title: AnimeCopy.of(context).emptyCatalog,
                 icon: Icons.movie_filter_outlined,
               ),
             )
@@ -454,7 +457,7 @@ class AnimeHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionAnime,
-            actionLabel: AnimeStrings.seeAll,
+            actionLabel: AnimeCopy.of(context).seeAll,
             onAction: () => AnimeLinks.openHub(context),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -468,7 +471,7 @@ class AnimeHomeStrip extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: PubgetCard(
                 onTap: () => AnimeLinks.openHub(context),
-                child: const Text('Open Anime Hub to discover titles.'),
+                child: Text(AnimeCopy.of(context).hubTitle),
               ),
             )
           else
@@ -523,16 +526,16 @@ class AnimePaginatedList extends StatelessWidget {
             }
             if (list.pageFailure != null) {
               return PubgetErrorState(
-                title: AnimeStrings.unableToLoad,
+                title: AnimeCopy.of(context).unableToLoad,
                 message: list.pageFailure!.message,
                 onRetry: list.retryLoadMore,
-                retryLabel: AnimeStrings.retry,
+                retryLabel: AnimeCopy.of(context).retry,
               );
             }
             if (!list.hasNextPage && list.items.isNotEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(AppSpacing.lg),
-                child: Center(child: Text(AnimeStrings.endOfList)),
+              return Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Center(child: Text(AnimeCopy.of(context).endOfList)),
               );
             }
             return const SizedBox.shrink();
@@ -558,11 +561,33 @@ class AnimeScoreBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = AnimeDisplayedScore.resolve(
+    final scores = AnimeDisplayedScore.resolveAll(
       malScore: malScore,
       community: community,
     );
-    if (score == null) return const SizedBox.shrink();
+    if (scores.isEmpty) return const SizedBox.shrink();
+    return Column(
+      key: const Key('score-badge-stack'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (var index = 0; index < scores.length; index++) ...<Widget>[
+          if (index > 0) SizedBox(height: large ? 4 : 3),
+          _AnimeScorePill(score: scores[index], large: large),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnimeScorePill extends StatelessWidget {
+  const _AnimeScorePill({required this.score, required this.large});
+
+  final AnimeDisplayedScore score;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
     final isApp = score.source == AnimeScoreSource.app;
     final theme = Theme.of(context);
     return DecoratedBox(
@@ -615,14 +640,4 @@ class AnimeScoreBadge extends StatelessWidget {
       ),
     );
   }
-}
-
-String _meta(Anime anime) {
-  final parts = <String>[
-    if (anime.type != null && anime.type!.isNotEmpty) anime.type!,
-    if (anime.status != null && anime.status!.isNotEmpty) anime.status!,
-    if (anime.year != null) '${anime.year}',
-    if (anime.season != null) anime.season!.label,
-  ];
-  return parts.join(' · ');
 }

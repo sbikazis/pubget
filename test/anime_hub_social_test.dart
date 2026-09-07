@@ -45,8 +45,28 @@ void main() {
       'A',
     );
     expect(
+      AnimeDisplayedScore.resolveAll(
+        malScore: 7.2,
+        community: social.statsFor('16498'),
+      ).map((item) => item.badge).toList(),
+      <String>['A', 'M'],
+    );
+    expect(
       AnimeDisplayedScore.resolve(malScore: 7.2, community: null)?.badge,
       'M',
+    );
+    expect(
+      AnimeDisplayedScore.resolveAll(malScore: 7.2, community: null)
+          .map((item) => item.badge)
+          .toList(),
+      <String>['M'],
+    );
+    expect(
+      AnimeDisplayedScore.resolveAll(
+        malScore: 7.2,
+        community: const AnimeCommunityStats(animeId: 'x'),
+      ).map((item) => item.badge).toList(),
+      <String>['M'],
     );
 
     await social.loadPopularCharacters();

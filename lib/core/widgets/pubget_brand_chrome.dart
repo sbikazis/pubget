@@ -10,11 +10,13 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
   const PubgetLuxurySettingsButton({
     required this.tooltip,
     required this.onPressed,
+    this.size = 46,
     super.key,
   });
 
   final String tooltip;
   final VoidCallback onPressed;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +30,8 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
           onTap: onPressed,
           customBorder: const CircleBorder(),
           child: Ink(
-            width: 46,
-            height: 46,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
@@ -45,8 +47,8 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
             child: ClipOval(
               child: Image.asset(
                 PubgetLogo.settingsAsset,
-                width: 46,
-                height: 46,
+                width: size,
+                height: size,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.high,
                 errorBuilder: (_, _, _) => const ColoredBox(
@@ -72,15 +74,18 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.badge = 0,
+    this.size = 42,
     super.key,
   });
 
   final String tooltip;
   final VoidCallback onPressed;
   final int badge;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
+    final glyph = size * 0.52;
     return PubgetTooltip(
       message: tooltip,
       child: Semantics(
@@ -91,8 +96,8 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
           onTap: onPressed,
           customBorder: const CircleBorder(),
           child: Ink(
-            width: 42,
-            height: 42,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(
@@ -117,9 +122,9 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: <Widget>[
-                const CustomPaint(
-                  size: Size(22, 22),
-                  painter: _LuxuryBellPainter(),
+                CustomPaint(
+                  size: Size(glyph, glyph),
+                  painter: const _LuxuryBellPainter(),
                 ),
                 if (badge > 0)
                   PositionedDirectional(

@@ -337,7 +337,7 @@ final class CharacterAboutSections {
         }
       }
       final labeled = RegExp(
-        r'^(Age|Birthday|Height|Weight|Blood type|Hair color|Eye color|Gender|Species|Affiliation|Occupation)\s+(.+)$',
+        r'^(Age|Birthday|Birth ?date|Height|Weight|Blood type|Hair color|Eye color|Gender|Species|Affiliation|Occupation|Arabic(?: name)?|الاسم(?: العربي)?)\s+(.+)$',
         caseSensitive: false,
       ).firstMatch(line);
       if (labeled != null) {
@@ -351,6 +351,28 @@ final class CharacterAboutSections {
       narrative: narrative.join('\n').trim(),
     );
   }
+
+  String? valueFor(Set<String> labels) {
+    final wanted = labels.map((item) => item.toLowerCase()).toSet();
+    for (final fact in facts) {
+      if (wanted.contains(fact.label.toLowerCase().trim())) {
+        return fact.value;
+      }
+    }
+    return null;
+  }
+
+  String? get age => valueFor(const {'age'});
+  String? get birthday =>
+      valueFor(const {'birthday', 'birth date', 'birthdate'});
+  String? get height => valueFor(const {'height'});
+  String? get weight => valueFor(const {'weight'});
+  String? get arabicName => valueFor(const {
+    'arabic',
+    'arabic name',
+    'الاسم',
+    'الاسم العربي',
+  });
 }
 
 final class Anime {
@@ -484,7 +506,7 @@ abstract final class AnimeStrings {
   static const ratingMalBadge = 'M';
   static const searchHomeHint =
       'Search groups, people, events, anime, and Fan Works';
-  static const nothingFound = 'Nothing found';
+  static const nothingFound = 'No Anime Found';
   static const nothingFoundMessage = 'Try another title or browse the catalog.';
   static const unableToLoad = 'Unable to load anime right now.';
   static const checkConnection =

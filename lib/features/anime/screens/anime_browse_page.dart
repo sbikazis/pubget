@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_providers.dart';
 import '../widgets/anime_widgets.dart';
@@ -54,29 +55,31 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
   @override
   Widget build(BuildContext context) {
     final list = context.watch<AnimeListProvider>();
+    final copy = AnimeCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(list.title)),
+        title: Text(copy.pageTitle(list.title)),
+      ),
       body: PubgetLoadingStateView(
         state: list.state == LoadingState.loadingMore ||
                 list.state == LoadingState.refreshing
             ? LoadingState.loaded
             : list.state,
         onRetry: list.retry,
-        empty: const PubgetEmptyState(
-          title: AnimeStrings.emptyCatalog,
-          message: AnimeStrings.nothingFoundMessage,
+        empty: PubgetEmptyState(
+          title: copy.emptyCatalog,
+          message: copy.nothingFoundMessage,
           icon: Icons.movie_filter_outlined,
         ),
         error: PubgetErrorState(
-          title: AnimeStrings.unableToLoad,
-          message: list.failure?.message ?? AnimeStrings.checkConnection,
+          title: copy.unableToLoad,
+          message: list.failure?.message ?? copy.checkConnection,
           onRetry: list.retry,
-          retryLabel: AnimeStrings.retry,
+          retryLabel: copy.retry,
         ),
         offline: PubgetOfflineState(
-          message: AnimeStrings.checkConnection,
+          message: copy.checkConnection,
           onRetry: list.retry,
         ),
         child: AnimePaginatedList(list: list),

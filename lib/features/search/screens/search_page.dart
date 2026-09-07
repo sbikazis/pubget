@@ -5,7 +5,7 @@ import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../../anime/models/anime_models.dart';
+import '../../anime/l10n/anime_copy.dart';
 import '../search_hit.dart';
 import '../search_provider.dart';
 import '../search_query.dart';
@@ -50,7 +50,7 @@ class _SearchPageState extends State<SearchPage> {
             ),
             child: PubgetSearchField(
               controller: _controller,
-              hint: AnimeStrings.searchHomeHint,
+              hint: AnimeCopy.of(context).searchHomeHint,
               onChanged: search.searchChanged,
               onClear: () {
                 _controller.clear();

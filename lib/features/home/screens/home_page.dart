@@ -6,6 +6,7 @@ import '../../../app/app_shell_scope.dart';
 import '../../../core/branding/pubget_logo.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -136,27 +137,35 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   final int? coins;
   final int notifyCount;
 
-  static const _itemGap = 14.0;
-  static const _edgePad = 14.0;
-  static const _logoSize = 44.0;
+  static const barHeight = 56.0;
+  static const iconSize = 36.0;
+  static const logoSize = 54.0;
+  static const coinStripHeight = 36.0;
+  static const itemGap = 8.0;
+  static const edgePad = 8.0;
+
+  bool get _showCoins => coins != null;
 
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => Size.fromHeight(
+    barHeight + (_showCoins ? coinStripHeight : 0),
+  );
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
     return AppBar(
       automaticallyImplyLeading: false,
-      toolbarHeight: 64,
+      toolbarHeight: barHeight,
       titleSpacing: 0,
+      clipBehavior: Clip.none,
       title: SizedBox(
-        height: 64,
+        height: barHeight,
         width: double.infinity,
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: _edgePad),
+            padding: const EdgeInsets.symmetric(horizontal: edgePad),
             child: Row(
               children: <Widget>[
                 Expanded(
@@ -165,61 +174,109 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        GestureDetector(
-                          key: const Key('home-avatar'),
-                          onTap: () => AppNavigation.go(context, '/profile'),
-                          child: EquippedAvatar(
-                            imageUrl: avatarUrl,
-                            name: name,
-                            frameId: frameId,
-                            size: PubgetAvatarSize.small,
-                          ),
-                        ),
-                        const SizedBox(width: _itemGap),
-                        PubgetLuxuryNotifyButton(
-                          tooltip: copy.notifications,
-                          badge: notifyCount,
-                          onPressed: () =>
-                              AppNavigation.go(context, '/notifications'),
-                        ),
-                        if (coins != null) ...<Widget>[
-                          const SizedBox(width: _itemGap),
-                          Flexible(
-                            child: PubgetKatanaCoinChip(
-                              balance: coins!,
-                              tooltip: copy.store,
-                              compact: true,
-                              onPressed: () =>
-                                  AppNavigation.go(context, '/store'),
+                        _BarIconBox(
+                          child: GestureDetector(
+                            key: const Key('home-avatar'),
+                            onTap: () => AppNavigation.go(context, '/profile'),
+                            child: FittedBox(
+                              child: EquippedAvatar(
+                                imageUrl: avatarUrl,
+                                name: name,
+                                frameId: frameId,
+                                size: PubgetAvatarSize.nav,
+                                compactFrame: true,
+                              ),
                             ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: itemGap),
+                        _BarIconBox(
+                          child: PubgetLuxuryNotifyButton(
+                            tooltip: copy.notifications,
+                            badge: notifyCount,
+                            size: iconSize,
+                            onPressed: () =>
+                                AppNavigation.go(context, '/notifications'),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _itemGap),
-                  child: PubgetLogoMark(key: Key('home-logo'), size: _logoSize),
-                ),
+                const PubgetLogoMark(key: Key('home-logo'), size: logoSize),
                 Expanded(
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        PubgetLuxurySettingsButton(
-                          tooltip: copy.settings,
-                          onPressed: () =>
-                              AppNavigation.go(context, '/settings'),
+                        _BarIconBox(
+                          child: PubgetLuxurySettingsButton(
+                            tooltip: copy.settings,
+                            size: iconSize,
+                            onPressed: () =>
+                                AppNavigation.go(context, '/settings'),
+                          ),
                         ),
-                        const SizedBox(width: _itemGap),
-                        const AppShellMenuButton(),
+                        const SizedBox(width: itemGap),
+                        const _BarIconBox(
+                          child: AppShellMenuButton(size: iconSize),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+      bottom: _showCoins
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(coinStripHeight),
+              child: _HomeCoinStrip(
+                balance: coins!,
+                tooltip: copy.store,
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+class _BarIconBox extends StatelessWidget {
+  const _BarIconBox({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(dimension: HomeTopBar.iconSize, child: child);
+  }
+}
+
+class _HomeCoinStrip extends StatelessWidget {
+  const _HomeCoinStrip({required this.balance, required this.tooltip});
+
+  final int balance;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.royalNight.withValues(alpha: 0.38),
+      child: SizedBox(
+        height: HomeTopBar.coinStripHeight,
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PubgetKatanaCoinChip(
+              balance: balance,
+              tooltip: tooltip,
+              compact: true,
+              onPressed: () => AppNavigation.go(context, '/store'),
             ),
           ),
         ),
