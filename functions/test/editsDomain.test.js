@@ -52,6 +52,8 @@ test("edit mutations reject unauthenticated requests before database access", as
     ["recordView", { editId: "e1", watchPercent: 50, watchSeconds: 3 }],
     ["signal", { editId: "e1", type: "share" }],
     ["commentAction", { editId: "e1", commentId: "c1", action: "like" }],
+    ["getEditFeed", {}],
+    ["retryProcessing", { editId: "e1" }],
   ]) {
     await assert.rejects(
       handlers()[handler]({ data }),
@@ -82,6 +84,10 @@ test("startUpload ignores client moderation fields and starts pending", async ()
   assert.equal(stored.moderationStatus, "pending");
   assert.equal(stored.moderationReason, null);
   assert.equal(stored.caption, "Clean edit");
+  assert.equal(stored.schemaVersion, 2);
+  assert.equal(stored.originalCreatorId, "alice");
+  assert.equal(stored.originalStoragePath, `edits/alice/${started.editId}.mp4`);
+  assert.equal(stored.counters.views, 0);
 });
 
 test("view and signal validation rejects client-controlled invalid values", async () => {

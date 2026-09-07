@@ -1,3 +1,5 @@
+import '../../../core/constants/limits.dart';
+
 enum FriendshipStatus { pending, accepted, blocked }
 
 final class RespectRelation {
@@ -69,7 +71,7 @@ final class SocialSnapshot {
       .where((friendship) => friendship.status == FriendshipStatus.accepted)
       .toList(growable: false);
 
-  static const int fanThreshold = 5;
+  static const int fanThreshold = Limits.fanThreshold;
 
   bool canStartPrivateChat(String viewerId, String otherUserId) {
     if (viewerId.isEmpty || viewerId == otherUserId) return false;

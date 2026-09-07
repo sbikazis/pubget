@@ -827,10 +827,23 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if signedIn();
         allow create, update, delete: if false;
+        match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
       match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
+      match /playbackSessions/{sessionId} {
+        allow read: if signedIn() && resource.data.viewerId == request.auth.uid;
+        allow write: if false;
+      }
+      match /signals/{signalId} { allow read: if signedIn(); allow write: if false; }
+      match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
+    }
+
+    match /editUploadKeys/{keyId} {
+      allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
     match /fanWorks/{workId} {

@@ -1,9 +1,8 @@
 "use strict";
 
 const { moderateEditCopy } = require("./contentFilter");
-
-const DAY = 24 * 60 * 60 * 1000;
-const MAX_CAPTION = 1000;
+const { scoreEdit } = require("./ranking");
+const { EDITS_CONFIG } = require("./editsConfig");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -11,7 +10,40 @@ function string(value, max) {
     : null;
 }
 
-function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
+function emptyCounters() {
+  return {
+    likes: 0,
+    comments: 0,
+    shares: 0,
+    saves: 0,
+    respectReceived: 0,
+    impressions: 0,
+    views: 0,
+    qualifiedViews: 0,
+    completions: 0,
+    replays: 0,
+  };
+}
+
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (typeof value.toMillis === "function") return value.toMillis();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function serializeEdit(id, data) {
+  return {
+    id,
+    ...data,
+    createdAt: millis(data.createdAt) || null,
+    publishedAt: millis(data.publishedAt) || null,
+    processedAt: millis(data.processedAt) || null,
+  };
+}
+
+function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEdit }) {
   function uid(request) {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
     return request.auth.uid;
@@ -21,26 +53,72 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     return db.collection("edits").doc(editId);
   }
 
+  function bump(changes, flatKey, nestedKey, amount) {
+    changes[flatKey] = FieldValue.increment(amount);
+    changes[`counters.${nestedKey}`] = FieldValue.increment(amount);
+  }
+
   async function startUpload(request) {
     const creatorId = uid(request);
-    const caption = string(request.data?.caption || "", MAX_CAPTION);
+    const caption = string(request.data?.caption || "", EDITS_CONFIG.captionMax);
     const animeTag = string(request.data?.animeTag || "", 128);
     if (caption === null || animeTag === null) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
     }
+    const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
+    if (idempotencyKey) {
+      const keySnap = await db.collection("editUploadKeys")
+        .doc(`${creatorId}_${idempotencyKey}`).get();
+      if (keySnap.exists && keySnap.data()?.editId) {
+        const existingId = keySnap.data().editId;
+        return { editId: existingId, videoPath: `edits/${creatorId}/${existingId}.mp4` };
+      }
+    }
     const editId = db.collection("edits").doc().id;
-    await editRef(editId).create({
-      creatorId, videoUrl: "", thumbnailUrl: "", videoPath: `edits/${creatorId}/${editId}.mp4`,
-      caption, animeTag, likesCount: 0, commentsCount: 0, viewsCount: 0,
-      qualifiedViewsCount: 0, score: 0, totalWatchSeconds: 0, completionCount: 0,
-      sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
-      createdAt: FieldValue.serverTimestamp(), originalEditId: null, repostedBy: null,
+    const videoPath = `edits/${creatorId}/${editId}.mp4`;
+    const payload = {
+      creatorId,
+      videoUrl: "",
+      thumbnailUrl: "",
+      videoPath,
+      originalStoragePath: videoPath,
+      processedStoragePath: "",
+      thumbnailStoragePath: "",
+      caption,
+      animeTag,
+      likesCount: 0,
+      commentsCount: 0,
+      viewsCount: 0,
+      qualifiedViewsCount: 0,
+      score: 0,
+      totalWatchSeconds: 0,
+      completionCount: 0,
+      sharesCount: 0,
+      savesCount: 0,
+      negativeFeedbackCount: 0,
+      impressionsCount: 0,
+      replaysCount: 0,
+      respectReceivedCount: 0,
+      counters: emptyCounters(),
+      createdAt: FieldValue.serverTimestamp(),
+      publishedAt: null,
+      originalEditId: null,
+      repostedBy: null,
       originalCreatorId: creatorId,
+      isRepost: false,
       status: "uploading",
       moderationStatus: "pending",
       moderationReason: null,
-    });
-    return { editId, videoPath: `edits/${creatorId}/${editId}.mp4` };
+      schemaVersion: EDITS_CONFIG.schemaVersion,
+    };
+    const writes = [editRef(editId).create(payload)];
+    if (idempotencyKey) {
+      writes.push(db.collection("editUploadKeys").doc(`${creatorId}_${idempotencyKey}`).create({
+        creatorId, editId, createdAt: FieldValue.serverTimestamp(),
+      }));
+    }
+    await Promise.all(writes);
+    return { editId, videoPath };
   }
 
   async function repost(request) {
@@ -61,27 +139,49 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
         decision.reason || "This Edit cannot be reposted.",
       );
     }
-    const createdAt = source.createdAt?.toDate?.()?.getTime?.() || 0;
-    if (!createdAt || Date.now() - createdAt > 30 * DAY) {
+    const originMs = millis(source.publishedAt) || millis(source.createdAt);
+    if (!originMs || Date.now() - originMs > EDITS_CONFIG.repostWindowMs) {
       throw new HttpsError("failed-precondition", "Reposts are available for 30 days.");
     }
+    if (source.creatorId === creatorId) {
+      throw new HttpsError("failed-precondition", "You cannot repost your own Edit.");
+    }
+    const originalCreatorId = source.originalCreatorId || source.creatorId;
     const ref = db.collection("edits").doc();
     await ref.create({
-      ...source, creatorId, repostedBy: creatorId, originalEditId,
-      originalCreatorId: source.originalCreatorId || source.creatorId,
-      createdAt: FieldValue.serverTimestamp(), likesCount: 0, commentsCount: 0,
-      viewsCount: 0, qualifiedViewsCount: 0, totalWatchSeconds: 0,
-      completionCount: 0, score: 10, status: "published",
-      sharesCount: 0, savesCount: 0, negativeFeedbackCount: 0,
+      ...source,
+      creatorId,
+      repostedBy: creatorId,
+      originalEditId,
+      originalCreatorId,
+      isRepost: true,
+      createdAt: FieldValue.serverTimestamp(),
+      publishedAt: FieldValue.serverTimestamp(),
+      likesCount: 0,
+      commentsCount: 0,
+      viewsCount: 0,
+      qualifiedViewsCount: 0,
+      totalWatchSeconds: 0,
+      completionCount: 0,
+      score: 10,
+      status: "published",
+      sharesCount: 0,
+      savesCount: 0,
+      negativeFeedbackCount: 0,
+      impressionsCount: 0,
+      replaysCount: 0,
+      respectReceivedCount: 0,
+      counters: emptyCounters(),
       moderationStatus: "approved",
       moderationReason: null,
+      schemaVersion: EDITS_CONFIG.schemaVersion,
     });
     if (achievements && typeof achievements.evaluate === "function") {
       await achievements.evaluate({
         type: "edit_published",
         userId: creatorId,
         source: "edit",
-        metadata: { editId: ref.id },
+        metadata: { editId: ref.id, originalEditId },
       });
     }
     return { editId: ref.id };
@@ -97,7 +197,10 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     if (snap.data()?.creatorId !== creatorId) {
       throw new HttpsError("permission-denied", "Only the creator can delete this edit.");
     }
-    await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
+    await ref.update({
+      status: "deleted",
+      deletedAt: FieldValue.serverTimestamp(),
+    });
     return { ok: true };
   }
 
@@ -115,16 +218,14 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       }
       if (shouldLike && !existing.exists) {
         tx.create(likeRef, { userId: actor, createdAt: FieldValue.serverTimestamp() });
-        tx.update(ref, {
-          likesCount: FieldValue.increment(1),
-          score: FieldValue.increment(4),
-        });
+        const changes = { score: FieldValue.increment(4) };
+        bump(changes, "likesCount", "likes", 1);
+        tx.update(ref, changes);
       } else if (!shouldLike && existing.exists) {
         tx.delete(likeRef);
-        tx.update(ref, {
-          likesCount: FieldValue.increment(-1),
-          score: FieldValue.increment(-4),
-        });
+        const changes = { score: FieldValue.increment(-4) };
+        bump(changes, "likesCount", "likes", -1);
+        tx.update(ref, changes);
       }
     });
     return { ok: true };
@@ -133,11 +234,19 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
   async function comment(request) {
     const authorId = uid(request);
     const editId = string(request.data?.editId, 128);
-    const text = string(request.data?.text, 500);
+    const kind = request.data?.kind === "sticker" ? "sticker" : "text";
+    const max = kind === "sticker" ? EDITS_CONFIG.stickerMax : EDITS_CONFIG.commentMax;
+    const text = string(request.data?.text, max);
     const replyRaw = request.data?.replyToCommentId;
     const replyToCommentId = replyRaw == null || replyRaw === ""
       ? null
       : string(replyRaw, 128);
+    const mentions = Array.isArray(request.data?.mentions)
+      ? request.data.mentions
+        .filter((item) => typeof item === "string" && item.trim().length <= 32)
+        .map((item) => item.trim())
+        .slice(0, EDITS_CONFIG.mentionMax)
+      : [];
     if (replyRaw && !replyToCommentId) {
       throw new HttpsError("invalid-argument", "Reply target is invalid.");
     }
@@ -158,27 +267,65 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
         }
       }
       tx.create(commentRef, {
-        authorId, text, likesCount: 0, replyToCommentId,
+        authorId, text, likesCount: 0, replyToCommentId, kind, mentions,
         createdAt: FieldValue.serverTimestamp(),
       });
-      tx.update(ref, {
-        commentsCount: FieldValue.increment(1),
-        score: FieldValue.increment(6),
-      });
+      const changes = { score: FieldValue.increment(6) };
+      bump(changes, "commentsCount", "comments", 1);
+      tx.update(ref, changes);
     });
     return { commentId: commentRef.id };
+  }
+
+  async function recordImpressionOnly(tx, ref, viewerId, edit) {
+    const impressionRef = ref.collection("impressions").doc(viewerId);
+    const existing = await tx.get(impressionRef);
+    const last = existing.data()?.lastAt?.toDate?.()?.getTime?.() || 0;
+    if (existing.exists && Date.now() - last < EDITS_CONFIG.viewabilityMs) {
+      return { ok: true, counted: false };
+    }
+    if (existing.exists && Date.now() - last < 60 * 1000) {
+      return { ok: true, counted: false };
+    }
+    tx.set(impressionRef, {
+      viewerId,
+      lastAt: FieldValue.serverTimestamp(),
+      count: FieldValue.increment(1),
+    }, { merge: true });
+    if (edit.data()?.creatorId !== viewerId) {
+      const changes = {};
+      bump(changes, "impressionsCount", "impressions", 1);
+      tx.update(ref, changes);
+    }
+    return { ok: true, counted: true };
   }
 
   async function recordView(request) {
     const viewerId = uid(request);
     const editId = string(request.data?.editId, 128);
-    const sessionId = string(request.data?.sessionId, 128);
+    const sessionId = string(request.data?.sessionId || "", 128);
+    const eventType = typeof request.data?.eventType === "string"
+      ? request.data.eventType
+      : "progress";
     const percent = Number(request.data?.watchPercent);
     const watchSeconds = Math.max(0, Math.min(3600, Number(request.data?.watchSeconds) || 0));
-    if (!editId || !sessionId || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+    if (!editId || !Number.isFinite(percent) || percent < 0 || percent > 100) {
       throw new HttpsError("invalid-argument", "View data is invalid.");
     }
     const ref = editRef(editId);
+    if (eventType === "impression") {
+      await db.runTransaction(async (tx) => {
+        const edit = await tx.get(ref);
+        if (!edit.exists || edit.data()?.status !== "published") {
+          throw new HttpsError("not-found", "Edit not found.");
+        }
+        await recordImpressionOnly(tx, ref, viewerId, edit);
+      });
+      return { ok: true };
+    }
+    if (!sessionId) {
+      throw new HttpsError("invalid-argument", "View data is invalid.");
+    }
     const viewerRef = ref.collection("viewers").doc(viewerId);
     const sessionRef = ref.collection("playbackSessions").doc(sessionId);
     await db.runTransaction(async (tx) => {
@@ -198,6 +345,31 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       const lastHeartbeat = sessionData.lastHeartbeatAt?.toDate?.()?.getTime?.() ||
         sessionData.startedAt?.toDate?.()?.getTime?.() || 0;
       const elapsedSeconds = Math.max(0, (Date.now() - lastHeartbeat) / 1000);
+      if (elapsedSeconds < 0.15 && eventType === "progress") {
+        return;
+      }
+      if (eventType === "view" && sessionData.viewCounted !== true && !isSelf) {
+        const changes = {};
+        bump(changes, "viewsCount", "views", 1);
+        tx.update(ref, changes);
+        tx.update(sessionRef, {
+          viewCounted: true,
+          lastHeartbeatAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      if (eventType === "replay") {
+        if (sessionData.replayCounted !== true && !isSelf) {
+          const changes = {};
+          bump(changes, "replaysCount", "replays", 1);
+          tx.update(ref, changes);
+        }
+        tx.update(sessionRef, {
+          replayCounted: true,
+          lastHeartbeatAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
       const duration = Math.max(1, Number(edit.data()?.durationSeconds) || 180);
       const sessionCredited = Number(sessionData.creditedSeconds) || 0;
       const increment = Math.max(
@@ -208,10 +380,12 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       const verifiedPercent = Math.min(percent, verifiedSeconds / duration * 100);
       const previous = viewer.data() || {};
       const last = previous.lastQualifiedAt?.toDate?.()?.getTime?.() || 0;
-      // A qualified view is counted once per account/edit/day and is derived
-      // from server elapsed time, not from client percentages alone.
-      const qualified = !isSelf && verifiedPercent >= 10 && Date.now() - last >= DAY;
-      const completed = !isSelf && verifiedPercent >= 90 && previous.completed !== true;
+      const qualified = !isSelf &&
+        verifiedPercent >= EDITS_CONFIG.qualifiedViewPercent &&
+        Date.now() - last >= 24 * 60 * 60 * 1000;
+      const completed = !isSelf &&
+        verifiedPercent >= EDITS_CONFIG.completionPercent &&
+        previous.completed !== true;
       const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
       const watchCredit = increment;
       tx.set(viewerRef, {
@@ -224,16 +398,15 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       tx.update(sessionRef, {
         creditedSeconds: verifiedSeconds,
         lastHeartbeatAt: FieldValue.serverTimestamp(),
-        consumed: verifiedPercent >= 90,
+        consumed: verifiedPercent >= EDITS_CONFIG.completionPercent,
       });
       const changes = { totalWatchSeconds: FieldValue.increment(watchCredit) };
       if (qualified) {
-        changes.viewsCount = FieldValue.increment(1);
-        changes.qualifiedViewsCount = FieldValue.increment(1);
+        bump(changes, "qualifiedViewsCount", "qualifiedViews", 1);
         changes.score = FieldValue.increment(Math.min(5, 2 + watchCredit * 0.05));
       }
       if (completed) {
-        changes.completionCount = FieldValue.increment(1);
+        bump(changes, "completionCount", "completions", 1);
         changes.score = FieldValue.increment(8);
       }
       tx.update(ref, changes);
@@ -251,6 +424,10 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       throw new HttpsError("not-found", "Edit not found.");
     }
     const session = ref.collection("playbackSessions").doc(viewerId);
+    const previous = await session.get();
+    const prior = previous.data() || {};
+    const isReplay = previous.exists &&
+      (prior.consumed === true || Number(prior.creditedSeconds) > 0);
     await session.set({
       viewerId,
       startedAt: FieldValue.serverTimestamp(),
@@ -258,7 +435,14 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       creditedSeconds: 0,
       consumed: false,
+      viewCounted: false,
+      replayCounted: false,
     });
+    if (isReplay && edit.data()?.creatorId !== viewerId) {
+      const changes = {};
+      bump(changes, "replaysCount", "replays", 1);
+      await ref.update(changes);
+    }
     return { sessionId: session.id };
   }
 
@@ -266,20 +450,31 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     const actor = uid(request);
     const editId = string(request.data?.editId, 128);
     const type = request.data?.type;
-    const weights = { share: 3, save: 5, negative: -10 };
+    const weights = { share: 3, save: 5, unsave: 0, negative: -10 };
     if (!editId || !Object.hasOwn(weights, type)) {
       throw new HttpsError("invalid-argument", "Signal is invalid.");
     }
     const ref = editRef(editId);
-    const signalRef = ref.collection("signals").doc(`${actor}_${type}`);
+    const signalRef = ref.collection("signals").doc(`${actor}_${type === "unsave" ? "save" : type}`);
     await db.runTransaction(async (tx) => {
       const [edit, existing] = await Promise.all([tx.get(ref), tx.get(signalRef)]);
-      if (!edit.exists || existing.exists) return;
+      if (!edit.exists) return;
+      if (type === "unsave") {
+        if (!existing.exists) return;
+        tx.delete(signalRef);
+        const changes = { score: FieldValue.increment(-5) };
+        bump(changes, "savesCount", "saves", -1);
+        tx.update(ref, changes);
+        return;
+      }
+      if (existing.exists) return;
       tx.create(signalRef, { actor, type, createdAt: FieldValue.serverTimestamp() });
       const changes = { score: FieldValue.increment(weights[type]) };
-      if (type === "share") changes.sharesCount = FieldValue.increment(1);
-      if (type === "save") changes.savesCount = FieldValue.increment(1);
-      if (type === "negative") changes.negativeFeedbackCount = FieldValue.increment(1);
+      if (type === "share") bump(changes, "sharesCount", "shares", 1);
+      if (type === "save") bump(changes, "savesCount", "saves", 1);
+      if (type === "negative") {
+        changes.negativeFeedbackCount = FieldValue.increment(1);
+      }
       tx.update(ref, changes);
     });
     return { ok: true };
@@ -290,7 +485,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     const editId = string(request.data?.editId, 128);
     const commentId = string(request.data?.commentId, 128);
     const action = request.data?.action;
-    if (!editId || !commentId || !["like", "unlike", "delete"].includes(action)) {
+    if (!editId || !commentId || !["like", "unlike", "delete", "report"].includes(action)) {
       throw new HttpsError("invalid-argument", "Comment action is invalid.");
     }
     const edit = editRef(editId);
@@ -298,15 +493,21 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     await db.runTransaction(async (tx) => {
       const comment = await tx.get(commentRef);
       if (!comment.exists) return;
+      if (action === "report") {
+        const reportRef = commentRef.collection("reports").doc(actor);
+        const existing = await tx.get(reportRef);
+        if (existing.exists) return;
+        tx.create(reportRef, { actor, createdAt: FieldValue.serverTimestamp() });
+        return;
+      }
       if (action === "delete") {
         if (comment.data()?.authorId !== actor) {
           throw new HttpsError("permission-denied", "Only the author can delete this comment.");
         }
         tx.delete(commentRef);
-        tx.update(edit, {
-          commentsCount: FieldValue.increment(-1),
-          score: FieldValue.increment(-6),
-        });
+        const changes = { score: FieldValue.increment(-6) };
+        bump(changes, "commentsCount", "comments", -1);
+        tx.update(edit, changes);
         return;
       }
       const likeRef = commentRef.collection("likes").doc(actor);
@@ -322,9 +523,96 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements }) {
     return { ok: true };
   }
 
+  async function getEditFeed(request) {
+    const viewerId = uid(request);
+    const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || EDITS_CONFIG.feedPageSize));
+    const afterId = string(request.data?.afterId || "", 128);
+    const [userSnap, respectsSnap, listsSnap, published] = await Promise.all([
+      db.collection("users").doc(viewerId).get(),
+      db.collection("respects").where("fromUserId", "==", viewerId).get().catch(() => ({ docs: [] })),
+      db.collection("users").doc(viewerId).collection("animeList").get().catch(() => ({ docs: [] })),
+      db.collection("edits")
+        .where("status", "==", "published")
+        .orderBy("score", "desc")
+        .orderBy("createdAt", "desc")
+        .limit(80)
+        .get(),
+    ]);
+    const user = userSnap.data() || {};
+    const creatorIds = new Set();
+    (respectsSnap.docs || []).forEach((doc) => {
+      const value = Number(doc.data()?.value) || 0;
+      const toUserId = doc.data()?.toUserId;
+      if (toUserId && value >= EDITS_CONFIG.fanThreshold) creatorIds.add(toUserId);
+    });
+    const animeIds = [
+      ...((user.favoriteAnimeIds || []).filter(Boolean)),
+      ...((listsSnap.docs || []).map((doc) => doc.id)),
+    ];
+    const profile = {
+      userId: viewerId,
+      animeIds,
+      creatorIds,
+      seenIds: new Set(),
+      creatorQuality: 0,
+    };
+    const now = new Date();
+    const ranked = (published.docs || [])
+      .map((doc) => {
+        const data = doc.data() || {};
+        return {
+          id: doc.id,
+          data,
+          rank: scoreEdit({ id: doc.id, ...data }, profile, now),
+        };
+      })
+      .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    let start = 0;
+    if (afterId) {
+      const index = ranked.findIndex((item) => item.id === afterId);
+      start = index >= 0 ? index + 1 : 0;
+    }
+    const page = ranked.slice(start, start + limit);
+    return {
+      items: page.map((item) => serializeEdit(item.id, { ...item.data, score: item.rank })),
+      hasMore: start + page.length < ranked.length,
+    };
+  }
+
+  async function retryProcessing(request) {
+    const creatorId = uid(request);
+    const editId = string(request.data?.editId, 128);
+    if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
+    const ref = editRef(editId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    const data = snap.data() || {};
+    if (data.creatorId !== creatorId) {
+      throw new HttpsError("permission-denied", "Only the creator can retry this Edit.");
+    }
+    if (!["failed", "rejected", "uploading"].includes(data.status)) {
+      throw new HttpsError("failed-precondition", "This Edit is not waiting for a retry.");
+    }
+    const videoPath = data.originalStoragePath || data.videoPath;
+    if (!videoPath) {
+      throw new HttpsError("failed-precondition", "The original video is missing.");
+    }
+    await ref.update({
+      status: "processing",
+      failureReason: null,
+      processingStartedAt: FieldValue.serverTimestamp(),
+    });
+    if (typeof processEdit === "function") {
+      await processEdit({
+        data: { name: videoPath, contentType: "video/mp4", size: EDITS_CONFIG.maxBytes },
+      });
+    }
+    return { ok: true, videoPath };
+  }
+
   return {
     startUpload, repost, deleteEdit, like, comment, startPlayback, recordView, signal,
-    commentAction,
+    commentAction, getEditFeed, retryProcessing,
   };
 }
 

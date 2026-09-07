@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { moderateEditCopy } = require("./contentFilter");
+const { EDITS_CONFIG } = require("./editsConfig");
 
 function run(binary, args) {
   return new Promise((resolve, reject) => {
@@ -83,7 +84,7 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
     await ref.update({ status: "processing", processingStartedAt: new Date() });
-    if (object.contentType !== "video/mp4" || Number(object.size || 0) > 250 * 1024 * 1024) {
+    if (object.contentType !== "video/mp4" || Number(object.size || 0) > EDITS_CONFIG.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
       return null;
     }
@@ -95,11 +96,12 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
       await bucket.file(object.name).download({ destination: source });
       const ffmpeg = ffmpegBinary();
       const durationSeconds = await probe(ffmpeg, source);
-      if (durationSeconds <= 0 || durationSeconds > 180) {
-        throw new Error("Video duration is outside the 180 second limit");
+      if (durationSeconds <= 0 || durationSeconds > EDITS_CONFIG.maxDurationSeconds) {
+        await ref.update({ status: "failed", failureReason: "duration" });
+        return null;
       }
       await run(ffmpeg, [
-        "-i", source, "-t", "180", "-vf",
+        "-i", source, "-t", String(EDITS_CONFIG.maxDurationSeconds), "-vf",
         "scale='min(1080,iw)':-2:force_original_aspect_ratio=decrease",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
@@ -132,10 +134,20 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
         .get()
         .catch(() => ({ size: 0, docs: [] }));
       const decision = decideEditPublication(edit.data() || {}, {
-        videoUrl: processedPath, thumbnailUrl: thumbnailPath, durationSeconds,
-        score: 20 + creatorQuality, processedAt: new Date(),
+        videoUrl: processedPath,
+        thumbnailUrl: thumbnailPath,
+        originalStoragePath: object.name,
+        processedStoragePath: processedPath,
+        thumbnailStoragePath: thumbnailPath,
+        durationSeconds,
+        score: 20 + creatorQuality,
+        processedAt: new Date(),
         creatorQuality,
+        schemaVersion: EDITS_CONFIG.schemaVersion,
       });
+      if (decision.publish) {
+        decision.update.publishedAt = new Date();
+      }
       await ref.update(decision.update);
       if (!decision.publish) return null;
       if (economy && typeof economy.applyReward === "function") {

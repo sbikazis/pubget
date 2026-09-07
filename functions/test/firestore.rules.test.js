@@ -974,6 +974,21 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("edits/e1").update({
     status: "published", qualifiedViewsCount: 99, rankingScore: 99,
   }));
+  await assertFails(db("alice").doc("edits/forged").set({
+    creatorId: "alice", status: "published", originalCreatorId: "bob",
+  }));
+  await assertFails(db("alice").doc("edits/e1/comments/c1").set({
+    authorId: "alice", text: "forged",
+  }));
+  await assertFails(db("alice").doc("edits/e1/comments/c1/likes/alice").set({
+    actor: "alice",
+  }));
+  await assertFails(db("alice").doc("edits/e1/signals/alice_save").set({
+    type: "save",
+  }));
+  await assertFails(db("alice").doc("editUploadKeys/alice_key").set({
+    creatorId: "alice", editId: "e1",
+  }));
   await assertFails(db("bob").doc("edits/e1/playbackSessions/alice").set({
     viewerId: "alice", consumed: false, creditedSeconds: 99,
   }));
