@@ -20,20 +20,15 @@ final class JikanAnimeRepository implements AnimeRepository {
     String query, {
     int page = 1,
     int limit = 20,
+    AnimeSearchFilter? filter,
   }) {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
+    final resolved = (filter ?? const AnimeSearchFilter()).copyWith(
+      text: query,
+    );
+    if (!resolved.hasConstraints) {
       return Future<Result<AnimePage>>.value(const Success(AnimePage.empty));
     }
-    return _page(
-      _uri('anime', <String, String>{
-        'q': trimmed,
-        'page': '$page',
-        'limit': '${_limit(limit)}',
-        'sfw': 'true',
-      }),
-      page: page,
-    );
+    return _page(_uri('anime', _searchQuery(resolved, page, limit)), page: page);
   }
 
   @override
@@ -124,6 +119,21 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) {
+    final normalized = characterId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<AnimeCharacter>>.value(
+        const FailureResult(ValidationError('Character id is required.')),
+      );
+    }
+    return _object(
+      _uri('characters/${Uri.encodeComponent(normalized)}/full'),
+      mapJikanCharacterFull,
+      const NotFoundError('This character could not be found.'),
+    );
+  }
+
+  @override
   Future<Result<List<AnimeGenre>>> getGenres() async {
     final genres = await _list(
       _uri('genres/anime', const <String, String>{'filter': 'genres'}),
@@ -182,6 +192,45 @@ final class JikanAnimeRepository implements AnimeRepository {
       }),
       page: page,
     );
+  }
+
+  Map<String, String> _searchQuery(
+    AnimeSearchFilter filter,
+    int page,
+    int limit,
+  ) {
+    final query = <String, String>{
+      'page': '$page',
+      'limit': '${_limit(limit)}',
+      'sfw': 'true',
+      'order_by': switch (filter.sort) {
+        AnimeSearchSort.members => 'members',
+        AnimeSearchSort.title => 'title',
+        AnimeSearchSort.newest => 'start_date',
+        AnimeSearchSort.favorites => 'favorites',
+      },
+      'sort': filter.sort == AnimeSearchSort.title ? 'asc' : 'desc',
+    };
+    final text = filter.text.trim();
+    if (text.isNotEmpty) query['q'] = text;
+    final genreId = filter.genreId?.trim();
+    if (genreId != null && genreId.isNotEmpty) query['genres'] = genreId;
+    if (filter.type != null) query['type'] = filter.type!.name;
+    if (filter.season != null && filter.year != null) {
+      final range = _seasonRange(filter.year!, filter.season!);
+      query['start_date'] = range.$1;
+      query['end_date'] = range.$2;
+    }
+    return query;
+  }
+
+  (String, String) _seasonRange(int year, AnimeSeason season) {
+    return switch (season) {
+      AnimeSeason.winter => ('$year-01-01', '$year-03-31'),
+      AnimeSeason.spring => ('$year-04-01', '$year-06-30'),
+      AnimeSeason.summer => ('$year-07-01', '$year-09-30'),
+      AnimeSeason.fall => ('$year-10-01', '$year-12-31'),
+    };
   }
 
   Uri _uri(String path, [Map<String, String> query = const <String, String>{}]) {

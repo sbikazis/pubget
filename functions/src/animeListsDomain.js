@@ -120,6 +120,9 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     const name = validString(request.data && request.data.name, 120)
       ? request.data.name.trim()
       : "";
+    const imageUrl = validString(request.data && request.data.imageUrl, 2048)
+      ? request.data.imageUrl.trim()
+      : "";
     const favorite = request.data && request.data.favorite !== false;
     const ratingRaw = request.data && request.data.rating;
     const rating = ratingRaw == null ? null : Number(ratingRaw);
@@ -130,18 +133,47 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       throw new HttpsError("invalid-argument", "Rating must be an integer from 1 to 10.");
     }
     const ref = characterRef(userId, characterId);
-    if (!favorite) {
-      await ref.delete();
-      return { characterId, favorite: false };
-    }
-    await ref.set({
-      characterId,
-      userId,
-      name,
-      rating,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return { characterId, favorite: true, rating };
+    const statsRef = db.collection("character_stats").doc(characterId);
+    await db.runTransaction(async (tx) => {
+      const [existing, stats] = await Promise.all([tx.get(ref), tx.get(statsRef)]);
+      if (!favorite) {
+        if (!existing.exists) return;
+        if (existing.data()?.userId && existing.data().userId !== userId) {
+          throw new HttpsError("permission-denied", "This favorite belongs to another account.");
+        }
+        tx.delete(ref);
+        if (stats.exists) {
+          const count = Math.max(0, (Number(stats.data()?.favoritesCount) || 0) - 1);
+          tx.update(statsRef, {
+            favoritesCount: count,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+        return;
+      }
+      const payload = {
+        characterId,
+        userId,
+        name,
+        imageUrl,
+        rating,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      const already = existing.exists;
+      if (!already) payload.createdAt = FieldValue.serverTimestamp();
+      tx.set(ref, payload, { merge: true });
+      const nextCount = already
+        ? Number(stats.data()?.favoritesCount) || 0
+        : (Number(stats.data()?.favoritesCount) || 0) + 1;
+      tx.set(statsRef, {
+        characterId,
+        name: name || stats.data()?.name || "",
+        imageUrl: imageUrl || stats.data()?.imageUrl || "",
+        favoritesCount: nextCount,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+    return { characterId, favorite, rating };
   }
 
   async function getCharacterFavorites(request) {

@@ -228,6 +228,11 @@ final class AppStrings {
   String get drawerPremium => pick('Premium', 'بريميوم');
   String get drawerSettings => pick('Settings', 'الإعدادات');
   String get drawerGuide => pick('Guide', 'الدليل');
+  String get drawerAnime => pick('Anime List', 'قائمة الأنمي');
+  String get drawerAnimeRatings => pick('Ratings', 'التقييمات');
+  String get drawerAnimeCharacters =>
+      pick('Popular Characters', 'الشخصيات الشائعة');
+  String get myAnime => pick('My Anime', 'أنميّاتي');
   String get notifications => pick('Notifications', 'الإشعارات');
 
   String drawerLabel(String id) => switch (id) {
@@ -236,6 +241,9 @@ final class AppStrings {
     'groups' => drawerGroups,
     'joined' => drawerJoined,
     'suggested' => drawerSuggested,
+    'anime' => drawerAnime,
+    'anime-ratings' => drawerAnimeRatings,
+    'anime-characters' => drawerAnimeCharacters,
     'store' => drawerStore,
     'premium' => drawerPremium,
     'settings' => drawerSettings,

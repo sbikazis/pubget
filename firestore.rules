@@ -470,16 +470,40 @@ service cloud.firestore {
       match /economyRate/{id} { allow read, write: if false; }
       match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
       match /anime_lists/{animeId} {
-        allow read: if self(uid);
+        allow read: if signedIn();
         allow create, update, delete: if false;
       }
       match /character_favorites/{characterId} {
-        allow read: if self(uid);
+        allow read: if signedIn();
         allow create, update, delete: if false;
       }
+      match /anime_ratings/{animeId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+      match /animeHubRate/{id} { allow read, write: if false; }
     }
 
     match /storeCatalog/{itemId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /anime_stats/{animeId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /reviews/{reviewUid} {
+        allow read: if signedIn();
+        allow write: if false;
+        match /reports/{reportId} {
+          allow read: if isAdmin();
+          allow create: if signedIn() &&
+            request.auth.uid == request.resource.data.reporterId &&
+            reportId == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+    }
+    match /character_stats/{characterId} {
       allow read: if signedIn();
       allow write: if false;
     }

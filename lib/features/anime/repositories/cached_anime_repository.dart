@@ -27,12 +27,19 @@ final class CachedAnimeRepository implements AnimeRepository {
     String query, {
     int page = 1,
     int limit = 20,
+    AnimeSearchFilter? filter,
   }) {
     final trimmed = query.trim().toLowerCase();
+    final resolved = filter ?? AnimeSearchFilter(text: query);
     return _cachedPage(
-      'search:$trimmed:$page:$limit',
+      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
       AnimeCacheTtl.search,
-      () => _inner.searchAnime(query, page: page, limit: limit),
+      () => _inner.searchAnime(
+        query,
+        page: page,
+        limit: limit,
+        filter: resolved,
+      ),
     );
   }
 
@@ -100,6 +107,15 @@ final class CachedAnimeRepository implements AnimeRepository {
       'characters:${animeId.trim()}',
       AnimeCacheTtl.characters,
       () => _inner.getCharacters(animeId),
+    );
+  }
+
+  @override
+  Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) {
+    return _cached(
+      'character:${characterId.trim()}',
+      AnimeCacheTtl.characterDetails,
+      () => _inner.getCharacterDetails(characterId),
     );
   }
 
@@ -193,11 +209,19 @@ final class CachedAnimeRepository implements AnimeRepository {
     _inflight[key] = future;
     try {
       final result = await future;
-      result.fold(
-        onSuccess: (value) => _cache.write<T>(key, value, ttl),
-        onFailure: (_) {},
+      return result.fold(
+        onSuccess: (value) {
+          _cache.write<T>(key, value, ttl);
+          return Success<T>(value);
+        },
+        onFailure: (failure) {
+          if (existing != null) {
+            final value = wrapCache?.call(existing.value) ?? existing.value;
+            return Success<T>(value);
+          }
+          return FailureResult<T>(failure);
+        },
       );
-      return result;
     } finally {
       _inflight.remove(key);
     }

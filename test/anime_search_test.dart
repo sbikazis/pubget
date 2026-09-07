@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/loading/loading_state.dart';
+import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/home/models/home_models.dart';
@@ -83,6 +84,20 @@ void main() {
     expect(list.query, isEmpty);
     expect(list.items, isEmpty);
     expect(list.state, LoadingState.initial);
+  });
+
+  test('genre filter searches without a name query', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.applyFilter(const AnimeSearchFilter(genreId: '1'));
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(repository.searchCalls, 1);
+    expect(repository.lastFilter?.genreId, '1');
+    expect(list.items, isNotEmpty);
   });
 
   test('duplicate in-flight search is ignored', () async {

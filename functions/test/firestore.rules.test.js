@@ -963,7 +963,7 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
     });
   });
   await assertSucceeds(db("alice").doc("users/alice/anime_lists/21").get());
-  await assertFails(db("bob").doc("users/alice/anime_lists/21").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_lists/21").get());
   await assertFails(db("alice").doc("users/alice/anime_lists/21").set({
     animeId: "21", status: "completed", rating: 10,
   }));
@@ -1120,5 +1120,39 @@ test("collection-group members queries only return the caller's own membership",
   );
   await assertFails(db("bob").collectionGroup("members").get());
   await assertSucceeds(db("bob").doc("groups/g1/members/alice").get());
+});
+
+test("anime hub aggregates are readable but never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("anime_stats/16498").set({
+      animeId: "16498", averageScore: 8.5, ratingCount: 2, scoreSum: 17,
+    });
+    await admin.doc("anime_stats/16498/reviews/alice").set({
+      userId: "alice", overall: 8.5, comment: "Great",
+    });
+    await admin.doc("character_stats/luffy").set({
+      characterId: "luffy", favoritesCount: 4, name: "Luffy",
+    });
+    await admin.doc("users/alice/anime_ratings/16498").set({
+      userId: "alice", overall: 8.5,
+    });
+  });
+  await assertSucceeds(db("bob").doc("anime_stats/16498").get());
+  await assertSucceeds(db("bob").doc("anime_stats/16498/reviews/alice").get());
+  await assertSucceeds(db("bob").doc("character_stats/luffy").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_ratings/16498").get());
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    averageScore: 10, ratingCount: 99, scoreSum: 990,
+  }));
+  await assertFails(db("alice").doc("character_stats/luffy").set({
+    favoritesCount: 99,
+  }));
+  await assertFails(db("alice").doc("users/alice/anime_ratings/16498").set({
+    overall: 10,
+  }));
+  await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
+    lastAt: new Date(),
+  }));
 });
 

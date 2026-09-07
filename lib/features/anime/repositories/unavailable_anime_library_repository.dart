@@ -38,6 +38,7 @@ final class UnavailableAnimeLibraryRepository
     required String characterId,
     required bool favorite,
     String name = '',
+    String? imageUrl,
     int? rating,
   }) async => _fail();
 }
