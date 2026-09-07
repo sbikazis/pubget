@@ -567,7 +567,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
     return ConstrainedBox(
       key: const Key('character-sheet'),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
       ),
       child: SingleChildScrollView(
         child: Column(

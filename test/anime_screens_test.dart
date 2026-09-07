@@ -36,8 +36,8 @@ void main() {
     expect(find.text('Top rated'), findsNothing);
     expect(find.text('Trending'), findsNothing);
     expect(find.text('Upcoming'), findsNothing);
-    expect(find.text('This season'), findsWidgets);
-    expect(find.text('Most popular'), findsWidgets);
+    expect(find.text('This season', skipOffstage: false), findsWidgets);
+    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
   });
 
   testWidgets('hub empty state', (tester) async {
