@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/l10n/app_strings.dart';
 import '../core/widgets/pubget_design_system.dart';
+import '../features/groups/screens/group_type_sheet.dart';
 import 'app_router.dart';
 
 abstract final class AppShellCreateSheet {
@@ -27,7 +28,7 @@ abstract final class AppShellCreateSheet {
             title: Text(copy.createGroupAction),
             onTap: () {
               Navigator.pop(host);
-              AppNavigation.go(host, '/groups/create');
+              GroupTypeSheet.show(host);
             },
           ),
           ListTile(

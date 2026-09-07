@@ -27,6 +27,9 @@ final class GroupProvider extends ChangeNotifier {
   Failure? _joinedFailure;
   LeaveState _leaveState = LeaveState.idle;
   Future<void>? _leaveOperation;
+  bool _viewerBanned = false;
+  bool _pendingRequest = false;
+  bool _creating = false;
   bool _disposed = false;
 
   Group? get group => _group;
@@ -47,10 +50,31 @@ final class GroupProvider extends ChangeNotifier {
   bool get canManageMembers => memberCanManageMembers(_membership);
   int get unreadCount =>
       _joinedGroups.where((group) => group.hasUnread).length;
+  bool get viewerBanned => _viewerBanned;
+  bool get pendingRequest => _pendingRequest;
+  bool get creating => _creating;
+  List<Group> foundedGroups(String userId) => _joinedGroups
+      .where((group) => group.founderId == userId)
+      .toList(growable: false);
+  List<Group> memberGroups(String userId) => _joinedGroups
+      .where((group) => group.founderId != userId)
+      .toList(growable: false);
+
+  Future<List<RoleplayCharacter>> loadReserved(String groupId) async {
+    final result = await _repository.reservedCharacters(groupId);
+    return result.valueOrNull ?? const <RoleplayCharacter>[];
+  }
 
   Future<Result<Group>> create(GroupDraft draft) async {
+    if (_creating) {
+      return const FailureResult<Group>(
+        ValidationError('Group creation is already in progress.'),
+      );
+    }
+    _creating = true;
     _start();
     final result = await _repository.createGroup(draft);
+    _creating = false;
     result.fold(
       onSuccess: (group) {
         _group = group;
@@ -71,9 +95,13 @@ final class GroupProvider extends ChangeNotifier {
     final results = await Future.wait<Object>([
       _repository.getGroup(groupId),
       _repository.getMembership(groupId, userId),
+      _repository.isBanned(groupId: groupId, userId: userId),
+      _repository.hasPendingRequest(groupId: groupId, userId: userId),
     ]);
     final groupResult = results[0] as Result<Group>;
     final membershipResult = results[1] as Result<GroupMember?>;
+    final bannedResult = results[2] as Result<bool>;
+    final pendingResult = results[3] as Result<bool>;
     if (!groupResult.isSuccess) {
       _setFailure(groupResult.failureOrNull!);
       return;
@@ -84,6 +112,8 @@ final class GroupProvider extends ChangeNotifier {
     }
     _group = groupResult.valueOrNull;
     _membership = membershipResult.valueOrNull;
+    _viewerBanned = bannedResult.valueOrNull ?? false;
+    _pendingRequest = pendingResult.valueOrNull ?? false;
     _state = LoadingState.loaded;
     notifyListeners();
   }
@@ -152,11 +182,13 @@ final class GroupProvider extends ChangeNotifier {
     String groupId, {
     required String userId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async {
     _start();
     final result = await _repository.joinGroup(
       groupId: groupId,
       inviteId: inviteId,
+      join: join,
     );
     if (!result.isSuccess) {
       _setFailure(result.failureOrNull!);
@@ -186,11 +218,15 @@ final class GroupProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<Result<void>> requestToJoin(String groupId) async {
+  Future<Result<void>> requestToJoin(
+    String groupId, {
+    GroupJoinPayload? join,
+  }) async {
     _start();
-    final result = await _repository.requestToJoin(groupId: groupId);
+    final result = await _repository.requestToJoin(groupId: groupId, join: join);
     result.fold(
       onSuccess: (_) {
+        _pendingRequest = true;
         _state = LoadingState.loaded;
         notifyListeners();
       },

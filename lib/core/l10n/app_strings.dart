@@ -323,6 +323,68 @@ final class AppStrings {
 
   String get groupsTitle => pick('My Groups', 'مجموعاتي');
   String get joinedTitle => pick('Joined', 'المنضم إليها');
+  String get joinedGroupsTab =>
+      pick('Joined groups', 'المجموعات المنضم إليها');
+  String get createdGroupsTab =>
+      pick('Groups I created', 'المجموعات التي أنشأتها');
+  String get noCreatedGroups =>
+      pick('No created groups', 'لا مجموعات أنشأتها');
+  String get noCreatedMessage => pick(
+    'Create a group from the + button.',
+    'أنشئ مجموعة من زر +.',
+  );
+  String get shareInApp => pick('Share in the app', 'مشاركة داخل التطبيق');
+  String get shareOutside => pick('Share outside the app', 'مشاركة خارج التطبيق');
+  String get skip => pick('Skip', 'تخطي');
+  String get selectAnime => pick('Choose anime', 'تحديد الأنمي');
+  String get selectCharacter => pick('Choose your character', 'تحديد شخصيتك');
+  String get characterReserved => pick(
+    'This character is currently reserved by another member of this group',
+    'هذه الشخصية محجوزة حالياً من طرف عضو آخر في هذه المجموعة',
+  );
+  String get invitedByOptional =>
+      pick('Invited by (optional username)', 'مدعو من طرف (اختياري)');
+  String get acceptGroupRules =>
+      pick('I accept the group rules and terms', 'أوافق على شروط وأحكام المجموعة');
+  String get characterReason =>
+      pick('Why this character?', 'سبب اختيارك لهذه الشخصية');
+  String get useDefaultCharacterImage => pick(
+    'Use the imported default image',
+    'استخدام الصورة الافتراضية المستوردة',
+  );
+  String get useCustomCharacterImage =>
+      pick('Set another image', 'تعيين صورة أخرى');
+  String get requestPending =>
+      pick('Request pending', 'الطلب معلّق');
+  String get bannedFromGroup => pick(
+    'You cannot join this group',
+    'لا يمكنك الانضمام إلى هذه المجموعة',
+  );
+  String get groupCapacityReached =>
+      pick('This group is at capacity', 'المجموعة مكتملة العدد');
+  String get joinPolicyClosed => pick(
+    'Closed (request + founder approval)',
+    'مغلقة (طلب + موافقة المؤسس)',
+  );
+  String get joinPolicyOpenEveryone =>
+      pick('Open to everyone', 'مفتوحة للجميع');
+  String get groupCreatedTitle =>
+      pick('Group created', 'تم إنشاء المجموعة');
+  String get controlPanelTitle =>
+      pick('Group control panel', 'لوحة تحكم المجموعة');
+  String get growthOverview => pick('Growth', 'النمو');
+  String get dangerZone => pick('Danger zone', 'منطقة الإجراءات الخطرة');
+  String get memberPreview => pick('Members preview', 'معاينة الأعضاء');
+  String get noAnimeResults => pick('No anime found', 'لا يوجد أنمي');
+  String get noAnimeResultsHint => pick(
+    'Try a different spelling or adjust the filters.',
+    'جرّب صياغة أخرى أو عدّل عوامل التصفية.',
+  );
+  String get noCharacterResults => pick('No characters found', 'لا توجد شخصيات');
+  String get noCharacterResultsHint => pick(
+    'Try another name or clear the filters.',
+    'جرّب اسماً آخر أو امسح عوامل التصفية.',
+  );
   String get searchGroups => pick('Search groups', 'ابحث عن مجموعات');
   String get createGroup => pick('Create', 'إنشاء');
   String get createAGroup => pick('Create a group', 'أنشئ مجموعة');

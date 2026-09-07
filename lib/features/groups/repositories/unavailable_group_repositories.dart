@@ -32,10 +32,27 @@ final class UnavailableGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => _fail();
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
-      _fail();
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => _fail();
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => _fail();
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => _fail();
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => _fail();
   @override
   Future<Result<void>> leaveGroup(String groupId) async => _fail();
   @override

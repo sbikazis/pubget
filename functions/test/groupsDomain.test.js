@@ -116,14 +116,51 @@ test("group settings validation runs before any database access", async () => {
   );
 });
 
-test("roleplay reservation rejects characters outside the fixed catalog", async () => {
+test("roleplay reservation rejects incomplete character payloads", async () => {
   await assert.rejects(
     handlers().reserveRoleplayCharacter({
       auth: { uid: "alice" },
       data: {
         groupId: "g1",
         characterKey: "hero",
-        character: { name: "Not The Hero" },
+        character: { name: "" },
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("public groups reject a founder character payload", async () => {
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: {
+        name: "Public",
+        description: "",
+        type: "public",
+        joinPolicy: "approval",
+        isSearchable: true,
+        rules: "",
+        characterKey: "hero",
+        character: { name: "The Hero", avatarUrl: "" },
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("anime roleplay create requires a founder character", async () => {
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: {
+        name: "Roleplay",
+        description: "",
+        type: "animeRoleplay",
+        animeId: "52991",
+        joinPolicy: "approval",
+        isSearchable: true,
+        rules: "",
       },
     }),
     (error) => error.code === "invalid-argument",

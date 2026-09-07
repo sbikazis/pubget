@@ -190,6 +190,7 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => const Success<void>(null);
 
   @override
@@ -197,7 +198,7 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
       const Success<void>(null);
 
   @override
@@ -217,4 +218,20 @@ final class _FakeGroupRepository implements GroupRepository {
     required String groupId,
     required GroupSettingsUpdate settings,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
 }

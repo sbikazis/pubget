@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../models/group_models.dart';
 import '../providers/group_provider.dart';
 import '../widgets/group_list_card.dart';
 
@@ -32,6 +34,13 @@ class _JoinedGroupsPageState extends State<JoinedGroupsPage> {
     final provider = context.watch<GroupProvider>();
     final uid = context.watch<AuthProvider>().currentUser?.id;
     final copy = AppStrings.of(context);
+    final groups = uid == null
+        ? const <Group>[]
+        : provider.memberGroups(uid);
+    final listState = provider.joinedState == LoadingState.loaded &&
+            groups.isEmpty
+        ? LoadingState.empty
+        : provider.joinedState;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -42,7 +51,7 @@ class _JoinedGroupsPageState extends State<JoinedGroupsPage> {
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: PubgetLoadingStateView(
-            state: provider.joinedState,
+            state: listState,
             onRetry: () {
               if (uid == null) return;
               provider.loadJoined(uid);
@@ -71,10 +80,10 @@ class _JoinedGroupsPageState extends State<JoinedGroupsPage> {
               },
             ),
             child: ListView.separated(
-              itemCount: provider.joinedGroups.length,
+              itemCount: groups.length,
               separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, index) =>
-                  GroupListCard(group: provider.joinedGroups[index]),
+                  GroupListCard(group: groups[index]),
             ),
           ),
         ),
