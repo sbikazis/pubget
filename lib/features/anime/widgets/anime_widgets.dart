@@ -6,6 +6,7 @@ import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -152,7 +153,11 @@ class AnimePoster extends StatelessWidget {
 }
 
 class AnimePosterCard extends StatelessWidget {
-  const AnimePosterCard({required this.anime, this.width = 128, super.key});
+  const AnimePosterCard({
+    required this.anime,
+    this.width = 128,
+    super.key,
+  });
 
   final Anime anime;
   final double width;
@@ -168,9 +173,38 @@ class AnimePosterCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            AspectRatio(
-              aspectRatio: 2 / 3,
-              child: AnimePoster(images: anime.images, memCacheWidth: 280),
+            Stack(
+              children: <Widget>[
+                AspectRatio(
+                  aspectRatio: 2 / 3,
+                  child: AnimePoster(images: anime.images, memCacheWidth: 320),
+                ),
+                if (anime.score != null)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.royalNight.withValues(alpha: 0.82),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppColors.goldSheen),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        child: Text(
+                          anime.score!.toStringAsFixed(1),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.goldPale,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.sm),
@@ -181,7 +215,9 @@ class AnimePosterCard extends StatelessWidget {
                     anime.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
@@ -207,18 +243,64 @@ class AnimeResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      onTap: () => AnimeLinks.openDetails(context, anime.id),
-      leading: SizedBox(
-        width: 48,
-        height: 64,
-        child: AnimePoster(images: anime.images, memCacheWidth: 96),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
       ),
-      title: Text(anime.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        _meta(anime),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      child: PubgetCard(
+        padding: EdgeInsets.zero,
+        onTap: () => AnimeLinks.openDetails(context, anime.id),
+        child: SizedBox(
+          height: 112,
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 80,
+                child: AnimePoster(images: anime.images, memCacheWidth: 160),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        anime.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        _meta(anime),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const Spacer(),
+                      Text(
+                        [
+                          if (anime.score != null)
+                            'MAL ${anime.score!.toStringAsFixed(1)}',
+                          if (anime.studios.isNotEmpty) anime.studios.first,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -229,23 +311,35 @@ class AnimeHorizontalStrip extends StatelessWidget {
     required this.title,
     required this.items,
     required this.state,
+    this.subtitle,
     this.onSeeAll,
     this.onRetry,
     this.failure,
+    this.posterWidth = 128,
+    this.highlightFirst = false,
     super.key,
   });
 
   final String title;
+  final String? subtitle;
   final List<Anime> items;
   final LoadingState state;
   final VoidCallback? onSeeAll;
   final VoidCallback? onRetry;
   final String? failure;
+  final double posterWidth;
+  final bool highlightFirst;
+
+  double get _stripHeight {
+    final width = highlightFirst ? posterWidth + 28 : posterWidth;
+    return width * 1.5 + 86;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -253,10 +347,40 @@ class AnimeHorizontalStrip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             child: Row(
               children: <Widget>[
+                Container(
+                  width: 4,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(99),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[
+                        Color(0xFFF4D37D),
+                        Color(0xFF6C3FC5),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (onSeeAll != null)
@@ -294,15 +418,19 @@ class AnimeHorizontalStrip extends StatelessWidget {
             )
           else
             SizedBox(
-              height: 250,
+              height: _stripHeight,
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                 scrollDirection: Axis.horizontal,
                 itemCount: items.length,
                 separatorBuilder: (_, _) =>
-                    const SizedBox(width: AppSpacing.sm),
-                itemBuilder: (context, index) =>
-                    AnimePosterCard(anime: items[index]),
+                    const SizedBox(width: AppSpacing.md),
+                itemBuilder: (context, index) => AnimePosterCard(
+                  anime: items[index],
+                  width: highlightFirst && index == 0
+                      ? posterWidth + 28
+                      : posterWidth,
+                ),
               ),
             ),
         ],
@@ -320,7 +448,7 @@ class AnimeHomeStrip extends StatelessWidget {
     if (hub.state == LoadingState.initial) {
       Future<void>.microtask(hub.load);
     }
-    final trending = hub.section(AnimeCatalogKind.trending).items;
+    final trending = hub.section(AnimeCatalogKind.thisSeason).items;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: Column(

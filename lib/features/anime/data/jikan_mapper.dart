@@ -90,16 +90,23 @@ AnimeCharacter? mapJikanCharacterFull(Object? raw) {
   final name = _string(map['name']);
   if (id == null || name == null || name.isEmpty) return null;
   final voices = map['voices'] ?? map['voice_actors'];
+  final images = _images(map['images']);
   return AnimeCharacter(
     id: id,
     name: name,
-    imageUrl: _images(map['images']).displayUrl,
+    imageUrl: images.largeUrl ?? images.displayUrl,
     favorites: _int(map['favorites']),
     url: _string(map['url']),
     about: _string(map['about']),
     nameKanji: _string(map['name_kanji']),
     nicknames: List<String>.unmodifiable(_stringList(map['nicknames'])),
     voiceActors: List<VoiceActor>.unmodifiable(_voiceActors(voices)),
+    animeography: List<CharacterAppearance>.unmodifiable(
+      _appearances(map['anime'], mediaKey: 'anime'),
+    ),
+    mangaography: List<CharacterAppearance>.unmodifiable(
+      _appearances(map['manga'], mediaKey: 'manga'),
+    ),
   );
 }
 
@@ -198,10 +205,37 @@ List<VoiceActor> _voiceActors(Object? raw) {
         name: name,
         language: _string(map['language']),
         imageUrl: _images(person['images']).displayUrl,
+        animeTitle: _string(_map(map['anime'])?['title']),
       ),
     );
   }
   return actors;
+}
+
+List<CharacterAppearance> _appearances(
+  Object? raw, {
+  required String mediaKey,
+}) {
+  if (raw is! List) return const <CharacterAppearance>[];
+  final items = <CharacterAppearance>[];
+  for (final entry in raw) {
+    if (entry is! Map) continue;
+    final map = Map<String, dynamic>.from(entry);
+    final media = _map(map[mediaKey]) ?? map;
+    final id = _idOf(media['mal_id']);
+    final title = _string(media['title']);
+    if (id == null || title == null || title.isEmpty) continue;
+    items.add(
+      CharacterAppearance(
+        id: id,
+        title: title,
+        role: _string(map['role']),
+        imageUrl: _images(media['images']).displayUrl,
+        url: _string(media['url']),
+      ),
+    );
+  }
+  return items;
 }
 
 List<AnimeExternalLink> _externalLinks(Map<String, dynamic> map) {

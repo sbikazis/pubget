@@ -451,6 +451,7 @@ class _CharactersSection extends StatelessWidget {
                 return SizedBox(
                   width: 128,
                   child: PubgetCard(
+                    key: Key('character-${character.id}'),
                     padding: EdgeInsets.zero,
                     onTap: () => _showCharacter(context, details, character),
                     child: Column(
@@ -498,32 +499,78 @@ Future<void> _showCharacter(
   BuildContext context,
   AnimeDetailsProvider details,
   AnimeCharacter preview,
-) async {
-  final profile = await details.characterProfile(preview);
-  if (!context.mounted) return;
+) {
   final social = maybeAnimeHubSocial(context, listen: false);
-  final stats = await social?.characterStats(profile.id);
-  if (!context.mounted) return;
-  await PubgetBottomSheet.show<void>(
+  return PubgetBottomSheet.show<void>(
     context,
     isScrollControlled: true,
-    title: profile.name,
-    child: _CharacterProfile(character: profile, stats: stats),
+    title: preview.name,
+    child: _CharacterProfileSheet(
+      preview: preview,
+      details: details,
+      social: social,
+    ),
   );
 }
 
-class _CharacterProfile extends StatelessWidget {
-  const _CharacterProfile({required this.character, required this.stats});
+class _CharacterProfileSheet extends StatefulWidget {
+  const _CharacterProfileSheet({
+    required this.preview,
+    required this.details,
+    required this.social,
+  });
 
-  final AnimeCharacter character;
-  final CharacterCommunityStats? stats;
+  final AnimeCharacter preview;
+  final AnimeDetailsProvider details;
+  final AnimeHubSocialProvider? social;
+
+  @override
+  State<_CharacterProfileSheet> createState() => _CharacterProfileSheetState();
+}
+
+class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
+  late AnimeCharacter _character;
+  CharacterCommunityStats? _stats;
+  var _loadingProfile = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _character = widget.preview;
+    _loadingProfile =
+        widget.preview.id.isNotEmpty && !widget.preview.hasFullProfile;
+    Future<void>.microtask(_hydrate);
+  }
+
+  Future<void> _hydrate() async {
+    final preview = widget.preview;
+    final profileFuture = widget.details.characterProfile(preview);
+    final statsFuture = widget.social?.characterStats(preview.id);
+    final profile = await profileFuture;
+    if (!mounted) return;
+    setState(() {
+      _character = profile;
+      _loadingProfile = false;
+    });
+    if (statsFuture == null) return;
+    final stats = await statsFuture;
+    if (!mounted) return;
+    setState(() => _stats = stats);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final character = _character;
+    final stats = _stats;
     final library = maybeAnimeLibrary(context);
     final favorited = library?.isCharacterFavorite(character.id) == true;
+    final theme = Theme.of(context);
+    final about = CharacterAboutSections.parse(character.about);
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 520),
+      key: const Key('character-sheet'),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+      ),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -538,43 +585,183 @@ class _CharacterProfile extends StatelessWidget {
                       thumbnailUrl: character.imageUrl,
                       largeUrl: character.imageUrl,
                     ),
-                    memCacheWidth: 480,
+                    memCacheWidth: 720,
                   ),
                 ),
               ),
             const SizedBox(height: AppSpacing.lg),
-            if (character.nameKanji != null)
-              Text(
-                character.nameKanji!,
-                style: Theme.of(context).textTheme.titleMedium,
+            Text(
+              character.name,
+              key: const Key('character-sheet-name'),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
-            if (character.role != null) Text(character.role!),
-            if (stats != null && stats!.favoritesCount > 0) ...<Widget>[
-              const SizedBox(height: AppSpacing.sm),
-              Text('${stats!.favoritesCount} Pubget favorites'),
+            ),
+            if (character.nameKanji != null &&
+                character.nameKanji!.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.xs),
+              Text(character.nameKanji!, style: theme.textTheme.titleMedium),
             ],
-            if (character.nicknames.isNotEmpty) ...<Widget>[
-              const SizedBox(height: AppSpacing.md),
-              Text(character.nicknames.join(' · ')),
-            ],
-            if (character.about != null && character.about!.isNotEmpty) ...<
+            if (character.role != null && character.role!.isNotEmpty) ...<
               Widget
             >[
-              const SizedBox(height: AppSpacing.lg),
-              Text(character.about!),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '${AnimeStrings.characterRole}: ${character.role}',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: AppColors.goldSheen,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
-            if (character.voiceActors.isNotEmpty) ...<Widget>[
+            if (_loadingProfile) ...<Widget>[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                AnimeStrings.loadingProfile,
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: <Widget>[
+                _factChip(theme, AnimeStrings.characterMalId, character.id),
+                if (character.favorites != null)
+                  _factChip(
+                    theme,
+                    AnimeStrings.malFavorites,
+                    '${character.favorites}',
+                  ),
+                if (stats != null)
+                  _factChip(
+                    theme,
+                    AnimeStrings.pubgetFavorites,
+                    '${stats.favoritesCount}',
+                  ),
+                if (character.role != null && character.role!.isNotEmpty)
+                  _factChip(theme, AnimeStrings.characterRole, character.role!),
+              ],
+            ),
+            if (character.nicknames.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
-              for (final actor in character.voiceActors.take(8))
+              Text(
+                AnimeStrings.characterNicknames,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: <Widget>[
+                  for (final name in character.nicknames)
+                    Chip(label: Text(name)),
+                ],
+              ),
+            ],
+            if (about.facts.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterFacts,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              for (final fact in about.facts)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: Text(
-                    [
-                      actor.name,
-                      if (actor.language != null) actor.language!,
-                    ].join(' · '),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      SizedBox(
+                        width: 108,
+                        child: Text(
+                          fact.label,
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      Expanded(child: SelectableText(fact.value)),
+                    ],
                   ),
                 ),
+            ],
+            if (about.narrative.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterAbout,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SelectableText(about.narrative),
+            ] else if (character.about != null &&
+                character.about!.isNotEmpty &&
+                about.facts.isEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterAbout,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SelectableText(character.about!),
+            ],
+            ..._appearanceBlock(
+              theme,
+              title: AnimeStrings.characterAnime,
+              items: character.animeography,
+            ),
+            ..._appearanceBlock(
+              theme,
+              title: AnimeStrings.characterManga,
+              items: character.mangaography,
+            ),
+            if (character.voiceActors.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                AnimeStrings.characterVoices,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              for (final actor in character.voiceActors)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Row(
+                    children: <Widget>[
+                      if (actor.imageUrl != null) ...<Widget>[
+                        ClipOval(
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: AnimePoster(
+                              images: AnimeImages(thumbnailUrl: actor.imageUrl),
+                              memCacheWidth: 80,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                      ],
+                      Expanded(
+                        child: Text(
+                          [
+                            actor.name,
+                            if (actor.language != null) actor.language!,
+                            if (actor.animeTitle != null) actor.animeTitle!,
+                          ].join(' · '),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+            if (character.url != null && character.url!.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.md),
+              PubgetTextButton(
+                onPressed: () => AnimeLinks.copyUrl(context, character.url!),
+                semanticLabel: AnimeStrings.copied,
+                child: Text(
+                  character.url!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
             const SizedBox(height: AppSpacing.lg),
             PubgetPrimaryButton(
@@ -597,6 +784,54 @@ class _CharacterProfile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _factChip(ThemeData theme, String label, String value) {
+    return Chip(
+      label: Text('$label: $value'),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  List<Widget> _appearanceBlock(
+    ThemeData theme, {
+    required String title,
+    required List<CharacterAppearance> items,
+  }) {
+    if (items.isEmpty) return const <Widget>[];
+    return <Widget>[
+      const SizedBox(height: AppSpacing.lg),
+      Text(title, style: theme.textTheme.titleMedium),
+      const SizedBox(height: AppSpacing.sm),
+      for (final item in items)
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (item.imageUrl != null) ...<Widget>[
+                SizedBox(
+                  width: 40,
+                  height: 56,
+                  child: AnimePoster(
+                    images: AnimeImages(thumbnailUrl: item.imageUrl),
+                    memCacheWidth: 80,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
+              Expanded(
+                child: Text(
+                  [
+                    item.title,
+                    if (item.role != null && item.role!.isNotEmpty) item.role!,
+                  ].join(' · '),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
   }
 }
 

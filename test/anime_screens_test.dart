@@ -34,6 +34,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text('Top rated'), findsNothing);
+    expect(find.text('Trending'), findsNothing);
+    expect(find.text('Upcoming'), findsNothing);
+    expect(find.text('This season', skipOffstage: false), findsWidgets);
+    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
   });
 
   testWidgets('hub empty state', (tester) async {
@@ -77,6 +81,44 @@ void main() {
     expect(find.text(AnimeStrings.nothingFound), findsWidgets);
   });
 
+  testWidgets('hub search field stays mounted while typing a name', (
+    tester,
+  ) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    final search = find.byKey(const Key('anime-hub-search'));
+    final element = tester.element(search);
+    await tester.enterText(find.byType(TextField), 'frieren');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(tester.element(search), same(element));
+    await tester.pumpAndSettle();
+    expect(repository.searchCalls, greaterThan(0));
+    expect(find.text('Frieren'), findsWidgets);
+  });
+
+  testWidgets('hub type and season chips search without a name', (tester) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('filter-type-tv')));
+    await tester.pumpAndSettle();
+    expect(repository.searchCalls, greaterThan(0));
+    expect(repository.lastFilter?.type, AnimeTypeFilter.tv);
+    expect(find.text('Frieren'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
+    expect(repository.lastFilter?.season, AnimeSeason.fall);
+    expect(repository.lastFilter?.year, isNotNull);
+    expect(find.text('Frieren'), findsWidgets);
+  });
+
   testWidgets('details success, character failure does not hide anime', (
     tester,
   ) async {
@@ -91,6 +133,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
+  });
+
+  testWidgets('character sheet opens immediately then fills in Jikan details', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[
+        AnimeCharacter(
+          id: '10',
+          name: 'Frieren',
+          role: 'Main',
+          imageUrl: 'https://example.test/char.jpg',
+        ),
+      ],
+    )..characterDetailsGate = gate;
+    await tester.pumpWidget(
+      _harness(
+        repository: repository,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('character-10')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const Key('character-sheet')), findsOneWidget);
+    expect(find.byKey(const Key('character-sheet-name')), findsOneWidget);
+    expect(find.text('An elf mage.'), findsNothing);
+    expect(repository.characterDetailsCalls, 1);
+    gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('An elf mage.'), findsWidgets);
+    expect(find.text('フリーレン'), findsWidgets);
+    expect(find.text(AnimeStrings.characterAbout), findsWidgets);
+    expect(find.text(AnimeStrings.characterAnime), findsWidgets);
+    expect(find.textContaining(AnimeStrings.malFavorites), findsWidgets);
   });
 
   testWidgets('details missing anime', (tester) async {

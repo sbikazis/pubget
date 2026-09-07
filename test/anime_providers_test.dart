@@ -16,7 +16,9 @@ void main() {
     addTearDown(hub.dispose);
     await hub.load();
     expect(hub.state, LoadingState.loaded);
-    expect(hub.section(AnimeCatalogKind.trending).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.thisSeason).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.popular).items, isNotEmpty);
+    expect(hub.section(AnimeCatalogKind.trending).items, isEmpty);
     expect(hub.genres, isNotEmpty);
     expect(hub.seasons, isNotEmpty);
     expect(hub.section(AnimeCatalogKind.top).items, isEmpty);
@@ -27,10 +29,10 @@ void main() {
     final hub = AnimeHubProvider(repository: repository);
     addTearDown(hub.dispose);
     await hub.load();
-    expect(repository.trendingCalls, 1);
+    expect(repository.trendingCalls, 0);
     expect(repository.thisSeasonCalls, 1);
     expect(repository.popularCalls, 1);
-    expect(repository.upcomingCalls, 1);
+    expect(repository.upcomingCalls, 0);
     expect(repository.topCalls, 0);
     expect(repository.airingCalls, 0);
   });
@@ -97,5 +99,26 @@ void main() {
     addTearDown(list.dispose);
     await list.openCatalog(AnimeCatalogKind.top);
     expect(list.state, LoadingState.offline);
+  });
+
+  test('character profiles are prefetched and reused instantly', () async {
+    const preview = AnimeCharacter(
+      id: '10',
+      name: 'Frieren',
+      role: 'Main',
+    );
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[preview],
+    );
+    final details = AnimeDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.load('52991');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.characterDetailsCalls, 1);
+    final profile = await details.characterProfile(preview);
+    expect(profile.about, 'An elf mage.');
+    expect(profile.nameKanji, 'フリーレン');
+    expect(profile.role, 'Main');
+    expect(repository.characterDetailsCalls, 1);
   });
 }

@@ -28,7 +28,26 @@ final class JikanAnimeRepository implements AnimeRepository {
     if (!resolved.hasConstraints) {
       return Future<Result<AnimePage>>.value(const Success(AnimePage.empty));
     }
-    return _page(_uri('anime', _searchQuery(resolved, page, limit)), page: page);
+    final text = resolved.text.trim();
+    if (text.isEmpty && resolved.year != null && resolved.season != null) {
+      return _page(
+        _uri('seasons/${resolved.year}/${resolved.season!.apiValue}', {
+          'page': '$page',
+          'limit': '${_limit(limit)}',
+          'sfw': 'true',
+          if (resolved.type != null) 'filter': resolved.type!.name,
+        }),
+        page: page,
+        priority: AnimeRequestPriority.interactive,
+        filter: resolved,
+      );
+    }
+    return _page(
+      _uri('anime', _searchQuery(resolved, page, limit)),
+      page: page,
+      priority: AnimeRequestPriority.interactive,
+      filter: resolved,
+    );
   }
 
   @override
@@ -41,6 +60,7 @@ final class JikanAnimeRepository implements AnimeRepository {
       _uri('anime/${Uri.encodeComponent(normalized)}/full'),
       mapJikanAnime,
       const NotFoundError('This anime could not be found.'),
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -115,6 +135,7 @@ final class JikanAnimeRepository implements AnimeRepository {
     return _list(
       _uri('anime/${Uri.encodeComponent(normalized)}/characters'),
       mapJikanCharacters,
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -130,6 +151,7 @@ final class JikanAnimeRepository implements AnimeRepository {
       _uri('characters/${Uri.encodeComponent(normalized)}/full'),
       mapJikanCharacterFull,
       const NotFoundError('This character could not be found.'),
+      priority: AnimeRequestPriority.interactive,
     );
   }
 
@@ -216,21 +238,7 @@ final class JikanAnimeRepository implements AnimeRepository {
     final genreId = filter.genreId?.trim();
     if (genreId != null && genreId.isNotEmpty) query['genres'] = genreId;
     if (filter.type != null) query['type'] = filter.type!.name;
-    if (filter.season != null && filter.year != null) {
-      final range = _seasonRange(filter.year!, filter.season!);
-      query['start_date'] = range.$1;
-      query['end_date'] = range.$2;
-    }
     return query;
-  }
-
-  (String, String) _seasonRange(int year, AnimeSeason season) {
-    return switch (season) {
-      AnimeSeason.winter => ('$year-01-01', '$year-03-31'),
-      AnimeSeason.spring => ('$year-04-01', '$year-06-30'),
-      AnimeSeason.summer => ('$year-07-01', '$year-09-30'),
-      AnimeSeason.fall => ('$year-10-01', '$year-12-31'),
-    };
   }
 
   Uri _uri(String path, [Map<String, String> query = const <String, String>{}]) {
@@ -242,18 +250,24 @@ final class JikanAnimeRepository implements AnimeRepository {
 
   int _limit(int limit) => limit.clamp(1, 25);
 
-  Future<Result<AnimePage>> _page(Uri uri, {required int page}) async {
-    final payload = await _get(uri);
+  Future<Result<AnimePage>> _page(
+    Uri uri, {
+    required int page,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+    AnimeSearchFilter? filter,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
           final pagination = mapJikanPagination(body['pagination']);
+          final pageResult = AnimePage(
+            items: mapJikanAnimeList(body['data']),
+            page: pagination.page == 0 ? page : pagination.page,
+            hasNextPage: pagination.hasNextPage,
+          );
           return Success(
-            AnimePage(
-              items: mapJikanAnimeList(body['data']),
-              page: pagination.page == 0 ? page : pagination.page,
-              hasNextPage: pagination.hasNextPage,
-            ),
+            filter == null ? pageResult : filter.constrain(pageResult),
           );
         } on Object catch (error) {
           return animeHttpFailure<AnimePage>(error);
@@ -266,9 +280,10 @@ final class JikanAnimeRepository implements AnimeRepository {
   Future<Result<T>> _object<T>(
     Uri uri,
     T? Function(Object? raw) map,
-    Failure missing,
-  ) async {
-    final payload = await _get(uri);
+    Failure missing, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
@@ -285,9 +300,10 @@ final class JikanAnimeRepository implements AnimeRepository {
 
   Future<Result<List<T>>> _list<T>(
     Uri uri,
-    List<T> Function(Object? raw) map,
-  ) async {
-    final payload = await _get(uri);
+    List<T> Function(Object? raw) map, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    final payload = await _get(uri, priority: priority);
     return payload.fold(
       onSuccess: (body) {
         try {
@@ -300,9 +316,12 @@ final class JikanAnimeRepository implements AnimeRepository {
     );
   }
 
-  Future<Result<Map<String, dynamic>>> _get(Uri uri) async {
+  Future<Result<Map<String, dynamic>>> _get(
+    Uri uri, {
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
     try {
-      final response = await _http.get(uri);
+      final response = await _http.get(uri, priority: priority);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return animeHttpFailure<Map<String, dynamic>>(
           'http ${response.statusCode}',

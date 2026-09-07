@@ -45,7 +45,7 @@ enum AnimeCatalogKind {
 
   String get label => switch (this) {
     AnimeCatalogKind.trending => 'Trending',
-    AnimeCatalogKind.popular => 'Popular',
+    AnimeCatalogKind.popular => 'Most popular',
     AnimeCatalogKind.top => 'Top rated',
     AnimeCatalogKind.airing => 'Currently airing',
     AnimeCatalogKind.thisSeason => 'This season',
@@ -54,12 +54,10 @@ enum AnimeCatalogKind {
 
   String get routeValue => name;
 
-  /// Hub home does not load Jikan "top"/score charts — Pubget ratings own that.
+  /// Hub home is exactly this season and most popular.
   static const hubHome = <AnimeCatalogKind>[
-    AnimeCatalogKind.trending,
     AnimeCatalogKind.thisSeason,
     AnimeCatalogKind.popular,
-    AnimeCatalogKind.upcoming,
   ];
 }
 
@@ -90,6 +88,34 @@ final class AnimeSearchFilter {
       type != null ||
       (season != null && year != null);
   bool get hasConstraints => hasQuery || hasNonTextConstraints;
+
+  bool matchesCatalog(Anime anime) {
+    if (type != null) {
+      final animeType = anime.type?.trim().toLowerCase();
+      if (animeType != null &&
+          animeType.isNotEmpty &&
+          animeType != type!.name) {
+        return false;
+      }
+    }
+    final genre = genreId?.trim();
+    if (genre != null && genre.isNotEmpty && anime.genres.isNotEmpty) {
+      if (!anime.genres.any((item) => item.id == genre)) return false;
+    }
+    if (season != null && anime.season != null && anime.season != season) {
+      return false;
+    }
+    if (year != null && anime.year != null && anime.year != year) {
+      return false;
+    }
+    return true;
+  }
+
+  AnimePage constrain(AnimePage page) {
+    final items = page.items.where(matchesCatalog).toList(growable: false);
+    if (items.length == page.items.length) return page;
+    return page.copyWith(items: items);
+  }
 
   AnimeSearchFilter copyWith({
     String? text,
@@ -160,12 +186,30 @@ final class VoiceActor {
     required this.name,
     this.language,
     this.imageUrl,
+    this.animeTitle,
   });
 
   final String id;
   final String name;
   final String? language;
   final String? imageUrl;
+  final String? animeTitle;
+}
+
+final class CharacterAppearance {
+  const CharacterAppearance({
+    required this.id,
+    required this.title,
+    this.role,
+    this.imageUrl,
+    this.url,
+  });
+
+  final String id;
+  final String title;
+  final String? role;
+  final String? imageUrl;
+  final String? url;
 }
 
 final class AnimeCharacter {
@@ -180,6 +224,8 @@ final class AnimeCharacter {
     this.nameKanji,
     this.nicknames = const <String>[],
     this.voiceActors = const <VoiceActor>[],
+    this.animeography = const <CharacterAppearance>[],
+    this.mangaography = const <CharacterAppearance>[],
   });
 
   final String id;
@@ -192,27 +238,111 @@ final class AnimeCharacter {
   final String? nameKanji;
   final List<String> nicknames;
   final List<VoiceActor> voiceActors;
+  final List<CharacterAppearance> animeography;
+  final List<CharacterAppearance> mangaography;
 
   AnimeCharacter copyWith({
+    String? name,
     String? about,
     String? nameKanji,
     List<String>? nicknames,
     String? imageUrl,
     String? role,
     int? favorites,
+    String? url,
     List<VoiceActor>? voiceActors,
+    List<CharacterAppearance>? animeography,
+    List<CharacterAppearance>? mangaography,
   }) => AnimeCharacter(
     id: id,
-    name: name,
+    name: name ?? this.name,
     imageUrl: imageUrl ?? this.imageUrl,
     role: role ?? this.role,
     favorites: favorites ?? this.favorites,
-    url: url,
+    url: url ?? this.url,
     about: about ?? this.about,
     nameKanji: nameKanji ?? this.nameKanji,
     nicknames: nicknames ?? this.nicknames,
     voiceActors: voiceActors ?? this.voiceActors,
+    animeography: animeography ?? this.animeography,
+    mangaography: mangaography ?? this.mangaography,
   );
+
+  AnimeCharacter mergeDetails(AnimeCharacter details) {
+    return copyWith(
+      name: details.name,
+      about: details.about ?? about,
+      nameKanji: details.nameKanji ?? nameKanji,
+      nicknames: details.nicknames.isNotEmpty ? details.nicknames : nicknames,
+      imageUrl: details.imageUrl ?? imageUrl,
+      favorites: details.favorites ?? favorites,
+      url: details.url ?? url,
+      voiceActors: details.voiceActors.isNotEmpty
+          ? details.voiceActors
+          : voiceActors,
+      animeography: details.animeography.isNotEmpty
+          ? details.animeography
+          : animeography,
+      mangaography: details.mangaography.isNotEmpty
+          ? details.mangaography
+          : mangaography,
+    );
+  }
+
+  bool get hasFullProfile =>
+      (about != null && about!.trim().isNotEmpty) ||
+      nameKanji != null ||
+      nicknames.isNotEmpty ||
+      animeography.isNotEmpty ||
+      mangaography.isNotEmpty;
+}
+
+final class CharacterAboutSections {
+  const CharacterAboutSections({
+    required this.facts,
+    required this.narrative,
+  });
+
+  final List<({String label, String value})> facts;
+  final String narrative;
+
+  static CharacterAboutSections parse(String? about) {
+    final text = about?.trim() ?? '';
+    if (text.isEmpty) {
+      return const CharacterAboutSections(
+        facts: <({String label, String value})>[],
+        narrative: '',
+      );
+    }
+    final facts = <({String label, String value})>[];
+    final narrative = <String>[];
+    for (final rawLine in text.split(RegExp(r'\r?\n'))) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        if (narrative.isNotEmpty && narrative.last.isNotEmpty) {
+          narrative.add('');
+        }
+        continue;
+      }
+      final separator = line.indexOf(':');
+      if (separator > 0 && separator < 40 && separator < line.length - 1) {
+        final label = line.substring(0, separator).trim();
+        final value = line.substring(separator + 1).trim();
+        if (label.isNotEmpty &&
+            value.isNotEmpty &&
+            !label.contains('http') &&
+            label.length <= 32) {
+          facts.add((label: label, value: value));
+          continue;
+        }
+      }
+      narrative.add(line);
+    }
+    return CharacterAboutSections(
+      facts: List<({String label, String value})>.unmodifiable(facts),
+      narrative: narrative.join('\n').trim(),
+    );
+  }
 }
 
 final class Anime {
@@ -393,4 +523,18 @@ abstract final class AnimeStrings {
   static const sortFavorites = 'Most favorited';
   static const searchFiltersHint = 'Search by name, or filter by season and genre.';
   static const noRatingsYet = 'Be the first to rate this anime on Pubget.';
+  static const characterAbout = 'About';
+  static const characterNicknames = 'Nicknames';
+  static const characterAnime = 'Anime appearances';
+  static const characterManga = 'Manga appearances';
+  static const characterVoices = 'Voice actors';
+  static const characterFacts = 'Profile facts';
+  static const characterMalId = 'MAL ID';
+  static const characterRole = 'Role';
+  static const loadingProfile = 'Loading full profile…';
+  static const malFavorites = 'MAL favorites';
+  static const pubgetFavorites = 'Pubget favorites';
+  static const thisSeasonSubtitle =
+      'Airing this cour — posters, scores, and studios.';
+  static const popularSubtitle = 'The titles everyone is watching and saving.';
 }

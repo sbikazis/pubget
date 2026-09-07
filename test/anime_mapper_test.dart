@@ -35,6 +35,7 @@ void main() {
   test('maps a full character profile', () {
     final character = mapJikanCharacterFull(<String, Object?>{
       'mal_id': 10,
+      'url': 'https://myanimelist.net/character/10',
       'name': 'Frieren',
       'name_kanji': 'フリーレン',
       'about': 'An elf mage.',
@@ -43,11 +44,56 @@ void main() {
       'images': <String, Object?>{
         'jpg': <String, Object?>{'image_url': 'https://example.test/char.jpg'},
       },
+      'anime': <Object?>[
+        <String, Object?>{
+          'role': 'Main',
+          'anime': <String, Object?>{
+            'mal_id': 52991,
+            'title': 'Frieren',
+            'url': 'https://myanimelist.net/anime/52991',
+          },
+        },
+      ],
+      'manga': <Object?>[
+        <String, Object?>{
+          'role': 'Main',
+          'manga': <String, Object?>{
+            'mal_id': 126996,
+            'title': 'Sousou no Frieren',
+          },
+        },
+      ],
+      'voices': <Object?>[
+        <String, Object?>{
+          'language': 'Japanese',
+          'person': <String, Object?>{
+            'mal_id': 44,
+            'name': 'Ueda, Reina',
+          },
+        },
+      ],
     });
     expect(character, isNotNull);
     expect(character!.about, 'An elf mage.');
     expect(character.nameKanji, 'フリーレン');
     expect(character.nicknames, <String>['Frieren']);
+    expect(character.favorites, 9);
+    expect(character.animeography, hasLength(1));
+    expect(character.animeography.single.title, 'Frieren');
+    expect(character.mangaography, hasLength(1));
+    expect(character.voiceActors.single.name, 'Ueda, Reina');
+    expect(character.voiceActors.single.language, 'Japanese');
+    expect(character.url, 'https://myanimelist.net/character/10');
+  });
+
+  test('splits Jikan about text into facts and narrative', () {
+    final sections = CharacterAboutSections.parse(
+      'Birthday: Unknown\nHeight: 150 cm\n\nAn elf mage who has lived for centuries.',
+    );
+    expect(sections.facts, hasLength(2));
+    expect(sections.facts.first.label, 'Birthday');
+    expect(sections.facts.first.value, 'Unknown');
+    expect(sections.narrative, contains('An elf mage'));
   });
 
   test('skips malformed anime entries instead of throwing', () {

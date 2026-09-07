@@ -84,15 +84,16 @@ final class AnimeHubProvider extends ChangeNotifier {
 
     var anyCache = false;
     Failure? firstFailure;
+    await Future.wait(<Future<void>>[
+      for (final kind in AnimeCatalogKind.hubHome) _loadSection(kind),
+    ]);
     for (final kind in AnimeCatalogKind.hubHome) {
       if (_disposed) return;
-      await _loadSection(kind);
       final snapshot = section(kind);
       anyCache = anyCache || snapshot.fromCache;
       firstFailure ??= snapshot.failure;
     }
-    await _loadGenres();
-    await _loadSeasons();
+    await Future.wait(<Future<void>>[_loadGenres(), _loadSeasons()]);
     if (_disposed) return;
     _fromCache = anyCache;
     _failure = firstFailure;
@@ -192,8 +193,8 @@ final class AnimeListProvider extends ChangeNotifier {
   AnimeListProvider({
     required AnimeRepository repository,
     Analytics? analytics,
-    this.debounce = const Duration(milliseconds: 280),
-    this.minQueryLength = 2,
+    this.debounce = const Duration(milliseconds: 50),
+    this.minQueryLength = 1,
   }) : _repository = repository,
        _analytics = analytics;
 
@@ -275,6 +276,13 @@ final class AnimeListProvider extends ChangeNotifier {
     _scheduleSearch();
   }
 
+  void searchSubmitted(String query) {
+    _searchDebounce?.cancel();
+    _query = query;
+    _filter = _filter.copyWith(text: query);
+    _scheduleSearch(immediate: true);
+  }
+
   void applyFilter(AnimeSearchFilter filter) {
     _searchDebounce?.cancel();
     _filter = filter.copyWith(text: _query);
@@ -320,6 +328,11 @@ final class AnimeListProvider extends ChangeNotifier {
   void clearSearch() {
     _searchDebounce?.cancel();
     _query = '';
+    _filter = _filter.copyWith(text: '');
+    if (_filter.hasNonTextConstraints) {
+      _scheduleSearch(immediate: true);
+      return;
+    }
     _reset();
     _safeNotify();
   }
@@ -450,7 +463,7 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   String _requestKey({required int page, required String searchQuery}) =>
-      '${_catalog?.name}|$_genreId|$_year|${_season?.name}|$searchQuery|$page';
+      '${_catalog?.name}|$_genreId|$_year|${_season?.name}|${_filter.genreId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
 
   List<Anime> _merge(List<Anime> current, List<Anime> incoming) {
     final seen = current.map((item) => item.id).toSet();
@@ -532,6 +545,9 @@ final class AnimeDetailsProvider extends ChangeNotifier {
   List<String> _favoriteIds = const <String>[];
   bool _savingFavorite = false;
   OnboardingProvider? _onboarding;
+  final Map<String, AnimeCharacter> _characterProfiles = <String, AnimeCharacter>{};
+  final Map<String, Future<AnimeCharacter>> _characterInflight =
+      <String, Future<AnimeCharacter>>{};
 
   Anime? get anime => _anime;
   List<AnimeCharacter> get characters => _characters;
@@ -574,6 +590,7 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     if (!refresh) {
       _anime = null;
       _characters = const <AnimeCharacter>[];
+      _characterProfiles.clear();
     }
     _safeNotify();
     _analytics?.logEvent('anime_open', parameters: {'animeId': id});
@@ -609,19 +626,36 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     return _loadCharacters(id);
   }
 
-  Future<AnimeCharacter> characterProfile(AnimeCharacter preview) async {
+  Future<AnimeCharacter> characterProfile(AnimeCharacter preview) {
+    final cached = _characterProfiles[preview.id];
+    if (cached != null && cached.hasFullProfile) {
+      return Future<AnimeCharacter>.value(preview.mergeDetails(cached));
+    }
+    final pending = _characterInflight[preview.id];
+    if (pending != null) {
+      return pending.then(preview.mergeDetails);
+    }
+    final future = _loadCharacterProfile(preview);
+    _characterInflight[preview.id] = future;
+    return future.whenComplete(() => _characterInflight.remove(preview.id));
+  }
+
+  Future<AnimeCharacter> _loadCharacterProfile(AnimeCharacter preview) async {
     final result = await _repository.getCharacterDetails(preview.id);
-    return result.fold(
-      onSuccess: (details) => preview.copyWith(
-        about: details.about,
-        nameKanji: details.nameKanji,
-        nicknames: details.nicknames,
-        imageUrl: details.imageUrl,
-        favorites: details.favorites,
-        voiceActors: details.voiceActors,
-      ),
+    final merged = result.fold(
+      onSuccess: preview.mergeDetails,
       onFailure: (_) => preview,
     );
+    if (merged.hasFullProfile) {
+      _characterProfiles[preview.id] = merged;
+    }
+    return merged;
+  }
+
+  void _prefetchCharacterProfiles(List<AnimeCharacter> characters) {
+    for (final character in characters.take(8)) {
+      unawaited(characterProfile(character));
+    }
   }
 
   Future<void> toggleFavorite() async {
@@ -678,6 +712,9 @@ final class AnimeDetailsProvider extends ChangeNotifier {
             ? LoadingState.empty
             : LoadingState.loaded;
         _charactersFailure = null;
+        if (characters.isNotEmpty) {
+          _prefetchCharacterProfiles(characters);
+        }
       },
       onFailure: (failure) {
         _charactersFailure = failure;
