@@ -151,6 +151,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   Failure? characterDetailsFailure;
   Failure? nextPageFailure;
   Completer<void>? gate;
+  Completer<void>? characterDetailsGate;
   int searchCalls = 0;
   int detailsCalls = 0;
   int trendingCalls = 0;
@@ -277,17 +278,31 @@ final class FakeAnimeRepository implements AnimeRepository {
   @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) async {
     characterDetailsCalls++;
+    if (characterDetailsGate != null) await characterDetailsGate!.future;
     if (characterDetailsFailure != null) {
       return FailureResult<AnimeCharacter>(characterDetailsFailure!);
     }
     final match = characters.where((item) => item.id == characterId);
-    if (match.isNotEmpty) return Success<AnimeCharacter>(match.first);
+    final preview = match.isEmpty ? null : match.first;
     return Success<AnimeCharacter>(
       AnimeCharacter(
         id: characterId,
-        name: 'Frieren',
+        name: preview?.name ?? 'Frieren',
+        imageUrl: preview?.imageUrl,
+        role: preview?.role,
         about: 'An elf mage.',
         nameKanji: 'フリーレン',
+        nicknames: const <String>['Frieren'],
+        favorites: 9,
+        url: 'https://myanimelist.net/character/10',
+        voiceActors: preview?.voiceActors ?? const <VoiceActor>[],
+        animeography: const <CharacterAppearance>[
+          CharacterAppearance(
+            id: '52991',
+            title: 'Frieren',
+            role: 'Main',
+          ),
+        ],
       ),
     );
   }

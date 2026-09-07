@@ -84,15 +84,16 @@ final class AnimeHubProvider extends ChangeNotifier {
 
     var anyCache = false;
     Failure? firstFailure;
+    await Future.wait(<Future<void>>[
+      for (final kind in AnimeCatalogKind.hubHome) _loadSection(kind),
+    ]);
     for (final kind in AnimeCatalogKind.hubHome) {
       if (_disposed) return;
-      await _loadSection(kind);
       final snapshot = section(kind);
       anyCache = anyCache || snapshot.fromCache;
       firstFailure ??= snapshot.failure;
     }
-    await _loadGenres();
-    await _loadSeasons();
+    await Future.wait(<Future<void>>[_loadGenres(), _loadSeasons()]);
     if (_disposed) return;
     _fromCache = anyCache;
     _failure = firstFailure;
@@ -192,7 +193,7 @@ final class AnimeListProvider extends ChangeNotifier {
   AnimeListProvider({
     required AnimeRepository repository,
     Analytics? analytics,
-    this.debounce = const Duration(milliseconds: 280),
+    this.debounce = const Duration(milliseconds: 120),
     this.minQueryLength = 2,
   }) : _repository = repository,
        _analytics = analytics;
@@ -273,6 +274,13 @@ final class AnimeListProvider extends ChangeNotifier {
     _query = query;
     _filter = _filter.copyWith(text: query);
     _scheduleSearch();
+  }
+
+  void searchSubmitted(String query) {
+    _searchDebounce?.cancel();
+    _query = query;
+    _filter = _filter.copyWith(text: query);
+    _scheduleSearch(immediate: true);
   }
 
   void applyFilter(AnimeSearchFilter filter) {
@@ -450,7 +458,7 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   String _requestKey({required int page, required String searchQuery}) =>
-      '${_catalog?.name}|$_genreId|$_year|${_season?.name}|$searchQuery|$page';
+      '${_catalog?.name}|$_genreId|$_year|${_season?.name}|${_filter.genreId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
 
   List<Anime> _merge(List<Anime> current, List<Anime> incoming) {
     final seen = current.map((item) => item.id).toSet();
@@ -613,12 +621,18 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     final result = await _repository.getCharacterDetails(preview.id);
     return result.fold(
       onSuccess: (details) => preview.copyWith(
+        name: details.name,
         about: details.about,
         nameKanji: details.nameKanji,
         nicknames: details.nicknames,
         imageUrl: details.imageUrl,
         favorites: details.favorites,
-        voiceActors: details.voiceActors,
+        url: details.url,
+        voiceActors: details.voiceActors.isNotEmpty
+            ? details.voiceActors
+            : preview.voiceActors,
+        animeography: details.animeography,
+        mangaography: details.mangaography,
       ),
       onFailure: (_) => preview,
     );

@@ -149,10 +149,33 @@ void main() {
     expect(query['q'], 'frieren');
     expect(query['genres'], '1');
     expect(query['type'], 'tv');
-    expect(query['start_date'], '2023-10-01');
-    expect(query['end_date'], '2023-12-31');
+    expect(query.containsKey('start_date'), isFalse);
+    expect(query.containsKey('end_date'), isFalse);
     expect(query['order_by'], 'title');
     expect(query['sort'], 'asc');
+  });
+
+  test('season-only search uses the seasons endpoint', () async {
+    final result = await repository.searchAnime(
+      '',
+      filter: const AnimeSearchFilter(
+        season: AnimeSeason.winter,
+        year: 2026,
+      ),
+    );
+    expect(result.isSuccess, isTrue);
+    expect(http.calls.single.path, contains('/seasons/2026/winter'));
+    expect(http.calls.single.queryParameters.containsKey('q'), isFalse);
+  });
+
+  test('genre-only search uses the genre catalog endpoint', () async {
+    final result = await repository.searchAnime(
+      '',
+      filter: const AnimeSearchFilter(genreId: '1'),
+    );
+    expect(result.isSuccess, isTrue);
+    expect(http.calls.single.queryParameters['genres'], '1');
+    expect(http.calls.single.queryParameters.containsKey('q'), isFalse);
   });
 
   test('character full profile maps about and kanji', () async {

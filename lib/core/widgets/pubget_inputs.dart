@@ -125,6 +125,7 @@ class PubgetSearchField extends StatelessWidget {
     this.controller,
     this.hint,
     this.onChanged,
+    this.onSubmitted,
     this.onClear,
     this.enabled = true,
     super.key,
@@ -133,6 +134,7 @@ class PubgetSearchField extends StatelessWidget {
   final TextEditingController? controller;
   final String? hint;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final VoidCallback? onClear;
   final bool enabled;
 
@@ -145,6 +147,7 @@ class PubgetSearchField extends StatelessWidget {
       enabled: enabled,
       keyboardType: TextInputType.text,
       textInputAction: TextInputAction.search,
+      onSubmitted: onSubmitted,
       prefixIcon: const Icon(Icons.search),
       suffixIcon: onClear == null
           ? null

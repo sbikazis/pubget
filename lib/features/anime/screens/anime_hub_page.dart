@@ -81,6 +81,10 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
           setState(() {});
           list.searchChanged(value);
         },
+        onSubmitted: (value) {
+          setState(() {});
+          list.searchSubmitted(value);
+        },
         onClear: () {
           _search.clear();
           list.clearSearch();
@@ -103,91 +107,70 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              for (final genre in hub.genres.take(12))
-                PubgetSelectionChip(
-                  label: genre.name,
-                  selected: filter.genreId == genre.id,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      genreId: genre.id,
-                      clearGenre: filter.genreId == genre.id,
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: <Widget>[
+                for (final type in AnimeTypeFilter.values) ...<Widget>[
+                  PubgetSelectionChip(
+                    label: type.name.toUpperCase(),
+                    selected: filter.type == type,
+                    onSelected: (_) => list.applyFilter(
+                      filter.copyWith(
+                        type: type,
+                        clearType: filter.type == type,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              for (final type in AnimeTypeFilter.values)
-                PubgetSelectionChip(
-                  label: type.name.toUpperCase(),
-                  selected: filter.type == type,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      type: type,
-                      clearType: filter.type == type,
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                for (final season in AnimeSeason.values) ...<Widget>[
+                  PubgetSelectionChip(
+                    label: season.label,
+                    selected: filter.season == season,
+                    onSelected: (_) => list.applyFilter(
+                      filter.copyWith(
+                        season: season,
+                        year: filter.year ?? DateTime.now().year,
+                        clearSeason: filter.season == season,
+                        clearYear: filter.season == season,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              for (final season in AnimeSeason.values)
-                PubgetSelectionChip(
-                  label: season.label,
-                  selected: filter.season == season,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      season: season,
-                      year: filter.year ?? DateTime.now().year,
-                      clearSeason: filter.season == season,
-                      clearYear: filter.season == season,
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                for (final year in years) ...<Widget>[
+                  PubgetSelectionChip(
+                    label: '$year',
+                    selected: filter.year == year,
+                    onSelected: (_) => list.applyFilter(
+                      filter.copyWith(
+                        year: year,
+                        season:
+                            filter.season ?? AnimeSeason.fromDate(DateTime.now()),
+                        clearYear: filter.year == year,
+                        clearSeason: filter.year == year,
+                      ),
                     ),
                   ),
-                ),
-              for (final year in years)
-                PubgetSelectionChip(
-                  label: '$year',
-                  selected: filter.year == year,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      year: year,
-                      season: filter.season ?? AnimeSeason.fromDate(DateTime.now()),
-                      clearYear: filter.year == year,
-                      clearSeason: filter.year == year,
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                for (final genre in hub.genres.take(16)) ...<Widget>[
+                  PubgetSelectionChip(
+                    label: genre.name,
+                    selected: filter.genreId == genre.id,
+                    onSelected: (_) => list.applyFilter(
+                      filter.copyWith(
+                        genreId: genre.id,
+                        clearGenre: filter.genreId == genre.id,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              for (final sort in AnimeSearchSort.values)
-                PubgetSelectionChip(
-                  label: switch (sort) {
-                    AnimeSearchSort.members => AnimeStrings.sortMembers,
-                    AnimeSearchSort.title => AnimeStrings.sortTitle,
-                    AnimeSearchSort.newest => AnimeStrings.sortNewest,
-                    AnimeSearchSort.favorites => AnimeStrings.sortFavorites,
-                  },
-                  selected: filter.sort == sort,
-                  onSelected: (_) => list.applyFilter(filter.copyWith(sort: sort)),
-                ),
-            ],
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+              ],
+            ),
           ),
         ],
       ),
@@ -254,7 +237,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppSpacing.md),
-                child: PubgetSkeleton.card(height: 180),
+                child: PubgetSkeleton.card(height: 220),
               ),
             )
           else if (hub.state == LoadingState.error && !_hubHasContent(hub))
@@ -288,12 +271,12 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
                   items: hub.section(kind).items,
                   state: hub.section(kind).state,
                   failure: hub.section(kind).failure?.message,
+                  posterWidth: 156,
+                  highlightFirst: kind == AnimeCatalogKind.thisSeason,
                   onSeeAll: () => AnimeLinks.openCatalog(context, kind),
                   onRetry: hub.retry,
                 ),
               ),
-            SliverToBoxAdapter(child: _GenresWrap(hub: hub)),
-            SliverToBoxAdapter(child: _SeasonsList(hub: hub)),
           ],
         ],
       ),
@@ -303,109 +286,4 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
   bool _hubHasContent(AnimeHubProvider hub) => AnimeCatalogKind.hubHome.any(
     (kind) => hub.section(kind).items.isNotEmpty,
   );
-}
-
-class _GenresWrap extends StatelessWidget {
-  const _GenresWrap({required this.hub});
-  final AnimeHubProvider hub;
-
-  @override
-  Widget build(BuildContext context) {
-    final genres = hub.genres.take(24).toList(growable: false);
-    if (genres.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Text(
-              AnimeStrings.genresTitle,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: <Widget>[
-                for (final genre in genres)
-                  PubgetSelectionChip(
-                    label: genre.name,
-                    selected: false,
-                    onSelected: (_) => AnimeLinks.openGenre(context, genre),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SeasonsList extends StatelessWidget {
-  const _SeasonsList({required this.hub});
-  final AnimeHubProvider hub;
-
-  @override
-  Widget build(BuildContext context) {
-    final years = hub.seasons.take(8).toList(growable: false);
-    if (years.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Text(
-              AnimeStrings.seasonsTitle,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          for (final year in years)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                0,
-                AppSpacing.md,
-                AppSpacing.sm,
-              ),
-              child: PubgetCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      '${year.year}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Wrap(
-                      spacing: AppSpacing.sm,
-                      children: <Widget>[
-                        for (final season in year.seasons)
-                          PubgetSelectionChip(
-                            label: season.label,
-                            selected: false,
-                            onSelected: (_) => AnimeLinks.openSeason(
-                              context,
-                              year: year.year,
-                              season: season,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 }

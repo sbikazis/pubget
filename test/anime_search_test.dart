@@ -100,6 +100,41 @@ void main() {
     expect(list.items, isNotEmpty);
   });
 
+  test('type then season filters each hit the repository', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.applyFilter(const AnimeSearchFilter(type: AnimeTypeFilter.tv));
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    list.applyFilter(
+      const AnimeSearchFilter(
+        type: AnimeTypeFilter.tv,
+        season: AnimeSeason.fall,
+        year: 2023,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(repository.searchCalls, 2);
+    expect(repository.lastFilter?.season, AnimeSeason.fall);
+    expect(list.items, isNotEmpty);
+  });
+
+  test('submitting a name searches immediately', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: const Duration(milliseconds: 400),
+    );
+    addTearDown(list.dispose);
+    list.searchSubmitted('frieren');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(repository.searchCalls, 1);
+    expect(list.items.single.title, 'Frieren');
+  });
+
   test('duplicate in-flight search is ignored', () async {
     final repository = FakeAnimeRepository();
     final list = AnimeListProvider(
