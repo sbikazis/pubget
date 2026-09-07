@@ -47,6 +47,7 @@ class EquippedAvatar extends StatelessWidget {
     this.name,
     this.frameId,
     this.size = PubgetAvatarSize.large,
+    this.compactFrame = false,
     super.key,
   });
 
@@ -54,6 +55,7 @@ class EquippedAvatar extends StatelessWidget {
   final String? name;
   final String? frameId;
   final PubgetAvatarSize size;
+  final bool compactFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +64,10 @@ class EquippedAvatar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final color = frameId == 'frame_gold' ? scheme.tertiary : scheme.primary;
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: EdgeInsets.all(compactFrame ? 1 : 3),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 3),
+        border: Border.all(color: color, width: compactFrame ? 1.5 : 3),
       ),
       child: avatar,
     );

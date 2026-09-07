@@ -8,6 +8,7 @@ import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
@@ -46,31 +47,30 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     final hub = context.watch<AnimeHubProvider>();
     final list = context.watch<AnimeListProvider>();
     final network = context.watch<NetworkService>();
+    final copy = AnimeCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: _searchOpen
             ? IconButton(
                 key: const Key('hub-close-search'),
-                tooltip: AnimeStrings.closeSearch,
+                tooltip: copy.closeSearch,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => _closeSearch(list),
               )
             : AppBackButton.maybeOf(context),
-        title: Text(
-          _searchOpen ? AnimeStrings.openSearch : AnimeStrings.hubTitle,
-        ),
+        title: Text(_searchOpen ? copy.openSearch : copy.hubTitle),
         actions: <Widget>[
           if (!_searchOpen)
             IconButton(
               key: const Key('hub-open-search'),
-              tooltip: AnimeStrings.openSearch,
+              tooltip: copy.openSearch,
               icon: const Icon(Icons.search),
               onPressed: _openSearch,
             ),
           PubgetTextButton(
             onPressed: () => AppNavigation.go(context, '/anime/library'),
-            semanticLabel: AnimeStrings.libraryTitle,
-            child: const Text(AnimeStrings.libraryTitle),
+            semanticLabel: copy.libraryTitle,
+            child: Text(copy.libraryTitle),
           ),
         ],
       ),
@@ -109,7 +109,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
       child: PubgetSearchField(
         key: const Key('anime-hub-search'),
         controller: _search,
-        hint: AnimeStrings.searchHint,
+        hint: AnimeCopy.of(context).searchHint,
         onChanged: (value) {
           setState(() {});
           list.searchChanged(value);
@@ -143,12 +143,12 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _chipRow(
-            label: AnimeStrings.filterType,
+            label: AnimeCopy.of(context).filterType,
             children: <Widget>[
               for (final type in AnimeTypeFilter.values)
                 PubgetSelectionChip(
                   key: Key('filter-type-${type.name}'),
-                  label: type.name.toUpperCase(),
+                  label: AnimeCopy.of(context).typeFilter(type),
                   selected: filter.type == type,
                   onSelected: (_) => list.applyFilter(
                     filter.copyWith(
@@ -161,12 +161,12 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
           ),
           const SizedBox(height: AppSpacing.sm),
           _chipRow(
-            label: AnimeStrings.filterSeason,
+            label: AnimeCopy.of(context).filterSeason,
             children: <Widget>[
               for (final season in AnimeSeason.values)
                 PubgetSelectionChip(
                   key: Key('filter-season-${season.name}'),
-                  label: season.label,
+                  label: AnimeCopy.of(context).season(season),
                   selected: filter.season == season,
                   onSelected: (_) => list.applyFilter(
                     filter.copyWith(
@@ -197,12 +197,12 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
           if (hub.genres.isNotEmpty) ...<Widget>[
             const SizedBox(height: AppSpacing.sm),
             _chipRow(
-              label: AnimeStrings.filterGenre,
+              label: AnimeCopy.of(context).filterGenre,
               children: <Widget>[
                 for (final genre in hub.genres.take(16))
                   PubgetSelectionChip(
                     key: Key('filter-genre-${genre.id}'),
-                    label: genre.name,
+                    label: AnimeCopy.of(context).genre(genre.name),
                     selected: filter.genreId == genre.id,
                     onSelected: (_) => list.applyFilter(
                       filter.copyWith(
@@ -247,9 +247,9 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
   Widget _searchResults(AnimeListProvider list) {
     if (!list.filter.hasNonTextConstraints &&
         _search.text.trim().length < list.minQueryLength) {
-      return const PubgetEmptyState(
-        title: AnimeStrings.searchFiltersHint,
-        message: AnimeStrings.searchFiltersHint,
+      return PubgetEmptyState(
+        title: AnimeCopy.of(context).searchFiltersHint,
+        message: AnimeCopy.of(context).searchFiltersHint,
         icon: Icons.search,
       );
     }
@@ -260,25 +260,25 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
         child: PubgetSkeleton.card(height: 180),
       );
     }
-    if (list.state == LoadingState.empty) {
-      return const PubgetEmptyState(
-        title: AnimeStrings.nothingFound,
-        message: AnimeStrings.nothingFoundMessage,
-        icon: Icons.movie_filter_outlined,
-      );
-    }
     if (list.state == LoadingState.error) {
       return PubgetErrorState(
-        title: AnimeStrings.unableToLoad,
-        message: list.failure?.message ?? AnimeStrings.checkConnection,
+        title: AnimeCopy.of(context).unableToLoad,
+        message: list.failure?.message ?? AnimeCopy.of(context).checkConnection,
         onRetry: list.retrySearch,
-        retryLabel: AnimeStrings.retry,
+        retryLabel: AnimeCopy.of(context).retry,
       );
     }
     if (list.state == LoadingState.offline && list.items.isEmpty) {
       return PubgetOfflineState(
-        message: AnimeStrings.checkConnection,
+        message: AnimeCopy.of(context).checkConnection,
         onRetry: list.retrySearch,
+      );
+    }
+    if (list.state == LoadingState.empty || list.items.isEmpty) {
+      return PubgetEmptyState(
+        title: AnimeCopy.of(context).nothingFound,
+        message: AnimeCopy.of(context).nothingFoundMessage,
+        icon: Icons.movie_filter_outlined,
       );
     }
     return AnimePaginatedList(list: list);
@@ -301,9 +301,9 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
               child: PubgetPrimaryButton(
                 key: const Key('hub-search-cta'),
                 onPressed: _openSearch,
-                semanticLabel: AnimeStrings.openSearch,
+                semanticLabel: AnimeCopy.of(context).openSearch,
                 leadingIcon: Icons.search,
-                child: const Text(AnimeStrings.openSearch),
+                child: Text(AnimeCopy.of(context).openSearch),
               ),
             ),
           ),
@@ -322,23 +322,24 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
           else if (hub.state == LoadingState.error && !_hubHasContent(hub))
             SliverToBoxAdapter(
               child: PubgetErrorState(
-                title: AnimeStrings.unableToLoad,
-                message: hub.failure?.message ?? AnimeStrings.checkConnection,
+                title: AnimeCopy.of(context).unableToLoad,
+                message:
+                    hub.failure?.message ?? AnimeCopy.of(context).checkConnection,
                 onRetry: hub.retry,
-                retryLabel: AnimeStrings.retry,
+                retryLabel: AnimeCopy.of(context).retry,
               ),
             )
           else if (hub.state == LoadingState.offline && !_hubHasContent(hub))
             SliverToBoxAdapter(
               child: PubgetOfflineState(
                 onRetry: hub.retry,
-                message: AnimeStrings.checkConnection,
+                message: AnimeCopy.of(context).checkConnection,
               ),
             )
           else if (hub.state == LoadingState.empty)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: PubgetEmptyState(
-                title: AnimeStrings.emptyCatalog,
+                title: AnimeCopy.of(context).emptyCatalog,
                 icon: Icons.movie_filter_outlined,
               ),
             )
@@ -352,10 +353,10 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
             for (final kind in AnimeCatalogKind.hubHome)
               SliverToBoxAdapter(
                 child: AnimeHorizontalStrip(
-                  title: kind.label,
+                  title: AnimeCopy.of(context).catalog(kind),
                   subtitle: kind == AnimeCatalogKind.thisSeason
-                      ? AnimeStrings.thisSeasonSubtitle
-                      : AnimeStrings.popularSubtitle,
+                      ? AnimeCopy.of(context).thisSeasonSubtitle
+                      : AnimeCopy.of(context).popularSubtitle,
                   items: hub.section(kind).items,
                   state: hub.section(kind).state,
                   failure: hub.section(kind).failure?.message,
@@ -412,7 +413,9 @@ class _SeasonHero extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        AnimeCatalogKind.thisSeason.label,
+                        AnimeCopy.of(context).catalog(
+                          AnimeCatalogKind.thisSeason,
+                        ),
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: AppColors.goldSheen,
                           fontWeight: FontWeight.w800,
@@ -438,7 +441,8 @@ class _SeasonHero extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xs),
                       Text(
                         [
-                          if (anime.subtitle.isNotEmpty) anime.subtitle,
+                          if (AnimeCopy.of(context).subtitle(anime).isNotEmpty)
+                            AnimeCopy.of(context).subtitle(anime),
                           if (anime.studios.isNotEmpty) anime.studios.first,
                         ].join(' · '),
                         maxLines: 2,
@@ -447,7 +451,8 @@ class _SeasonHero extends StatelessWidget {
                       ),
                       const Spacer(),
                       Text(
-                        anime.synopsis ?? AnimeStrings.thisSeasonSubtitle,
+                        anime.synopsis ??
+                            AnimeCopy.of(context).thisSeasonSubtitle,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall,

@@ -9,6 +9,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../social/providers/profile_provider.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
@@ -49,7 +50,9 @@ class _AnimeMyPageState extends State<AnimeMyPage> {
         appBar: AppBar(
           leading: AppBackButton.maybeOf(context),
           title: Text(
-            own ? AnimeStrings.myAnimeTitle : AnimeStrings.theirAnimeTitle,
+            own
+                ? AnimeCopy.of(context).myAnimeTitle
+                : AnimeCopy.of(context).theirAnimeTitle,
           ),
           bottom: const TabBar(
             isScrollable: true,
@@ -122,7 +125,7 @@ class _FavoriteCharactersTab extends StatelessWidget {
               if (own)
                 PubgetIconButton(
                   icon: Icons.favorite,
-                  tooltip: AnimeStrings.favorited,
+                  tooltip: AnimeCopy.of(context).favorited,
                   onPressed: library == null
                       ? null
                       : () => library.toggleCharacter(
@@ -228,8 +231,8 @@ class _RatingsTab extends StatelessWidget {
     final social = maybeAnimeHubSocial(context);
     final items = social?.userRatings ?? const [];
     if (items.isEmpty) {
-      return const PubgetEmptyState(
-        title: AnimeStrings.noRatingsYet,
+      return PubgetEmptyState(
+        title: AnimeCopy.of(context).noRatingsYet,
         icon: Icons.star_outline,
       );
     }

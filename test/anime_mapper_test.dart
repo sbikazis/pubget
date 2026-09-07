@@ -96,6 +96,18 @@ void main() {
     expect(sections.narrative, contains('An elf mage'));
   });
 
+  test('reads structured age birthday height weight and arabic name', () {
+    final sections = CharacterAboutSections.parse(
+      'Arabic name: ميكاسا أكرمان\nAge: 19\nBirthday: Feb 10\nHeight: 176 cm\nWeight: 70 kg\n\nA soldier from the Survey Corps.',
+    );
+    expect(sections.arabicName, 'ميكاسا أكرمان');
+    expect(sections.age, '19');
+    expect(sections.birthday, 'Feb 10');
+    expect(sections.height, '176 cm');
+    expect(sections.weight, '70 kg');
+    expect(sections.narrative, contains('Survey Corps'));
+  });
+
   test('parses unlabeled height and age lines from Jikan about', () {
     final sections = CharacterAboutSections.parse(
       'Height 158 cm\nAge 1000+\n\nAn ancient elf.',

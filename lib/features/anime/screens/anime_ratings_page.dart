@@ -5,6 +5,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../widgets/anime_widgets.dart';
@@ -30,18 +31,20 @@ class _AnimeRatingsPageState extends State<AnimeRatingsPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(AnimeStrings.ratingsTitle),
+        title: Text(AnimeCopy.of(context).ratingsTitle),
       ),
       body: PubgetLoadingStateView(
         state: social?.topState ?? LoadingState.empty,
         onRetry: social?.loadTopRated,
-        empty: const PubgetEmptyState(
-          title: AnimeStrings.noRatingsYet,
+        empty: PubgetEmptyState(
+          title: AnimeCopy.of(context).noRatingsYet,
           icon: Icons.star_outline,
         ),
         error: PubgetErrorState(
-          title: AnimeStrings.unableToLoad,
-          message: social?.topFailure?.message ?? AnimeStrings.checkConnection,
+          title: AnimeCopy.of(context).unableToLoad,
+          message:
+              social?.topFailure?.message ??
+              AnimeCopy.of(context).checkConnection,
           onRetry: social?.loadTopRated,
         ),
         child: ListView.separated(

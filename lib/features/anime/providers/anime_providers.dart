@@ -193,7 +193,7 @@ final class AnimeListProvider extends ChangeNotifier {
   AnimeListProvider({
     required AnimeRepository repository,
     Analytics? analytics,
-    this.debounce = const Duration(milliseconds: 30),
+    this.debounce = Duration.zero,
     this.minQueryLength = 1,
   }) : _repository = repository,
        _analytics = analytics;
@@ -273,6 +273,8 @@ final class AnimeListProvider extends ChangeNotifier {
     _searchDebounce?.cancel();
     _query = query;
     _filter = _filter.copyWith(text: query, sort: AnimeSearchSort.members);
+    _items = const <Anime>[];
+    _failure = null;
     _scheduleSearch();
   }
 
@@ -286,6 +288,8 @@ final class AnimeListProvider extends ChangeNotifier {
   void applyFilter(AnimeSearchFilter filter) {
     _searchDebounce?.cancel();
     _filter = filter.copyWith(text: _query, sort: AnimeSearchSort.members);
+    _items = const <Anime>[];
+    _failure = null;
     _scheduleSearch(immediate: true);
   }
 
@@ -400,8 +404,11 @@ final class AnimeListProvider extends ChangeNotifier {
     final result = await _fetch(page: page, searchQuery: searchQuery);
     if (_disposed) return;
     if (generation != null && generation != _searchGeneration) {
-      _inflightKey = null;
-      return;
+      final currentKey = _requestKey(page: 1, searchQuery: _query.trim());
+      if (currentKey != key) {
+        _inflightKey = null;
+        return;
+      }
     }
     _inflightKey = null;
     _loadingMore = false;

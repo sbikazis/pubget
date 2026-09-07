@@ -5,8 +5,8 @@ import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
-import '../models/anime_models.dart';
 import '../providers/anime_library_provider.dart';
 import '../widgets/anime_widgets.dart';
 
@@ -33,12 +33,12 @@ class _AnimeLibraryPageState extends State<AnimeLibraryPage> {
       child: Scaffold(
         appBar: AppBar(
           leading: AppBackButton.maybeOf(context),
-          title: const Text(AnimeStrings.libraryTitle),
+          title: Text(AnimeCopy.of(context).libraryTitle),
           bottom: TabBar(
             isScrollable: true,
             tabs: [
               for (final status in AnimeListStatus.values)
-                Tab(text: status.label),
+                Tab(text: AnimeCopy.of(context).listStatusLabel(status)),
             ],
           ),
         ),
@@ -47,18 +47,19 @@ class _AnimeLibraryPageState extends State<AnimeLibraryPage> {
               ? LoadingState.loading
               : library.state,
           onRetry: library.load,
-          empty: const PubgetEmptyState(
-            title: AnimeStrings.libraryEmpty,
-            message: AnimeStrings.libraryEmptyMessage,
+          empty: PubgetEmptyState(
+            title: AnimeCopy.of(context).libraryEmpty,
+            message: AnimeCopy.of(context).libraryEmptyMessage,
             icon: Icons.bookmark_border,
           ),
           error: PubgetErrorState(
-            title: AnimeStrings.unableToLoad,
-            message: library.failure?.message ?? AnimeStrings.checkConnection,
+            title: AnimeCopy.of(context).unableToLoad,
+            message:
+                library.failure?.message ?? AnimeCopy.of(context).checkConnection,
             onRetry: library.load,
           ),
           offline: PubgetOfflineState(
-            message: AnimeStrings.checkConnection,
+            message: AnimeCopy.of(context).checkConnection,
             onRetry: library.load,
           ),
           child: TabBarView(
@@ -83,7 +84,7 @@ class _StatusList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (entries.isEmpty) {
       return PubgetEmptyState(
-        title: AnimeStrings.libraryEmpty,
+        title: AnimeCopy.of(context).libraryEmpty,
         message: 'Nothing in ${status.label.toLowerCase()} yet.',
         icon: Icons.movie_filter_outlined,
       );

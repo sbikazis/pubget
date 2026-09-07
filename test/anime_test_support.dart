@@ -142,6 +142,7 @@ final class FakeAnimeRepository implements AnimeRepository {
     this.charactersFailure,
     this.characterDetailsFailure,
     this.nextPageFailure,
+    this.filterSearchByQuery = false,
   });
 
   AnimePage? page;
@@ -154,9 +155,11 @@ final class FakeAnimeRepository implements AnimeRepository {
   Failure? charactersFailure;
   Failure? characterDetailsFailure;
   Failure? nextPageFailure;
+  bool filterSearchByQuery;
   Completer<void>? gate;
   Completer<void>? characterDetailsGate;
   int searchCalls = 0;
+  String lastQuery = '';
   int detailsCalls = 0;
   int trendingCalls = 0;
   int popularCalls = 0;
@@ -215,8 +218,28 @@ final class FakeAnimeRepository implements AnimeRepository {
     AnimeSearchFilter? filter,
   }) async {
     searchCalls++;
+    lastQuery = query;
     lastFilter = filter;
-    return _pageResult(page);
+    final result = await _pageResult(page);
+    final needle = query.trim().toLowerCase();
+    if (!filterSearchByQuery || needle.isEmpty) return result;
+    return result.fold(
+      onSuccess: (found) {
+        final items = found.items
+            .where(
+              (item) =>
+                  item.title.toLowerCase().contains(needle) ||
+                  item.alternativeTitles.any(
+                    (title) => title.toLowerCase().contains(needle),
+                  ),
+            )
+            .toList(growable: false);
+        return Success(
+          found.copyWith(items: items, hasNextPage: items.isNotEmpty && found.hasNextPage),
+        );
+      },
+      onFailure: (failure) => FailureResult<AnimePage>(failure),
+    );
   }
 
   @override
