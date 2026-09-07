@@ -142,6 +142,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   Future<Result<void>> toggleCharacter({
     required String characterId,
     required String name,
+    String? imageUrl,
   }) async {
     final next = !_characterIds.contains(characterId);
     if (next) {
@@ -154,6 +155,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
       characterId: characterId,
       favorite: next,
       name: name,
+      imageUrl: imageUrl,
     );
     if (_disposed) return _asVoid(result);
     result.fold(

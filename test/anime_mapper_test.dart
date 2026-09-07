@@ -32,6 +32,24 @@ void main() {
     expect(characters.first.voiceActors.first.name, 'Ueda, Reina');
   });
 
+  test('maps a full character profile', () {
+    final character = mapJikanCharacterFull(<String, Object?>{
+      'mal_id': 10,
+      'name': 'Frieren',
+      'name_kanji': 'フリーレン',
+      'about': 'An elf mage.',
+      'nicknames': <String>['Frieren'],
+      'favorites': 9,
+      'images': <String, Object?>{
+        'jpg': <String, Object?>{'image_url': 'https://example.test/char.jpg'},
+      },
+    });
+    expect(character, isNotNull);
+    expect(character!.about, 'An elf mage.');
+    expect(character.nameKanji, 'フリーレン');
+    expect(character.nicknames, <String>['Frieren']);
+  });
+
   test('skips malformed anime entries instead of throwing', () {
     final items = mapJikanAnimeList(<Object?>[
       <String, Object?>{'mal_id': 1},

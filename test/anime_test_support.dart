@@ -136,6 +136,7 @@ final class FakeAnimeRepository implements AnimeRepository {
     this.failure,
     this.detailsFailure,
     this.charactersFailure,
+    this.characterDetailsFailure,
     this.nextPageFailure,
   });
 
@@ -147,6 +148,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   Failure? failure;
   Failure? detailsFailure;
   Failure? charactersFailure;
+  Failure? characterDetailsFailure;
   Failure? nextPageFailure;
   Completer<void>? gate;
   int searchCalls = 0;
@@ -158,11 +160,13 @@ final class FakeAnimeRepository implements AnimeRepository {
   int upcomingCalls = 0;
   int thisSeasonCalls = 0;
   int charactersCalls = 0;
+  int characterDetailsCalls = 0;
   int genresCalls = 0;
   int genreCalls = 0;
   int seasonsCalls = 0;
   int seasonListCalls = 0;
   final List<int> requestedPages = <int>[];
+  AnimeSearchFilter? lastFilter;
 
   Future<Result<AnimePage>> _pageResult(int pageNumber) async {
     if (gate != null) await gate!.future;
@@ -203,8 +207,10 @@ final class FakeAnimeRepository implements AnimeRepository {
     String query, {
     int page = 1,
     int limit = 20,
+    AnimeSearchFilter? filter,
   }) async {
     searchCalls++;
+    lastFilter = filter;
     return _pageResult(page);
   }
 
@@ -266,6 +272,24 @@ final class FakeAnimeRepository implements AnimeRepository {
       return FailureResult<List<AnimeCharacter>>(charactersFailure!);
     }
     return Success<List<AnimeCharacter>>(characters);
+  }
+
+  @override
+  Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) async {
+    characterDetailsCalls++;
+    if (characterDetailsFailure != null) {
+      return FailureResult<AnimeCharacter>(characterDetailsFailure!);
+    }
+    final match = characters.where((item) => item.id == characterId);
+    if (match.isNotEmpty) return Success<AnimeCharacter>(match.first);
+    return Success<AnimeCharacter>(
+      AnimeCharacter(
+        id: characterId,
+        name: 'Frieren',
+        about: 'An elf mage.',
+        nameKanji: 'フリーレン',
+      ),
+    );
   }
 
   @override

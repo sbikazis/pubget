@@ -23,6 +23,7 @@ abstract interface class AnimeLibraryRepository {
     required String characterId,
     required bool favorite,
     String name = '',
+    String? imageUrl,
     int? rating,
   });
 }

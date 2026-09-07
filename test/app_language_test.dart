@@ -58,6 +58,8 @@ void main() {
     for (final copy in <AppStrings>[AppStrings.english, AppStrings.arabic]) {
       expect(copy.drawerLabel('settings'), copy.settings);
       expect(copy.drawerLabel('guide'), copy.guide);
+      expect(copy.drawerLabel('anime'), copy.drawerAnime);
+      expect(copy.drawerAnime, isNotEmpty);
       expect(copy.tabDiscover, isNotEmpty);
       expect(copy.tabPrivate, isNot(copy.tabGroups));
     }

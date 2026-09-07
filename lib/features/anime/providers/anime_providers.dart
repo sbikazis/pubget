@@ -48,7 +48,7 @@ final class AnimeHubProvider extends ChangeNotifier {
   final AnimeRepository _repository;
   final Analytics? _analytics;
   final Map<AnimeCatalogKind, AnimeSectionSnapshot> _sections = {
-    for (final kind in AnimeCatalogKind.values)
+    for (final kind in AnimeCatalogKind.hubHome)
       kind: const AnimeSectionSnapshot(),
   };
   List<AnimeGenre> _genres = const <AnimeGenre>[];
@@ -84,7 +84,7 @@ final class AnimeHubProvider extends ChangeNotifier {
 
     var anyCache = false;
     Failure? firstFailure;
-    for (final kind in AnimeCatalogKind.values) {
+    for (final kind in AnimeCatalogKind.hubHome) {
       if (_disposed) return;
       await _loadSection(kind);
       final snapshot = section(kind);
@@ -106,7 +106,7 @@ final class AnimeHubProvider extends ChangeNotifier {
   Future<void> retry() => load(refresh: true);
 
   bool get _hasAnyContent =>
-      AnimeCatalogKind.values.any((kind) => section(kind).items.isNotEmpty);
+      AnimeCatalogKind.hubHome.any((kind) => section(kind).items.isNotEmpty);
 
   Future<void> _loadSection(AnimeCatalogKind kind) async {
     _sections[kind] = AnimeSectionSnapshot(
@@ -218,6 +218,7 @@ final class AnimeListProvider extends ChangeNotifier {
   int? _year;
   AnimeSeason? _season;
   String _query = '';
+  AnimeSearchFilter _filter = const AnimeSearchFilter();
   Timer? _searchDebounce;
   int _searchGeneration = 0;
 
@@ -233,6 +234,8 @@ final class AnimeListProvider extends ChangeNotifier {
   String? get genreId => _genreId;
   int? get year => _year;
   AnimeSeason? get season => _season;
+  AnimeSearchFilter get filter => _filter;
+  bool get isSearching => _filter.hasConstraints;
 
   Future<void> openCatalog(AnimeCatalogKind kind) {
     _reset();
@@ -268,29 +271,50 @@ final class AnimeListProvider extends ChangeNotifier {
   void searchChanged(String query) {
     _searchDebounce?.cancel();
     _query = query;
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      _reset();
+    _filter = _filter.copyWith(text: query);
+    _scheduleSearch();
+  }
+
+  void applyFilter(AnimeSearchFilter filter) {
+    _searchDebounce?.cancel();
+    _filter = filter.copyWith(text: _query);
+    _scheduleSearch(immediate: true);
+  }
+
+  void _scheduleSearch({bool immediate = false}) {
+    final trimmed = _query.trim();
+    if (!_filter.hasConstraints) {
+      _resetKeepingFilter();
       _safeNotify();
       return;
     }
-    if (trimmed.length < minQueryLength) {
+    if (!immediate &&
+        trimmed.length < minQueryLength &&
+        !_filter.hasNonTextConstraints) {
       _items = const <Anime>[];
       _state = LoadingState.initial;
       _failure = null;
       _safeNotify();
       return;
     }
-    _searchDebounce = Timer(debounce, () {
-      _analytics?.logEvent('anime_search', parameters: {'length': trimmed.length});
-      unawaited(_runSearch(trimmed, generation: ++_searchGeneration));
-    });
+    void run() {
+      _analytics?.logEvent(
+        'anime_search',
+        parameters: {'length': trimmed.length},
+      );
+      unawaited(_runSearch(generation: ++_searchGeneration));
+    }
+
+    if (immediate || debounce == Duration.zero) {
+      run();
+    } else {
+      _searchDebounce = Timer(debounce, run);
+    }
   }
 
   Future<void> retrySearch() {
-    final trimmed = _query.trim();
-    if (trimmed.length < minQueryLength) return Future<void>.value();
-    return _runSearch(trimmed, generation: ++_searchGeneration);
+    if (!_filter.hasConstraints) return Future<void>.value();
+    return _runSearch(generation: ++_searchGeneration);
   }
 
   void clearSearch() {
@@ -318,7 +342,7 @@ final class AnimeListProvider extends ChangeNotifier {
     await _load(page: _page + 1, loadMore: true);
   }
 
-  Future<void> _runSearch(String query, {required int generation}) async {
+  Future<void> _runSearch({required int generation}) async {
     _catalog = null;
     _genreId = null;
     _year = null;
@@ -327,7 +351,11 @@ final class AnimeListProvider extends ChangeNotifier {
     _page = 0;
     _items = const <Anime>[];
     _hasNextPage = false;
-    await _load(page: 1, searchQuery: query, generation: generation);
+    await _load(
+      page: 1,
+      searchQuery: _query.trim(),
+      generation: generation,
+    );
   }
 
   Future<void> _load({
@@ -392,8 +420,17 @@ final class AnimeListProvider extends ChangeNotifier {
 
   Future<Result<AnimePage>> _fetch({required int page, String? searchQuery}) {
     final query = (searchQuery ?? _query).trim();
-    if (query.length >= minQueryLength && _catalog == null && _genreId == null && _year == null) {
-      return _repository.searchAnime(query, page: page);
+    final searching =
+        _catalog == null &&
+        _genreId == null &&
+        _year == null &&
+        (_filter.hasNonTextConstraints || query.length >= minQueryLength);
+    if (searching) {
+      return _repository.searchAnime(
+        query,
+        page: page,
+        filter: _filter.copyWith(text: query),
+      );
     }
     if (_genreId != null) {
       return _repository.getByGenre(_genreId!, page: page);
@@ -438,6 +475,23 @@ final class AnimeListProvider extends ChangeNotifier {
     _year = null;
     _season = null;
     _query = '';
+    _filter = const AnimeSearchFilter();
+  }
+
+  void _resetKeepingFilter() {
+    _searchDebounce?.cancel();
+    _items = const <Anime>[];
+    _state = LoadingState.initial;
+    _failure = null;
+    _pageFailure = null;
+    _hasNextPage = false;
+    _page = 0;
+    _fromCache = false;
+    _inflightKey = null;
+    _catalog = null;
+    _genreId = null;
+    _year = null;
+    _season = null;
   }
 
   void _safeNotify() {
@@ -553,6 +607,21 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     final id = _loadedId;
     if (id == null) return Future<void>.value();
     return _loadCharacters(id);
+  }
+
+  Future<AnimeCharacter> characterProfile(AnimeCharacter preview) async {
+    final result = await _repository.getCharacterDetails(preview.id);
+    return result.fold(
+      onSuccess: (details) => preview.copyWith(
+        about: details.about,
+        nameKanji: details.nameKanji,
+        nicknames: details.nicknames,
+        imageUrl: details.imageUrl,
+        favorites: details.favorites,
+        voiceActors: details.voiceActors,
+      ),
+      onFailure: (_) => preview,
+    );
   }
 
   Future<void> toggleFavorite() async {

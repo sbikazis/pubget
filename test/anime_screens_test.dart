@@ -33,7 +33,7 @@ void main() {
     repository.gate!.complete();
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
-    expect(find.text(AnimeStrings.hubTitle), findsWidgets);
+    expect(find.text('Top rated'), findsNothing);
   });
 
   testWidgets('hub empty state', (tester) async {
@@ -90,7 +90,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
-    expect(find.text(AnimeStrings.retry), findsWidgets);
+    expect(find.text(AnimeStrings.rateAnime), findsWidgets);
   });
 
   testWidgets('details missing anime', (tester) async {

@@ -35,6 +35,23 @@ void main() {
     expect((season as ParameterizedRoute).path, '/anime/season');
   });
 
+  test('route parser maps ratings, characters, and my-anime paths', () async {
+    final parser = AppRouteInformationParser();
+    final ratings = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/anime/ratings')),
+    );
+    expect((ratings as ParameterizedRoute).path, '/anime/ratings');
+    final characters = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/anime/characters')),
+    );
+    expect((characters as ParameterizedRoute).path, '/anime/characters');
+    final me = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/anime/me?uid=alice')),
+    );
+    expect((me as ParameterizedRoute).path, '/anime/me');
+    expect(me.parameters['uid'], 'alice');
+  });
+
   test('pending anime deep link is restored after the guard allows it', () async {
     var authenticated = false;
     final delegate = AppRouterDelegate(

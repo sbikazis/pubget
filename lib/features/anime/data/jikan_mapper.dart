@@ -83,6 +83,26 @@ List<AnimeCharacter> mapJikanCharacters(Object? raw) {
   );
 }
 
+AnimeCharacter? mapJikanCharacterFull(Object? raw) {
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  final id = _idOf(map['mal_id']);
+  final name = _string(map['name']);
+  if (id == null || name == null || name.isEmpty) return null;
+  final voices = map['voices'] ?? map['voice_actors'];
+  return AnimeCharacter(
+    id: id,
+    name: name,
+    imageUrl: _images(map['images']).displayUrl,
+    favorites: _int(map['favorites']),
+    url: _string(map['url']),
+    about: _string(map['about']),
+    nameKanji: _string(map['name_kanji']),
+    nicknames: List<String>.unmodifiable(_stringList(map['nicknames'])),
+    voiceActors: List<VoiceActor>.unmodifiable(_voiceActors(voices)),
+  );
+}
+
 List<AnimeGenre> mapJikanGenres(Object? raw, {AnimeTagKind kind = AnimeTagKind.genre}) {
   if (raw is! List) return const <AnimeGenre>[];
   final items = <AnimeGenre>[];

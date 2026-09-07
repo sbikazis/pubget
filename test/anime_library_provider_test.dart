@@ -104,6 +104,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
     required String characterId,
     required bool favorite,
     String name = '',
+    String? imageUrl,
     int? rating,
   }) async {
     if (favorite) {

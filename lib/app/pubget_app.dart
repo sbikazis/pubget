@@ -65,9 +65,16 @@ import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
+import '../features/anime/screens/anime_my_page.dart';
+import '../features/anime/screens/anime_popular_characters_page.dart';
+import '../features/anime/screens/anime_ratings_page.dart';
+import '../features/anime/providers/anime_hub_social_provider.dart';
 import '../features/anime/providers/anime_library_provider.dart';
+import '../features/anime/repositories/anime_hub_social_repository.dart';
 import '../features/anime/repositories/anime_library_repository.dart';
+import '../features/anime/repositories/firebase_anime_hub_social_repository.dart';
 import '../features/anime/repositories/firebase_anime_library_repository.dart';
+import '../features/anime/repositories/unavailable_anime_hub_social_repository.dart';
 import '../features/anime/repositories/unavailable_anime_library_repository.dart';
 import '../features/events/providers/event_providers.dart';
 import '../features/events/repositories/event_repository.dart';
@@ -198,6 +205,19 @@ class PubgetApp extends StatelessWidget {
                   ),
                 )
               : UnavailableAnimeLibraryRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
+        provider.Provider<AnimeHubSocialRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseAnimeHubSocialRepository(
+                  firestore: FirebaseFirestore.instance,
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableAnimeHubSocialRepository(
                   firebaseState.message ??
                       'Firebase is unavailable in this build.',
                 ),
@@ -374,6 +394,11 @@ class PubgetApp extends StatelessWidget {
             library!.bindUser(auth.currentUser?.id);
             return library;
           },
+        ),
+        provider.ChangeNotifierProvider<AnimeHubSocialProvider>(
+          create: (context) => AnimeHubSocialProvider(
+            repository: context.read<AnimeHubSocialRepository>(),
+          ),
         ),
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>
@@ -697,6 +722,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
         '/anime/library': const AnimeLibraryPage(),
+        '/anime/ratings': const AnimeRatingsPage(),
+        '/anime/characters': const AnimePopularCharactersPage(),
         '/fan-works': const FanWorkFeedPage(),
         '/store': const StorePage(),
         '/inventory': const InventoryPage(),
@@ -766,6 +793,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           season: AnimeSeason.tryParse(parameters['season']),
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
+        '/anime/ratings': (parameters) => const AnimeRatingsPage(),
+        '/anime/characters': (parameters) =>
+            const AnimePopularCharactersPage(),
+        '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
         '/mafia': (parameters) =>

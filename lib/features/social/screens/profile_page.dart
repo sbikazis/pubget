@@ -210,6 +210,27 @@ class _ProfileContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
+        PubgetCard(
+          onTap: () => AppNavigation.go(
+            context,
+            profileId.isEmpty
+                ? '/anime/me'
+                : '/anime/me?uid=${Uri.encodeComponent(profileId)}',
+          ),
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.auto_awesome_mosaic_outlined),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  profile.isOwner ? copy.myAnime : copy.drawerAnime,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
         if (profile.isOwner)
           _AnimeTaste(
             names: own?.favoriteAnimes ?? const <String>[],

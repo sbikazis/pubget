@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/features/anime/data/anime_http_client.dart';
+import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/repositories/jikan_anime_repository.dart';
 
 import 'anime_test_support.dart';
@@ -130,5 +131,38 @@ void main() {
     final result = await repository.searchAnime('  ');
     expect(result.valueOrNull!.items, isEmpty);
     expect(http.calls, isEmpty);
+  });
+
+  test('search applies genre, type, season, and sort filters', () async {
+    final result = await repository.searchAnime(
+      'frieren',
+      filter: const AnimeSearchFilter(
+        genreId: '1',
+        type: AnimeTypeFilter.tv,
+        season: AnimeSeason.fall,
+        year: 2023,
+        sort: AnimeSearchSort.title,
+      ),
+    );
+    expect(result.isSuccess, isTrue);
+    final query = http.calls.single.queryParameters;
+    expect(query['q'], 'frieren');
+    expect(query['genres'], '1');
+    expect(query['type'], 'tv');
+    expect(query['start_date'], '2023-10-01');
+    expect(query['end_date'], '2023-12-31');
+    expect(query['order_by'], 'title');
+    expect(query['sort'], 'asc');
+  });
+
+  test('character full profile maps about and kanji', () async {
+    http.responses['characters/10/full'] = const AnimeHttpResponse(
+      statusCode: 200,
+      body:
+          '{"data":{"mal_id":10,"name":"Frieren","name_kanji":"フリーレン","about":"An elf mage.","nicknames":["Frieren"],"favorites":9,"images":{"jpg":{"image_url":"https://example.test/char.jpg"}}}}',
+    );
+    final result = await repository.getCharacterDetails('10');
+    expect(result.valueOrNull!.about, 'An elf mage.');
+    expect(result.valueOrNull!.nameKanji, 'フリーレン');
   });
 }

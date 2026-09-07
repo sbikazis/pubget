@@ -38,6 +38,24 @@ abstract final class AppShellDrawerDestinations {
       icon: Icons.explore_outlined,
       path: '/home',
     ),
+    (
+      id: 'anime',
+      label: 'Anime List',
+      icon: Icons.auto_awesome_mosaic_outlined,
+      path: '/anime',
+    ),
+    (
+      id: 'anime-ratings',
+      label: 'Ratings',
+      icon: Icons.star_outline,
+      path: '/anime/ratings',
+    ),
+    (
+      id: 'anime-characters',
+      label: 'Popular Characters',
+      icon: Icons.people_outline,
+      path: '/anime/characters',
+    ),
     (id: 'store', label: 'Dragon Store', icon: Icons.storefront_outlined, path: '/store'),
     (id: 'premium', label: 'Premium', icon: Icons.workspace_premium_outlined, path: '/premium'),
     (

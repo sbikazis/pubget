@@ -35,6 +35,7 @@ const { createNotificationTriggers } = require("./src/notificationTriggers");
 const { createDiscoveryScheduler, onSchedule } = require("./src/discoveryEngine");
 const { createRecommendationEngine } = require("./src/recommendationEngine");
 const { createAnimeListsDomain } = require("./src/animeListsDomain");
+const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
@@ -182,6 +183,11 @@ const animeListsDomain = createAnimeListsDomain({
   FieldValue,
   HttpsError,
 });
+const animeHubDomain = createAnimeHubDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
@@ -216,6 +222,18 @@ exports.setCharacterFavorite = onCall(
 exports.getCharacterFavorites = onCall(
   { region: "us-central1" },
   animeListsDomain.getCharacterFavorites,
+);
+exports.upsertAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.upsertAnimeRating,
+);
+exports.deleteAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.deleteAnimeRating,
+);
+exports.reportAnimeReview = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnimeReview,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },

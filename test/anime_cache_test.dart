@@ -63,6 +63,24 @@ void main() {
     expect(inner.searchCalls, 0);
   });
 
+  test('expired cache is served when the inner catalog fails', () async {
+    final inner = FakeAnimeRepository();
+    var now = DateTime(2026, 1, 1, 12);
+    final cache = CachedAnimeRepository(
+      inner: inner,
+      cache: MemoryTtlCache(clock: () => now),
+      clock: () => now,
+      isOnline: () => true,
+    );
+    await cache.getTrending();
+    now = now.add(const Duration(hours: 3));
+    inner.failure = const RateLimitedError();
+    final result = await cache.getTrending();
+    expect(result.isSuccess, isTrue);
+    expect(result.valueOrNull!.fromCache, isTrue);
+    expect(result.valueOrNull!.items, isNotEmpty);
+  });
+
   test('in-flight duplicate details requests share one call', () async {
     final inner = FakeAnimeRepository();
     final cache = CachedAnimeRepository(inner: inner);
