@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pubget/app/app_shell_create_sheet.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/l10n/app_strings.dart';
+import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
@@ -70,14 +71,12 @@ void main() {
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.public));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
 
-    final confirm = tester.widget<ElevatedButton>(
-      find.descendant(
-        of: find.byKey(const Key('group-create-confirm')),
-        matching: find.byType(ElevatedButton),
-      ),
-    );
-    expect(confirm.onPressed, isNull);
+    expect(find.byKey(const Key('group-create-name')), findsOneWidget);
+    expect(tester.widget<PubgetPrimaryButton>(
+      find.byKey(const Key('group-create-confirm')),
+    ).onPressed, isNull);
 
     await tester.enterText(
       find.byKey(const Key('group-create-image-url')),
@@ -100,6 +99,8 @@ void main() {
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.animeRoleplay));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const Key('group-create-name')), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('group-create-image-url')),
       'https://example.test/a.png',

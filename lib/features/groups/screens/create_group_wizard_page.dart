@@ -159,8 +159,10 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.createTitle),
       ),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           if (type == null)
             GroupTypeTiles(
@@ -318,6 +320,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             ),
           ],
         ],
+        ),
       ),
     );
   }
