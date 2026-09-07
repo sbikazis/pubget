@@ -5,6 +5,13 @@ import '../core/widgets/pubget_design_system.dart';
 import 'app_router.dart';
 
 abstract final class AppShellCreateSheet {
+  static const actionKeys = <String>[
+    'create-group',
+    'create-edit',
+    'create-event',
+    'create-fan-work',
+  ];
+
   static Future<void> show(BuildContext host) {
     final copy = AppStrings.of(host);
     return PubgetBottomSheet.show<void>(
@@ -26,10 +33,19 @@ abstract final class AppShellCreateSheet {
           ListTile(
             key: const Key('create-edit'),
             leading: const Icon(Icons.movie_filter_outlined),
-            title: Text(copy.uploadClip),
+            title: Text(copy.createVideoClip),
             onTap: () {
               Navigator.pop(host);
               AppNavigation.go(host, '/edits/upload');
+            },
+          ),
+          ListTile(
+            key: const Key('create-event'),
+            leading: const Icon(Icons.celebration_outlined),
+            title: Text(copy.createEvent),
+            onTap: () {
+              Navigator.pop(host);
+              AppNavigation.go(host, '/events/create');
             },
           ),
           ListTile(
@@ -39,15 +55,6 @@ abstract final class AppShellCreateSheet {
             onTap: () {
               Navigator.pop(host);
               AppNavigation.go(host, '/fan-works/create');
-            },
-          ),
-          ListTile(
-            key: const Key('create-events'),
-            leading: const Icon(Icons.celebration_outlined),
-            title: Text(copy.browseEvents),
-            onTap: () {
-              Navigator.pop(host);
-              AppNavigation.go(host, '/events');
             },
           ),
         ],

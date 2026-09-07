@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/network/network_service.dart';
+import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/economy/models/economy_models.dart';
 import 'package:pubget/features/economy/models/economy_types.dart';
 import 'package:pubget/features/economy/providers/economy_provider.dart';
@@ -29,7 +30,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('A soft frame'), findsOneWidget);
-    expect(find.text('80 ${EconomyStrings.coins}'), findsOneWidget);
+    expect(find.byType(PubgetCoinAmount), findsWidgets);
+    expect(find.text('80'), findsWidgets);
     await tester.tap(find.text('${EconomyStrings.buy} · 80'));
     await tester.pumpAndSettle();
     expect(find.text(EconomyStrings.confirmBuyTitle), findsOneWidget);

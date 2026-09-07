@@ -89,14 +89,26 @@ class _AchievementTile extends StatelessWidget {
           item.unlocked ? Icons.emoji_events_outlined : Icons.lock_outline,
         ),
         title: Text(item.title),
-        subtitle: Text(
-          [
-            item.description,
-            if (item.isSeasonal) 'Season ${item.seasonId}',
-            if (item.unlocked && item.unlockedAt != null)
-              'Unlocked ${item.unlockedAt!.toLocal().toIso8601String().split('T').first}',
-            if (item.rewardCoins > 0) '${item.rewardCoins} coins',
-          ].join('\n'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              [
+                item.description,
+                if (item.isSeasonal) 'Season ${item.seasonId}',
+                if (item.unlocked && item.unlockedAt != null)
+                  'Unlocked ${item.unlockedAt!.toLocal().toIso8601String().split('T').first}',
+              ].join('\n'),
+            ),
+            if (item.rewardCoins > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: PubgetCoinAmount(
+                  amount: item.rewardCoins,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+          ],
         ),
         trailing: PubgetBadge(label: item.statusLabel),
       ),

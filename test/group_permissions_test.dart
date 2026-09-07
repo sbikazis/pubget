@@ -13,6 +13,14 @@ void main() {
     );
   });
 
+  test('plain members can create events without manageEvents', () {
+    expect(
+      memberCanCreateEvents(const GroupMember(uid: 'm1', role: GroupRole.member)),
+      isTrue,
+    );
+    expect(memberCanCreateEvents(null), isFalse);
+  });
+
   test('default role without manageEvents cannot manage events', () {
     expect(
       const GroupMember(uid: 'm1', role: GroupRole.member).canManageEvents,

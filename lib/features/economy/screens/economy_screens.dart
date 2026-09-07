@@ -243,7 +243,10 @@ class _ItemDetails extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         Text(item.description),
         const SizedBox(height: AppSpacing.md),
-        Text('${item.price} ${EconomyStrings.coins}'),
+        PubgetCoinAmount(
+          amount: item.price,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         if (item.premiumOnly) ...[
           const SizedBox(height: AppSpacing.sm),
           const PubgetBadge(label: EconomyStrings.premiumRequired),
@@ -490,7 +493,16 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(transactionTypeLabel(tx.type)),
                 subtitle: Text(tx.createdAt?.toLocal().toString() ?? ''),
-                trailing: Text('$sign${tx.amount}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(sign),
+                    PubgetCoinAmount(
+                      amount: tx.amount.abs(),
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ],
+                ),
               ),
             );
           },

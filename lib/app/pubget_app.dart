@@ -74,6 +74,7 @@ import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
 import '../features/events/repositories/unavailable_event_repository.dart';
 import '../features/events/screens/event_builder_page.dart';
+import '../features/events/screens/create_event_entry_page.dart';
 import '../features/events/screens/event_details_screen.dart';
 import '../features/events/screens/event_list_screen.dart';
 import '../features/achievements/providers/achievement_provider.dart';
@@ -736,10 +737,16 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
           );
         },
-        '/events/create': (parameters) => EventBuilderPage(
-          groupId: parameters['groupId'],
-          templateId: parameters['templateId'],
-        ),
+        '/events/create': (parameters) {
+          final groupId = parameters['groupId'];
+          if (groupId == null || groupId.isEmpty) {
+            return CreateEventEntryPage(templateId: parameters['templateId']);
+          }
+          return EventBuilderPage(
+            groupId: groupId,
+            templateId: parameters['templateId'],
+          );
+        },
         '/anime/details': (parameters) =>
             AnimeDetailsPage(animeId: parameters['animeId'] ?? ''),
         '/anime/browse': (parameters) {

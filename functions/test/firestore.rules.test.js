@@ -206,6 +206,16 @@ test("a stale public projection is denied immediately after privacy changes", as
     db("alice").doc("users/alice").update({ profileVisibility: "public" }),
   );
 });
+test("public profile lists are not poisoned by a missing user document", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("public_profiles/ghost").set({
+      username: "ghost", displayName: "Ghost",
+    });
+  });
+  await assertFails(db("bob").doc("public_profiles/ghost").get());
+  await assertSucceeds(db("bob").collection("public_profiles").get());
+});
 test("mafia lifecycle and private roles are not client writable", async () => {
   await assertFails(db("alice").doc("mafia_games/m1").update({ status: "finished", winner: "mafia" }));
   await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" }));
@@ -793,6 +803,20 @@ test("a server deletion marker closes all client group access during cleanup", a
     text: "a late write",
   }));
   await assertFails(db("bob").doc("groups/g1/messages/bob-message").delete());
+});
+
+test("discovery group lists stay readable when another group is pending deletion", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("groups/g-live").set({
+      founderId: "alice", name: "Live", isSearchable: true, deletionPending: false,
+    });
+    await admin.doc("groups/g1").update({ deletionPending: true, isSearchable: false });
+  });
+  await assertFails(db("bob").doc("groups/g1").get());
+  const listed = await assertSucceeds(db("bob").collection("groups").get());
+  const ids = listed.docs.map((doc) => doc.id);
+  assert.ok(ids.includes("g-live"));
 });
 
 test("group chat previews and aggregate receipts are server-authoritative", async () => {

@@ -21,7 +21,7 @@ class CoinBalanceChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tooltip = cached ? EconomyStrings.cached : EconomyStrings.coins;
     final chip = Chip(
-      avatar: const Icon(Icons.monetization_on_outlined, size: 18),
+      avatar: const PubgetCoinIcon(size: 18),
       label: Text('$balance'),
     );
     return Semantics(
@@ -32,7 +32,7 @@ class CoinBalanceChip extends StatelessWidget {
           : Tooltip(
               message: tooltip,
               child: ActionChip(
-                avatar: const Icon(Icons.monetization_on_outlined, size: 18),
+                avatar: const PubgetCoinIcon(size: 18),
                 label: Text('$balance'),
                 onPressed: onPressed,
               ),
@@ -109,10 +109,15 @@ class StoreItemCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Text(item.title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            owned ? EconomyStrings.alreadyOwned : '${item.price} ${EconomyStrings.coins}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          owned
+              ? Text(
+                  EconomyStrings.alreadyOwned,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              : PubgetCoinAmount(
+                  amount: item.price,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
         ],
       ),
     );

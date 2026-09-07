@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
-import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import 'pubget_tooltip.dart';
 
@@ -43,7 +42,10 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
                 ],
               ),
             ),
-            child: const Icon(Icons.settings_rounded, color: Color(0xFF1B1028)),
+            child: const CustomPaint(
+              size: Size(22, 22),
+              painter: _LuxuryGearPainter(),
+            ),
           ),
         ),
       ),
@@ -74,12 +76,12 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
         child: InkWell(
           key: const Key('home-notifications'),
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          customBorder: const CircleBorder(),
           child: Ink(
-            width: 44,
+            width: 42,
             height: 42,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              shape: BoxShape.circle,
               gradient: const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -102,7 +104,10 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: <Widget>[
-                const Icon(Icons.notifications_active_rounded, color: Color(0xFF3A2300)),
+                const CustomPaint(
+                  size: Size(22, 22),
+                  painter: _LuxuryBellPainter(),
+                ),
                 if (badge > 0)
                   PositionedDirectional(
                     top: 4,
@@ -121,6 +126,55 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Japanese-inspired currency mark: dragon + katana with a gloss streak.
+/// Use this everywhere a coin amount is shown.
+class PubgetCoinIcon extends StatelessWidget {
+  const PubgetCoinIcon({this.size = 22, super.key});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: const CustomPaint(painter: PubgetCoinPainter()),
+    );
+  }
+}
+
+class PubgetCoinAmount extends StatelessWidget {
+  const PubgetCoinAmount({
+    required this.amount,
+    this.size = 18,
+    this.color,
+    super.key,
+  });
+
+  final int amount;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        PubgetCoinIcon(size: size),
+        SizedBox(width: size * 0.28),
+        Text(
+          '$amount',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: color ?? AppColors.goldPale,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -175,7 +229,7 @@ class PubgetKatanaCoinChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const _KatanaCoinDisc(),
+                const PubgetCoinIcon(size: 34),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
                   '$balance',
@@ -194,20 +248,94 @@ class PubgetKatanaCoinChip extends StatelessWidget {
   }
 }
 
-class _KatanaCoinDisc extends StatelessWidget {
-  const _KatanaCoinDisc();
+class _LuxuryGearPainter extends CustomPainter {
+  const _LuxuryGearPainter();
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 34,
-      height: 34,
-      child: CustomPaint(painter: _KatanaCoinPainter()),
-    );
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final stroke = Paint()
+      ..color = const Color(0xFF1B1028)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.15
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    final outer = Path();
+    const teeth = 8;
+    for (var i = 0; i < teeth; i++) {
+      final angle = (i / teeth) * 6.28318530718 - 0.2;
+      final next = ((i + 0.45) / teeth) * 6.28318530718 - 0.2;
+      final valley = ((i + 0.72) / teeth) * 6.28318530718 - 0.2;
+      final outerR = size.shortestSide * 0.46;
+      final innerR = size.shortestSide * 0.34;
+      final p1 = center + Offset.fromDirection(angle, innerR);
+      final p2 = center + Offset.fromDirection(angle + 0.08, outerR);
+      final p3 = center + Offset.fromDirection(next, outerR);
+      final p4 = center + Offset.fromDirection(valley, innerR);
+      if (i == 0) {
+        outer.moveTo(p1.dx, p1.dy);
+      }
+      outer.lineTo(p2.dx, p2.dy);
+      outer.lineTo(p3.dx, p3.dy);
+      outer.lineTo(p4.dx, p4.dy);
+    }
+    outer.close();
+    canvas.drawPath(outer, stroke);
+    canvas.drawCircle(center, size.shortestSide * 0.16, stroke);
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _KatanaCoinPainter extends CustomPainter {
+class _LuxuryBellPainter extends CustomPainter {
+  const _LuxuryBellPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = const Color(0xFF3A2300)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    final w = size.width;
+    final h = size.height;
+    final bell = Path()
+      ..moveTo(w * 0.32, h * 0.38)
+      ..quadraticBezierTo(w * 0.32, h * 0.16, w * 0.50, h * 0.14)
+      ..quadraticBezierTo(w * 0.68, h * 0.16, w * 0.68, h * 0.38)
+      ..quadraticBezierTo(w * 0.78, h * 0.62, w * 0.84, h * 0.72)
+      ..lineTo(w * 0.16, h * 0.72)
+      ..quadraticBezierTo(w * 0.22, h * 0.62, w * 0.32, h * 0.38)
+      ..close();
+    canvas.drawPath(bell, stroke);
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(w * 0.50, h * 0.72),
+        width: w * 0.42,
+        height: h * 0.22,
+      ),
+      0.15,
+      2.84,
+      false,
+      stroke,
+    );
+    canvas.drawCircle(Offset(w * 0.50, h * 0.88), 1.15, stroke);
+    canvas.drawLine(
+      Offset(w * 0.50, h * 0.10),
+      Offset(w * 0.50, h * 0.16),
+      stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class PubgetCoinPainter extends CustomPainter {
+  const PubgetCoinPainter();
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -215,55 +343,95 @@ class _KatanaCoinPainter extends CustomPainter {
     final disc = Paint()
       ..shader = const RadialGradient(
         colors: <Color>[
+          Color(0xFFFFF8D0),
           Color(0xFFFFF3B0),
           AppColors.goldLight,
           AppColors.gold,
           AppColors.goldDark,
         ],
-        stops: <double>[0, 0.35, 0.72, 1],
+        stops: <double>[0, 0.22, 0.48, 0.78, 1],
       ).createShader(Offset.zero & size);
     canvas.drawCircle(center, radius, disc);
     canvas.drawCircle(
       center,
-      radius * 0.86,
+      radius * 0.88,
       Paint()
         ..color = const Color(0xFF5A3A08)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1,
+        ..strokeWidth = 0.9,
     );
 
     final dragon = Paint()
       ..color = AppColors.royalPurpleDark
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.7
+      ..strokeWidth = 1.35
       ..strokeCap = StrokeCap.round;
-    final arc = Path()
-      ..moveTo(size.width * 0.22, size.height * 0.62)
+    final body = Path()
+      ..moveTo(size.width * 0.22, size.height * 0.70)
       ..cubicTo(
-        size.width * 0.08,
-        size.height * 0.18,
+        size.width * 0.06,
+        size.height * 0.42,
+        size.width * 0.28,
+        size.height * 0.10,
+        size.width * 0.52,
+        size.height * 0.22,
+      )
+      ..cubicTo(
         size.width * 0.78,
-        size.height * 0.04,
-        size.width * 0.80,
-        size.height * 0.48,
+        size.height * 0.34,
+        size.width * 0.70,
+        size.height * 0.62,
+        size.width * 0.78,
+        size.height * 0.52,
       );
-    canvas.drawPath(arc, dragon);
+    canvas.drawPath(body, dragon);
+    canvas.drawCircle(
+      Offset(size.width * 0.80, size.height * 0.48),
+      1.5,
+      Paint()..color = AppColors.royalPurpleDark,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.78, size.height * 0.44),
+      Offset(size.width * 0.86, size.height * 0.38),
+      dragon,
+    );
 
     final blade = Paint()
       ..shader = const LinearGradient(
         colors: <Color>[Color(0xFFF8F3E4), Color(0xFF8A6A20)],
       ).createShader(Offset.zero & size)
-      ..strokeWidth = 1.6
+      ..strokeWidth = 1.45
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       Offset(size.width * 0.18, size.height * 0.78),
-      Offset(size.width * 0.84, size.height * 0.28),
+      Offset(size.width * 0.84, size.height * 0.30),
       blade,
     );
-    canvas.drawCircle(
-      Offset(size.width * 0.20, size.height * 0.80),
-      1.6,
-      Paint()..color = AppColors.royalPurple,
+    canvas.drawLine(
+      Offset(size.width * 0.20, size.height * 0.74),
+      Offset(size.width * 0.28, size.height * 0.82),
+      Paint()
+        ..color = AppColors.royalPurple
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final gloss = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: <Color>[
+          Colors.white.withValues(alpha: 0.72),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(Offset.zero & size)
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(size.width * 0.22, size.height * 0.24),
+      Offset(size.width * 0.62, size.height * 0.16),
+      gloss,
     );
   }
 
