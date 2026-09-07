@@ -28,6 +28,7 @@ import '../features/authentication/screens/onboarding_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
+import '../features/groups/models/group_models.dart';
 import '../features/groups/providers/group_members_provider.dart';
 import '../features/groups/providers/chat_provider.dart';
 import '../features/groups/providers/group_provider.dart';
@@ -718,7 +719,6 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
-        '/groups/create': const CreateGroupWizardPage(),
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
         '/anime/library': const AnimeLibraryPage(),
@@ -732,6 +732,14 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
+        '/groups/create': (parameters) {
+          final raw = parameters['type'];
+          final type = GroupType.values.cast<GroupType?>().firstWhere(
+            (value) => value?.name == raw,
+            orElse: () => null,
+          );
+          return CreateGroupWizardPage(type: type);
+        },
         '/group': (parameters) =>
             GroupDetailsPage(groupId: parameters['groupId'] ?? ''),
         '/group-invite': (parameters) => GroupInvitePage(

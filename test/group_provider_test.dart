@@ -61,6 +61,56 @@ void main() {
     expect(provider.joinedState, LoadingState.empty);
   });
 
+  test('create ignores a second tap while the first call is in flight', () async {
+    final repository = _FakeGroupRepository();
+    repository.createStarted = Completer<void>();
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+    final first = provider.create(
+      GroupDraft(
+        name: 'One',
+        description: '',
+        type: GroupType.public,
+        animeId: null,
+        joinPolicy: JoinPolicy.approval,
+        isSearchable: true,
+        rules: '',
+        maxMembers: 100,
+        imageUrl: 'https://example.test/a.png',
+        idempotencyKey: 'k1',
+      ),
+    );
+    final second = await provider.create(
+      GroupDraft(
+        name: 'Two',
+        description: '',
+        type: GroupType.public,
+        animeId: null,
+        joinPolicy: JoinPolicy.approval,
+        isSearchable: true,
+        rules: '',
+        maxMembers: 100,
+        imageUrl: 'https://example.test/b.png',
+        idempotencyKey: 'k2',
+      ),
+    );
+    expect(second.isSuccess, isFalse);
+    expect(provider.creating, isTrue);
+    repository.createStarted!.complete();
+    expect((await first).isSuccess, isTrue);
+    expect(provider.creating, isFalse);
+  });
+
+  test('requestToJoin marks pending only after the server succeeds', () async {
+    final repository = _FakeGroupRepository();
+    final provider = GroupProvider(repository: repository);
+    addTearDown(provider.dispose);
+    final result = await provider.requestToJoin('g1');
+    expect(result.isSuccess, isTrue);
+    expect(provider.pendingRequest, isTrue);
+    expect(provider.isMember, isFalse);
+  });
+
   test('join success stores the follow-up membership, not a stub uid', () async {
     final repository = _FakeGroupRepository(
       membershipAfterJoin: const GroupMember(
@@ -163,6 +213,7 @@ final class _FakeGroupRepository implements GroupRepository {
   });
 
   final leaveCompleter = Completer<Result<void>>();
+  Completer<void>? createStarted;
   final GroupMember? membershipAfterJoin;
   final bool failMembershipRead;
   final membershipReads = <String>[];
@@ -187,7 +238,10 @@ final class _FakeGroupRepository implements GroupRepository {
   );
 
   @override
-  Future<Result<Group>> createGroup(GroupDraft draft) async => Success(group);
+  Future<Result<Group>> createGroup(GroupDraft draft) async {
+    if (createStarted != null) await createStarted!.future;
+    return Success(group);
+  }
 
   @override
   Future<Result<void>> disbandGroup(String groupId) async =>
@@ -215,13 +269,14 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => const Success<void>(null);
 
   @override
   Future<Result<void>> leaveGroup(String groupId) => leaveCompleter.future;
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
       const Success<void>(null);
 
   @override
@@ -251,4 +306,20 @@ final class _FakeGroupRepository implements GroupRepository {
     );
     return const Success<void>(null);
   }
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
 }

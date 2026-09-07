@@ -15,7 +15,7 @@ import 'authentication_test_support.dart';
 
 void main() {
   testWidgets(
-    'plain memberships appear only under Joined; founded groups appear under Groups',
+    'My Groups tabs split joined memberships from groups the user created',
     (tester) async {
       final authRepository = FakeAuthRepository(
         user: const AuthUser(id: 'alice', email: 'alice@example.com'),
@@ -43,8 +43,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Founded Group B'), findsOneWidget);
-      expect(find.text('Member Group A'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('groups-pane-joined')),
+          matching: find.text('Member Group A'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('groups-pane-joined')),
+          matching: find.text('Founded Group B'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('groups-tab-created')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('groups-pane-created')),
+          matching: find.text('Founded Group B'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('groups-pane-created')),
+          matching: find.text('Member Group A'),
+        ),
+        findsNothing,
+      );
 
       await tester.pumpWidget(
         MultiProvider(
@@ -115,6 +145,7 @@ final class _SplitGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => const Success<void>(null);
 
   @override
@@ -122,16 +153,16 @@ final class _SplitGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
       const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
-      Success(<Group>[founded]);
+      Success(<Group>[founded, joined]);
 
   @override
   Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
-      Success(<Group>[joined]);
+      Success(<Group>[joined, founded]);
 
   @override
   Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
@@ -142,4 +173,20 @@ final class _SplitGroupRepository implements GroupRepository {
     required String groupId,
     required GroupSettingsUpdate settings,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
 }

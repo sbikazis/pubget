@@ -38,6 +38,36 @@ function authUid(request, HttpsError) {
   return request.auth.uid;
 }
 
+function optionalUrl(value, max) {
+  return value === undefined || value === null || value === "" ||
+    (typeof value === "string" && value.length <= max);
+}
+
+function parseCharacter(raw, HttpsError) {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const source = raw.character && typeof raw.character === "object" ? raw.character : raw;
+  const key = typeof raw.characterKey === "string" ? raw.characterKey : source.key;
+  const name = source && source.name;
+  const avatarUrl = source && source.avatarUrl;
+  if (!validString(key, 128) || !validString(name, 80) ||
+      (avatarUrl !== undefined && avatarUrl !== null &&
+       (typeof avatarUrl !== "string" || avatarUrl.length > 500))) {
+    throw new HttpsError("invalid-argument", "Character details are invalid.");
+  }
+  return {
+    key: key.trim(),
+    name: name.trim(),
+    avatarUrl: typeof avatarUrl === "string" ? avatarUrl.trim() : "",
+  };
+}
+
+function parseInvitedBy(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 || trimmed.length > 80 ? null : trimmed;
+}
+
 function groupInput(request, HttpsError) {
   const data = request.data || {};
   if (!validString(data.name, 80) || typeof data.description !== "string" ||
@@ -46,13 +76,21 @@ function groupInput(request, HttpsError) {
       typeof data.isSearchable !== "boolean" || typeof data.rules !== "string" ||
       data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
-       !validString(data.animeId, 128))) {
+       !validString(data.animeId, 128)) ||
+      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500)) {
     throw new HttpsError("invalid-argument", "Group details are invalid.");
   }
   if (data.type === "animeRoleplay" && !validString(data.animeId, 128)) {
     throw new HttpsError("invalid-argument", "Anime roleplay groups require an animeId.");
   }
-  return data;
+  const character = parseCharacter(data, HttpsError);
+  if (ROLEPLAY_GROUP_TYPES.has(data.type) && !character) {
+    throw new HttpsError("invalid-argument", "Roleplay groups require a founder character.");
+  }
+  if (data.type === "public" && character) {
+    throw new HttpsError("invalid-argument", "Public groups cannot reserve a character.");
+  }
+  return Object.assign({}, data, { character });
 }
 
 function groupPath(db, groupId) {
@@ -89,12 +127,14 @@ function inviteRankForCount(count) {
   return "member";
 }
 
-function groupMemberData(uid, role, FieldValue) {
+function groupMemberData(uid, role, FieldValue, extras) {
+  const extra = extras || {};
   return {
     uid,
     role,
     customRoleId: null,
-    roleplayCharacter: null,
+    roleplayCharacter: extra.character || null,
+    invitedBy: extra.invitedBy || null,
     joinedAt: FieldValue.serverTimestamp(),
     inviteCount: 0,
     lastActiveAt: FieldValue.serverTimestamp(),
@@ -130,16 +170,31 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
   async function createGroup(request) {
     const uid = authUid(request, HttpsError);
     const data = groupInput(request, HttpsError);
-    const groupRef = db.collection("groups").doc();
-    const memberRef = memberPath(db, groupRef.id, uid);
+    const idempotencyKey = typeof data.idempotencyKey === "string" &&
+      validString(data.idempotencyKey, 80) ? data.idempotencyKey.trim() : null;
+    const lockRef = idempotencyKey ?
+      db.collection("users").doc(uid).collection("groupCreateKeys").doc(idempotencyKey) :
+      null;
+    let groupRef = db.collection("groups").doc();
+    let reused = false;
     await db.runTransaction(async (transaction) => {
+      if (lockRef) {
+        const lock = await transaction.get(lockRef);
+        if (lock.exists && validString((lock.data() || {}).groupId, 128)) {
+          groupRef = db.collection("groups").doc(lock.data().groupId);
+          reused = true;
+          return;
+        }
+      }
       const userSnap = await transaction.get(db.collection("users").doc(uid));
       const maxMembers = entitledMaxMembers(userSnap.exists ? userSnap.data() : {});
+      const memberRef = memberPath(db, groupRef.id, uid);
       transaction.create(groupRef, {
         name: data.name.trim(),
         searchName: data.name.trim().toLowerCase(),
         description: data.description.trim(),
-        imageUrl: "",
+        imageUrl: typeof data.imageUrl === "string" ? data.imageUrl.trim() : "",
+        coverUrl: typeof data.coverUrl === "string" ? data.coverUrl.trim() : "",
         type: data.type,
         animeId: data.animeId || null,
         founderId: uid,
@@ -153,9 +208,29 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         activityScore: 0,
         risingEligible: false,
       });
-      transaction.create(memberRef, groupMemberData(uid, "founder", FieldValue));
+      transaction.create(
+        memberRef,
+        groupMemberData(uid, "founder", FieldValue, { character: data.character }),
+      );
+      if (data.character) {
+        transaction.create(
+          groupRef.collection("characters").doc(data.character.key),
+          {
+            reservedByUid: uid,
+            reservedAt: FieldValue.serverTimestamp(),
+            name: data.character.name,
+            avatarUrl: data.character.avatarUrl,
+          },
+        );
+      }
       for (const role of ROLES) {
         transaction.create(rolePath(db, groupRef.id, role), roleDefinition(role));
+      }
+      if (lockRef) {
+        transaction.create(lockRef, {
+          groupId: groupRef.id,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       }
     });
     const created = await groupRef.get();
@@ -210,7 +285,36 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       if ((data.membersCount || 0) >= (data.maxMembers || 0)) {
         throw new HttpsError("resource-exhausted", "This group is full.");
       }
-      transaction.create(memberRef, groupMemberData(uid, "member", FieldValue));
+      const character = parseCharacter(request.data || {}, HttpsError);
+      if (ROLEPLAY_GROUP_TYPES.has(data.type) && !character) {
+        throw new HttpsError("invalid-argument", "A roleplay character is required.");
+      }
+      if (!ROLEPLAY_GROUP_TYPES.has(data.type) && character) {
+        throw new HttpsError("invalid-argument", "This group does not use characters.");
+      }
+      let characterRef = null;
+      if (character) {
+        characterRef = groupRef.collection("characters").doc(character.key);
+        const reserved = await transaction.get(characterRef);
+        if (reserved.exists && reserved.data().reservedByUid !== uid) {
+          throw new HttpsError("already-exists", "This character is already reserved.");
+        }
+      }
+      transaction.create(
+        memberRef,
+        groupMemberData(uid, "member", FieldValue, {
+          character,
+          invitedBy: parseInvitedBy((request.data || {}).invitedBy),
+        }),
+      );
+      if (characterRef && character) {
+        transaction.set(characterRef, {
+          reservedByUid: uid,
+          reservedAt: FieldValue.serverTimestamp(),
+          name: character.name,
+          avatarUrl: character.avatarUrl,
+        });
+      }
       transaction.update(groupRef, {
         membersCount: (data.membersCount || 0) + 1,
       });
@@ -274,10 +378,30 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         throw new HttpsError("failed-precondition", "This group accepts direct joins.");
       }
       if (existing.exists && existing.data().status === "pending") return;
+      const groupData = group.data() || {};
+      const character = parseCharacter(request.data || {}, HttpsError);
+      if (ROLEPLAY_GROUP_TYPES.has(groupData.type) && !character) {
+        throw new HttpsError("invalid-argument", "A roleplay character is required.");
+      }
+      if (!ROLEPLAY_GROUP_TYPES.has(groupData.type) && character) {
+        throw new HttpsError("invalid-argument", "This group does not use characters.");
+      }
+      if (character) {
+        const reserved = await transaction.get(
+          groupRef.collection("characters").doc(character.key),
+        );
+        if (reserved.exists) {
+          throw new HttpsError("already-exists", "This character is already reserved.");
+        }
+      }
       transaction.set(groupRef.collection("requests").doc(uid), {
         uid,
         status: "pending",
         requestedAt: FieldValue.serverTimestamp(),
+        invitedBy: parseInvitedBy((request.data || {}).invitedBy),
+        characterReason: typeof (request.data || {}).characterReason === "string" ?
+          request.data.characterReason.trim().slice(0, 500) : "",
+        roleplayCharacter: character,
       });
     });
     return { ok: true };
@@ -346,7 +470,33 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       if ((data.membersCount || 0) >= (data.maxMembers || 0)) {
         throw new HttpsError("resource-exhausted", "This group is full.");
       }
-      transaction.create(memberRef, groupMemberData(targetUid, "member", FieldValue));
+      const requestData = joinRequest.data() || {};
+      const character = requestData.roleplayCharacter && requestData.roleplayCharacter.key ?
+        {
+          key: requestData.roleplayCharacter.key,
+          name: requestData.roleplayCharacter.name || "",
+          avatarUrl: requestData.roleplayCharacter.avatarUrl || "",
+        } : null;
+      if (character) {
+        const characterRef = groupRef.collection("characters").doc(character.key);
+        const reserved = await transaction.get(characterRef);
+        if (reserved.exists && reserved.data().reservedByUid !== targetUid) {
+          throw new HttpsError("already-exists", "This character is already reserved.");
+        }
+        transaction.set(characterRef, {
+          reservedByUid: targetUid,
+          reservedAt: FieldValue.serverTimestamp(),
+          name: character.name,
+          avatarUrl: character.avatarUrl,
+        });
+      }
+      transaction.create(
+        memberRef,
+        groupMemberData(targetUid, "member", FieldValue, {
+          character,
+          invitedBy: requestData.invitedBy || null,
+        }),
+      );
       transaction.update(groupRef, { membersCount: (data.membersCount || 0) + 1 });
       transaction.update(requestRef, {
         status: "accepted",
@@ -585,13 +735,12 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
   async function reserveRoleplayCharacter(request) {
     const uid = authUid(request, HttpsError);
     const groupId = requireGroupId(request);
-    const characterKey = request.data && request.data.characterKey;
-    const character = request.data && request.data.character;
-    if (!validString(characterKey, 128) || !character ||
-        !Object.hasOwn(CHARACTER_CATALOG, characterKey) ||
-        character.name !== CHARACTER_CATALOG[characterKey]) {
+    const parsed = parseCharacter(request.data || {}, HttpsError);
+    if (!parsed) {
       throw new HttpsError("invalid-argument", "Character details are invalid.");
     }
+    const characterKey = parsed.key;
+    const character = parsed;
     await db.runTransaction(async (transaction) => {
       const memberRef = memberPath(db, groupId, uid);
       const characterRef = groupPath(db, groupId).collection("characters").doc(characterKey);

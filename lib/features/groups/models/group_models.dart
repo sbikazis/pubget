@@ -70,6 +70,7 @@ final class Group {
     required this.activityScore,
     this.risingScore = 0,
     this.imageUrl,
+    this.coverUrl,
     this.lastActivityAt,
     this.viewerLastReadAt,
     this.promotionExpiresAt,
@@ -91,11 +92,18 @@ final class Group {
   final num activityScore;
   final num risingScore;
   final String? imageUrl;
+  final String? coverUrl;
   final DateTime? lastActivityAt;
   final DateTime? viewerLastReadAt;
   final DateTime? promotionExpiresAt;
 
   bool get isFull => membersCount >= maxMembers;
+
+  List<String> get ruleItems => rules
+      .split(RegExp(r'\r?\n'))
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
 
   /// Unread from existing group `lastMessageAt` vs member `lastReadAt`.
   bool get hasUnread {
@@ -131,6 +139,7 @@ final class Group {
       activityScore: activityScore,
       risingScore: risingScore,
       imageUrl: imageUrl,
+      coverUrl: coverUrl,
       lastActivityAt: lastActivityAt,
       viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: promotionExpiresAt,
@@ -166,6 +175,7 @@ final class Group {
       activityScore: (map['activityScore'] as num?) ?? 0,
       risingScore: (map['risingScore'] as num?) ?? 0,
       imageUrl: map['imageUrl'] as String?,
+      coverUrl: map['coverUrl'] as String?,
       lastActivityAt: _date(map['lastMessageAt']),
       viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: _date(map['promotionExpiresAt']),
@@ -357,20 +367,34 @@ final class JoinRequest {
     required this.uid,
     required this.status,
     required this.requestedAt,
+    this.invitedBy,
+    this.characterReason = '',
+    this.character,
   });
 
   final String uid;
   final String status;
   final DateTime? requestedAt;
+  final String? invitedBy;
+  final String characterReason;
+  final RoleplayCharacter? character;
 
   factory JoinRequest.fromMap(
     Map<String, dynamic> map, {
     required String uid,
-  }) => JoinRequest(
-    uid: uid,
-    status: map['status'] as String? ?? 'pending',
-    requestedAt: _date(map['requestedAt']),
-  );
+  }) {
+    final raw = map['roleplayCharacter'];
+    return JoinRequest(
+      uid: uid,
+      status: map['status'] as String? ?? 'pending',
+      requestedAt: _date(map['requestedAt']),
+      invitedBy: map['invitedBy'] as String?,
+      characterReason: map['characterReason'] as String? ?? '',
+      character: raw is Map
+          ? RoleplayCharacter.fromMap(Map<String, dynamic>.from(raw))
+          : null,
+    );
+  }
 }
 
 final class RoleplayCharacter {
@@ -378,11 +402,60 @@ final class RoleplayCharacter {
     required this.key,
     required this.name,
     required this.avatarUrl,
+    this.reserved = false,
   });
 
   final String key;
   final String name;
   final String avatarUrl;
+  final bool reserved;
+
+  factory RoleplayCharacter.fromMap(Map<String, dynamic> map, {String? key}) {
+    return RoleplayCharacter(
+      key: key ?? map['key'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      avatarUrl: map['avatarUrl'] as String? ?? '',
+      reserved: map['reserved'] as bool? ?? false,
+    );
+  }
+
+  RoleplayCharacter asReserved() => RoleplayCharacter(
+    key: key,
+    name: name,
+    avatarUrl: avatarUrl,
+    reserved: true,
+  );
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'key': key,
+    'name': name,
+    'avatarUrl': avatarUrl,
+  };
+}
+
+final class GroupJoinPayload {
+  const GroupJoinPayload({
+    this.invitedBy,
+    this.acceptedRules = false,
+    this.character,
+    this.characterReason,
+  });
+
+  final String? invitedBy;
+  final bool acceptedRules;
+  final RoleplayCharacter? character;
+  final String? characterReason;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    if (invitedBy != null && invitedBy!.trim().isNotEmpty)
+      'invitedBy': invitedBy!.trim(),
+    if (characterReason != null && characterReason!.trim().isNotEmpty)
+      'characterReason': characterReason!.trim(),
+    if (character != null) ...<String, dynamic>{
+      'characterKey': character!.key,
+      'character': character!.toMap(),
+    },
+  };
 }
 
 DateTime? _date(dynamic value) {

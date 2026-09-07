@@ -11,6 +11,10 @@ final class GroupDraft {
     required this.isSearchable,
     required this.rules,
     required this.maxMembers,
+    this.imageUrl,
+    this.coverUrl,
+    this.character,
+    this.idempotencyKey,
   });
 
   final String name;
@@ -21,6 +25,10 @@ final class GroupDraft {
   final bool isSearchable;
   final String rules;
   final int maxMembers;
+  final String? imageUrl;
+  final String? coverUrl;
+  final RoleplayCharacter? character;
+  final String? idempotencyKey;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'name': name.trim(),
@@ -31,6 +39,13 @@ final class GroupDraft {
     'isSearchable': isSearchable,
     'rules': rules.trim(),
     'maxMembers': maxMembers,
+    if (imageUrl != null) 'imageUrl': imageUrl,
+    if (coverUrl != null) 'coverUrl': coverUrl,
+    if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+    if (character != null) ...<String, dynamic>{
+      'characterKey': character!.key,
+      'character': character!.toMap(),
+    },
   };
 }
 
@@ -67,8 +82,24 @@ abstract interface class GroupRepository {
   Future<Result<List<Group>>> searchGroups(String query);
   Future<Result<List<Group>>> listJoinedGroups(String userId);
   Stream<Result<List<Group>>> watchJoinedGroups(String userId);
-  Future<Result<void>> joinGroup({required String groupId, String? inviteId});
-  Future<Result<void>> requestToJoin({required String groupId});
+  Future<Result<void>> joinGroup({
+    required String groupId,
+    String? inviteId,
+    GroupJoinPayload? join,
+  });
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  });
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  });
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  });
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId);
   Future<Result<void>> leaveGroup(String groupId);
   Future<Result<void>> disbandGroup(String groupId);
   Future<Result<void>> updateGroupSettings({

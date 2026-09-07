@@ -126,18 +126,73 @@ final class FirebaseGroupRepository implements GroupRepository {
   }
 
   @override
-  Future<Result<void>> joinGroup({required String groupId, String? inviteId}) =>
-      _guard(() async {
-        await _callVoid('joinGroup', <String, dynamic>{
-          'groupId': groupId,
-          'inviteId': ?inviteId,
-        });
-      });
+  Future<Result<void>> joinGroup({
+    required String groupId,
+    String? inviteId,
+    GroupJoinPayload? join,
+  }) => _guard(() async {
+    await _callVoid('joinGroup', <String, dynamic>{
+      'groupId': groupId,
+      'inviteId': ?inviteId,
+      ...?join?.toMap(),
+    });
+  });
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) =>
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) => _guard(() async {
+    await _callVoid('requestToJoin', <String, dynamic>{
+      'groupId': groupId,
+      ...?join?.toMap(),
+    });
+  });
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('bans')
+        .doc(userId)
+        .get();
+    return snapshot.exists;
+  });
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('requests')
+        .doc(userId)
+        .get();
+    return snapshot.exists && snapshot.data()?['status'] == 'pending';
+  });
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) =>
       _guard(() async {
-        await _callVoid('requestToJoin', <String, dynamic>{'groupId': groupId});
+        final snapshot = await _firestore
+            .collection('groups')
+            .doc(groupId)
+            .collection('characters')
+            .get();
+        return snapshot.docs
+            .map(
+              (doc) => RoleplayCharacter.fromMap(
+                doc.data(),
+                key: doc.id,
+              ).asReserved(),
+            )
+            .toList(growable: false);
       });
 
   @override

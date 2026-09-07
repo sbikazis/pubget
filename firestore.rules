@@ -688,7 +688,7 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /characters/{characterId} {
-        allow read: if groupMember(groupId);
+        allow read: if signedIn();
         allow create: if groupExists(groupId) &&
           request.resource.data.keys().hasOnly(
             ['userId','characterName','imageUrl','reservedAt']) &&
