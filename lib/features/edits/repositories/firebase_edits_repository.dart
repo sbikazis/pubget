@@ -23,6 +23,14 @@ final class FirebaseEditsRepository implements EditsRepository {
   final FirebaseFunctions _functions;
   UploadTask? _activeUpload;
 
+  Map<String, String> _uploadMetadata({String? fileName, int? sizeBytes}) {
+    final metadata = <String, String>{};
+    final name = fileName;
+    if (name != null) metadata['fileName'] = name;
+    if (sizeBytes != null) metadata['clientSize'] = '$sizeBytes';
+    return metadata;
+  }
+
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
       return Success(await action());
@@ -67,11 +75,15 @@ final class FirebaseEditsRepository implements EditsRepository {
       editId = resumeId;
       path = resumePath;
     } else {
-      final start = await _functions.httpsCallable('startEditUpload').call({
+      final startPayload = <String, dynamic>{
         'caption': caption,
         'animeTag': animeTag,
-        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
-      });
+      };
+      final key = idempotencyKey;
+      if (key != null) startPayload['idempotencyKey'] = key;
+      final start = await _functions
+          .httpsCallable('startEditUpload')
+          .call(startPayload);
       path = start.data['videoPath'] as String;
       editId = start.data['editId'] as String;
     }
@@ -80,10 +92,10 @@ final class FirebaseEditsRepository implements EditsRepository {
       source,
       SettableMetadata(
         contentType: contentType,
-        customMetadata: <String, String>{
-          if (fileName != null) 'fileName': fileName,
-          if (sizeBytes != null) 'clientSize': '$sizeBytes',
-        },
+        customMetadata: _uploadMetadata(
+          fileName: fileName,
+          sizeBytes: sizeBytes,
+        ),
       ),
     );
     onStarted?.call(editId, path);

@@ -4,11 +4,7 @@ import '../../../core/errors/failure.dart';
 final class EditValidation {
   const EditValidation._();
 
-  static const allowedTypes = <String>{
-    'video/mp4',
-    'video/quicktime',
-    'video/x-m4v',
-  };
+  static const allowedTypes = <String>{'video/mp4'};
 
   static Failure? reject({
     required String fileName,
@@ -18,7 +14,7 @@ final class EditValidation {
   }) {
     final type = contentType.trim().toLowerCase();
     final name = fileName.trim().toLowerCase();
-    final looksMp4 = name.endsWith('.mp4') || name.endsWith('.m4v');
+    final looksMp4 = name.endsWith('.mp4');
     if (!looksMp4 && !allowedTypes.contains(type)) {
       return const ValidationError(
         'Choose an MP4 video. Other formats are not supported.',
