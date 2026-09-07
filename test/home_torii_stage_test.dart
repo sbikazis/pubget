@@ -85,7 +85,7 @@ void main() {
               'poll-1',
               EventStatus.active,
               people: 4,
-              end: DateTime.utc(2026, 9, 7),
+              end: DateTime.now().toUtc().add(const Duration(days: 2)),
             ),
           ),
         ),
