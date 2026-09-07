@@ -344,6 +344,66 @@ final class AppStrings {
   String membersCapacity(int count, int max) =>
       pick('$count/$max members', '$count/$max أعضاء');
 
+  String fansCount(int count) => pick('$count fans', '$count معجب');
+  String get seeMore => pick('See more', 'مشاهدة المزيد');
+  String get createNew => pick('Create', 'إنشاء');
+  String get createGroupAction => pick('Create a group', 'إنشاء مجموعة');
+  String get uploadClip => pick('Upload a clip', 'رفع مقطع');
+  String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
+  String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
+  String get hostGroup => pick('Host group', 'المجموعة المضيفة');
+  String get eventEnded => pick('Ended', 'انتهت');
+  String get justStarted => pick('Just started', 'بدأت للتو');
+  String get eventActive => pick('Active', 'نشطة');
+  String endsInHours(int hours) =>
+      pick('Ends in $hours hours', 'تنتهي خلال $hours ساعات');
+  String get vote => pick('Vote', 'صوّت');
+  String get seeResult => pick('See result', 'شاهد النتيجة');
+  String get rankChoices => pick('Rank your picks', 'رتّب اختياراتك');
+  String get seeFullRanking => pick('See full ranking', 'شاهد الترتيب الكامل');
+  String get addTheory => pick('Add your theory', 'اطرح نظريتك');
+  String get browseTheories => pick('Browse theories', 'تصفح كل النظريات');
+  String moreTheories(int count) =>
+      pick('+$count more theories', '+$count نظرية أخرى');
+  String get predictNow => pick('Predict now', 'توقّع الآن');
+  String get seeActualResult =>
+      pick('See the actual result', 'شاهد النتيجة الفعلية');
+  String get startQuiz => pick('Start quiz', 'ابدأ الاختبار');
+  String get seeYourScore => pick('See your score', 'شاهد نتيجتك');
+  String quizMeta(int questions, int minutes) =>
+      pick('$questions questions · $minutes min', '$questions أسئلة · $minutes دقائق');
+  String yourScore(int score, int total) =>
+      pick('Your score: $score/$total', 'نتيجتك: $score/$total');
+  String get shareOpinion => pick('Share your take', 'شارك برأيك');
+  String get joinChallenge => pick('Join the challenge', 'شارك في التحدي');
+  String get sendProof => pick('Send your proof', 'أرسل إثباتك');
+  String get challengeDone => pick('Completed ✓', 'أنجزت ✓');
+  String get verifiedAuto => pick('Auto-verified', 'تحقق تلقائي');
+  String get selfReport => pick('Self-report', 'تحقق ذاتي');
+  String get yes => pick('Yes', 'نعم');
+  String get no => pick('No', 'لا');
+
+  String eventTypeLabel(String type) => switch (type) {
+    'poll' || 'multipleChoice' => pick('Poll', 'تصويت'),
+    'ranking' => pick('Ranking', 'ترتيب'),
+    'versus' => pick('Versus', 'مواجهة'),
+    'theory' => pick('Theory', 'نظرية'),
+    'prediction' => pick('Prediction', 'توقّع'),
+    'quiz' => pick('Quiz', 'اختبار'),
+    'imageComparison' => pick('Images', 'صور'),
+    'characterComparison' => pick('Characters', 'شخصيات'),
+    'animeComparison' => pick('Anime', 'أنمي'),
+    'openDiscussion' => pick('Talk', 'نقاش'),
+    'challenge' => pick('Challenge', 'تحدٍ'),
+    _ => type,
+  };
+
+  String pagesCount(int count) => pick('$count pages', '$count صفحة');
+  String readMinutes(int minutes) =>
+      pick('$minutes min read', 'قراءة $minutes دقائق');
+  String worldDepth(int characters, int locations) =>
+      pick('$characters characters · $locations places', '$characters شخصية · $locations مواقع');
+
   String get myProfile => pick('My profile', 'ملفي');
   String get profile => pick('Profile', 'الملف');
   String get editProfile => pick('Edit profile', 'تعديل الملف');

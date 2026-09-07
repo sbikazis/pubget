@@ -41,6 +41,7 @@ class PubgetSectionHeader extends StatelessWidget {
     this.subtitle,
     this.actionLabel,
     this.onAction,
+    this.icon,
     super.key,
   });
 
@@ -48,6 +49,7 @@ class PubgetSectionHeader extends StatelessWidget {
   final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +77,17 @@ class PubgetSectionHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: theme.textTheme.titleLarge),
+                Row(
+                  children: <Widget>[
+                    if (icon != null) ...[
+                      Icon(icon, size: 18, color: AppColors.gold),
+                      const SizedBox(width: AppSpacing.xs),
+                    ],
+                    Flexible(
+                      child: Text(title, style: theme.textTheme.titleLarge),
+                    ),
+                  ],
+                ),
                 if (subtitle != null && subtitle!.isNotEmpty)
                   Text(subtitle!, style: theme.textTheme.bodySmall),
               ],

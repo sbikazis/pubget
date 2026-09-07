@@ -1,6 +1,7 @@
 export 'app_image_loader.dart';
 export 'message_delivery_indicator.dart';
 export 'pubget_atmosphere.dart';
+export 'pubget_brand_chrome.dart';
 export 'pubget_avatar.dart';
 export 'pubget_badge.dart';
 export 'pubget_banners.dart';
