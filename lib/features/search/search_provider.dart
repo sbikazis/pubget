@@ -121,6 +121,7 @@ final class SearchProvider extends ChangeNotifier {
         final anime = AnimeSearchRanker.rank(
           animeResult?.valueOrNull?.items ?? const <Anime>[],
           prefix,
+          keepUnmatched: true,
         );
         _results = DiscoverySearchResults(
           groups: results.groups,
@@ -139,6 +140,7 @@ final class SearchProvider extends ChangeNotifier {
         final anime = AnimeSearchRanker.rank(
           animeResult?.valueOrNull?.items ?? const <Anime>[],
           prefix,
+          keepUnmatched: true,
         );
         if (anime.isNotEmpty) {
           _results = DiscoverySearchResults(anime: anime);

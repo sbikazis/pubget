@@ -37,16 +37,24 @@ abstract final class AnimeSearchRanker {
   }
 
   /// Stable sort: match tier → score desc → popularity asc → title.
-  static List<Anime> rank(List<Anime> source, String rawQuery) {
+  ///
+  /// When [keepUnmatched] is true (remote API pages), non-matching titles are
+  /// kept after ranked hits so a Jikan/page payload is never wiped empty.
+  /// Local catalog preview should leave [keepUnmatched] false.
+  static List<Anime> rank(
+    List<Anime> source,
+    String rawQuery, {
+    bool keepUnmatched = false,
+  }) {
     final query = normalize(rawQuery);
     if (query.isEmpty) return List<Anime>.of(source);
 
     final scored = source
         .map((anime) => (anime: anime, tier: matchTier(anime, query)))
-        .where((entry) => entry.tier < 99)
         .toList(growable: false);
 
-    scored.sort((a, b) {
+    final matched = scored.where((entry) => entry.tier < 99).toList();
+    matched.sort((a, b) {
       final byTier = a.tier.compareTo(b.tier);
       if (byTier != 0) return byTier;
       final scoreA = a.anime.score ?? -1;
@@ -60,6 +68,16 @@ abstract final class AnimeSearchRanker {
       return a.anime.title.toLowerCase().compareTo(b.anime.title.toLowerCase());
     });
 
-    return scored.map((entry) => entry.anime).toList(growable: false);
+    if (!keepUnmatched) {
+      return matched.map((entry) => entry.anime).toList(growable: false);
+    }
+
+    final unmatched = scored
+        .where((entry) => entry.tier >= 99)
+        .map((entry) => entry.anime);
+    return <Anime>[
+      ...matched.map((entry) => entry.anime),
+      ...unmatched,
+    ];
   }
 }
