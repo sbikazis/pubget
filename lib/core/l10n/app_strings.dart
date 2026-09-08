@@ -611,4 +611,59 @@ final class AppStrings {
   String get ban => pick('Ban', 'حظر');
   String get transferOwnership =>
       pick('Transfer ownership', 'نقل الملكية');
+
+  // —— Group chat chrome (Arabic-first messaging UI) ——
+  String get messageDeleted =>
+      pick('This message was deleted', 'تم حذف هذه الرسالة');
+  String get loadOlderMessages =>
+      pick('Load older messages', 'تحميل رسائل أقدم');
+  String get forwarded => pick('Forwarded', 'معاد توجيهها');
+  String get edited => pick('edited', 'معدّلة');
+  String get voiceMessage => pick('Voice message', 'رسالة صوتية');
+  String get groupUpdate => pick('Group update', 'تحديث المجموعة');
+  String get eventCard => pick('Event', 'فعالية');
+  String get gameCard => pick('Game', 'لعبة');
+  String get open => pick('Open', 'فتح');
+  String get messageFrom => pick('Message from', 'رسالة من');
+  String get now => pick('now', 'الآن');
+  String get startConversation =>
+      pick('Start the conversation', 'ابدأ المحادثة');
+  String get messagesWillAppear => pick(
+    'Messages from group members will appear here.',
+    'ستظهر هنا رسائل أعضاء المجموعة.',
+  );
+  String get messagesCouldNotLoad =>
+      pick('Messages could not load.', 'تعذّر تحميل الرسائل.');
+  String get cachedMessagesUnavailable => pick(
+    'Cached messages are unavailable.',
+    'الرسائل المحفوظة غير متاحة.',
+  );
+  String get offlineCachedBanner => pick(
+    'No internet connection — some saved data is available.',
+    'لا يوجد اتصال بالإنترنت — بعض البيانات المحفوظة متاحة حاليًا',
+  );
+  String get mediaMessage => pick('Media message', 'رسالة وسائط');
+  String get messageNotSent =>
+      pick('Message was not sent.', 'لم تُرسل الرسالة.');
+  String get retry => pick('Retry', 'إعادة المحاولة');
+  String get deleteFailedMessage =>
+      pick('Delete failed message', 'حذف الرسالة الفاشلة');
+  String get sending => pick('Sending', 'جارٍ الإرسال');
+  String get notDelivered => pick('Not delivered', 'لم تصل');
+  String get delivered => pick('Delivered', 'وصلت');
+  String get read => pick('Read', 'قُرئت');
+  String get attachImage => pick('Image', 'صورة');
+  String get attachVideo => pick('Video', 'فيديو');
+  String get attachGif => pick('GIF', 'GIF');
+  String get attachSticker => pick('Sticker', 'ملصق');
+  String get emoji => pick('Emoji', 'إيموجي');
+  String get eventCenter => pick('Event Center', 'مركز الفعاليات');
+  String get voiceNoteLimits => pick(
+    'Voice notes are limited to 60 seconds and 10 MB.',
+    'الرسائل الصوتية محدودة بـ 60 ثانية و10 ميجابايت.',
+  );
+  String get voicePlayFailed => pick(
+    'Voice message could not be played.',
+    'تعذّر تشغيل الرسالة الصوتية.',
+  );
 }
