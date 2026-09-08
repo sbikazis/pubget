@@ -200,6 +200,7 @@ const editsDomain = createEditsDomain({
   HttpsError,
   achievements: achievementsDomain,
   processEdit: processEditVideo,
+  bucket: getStorage().bucket(),
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -286,8 +287,14 @@ exports.retryEditProcessing = onCall(
   { region: "us-central1" },
   editsDomain.retryProcessing,
 );
+exports.finalizeEditUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 300, memory: "1GiB" },
+  editsDomain.finalizeUpload,
+);
+// Bucket for pubget-aaf27.firebasestorage.app is US-aligned; europe-west3
+// finalize handlers can miss object events and leave edits stuck in uploading.
 exports.processEditVideo = onObjectFinalized(
-  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
   processEditVideo,
 );
 

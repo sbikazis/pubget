@@ -98,6 +98,10 @@ final class FakeEditsRepository implements EditsRepository {
       const Success<void>(null);
 
   @override
+  Future<Result<Edit>> finalizeEditUpload(String editId) async =>
+      Success(testEdit(id: editId, status: 'processing'));
+
+  @override
   Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
       Success(EditPage(feed, hasMore: false));
 

@@ -84,7 +84,8 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
     await ref.update({ status: "processing", processingStartedAt: new Date() });
-    if (object.contentType !== "video/mp4" || Number(object.size || 0) > EDITS_CONFIG.maxBytes) {
+    if (!(String(object.contentType || "").startsWith("video/mp4")) ||
+        Number(object.size || 0) > EDITS_CONFIG.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
       return null;
     }
