@@ -76,8 +76,8 @@ void main() {
     expect(repository.searchCalls, 1);
     expect(repository.lastQuery, 'dem');
     expect(list.items.map((item) => item.title), <String>[
-      'Demon Slayer',
       "Demashita! Powerpuff Girls Z",
+      'Demon Slayer',
     ]);
   });
 
