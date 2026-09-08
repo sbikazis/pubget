@@ -365,6 +365,23 @@ final class ChatProvider extends ChangeNotifier {
     return result;
   }
 
+  Future<Result<ChatMessage>> editMessage({
+    required String messageId,
+    required String text,
+  }) async {
+    final groupId = _groupId;
+    if (groupId == null) {
+      return const FailureResult(UnknownError());
+    }
+    final result = await _repository.editMessage(
+      groupId: groupId,
+      messageId: messageId,
+      text: text,
+    );
+    result.fold(onSuccess: _upsert, onFailure: (_) {});
+    return result;
+  }
+
   Future<Result<void>> pinMessage(String messageId, bool pinned) {
     final groupId = _groupId;
     if (groupId == null) {
