@@ -6,6 +6,7 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../anime/data/anime_search_ranker.dart';
 import '../anime/models/anime_models.dart';
 import '../anime/repositories/anime_repository.dart';
 import '../home/models/home_models.dart';
@@ -117,7 +118,10 @@ final class SearchProvider extends ChangeNotifier {
 
     homeResult.fold(
       onSuccess: (results) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
+        final anime = AnimeSearchRanker.rank(
+          animeResult?.valueOrNull?.items ?? const <Anime>[],
+          prefix,
+        );
         _results = DiscoverySearchResults(
           groups: results.groups,
           people: results.people,
@@ -132,7 +136,10 @@ final class SearchProvider extends ChangeNotifier {
         _state = _hits.isEmpty ? LoadingState.empty : LoadingState.loaded;
       },
       onFailure: (failure) {
-        final anime = animeResult?.valueOrNull?.items ?? const <Anime>[];
+        final anime = AnimeSearchRanker.rank(
+          animeResult?.valueOrNull?.items ?? const <Anime>[],
+          prefix,
+        );
         if (anime.isNotEmpty) {
           _results = DiscoverySearchResults(anime: anime);
           _hits = SearchHit.fromDiscovery(
