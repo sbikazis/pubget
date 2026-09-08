@@ -106,4 +106,5 @@ abstract interface class GroupRepository {
     required String groupId,
     required GroupSettingsUpdate settings,
   });
+  Future<Result<void>> promoteGroup(String groupId);
 }

@@ -71,6 +71,15 @@ final class GroupCopy {
   String get characterReserved => _s.characterReserved;
   String get pickImage => _s.pick('Choose image', 'اختيار صورة');
   String get imageUrl => _s.pick('Image URL', 'رابط الصورة');
+  String get uploadingImage => _s.pick('Uploading image…', 'جاري رفع الصورة…');
+  String get imageUploadFailed => _s.pick(
+    'Image upload failed. Check your connection and try again.',
+    'فشل رفع الصورة. تحقق من الاتصال ثم أعد المحاولة.',
+  );
+  String get signInToUpload => _s.pick(
+    'Sign in to upload a group image.',
+    'سجّل الدخول لرفع صورة المجموعة.',
+  );
 
   String get created => _s.groupCreatedTitle;
   String get copyLink => _s.copyGroupLink;
@@ -106,4 +115,36 @@ final class GroupCopy {
   String get memberPreview => _s.memberPreview;
   String pendingCount(int count) =>
       _s.pick('$count pending', '$count معلّق');
+
+  String get promoteTitle =>
+      _s.pick('Promote and reach', 'ترويج وانتشار المجموعة');
+  String get risingEligible => _s.pick(
+    'Eligible for Rising Groups.',
+    'مؤهّلة للظهور ضمن المجموعات الصاعدة.',
+  );
+  String get risingNotEligible => _s.pick(
+    'Not yet eligible for Rising Groups.',
+    'غير مؤهّلة بعد للمجموعات الصاعدة.',
+  );
+  String get risingNeedMembers =>
+      _s.pick('Need at least 2 members', 'يلزم عضوان على الأقل');
+  String get risingNeedImage =>
+      _s.pick('Add a group image', 'أضف صورة للمجموعة');
+  String get risingNeedDescription =>
+      _s.pick('Add a description', 'أضف وصفاً');
+  String get risingNeedRules => _s.pick('Add group rules', 'أضف قوانين المجموعة');
+  String get risingNeedActivity =>
+      _s.pick('Need recent chat activity', 'يلزم نشاط حديث في الدردشة');
+  String get promoteWithCoins => _s.pick(
+    'Promote with 120 coins (7 days)',
+    'ترويج بـ 120 عملة (7 أيام)',
+  );
+  String get promoting => _s.pick('Promoting…', 'جاري الترويج…');
+  String get currentlyPromoted =>
+      _s.pick('Promoted in discovery', 'مُروَّجة في الاكتشاف');
+  String get shareGroupLink => _s.pick('Share group link', 'مشاركة رابط المجموعة');
+  String get copyGroupLink => _s.pick('Copy group link', 'نسخ رابط المجموعة');
+  String get newMembersWeek => _s.pick('New members this week', 'أعضاء جدد هذا الأسبوع');
+  String get chatActivity => _s.pick('Chat activity', 'نشاط الدردشة');
+  String get activeMembers => _s.pick('Active members', 'أعضاء نشطون');
 }

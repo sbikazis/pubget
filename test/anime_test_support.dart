@@ -79,11 +79,15 @@ const sampleCharactersJson = '''
 }
 ''';
 
-Anime sampleAnime({String id = '52991', String title = 'Frieren'}) => Anime(
+Anime sampleAnime({
+  String id = '52991',
+  String title = 'Frieren',
+  String type = 'TV',
+}) => Anime(
   id: id,
   title: title,
   alternativeTitles: const <String>["Frieren: Beyond Journey's End"],
-  type: 'TV',
+  type: type,
   status: 'Finished Airing',
   score: 9.3,
   year: 2023,

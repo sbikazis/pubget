@@ -10,7 +10,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/models/anime_models.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../data/group_create_draft_store.dart';
+import '../data/group_image_uploader.dart';
 import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_provider.dart';
@@ -49,6 +51,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   String? _idempotencyKey;
   bool _hydrated = false;
   bool _submitting = false;
+  bool _uploadingImage = false;
 
   @override
   void initState() {
@@ -86,6 +89,8 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     _description.text = draft['description'] as String? ?? _description.text;
     _imageUrl.text = draft['imageUrl'] as String? ?? _imageUrl.text;
     _coverUrl.text = draft['coverUrl'] as String? ?? _coverUrl.text;
+    if (!isRemoteHttpUrl(_imageUrl.text)) _imageUrl.clear();
+    if (!isRemoteHttpUrl(_coverUrl.text)) _coverUrl.clear();
     _animeId = draft['animeId'] as String? ?? _animeId;
     _animeTitle = draft['animeTitle'] as String? ?? _animeTitle;
     _idempotencyKey = draft['idempotencyKey'] as String? ?? _idempotencyKey;
@@ -137,8 +142,8 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   }
 
   bool get _canConfirm {
-    if (_type == null || _submitting) return false;
-    if (_imageUrl.text.trim().isEmpty || _name.text.trim().isEmpty) {
+    if (_type == null || _submitting || _uploadingImage) return false;
+    if (!isRemoteHttpUrl(_imageUrl.text) || _name.text.trim().isEmpty) {
       return false;
     }
     if (_type == GroupType.animeRoleplay &&
@@ -192,9 +197,10 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               key: const Key('group-create-pick-avatar'),
-              onPressed: () => _pickImage(_imageUrl),
+              onPressed: _uploadingImage ? null : () => _pickImage(_imageUrl),
               semanticLabel: copy.pickImage,
-              child: Text(copy.pickImage),
+              loading: _uploadingImage,
+              child: Text(_uploadingImage ? copy.uploadingImage : copy.pickImage),
             ),
             const SizedBox(height: AppSpacing.md),
             PubgetTextField(
@@ -207,7 +213,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             const SizedBox(height: AppSpacing.sm),
             PubgetSecondaryButton(
               key: const Key('group-create-pick-cover'),
-              onPressed: () => _pickImage(_coverUrl),
+              onPressed: _uploadingImage ? null : () => _pickImage(_coverUrl),
               semanticLabel: copy.cover,
               child: Text(copy.cover),
             ),
@@ -326,12 +332,44 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   }
 
   Future<void> _pickImage(TextEditingController target) async {
+    final copy = GroupCopy.of(context);
     try {
       final file = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (file == null) return;
-      setState(() => target.text = file.path);
+      if (file == null || !mounted) return;
+      final uid = context.read<AuthProvider>().currentUser?.id;
+      if (uid == null || uid.isEmpty) {
+        PubgetSnackbars.showError(context, copy.signInToUpload);
+        return;
+      }
+      GroupImageUploader uploader;
+      try {
+        uploader = context.read<GroupImageUploader>();
+      } on ProviderNotFoundException {
+        PubgetSnackbars.showError(context, copy.imageUploadFailed);
+        return;
+      }
+      setState(() => _uploadingImage = true);
+      final bytes = await file.readAsBytes();
+      final url = await uploader.uploadGroupImage(
+        uid: uid,
+        bytes: bytes,
+        contentType: file.mimeType ?? 'image/jpeg',
+        kind: identical(target, _coverUrl) ? 'cover' : 'avatar',
+      );
+      if (!mounted) return;
+      if (!isRemoteHttpUrl(url)) {
+        PubgetSnackbars.showError(context, copy.imageUploadFailed);
+        return;
+      }
+      setState(() => target.text = url);
       _persist();
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        PubgetSnackbars.showError(context, GroupCopy.of(context).imageUploadFailed);
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
   }
 
   Future<void> _pickAnime() async {
@@ -372,8 +410,8 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         isSearchable: true,
         rules: _rules.map((item) => item.text.trim()).where((item) => item.isNotEmpty).join('\n'),
         maxMembers: 100,
-        imageUrl: _imageUrl.text.trim(),
-        coverUrl: _coverUrl.text.trim().isEmpty ? null : _coverUrl.text.trim(),
+        imageUrl: isRemoteHttpUrl(_imageUrl.text) ? _imageUrl.text.trim() : '',
+        coverUrl: isRemoteHttpUrl(_coverUrl.text) ? _coverUrl.text.trim() : null,
         character: type == GroupType.public ? null : _character,
         idempotencyKey: _idempotencyKey,
       ),

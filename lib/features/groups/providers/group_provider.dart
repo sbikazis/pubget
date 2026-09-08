@@ -270,6 +270,33 @@ final class GroupProvider extends ChangeNotifier {
     return result;
   }
 
+  bool _promoting = false;
+  bool get promoting => _promoting;
+
+  Future<Result<void>> promote(String groupId) async {
+    if (_promoting) {
+      return const FailureResult<void>(
+        ValidationError('Promotion is already in progress.'),
+      );
+    }
+    _promoting = true;
+    _failure = null;
+    notifyListeners();
+    final result = await _repository.promoteGroup(groupId);
+    _promoting = false;
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess && groupResult.valueOrNull != null) {
+      _group = groupResult.valueOrNull;
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
+    return result;
+  }
+
   Future<Result<void>> disband(String groupId) async {
     _start();
     final result = await _repository.disbandGroup(groupId);

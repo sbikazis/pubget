@@ -69,11 +69,14 @@ final class Group {
     required this.rules,
     required this.activityScore,
     this.risingScore = 0,
+    this.risingEligible = false,
+    this.isPromoted = false,
     this.imageUrl,
     this.coverUrl,
     this.lastActivityAt,
     this.viewerLastReadAt,
     this.promotionExpiresAt,
+    this.activityMetrics,
   });
 
   final String id;
@@ -91,13 +94,35 @@ final class Group {
   final String rules;
   final num activityScore;
   final num risingScore;
+  final bool risingEligible;
+  final bool isPromoted;
   final String? imageUrl;
   final String? coverUrl;
   final DateTime? lastActivityAt;
   final DateTime? viewerLastReadAt;
   final DateTime? promotionExpiresAt;
+  final GroupActivityMetrics? activityMetrics;
 
   bool get isFull => membersCount >= maxMembers;
+
+  bool get hasCompleteProfile {
+    final image = imageUrl?.trim() ?? '';
+    return image.isNotEmpty &&
+        description.trim().isNotEmpty &&
+        rules.trim().isNotEmpty;
+  }
+
+  List<GroupRisingGap> get risingGaps {
+    final gaps = <GroupRisingGap>[];
+    if (membersCount < 2) gaps.add(GroupRisingGap.members);
+    if ((imageUrl ?? '').trim().isEmpty) gaps.add(GroupRisingGap.image);
+    if (description.trim().isEmpty) gaps.add(GroupRisingGap.description);
+    if (rules.trim().isEmpty) gaps.add(GroupRisingGap.rules);
+    if (activityScore <= 0 && risingScore <= 0) {
+      gaps.add(GroupRisingGap.activity);
+    }
+    return gaps;
+  }
 
   List<String> get ruleItems => rules
       .split(RegExp(r'\r?\n'))
@@ -121,6 +146,10 @@ final class Group {
     JoinPolicy? joinPolicy,
     bool? isSearchable,
     int? membersCount,
+    bool? risingEligible,
+    bool? isPromoted,
+    DateTime? promotionExpiresAt,
+    GroupActivityMetrics? activityMetrics,
   }) {
     return Group(
       id: id,
@@ -138,11 +167,14 @@ final class Group {
       rules: rules ?? this.rules,
       activityScore: activityScore,
       risingScore: risingScore,
+      risingEligible: risingEligible ?? this.risingEligible,
+      isPromoted: isPromoted ?? this.isPromoted,
       imageUrl: imageUrl,
       coverUrl: coverUrl,
       lastActivityAt: lastActivityAt,
       viewerLastReadAt: viewerLastReadAt,
-      promotionExpiresAt: promotionExpiresAt,
+      promotionExpiresAt: promotionExpiresAt ?? this.promotionExpiresAt,
+      activityMetrics: activityMetrics ?? this.activityMetrics,
     );
   }
 
@@ -174,11 +206,42 @@ final class Group {
       rules: map['rules'] as String? ?? '',
       activityScore: (map['activityScore'] as num?) ?? 0,
       risingScore: (map['risingScore'] as num?) ?? 0,
+      risingEligible: map['risingEligible'] == true,
+      isPromoted: map['isPromoted'] == true,
       imageUrl: map['imageUrl'] as String?,
       coverUrl: map['coverUrl'] as String?,
       lastActivityAt: _date(map['lastMessageAt']),
       viewerLastReadAt: viewerLastReadAt,
       promotionExpiresAt: _date(map['promotionExpiresAt']),
+      activityMetrics: GroupActivityMetrics.fromMap(map['activityMetrics']),
+    );
+  }
+}
+
+enum GroupRisingGap { members, image, description, rules, activity }
+
+final class GroupActivityMetrics {
+  const GroupActivityMetrics({
+    this.recentMessageCount = 0,
+    this.activeMemberCount = 0,
+    this.joinsInWindow = 0,
+    this.scoreWindowDays = 7,
+  });
+
+  final int recentMessageCount;
+  final int activeMemberCount;
+  final int joinsInWindow;
+  final int scoreWindowDays;
+
+  static GroupActivityMetrics? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final map = Map<Object?, Object?>.from(raw);
+    int read(Object key) => (map[key] as num?)?.toInt() ?? 0;
+    return GroupActivityMetrics(
+      recentMessageCount: read('recentMessageCount'),
+      activeMemberCount: read('activeMemberCount'),
+      joinsInWindow: read('joinsInWindow'),
+      scoreWindowDays: read('scoreWindowDays') == 0 ? 7 : read('scoreWindowDays'),
     );
   }
 }

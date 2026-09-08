@@ -222,6 +222,67 @@ void main() {
       isFalse,
     );
   });
+
+  test('typing a prefix filters the catalog snapshot without restoring misses',
+      () async {
+    final repository = FakeAnimeRepository(
+      page: AnimePage(
+        items: <Anime>[sampleAnime()],
+        page: 1,
+      ),
+    );
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: const Duration(milliseconds: 40),
+    );
+    addTearDown(list.dispose);
+    await list.openCatalog(AnimeCatalogKind.popular);
+    expect(list.items.single.title, 'Frieren');
+    list.searchChanged('ki');
+    expect(list.items, isEmpty);
+    expect(repository.searchCalls, 0);
+  });
+
+  test('movie filter keeps local catalog matches when Jikan fails', () async {
+    final repository = FakeAnimeRepository(
+      page: AnimePage(
+        items: <Anime>[
+          sampleAnime(),
+          sampleAnime(id: '199', title: 'Your Name', type: 'Movie'),
+        ],
+        page: 1,
+      ),
+    );
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    await list.openCatalog(AnimeCatalogKind.popular);
+    repository.failure = const UnavailableError();
+    list.applyFilter(const AnimeSearchFilter(type: AnimeTypeFilter.movie));
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(list.items.map((item) => item.title), <String>['Your Name']);
+    expect(list.state, isNot(LoadingState.error));
+  });
+
+  test('retrySearch repeats the last constrained request', () async {
+    final repository = FakeAnimeRepository(failure: const UnavailableError());
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.searchChanged('nana');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(list.state, LoadingState.error);
+    expect(repository.searchCalls, 1);
+    repository.failure = null;
+    await list.retrySearch();
+    expect(repository.searchCalls, 2);
+    expect(repository.lastQuery, 'nana');
+    expect(list.state, LoadingState.loaded);
+  });
 }
 
 final class _FakeHomeRepository implements HomeRepository {

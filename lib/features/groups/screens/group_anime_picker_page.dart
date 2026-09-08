@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,32 +30,39 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
     super.didChangeDependencies();
     if (_requested) return;
     _requested = true;
+    AnimeRepository? repo;
+    try {
+      repo = context.read<AnimeRepository>();
+    } on ProviderNotFoundException {
+      repo = null;
+    }
+    if (repo != null) {
+      _owned = AnimeListProvider(
+        repository: repo,
+        debounce: const Duration(milliseconds: 400),
+      )..addListener(_onList);
+      Future<void>.microtask(() => _owned!.openCatalog(AnimeCatalogKind.popular));
+      return;
+    }
     AnimeListProvider? existing;
     try {
       existing = context.read<AnimeListProvider>();
     } on ProviderNotFoundException {
       existing = null;
     }
-    if (existing == null) {
-      try {
-        final repo = context.read<AnimeRepository>();
-        _owned = AnimeListProvider(repository: repo, debounce: Duration.zero)
-          ..addListener(() {
-            if (mounted) setState(() {});
-          });
-      } on ProviderNotFoundException {
-        _owned = null;
-      }
+    if (existing != null && existing.items.isEmpty && existing.query.isEmpty) {
+      Future<void>.microtask(() => existing!.openCatalog(AnimeCatalogKind.popular));
     }
-    final list = existing ?? _owned;
-    if (list != null && list.items.isEmpty && list.query.isEmpty) {
-      Future<void>.microtask(() => list.openCatalog(AnimeCatalogKind.popular));
-    }
+  }
+
+  void _onList() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _owned?.removeListener(_onList);
     _owned?.dispose();
     super.dispose();
   }
@@ -81,6 +90,8 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
     final list = _listOf(context);
     final hub = _hub(context);
     final items = _visible(list);
+    final searching = _search.text.trim().isNotEmpty ||
+        (list?.filter.hasNonTextConstraints ?? false);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
@@ -111,7 +122,11 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
               onClear: () {
                 _search.clear();
                 list?.clearSearch();
-                list?.openCatalog(AnimeCatalogKind.popular);
+                if (list != null && list.items.isEmpty) {
+                  Future<void>.microtask(
+                    () => list.openCatalog(AnimeCatalogKind.popular),
+                  );
+                }
                 setState(() {});
               },
             ),
@@ -124,9 +139,7 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
                     )
                   : PubgetLoadingStateView(
                       state: list.state,
-                      onRetry: () => list.query.trim().isEmpty
-                          ? list.openCatalog(AnimeCatalogKind.popular)
-                          : list.retrySearch(),
+                      onRetry: () => _retry(list, searching),
                       empty: PubgetEmptyState(
                         key: const Key('group-anime-empty'),
                         title: copy.noAnime,
@@ -135,14 +148,10 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
                       ),
                       error: PubgetErrorState(
                         message: list.failure?.message ?? copy.noAnime,
-                        onRetry: () => list.query.trim().isEmpty
-                            ? list.openCatalog(AnimeCatalogKind.popular)
-                            : list.retrySearch(),
+                        onRetry: () => _retry(list, searching),
                       ),
                       offline: PubgetOfflineState(
-                        onRetry: () => list.query.trim().isEmpty
-                            ? list.openCatalog(AnimeCatalogKind.popular)
-                            : list.retrySearch(),
+                        onRetry: () => _retry(list, searching),
                       ),
                       child: ListView.separated(
                         itemCount: items.length,
@@ -187,20 +196,29 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
     );
   }
 
+  Future<void> _retry(AnimeListProvider list, bool searching) {
+    if (searching) return list.retrySearch();
+    return list.openCatalog(AnimeCatalogKind.popular);
+  }
+
   List<Anime> _visible(AnimeListProvider? list) {
     if (list == null) return const <Anime>[];
     final query = _search.text;
-    if (query.trim().isEmpty) return list.items;
-    final filtered = list.items
+    if (query.trim().isEmpty) {
+      return list.items
+          .where((anime) => list.filter.matchesCatalog(anime))
+          .toList(growable: false);
+    }
+    return list.items
         .where(
           (anime) =>
-              GroupFuzzy.matches(query, anime.title) ||
-              anime.alternativeTitles.any(
-                (title) => GroupFuzzy.matches(query, title),
-              ),
+              list.filter.matchesCatalog(anime) &&
+              (GroupFuzzy.matches(query, anime.title) ||
+                  anime.alternativeTitles.any(
+                    (title) => GroupFuzzy.matches(query, title),
+                  )),
         )
         .toList(growable: false);
-    return filtered.isEmpty ? list.items : filtered;
   }
 
   Future<void> _openFilters(
