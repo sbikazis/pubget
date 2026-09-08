@@ -188,11 +188,18 @@ const animeHubDomain = createAnimeHubDomain({
   FieldValue,
   HttpsError,
 });
+const processEditVideo = createEditPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+  economy: economyDomain,
+  achievements: achievementsDomain,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   achievements: achievementsDomain,
+  processEdit: processEditVideo,
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -271,14 +278,17 @@ exports.editCommentAction = onCall(
   { region: "us-central1" },
   editsDomain.commentAction,
 );
+exports.getEditFeed = onCall(
+  { region: "us-central1" },
+  editsDomain.getEditFeed,
+);
+exports.retryEditProcessing = onCall(
+  { region: "us-central1" },
+  editsDomain.retryProcessing,
+);
 exports.processEditVideo = onObjectFinalized(
   { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
-  createEditPipeline({
-    db: getFirestore(),
-    bucket: getStorage().bucket(),
-    economy: economyDomain,
-    achievements: achievementsDomain,
-  }),
+  processEditVideo,
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);

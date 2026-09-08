@@ -13,6 +13,10 @@ final class EditsProvider extends ChangeNotifier {
     : _repository = repository;
   final EditsRepository _repository;
   final List<Edit> _items = <Edit>[];
+  final Set<String> _liked = <String>{};
+  final Set<String> _saved = <String>{};
+  final Map<String, int> _likeDelta = <String, int>{};
+  final Set<String> _pendingActions = <String>{};
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _hasMore = true;
@@ -25,6 +29,15 @@ final class EditsProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
   int get activeIndex => _activeIndex;
+
+  Edit displayOf(Edit edit) {
+    return edit.copyWith(
+      likesCount: edit.likesCount + (_likeDelta[edit.id] ?? 0),
+    );
+  }
+
+  bool isLiked(String editId) => _liked.contains(editId);
+  bool isSaved(String editId) => _saved.contains(editId);
 
   Future<void> load({bool refresh = false, int limit = 5}) async {
     if (_state == LoadingState.loading || _loadingMore) return;
@@ -59,7 +72,8 @@ final class EditsProvider extends ChangeNotifier {
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {
-        _items.addAll(page.items);
+        final seen = _items.map((edit) => edit.id).toSet();
+        _items.addAll(page.items.where((edit) => seen.add(edit.id)));
         _hasMore = page.hasMore;
         _state = LoadingState.loaded;
       },
@@ -73,21 +87,74 @@ final class EditsProvider extends ChangeNotifier {
   }
 
   void setActiveIndex(int index) {
+    if (_activeIndex == index) return;
     _activeIndex = index;
-    notifyListeners();
   }
 
-  Future<Result<void>> like(String editId, bool like) =>
-      _repository.likeEdit(editId: editId, like: like);
+  Future<Result<void>> like(String editId, bool like) async {
+    final key = 'like:$editId';
+    if (!_pendingActions.add(key)) {
+      return const Success<void>(null);
+    }
+    final result = await _repository.likeEdit(editId: editId, like: like);
+    _pendingActions.remove(key);
+    if (_disposed) return result;
+    if (result.isSuccess) {
+      final wasLiked = _liked.contains(editId);
+      if (like && !wasLiked) {
+        _liked.add(editId);
+        _likeDelta[editId] = (_likeDelta[editId] ?? 0) + 1;
+      } else if (!like && wasLiked) {
+        _liked.remove(editId);
+        _likeDelta[editId] = (_likeDelta[editId] ?? 0) - 1;
+      }
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<Result<void>> save(String editId, {required bool save}) async {
+    final key = 'save:$editId';
+    if (!_pendingActions.add(key)) {
+      return const Success<void>(null);
+    }
+    final result = await _repository.recordSignal(
+      editId: editId,
+      type: save ? 'save' : 'unsave',
+    );
+    _pendingActions.remove(key);
+    if (_disposed) return result;
+    if (result.isSuccess) {
+      if (save) {
+        _saved.add(editId);
+      } else {
+        _saved.remove(editId);
+      }
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<Result<void>> share(String editId) {
+    return _repository.recordSignal(editId: editId, type: 'share');
+  }
+
+  Future<Result<void>> report(String editId) {
+    return _repository.recordSignal(editId: editId, type: 'negative');
+  }
 
   Future<Result<void>> comment(
     String editId,
     String text, {
     String? replyToCommentId,
+    String kind = 'text',
+    List<String> mentions = const <String>[],
   }) => _repository.addComment(
     editId: editId,
     text: text,
     replyToCommentId: replyToCommentId,
+    kind: kind,
+    mentions: mentions,
   );
 
   Future<Result<void>> view({
@@ -95,12 +162,19 @@ final class EditsProvider extends ChangeNotifier {
     required String sessionId,
     required double percent,
     required double seconds,
+    String eventType = 'progress',
   }) => _repository.recordView(
     editId: editId,
     sessionId: sessionId,
     watchPercent: percent,
     watchSeconds: seconds,
+    eventType: eventType,
   );
+
+  Future<Result<void>> impression({
+    required String editId,
+    required String sessionId,
+  }) => _repository.recordImpression(editId: editId, sessionId: sessionId);
 
   Future<Result<String>> startPlayback(String editId) =>
       _repository.startPlayback(editId);

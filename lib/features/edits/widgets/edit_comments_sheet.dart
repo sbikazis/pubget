@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/limits.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
+import '../data/edit_validator.dart';
+import '../l10n/edit_copy.dart';
 import '../models/edit_models.dart';
 import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
+
+const _stickers = <String>['🔥', '✨', '💜', '🎌', '👏', '😭'];
 
 class EditCommentsSheet extends StatefulWidget {
   const EditCommentsSheet({required this.edit, super.key});
@@ -35,6 +41,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
   var _loading = true;
   var _loadingMore = false;
   var _hasMore = false;
+  var _sort = EditCommentSort.newest;
   String? _error;
   EditComment? _replyTo;
 
@@ -63,6 +70,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     final result = await context.read<EditsRepository>().getComments(
       widget.edit.id,
       after: more ? _comments.last : null,
+      sort: _sort,
     );
     if (!mounted) return;
     result.fold(
@@ -91,13 +99,16 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     );
   }
 
-  Future<void> _send() async {
-    final text = _controller.text.trim();
+  Future<void> _send({String? sticker}) async {
+    final text = (sticker ?? _controller.text).trim();
     if (text.isEmpty) return;
+    if (text.length > Limits.editCommentMax) return;
     final result = await context.read<EditsProvider>().comment(
       widget.edit.id,
       text,
       replyToCommentId: _replyTo?.id,
+      kind: sticker == null ? 'text' : 'sticker',
+      mentions: EditValidation.mentionsIn(text),
     );
     if (!mounted) return;
     if (result.isSuccess) {
@@ -109,6 +120,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = EditCopy.of(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -117,9 +129,27 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text('Comments', style: Theme.of(context).textTheme.titleLarge),
+              Text(copy.comments, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: AppSpacing.sm),
-              Expanded(child: _body()),
+              SegmentedButton<EditCommentSort>(
+                segments: <ButtonSegment<EditCommentSort>>[
+                  ButtonSegment(
+                    value: EditCommentSort.newest,
+                    label: Text(copy.newest),
+                  ),
+                  ButtonSegment(
+                    value: EditCommentSort.top,
+                    label: Text(copy.top),
+                  ),
+                ],
+                selected: <EditCommentSort>{_sort},
+                onSelectionChanged: (value) {
+                  setState(() => _sort = value.first);
+                  _load();
+                },
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Expanded(child: _body(copy)),
               if (_replyTo != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.xs),
@@ -140,6 +170,17 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                     ],
                   ),
                 ),
+              Wrap(
+                spacing: AppSpacing.xs,
+                children: _stickers
+                    .map(
+                      (sticker) => ActionChip(
+                        label: Text(sticker),
+                        onPressed: () => _send(sticker: sticker),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -149,13 +190,13 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                       maxLines: 4,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
-                      decoration: const InputDecoration(
-                        hintText: 'Add a comment',
+                      decoration: InputDecoration(
+                        hintText: '${copy.comment} · ${copy.mention}',
                       ),
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Send comment',
+                    tooltip: copy.comment,
                     onPressed: _send,
                     icon: const Icon(Icons.send),
                   ),
@@ -168,7 +209,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
     );
   }
 
-  Widget _body() {
+  Widget _body(EditCopy copy) {
     if (_loading) {
       return const Center(child: PubgetSkeleton.card(height: 120));
     }
@@ -176,13 +217,14 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
       return PubgetErrorState(message: _error!, onRetry: _load);
     }
     if (_comments.isEmpty) {
-      return const PubgetEmptyState(
+      return PubgetEmptyState(
         compact: true,
         icon: Icons.chat_bubble_outline,
-        title: 'No comments yet',
+        title: copy.comments,
         message: 'Be the first to reply to this Edit.',
       );
     }
+    final viewerId = context.watch<AuthProvider>().currentUser?.id;
     return ListView.builder(
       itemCount: _comments.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
@@ -198,7 +240,10 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           title: Text(comment.text),
           subtitle: Text(
             [
+              if (comment.kind == 'sticker') copy.sticker,
               if (comment.replyToCommentId != null) 'Reply',
+              if (comment.mentions.isNotEmpty)
+                comment.mentions.map((item) => '@$item').join(' '),
               '${comment.likesCount} likes',
             ].join(' · '),
           ),
@@ -211,7 +256,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                 icon: const Icon(Icons.reply),
               ),
               IconButton(
-                tooltip: 'Like comment',
+                tooltip: copy.like,
                 icon: const Icon(Icons.favorite_border),
                 onPressed: () => context.read<EditsRepository>().commentAction(
                   editId: widget.edit.id,
@@ -219,6 +264,29 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                   action: 'like',
                 ),
               ),
+              if (viewerId != null && viewerId == comment.authorId)
+                IconButton(
+                  tooltip: copy.delete,
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () async {
+                    await context.read<EditsRepository>().commentAction(
+                      editId: widget.edit.id,
+                      commentId: comment.id,
+                      action: 'delete',
+                    );
+                    await _load();
+                  },
+                )
+              else
+                IconButton(
+                  tooltip: copy.report,
+                  icon: const Icon(Icons.flag_outlined),
+                  onPressed: () => context.read<EditsRepository>().commentAction(
+                    editId: widget.edit.id,
+                    commentId: comment.id,
+                    action: 'report',
+                  ),
+                ),
             ],
           ),
         );
