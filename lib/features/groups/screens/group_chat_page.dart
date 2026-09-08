@@ -10,6 +10,7 @@ import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -106,27 +107,31 @@ class _GroupChatPageState extends State<GroupChatPage> {
         canManageMembers: groupProvider.canManageMembers,
       ),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         leading: AppBackButton.maybeOf(context) ??
             AppBackButton(onPressed: () => AppNavigation.go(context, '/groups')),
-        titleSpacing: 0,
-        title: Row(
-          children: <Widget>[
-            PubgetAvatar(
-              imageUrl: group?.imageUrl,
-              name: group?.name ?? AppStrings.of(context).groupChat,
-              size: PubgetAvatarSize.small,
-              onTap: () => AppNavigation.go(
-                context,
-                '/group?groupId=${widget.groupId}',
+        titleSpacing: 4,
+        title: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: () => AppNavigation.go(
+            context,
+            '/group?groupId=${widget.groupId}',
+          ),
+          child: Row(
+            children: <Widget>[
+              PubgetAvatar(
+                imageUrl: group?.imageUrl,
+                name: group?.name ?? AppStrings.of(context).groupChat,
+                size: PubgetAvatarSize.small,
               ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: _MarqueeTitle(
-                group?.name ?? AppStrings.of(context).groupChat,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _MarqueeTitle(
+                  group?.name ?? AppStrings.of(context).groupChat,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: <Widget>[
           Builder(
@@ -321,9 +326,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     if (clip == null || !mounted) return;
     if (clip.exceedsLimits) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Voice notes are limited to 60 seconds and 10 MB.'),
-        ),
+        SnackBar(content: Text(AppStrings.of(context).voiceNoteLimits)),
       );
       return;
     }
@@ -363,7 +366,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Voice message could not be played.')),
+        SnackBar(content: Text(AppStrings.of(context).voicePlayFailed)),
       );
     }
   }
@@ -642,22 +645,23 @@ class _MessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (chat.messages.isEmpty) {
+      final copy = AppStrings.of(context);
       if (chat.state == LoadingState.loading) {
         return const Center(child: CircularProgressIndicator());
       }
       if (chat.state == LoadingState.offline) {
         return PubgetOfflineState(
-          message: chat.failure?.message ?? 'Cached messages are unavailable.',
+          message: chat.failure?.message ?? copy.cachedMessagesUnavailable,
         );
       }
       if (chat.state == LoadingState.error) {
         return PubgetErrorState(
-          message: chat.failure?.message ?? 'Messages could not load.',
+          message: chat.failure?.message ?? copy.messagesCouldNotLoad,
         );
       }
-      return const PubgetEmptyState(
-        title: 'Start the conversation',
-        message: 'Messages from group members will appear here.',
+      return PubgetEmptyState(
+        title: copy.startConversation,
+        message: copy.messagesWillAppear,
         icon: Icons.forum_outlined,
       );
     }
@@ -670,7 +674,7 @@ class _MessageList extends StatelessWidget {
           return TextButton.icon(
             onPressed: chat.loadMore,
             icon: const Icon(Icons.history),
-            label: const Text('Load older messages'),
+            label: Text(AppStrings.of(context).loadOlderMessages),
           );
         }
         final message = chat.messages[index - (chat.hasMore ? 1 : 0)];
@@ -712,27 +716,62 @@ class _FailedMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chat = context.read<ChatProvider>();
-    return Card(
-      key: ValueKey<String>('failed-${message.id}'),
-      color: Theme.of(context).colorScheme.errorContainer,
-      margin: const EdgeInsets.all(AppSpacing.sm),
-      child: ListTile(
-        leading: const Icon(Icons.error_outline),
-        title: Text(message.text ?? 'Media message'),
-        subtitle: Text(message.failureMessage ?? 'Message was not sent.'),
-        trailing: Wrap(
-          children: <Widget>[
-            IconButton(
-              tooltip: 'Retry',
-              onPressed: () => chat.retry(message),
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Delete failed message',
-              onPressed: () => chat.removeFailed(message.id),
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ],
+    final copy = AppStrings.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+        ),
+        child: Container(
+          key: ValueKey<String>('failed-${message.id}'),
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: scheme.error.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                message.text ?? copy.mediaMessage,
+                textWidthBasis: TextWidthBasis.longestLine,
+                style: TextStyle(color: scheme.onErrorContainer, fontSize: 14),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                message.failureMessage ?? copy.messageNotSent,
+                style: TextStyle(
+                  color: scheme.onErrorContainer.withValues(alpha: 0.8),
+                  fontSize: 11.5,
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    tooltip: copy.retry,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => chat.retry(message),
+                    icon: const Icon(Icons.refresh, size: 20),
+                  ),
+                  IconButton(
+                    tooltip: copy.deleteFailedMessage,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => chat.removeFailed(message.id),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -760,6 +799,7 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Material(
       color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
       elevation: 8,
@@ -769,7 +809,7 @@ class _Composer extends StatelessWidget {
           children: <Widget>[
             PopupMenuButton<String>(
               key: const Key('composer-attach'),
-              tooltip: AppStrings.of(context).attachments,
+              tooltip: copy.attachments,
               icon: const Icon(Icons.add_circle_outline),
               onSelected: (value) {
                 if (value == 'image') onMedia(ImageSource.gallery, false);
@@ -778,28 +818,28 @@ class _Composer extends StatelessWidget {
                 if (value == 'sticker') onSticker();
                 if (value == 'audio') onVoice();
               },
-              itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                PopupMenuItem(value: 'image', child: Text('Image')),
-                PopupMenuItem(value: 'video', child: Text('Video')),
+              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                PopupMenuItem(value: 'image', child: Text(copy.attachImage)),
+                PopupMenuItem(value: 'video', child: Text(copy.attachVideo)),
                 PopupMenuItem(
-                  key: Key('composer-gif'),
+                  key: const Key('composer-gif'),
                   value: 'gif',
-                  child: Text('GIF'),
+                  child: Text(copy.attachGif),
                 ),
                 PopupMenuItem(
-                  key: Key('composer-sticker'),
+                  key: const Key('composer-sticker'),
                   value: 'sticker',
-                  child: Text('Sticker'),
+                  child: Text(copy.attachSticker),
                 ),
                 PopupMenuItem(
-                  key: Key('composer-audio'),
+                  key: const Key('composer-audio'),
                   value: 'audio',
-                  child: Text('Voice message'),
+                  child: Text(copy.voiceMessage),
                 ),
               ],
             ),
             IconButton(
-              tooltip: 'Emoji',
+              tooltip: copy.emoji,
               onPressed: () => controller.text += ' 😊',
               icon: const Icon(Icons.emoji_emotions_outlined),
             ),
@@ -810,18 +850,18 @@ class _Composer extends StatelessWidget {
                 maxLines: 5,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: AppStrings.of(context).messageHint,
+                  hintText: copy.messageHint,
                   isDense: true,
                 ),
               ),
             ),
             IconButton(
-              tooltip: AppStrings.of(context).groupEvents,
+              tooltip: copy.groupEvents,
               onPressed: onEvents,
               icon: const Icon(Icons.celebration_outlined),
             ),
             IconButton(
-              tooltip: AppStrings.of(context).sendMessage,
+              tooltip: copy.sendMessage,
               onPressed: onSend,
               icon: const Icon(Icons.send_rounded),
             ),
@@ -911,7 +951,7 @@ class _GroupMenu extends StatelessWidget {
               ),
               _MenuTile(
                 icon: Icons.auto_awesome_mosaic_outlined,
-                label: 'Event Center',
+                label: copy.eventCenter,
                 onTap: () {
                   Navigator.pop(context);
                   EventCenterSheet.show(context, groupId: groupId);
@@ -1213,7 +1253,7 @@ class _OfflineBanner extends StatelessWidget {
       child: ListTile(
         dense: true,
         leading: const Icon(Icons.cloud_off_outlined),
-        title: const Text('Offline · showing cached messages'),
+        title: Text(AppStrings.of(context).offlineCachedBanner),
         subtitle: message == null ? null : Text(message!),
       ),
     );
