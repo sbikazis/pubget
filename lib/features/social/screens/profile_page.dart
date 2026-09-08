@@ -7,21 +7,31 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../achievements/models/achievement_models.dart';
+import '../../achievements/providers/achievement_provider.dart';
 import '../../authentication/providers/auth_provider.dart';
-import '../../private_chat/providers/private_chat_list_provider.dart';
-import '../models/social_models.dart';
-import '../providers/profile_provider.dart';
-import '../providers/social_provider.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
-import '../../edits/repositories/edits_repository.dart';
 import '../../edits/models/edit_models.dart';
+import '../../edits/repositories/edits_repository.dart';
 import '../../fan_works/models/fan_work_lifecycle.dart';
 import '../../fan_works/models/fan_work_models.dart';
 import '../../fan_works/repositories/fan_work_repository.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
+import '../../groups/models/group_models.dart';
+import '../../groups/repositories/group_repository.dart';
+import '../models/profile_section_privacy.dart';
+import '../models/profile_social_link.dart';
+import '../models/public_profile.dart';
+import '../models/social_models.dart';
+import '../providers/profile_provider.dart';
+import '../providers/social_provider.dart';
+import '../widgets/profile_chrome.dart';
+import '../../private_chat/providers/private_chat_list_provider.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({this.userId, super.key});
@@ -56,6 +66,11 @@ class _ProfilePageState extends State<ProfilePage> {
         (item) => item.toUserId == profileId,
       );
       if (given.isNotEmpty) setState(() => _respect = given.first.value);
+      try {
+        await context.read<AchievementProvider>().open(viewerId);
+      } on ProviderNotFoundException {
+        // Achievements are optional on thin test trees.
+      }
     });
   }
 
@@ -79,8 +94,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 context,
                 url: PubgetLinks.profile(profileId),
                 title:
-                    profile.publicProfile?.username ??
-                    profile.ownProfile?.username ??
+                    profile.publicProfile?.primaryName() ??
+                    profile.ownProfile?.primaryName ??
                     copy.profile,
                 type: 'profile',
               ),
@@ -105,24 +120,24 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       body: PubgetAtmosphere(
         child: SafeArea(
-        child: PubgetLoadingStateView(
-          state: profile.state,
-          onRetry: () => _reload(profileId),
-          error: PubgetErrorState(
-            message: profile.failure?.message ?? copy.profileFailed,
+          child: PubgetLoadingStateView(
+            state: profile.state,
             onRetry: () => _reload(profileId),
+            error: PubgetErrorState(
+              message: profile.failure?.message ?? copy.profileFailed,
+              onRetry: () => _reload(profileId),
+            ),
+            offline: PubgetOfflineState(onRetry: () => _reload(profileId)),
+            empty: PubgetEmptyState(
+              title: copy.profileUnavailable,
+              message: copy.profilePrivate,
+            ),
+            child: _ProfileLifeReport(
+              profileId: profileId,
+              respect: _respect,
+              onRespectChanged: (value) => setState(() => _respect = value),
+            ),
           ),
-          offline: PubgetOfflineState(onRetry: () => _reload(profileId)),
-          empty: PubgetEmptyState(
-            title: copy.profileUnavailable,
-            message: copy.profilePrivate,
-          ),
-          child: _ProfileContent(
-            profileId: profileId,
-            respect: _respect,
-            onRespectChanged: (value) => setState(() => _respect = value),
-          ),
-        ),
         ),
       ),
     );
@@ -138,8 +153,115 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class _ProfileContent extends StatelessWidget {
-  const _ProfileContent({
+class _ProfileViewData {
+  const _ProfileViewData({
+    required this.name,
+    required this.handle,
+    required this.avatarUrl,
+    required this.coverUrl,
+    required this.bio,
+    required this.age,
+    required this.country,
+    required this.favoriteQuote,
+    required this.animeTwin,
+    required this.socialLinks,
+    required this.totalRespect,
+    required this.fansCount,
+    required this.favoriteLabels,
+    required this.privacy,
+    required this.createdAt,
+    required this.frameId,
+    required this.badgeId,
+    required this.isPremium,
+  });
+
+  final String name;
+  final String? handle;
+  final String? avatarUrl;
+  final String? coverUrl;
+  final String? bio;
+  final int? age;
+  final String? country;
+  final String? favoriteQuote;
+  final String? animeTwin;
+  final List<ProfileSocialLink> socialLinks;
+  final int totalRespect;
+  final int fansCount;
+  final List<String> favoriteLabels;
+  final ProfileSectionPrivacy privacy;
+  final DateTime? createdAt;
+  final String? frameId;
+  final String? badgeId;
+  final bool isPremium;
+
+  factory _ProfileViewData.from({
+    required ProfileProvider profile,
+    required SocialProvider social,
+    EconomyProvider? economy,
+  }) {
+    final own = profile.ownProfile;
+    final public = profile.publicProfile;
+    if (profile.isOwner && own != null) {
+      return _ProfileViewData(
+        name: own.primaryName,
+        handle: own.username == null || own.username!.trim().isEmpty
+            ? null
+            : '@${own.username}',
+        avatarUrl: own.avatarUrl,
+        coverUrl: own.coverUrl,
+        bio: own.bio,
+        age: own.age,
+        country: own.country,
+        favoriteQuote: own.favoriteQuote,
+        animeTwin: own.animeTwin,
+        socialLinks: own.socialLinks,
+        totalRespect: own.totalRespect,
+        fansCount: own.fansCount,
+        favoriteLabels: <String>{
+          ...own.favoriteAnimes,
+          ...own.favoriteAnimeIds,
+        }.where((item) => item.trim().isNotEmpty).toList(growable: false),
+        privacy: own.sectionPrivacy,
+        createdAt: own.createdAt,
+        frameId: economy?.equipped.frameId,
+        badgeId: economy?.equipped.badgeId,
+        isPremium: economy?.isPremium == true,
+      );
+    }
+    final pub = public ?? const PublicProfile(uid: '');
+    return _ProfileViewData(
+      name: pub.primaryName(),
+      handle: pub.distinctHandle ??
+          (pub.username == null || pub.username!.trim().isEmpty
+              ? null
+              : '@${pub.username}'),
+      avatarUrl: pub.avatarUrl,
+      coverUrl: pub.coverUrl,
+      bio: pub.bio,
+      age: pub.age,
+      country: pub.country,
+      favoriteQuote: pub.favoriteQuote,
+      animeTwin: pub.animeTwin,
+      socialLinks: pub.socialLinks,
+      totalRespect: pub.totalRespect,
+      fansCount: pub.sectionPrivacy.fans ? pub.fansCount : 0,
+      favoriteLabels: pub.sectionPrivacy.favorites
+          ? <String>{
+              ...pub.favoriteAnimes,
+              ...pub.favoriteAnimeIds,
+            }.where((item) => item.trim().isNotEmpty).toList(growable: false)
+          : const <String>[],
+      privacy: pub.sectionPrivacy,
+      createdAt: pub.createdAt,
+      frameId: pub.equippedFrameId,
+      badgeId: pub.equippedBadgeId,
+      isPremium: false,
+    );
+  }
+}
+
+class _ProfileLifeReport extends StatelessWidget {
+  const _ProfileLifeReport({
     required this.profileId,
     required this.respect,
     required this.onRespectChanged,
@@ -153,214 +275,507 @@ class _ProfileContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final profile = context.watch<ProfileProvider>();
     final social = context.watch<SocialProvider>();
-    final own = profile.ownProfile;
-    final public = profile.publicProfile;
-    final name = profile.isOwner
-        ? own?.displayName ?? own?.username
-        : public?.username;
-    final avatarUrl = profile.isOwner ? own?.avatarUrl : public?.avatarUrl;
-    final bio = profile.isOwner ? own?.bio : public?.bio;
-    final totalRespect = profile.isOwner
-        ? own?.totalRespect ?? 0
-        : public?.totalRespect ?? 0;
-    final fansCount = profile.isOwner
-        ? own?.fansCount ?? 0
-        : public?.fansCount ?? 0;
     final economy = maybeEconomy(context);
-    final frameId = profile.isOwner
-        ? economy?.equipped.frameId
-        : public?.equippedFrameId;
-    final badgeId = profile.isOwner
-        ? economy?.equipped.badgeId
-        : public?.equippedBadgeId;
-
+    final data = _ProfileViewData.from(
+      profile: profile,
+      social: social,
+      economy: economy,
+    );
     final copy = AppStrings.of(context);
+    final fansVisible = profile.isOwner || data.privacy.fans;
+    final friendsVisible = profile.isOwner && data.privacy.friends;
+
     return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: EdgeInsets.zero,
       children: <Widget>[
-        PubgetHeroBanner(
-          title: name ?? copy.pubgetUser,
-          subtitle: bio == null || bio.trim().isEmpty ? copy.brandTagline : bio,
-          leading: EquippedAvatar(
-            imageUrl: avatarUrl,
-            name: name,
-            frameId: frameId,
-            size: PubgetAvatarSize.large,
+        _ProfileHero(data: data, isOwner: profile.isOwner),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.xl,
           ),
-          trailing: badgeId == null || badgeId.isEmpty
-              ? null
-              : PubgetBadge(label: badgeId, compact: true),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _Stat(label: copy.respect, value: totalRespect),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: _Stat(label: copy.fans, value: fansCount),
-            ),
-            if (profile.isOwner) ...[
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _Stat(label: copy.friends, value: social.friends.length),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        PubgetCard(
-          onTap: () => AppNavigation.go(
-            context,
-            profileId.isEmpty
-                ? '/anime/me'
-                : '/anime/me?uid=${Uri.encodeComponent(profileId)}',
-          ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const Icon(Icons.auto_awesome_mosaic_outlined),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  profile.isOwner ? copy.myAnime : copy.drawerAnime,
-                  style: Theme.of(context).textTheme.titleMedium,
+              Row(
+                children: <Widget>[
+                  ProfileStatPill(
+                    label: copy.respect,
+                    value: data.totalRespect,
+                    icon: Icons.favorite_border_rounded,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  if (fansVisible)
+                    ProfileStatPill(
+                      label: copy.fans,
+                      value: data.fansCount,
+                      icon: Icons.groups_2_outlined,
+                    )
+                  else
+                    const Spacer(),
+                  if (friendsVisible) ...[
+                    const SizedBox(width: AppSpacing.sm),
+                    ProfileStatPill(
+                      label: copy.friends,
+                      value: social.friends.length,
+                      icon: Icons.handshake_outlined,
+                    ),
+                  ],
+                ],
+              ),
+              if (data.favoriteQuote != null &&
+                  data.favoriteQuote!.trim().isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.lg),
+                _QuoteCard(quote: data.favoriteQuote!.trim()),
+              ],
+              if (data.animeTwin != null &&
+                  data.animeTwin!.trim().isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Anime twin · ${data.animeTwin}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.royalPurpleDark,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.xl),
+              if (profile.isOwner)
+                _OwnerQuickActions(social: social, economy: economy)
+              else
+                _VisitorActions(
+                  profileId: profileId,
+                  respect: respect,
+                  onRespectChanged: onRespectChanged,
+                ),
+              const SizedBox(height: AppSpacing.xl),
+              if (profile.isOwner || data.privacy.favorites)
+                _FavoritesSection(
+                  profileId: profileId,
+                  isOwner: profile.isOwner,
+                  labels: data.favoriteLabels,
+                ),
+              if (profile.isOwner || data.privacy.works) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _CreatorEdits(profileId: profileId, isOwner: profile.isOwner),
+                const SizedBox(height: AppSpacing.xl),
+                _CreatorFanWorks(
+                  profileId: profileId,
+                  isOwner: profile.isOwner,
+                ),
+              ],
+              if (profile.isOwner || data.privacy.groups) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _GroupsSection(profileId: profileId, isOwner: profile.isOwner),
+              ],
+              if (profile.isOwner || data.privacy.achievements) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _AchievementsSection(isOwner: profile.isOwner),
+              ],
+              if ((profile.isOwner || data.privacy.activity) &&
+                  data.createdAt != null) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _ActivitySection(createdAt: data.createdAt!),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({required this.data, required this.isOwner});
+
+  final _ProfileViewData data;
+  final bool isOwner;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: <Widget>[
+        SizedBox(
+          height: 188,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        AppColors.royalPurpleDark,
+                        AppColors.royalTwilight,
+                        AppColors.royalHorizon,
+                      ],
+                    ),
+                  ),
+                  child: data.coverUrl == null || data.coverUrl!.isEmpty
+                      ? CustomPaint(painter: _CoverPatternPainter())
+                      : AppImageLoader(
+                          imageUrl: data.coverUrl!,
+                          fit: BoxFit.cover,
+                        ),
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              Positioned(
+                left: AppSpacing.lg,
+                right: AppSpacing.lg,
+                bottom: -36,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    EquippedAvatar(
+                      imageUrl: data.avatarUrl,
+                      name: data.name,
+                      frameId: data.frameId,
+                      size: PubgetAvatarSize.large,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    data.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                      color: AppColors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (data.isPremium) ...[
+                                  const SizedBox(width: AppSpacing.sm),
+                                  const ProfilePremiumChip(),
+                                ],
+                              ],
+                            ),
+                            if (data.handle != null)
+                              Text(
+                                data.handle!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.goldLight,
+                                ),
+                              ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: AppSpacing.sm,
+                              runSpacing: 4,
+                              children: <Widget>[
+                                if (data.age != null)
+                                  _MetaChip(
+                                    icon: Icons.cake_outlined,
+                                    label: '${data.age}',
+                                  ),
+                                if (data.country != null &&
+                                    data.country!.trim().isNotEmpty)
+                                  _MetaChip(
+                                    icon: Icons.public_outlined,
+                                    label: data.country!.trim(),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        if (profile.isOwner)
-          _AnimeTaste(
-            names: own?.favoriteAnimes ?? const <String>[],
-            ids: own?.favoriteAnimeIds ?? const <String>[],
+        const SizedBox(height: 44),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (data.bio != null && data.bio!.trim().isNotEmpty)
+                Text(
+                  data.bio!.trim(),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: AppColors.lightText,
+                    height: 1.35,
+                  ),
+                )
+              else if (isOwner)
+                Text(
+                  'Add a short bio so people can meet the real you.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.lightTextMuted,
+                  ),
+                ),
+              if (data.socialLinks.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                ProfileSocialLinkChips(links: data.socialLinks),
+              ],
+            ],
           ),
-        if (profile.isOwner) const SizedBox(height: AppSpacing.xl),
-        _CreatorEdits(profileId: profileId),
-        const SizedBox(height: AppSpacing.xl),
-        _CreatorFanWorks(profileId: profileId),
-        const SizedBox(height: AppSpacing.xl),
-        if (profile.isOwner) ...[
-          PubgetPrimaryButton(
-            onPressed: () => AppNavigation.go(context, '/profile/edit'),
-            semanticLabel: copy.editProfile,
-            leadingIcon: Icons.edit_outlined,
-            child: Text(copy.editProfile),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 12, color: AppColors.goldLight),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.white, fontSize: 12),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(context, '/friend-requests'),
-            semanticLabel: copy.friendRequests,
-            leadingIcon: Icons.person_add_alt_1_outlined,
-            child: Text('${copy.friendRequests} (${social.incomingRequests.length})'),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuoteCard extends StatelessWidget {
+  const _QuoteCard({required this.quote});
+
+  final String quote;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.royalPurplePale.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.royalPurpleLight.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '“$quote”',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontStyle: FontStyle.italic,
+          color: AppColors.royalPurpleDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _CoverPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.gold.withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    for (var i = -4; i < 12; i++) {
+      final x = i * 48.0;
+      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _OwnerQuickActions extends StatelessWidget {
+  const _OwnerQuickActions({required this.social, required this.economy});
+
+  final SocialProvider social;
+  final EconomyProvider? economy;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        _ActionChipButton(
+          key: const Key('profile-edit-chip'),
+          icon: Icons.edit_outlined,
+          label: copy.editProfile,
+          onTap: () => AppNavigation.go(context, '/profile/edit'),
+        ),
+        _ActionChipButton(
+          icon: Icons.person_add_alt_1_outlined,
+          label: '${copy.friendRequests} (${social.incomingRequests.length})',
+          onTap: () => AppNavigation.go(context, '/friend-requests'),
+        ),
+        if (economy != null) ...[
+          _ActionChipButton(
+            icon: Icons.storefront_outlined,
+            label: copy.store,
+            onTap: () => AppNavigation.go(context, '/store'),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(context, '/achievements'),
-            semanticLabel: copy.achievements,
-            leadingIcon: Icons.emoji_events_outlined,
-            child: Text(copy.achievements),
+          _ActionChipButton(
+            icon: Icons.workspace_premium_outlined,
+            label: copy.drawerPremium,
+            onTap: () => AppNavigation.go(context, '/premium'),
           ),
-          if (economy != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(context, '/store'),
-              semanticLabel: copy.store,
-              leadingIcon: Icons.storefront_outlined,
-              child: Text(copy.store),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(context, '/premium'),
-              semanticLabel: copy.drawerPremium,
-              leadingIcon: Icons.workspace_premium_outlined,
-              child: Text(copy.drawerPremium),
-            ),
-          ],
-        ] else ...[
-          Text('Give Respect', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            children: List<Widget>.generate(
-              8,
-              (value) => PubgetSelectionChip(
-                label: '$value',
-                selected: respect == value,
-                onSelected: social.state == LoadingState.loading
-                    ? null
-                    : (_) => onRespectChanged(value),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          PubgetPrimaryButton(
-            key: const Key('profile-give-respect'),
-            onPressed: social.state == LoadingState.loading
-                ? null
-                : () => social.giveRespect(toUserId: profileId, value: respect),
-            semanticLabel: 'Give selected Respect',
-            loading: social.state == LoadingState.loading,
-            child: const Text('Save Respect'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _FriendAction(profileId: profileId),
-          const SizedBox(height: AppSpacing.sm),
-          _StartChatAction(profileId: profileId),
-          const SizedBox(height: AppSpacing.sm),
-          _BlockAction(profileId: profileId),
-          if (social.failure != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            PubgetErrorState(message: social.failure!.message),
-          ],
         ],
       ],
     );
   }
 }
 
-class _AnimeTaste extends StatelessWidget {
-  const _AnimeTaste({required this.names, required this.ids});
+class _ActionChipButton extends StatelessWidget {
+  const _ActionChipButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    super.key,
+  });
 
-  final List<String> names;
-  final List<String> ids;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final labels = <String>{
-      ...names.where((name) => name.trim().isNotEmpty),
-      ...ids.where((id) => id.trim().isNotEmpty),
-    };
+    return ActionChip(
+      avatar: Icon(icon, size: 16),
+      label: Text(label),
+      onPressed: onTap,
+    );
+  }
+}
+
+class _VisitorActions extends StatelessWidget {
+  const _VisitorActions({
+    required this.profileId,
+    required this.respect,
+    required this.onRespectChanged,
+  });
+
+  final String profileId;
+  final int respect;
+  final ValueChanged<int> onRespectChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final social = context.watch<SocialProvider>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text('Give Respect', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          children: List<Widget>.generate(
+            8,
+            (value) => PubgetSelectionChip(
+              label: '$value',
+              selected: respect == value,
+              onSelected: social.state == LoadingState.loading
+                  ? null
+                  : (_) => onRespectChanged(value),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        PubgetPrimaryButton(
+          key: const Key('profile-give-respect'),
+          onPressed: social.state == LoadingState.loading
+              ? null
+              : () => social.giveRespect(toUserId: profileId, value: respect),
+          semanticLabel: 'Give selected Respect',
+          loading: social.state == LoadingState.loading,
+          child: const Text('Save Respect'),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _FriendAction(profileId: profileId),
+        const SizedBox(height: AppSpacing.sm),
+        _StartChatAction(profileId: profileId),
+        const SizedBox(height: AppSpacing.sm),
+        _BlockAction(profileId: profileId),
+        if (social.failure != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          PubgetErrorState(message: social.failure!.message),
+        ],
+      ],
+    );
+  }
+}
+
+class _FavoritesSection extends StatelessWidget {
+  const _FavoritesSection({
+    required this.profileId,
+    required this.isOwner,
+    required this.labels,
+  });
+
+  final String profileId;
+  final bool isOwner;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Anime taste', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: AppSpacing.sm),
+        ProfileSectionHeader(
+          title: 'Favorite anime',
+          onViewAll: () => AppNavigation.go(
+            context,
+            profileId.isEmpty
+                ? '/anime/me'
+                : '/anime/me?uid=${Uri.encodeComponent(profileId)}',
+          ),
+        ),
         if (labels.isEmpty)
           PubgetEmptyState(
             compact: true,
             icon: Icons.movie_outlined,
-            title: 'No favorites yet',
-            message: 'Save anime you love so Discover can feel like you.',
-            action: PubgetTextButton(
-              onPressed: () => AppNavigation.go(context, '/anime'),
-              semanticLabel: 'Open Anime Hub',
-              child: const Text('Open Anime Hub'),
-            ),
+            title: isOwner
+                ? 'No favorite anime yet'
+                : 'No favorites to show',
+            message: isOwner
+                ? 'Discover anime and pin what you love.'
+                : 'This collector is still exploring.',
+            action: isOwner
+                ? PubgetTextButton(
+                    onPressed: () => AppNavigation.go(context, '/anime'),
+                    semanticLabel: 'Discover anime',
+                    child: const Text('Discover anime'),
+                  )
+                : null,
           )
         else
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              for (final label in labels) PubgetBadge(label: label),
-              PubgetTextButton(
-                onPressed: () => AppNavigation.go(context, '/anime'),
-                semanticLabel: 'Explore more anime',
-                child: const Text('Explore more'),
-              ),
-            ],
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: labels.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) =>
+                  PubgetBadge(label: labels[index]),
+            ),
           ),
       ],
     );
@@ -368,8 +783,9 @@ class _AnimeTaste extends StatelessWidget {
 }
 
 class _CreatorEdits extends StatefulWidget {
-  const _CreatorEdits({required this.profileId});
+  const _CreatorEdits({required this.profileId, required this.isOwner});
   final String profileId;
+  final bool isOwner;
 
   @override
   State<_CreatorEdits> createState() => _CreatorEditsState();
@@ -396,31 +812,61 @@ class _CreatorEditsState extends State<_CreatorEdits> {
   Widget build(BuildContext context) => FutureBuilder<Result<List<Edit>>>(
     future: _future,
     builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const SizedBox(height: 1);
+      }
+      if (snapshot.hasError || snapshot.data is FailureResult) {
+        return PubgetErrorState(
+          message: 'Could not load edits.',
+          onRetry: () => setState(() {}),
+        );
+      }
       final edits = snapshot.data?.valueOrNull ?? const <Edit>[];
-      if (edits.isEmpty) return const SizedBox.shrink();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Edits', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            height: 130,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: edits.length,
-              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-              itemBuilder: (context, index) => SizedBox(
-                width: 100,
-                child: PubgetCard(
-                  onTap: () => AppNavigation.go(context, '/edits'),
-                  child: AppImageLoader(
-                    imageUrl: edits[index].thumbnailUrl,
-                    fit: BoxFit.cover,
+          ProfileSectionHeader(
+            title: 'Edits',
+            onViewAll: () => AppNavigation.go(context, '/edits'),
+          ),
+          if (edits.isEmpty)
+            PubgetEmptyState(
+              compact: true,
+              icon: Icons.movie_creation_outlined,
+              title: widget.isOwner
+                  ? 'No edits published yet'
+                  : 'No edits to show',
+              message: widget.isOwner
+                  ? 'Cut a scene and publish your first edit.'
+                  : 'This creator has not shared edits yet.',
+              action: widget.isOwner
+                  ? PubgetTextButton(
+                      onPressed: () => AppNavigation.go(context, '/edits'),
+                      semanticLabel: 'Open edits',
+                      child: const Text('Create an edit'),
+                    )
+                  : null,
+            )
+          else
+            SizedBox(
+              height: 130,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: edits.take(12).length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.sm),
+                itemBuilder: (context, index) => SizedBox(
+                  width: 100,
+                  child: PubgetCard(
+                    onTap: () => AppNavigation.go(context, '/edits'),
+                    child: AppImageLoader(
+                      imageUrl: edits[index].thumbnailUrl,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
         ],
       );
     },
@@ -428,8 +874,9 @@ class _CreatorEditsState extends State<_CreatorEdits> {
 }
 
 class _CreatorFanWorks extends StatefulWidget {
-  const _CreatorFanWorks({required this.profileId});
+  const _CreatorFanWorks({required this.profileId, required this.isOwner});
   final String profileId;
+  final bool isOwner;
 
   @override
   State<_CreatorFanWorks> createState() => _CreatorFanWorksState();
@@ -460,33 +907,242 @@ class _CreatorFanWorksState extends State<_CreatorFanWorks> {
       FutureBuilder<Result<FanWorkListPage>>(
         future: _future,
         builder: (context, snapshot) {
-          final works = snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
-          if (works.isEmpty) return const SizedBox.shrink();
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const SizedBox(height: 1);
+          }
+          if (snapshot.hasError || snapshot.data is FailureResult) {
+            return const PubgetErrorState(
+              message: 'Could not load fan works.',
+            );
+          }
+          final works =
+              snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                FanWorkStrings.feedTitle,
-                style: Theme.of(context).textTheme.titleLarge,
+              ProfileSectionHeader(
+                title: FanWorkStrings.feedTitle,
+                onViewAll: () => AppNavigation.go(context, '/fan-works'),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              SizedBox(
-                height: 180,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: works.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(width: AppSpacing.sm),
-                  itemBuilder: (context, index) => SizedBox(
-                    width: 120,
-                    child: FanWorkPreviewCard(work: works[index]),
+              if (works.isEmpty)
+                PubgetEmptyState(
+                  compact: true,
+                  icon: Icons.brush_outlined,
+                  title: widget.isOwner
+                      ? 'No fan works yet'
+                      : 'No fan works to show',
+                  message: widget.isOwner
+                      ? 'Share a drawing, manga page, or story.'
+                      : 'This creator has not shared works yet.',
+                )
+              else
+                SizedBox(
+                  height: 180,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: works.take(12).length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(width: AppSpacing.sm),
+                    itemBuilder: (context, index) => SizedBox(
+                      width: 120,
+                      child: FanWorkPreviewCard(work: works[index]),
+                    ),
                   ),
                 ),
-              ),
             ],
           );
         },
       );
+}
+
+class _GroupsSection extends StatefulWidget {
+  const _GroupsSection({required this.profileId, required this.isOwner});
+
+  final String profileId;
+  final bool isOwner;
+
+  @override
+  State<_GroupsSection> createState() => _GroupsSectionState();
+}
+
+class _GroupsSectionState extends State<_GroupsSection> {
+  Future<Result<List<Group>>>? _future;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _future ??= _load();
+  }
+
+  Future<Result<List<Group>>> _load() async {
+    try {
+      return context.read<GroupRepository>().listJoinedGroups(widget.profileId);
+    } on ProviderNotFoundException {
+      return const Success<List<Group>>(<Group>[]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Result<List<Group>>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const SizedBox(height: 1);
+        }
+        final groups = snapshot.data?.valueOrNull ?? const <Group>[];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ProfileSectionHeader(
+              title: 'Groups',
+              onViewAll: () => AppNavigation.go(context, '/groups'),
+            ),
+            if (groups.isEmpty)
+              PubgetEmptyState(
+                compact: true,
+                icon: Icons.groups_outlined,
+                title: widget.isOwner
+                    ? 'No groups yet'
+                    : 'No groups to show',
+                message: widget.isOwner
+                    ? 'Join a community or create your own.'
+                    : 'Groups stay private or empty for now.',
+                action: widget.isOwner
+                    ? PubgetTextButton(
+                        onPressed: () => AppNavigation.go(context, '/groups'),
+                        semanticLabel: 'Open groups',
+                        child: const Text('Explore groups'),
+                      )
+                    : null,
+              )
+            else
+              SizedBox(
+                height: 96,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: groups.take(12).length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) {
+                    final group = groups[index];
+                    return SizedBox(
+                      width: 160,
+                      child: PubgetCard(
+                        onTap: () => AppNavigation.go(
+                          context,
+                          '/group?groupId=${Uri.encodeComponent(group.id)}',
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            PubgetAvatar(
+                              imageUrl: group.imageUrl,
+                              name: group.name,
+                              size: PubgetAvatarSize.small,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                group.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AchievementsSection extends StatelessWidget {
+  const _AchievementsSection({required this.isOwner});
+
+  final bool isOwner;
+
+  @override
+  Widget build(BuildContext context) {
+    List<AchievementItem> items = const <AchievementItem>[];
+    try {
+      items = context.watch<AchievementProvider>().items;
+    } on ProviderNotFoundException {
+      items = const <AchievementItem>[];
+    }
+    final preview = items.take(8).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        ProfileSectionHeader(
+          title: 'Achievements',
+          onViewAll: () => AppNavigation.go(context, '/achievements'),
+        ),
+        if (preview.isEmpty)
+          PubgetEmptyState(
+            compact: true,
+            icon: Icons.emoji_events_outlined,
+            title: 'No achievements yet',
+            message: isOwner
+                ? 'Play, create, and connect to unlock badges.'
+                : 'Badges will appear here when unlocked.',
+          )
+        else
+          SizedBox(
+            height: 108,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: preview.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) {
+                final item = preview[index];
+                return ProfileAchievementBadge(
+                  title: item.title,
+                  unlocked: item.unlocked,
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ActivitySection extends StatelessWidget {
+  const _ActivitySection({required this.createdAt});
+
+  final DateTime createdAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final stamp =
+        '${createdAt.toLocal().year}-${createdAt.toLocal().month.toString().padLeft(2, '0')}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const ProfileSectionHeader(title: 'Activity'),
+        PubgetCard(
+          child: Row(
+            children: <Widget>[
+              const Icon(Icons.schedule_outlined, color: AppColors.royalPurple),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  'Member since $stamp',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _StartChatAction extends StatelessWidget {
@@ -647,25 +1303,6 @@ class _FriendAction extends StatelessWidget {
       semanticLabel: 'Send friend request',
       leadingIcon: Icons.person_add_alt_1_outlined,
       child: const Text('Add friend'),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
-
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return PubgetCard(
-      child: Column(
-        children: <Widget>[
-          Text('$value', style: Theme.of(context).textTheme.titleLarge),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
     );
   }
 }

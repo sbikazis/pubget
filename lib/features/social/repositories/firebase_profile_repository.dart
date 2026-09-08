@@ -36,8 +36,11 @@ final class FirebaseProfileRepository implements ProfileRepository {
           NotFoundError('This profile is not available.'),
         );
       }
+      final data = Map<String, dynamic>.from(snapshot.data()!);
+      final createdAt = data['createdAt'];
+      if (createdAt is Timestamp) data['createdAt'] = createdAt.toDate();
       return Success<PublicProfile>(
-        PublicProfile.fromMap(snapshot.data()!, uid: snapshot.id),
+        PublicProfile.fromMap(data, uid: snapshot.id),
       );
     } on Object catch (error) {
       return FailureResult<PublicProfile>(_mapFailure(error));
@@ -84,16 +87,45 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
+    return _uploadImage(
+      userId: userId,
+      bytes: bytes,
+      contentType: contentType,
+      path: 'users/$userId/avatar.jpg',
+      field: 'avatarUrl',
+    );
+  }
+
+  @override
+  Future<Result<String>> uploadCover({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    return _uploadImage(
+      userId: userId,
+      bytes: bytes,
+      contentType: contentType,
+      path: 'users/$userId/cover.jpg',
+      field: 'coverUrl',
+    );
+  }
+
+  Future<Result<String>> _uploadImage({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+    required String path,
+    required String field,
+  }) async {
     try {
-      final ref = _storage.ref('users/$userId/avatar.jpg');
+      final ref = _storage.ref(path);
       final snapshot = await ref.putData(
         bytes,
         SettableMetadata(contentType: contentType),
       );
       final url = await snapshot.ref.getDownloadURL();
-      await _firestore.collection('users').doc(userId).update({
-        'avatarUrl': url,
-      });
+      await _firestore.collection('users').doc(userId).update({field: url});
       return Success<String>(url);
     } on Object catch (error) {
       return FailureResult<String>(_mapFailure(error));

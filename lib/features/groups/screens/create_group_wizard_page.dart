@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
@@ -334,8 +333,12 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   Future<void> _pickImage(TextEditingController target) async {
     final copy = GroupCopy.of(context);
     try {
-      final file = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (file == null || !mounted) return;
+      final isCover = identical(target, _coverUrl);
+      final cropped = await pickAndCropImage(
+        context,
+        aspect: isCover ? ImageCropAspect.cover : ImageCropAspect.avatar,
+      );
+      if (cropped == null || !mounted) return;
       final uid = context.read<AuthProvider>().currentUser?.id;
       if (uid == null || uid.isEmpty) {
         PubgetSnackbars.showError(context, copy.signInToUpload);
@@ -349,12 +352,11 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         return;
       }
       setState(() => _uploadingImage = true);
-      final bytes = await file.readAsBytes();
       final url = await uploader.uploadGroupImage(
         uid: uid,
-        bytes: bytes,
-        contentType: file.mimeType ?? 'image/jpeg',
-        kind: identical(target, _coverUrl) ? 'cover' : 'avatar',
+        bytes: cropped.bytes,
+        contentType: cropped.contentType,
+        kind: isCover ? 'cover' : 'avatar',
       );
       if (!mounted) return;
       if (!isRemoteHttpUrl(url)) {

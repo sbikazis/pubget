@@ -31,4 +31,11 @@ final class UnavailableProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async => FailureResult<String>(UnknownError(message));
+
+  @override
+  Future<Result<String>> uploadCover({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async => FailureResult<String>(UnknownError(message));
 }

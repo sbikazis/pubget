@@ -55,11 +55,22 @@ final class FakeProfileRepository implements ProfileRepository {
   ) async {
     lastUpdate = update;
     ownProfile = ownProfile.copyWith(
+      username: update.username,
+      displayName: update.displayName,
       bio: update.bio,
+      age: update.age,
+      clearAge: update.clearAge,
+      country: update.country,
+      favoriteQuote: update.favoriteQuote,
+      animeTwin: update.animeTwin,
+      socialLinks: update.socialLinks,
       favoriteAnimeIds: update.favoriteAnimeIds,
+      favoriteAnimes: update.favoriteAnimes,
       profileVisibility: update.profileVisibility,
       activityVisibility: update.activityVisibility,
       whoCanMessageMe: update.whoCanMessageMe,
+      sectionPrivacy: update.sectionPrivacy,
+      coverUrl: update.coverUrl,
     );
     return Success<PubgetUser>(ownProfile);
   }
@@ -70,6 +81,13 @@ final class FakeProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async => const Success<String>('https://example.test/avatar.jpg');
+
+  @override
+  Future<Result<String>> uploadCover({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async => const Success<String>('https://example.test/cover.jpg');
 }
 
 final class FakeSocialRepository implements SocialRepository {
