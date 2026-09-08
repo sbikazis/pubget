@@ -16,3 +16,6 @@ export 'pubget_selection_chip.dart';
 export 'pubget_snackbars.dart';
 export 'pubget_states.dart';
 export 'pubget_tooltip.dart';
+export '../media/image_crop_aspect.dart';
+export '../media/image_pick_and_crop.dart';
+export '../media/pubget_image_cropper.dart';
