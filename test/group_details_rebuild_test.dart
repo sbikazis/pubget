@@ -39,6 +39,9 @@ void main() {
     expect(find.byKey(const Key('group-details-disband')), findsOneWidget);
     expect(find.text('Disband group'), findsOneWidget);
     expect(find.text('Manage members'), findsOneWidget);
+    expect(find.byKey(const Key('group-promote-section')), findsOneWidget);
+    expect(find.byKey(const Key('group-promote-coins')), findsOneWidget);
+    expect(find.text('Promote and reach'), findsOneWidget);
     expect(find.text('animeRoleplay'), findsNothing);
   });
 
@@ -159,4 +162,9 @@ final class _FakeGroupRepository implements GroupRepository {
   @override
   Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
       const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }
+

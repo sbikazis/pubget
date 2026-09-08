@@ -62,6 +62,8 @@ final class UnavailableGroupRepository implements GroupRepository {
     required String groupId,
     required GroupSettingsUpdate settings,
   }) async => _fail();
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async => _fail();
 }
 
 final class UnavailableGroupMembersRepository

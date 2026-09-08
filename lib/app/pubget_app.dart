@@ -29,6 +29,7 @@ import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
 import '../features/groups/models/group_models.dart';
+import '../features/groups/data/group_image_uploader.dart';
 import '../features/groups/providers/group_members_provider.dart';
 import '../features/groups/providers/chat_provider.dart';
 import '../features/groups/providers/group_provider.dart';
@@ -175,6 +176,14 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<ProfileRepository>.value(value: repositories.$3),
         provider.Provider<SocialRepository>.value(value: repositories.$4),
         provider.Provider<GroupRepository>.value(value: repositories.$5),
+        provider.Provider<GroupImageUploader>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseGroupImageUploader()
+              : UnavailableGroupImageUploader(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<GroupMembersRepository>.value(value: repositories.$6),
         provider.Provider<RoleplayRepository>.value(value: repositories.$7),
         provider.Provider<ChatRepository>.value(value: repositories.$8),
@@ -373,6 +382,7 @@ class PubgetApp extends StatelessWidget {
           create: (context) => AnimeListProvider(
             repository: context.read<AnimeRepository>(),
             analytics: context.read<Analytics>(),
+            debounce: const Duration(milliseconds: 400),
           ),
         ),
         provider.ChangeNotifierProvider<AnimeDetailsProvider>(

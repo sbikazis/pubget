@@ -312,6 +312,7 @@ exports.updateGroupSettings = onCall(
   { region: "us-central1" },
   groupsDomain.updateGroupSettings,
 );
+exports.promoteGroup = onCall({ region: "us-central1" }, groupsDomain.promoteGroup);
 exports.unbanMember = onCall({ region: "us-central1" }, groupsDomain.unbanMember);
 exports.updateRolePermissions = onCall(
   { region: "us-central1" },

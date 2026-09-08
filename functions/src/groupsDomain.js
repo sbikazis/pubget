@@ -25,6 +25,8 @@ const CHARACTER_CATALOG = {
   mentor: "The Mentor",
   trickster: "The Trickster",
 };
+const GROUP_PROMOTE_COST = 120;
+const GROUP_PROMOTE_DAYS = 7;
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -39,8 +41,10 @@ function authUid(request, HttpsError) {
 }
 
 function optionalUrl(value, max) {
-  return value === undefined || value === null || value === "" ||
-    (typeof value === "string" && value.length <= max);
+  if (value === undefined || value === null || value === "") return true;
+  if (typeof value !== "string" || value.length > max) return false;
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) && !/\s/.test(trimmed);
 }
 
 function parseCharacter(raw, HttpsError) {
@@ -193,8 +197,10 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         name: data.name.trim(),
         searchName: data.name.trim().toLowerCase(),
         description: data.description.trim(),
-        imageUrl: typeof data.imageUrl === "string" ? data.imageUrl.trim() : "",
-        coverUrl: typeof data.coverUrl === "string" ? data.coverUrl.trim() : "",
+        imageUrl: typeof data.imageUrl === "string" && optionalUrl(data.imageUrl, 500)
+          ? data.imageUrl.trim() : "",
+        coverUrl: typeof data.coverUrl === "string" && optionalUrl(data.coverUrl, 500)
+          ? data.coverUrl.trim() : "",
         type: data.type,
         animeId: data.animeId || null,
         founderId: uid,
@@ -836,6 +842,76 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     return null;
   }
 
+  async function promoteGroup(request) {
+    const uid = authUid(request, HttpsError);
+    const groupId = requireGroupId(request);
+    const nowMs = Date.now();
+    const durationMs = GROUP_PROMOTE_DAYS * 24 * 60 * 60 * 1000;
+    const result = await db.runTransaction(async (transaction) => {
+      const groupRef = groupPath(db, groupId);
+      const userRef = db.collection("users").doc(uid);
+      const [groupSnap, userSnap] = await Promise.all([
+        transaction.get(groupRef),
+        transaction.get(userRef),
+      ]);
+      if (!groupSnap.exists) {
+        throw new HttpsError("not-found", "Group not found.");
+      }
+      const group = groupSnap.data() || {};
+      const founderId = group.founderId || group.createdBy;
+      if (founderId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only the founder can promote this group.",
+        );
+      }
+      if (!userSnap.exists) {
+        throw new HttpsError("not-found", "User not found.");
+      }
+      const user = userSnap.data() || {};
+      const coins = Number(user.coinsBalance || 0);
+      if (!Number.isFinite(coins) || coins < GROUP_PROMOTE_COST) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You do not have enough coins.",
+        );
+      }
+      const currentExpiry = group.promotionExpiresAt &&
+        typeof group.promotionExpiresAt.toMillis === "function"
+        ? group.promotionExpiresAt.toMillis()
+        : (group.promotionExpiresAt instanceof Date
+          ? group.promotionExpiresAt.getTime()
+          : (typeof group.promotionExpiresAt === "number"
+            ? group.promotionExpiresAt
+            : 0));
+      const base = Math.max(nowMs, currentExpiry || 0);
+      const expiresAt = new Date(base + durationMs);
+      transaction.update(userRef, {
+        coinsBalance: coins - GROUP_PROMOTE_COST,
+        economyUpdatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(groupRef, {
+        isPromoted: true,
+        promotionExpiresAt: expiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.create(groupRef.collection("promotions").doc(), {
+        founderId: uid,
+        cost: GROUP_PROMOTE_COST,
+        days: GROUP_PROMOTE_DAYS,
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt,
+      });
+      return { expiresAt: expiresAt.toISOString() };
+    });
+    return {
+      ok: true,
+      cost: GROUP_PROMOTE_COST,
+      days: GROUP_PROMOTE_DAYS,
+      promotionExpiresAt: result.expiresAt,
+    };
+  }
+
   return {
     acceptJoinRequest,
     banMember: (request) => removeMember(request, true),
@@ -855,6 +931,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     unbanMember,
     updateGroupSettings,
     updateRolePermissions,
+    promoteGroup,
   };
 }
 
@@ -863,6 +940,8 @@ module.exports = {
   JOIN_POLICIES,
   ROLE_PERMISSIONS,
   ROLES,
+  GROUP_PROMOTE_COST,
+  GROUP_PROMOTE_DAYS,
   createGroupsDomain,
   entitledMaxMembers,
   inviteRankForCount,

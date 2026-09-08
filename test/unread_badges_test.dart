@@ -272,4 +272,9 @@ final class _UnreadGroupRepository implements GroupRepository {
   @override
   Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
       const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }
+

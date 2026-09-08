@@ -10,6 +10,7 @@ import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/groups/data/group_fuzzy.dart';
+import 'package:pubget/features/groups/data/group_image_uploader.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
@@ -34,6 +35,14 @@ void main() {
     expect(GroupFuzzy.matches('friren', 'Frieren'), isTrue);
     expect(GroupFuzzy.matches('naruto', 'One Piece'), isFalse);
     expect(GroupFuzzy.matches('lufy', 'Monkey D. Luffy'), isTrue);
+  });
+
+  test('group image URLs must be remote http(s), never local paths', () {
+    expect(isRemoteHttpUrl('https://example.test/a.png'), isTrue);
+    expect(isRemoteHttpUrl('http://cdn.test/a.png'), isTrue);
+    expect(isRemoteHttpUrl('/data/user/0/cache/x.jpg'), isFalse);
+    expect(isRemoteHttpUrl('file:///tmp/x.jpg'), isFalse);
+    expect(isRemoteHttpUrl(''), isFalse);
   });
 
   testWidgets('create-group opens the type sheet', (tester) async {
@@ -122,6 +131,7 @@ void main() {
     tester,
   ) async {
     final repository = FakeAnimeRepository(
+      filterSearchByQuery: true,
       page: AnimePage(items: <Anime>[sampleAnime()], page: 1),
     );
     final list = AnimeListProvider(repository: repository);
@@ -138,6 +148,8 @@ void main() {
     await tester.enterText(find.byKey(const Key('group-anime-search')), 'zzzzz');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Frieren'), findsNothing);
+    expect(find.byKey(const Key('group-anime-empty')), findsOneWidget);
   });
 
   testWidgets('reserved character stays locked without revealing the owner', (
@@ -306,4 +318,9 @@ final class _JourneyGroupRepository implements GroupRepository {
   @override
   Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
       const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }
+

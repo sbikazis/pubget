@@ -204,6 +204,7 @@ final class AnimeListProvider extends ChangeNotifier {
   final int minQueryLength;
 
   List<Anime> _items = const <Anime>[];
+  List<Anime> _catalogSnapshot = const <Anime>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   Failure? _pageFailure;
@@ -273,8 +274,8 @@ final class AnimeListProvider extends ChangeNotifier {
     _searchDebounce?.cancel();
     _query = query;
     _filter = _filter.copyWith(text: query, sort: AnimeSearchSort.members);
-    _items = const <Anime>[];
     _failure = null;
+    _previewFromSnapshot();
     _scheduleSearch();
   }
 
@@ -282,31 +283,58 @@ final class AnimeListProvider extends ChangeNotifier {
     _searchDebounce?.cancel();
     _query = query;
     _filter = _filter.copyWith(text: query, sort: AnimeSearchSort.members);
+    _previewFromSnapshot();
     _scheduleSearch(immediate: true);
   }
 
   void applyFilter(AnimeSearchFilter filter) {
     _searchDebounce?.cancel();
     _filter = filter.copyWith(text: _query, sort: AnimeSearchSort.members);
-    _items = const <Anime>[];
     _failure = null;
+    _previewFromSnapshot();
     _scheduleSearch(immediate: true);
+  }
+
+  List<Anime> _locallyFiltered(List<Anime> source) {
+    final needle = _query.trim().toLowerCase();
+    return source.where((anime) {
+      if (!_filter.matchesCatalog(anime)) return false;
+      if (needle.isEmpty) return true;
+      if (anime.title.toLowerCase().contains(needle)) return true;
+      return anime.alternativeTitles.any(
+        (title) => title.toLowerCase().contains(needle),
+      );
+    }).toList(growable: false);
+  }
+
+  void _previewFromSnapshot() {
+    if (_catalogSnapshot.isEmpty) return;
+    _items = _locallyFiltered(_catalogSnapshot);
+    if (_items.isEmpty && _filter.hasConstraints) {
+      _state = LoadingState.empty;
+    } else if (_items.isNotEmpty) {
+      _state = LoadingState.loaded;
+    }
+    _safeNotify();
   }
 
   void _scheduleSearch({bool immediate = false}) {
     final trimmed = _query.trim();
     if (!_filter.hasConstraints) {
-      _resetKeepingFilter();
+      _restoreCatalogSnapshot();
       _safeNotify();
       return;
     }
     if (!immediate &&
         trimmed.length < minQueryLength &&
         !_filter.hasNonTextConstraints) {
-      _items = const <Anime>[];
-      _state = LoadingState.initial;
-      _failure = null;
-      _safeNotify();
+      _previewFromSnapshot();
+      if (_catalogSnapshot.isEmpty) {
+        _items = const <Anime>[];
+        _state = LoadingState.initial;
+        _failure = null;
+        _safeNotify();
+      }
       return;
     }
     void run() {
@@ -366,7 +394,6 @@ final class AnimeListProvider extends ChangeNotifier {
     _season = null;
     _title = 'Search';
     _page = 0;
-    _items = const <Anime>[];
     _hasNextPage = false;
     await _load(
       page: 1,
@@ -390,12 +417,12 @@ final class AnimeListProvider extends ChangeNotifier {
       _loadingMore = true;
       _state = LoadingState.loadingMore;
     } else {
-      _state = _items.isEmpty || refresh
-          ? (refresh && _items.isNotEmpty
-                ? LoadingState.refreshing
-                : LoadingState.loading)
-          : LoadingState.loading;
-      if (!loadMore && !refresh) {
+      final keepContent =
+          refresh || _items.isNotEmpty || _catalogSnapshot.isNotEmpty;
+      if (keepContent) {
+        _state = LoadingState.refreshing;
+      } else {
+        _state = LoadingState.loading;
         _items = const <Anime>[];
       }
     }
@@ -419,6 +446,10 @@ final class AnimeListProvider extends ChangeNotifier {
             ? _merge(_items, pageResult.items)
             : pageResult.items;
         _items = merged;
+        final searching = searchQuery != null;
+        if (!searching && page == 1) {
+          _catalogSnapshot = merged;
+        }
         _page = pageResult.page;
         _hasNextPage = pageResult.hasNextPage;
         _fromCache = pageResult.fromCache;
@@ -426,6 +457,9 @@ final class AnimeListProvider extends ChangeNotifier {
         _state = merged.isEmpty ? LoadingState.empty : LoadingState.loaded;
       },
       onFailure: (failure) {
+        if (!loadMore && _items.isEmpty && _catalogSnapshot.isNotEmpty) {
+          _items = _locallyFiltered(_catalogSnapshot);
+        }
         _failure = loadMore ? _failure : failure;
         _pageFailure = loadMore ? failure : null;
         if (loadMore) {
@@ -483,6 +517,7 @@ final class AnimeListProvider extends ChangeNotifier {
   void _reset() {
     _searchDebounce?.cancel();
     _items = const <Anime>[];
+    _catalogSnapshot = const <Anime>[];
     _state = LoadingState.initial;
     _failure = null;
     _pageFailure = null;
@@ -498,17 +533,17 @@ final class AnimeListProvider extends ChangeNotifier {
     _filter = const AnimeSearchFilter();
   }
 
-  void _resetKeepingFilter() {
+  void _restoreCatalogSnapshot() {
     _searchDebounce?.cancel();
-    _items = const <Anime>[];
-    _state = LoadingState.initial;
+    _items = _catalogSnapshot;
+    _state = _items.isEmpty ? LoadingState.initial : LoadingState.loaded;
     _failure = null;
     _pageFailure = null;
     _hasNextPage = false;
     _page = 0;
     _fromCache = false;
     _inflightKey = null;
-    _catalog = null;
+    _catalog = _items.isEmpty ? null : AnimeCatalogKind.popular;
     _genreId = null;
     _year = null;
     _season = null;

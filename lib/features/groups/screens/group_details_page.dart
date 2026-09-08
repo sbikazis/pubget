@@ -315,6 +315,8 @@ class _FounderPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
+          _PromotionSection(group: group, provider: provider),
+          const SizedBox(height: AppSpacing.lg),
           _PanelTile(
             icon: Icons.inbox_outlined,
             title: groupCopy.requestInbox,
@@ -482,6 +484,139 @@ class _FounderPanel extends StatelessWidget {
     );
     if (second == true) await provider.disband(group.id);
   }
+}
+
+class _PromotionSection extends StatelessWidget {
+  const _PromotionSection({required this.group, required this.provider});
+
+  final Group group;
+  final GroupProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
+    final metrics = group.activityMetrics;
+    final promoted = group.isPromoted &&
+        (group.promotionExpiresAt == null ||
+            group.promotionExpiresAt!.isAfter(DateTime.now()));
+    return PubgetCard(
+      key: const Key('group-promote-section'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(copy.promoteTitle, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            group.risingEligible ? copy.risingEligible : copy.risingNotEligible,
+          ),
+          if (!group.risingEligible) ...[
+            const SizedBox(height: AppSpacing.sm),
+            for (final gap in group.risingGaps)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: <Widget>[
+                    const Icon(Icons.circle, size: 8, color: AppColors.gold),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(child: Text(_gapLabel(copy, gap))),
+                  ],
+                ),
+              ),
+          ],
+          if (promoted) ...[
+            const SizedBox(height: AppSpacing.sm),
+            PubgetBadge(label: copy.currentlyPromoted, compact: true),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _MetricCard(
+                  label: copy.newMembersWeek,
+                  value: '${metrics?.joinsInWindow ?? 0}',
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _MetricCard(
+                  label: copy.chatActivity,
+                  value: '${metrics?.recentMessageCount ?? 0}',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _MetricCard(
+                  label: copy.activeMembers,
+                  value: '${metrics?.activeMemberCount ?? group.membersCount}',
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _MetricCard(
+                  label: copy.growth,
+                  value: '${group.activityScore}',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          PubgetPrimaryButton(
+            key: const Key('group-promote-coins'),
+            onPressed: provider.promoting
+                ? null
+                : () => provider.promote(group.id),
+            semanticLabel: copy.promoteWithCoins,
+            loading: provider.promoting,
+            child: Text(provider.promoting ? copy.promoting : copy.promoteWithCoins),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetSecondaryButton(
+            key: const Key('group-promote-share'),
+            onPressed: () => PubgetLinks.share(
+              context,
+              url: PubgetLinks.group(group.id),
+              title: group.name,
+              type: 'group',
+            ),
+            semanticLabel: copy.shareGroupLink,
+            leadingIcon: Icons.share_outlined,
+            child: Text(copy.shareGroupLink),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetSecondaryButton(
+            key: const Key('group-promote-copy'),
+            onPressed: () => PubgetLinks.copy(
+              context,
+              PubgetLinks.group(group.id),
+              type: 'group',
+            ),
+            semanticLabel: copy.copyGroupLink,
+            leadingIcon: Icons.copy_outlined,
+            child: Text(copy.copyGroupLink),
+          ),
+          if (provider.failure != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              provider.failure!.message,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _gapLabel(GroupCopy copy, GroupRisingGap gap) => switch (gap) {
+    GroupRisingGap.members => copy.risingNeedMembers,
+    GroupRisingGap.image => copy.risingNeedImage,
+    GroupRisingGap.description => copy.risingNeedDescription,
+    GroupRisingGap.rules => copy.risingNeedRules,
+    GroupRisingGap.activity => copy.risingNeedActivity,
+  };
 }
 
 class _PanelTile extends StatelessWidget {

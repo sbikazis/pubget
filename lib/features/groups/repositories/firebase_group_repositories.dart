@@ -217,6 +217,11 @@ final class FirebaseGroupRepository implements GroupRepository {
     await _callVoid('updateGroupSettings', settings.toMap(groupId: groupId));
   });
 
+  @override
+  Future<Result<void>> promoteGroup(String groupId) => _guard(() async {
+    await _callVoid('promoteGroup', <String, dynamic>{'groupId': groupId});
+  });
+
   Future<Group> _callGroup(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call(data);
     final group = result.data['group'] as Map<dynamic, dynamic>;

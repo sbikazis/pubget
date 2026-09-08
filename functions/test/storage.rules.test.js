@@ -191,6 +191,38 @@ test("enforces MIME and size ceilings", async () => {
   await assertSucceeds(upload(alice, "edits/alice/v_ok.mp4", "video/mp4", 32));
 });
 
+test("edit video resumable updates are allowed for the owner", async () => {
+  const alice = env.authenticatedContext("alice");
+  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 32));
+  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 64));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    "edits/alice/editId123.mp4",
+    "video/mp4",
+    32,
+  ));
+});
+
+test("group staging images are owner-writable before a group exists", async () => {
+  const alice = env.authenticatedContext("alice");
+  await assertSucceeds(upload(
+    alice,
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(upload(
+    alice,
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+    48,
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+  ));
+});
+
 test("denies paths not explicitly supported", async () => {
   await assertFails(upload(env.authenticatedContext("alice"), "unreviewed/alice/file.jpg", "image/jpeg"));
   // The old groups/{groupId}.jpg form cannot safely recover groupId from a
