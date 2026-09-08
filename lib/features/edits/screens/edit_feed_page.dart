@@ -431,7 +431,7 @@ class _CreatorBlock extends StatelessWidget {
               ),
             ),
             if (isFan)
-              const PubgetBadge(label: 'Fan', compact: true),
+              PubgetBadge(label: copy.fan, compact: true),
           ],
         ),
         if (edit.isRepost) ...[

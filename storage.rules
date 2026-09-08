@@ -263,13 +263,16 @@ service firebase.storage {
       // putData/putFile uses a resumable protocol that requires UPDATE
       // after CREATE. Denying update produced "User is not authorized
       // to perform the desired action" on every real video upload.
+      // Some clients also append codec parameters to contentType
+      // (e.g. video/mp4; codecs=...), so accept video/mp4* prefixes.
       allow create: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
-          request.resource.contentType == 'video/mp4' &&
+          request.resource.contentType.matches('video/mp4.*') &&
           request.resource.size <= 100 * 1024 * 1024;
       allow update: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
-          request.resource.contentType == 'video/mp4';
+          (request.resource.contentType.matches('video/mp4.*') ||
+              resource.contentType.matches('video/mp4.*'));
       allow delete: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName);
     }

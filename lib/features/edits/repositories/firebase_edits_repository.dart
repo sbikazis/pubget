@@ -8,6 +8,61 @@ import '../data/edit_storage_put.dart';
 import '../models/edit_models.dart';
 import 'edits_repository.dart';
 
+Failure mapEditException(Object error) {
+  if (error is Failure) return error;
+  if (error is FirebaseFunctionsException) {
+    return _mapCode(error.code, error.message);
+  }
+  if (error is FirebaseException) {
+    return _mapCode(error.code, error.message);
+  }
+  final text = error.toString().toLowerCase();
+  if (text.contains('not authorized') || text.contains('permission')) {
+    return const PermissionError(
+      'Could not upload this video securely. Sign in again, then retry.',
+    );
+  }
+  return const UnknownError(
+    'Something went wrong while preparing your Edit. Please try again.',
+  );
+}
+
+Failure _mapCode(String code, String? message) {
+  final normalized = code.toLowerCase();
+  final body = (message ?? '').toLowerCase();
+  if (normalized == 'canceled') {
+    return const CancelledError('Upload canceled.');
+  }
+  if (normalized == 'unavailable' ||
+      normalized == 'deadline-exceeded' ||
+      normalized == 'network-request-failed') {
+    return const NetworkError('Check your connection and try again.');
+  }
+  if (normalized == 'unauthorized' ||
+      normalized == 'permission-denied' ||
+      normalized == 'unauthenticated' ||
+      body.contains('not authorized') ||
+      body.contains('permission')) {
+    return const PermissionError(
+      'Could not upload this video securely. Sign in again, then retry.',
+    );
+  }
+  if (normalized == 'failed-precondition') {
+    return ValidationError(
+      message ?? 'This Edit cannot continue yet. Try again or replace the video.',
+    );
+  }
+  if (normalized == 'not-found') {
+    return const NotFoundError('Edit not found.');
+  }
+  if (normalized == 'invalid-argument') {
+    return ValidationError(message ?? 'That Edit request was invalid.');
+  }
+  return const UnknownError(
+    'Something went wrong while preparing your Edit. Please try again.',
+  );
+}
+
 final class FirebaseEditsRepository implements EditsRepository {
   FirebaseEditsRepository({
     FirebaseFirestore? firestore,
@@ -36,18 +91,30 @@ final class FirebaseEditsRepository implements EditsRepository {
       return Success(await action());
     } on Failure catch (error) {
       return FailureResult(error);
-    } on FirebaseException catch (error) {
-      if (error.code == 'canceled') {
-        return const FailureResult(ValidationError('Upload canceled.'));
-      }
-      return FailureResult(
-        error.code == 'unavailable' || error.code == 'deadline-exceeded'
-            ? const NetworkError('Check your connection and try again.')
-            : UnknownError(error.message ?? error.toString()),
-      );
     } on Object catch (error) {
-      return FailureResult(UnknownError(error.toString()));
+      return FailureResult(mapEditException(error));
     }
+  }
+
+  Future<Edit> _readEdit(String editId, {String? caption, String? animeTag}) async {
+    final snap = await _firestore.collection('edits').doc(editId).get();
+    if (!snap.exists || snap.data() == null) {
+      return Edit(
+        id: editId,
+        creatorId: '',
+        videoUrl: '',
+        thumbnailUrl: '',
+        caption: caption ?? '',
+        animeTag: animeTag ?? '',
+        likesCount: 0,
+        commentsCount: 0,
+        viewsCount: 0,
+        score: 0,
+        createdAt: DateTime.now(),
+        status: 'processing',
+      );
+    }
+    return Edit.fromMap(snap.data()!, id: editId);
   }
 
   @override
@@ -87,11 +154,12 @@ final class FirebaseEditsRepository implements EditsRepository {
       path = start.data['videoPath'] as String;
       editId = start.data['editId'] as String;
     }
+    // Always force exact video/mp4 — Storage rules reject codec-suffixed types.
     final task = putEditVideo(
       _storage.ref(path),
       source,
       SettableMetadata(
-        contentType: contentType,
+        contentType: 'video/mp4',
         customMetadata: _uploadMetadata(
           fileName: fileName,
           sizeBytes: sizeBytes,
@@ -108,24 +176,22 @@ final class FirebaseEditsRepository implements EditsRepository {
     await task;
     _activeUpload = null;
     onProgress?.call(1);
-    final snap = await _firestore.collection('edits').doc(editId).get();
-    if (!snap.exists || snap.data() == null) {
-      return Edit(
-        id: editId,
-        creatorId: '',
-        videoUrl: '',
-        thumbnailUrl: '',
-        caption: caption,
-        animeTag: animeTag,
-        likesCount: 0,
-        commentsCount: 0,
-        viewsCount: 0,
-        score: 0,
-        createdAt: DateTime.now(),
-        status: 'processing',
-      );
+
+    // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
+    final finalized = await finalizeEditUpload(editId);
+    if (finalized.isSuccess) {
+      return finalized.valueOrNull!;
     }
-    return Edit.fromMap(snap.data()!, id: editId);
+    // Upload itself succeeded; surface server state even if finalize soft-fails.
+    return _readEdit(editId, caption: caption, animeTag: animeTag);
+  });
+
+  @override
+  Future<Result<Edit>> finalizeEditUpload(String editId) => _guard(() async {
+    await _functions.httpsCallable('finalizeEditUpload').call({
+      'editId': editId,
+    });
+    return _readEdit(editId);
   });
 
   @override
@@ -219,7 +285,9 @@ final class FirebaseEditsRepository implements EditsRepository {
   @override
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {
     final doc = await _firestore.collection('edits').doc(editId).get();
-    if (!doc.exists || doc.data() == null) throw StateError('Edit not found.');
+    if (!doc.exists || doc.data() == null) {
+      throw const NotFoundError('Edit not found.');
+    }
     return Edit.fromMap(doc.data()!, id: doc.id);
   });
 
@@ -282,9 +350,9 @@ final class FirebaseEditsRepository implements EditsRepository {
   }) => _call('recordEditView', {
     'editId': editId,
     'sessionId': sessionId,
+    'eventType': 'impression',
     'watchPercent': 0,
     'watchSeconds': 0,
-    'eventType': 'impression',
   });
 
   @override

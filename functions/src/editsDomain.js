@@ -43,7 +43,14 @@ function serializeEdit(id, data) {
   };
 }
 
-function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEdit }) {
+function createEditsDomain({
+  db,
+  FieldValue,
+  HttpsError,
+  achievements,
+  processEdit,
+  bucket,
+}) {
   function uid(request) {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
     return request.auth.uid;
@@ -579,6 +586,92 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     };
   }
 
+  async function resolveSourceObject(videoPath) {
+    if (!bucket || !videoPath) {
+      return { contentType: "video/mp4", size: EDITS_CONFIG.maxBytes, exists: true };
+    }
+    const file = bucket.file(videoPath);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return { contentType: "video/mp4", size: 0, exists: false };
+    }
+    const [meta] = await file.getMetadata();
+    return {
+      contentType: meta.contentType || "video/mp4",
+      size: Number(meta.size || 0),
+      exists: true,
+    };
+  }
+
+  async function kickProcessing(ref, data, videoPath) {
+    const source = await resolveSourceObject(videoPath);
+    if (!source.exists) {
+      throw new HttpsError(
+        "failed-precondition",
+        "The original video is missing. Re-upload the video, then try again.",
+      );
+    }
+    if (source.size <= 0 || source.size > EDITS_CONFIG.maxBytes) {
+      await ref.update({
+        status: "failed",
+        failureReason: "invalid-video",
+        processingStartedAt: FieldValue.serverTimestamp(),
+      });
+      throw new HttpsError(
+        "failed-precondition",
+        "This video is not a supported MP4, or it is too large.",
+      );
+    }
+    await ref.update({
+      status: "processing",
+      failureReason: null,
+      moderationReason: null,
+      processingStartedAt: FieldValue.serverTimestamp(),
+    });
+    if (typeof processEdit === "function") {
+      await processEdit({
+        data: {
+          name: videoPath,
+          contentType: "video/mp4",
+          size: source.size,
+        },
+      });
+    }
+    return { ok: true, videoPath, status: "processing" };
+  }
+
+  /**
+   * Client calls this after Storage upload succeeds. Idempotent for
+   * published / already-processing edits. Recovers when the Storage
+   * finalize trigger never fires (region mismatch, delay, etc.).
+   */
+  async function finalizeUpload(request) {
+    const creatorId = uid(request);
+    const editId = string(request.data?.editId, 128);
+    if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
+    const ref = editRef(editId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    const data = snap.data() || {};
+    if (data.creatorId !== creatorId) {
+      throw new HttpsError("permission-denied", "Only the creator can finalize this Edit.");
+    }
+    if (data.status === "published") {
+      return { ok: true, status: "published", videoPath: data.processedStoragePath || null };
+    }
+    if (data.status === "rejected") {
+      return { ok: true, status: "rejected", reason: data.moderationReason || null };
+    }
+    if (!["uploading", "processing", "failed"].includes(data.status)) {
+      throw new HttpsError("failed-precondition", "This Edit cannot be finalized.");
+    }
+    const videoPath = data.originalStoragePath || data.videoPath;
+    if (!videoPath) {
+      throw new HttpsError("failed-precondition", "The original video is missing.");
+    }
+    return kickProcessing(ref, data, videoPath);
+  }
+
   async function retryProcessing(request) {
     const creatorId = uid(request);
     const editId = string(request.data?.editId, 128);
@@ -590,29 +683,23 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     if (data.creatorId !== creatorId) {
       throw new HttpsError("permission-denied", "Only the creator can retry this Edit.");
     }
-    if (!["failed", "rejected", "uploading"].includes(data.status)) {
+    // Allow stuck "processing" retries — never leave an Edit permanently dead.
+    if (!["failed", "rejected", "uploading", "processing"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Edit is not waiting for a retry.");
+    }
+    if (data.status === "published") {
+      return { ok: true, videoPath: data.processedStoragePath || null, status: "published" };
     }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    await ref.update({
-      status: "processing",
-      failureReason: null,
-      processingStartedAt: FieldValue.serverTimestamp(),
-    });
-    if (typeof processEdit === "function") {
-      await processEdit({
-        data: { name: videoPath, contentType: "video/mp4", size: EDITS_CONFIG.maxBytes },
-      });
-    }
-    return { ok: true, videoPath };
+    return kickProcessing(ref, data, videoPath);
   }
 
   return {
     startUpload, repost, deleteEdit, like, comment, startPlayback, recordView, signal,
-    commentAction, getEditFeed, retryProcessing,
+    commentAction, getEditFeed, retryProcessing, finalizeUpload,
   };
 }
 
