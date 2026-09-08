@@ -26,6 +26,7 @@ import '../services/default_voice_capture.dart';
 import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
 import '../widgets/chat_message_bubble.dart';
+import '../widgets/event_center_sheet.dart';
 import '../widgets/sticker_picker_sheet.dart';
 import '../widgets/voice_recorder_sheet.dart';
 import 'chat_background_picker_page.dart';
@@ -132,7 +133,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
             builder: (context) => IconButton(
               key: const Key('group-chat-menu'),
               tooltip: AppStrings.of(context).groupMenu,
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(Icons.menu),
               onPressed: () => Scaffold.of(context).openEndDrawer(),
             ),
           ),
@@ -184,9 +185,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   onGif: _pickGif,
                   onSticker: _pickSticker,
                   onVoice: _recordVoice,
-                  onEvents: () => AppNavigation.go(
+                  onEvents: () => EventCenterSheet.show(
                     context,
-                    '/events?groupId=${Uri.encodeComponent(widget.groupId)}',
+                    groupId: widget.groupId,
                   ),
                 ),
               ],
@@ -419,6 +420,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   title: Text(copy.copy),
                   onTap: () => Navigator.pop(context, 'copy'),
                 ),
+              if (message.senderId ==
+                      context.read<AuthProvider>().currentUser?.id &&
+                  message.type == ChatMessageType.text &&
+                  !message.isOptimistic)
+                ListTile(
+                  key: const Key('chat-action-edit'),
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit'),
+                  onTap: () => Navigator.pop(context, 'edit'),
+                ),
               ListTile(
                 key: const Key('chat-action-reply'),
                 leading: const Icon(Icons.reply),
@@ -468,6 +479,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final chat = context.read<ChatProvider>();
     if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+    } else if (action == 'edit') {
+      await _editMessage(message);
     } else if (action == 'delete') {
       await chat.deleteMessage(message.id);
     } else if (action == 'pin') {
@@ -481,6 +494,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
     } else if (action == 'report') {
       await _reportMessage(message);
     }
+  }
+
+  Future<void> _editMessage(ChatMessage message) async {
+    final controller = TextEditingController(text: message.text ?? '');
+    final next = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(
+          key: const Key('chat-edit-field'),
+          controller: controller,
+          autofocus: true,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: 'Update your message'),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (next == null || !mounted) return;
+    final trimmed = next.trim();
+    if (trimmed.isEmpty || trimmed == message.text?.trim()) return;
+    await context.read<ChatProvider>().editMessage(
+      messageId: message.id,
+      text: trimmed,
+    );
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
@@ -829,8 +877,10 @@ class _GroupMenu extends StatelessWidget {
               _MenuTile(
                 icon: Icons.person_add_alt,
                 label: copy.addMembers,
-                onTap: () =>
-                    AppNavigation.go(context, '/group-members?groupId=$groupId'),
+                onTap: () => AppNavigation.go(
+                  context,
+                  '/group-members?groupId=$groupId&invite=1',
+                ),
               ),
               _MenuTile(
                 icon: Icons.link,
@@ -848,22 +898,6 @@ class _GroupMenu extends StatelessWidget {
                     AppNavigation.go(context, '/group?groupId=$groupId'),
               ),
               _MenuTile(
-                icon: Icons.celebration_outlined,
-                label: copy.groupEvents,
-                onTap: () => AppNavigation.go(
-                  context,
-                  '/events?groupId=${Uri.encodeComponent(groupId)}',
-                ),
-              ),
-              _MenuTile(
-                icon: Icons.sports_esports_outlined,
-                label: copy.groupGames,
-                onTap: () => AppNavigation.go(
-                  context,
-                  '/games?groupId=${Uri.encodeComponent(groupId)}',
-                ),
-              ),
-              _MenuTile(
                 icon: Icons.perm_media_outlined,
                 label: copy.groupMedia,
                 onTap: () =>
@@ -875,15 +909,35 @@ class _GroupMenu extends StatelessWidget {
                 onTap: () =>
                     AppNavigation.go(context, '/group-members?groupId=$groupId'),
               ),
-              if (canManageSettings)
+              _MenuTile(
+                icon: Icons.auto_awesome_mosaic_outlined,
+                label: 'Event Center',
+                onTap: () {
+                  Navigator.pop(context);
+                  EventCenterSheet.show(context, groupId: groupId);
+                },
+              ),
+              if (canManageSettings || isFounder) ...[
                 _MenuTile(
-                  icon: Icons.settings_outlined,
-                  label: copy.groupSettings,
+                  icon: Icons.edit_outlined,
+                  label: copy.editGroup,
                   onTap: () => AppNavigation.go(
                     context,
                     '/group-settings?groupId=$groupId',
                   ),
                 ),
+                _MenuTile(
+                  icon: Icons.wallpaper_outlined,
+                  label: copy.chatBackground,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ChatBackgroundPickerPage(
+                        current: current?.chatBackgroundUrl,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (canManageMembers)
                 _MenuTile(
                   icon: Icons.block_outlined,
@@ -891,24 +945,6 @@ class _GroupMenu extends StatelessWidget {
                   onTap: () =>
                       AppNavigation.go(context, '/group-bans?groupId=$groupId'),
                 ),
-              if (isFounder)
-                _MenuTile(
-                  icon: Icons.edit_outlined,
-                  label: copy.editGroup,
-                  onTap: () =>
-                      AppNavigation.go(context, '/group?groupId=$groupId'),
-                ),
-              _MenuTile(
-                icon: Icons.wallpaper_outlined,
-                label: copy.chatBackground,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ChatBackgroundPickerPage(
-                      current: current?.chatBackgroundUrl,
-                    ),
-                  ),
-                ),
-              ),
               if (!isFounder)
                 _MenuTile(
                   icon: Icons.exit_to_app,
@@ -988,40 +1024,81 @@ class _MarqueeTitle extends StatefulWidget {
   State<_MarqueeTitle> createState() => _MarqueeTitleState();
 }
 
-class _MarqueeTitleState extends State<_MarqueeTitle> {
+class _MarqueeTitleState extends State<_MarqueeTitle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
   final _scroll = ScrollController();
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _animate());
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..addListener(_onTick);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scroll.hasClients && _scroll.position.maxScrollExtent > 0) {
+        _controller.repeat(reverse: true);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _MarqueeTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_scroll.hasClients && _scroll.position.maxScrollExtent > 0) {
+          _controller
+            ..duration = Duration(
+              milliseconds:
+                  (2400 + _scroll.position.maxScrollExtent * 18).round(),
+            )
+            ..repeat(reverse: true);
+        } else {
+          _controller.stop();
+        }
+      });
+    }
+  }
+
+  void _onTick() {
+    if (!_scroll.hasClients) return;
+    final max = _scroll.position.maxScrollExtent;
+    if (max <= 0) return;
+    _scroll.jumpTo(max * _controller.value);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _animate() {
-    if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
-    final target = _scroll.offset == 0 ? _scroll.position.maxScrollExtent : 0.0;
-    _scroll.animateTo(
-      target,
-      duration: const Duration(seconds: 2),
-      curve: Curves.easeInOut,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _scroll,
-      scrollDirection: Axis.horizontal,
-      physics: const NeverScrollableScrollPhysics(),
-      child: Text(widget.text, maxLines: 1),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Text(
+              widget.text,
+              maxLines: 1,
+              softWrap: false,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

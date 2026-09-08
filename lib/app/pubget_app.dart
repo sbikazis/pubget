@@ -518,6 +518,7 @@ class PubgetApp extends StatelessWidget {
               notifications: notifications.unreadCount,
               groups: groups.unreadCount,
               privateChats: list.unreadCount,
+              mentions: notifications.mentionsUnreadCount,
             );
             return unread;
           },
