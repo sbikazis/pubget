@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../../core/l10n/app_strings.dart';
+import '../data/group_image_uploader.dart';
 import '../models/group_models.dart';
 
 /// Localized chrome for group create, join, and control-panel flows.
@@ -76,10 +77,55 @@ final class GroupCopy {
     'Image upload failed. Check your connection and try again.',
     'فشل رفع الصورة. تحقق من الاتصال ثم أعد المحاولة.',
   );
+  String get imageEmpty => _s.pick(
+    'The selected image is empty. Pick another file.',
+    'الصورة المختارة فارغة. اختر ملفًا آخر.',
+  );
+  String get imageTooLarge => _s.pick(
+    'Choose an image up to 10 MB.',
+    'اختر صورة بحجم أقصى 10 ميغابايت.',
+  );
+  String get uploadPermissionDenied => _s.pick(
+    'Storage rejected the upload. Sign in again, then retry.',
+    'التخزين رفض الرفع. سجّل الدخول مجددًا ثم أعد المحاولة.',
+  );
+  String get uploadNetworkInterrupted => _s.pick(
+    'Network interrupted during upload. Retry the same image.',
+    'انقطع الاتصال أثناء الرفع. أعد محاولة نفس الصورة.',
+  );
+  String get retryImageUpload => _s.pick('Retry upload', 'إعادة محاولة الرفع');
+  String get replaceImage => _s.pick('Replace image', 'استبدال الصورة');
+  String get imageReady => _s.pick('Image ready', 'الصورة جاهزة');
+  String get photosSection => _s.pick('Photos', 'الصور');
+  String get basicsSection => _s.pick('Basics', 'المعلومات الأساسية');
+  String get rulesSection => _s.pick('Rules', 'القوانين');
+  String get privacySection => _s.pick('Privacy', 'الخصوصية');
+  String get livePreview => _s.pick('Live preview', 'معاينة مباشرة');
+  String get pasteImageUrl =>
+      _s.pick('Or paste image URL', 'أو الصق رابط الصورة');
   String get signInToUpload => _s.pick(
     'Sign in to upload a group image.',
     'سجّل الدخول لرفع صورة المجموعة.',
   );
+
+  /// Map typed upload failures to localized copy; fall back to the real message.
+  String uploadErrorMessage(Object error) {
+    if (error is! GroupImageUploadException) {
+      return 'Upload failed: $error';
+    }
+    final code = (error.code ?? '').toLowerCase();
+    return switch (code) {
+      'empty-file' => imageEmpty,
+      'too-large' => imageTooLarge,
+      'unauthenticated' => signInToUpload,
+      'unauthorized' || 'permission-denied' => uploadPermissionDenied,
+      'unavailable' ||
+      'retry-limit-exceeded' ||
+      'network-request-failed' =>
+        uploadNetworkInterrupted,
+      _ => error.message,
+    };
+  }
 
   String get created => _s.groupCreatedTitle;
   String get copyLink => _s.copyGroupLink;

@@ -8,6 +8,7 @@ import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../social/repositories/profile_repository.dart';
+import '../data/anime_search_ranker.dart';
 import '../models/anime_models.dart';
 import '../repositories/anime_repository.dart';
 
@@ -296,15 +297,16 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   List<Anime> _locallyFiltered(List<Anime> source) {
-    final needle = _query.trim().toLowerCase();
-    return source.where((anime) {
-      if (!_filter.matchesCatalog(anime)) return false;
-      if (needle.isEmpty) return true;
-      if (anime.title.toLowerCase().contains(needle)) return true;
-      return anime.alternativeTitles.any(
-        (title) => title.toLowerCase().contains(needle),
-      );
-    }).toList(growable: false);
+    final needle = _query.trim();
+    if (needle.isEmpty) {
+      return source
+          .where(_filter.matchesCatalog)
+          .toList(growable: false);
+    }
+    final catalog = source
+        .where(_filter.matchesCatalog)
+        .toList(growable: false);
+    return AnimeSearchRanker.rank(catalog, needle);
   }
 
   void _previewFromSnapshot() {
@@ -442,11 +444,14 @@ final class AnimeListProvider extends ChangeNotifier {
 
     result.fold(
       onSuccess: (pageResult) {
-        final merged = loadMore
+        var merged = loadMore
             ? _merge(_items, pageResult.items)
             : pageResult.items;
+        final searching = searchQuery != null && searchQuery.trim().isNotEmpty;
+        if (searching && page == 1) {
+          merged = AnimeSearchRanker.rank(merged, searchQuery);
+        }
         _items = merged;
-        final searching = searchQuery != null;
         if (!searching && page == 1) {
           _catalogSnapshot = merged;
         }

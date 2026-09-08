@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/models/anime_models.dart';
@@ -51,6 +53,14 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   bool _hydrated = false;
   bool _submitting = false;
   bool _uploadingImage = false;
+
+  /// Last cropped image kept for retry without re-picking.
+  Uint8List? _pendingAvatarBytes;
+  String _pendingAvatarType = 'image/png';
+  Uint8List? _pendingCoverBytes;
+  String _pendingCoverType = 'image/png';
+  String? _uploadError;
+  bool _lastUploadWasCover = false;
 
   @override
   void initState() {
@@ -107,13 +117,12 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       }
       _rules
         ..clear()
-        ..addAll(
-          rules.map((item) => TextEditingController(text: '$item')),
-        );
+        ..addAll(rules.map((item) => TextEditingController(text: '$item')));
     }
     final character = draft['character'];
     if (character is Map) {
-      _character = RoleplayCharacter.fromMap(Map<String, dynamic>.from(character));
+      _character =
+          RoleplayCharacter.fromMap(Map<String, dynamic>.from(character));
     }
     setState(() {});
   }
@@ -159,218 +168,400 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     final copy = GroupCopy.of(context);
     final type = _type;
     return Scaffold(
+      backgroundColor: const Color(0xFF0B0714),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.createTitle),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (type == null)
-            GroupTypeTiles(
-              onSelected: (value) {
-                setState(() => _type = value);
-                _restore();
-              },
-            )
-          else ...<Widget>[
-            PubgetBadge(label: copy.typeLabel(type)),
-            const SizedBox(height: AppSpacing.sm),
-            Text(copy.typeLockedHint, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.lg),
-            _CoverPreview(
-              name: _name.text,
-              imageUrl: _imageUrl.text,
-              coverUrl: _coverUrl.text,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PubgetTextField(
-              key: const Key('group-create-image-url'),
-              controller: _imageUrl,
-              label: copy.avatar,
-              hint: copy.imageUrl,
-              onChanged: (_) => setState(_persist),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              key: const Key('group-create-pick-avatar'),
-              onPressed: _uploadingImage ? null : () => _pickImage(_imageUrl),
-              semanticLabel: copy.pickImage,
-              loading: _uploadingImage,
-              child: Text(_uploadingImage ? copy.uploadingImage : copy.pickImage),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PubgetTextField(
-              key: const Key('group-create-cover-url'),
-              controller: _coverUrl,
-              label: copy.cover,
-              hint: copy.imageUrl,
-              onChanged: (_) => setState(_persist),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              key: const Key('group-create-pick-cover'),
-              onPressed: _uploadingImage ? null : () => _pickImage(_coverUrl),
-              semanticLabel: copy.cover,
-              child: Text(copy.cover),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PubgetTextField(
-              key: const Key('group-create-name'),
-              controller: _name,
-              label: copy.name,
-              onChanged: (_) => setState(_persist),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            PubgetTextArea(
-              key: const Key('group-create-description'),
-              controller: _description,
-              label: copy.description,
-              onChanged: (_) => _persist(),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(copy.rules, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.sm),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _rules.length,
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  final index = newIndex > oldIndex ? newIndex - 1 : newIndex;
-                  final item = _rules.removeAt(oldIndex);
-                  _rules.insert(index, item);
-                });
-                _persist();
-              },
-              itemBuilder: (context, index) => Padding(
-                key: ValueKey(_rules[index]),
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: PubgetTextField(
-                        key: Key('group-create-rule-$index'),
-                        controller: _rules[index],
-                        label: '${copy.rules} ${index + 1}',
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF1A0F2E),
+              Color(0xFF0B0714),
+              Color(0xFF12081F),
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (type == null)
+                GroupTypeTiles(
+                  onSelected: (value) {
+                    setState(() => _type = value);
+                    _restore();
+                  },
+                )
+              else ...<Widget>[
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PubgetBadge(
+                    label: copy.typeLabel(type),
+                    backgroundColor: AppColors.gold.withValues(alpha: 0.18),
+                    foregroundColor: AppColors.gold,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  copy.typeLockedHint,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white70,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                _SectionCard(
+                  title: copy.livePreview,
+                  child: _CoverPreview(
+                    name: _name.text,
+                    imageUrl: _imageUrl.text,
+                    coverUrl: _coverUrl.text,
+                    pendingAvatar: _pendingAvatarBytes,
+                    pendingCover: _pendingCoverBytes,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _SectionCard(
+                  title: copy.photosSection,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      PubgetSecondaryButton(
+                        key: const Key('group-create-pick-avatar'),
+                        onPressed: _uploadingImage
+                            ? null
+                            : () => _pickImage(isCover: false),
+                        semanticLabel: copy.pickImage,
+                        loading: _uploadingImage && !_lastUploadWasCover,
+                        leadingIcon: Icons.account_circle_outlined,
+                        child: Text(
+                          isRemoteHttpUrl(_imageUrl.text)
+                              ? copy.imageReady
+                              : copy.avatar,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      PubgetSecondaryButton(
+                        key: const Key('group-create-pick-cover'),
+                        onPressed: _uploadingImage
+                            ? null
+                            : () => _pickImage(isCover: true),
+                        semanticLabel: copy.cover,
+                        loading: _uploadingImage && _lastUploadWasCover,
+                        leadingIcon: Icons.photo_outlined,
+                        child: Text(
+                          isRemoteHttpUrl(_coverUrl.text)
+                              ? copy.imageReady
+                              : copy.cover,
+                        ),
+                      ),
+                      if (_uploadError != null) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          _uploadError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            height: 1.35,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: PubgetPrimaryButton(
+                                onPressed: _uploadingImage ? null : _retryUpload,
+                                semanticLabel: copy.retryImageUpload,
+                                child: Text(copy.retryImageUpload),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: PubgetSecondaryButton(
+                                onPressed: _uploadingImage
+                                    ? null
+                                    : () => _pickImage(
+                                          isCover: _lastUploadWasCover,
+                                        ),
+                                semanticLabel: copy.replaceImage,
+                                child: Text(copy.replaceImage),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        copy.pasteImageUrl,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      PubgetTextField(
+                        key: const Key('group-create-image-url'),
+                        controller: _imageUrl,
+                        label: copy.avatar,
+                        onChanged: (_) => setState(_persist),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      PubgetTextField(
+                        key: const Key('group-create-cover-url'),
+                        controller: _coverUrl,
+                        label: copy.cover,
+                        onChanged: (_) => setState(_persist),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _SectionCard(
+                  title: copy.basicsSection,
+                  child: Column(
+                    children: <Widget>[
+                      PubgetTextField(
+                        key: const Key('group-create-name'),
+                        controller: _name,
+                        label: copy.name,
+                        onChanged: (_) => setState(_persist),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      PubgetTextArea(
+                        key: const Key('group-create-description'),
+                        controller: _description,
+                        label: copy.description,
                         onChanged: (_) => _persist(),
                       ),
-                    ),
-                    PubgetIconButton(
-                      icon: Icons.delete_outline,
-                      tooltip: copy.removeRule,
-                      onPressed: _rules.length == 1
-                          ? null
-                          : () {
-                              setState(() {
-                                _rules.removeAt(index).dispose();
-                              });
-                              _persist();
-                            },
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            PubgetTextButton(
-              key: const Key('group-create-add-rule'),
-              onPressed: () {
-                setState(() => _rules.add(TextEditingController()));
-                _persist();
-              },
-              semanticLabel: copy.addRule,
-              child: Text(copy.addRule),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SwitchListTile(
-              key: const Key('group-create-join-policy'),
-              value: _policy == JoinPolicy.open,
-              onChanged: (value) {
-                setState(
-                  () => _policy = value ? JoinPolicy.open : JoinPolicy.approval,
-                );
-                _persist();
-              },
-              title: Text(_policy == JoinPolicy.open ? copy.joinOpen : copy.joinClosed),
-            ),
-            if (type == GroupType.animeRoleplay) ...<Widget>[
-              const SizedBox(height: AppSpacing.md),
-              PubgetSecondaryButton(
-                key: const Key('group-create-pick-anime'),
-                onPressed: _pickAnime,
-                semanticLabel: copy.selectAnime,
-                child: Text(_animeTitle ?? copy.selectAnime),
-              ),
+                const SizedBox(height: AppSpacing.md),
+                _SectionCard(
+                  title: copy.rulesSection,
+                  child: Column(
+                    children: <Widget>[
+                      ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _rules.length,
+                        onReorder: (oldIndex, newIndex) {
+                          setState(() {
+                            final index =
+                                newIndex > oldIndex ? newIndex - 1 : newIndex;
+                            final item = _rules.removeAt(oldIndex);
+                            _rules.insert(index, item);
+                          });
+                          _persist();
+                        },
+                        itemBuilder: (context, index) => Padding(
+                          key: ValueKey(_rules[index]),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: PubgetTextField(
+                                  key: Key('group-create-rule-$index'),
+                                  controller: _rules[index],
+                                  label: '${copy.rules} ${index + 1}',
+                                  onChanged: (_) => _persist(),
+                                ),
+                              ),
+                              PubgetIconButton(
+                                icon: Icons.delete_outline,
+                                tooltip: copy.removeRule,
+                                onPressed: _rules.length == 1
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _rules.removeAt(index).dispose();
+                                        });
+                                        _persist();
+                                      },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      PubgetTextButton(
+                        key: const Key('group-create-add-rule'),
+                        onPressed: () {
+                          setState(() => _rules.add(TextEditingController()));
+                          _persist();
+                        },
+                        semanticLabel: copy.addRule,
+                        child: Text(copy.addRule),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _SectionCard(
+                  title: copy.privacySection,
+                  child: SwitchListTile(
+                    key: const Key('group-create-join-policy'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _policy == JoinPolicy.open,
+                    activeColor: AppColors.gold,
+                    onChanged: (value) {
+                      setState(
+                        () => _policy =
+                            value ? JoinPolicy.open : JoinPolicy.approval,
+                      );
+                      _persist();
+                    },
+                    title: Text(
+                      _policy == JoinPolicy.open
+                          ? copy.joinOpen
+                          : copy.joinClosed,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                if (type == GroupType.animeRoleplay) ...<Widget>[
+                  const SizedBox(height: AppSpacing.md),
+                  PubgetSecondaryButton(
+                    key: const Key('group-create-pick-anime'),
+                    onPressed: _pickAnime,
+                    semanticLabel: copy.selectAnime,
+                    child: Text(_animeTitle ?? copy.selectAnime),
+                  ),
+                ],
+                if (type != GroupType.public &&
+                    (type == GroupType.openRoleplay ||
+                        (_animeId != null && _animeId!.isNotEmpty))) ...<Widget>[
+                  const SizedBox(height: AppSpacing.sm),
+                  PubgetSecondaryButton(
+                    key: const Key('group-create-pick-character'),
+                    onPressed: _pickCharacter,
+                    semanticLabel: copy.selectCharacter,
+                    child: Text(_character?.name ?? copy.selectCharacter),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xl),
+                PubgetPrimaryButton(
+                  key: const Key('group-create-confirm'),
+                  onPressed: _canConfirm && !provider.creating
+                      ? () => _create(provider)
+                      : null,
+                  semanticLabel: copy.confirm,
+                  loading: _submitting || provider.creating,
+                  child: Text(_submitting ? copy.publishing : copy.confirm),
+                ),
+              ],
             ],
-            if (type != GroupType.public &&
-                (type == GroupType.openRoleplay ||
-                    (_animeId != null && _animeId!.isNotEmpty))) ...<Widget>[
-              const SizedBox(height: AppSpacing.sm),
-              PubgetSecondaryButton(
-                key: const Key('group-create-pick-character'),
-                onPressed: _pickCharacter,
-                semanticLabel: copy.selectCharacter,
-                child: Text(_character?.name ?? copy.selectCharacter),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.xl),
-            PubgetPrimaryButton(
-              key: const Key('group-create-confirm'),
-              onPressed: _canConfirm && !provider.creating ? () => _create(provider) : null,
-              semanticLabel: copy.confirm,
-              loading: _submitting || provider.creating,
-              child: Text(_submitting ? copy.publishing : copy.confirm),
-            ),
-          ],
-        ],
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _pickImage(TextEditingController target) async {
-    final copy = GroupCopy.of(context);
+  Future<void> _pickImage({required bool isCover}) async {
     try {
-      final isCover = identical(target, _coverUrl);
       final cropped = await pickAndCropImage(
         context,
         aspect: isCover ? ImageCropAspect.cover : ImageCropAspect.avatar,
       );
       if (cropped == null || !mounted) return;
-      final uid = context.read<AuthProvider>().currentUser?.id;
-      if (uid == null || uid.isEmpty) {
-        PubgetSnackbars.showError(context, copy.signInToUpload);
-        return;
+      if (isCover) {
+        _pendingCoverBytes = cropped.bytes;
+        _pendingCoverType = cropped.contentType;
+      } else {
+        _pendingAvatarBytes = cropped.bytes;
+        _pendingAvatarType = cropped.contentType;
       }
-      GroupImageUploader uploader;
-      try {
-        uploader = context.read<GroupImageUploader>();
-      } on ProviderNotFoundException {
-        PubgetSnackbars.showError(context, copy.imageUploadFailed);
-        return;
+      _lastUploadWasCover = isCover;
+      setState(() {
+        _uploadError = null;
+      });
+      await _uploadPending(isCover: isCover);
+    } on Object catch (error, stack) {
+      debugPrint('Group image pick/crop failed: $error\n$stack');
+      if (mounted) {
+        setState(() {
+          _uploadError = error.toString();
+          _lastUploadWasCover = isCover;
+        });
       }
-      setState(() => _uploadingImage = true);
+    }
+  }
+
+  Future<void> _retryUpload() => _uploadPending(isCover: _lastUploadWasCover);
+
+  Future<void> _uploadPending({required bool isCover}) async {
+    final copy = GroupCopy.of(context);
+    final bytes = isCover ? _pendingCoverBytes : _pendingAvatarBytes;
+    final contentType = isCover ? _pendingCoverType : _pendingAvatarType;
+    final target = isCover ? _coverUrl : _imageUrl;
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _uploadError = copy.imageEmpty;
+        _lastUploadWasCover = isCover;
+      });
+      return;
+    }
+    final uid = context.read<AuthProvider>().currentUser?.id;
+    if (uid == null || uid.isEmpty) {
+      setState(() => _uploadError = copy.signInToUpload);
+      return;
+    }
+    GroupImageUploader uploader;
+    try {
+      uploader = context.read<GroupImageUploader>();
+    } on ProviderNotFoundException {
+      setState(() => _uploadError = copy.imageUploadFailed);
+      return;
+    }
+    setState(() {
+      _uploadingImage = true;
+      _uploadError = null;
+      _lastUploadWasCover = isCover;
+    });
+    try {
       final url = await uploader.uploadGroupImage(
         uid: uid,
-        bytes: cropped.bytes,
-        contentType: cropped.contentType,
+        bytes: bytes,
+        contentType: contentType,
         kind: isCover ? 'cover' : 'avatar',
       );
       if (!mounted) return;
       if (!isRemoteHttpUrl(url)) {
-        PubgetSnackbars.showError(context, copy.imageUploadFailed);
+        setState(() {
+          _uploadError = copy.uploadErrorMessage(
+            const GroupImageUploadException(
+              'Upload did not return a download URL.',
+              code: 'missing-url',
+            ),
+          );
+          _uploadingImage = false;
+        });
         return;
       }
-      setState(() => target.text = url);
+      setState(() {
+        target.text = url;
+        _uploadingImage = false;
+        _uploadError = null;
+      });
       _persist();
-    } catch (_) {
-      if (mounted) {
-        PubgetSnackbars.showError(context, GroupCopy.of(context).imageUploadFailed);
-      }
-    } finally {
-      if (mounted) setState(() => _uploadingImage = false);
+    } on GroupImageUploadException catch (error, stack) {
+      debugPrint('Group image upload failed: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _uploadingImage = false;
+        _uploadError = copy.uploadErrorMessage(error);
+      });
+    } on Object catch (error, stack) {
+      debugPrint('Group image upload failed: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _uploadingImage = false;
+        _uploadError = copy.uploadErrorMessage(error);
+      });
     }
   }
 
@@ -400,7 +591,9 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
 
   Future<void> _create(GroupProvider provider) async {
     final type = _type;
-    if (type == null || !_canConfirm || _submitting || provider.creating) return;
+    if (type == null || !_canConfirm || _submitting || provider.creating) {
+      return;
+    }
     setState(() => _submitting = true);
     final result = await provider.create(
       GroupDraft(
@@ -410,10 +603,14 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         animeId: type == GroupType.animeRoleplay ? _animeId : null,
         joinPolicy: _policy,
         isSearchable: true,
-        rules: _rules.map((item) => item.text.trim()).where((item) => item.isNotEmpty).join('\n'),
+        rules: _rules
+            .map((item) => item.text.trim())
+            .where((item) => item.isNotEmpty)
+            .join('\n'),
         maxMembers: 100,
         imageUrl: isRemoteHttpUrl(_imageUrl.text) ? _imageUrl.text.trim() : '',
-        coverUrl: isRemoteHttpUrl(_coverUrl.text) ? _coverUrl.text.trim() : null,
+        coverUrl:
+            isRemoteHttpUrl(_coverUrl.text) ? _coverUrl.text.trim() : null,
         character: type == GroupType.public ? null : _character,
         idempotencyKey: _idempotencyKey,
       ),
@@ -440,29 +637,78 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   }
 }
 
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            AppColors.royalPurple.withValues(alpha: 0.35),
+            const Color(0xFF160B24),
+          ],
+        ),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.28)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CoverPreview extends StatelessWidget {
   const _CoverPreview({
     required this.name,
     required this.imageUrl,
     required this.coverUrl,
+    this.pendingAvatar,
+    this.pendingCover,
   });
 
   final String name;
   final String imageUrl;
   final String coverUrl;
+  final Uint8List? pendingAvatar;
+  final Uint8List? pendingCover;
 
   @override
   Widget build(BuildContext context) {
     final copy = GroupCopy.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: SizedBox(
-        height: 168,
+      // Matches ImageCropAspect.cover (16:9) so crops aren't stretched.
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            ColoredBox(color: AppColors.royalDusk),
-            if (coverUrl.trim().isNotEmpty)
+            const ColoredBox(color: AppColors.royalDusk),
+            if (pendingCover != null)
+              Image.memory(pendingCover!, fit: BoxFit.cover)
+            else if (coverUrl.trim().isNotEmpty)
               AppImageLoader(imageUrl: coverUrl.trim(), fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -478,18 +724,25 @@ class _CoverPreview extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
-                  PubgetAvatar(
-                    imageUrl: imageUrl.trim().isEmpty ? null : imageUrl.trim(),
-                    name: name.isEmpty ? copy.avatar : name,
-                    size: PubgetAvatarSize.large,
-                  ),
+                  if (pendingAvatar != null)
+                    CircleAvatar(
+                      radius: 36,
+                      backgroundImage: MemoryImage(pendingAvatar!),
+                    )
+                  else
+                    PubgetAvatar(
+                      imageUrl:
+                          imageUrl.trim().isEmpty ? null : imageUrl.trim(),
+                      name: name.isEmpty ? copy.avatar : name,
+                      size: PubgetAvatarSize.large,
+                    ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
                       name.isEmpty ? copy.coverPreview : name,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                      ),
+                            color: Colors.white,
+                          ),
                     ),
                   ),
                 ],
