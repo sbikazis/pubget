@@ -205,6 +205,29 @@ test("catalog sticker send stores stickerKey without media", async () => {
   assert.equal(stored.stickerKey, "reactions/heart");
   assert.equal(stored.mediaId, null);
   assert.equal(stored.type, "sticker");
+  assert.equal(stored.stickerCreatorId, "pubget");
+  assert.equal(stored.stickerCreatorName, "Pubget");
+});
+
+test("custom sticker preserves original creator across resend", async () => {
+  const db = createFakeDb(seedChat());
+  const result = await chatHandlers(db).sendMessage({
+    auth: { uid: "alice" },
+    data: {
+      groupId: "g1",
+      messageId: "m-custom-sticker",
+      type: "sticker",
+      mediaId: "ready-gif",
+      stickerCreatorId: "original-creator",
+      stickerCreatorName: "Original Creator",
+    },
+  });
+  assert.equal(result.ok, true);
+  const stored = db.store.get("groups/g1/messages/m-custom-sticker");
+  assert.equal(stored.type, "sticker");
+  assert.equal(stored.stickerKey, null);
+  assert.equal(stored.stickerCreatorId, "original-creator");
+  assert.equal(stored.stickerCreatorName, "Original Creator");
 });
 
 test("audio and gif sends require matching ready media types", async () => {

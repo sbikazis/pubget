@@ -21,6 +21,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.onSwipeReply,
     this.onAvatarTap,
     required this.onMediaTap,
+    this.onStickerTap,
     this.onEventTap,
     this.onGameTap,
     this.onAudioTap,
@@ -42,6 +43,7 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback? onSwipeReply;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onMediaTap;
+  final VoidCallback? onStickerTap;
   final VoidCallback? onEventTap;
   final VoidCallback? onGameTap;
   final VoidCallback? onAudioTap;
@@ -180,6 +182,7 @@ class ChatMessageBubble extends StatelessWidget {
                                           showHeader: showHeader,
                                           isStarred: isStarred,
                                           onMediaTap: onMediaTap,
+                                          onStickerTap: onStickerTap,
                                         )
                                       : _BubbleChrome(
                                           isMine: isMine,
@@ -402,6 +405,7 @@ class _StickerColumn extends StatelessWidget {
     required this.showHeader,
     required this.isStarred,
     required this.onMediaTap,
+    this.onStickerTap,
   });
 
   final ChatMessage message;
@@ -411,6 +415,7 @@ class _StickerColumn extends StatelessWidget {
   final bool showHeader;
   final bool isStarred;
   final VoidCallback? onMediaTap;
+  final VoidCallback? onStickerTap;
 
   @override
   Widget build(BuildContext context) {
@@ -432,6 +437,7 @@ class _StickerColumn extends StatelessWidget {
             message: message,
             textColor: textColor,
             onMediaTap: onMediaTap,
+            onStickerTap: onStickerTap,
             onAudioTap: null,
           ),
           Padding(
@@ -761,21 +767,28 @@ class _MessageContent extends StatelessWidget {
     required this.message,
     required this.textColor,
     required this.onMediaTap,
+    this.onStickerTap,
     this.onAudioTap,
   });
 
   final ChatMessage message;
   final Color textColor;
   final VoidCallback? onMediaTap;
+  final VoidCallback? onStickerTap;
   final VoidCallback? onAudioTap;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
     if (message.isCatalogSticker) {
-      return Padding(
-        padding: const EdgeInsets.all(2),
-        child: StickerMark(stickerKey: message.stickerKey ?? '', size: 112),
+      return InkWell(
+        key: const Key('sticker-tap-target'),
+        onTap: onStickerTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: StickerMark(stickerKey: message.stickerKey ?? '', size: 112),
+        ),
       );
     }
     if (message.type == ChatMessageType.audio) {
@@ -786,10 +799,24 @@ class _MessageContent extends StatelessWidget {
         label: copy.voiceMessage,
       );
     }
+    if (message.type == ChatMessageType.sticker) {
+      return InkWell(
+        key: const Key('sticker-tap-target'),
+        onTap: onStickerTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 140,
+          height: 140,
+          child: AppImageLoader(
+            imageUrl: message.thumbnailUrl ?? message.mediaUrl ?? '',
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    }
     if (message.type == ChatMessageType.image ||
         message.type == ChatMessageType.video ||
-        message.type == ChatMessageType.gif ||
-        message.type == ChatMessageType.sticker) {
+        message.type == ChatMessageType.gif) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

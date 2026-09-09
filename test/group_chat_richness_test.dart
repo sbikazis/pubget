@@ -261,6 +261,8 @@ final class _FakeChatRepository implements ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) async {
     sent.add(<String, Object?>{
       'type': type,

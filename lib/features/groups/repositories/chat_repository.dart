@@ -25,6 +25,8 @@ abstract interface class ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   });
 
   Future<Result<ChatMessage>> forwardMessage({

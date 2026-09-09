@@ -119,6 +119,22 @@ function isCatalogSticker(data) {
     Object.hasOwn(STICKER_CATALOG, data.stickerKey);
 }
 
+function resolveStickerCreator(data, uid, identity) {
+  if (!data || data.type !== "sticker") {
+    return { stickerCreatorId: null, stickerCreatorName: null };
+  }
+  if (isCatalogSticker(data)) {
+    return { stickerCreatorId: "pubget", stickerCreatorName: "Pubget" };
+  }
+  const creatorId = validString(data.stickerCreatorId, 128)
+    ? data.stickerCreatorId.trim()
+    : uid;
+  const creatorName = validString(data.stickerCreatorName, 80)
+    ? data.stickerCreatorName.trim()
+    : identity.senderName;
+  return { stickerCreatorId: creatorId, stickerCreatorName: creatorName };
+}
+
 function validateMessage(data, HttpsError) {
   if (!MESSAGE_TYPES.has(data.type) || !USER_MESSAGE_TYPES.has(data.type)) {
     throw new HttpsError("invalid-argument", "This message type is server-only or invalid.");
@@ -225,6 +241,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       }
       const identity = displayIdentity(context.member, uid);
       const recipientCount = Math.max(0, (context.group.membersCount || 1) - 1);
+      const stickerCreator = resolveStickerCreator(data, uid, identity);
       const message = {
         senderId: uid,
         senderName: identity.senderName,
@@ -238,6 +255,8 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
           : null,
         thumbnailUrl: media ? media.thumbnailPath || null : null,
         stickerKey: catalogSticker ? data.stickerKey : null,
+        stickerCreatorId: stickerCreator.stickerCreatorId,
+        stickerCreatorName: stickerCreator.stickerCreatorName,
         replyToMessageId: data.replyToMessageId || null,
         replyPreview,
         forwardedFrom: null,
@@ -697,6 +716,8 @@ function buildForwardedMessage({
       : source.stickerKey ? null : source.mediaUrl || null,
     thumbnailUrl: destMedia ? destMedia.thumbnailPath || null : null,
     stickerKey: source.stickerKey || null,
+    stickerCreatorId: source.stickerCreatorId || null,
+    stickerCreatorName: source.stickerCreatorName || null,
     replyToMessageId: null,
     replyPreview: null,
     forwardedFrom,
@@ -812,6 +833,7 @@ module.exports = {
   adminChatCardDocument,
   createGroupChat,
   expectedMediaType,
+  resolveStickerCreator,
   validString,
   validateMessage,
   writeAdminChatCard,

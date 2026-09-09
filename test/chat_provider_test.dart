@@ -275,6 +275,8 @@ final class _FakeChatRepository implements ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) => sendCompleter.future;
 
   @override
