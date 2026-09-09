@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/sticker_store.dart';
+import '../../data/user_sticker_store.dart';
 import '../../services/voice_capture.dart';
 import 'wa_attachment_sheet.dart';
 import 'wa_colors.dart';
@@ -29,6 +30,7 @@ class WhatsAppChatComposer extends StatefulWidget {
     required this.onSendVoice,
     required this.voiceCapture,
     this.stickerStore,
+    this.userStickerStore,
     this.hintText,
     super.key,
   });
@@ -47,6 +49,7 @@ class WhatsAppChatComposer extends StatefulWidget {
   final Future<void> Function(VoiceClip clip) onSendVoice;
   final VoiceCapture voiceCapture;
   final StickerStore? stickerStore;
+  final UserStickerStore? userStickerStore;
   final String? hintText;
 
   @override
@@ -340,18 +343,16 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           color: Colors.transparent,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-            child: SizedBox(
-              height: 62,
-              child: Directionality(
-                // Spec: Arabic/RTL layout — mic on the visual start side.
-                textDirection: TextDirection.rtl,
-                child: Row(
-                  children: <Widget>[
-                    _buildMicOrSend(dark),
-                    const SizedBox(width: 8),
-                    Expanded(child: _buildPillOrRecording(dark)),
-                  ],
-                ),
+            child: Directionality(
+              // Spec: Arabic/RTL layout — mic on the visual start side.
+              textDirection: TextDirection.rtl,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  _buildMicOrSend(dark),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildPillOrRecording(dark)),
+                ],
               ),
             ),
           ),
@@ -361,7 +362,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           curve: Curves.fastOutSlowIn,
           child: _panelOpen
               ? WaEmojiPanel(
-                  stickerStore: widget.stickerStore,
+                  userStickerStore: widget.userStickerStore,
                   onInsertEmoji: (emoji) {
                     final value = widget.controller.text;
                     final selection = widget.controller.selection;
@@ -377,23 +378,19 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                       ),
                     );
                   },
-                  onSendSticker: (key) async {
-                    await widget.onSendSticker(key);
-                    if (mounted) setState(() => _panelOpen = false);
-                  },
-                  onRequestGif: () async {
-                    final picker = ImagePicker();
-                    final file = await picker.pickImage(
-                      source: ImageSource.gallery,
-                    );
-                    if (file == null || !mounted) return;
-                    final bytes = await file.readAsBytes();
-                    await widget.onSendMedia(
-                      bytes: bytes,
-                      fileName: file.name,
-                      contentType: 'image/gif',
-                    );
-                  },
+                  onSendCustomSticker:
+                      ({
+                        required bytes,
+                        required fileName,
+                        required contentType,
+                      }) async {
+                        await widget.onSendMedia(
+                          bytes: bytes,
+                          fileName: fileName,
+                          contentType: contentType,
+                        );
+                        if (mounted) setState(() => _panelOpen = false);
+                      },
                   onClose: _closePanelToKeyboard,
                   tabPrefKey: _tabPrefKey,
                 )
@@ -494,12 +491,13 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   Widget _idlePill(bool dark) {
     final hint = widget.hintText ?? 'مراسلة';
     return Container(
-      height: 46,
+      constraints: const BoxConstraints(minHeight: 46),
       decoration: BoxDecoration(
         color: WaColors.pill(context),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: <Widget>[
           // Trailing in RTL visual = emoji (right in the Arabic screenshot).
           IconButton(
@@ -522,26 +520,52 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
             ),
           ),
           Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: widget.focusNode,
-              minLines: 1,
-              maxLines: 4,
-              style: TextStyle(fontSize: 16, color: WaColors.fieldText(context)),
-              cursorColor: WaColors.cursorGreen,
-              cursorWidth: 2,
-              onTap: () {
-                if (_panelOpen) setState(() => _panelOpen = false);
-              },
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                hintText: hint,
-                hintStyle: const TextStyle(
-                  fontSize: 16,
-                  color: WaColors.iconMuted,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 120),
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  inputDecorationTheme: const InputDecorationTheme(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                child: TextField(
+                  controller: widget.controller,
+                  focusNode: widget.focusNode,
+                  minLines: 1,
+                  maxLines: 5,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: WaColors.fieldText(context),
+                  ),
+                  cursorColor: WaColors.cursorGreen,
+                  cursorWidth: 2,
+                  onTap: () {
+                    if (_panelOpen) setState(() => _panelOpen = false);
+                  },
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    hintText: hint,
+                    hintStyle: const TextStyle(
+                      fontSize: 16,
+                      color: WaColors.iconMuted,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
             ),
           ),

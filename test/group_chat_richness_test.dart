@@ -182,10 +182,12 @@ void main() {
 
     await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('sticker-reactions/heart')));
+    expect(find.byKey(const Key('stickers-empty-message')), findsOneWidget);
+    expect(find.byKey(const Key('composer-create-sticker')), findsOneWidget);
+    expect(find.text('GIF'), findsNothing);
+    // Close panel so message actions remain reachable.
+    await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
-    expect(chatRepo.sent.last['type'], ChatMessageType.sticker);
-    expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
 
     await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
     await tester.pump(const Duration(milliseconds: 600));

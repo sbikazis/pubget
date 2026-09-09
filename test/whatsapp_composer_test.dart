@@ -50,7 +50,9 @@ void main() {
     expect(find.byIcon(Icons.send_rounded), findsOneWidget);
   });
 
-  testWidgets('emoji button opens sticker panel', (tester) async {
+  testWidgets('emoji button opens empty stickers panel without GIF tab', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final controller = TextEditingController();
     final focus = FocusNode();
@@ -80,7 +82,52 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('sticker-reactions/heart')), findsOneWidget);
+    expect(find.byKey(const Key('stickers-empty-message')), findsOneWidget);
+    expect(find.byKey(const Key('composer-create-sticker')), findsOneWidget);
+    expect(find.text('GIF'), findsNothing);
+    expect(find.byKey(const Key('composer-gif')), findsNothing);
     expect(find.byIcon(Icons.keyboard_outlined), findsOneWidget);
+  });
+
+  testWidgets('composer TextField supports multiline auto-grow props', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final controller = TextEditingController();
+    final focus = FocusNode();
+    addTearDown(controller.dispose);
+    addTearDown(focus.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WhatsAppChatComposer(
+            controller: controller,
+            focusNode: focus,
+            groupId: 'g1',
+            voiceCapture: MemoryVoiceCapture(),
+            onSendText: () {},
+            onSendMedia:
+                ({
+                  required bytes,
+                  required fileName,
+                  required contentType,
+                }) async {},
+            onSendSticker: (_) async {},
+            onSendVoice: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.minLines, 1);
+    expect(field.maxLines, 5);
+    expect(field.keyboardType, TextInputType.multiline);
+    expect(field.textInputAction, TextInputAction.newline);
+    expect(field.decoration?.border, InputBorder.none);
+    expect(field.decoration?.focusedBorder, InputBorder.none);
+    expect(field.decoration?.enabledBorder, InputBorder.none);
   });
 }
