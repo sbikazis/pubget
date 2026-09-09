@@ -25,6 +25,7 @@ import '../services/chat_audio_player.dart';
 import '../services/default_voice_capture.dart';
 import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
+import '../widgets/chat_message_actions_overlay.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_special_cards.dart';
 import '../widgets/event_center_sheet.dart';
@@ -54,6 +55,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
+  final _stars = ChatStarStore();
   bool _initialized = false;
   bool _wasNearBottom = true;
 
@@ -163,7 +165,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     currentUserId:
                         context.read<AuthProvider>().currentUser?.id ?? '',
                     controller: _scrollController,
+                    stars: _stars,
                     onAction: _showActions,
+                    onSwipeReply: (message) {
+                      context.read<ChatProvider>().setReplyTarget(message);
+                    },
                     onAvatarTap: (message) {
                       final uid = message.senderId.trim();
                       if (uid.isEmpty || uid == 'system') return;
@@ -352,98 +358,116 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Future<void> _showActions(ChatMessage message) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        final copy = AppStrings.of(context);
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: <Widget>[
-              if (message.text?.isNotEmpty == true)
-                ListTile(
-                  key: const Key('chat-action-copy'),
-                  leading: const Icon(Icons.copy_outlined),
-                  title: Text(copy.copy),
-                  onTap: () => Navigator.pop(context, 'copy'),
-                ),
-              if (message.senderId ==
-                      context.read<AuthProvider>().currentUser?.id &&
-                  message.type == ChatMessageType.text &&
-                  !message.isOptimistic)
-                ListTile(
-                  key: const Key('chat-action-edit'),
-                  leading: const Icon(Icons.edit_outlined),
-                  title: const Text('Edit'),
-                  onTap: () => Navigator.pop(context, 'edit'),
-                ),
-              ListTile(
-                key: const Key('chat-action-reply'),
-                leading: const Icon(Icons.reply),
-                title: Text(copy.reply),
-                onTap: () => Navigator.pop(context, 'reply'),
-              ),
-              ListTile(
-                key: const Key('chat-action-react'),
-                leading: const Icon(Icons.favorite_outline),
-                title: Text(copy.react),
-                onTap: () => Navigator.pop(context, 'react'),
-              ),
-              ListTile(
-                key: const Key('chat-action-pin'),
-                leading: Icon(
-                  message.pinnedAt == null
-                      ? Icons.push_pin_outlined
-                      : Icons.push_pin,
-                ),
-                title: Text(message.pinnedAt == null ? copy.pin : copy.unpin),
-                onTap: () => Navigator.pop(context, 'pin'),
-              ),
-              ListTile(
-                key: const Key('chat-action-delete'),
-                leading: const Icon(Icons.delete_outline),
-                title: Text(copy.delete),
-                onTap: () => Navigator.pop(context, 'delete'),
-              ),
-              ListTile(
-                key: const Key('chat-action-forward'),
-                leading: const Icon(Icons.forward_outlined),
-                title: Text(copy.forwardShare),
-                onTap: () => Navigator.pop(context, 'forward'),
-              ),
-              ListTile(
-                key: const Key('chat-action-report'),
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(copy.report),
-                onTap: () => Navigator.pop(context, 'report'),
-              ),
-            ],
-          ),
-        );
-      },
+  Future<void> _showActions(ChatMessage message, Rect bubbleRect) async {
+    final user = context.read<AuthProvider>().currentUser;
+    final isMine = user != null && message.senderId == user.id;
+    final canEdit = isMine &&
+        message.type == ChatMessageType.text &&
+        !message.isOptimistic &&
+        message.createdAt != null &&
+        DateTime.now().difference(message.createdAt!) <=
+            const Duration(minutes: 15);
+    final canCopy = message.text?.trim().isNotEmpty == true &&
+        !message.isMedia &&
+        message.type != ChatMessageType.sticker &&
+        message.type != ChatMessageType.audio;
+    await _stars.ensureLoaded();
+    if (!mounted) return;
+    final contrast = ChatContrastTheme.fromBackground(
+      context.read<GroupProvider>().group?.chatBackgroundUrl,
     );
-    if (!mounted || action == null) return;
+    final result = await showChatMessageActions(
+      context,
+      message: message,
+      isMine: isMine,
+      contrast: contrast,
+      bubbleRect: bubbleRect == Rect.zero
+          ? Rect.fromCenter(
+              center: Offset(
+                MediaQuery.sizeOf(context).width / 2,
+                MediaQuery.sizeOf(context).height / 2,
+              ),
+              width: 220,
+              height: 80,
+            )
+          : bubbleRect,
+      canEdit: canEdit,
+      canCopy: canCopy,
+      isStarred: _stars.isStarred(message.id),
+    );
+    if (!mounted || result == null) return;
+    if (result.action == ChatMessageAction.dismiss) return;
+
     final chat = context.read<ChatProvider>();
-    if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: message.text ?? ''));
-    } else if (action == 'edit') {
-      await _editMessage(message);
-    } else if (action == 'delete') {
-      await chat.deleteMessage(message.id);
-    } else if (action == 'pin') {
-      await chat.pinMessage(message.id, message.pinnedAt == null);
-    } else if (action == 'react') {
-      await chat.addReaction(message.id, '❤️');
-    } else if (action == 'reply') {
-      chat.setReplyTarget(message);
-    } else if (action == 'forward') {
-      await _forwardMessage(message);
-    } else if (action == 'report') {
-      await _reportMessage(message);
+    switch (result.action) {
+      case ChatMessageAction.reply:
+        chat.setReplyTarget(message);
+        return;
+      case ChatMessageAction.copy:
+        await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+        return;
+      case ChatMessageAction.forward:
+        await _forwardMessage(message);
+        return;
+      case ChatMessageAction.pin:
+        await chat.pinMessage(message.id, message.pinnedAt == null);
+        return;
+      case ChatMessageAction.star:
+        await _stars.toggle(message.id);
+        setState(() {});
+        return;
+      case ChatMessageAction.edit:
+        await _editMessage(message);
+        return;
+      case ChatMessageAction.info:
+        await _showMessageInfo(message);
+        return;
+      case ChatMessageAction.delete:
+        await chat.deleteMessage(message.id);
+        return;
+      case ChatMessageAction.react:
+        final emoji = result.reaction ?? '❤️';
+        await chat.addReaction(message.id, emoji);
+        return;
+      case ChatMessageAction.dismiss:
+        return;
     }
+  }
+
+  Future<void> _showMessageInfo(ChatMessage message) async {
+    final copy = AppStrings.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('chat-message-info'),
+        title: Text(copy.pick('Message info', 'معلومات الرسالة')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('${copy.pick('From', 'من')}: ${message.senderName}'),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.pick('Sent', 'أُرسلت')}: ${message.createdAt?.toLocal() ?? '-'}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.delivered}: ${message.deliveredCount}/${message.recipientCount}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.read}: ${message.readCount}/${message.recipientCount}',
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(copy.pick('Close', 'إغلاق')),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _editMessage(ChatMessage message) async {
@@ -517,51 +541,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
       ),
     );
   }
-
-  Future<void> _reportMessage(ChatMessage message) async {
-    final user = context.read<AuthProvider>().currentUser;
-    if (user != null && message.senderId == user.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.of(context).cannotReportOwn)),
-      );
-      return;
-    }
-    final reason = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(title: Text(AppStrings.of(context).reportMessage)),
-            for (final item in reportReasons)
-              ListTile(
-                key: Key('report-reason-$item'),
-                title: Text(item),
-                onTap: () => Navigator.pop(context, item),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (reason == null || !mounted) return;
-    final result = await context.read<ChatProvider>().reportMessage(
-      messageId: message.id,
-      reason: reason,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.isSuccess
-              ? AppStrings.of(context).reportSubmitted
-              : result.failureOrNull?.message ??
-                    AppStrings.of(context).reportFailed,
-        ),
-      ),
-    );
-  }
 }
 
 class _MessageList extends StatelessWidget {
@@ -570,7 +549,9 @@ class _MessageList extends StatelessWidget {
     required this.contrast,
     required this.currentUserId,
     required this.controller,
+    required this.stars,
     required this.onAction,
+    required this.onSwipeReply,
     required this.onAvatarTap,
     required this.onMediaTap,
     required this.onAudioTap,
@@ -582,7 +563,9 @@ class _MessageList extends StatelessWidget {
   final ChatContrastTheme contrast;
   final String currentUserId;
   final ScrollController controller;
-  final ValueChanged<ChatMessage> onAction;
+  final ChatStarStore stars;
+  final void Function(ChatMessage message, Rect rect) onAction;
+  final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onAvatarTap;
   final ValueChanged<ChatMessage> onMediaTap;
   final ValueChanged<ChatMessage> onAudioTap;
@@ -687,7 +670,9 @@ class _MessageList extends StatelessWidget {
               showAvatar: row.showAvatar,
               showHeader: row.showHeader,
               showTail: row.showTail,
-              onLongPress: () => onAction(message),
+              isStarred: stars.isStarred(message.id),
+              onLongPress: (rect) => onAction(message, rect),
+              onSwipeReply: () => onSwipeReply(message),
               onAvatarTap: () => onAvatarTap(message),
               onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
               onAudioTap: message.type == ChatMessageType.audio
