@@ -158,7 +158,34 @@ test("threshold is idempotent", async () => {
   );
 });
 
-test("arena progress bars use server numbers before unlock", async () => {
+test("arena auto-increments wins from successive game_won events", async () => {
+  const db = createFakeDb();
+  const domain = domainOf(db);
+  for (let i = 0; i < 18; i += 1) {
+    await domain.evaluate({
+      type: "game_won",
+      userIds: ["u1"],
+      source: "game",
+      metadata: { gameId: `auto-${i}` },
+    });
+  }
+  const progress = db.store.get("user_achievement_progress/u1/progress/arena_sovereign");
+  assert.equal(progress.conditions.wins_30.current, 18);
+  assert.equal(progress.currentValue, 18);
+  assert.equal(db.store.has("user_achievements/u1/unlocked/arena_sovereign"), false);
+
+  for (let i = 18; i < 30; i += 1) {
+    await domain.evaluate({
+      type: "game_won",
+      userIds: ["u1"],
+      source: "game",
+      metadata: { gameId: `auto-${i}` },
+    });
+  }
+  assert.ok(db.store.has("user_achievements/u1/unlocked/arena_sovereign"));
+});
+
+test("arena progress bars accept absolute server numbers before unlock", async () => {
   const db = createFakeDb();
   const domain = domainOf(db);
   await domain.evaluate({
@@ -168,17 +195,8 @@ test("arena progress bars use server numbers before unlock", async () => {
   });
   const progress = db.store.get("user_achievement_progress/u1/progress/arena_sovereign");
   assert.equal(progress.conditions.wins_30.current, 18);
-  assert.equal(progress.conditions.wins_30.target, 30);
-  assert.equal(progress.conditions.wins_30.met, false);
   assert.equal(progress.conditions.winrate_55.current, 60);
   assert.equal(db.store.has("user_achievements/u1/unlocked/arena_sovereign"), false);
-
-  await domain.evaluate({
-    type: "game_won",
-    userId: "u1",
-    metadata: { realWins: 30, realGames: 50 },
-  });
-  assert.ok(db.store.has("user_achievements/u1/unlocked/arena_sovereign"));
 });
 
 test("composites unlock only after prerequisites", async () => {

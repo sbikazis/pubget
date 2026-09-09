@@ -451,7 +451,7 @@ function createGamesDomain({
         type: "game_completed",
         userIds: participants.length ? participants : winnerIds,
         source: "game",
-        metadata: { gameId },
+        metadata: { gameId, winnerIds },
       });
     }
     await emitChatCard(

@@ -183,7 +183,7 @@ function assertReadyMedia(media, uid, type, HttpsError) {
   }
 }
 
-function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID }) {
+function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achievements }) {
   async function sendMessage(request) {
     const uid = requireAuth(request, HttpsError);
     const { groupId, messageId } = ids(request, HttpsError);
@@ -260,6 +260,14 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID }) {
       });
       response = message;
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "message_sent",
+        userId: uid,
+        source: "group_chat",
+        metadata: { groupId, messageId },
+      }).catch(() => {});
+    }
     return {
       ok: true,
       messageId,

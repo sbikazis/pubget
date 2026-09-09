@@ -49,6 +49,7 @@ function optionalUrl(value, max) {
 
 function parseCharacter(raw, HttpsError) {
   if (raw === undefined || raw === null || raw === "") return null;
+  if (!raw.character && raw.characterKey === undefined) return null;
   const source = raw.character && typeof raw.character === "object" ? raw.character : raw;
   const key = typeof raw.characterKey === "string" ? raw.characterKey : source.key;
   const name = source && source.name;
@@ -331,6 +332,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         });
       }
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "group_joined",
+        userId: uid,
+        source: "group",
+        metadata: { groupId },
+      });
+    }
     return { ok: true };
   }
 
@@ -509,6 +518,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         decidedAt: FieldValue.serverTimestamp(),
       });
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "group_joined",
+        userId: targetUid,
+        source: "group",
+        metadata: { groupId, acceptedBy: uid },
+      });
+    }
     return { ok: true };
   }
 

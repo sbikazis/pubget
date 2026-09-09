@@ -763,8 +763,25 @@ function createAchievementsDomain({
       case "game_won":
       case "game_completed": {
         const ids = event.userIds || (uid ? [uid] : []);
+        const explicitWins = meta.realWins != null || meta.realGames != null;
+        const winnerIds = new Set(
+          Array.isArray(meta.winnerIds) ? meta.winnerIds : (event.type === "game_won" ? ids : []),
+        );
         for (const id of ids) {
-          await push(evaluateArena(id, meta));
+          if (explicitWins) {
+            await push(evaluateArena(id, meta));
+          } else if (event.type === "game_won") {
+            const stats = await readStats(id);
+            const wins = (Number(stats.realWins) || 0) + 1;
+            const games = (Number(stats.realGames) || 0) + 1;
+            await push(evaluateArena(id, { ...meta, realWins: wins, realGames: games }));
+          } else if (!winnerIds.has(id)) {
+            // Losers / non-winners: count the completed game without a win.
+            const stats = await readStats(id);
+            const wins = Number(stats.realWins) || 0;
+            const games = (Number(stats.realGames) || 0) + 1;
+            await push(evaluateArena(id, { ...meta, realWins: wins, realGames: games }));
+          }
           await push(evaluateKeeper(id));
         }
         break;

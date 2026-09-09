@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
@@ -40,48 +42,92 @@ final class FirebaseAchievementRepository implements AchievementRepository {
 
   @override
   Stream<Result<List<AchievementItem>>> watch(String userId) {
-    return _firestore
+    final unlockedQuery = _firestore
         .collection('user_achievements')
         .doc(userId)
-        .collection('unlocked')
-        .snapshots()
-        .asyncMap((unlockedSnap) => _buildSnapshot(userId, unlockedSnap))
-        .handleError(
-          (Object error) =>
-              FailureResult<List<AchievementItem>>(_fail(error)),
-        );
-  }
+        .collection('unlocked');
+    final progressQuery = _firestore
+        .collection('user_achievement_progress')
+        .doc(userId)
+        .collection('progress');
 
-  Future<Result<List<AchievementItem>>> _buildSnapshot(
-    String userId,
-    QuerySnapshot<Map<String, dynamic>> unlockedSnap,
-  ) async {
-    try {
-      final unlocked = <String, Map<String, dynamic>>{
-        for (final doc in unlockedSnap.docs) doc.id: doc.data(),
-      };
-      if (unlocked.isEmpty) {
-        final legacy = await _firestore
-            .collection('user_achievements')
-            .doc(userId)
-            .collection('items')
-            .get();
-        for (final doc in legacy.docs) {
-          unlocked[doc.id] = doc.data();
-        }
+    late final StreamController<Result<List<AchievementItem>>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? unlockedSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? progressSub;
+    QuerySnapshot<Map<String, dynamic>>? unlockedSnap;
+    QuerySnapshot<Map<String, dynamic>>? progressSnap;
+    var unlockedReady = false;
+    var progressReady = false;
+    var emitting = false;
+
+    Future<void> emit() async {
+      if (!unlockedReady || !progressReady || emitting || controller.isClosed) {
+        return;
       }
-      final progressSnap = await _firestore
-          .collection('user_achievement_progress')
-          .doc(userId)
-          .collection('progress')
-          .get();
-      final progress = <String, Map<String, dynamic>>{
-        for (final doc in progressSnap.docs) doc.id: doc.data(),
-      };
-      return Success(_merge(unlocked, progress));
-    } on Object catch (error) {
-      return FailureResult(_fail(error));
+      emitting = true;
+      try {
+        final unlocked = <String, Map<String, dynamic>>{
+          for (final doc in unlockedSnap?.docs ?? const []) doc.id: doc.data(),
+        };
+        if (unlocked.isEmpty) {
+          final legacy = await _firestore
+              .collection('user_achievements')
+              .doc(userId)
+              .collection('items')
+              .get();
+          for (final doc in legacy.docs) {
+            unlocked[doc.id] = doc.data();
+          }
+        }
+        final progress = <String, Map<String, dynamic>>{
+          for (final doc in progressSnap?.docs ?? const []) doc.id: doc.data(),
+        };
+        if (!controller.isClosed) {
+          controller.add(Success(_merge(unlocked, progress)));
+        }
+      } on Object catch (error) {
+        if (!controller.isClosed) {
+          controller.add(FailureResult(_fail(error)));
+        }
+      } finally {
+        emitting = false;
+      }
     }
+
+    controller = StreamController<Result<List<AchievementItem>>>(
+      onListen: () {
+        unlockedSub = unlockedQuery.snapshots().listen(
+          (snap) {
+            unlockedSnap = snap;
+            unlockedReady = true;
+            unawaited(emit());
+          },
+          onError: (Object error) {
+            if (!controller.isClosed) {
+              controller.add(FailureResult(_fail(error)));
+            }
+          },
+        );
+        progressSub = progressQuery.snapshots().listen(
+          (snap) {
+            progressSnap = snap;
+            progressReady = true;
+            unawaited(emit());
+          },
+          onError: (Object error) {
+            if (!controller.isClosed) {
+              controller.add(FailureResult(_fail(error)));
+            }
+          },
+        );
+      },
+      onCancel: () async {
+        await unlockedSub?.cancel();
+        await progressSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   List<AchievementItem> _merge(

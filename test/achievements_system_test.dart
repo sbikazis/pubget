@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -17,17 +19,22 @@ import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'authentication_test_support.dart';
 
 final class _FakeAchievementRepository implements AchievementRepository {
-  _FakeAchievementRepository(this.items);
+  _FakeAchievementRepository(this.items, {this.watchController});
 
   List<AchievementItem> items;
+  final StreamController<Result<List<AchievementItem>>>? watchController;
 
   @override
   Future<Result<List<AchievementItem>>> list({String? userId}) async =>
       Success(items);
 
   @override
-  Stream<Result<List<AchievementItem>>> watch(String userId) async* {
-    yield Success(items);
+  Stream<Result<List<AchievementItem>>> watch(String userId) {
+    final controller = watchController;
+    if (controller != null) {
+      return controller.stream;
+    }
+    return Stream<Result<List<AchievementItem>>>.value(Success(items));
   }
 }
 
@@ -212,6 +219,89 @@ void main() {
     expect(find.byKey(const Key('locked-badge')), findsOneWidget);
     expect(kAchievementStripBadgeSize, 56);
     expect(find.byType(AchievementBadgeWidget), findsNWidgets(2));
+    // With OS/accessibility Reduce Motion mapped to disableAnimations,
+    // badges must remain mounted without driving ticker-based overlays.
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(const Key('mythic-badge')), findsOneWidget);
+  });
+
+  testWidgets('progress mode updates live when watch emits new arena values',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final watch = StreamController<Result<List<AchievementItem>>>.broadcast();
+    AchievementItem arena(int wins) => _item(
+          'arena_sovereign',
+          current: wins,
+          target: 30,
+          conditions: <AchievementConditionProgress>[
+            AchievementConditionProgress(
+              id: 'wins_30',
+              labelEn: '≥ 30 wins vs real players',
+              labelAr: '≥ 30 انتصارًا ضد لاعبين حقيقيين',
+              current: wins,
+              target: 30,
+              met: wins >= 30,
+            ),
+            const AchievementConditionProgress(
+              id: 'winrate_55',
+              labelEn: 'Win rate ≥ 55% vs real players',
+              labelAr: 'نسبة فوز ≥ 55% ضد لاعبين حقيقيين',
+              current: 100,
+              target: 55,
+              met: true,
+            ),
+          ],
+        );
+
+    final initial = AchievementCatalog.definitions
+        .map((d) => d.id == 'arena_sovereign' ? arena(18) : _item(d.id))
+        .toList(growable: false);
+
+    final auth = AuthProvider(
+      repository: FakeAuthRepository(
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      ),
+    );
+    final achievements = AchievementProvider(
+      repository: _FakeAchievementRepository(initial, watchController: watch),
+    );
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+            ChangeNotifierProvider<AchievementProvider>.value(
+              value: achievements,
+            ),
+          ],
+          child: const MaterialApp(
+            locale: Locale('en'),
+            home: AchievementsPage(
+              isOwner: true,
+              displayName: 'Zakaria',
+              userId: 'u1',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('achievements-progress-toggle')));
+    await tester.pump();
+    expect(find.text('18/30'), findsOneWidget);
+
+    final next = AchievementCatalog.definitions
+        .map((d) => d.id == 'arena_sovereign' ? arena(19) : _item(d.id))
+        .toList(growable: false);
+    watch.add(Success(next));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('19/30'), findsOneWidget);
+    expect(find.text('18/30'), findsNothing);
+    await watch.close();
   });
 
   test('celebration queue does not repeat a celebrated id', () async {

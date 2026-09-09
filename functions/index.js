@@ -86,13 +86,6 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   await publicRef.set(buildPublicProfile(data));
 });
 
-const groupChat = createGroupChat({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  bucket: getStorage().bucket(),
-  randomUUID,
-});
 const privateChat = createPrivateChat({
   db: getFirestore(),
   FieldValue,
@@ -115,6 +108,14 @@ const achievementsDomain = createAchievementsDomain({
   HttpsError,
   economy: economyDomain,
   notificationBuilder,
+});
+const groupChat = createGroupChat({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  bucket: getStorage().bucket(),
+  randomUUID,
+  achievements: achievementsDomain,
 });
 const socialGraph = createSocialGraph({
   db: getFirestore(),
