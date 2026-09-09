@@ -265,6 +265,8 @@ service firebase.storage {
       // to perform the desired action" on every real video upload.
       // Some clients also append codec parameters to contentType
       // (e.g. video/mp4; codecs=...), so accept video/mp4* prefixes.
+      // These rules must be live in production via Deploy Storage Rules CI;
+      // shipping only in git leaves Edits uploads unauthorized forever.
       allow create: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
           request.resource.contentType.matches('video/mp4.*') &&
