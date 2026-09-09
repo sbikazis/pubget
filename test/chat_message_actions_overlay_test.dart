@@ -40,7 +40,7 @@ ChatMessage _msg({
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('long-press overlay shows reaction pill and ordered actions', (
+  testWidgets('reaction overlay: emoji bar is above selection actions', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -67,7 +67,7 @@ void main() {
                       message: message,
                       isMine: false,
                       contrast: contrast,
-                      bubbleRect: const Rect.fromLTWH(40, 200, 180, 70),
+                      bubbleRect: const Rect.fromLTWH(40, 280, 180, 70),
                       canEdit: false,
                       canCopy: true,
                       isStarred: false,
@@ -85,17 +85,39 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
+    // Reaction bar present with WhatsApp emojis + plus.
+    expect(find.byKey(const Key('chat-reaction-bar')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-👍')), findsOneWidget);
     expect(find.byKey(const Key('chat-react-❤️')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-😂')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-😮')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-😥')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-🙏')), findsOneWidget);
+    expect(find.byKey(const Key('chat-react-✌️')), findsOneWidget);
     expect(find.byKey(const Key('chat-react-more')), findsOneWidget);
+
+    // Selection AppBar primary actions.
     expect(find.byKey(const Key('chat-action-reply')), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-copy')), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-forward')), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-pin')), findsOneWidget);
     expect(find.byKey(const Key('chat-action-star')), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-info')), findsOneWidget);
     expect(find.byKey(const Key('chat-action-delete')), findsOneWidget);
-    expect(find.text('الرد'), findsOneWidget);
-    expect(find.text('حذف'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-forward')), findsOneWidget);
+
+    // Secondary actions live in overflow — not covering the reaction bar.
+    expect(find.byKey(const Key('chat-action-copy')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-more')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-action-copy')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-pin')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-info')), findsOneWidget);
+
+    // Emoji bar still visible while overflow is open (higher z-index).
+    expect(find.byKey(const Key('chat-reaction-bar')), findsOneWidget);
+
+    // Reaction bar is painted after (above) the overflow in the Stack.
+    final bar = tester.getRect(find.byKey(const Key('chat-reaction-bar')));
+    final copy = tester.getRect(find.byKey(const Key('chat-action-copy')));
+    // Overflow is under the AppBar; reaction bar is near the bubble — no overlap.
+    expect(bar.overlaps(copy), isFalse);
 
     await tester.tap(find.byKey(const Key('chat-action-reply')));
     await tester.pumpAndSettle();
