@@ -1,16 +1,30 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/network/network_service.dart';
 import '../models/chat_models.dart';
 import '../repositories/chat_repository.dart';
+import '../services/chat_send_reliability.dart';
+import '../services/pending_chat_outbox.dart';
 
 final class ChatProvider extends ChangeNotifier {
-  ChatProvider({required ChatRepository repository}) : _repository = repository;
+  ChatProvider({
+    required ChatRepository repository,
+    PendingChatOutbox? outbox,
+    NetworkService? network,
+  }) : _repository = repository,
+       _outbox = outbox ?? PendingChatOutbox(),
+       _network = network {
+    _network?.addListener(_onNetworkChanged);
+  }
 
   final ChatRepository _repository;
+  final PendingChatOutbox _outbox;
+  final NetworkService? _network;
   final List<ChatMessage> _messages = <ChatMessage>[];
   final Map<String, int> _messageIndex = <String, int>{};
   final Map<String, double> _uploadProgress = <String, double>{};
@@ -18,6 +32,9 @@ final class ChatProvider extends ChangeNotifier {
       <String, _PendingMediaUpload>{};
   final Set<String> _deliveredMessageIds = <String>{};
   final Set<String> _readMessageIds = <String>{};
+  final Map<String, int> _autoRetryAttempt = <String, int>{};
+  final Map<String, Timer> _autoRetryTimers = <String, Timer>{};
+  final Set<String> _autoRetryInFlight = <String>{};
   StreamSubscription<Result<List<ChatMessage>>>? _subscription;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
@@ -57,6 +74,7 @@ final class ChatProvider extends ChangeNotifier {
   }) async {
     if (_groupId == groupId && _currentUserId == currentUserId) return;
     await _subscription?.cancel();
+    _cancelAllAutoRetries();
     _groupId = groupId;
     _currentUserId = currentUserId;
     _messages.clear();
@@ -79,6 +97,7 @@ final class ChatProvider extends ChangeNotifier {
             _safeNotify();
           },
         );
+    await _restoreOutbox(groupId);
   }
 
   Future<void> loadMore() async {
@@ -139,6 +158,7 @@ final class ChatProvider extends ChangeNotifier {
       replyPreview: _previewFor(_replyTarget),
     );
     _upsert(pending);
+    unawaited(_persistPending(pending));
     final result = await _repository.sendMessage(
       groupId: groupId,
       messageId: pending.id,
@@ -175,6 +195,7 @@ final class ChatProvider extends ChangeNotifier {
       replyPreview: _previewFor(_replyTarget),
     );
     _upsert(pending);
+    unawaited(_persistPending(pending));
     final result = await _repository.sendMessage(
       groupId: groupId,
       messageId: pending.id,
@@ -308,6 +329,7 @@ final class ChatProvider extends ChangeNotifier {
           replyPreview: _previewFor(_replyTarget),
         );
         _upsert(pending);
+        unawaited(_persistPending(pending));
         final result = await _repository.sendMessage(
           groupId: payload.groupId,
           messageId: mediaId,
@@ -326,10 +348,18 @@ final class ChatProvider extends ChangeNotifier {
       onFailure: (failure) {
         final index = _messages.indexWhere((item) => item.id == mediaId);
         if (index != -1) {
-          _messages[index] = _messages[index].copyWith(
-            sendState: ChatSendState.failed,
-            failureMessage: failure.message,
-          );
+          if (isTransientChatFailure(failure)) {
+            _messages[index] = _messages[index].copyWith(
+              sendState: ChatSendState.pending,
+              clearFailureMessage: true,
+            );
+            _scheduleAutoRetry(mediaId);
+          } else {
+            _messages[index] = _messages[index].copyWith(
+              sendState: ChatSendState.failed,
+              failureMessage: chatFailureCode(failure),
+            );
+          }
         }
         _failure = failure;
         _safeNotify();
@@ -339,14 +369,26 @@ final class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> retry(ChatMessage message) async {
-    if (message.sendState != ChatSendState.failed || message.isDeleted) return;
+    if (message.isDeleted) return;
+    if (message.sendState != ChatSendState.failed &&
+        message.sendState != ChatSendState.pending) {
+      return;
+    }
+    _autoRetryAttempt[message.id] = 0;
     if (_pendingUploads.containsKey(message.id) &&
         (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
-      _upsert(message.copyWith(sendState: ChatSendState.pending));
+      _upsert(message.copyWith(
+        sendState: ChatSendState.pending,
+        clearFailureMessage: true,
+      ));
       await _performMediaUpload(message.id);
       return;
     }
-    _upsert(message.copyWith(sendState: ChatSendState.pending));
+    _upsert(message.copyWith(
+      sendState: ChatSendState.pending,
+      clearFailureMessage: true,
+    ));
+    unawaited(_persistPending(message));
     final result = await _repository.sendMessage(
       groupId: _groupId ?? '',
       messageId: message.id,
@@ -402,10 +444,15 @@ final class ChatProvider extends ChangeNotifier {
     if (index == null || _messages[index].sendState != ChatSendState.failed) {
       return;
     }
+    _cancelAutoRetry(messageId);
     _messages.removeAt(index);
     _messageIndex.remove(messageId);
     _reindexFrom(index);
     _pendingUploads.remove(messageId);
+    final groupId = _groupId;
+    if (groupId != null) {
+      unawaited(_outbox.remove(groupId, messageId));
+    }
     notifyListeners();
   }
 
@@ -510,6 +557,7 @@ final class ChatProvider extends ChangeNotifier {
         unawaited(_markDelivered(incoming));
         _state = _messages.isEmpty ? LoadingState.empty : LoadingState.loaded;
         _failure = null;
+        _kickPendingRetries();
       },
       onFailure: (failure) {
         _failure = failure;
@@ -528,7 +576,24 @@ final class ChatProvider extends ChangeNotifier {
       final index = _messageIndex[message.id];
       if (index == null) {
         _insertOrdered(message);
-      } else if (_messages[index].sendState != ChatSendState.failed) {
+        continue;
+      }
+      final local = _messages[index];
+      // Server documents always reconcile by messageId (heal false failures).
+      if (!message.isOptimistic) {
+        if (local.sendState == ChatSendState.pending ||
+            local.sendState == ChatSendState.failed ||
+            local.isOptimistic) {
+          _cancelAutoRetry(message.id);
+          final groupId = _groupId;
+          if (groupId != null) {
+            unawaited(_outbox.remove(groupId, message.id));
+          }
+        }
+        _replaceOrdered(index, message);
+        continue;
+      }
+      if (local.sendState != ChatSendState.failed) {
         _replaceOrdered(index, message);
       }
     }
@@ -587,19 +652,154 @@ final class ChatProvider extends ChangeNotifier {
   void _finishSend(String id, Result<ChatMessage> result) {
     if (_disposed) return;
     result.fold(
-      onSuccess: (message) => _upsert(message),
+      onSuccess: (message) {
+        _cancelAutoRetry(id);
+        final groupId = _groupId;
+        if (groupId != null) {
+          unawaited(_outbox.remove(groupId, id));
+        }
+        _upsert(message);
+      },
       onFailure: (failure) {
         final index = _messageIndex[id];
-        if (index != null) {
-          _messages[index] = _messages[index].copyWith(
-            sendState: ChatSendState.failed,
-            failureMessage: failure.message,
-          );
+        if (index == null) return;
+        final current = _messages[index];
+        // Stream already confirmed this messageId — ignore transport false-negatives.
+        if (!current.isOptimistic && current.sendState == ChatSendState.sent) {
+          _cancelAutoRetry(id);
+          final groupId = _groupId;
+          if (groupId != null) {
+            unawaited(_outbox.remove(groupId, id));
+          }
+          return;
         }
+        if (isTransientChatFailure(failure)) {
+          _messages[index] = current.copyWith(
+            sendState: ChatSendState.pending,
+            clearFailureMessage: true,
+          );
+          notifyListeners();
+          unawaited(_persistPending(_messages[index]));
+          _scheduleAutoRetry(id);
+          return;
+        }
+        _cancelAutoRetry(id);
+        _messages[index] = current.copyWith(
+          sendState: ChatSendState.failed,
+          failureMessage: chatFailureCode(failure),
+        );
         _failure = failure;
         notifyListeners();
       },
     );
+  }
+
+  Future<void> _restoreOutbox(String groupId) async {
+    try {
+      final pending = await _outbox.load(groupId);
+      if (_disposed || _groupId != groupId) return;
+      for (final message in pending) {
+        if (_messageIndex.containsKey(message.id)) continue;
+        _upsert(message.copyWith(sendState: ChatSendState.pending));
+        _scheduleAutoRetry(message.id);
+      }
+    } catch (_) {
+      // Outbox is best-effort; never block chat open.
+    }
+  }
+
+  Future<void> _persistPending(ChatMessage message) async {
+    try {
+      final groupId = _groupId;
+      if (groupId == null) return;
+      await _outbox.upsert(groupId, message);
+    } catch (_) {}
+  }
+
+  void _onNetworkChanged() {
+    if (_network?.isOnline == true) {
+      _kickPendingRetries(forceImmediate: true);
+    }
+  }
+
+  void _kickPendingRetries({bool forceImmediate = false}) {
+    for (final message in _messages) {
+      if (message.sendState != ChatSendState.pending || message.isDeleted) {
+        continue;
+      }
+      if (forceImmediate) {
+        _autoRetryAttempt[message.id] = 0;
+        _cancelAutoRetry(message.id);
+        unawaited(_autoRetrySend(message.id));
+      } else if (!_autoRetryTimers.containsKey(message.id) &&
+          !_autoRetryInFlight.contains(message.id)) {
+        _scheduleAutoRetry(message.id);
+      }
+    }
+  }
+
+  void _scheduleAutoRetry(String id) {
+    if (_disposed) return;
+    _autoRetryTimers.remove(id)?.cancel();
+    final attempt = _autoRetryAttempt[id] ?? 0;
+    final delay = chatSendBackoffDelay(attempt);
+    _autoRetryAttempt[id] = attempt + 1;
+    _autoRetryTimers[id] = Timer(delay, () {
+      _autoRetryTimers.remove(id);
+      unawaited(_autoRetrySend(id));
+    });
+  }
+
+  Future<void> _autoRetrySend(String id) async {
+    if (_disposed || _autoRetryInFlight.contains(id)) return;
+    final index = _messageIndex[id];
+    if (index == null) return;
+    final message = _messages[index];
+    if (message.sendState != ChatSendState.pending || message.isDeleted) {
+      return;
+    }
+    if (!message.isOptimistic && message.sendState == ChatSendState.sent) {
+      return;
+    }
+    _autoRetryInFlight.add(id);
+    try {
+      if (_pendingUploads.containsKey(id) &&
+          (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
+        await _performMediaUpload(id);
+        return;
+      }
+      final result = await _repository.sendMessage(
+        groupId: _groupId ?? '',
+        messageId: message.id,
+        type: message.type,
+        text: message.text,
+        mediaUrl: message.mediaUrl,
+        thumbnailUrl: message.thumbnailUrl,
+        mediaId: message.mediaId,
+        replyToMessageId: message.replyToMessageId,
+        stickerKey: message.stickerKey,
+        stickerCreatorId: message.stickerCreatorId,
+        stickerCreatorName: message.stickerCreatorName,
+      );
+      _finishSend(id, result);
+    } finally {
+      _autoRetryInFlight.remove(id);
+    }
+  }
+
+  void _cancelAutoRetry(String id) {
+    _autoRetryTimers.remove(id)?.cancel();
+    _autoRetryAttempt.remove(id);
+    _autoRetryInFlight.remove(id);
+  }
+
+  void _cancelAllAutoRetries() {
+    for (final timer in _autoRetryTimers.values) {
+      timer.cancel();
+    }
+    _autoRetryTimers.clear();
+    _autoRetryAttempt.clear();
+    _autoRetryInFlight.clear();
   }
 
   void _removeOrMarkDeleted(String messageId) {
@@ -656,6 +856,8 @@ final class ChatProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _network?.removeListener(_onNetworkChanged);
+    _cancelAllAutoRetries();
     unawaited(_subscription?.cancel());
     super.dispose();
   }

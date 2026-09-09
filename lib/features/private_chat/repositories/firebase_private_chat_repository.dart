@@ -8,6 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/chat_models.dart';
+import '../../groups/services/chat_send_reliability.dart';
 import '../models/private_chat_models.dart';
 import 'private_chat_repository.dart';
 
@@ -276,20 +277,20 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
 Failure _chatFailure(Object error) {
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => PermissionError(
-        error.message ?? 'This chat action is not allowed.',
+      'unauthenticated' || 'permission-denied' => const PermissionError(
+        ChatFailureCodes.permission,
       ),
-      'not-found' => NotFoundError(error.message ?? 'Chat not found.'),
+      'not-found' => const NotFoundError(ChatFailureCodes.notFound),
       'unavailable' || 'deadline-exceeded' || 'resource-exhausted' =>
-        NetworkError(error.message ?? 'Check your connection and try again.'),
-      _ => ValidationError(error.message ?? 'Chat action failed.'),
+        const NetworkError(ChatFailureCodes.network),
+      'invalid-argument' || 'failed-precondition' || 'already-exists' =>
+        const ValidationError(ChatFailureCodes.validation),
+      _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
     };
   }
   if (error is FirebaseException &&
       (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return NetworkError(
-      error.message ?? 'Check your connection and try again.',
-    );
+    return const NetworkError(ChatFailureCodes.network);
   }
   return UnknownError(error.toString());
 }

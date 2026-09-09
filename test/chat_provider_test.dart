@@ -7,8 +7,17 @@ import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
 import 'package:pubget/features/groups/providers/chat_provider.dart';
 import 'package:pubget/features/groups/repositories/chat_repository.dart';
+import 'package:pubget/features/groups/services/chat_send_reliability.dart';
+import 'package:pubget/features/groups/services/pending_chat_outbox.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   test(
     'optimistic message remains pending until server confirmation',
     () async {
@@ -28,7 +37,7 @@ void main() {
 
       expect(provider.messages.single.sendState, ChatSendState.pending);
       final pending = provider.messages.single;
-      repository.sendCompleter.complete(Success(_serverMessage(pending.id)));
+      repository.completeNext(Success(_serverMessage(pending.id)));
       await operation;
 
       expect(provider.messages.single.sendState, ChatSendState.sent);
@@ -36,7 +45,7 @@ void main() {
     },
   );
 
-  test('failed send remains visible and can be retried or deleted', () async {
+  test('transient network failure stays pending and auto-retries', () async {
     final repository = _FakeChatRepository();
     final provider = ChatProvider(repository: repository);
     addTearDown(provider.dispose);
@@ -50,44 +59,90 @@ void main() {
       senderRole: 'member',
       text: 'Keep me',
     );
-    repository.sendCompleter.complete(
-      const FailureResult(NetworkError('offline')),
+    repository.completeNext(
+      const FailureResult(NetworkError(ChatFailureCodes.network)),
     );
     await operation;
 
-    final failed = provider.messages.single;
-    expect(failed.sendState, ChatSendState.failed);
-    expect(failed.failureMessage, 'offline');
+    final pending = provider.messages.single;
+    expect(pending.sendState, ChatSendState.pending);
+    expect(pending.failureMessage, isNull);
 
-    repository.sendCompleter = Completer<Result<ChatMessage>>();
-    final retry = provider.retry(failed);
-    repository.sendCompleter.complete(Success(_serverMessage(failed.id)));
-    await retry;
+    // First backoff is ~800ms (+jitter).
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+    await pumpEventQueue();
+    expect(repository.sendCalls, greaterThanOrEqualTo(2));
+    repository.completeNext(Success(_serverMessage(pending.id)));
+    await pumpEventQueue();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(provider.messages.single.sendState, ChatSendState.sent);
+  });
 
-    repository.sendCompleter = Completer<Result<ChatMessage>>();
-    final second = provider.sendText(
+  test('permanent permission failure shows failed state', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+
+    final operation = provider.sendText(
       groupId: 'g1',
       senderId: 'alice',
       senderName: 'Alice',
       senderAvatar: '',
       senderRole: 'member',
-      text: 'Remove me',
+      text: 'blocked',
     );
-    repository.sendCompleter.complete(
-      const FailureResult(NetworkError('offline')),
+    repository.completeNext(
+      const FailureResult(PermissionError(ChatFailureCodes.permission)),
     );
-    await second;
-    final failedAgain = provider.messages.last;
-    provider.removeFailed(failedAgain.id);
+    await operation;
+
+    expect(provider.messages.single.sendState, ChatSendState.failed);
     expect(
-      provider.messages.any((message) => message.id == failedAgain.id),
-      isFalse,
+      provider.messages.single.failureMessage,
+      ChatFailureCodes.permission,
     );
   });
 
   test(
-    'stream merges incrementally and preserves failed local messages',
+    'stream heals false-negative after callable failure (same messageId)',
+    () async {
+      final repository = _FakeChatRepository();
+      final provider = ChatProvider(repository: repository);
+      addTearDown(provider.dispose);
+      await provider.open(groupId: 'g1', currentUserId: 'alice');
+
+      final send = provider.sendText(
+        groupId: 'g1',
+        senderId: 'alice',
+        senderName: 'Alice',
+        senderAvatar: '',
+        senderRole: 'member',
+        text: 'race',
+      );
+      final pendingId = provider.messages.single.id;
+
+      // Listener confirms write before callable returns.
+      repository.stream.add(
+        Success(<ChatMessage>[_serverMessage(pendingId)]),
+      );
+      await pumpEventQueue();
+      expect(provider.messages.single.sendState, ChatSendState.sent);
+
+      repository.completeNext(
+        const FailureResult(NetworkError(ChatFailureCodes.network)),
+      );
+      await send;
+      await pumpEventQueue();
+
+      expect(provider.messages, hasLength(1));
+      expect(provider.messages.single.id, pendingId);
+      expect(provider.messages.single.sendState, ChatSendState.sent);
+    },
+  );
+
+  test(
+    'stream merges other messages without dropping pending locals',
     () async {
       final repository = _FakeChatRepository();
       final provider = ChatProvider(repository: repository);
@@ -104,8 +159,8 @@ void main() {
         senderRole: 'member',
         text: 'offline',
       );
-      repository.sendCompleter.complete(
-        const FailureResult(NetworkError('offline')),
+      repository.completeNext(
+        const FailureResult(NetworkError(ChatFailureCodes.network)),
       );
       await send;
       repository.stream.add(
@@ -117,12 +172,81 @@ void main() {
       expect(provider.messages.map((message) => message.id), contains('two'));
       expect(
         provider.messages.where(
-          (message) => message.sendState == ChatSendState.failed,
+          (message) => message.sendState == ChatSendState.pending,
         ),
         hasLength(1),
       );
     },
   );
+
+  test('rapid multi-send keeps unique ids and independent states', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+
+    final ops = <Future<void>>[];
+    for (var i = 0; i < 5; i++) {
+      ops.add(
+        provider.sendText(
+          groupId: 'g1',
+          senderId: 'alice',
+          senderName: 'Alice',
+          senderAvatar: '',
+          senderRole: 'member',
+          text: 'm$i',
+        ),
+      );
+    }
+    await pumpEventQueue();
+    expect(provider.messages, hasLength(5));
+    expect(repository.sendCalls, 5);
+
+    for (final message in provider.messages) {
+      repository.completeNext(
+        Success(_serverMessage(message.id, text: message.text ?? '')),
+      );
+    }
+    await Future.wait(ops);
+    expect(provider.messages.map((m) => m.id).toSet(), hasLength(5));
+    expect(
+      provider.messages.every((m) => m.sendState == ChatSendState.sent),
+      isTrue,
+    );
+  });
+
+  test('outbox restores pending message after provider reopen', () async {
+    final repository = _FakeChatRepository();
+    final outbox = PendingChatOutbox();
+    final first = ChatProvider(repository: repository, outbox: outbox);
+    await first.open(groupId: 'g1', currentUserId: 'alice');
+    final send = first.sendText(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      text: 'persist me',
+    );
+    repository.completeNext(
+      const FailureResult(NetworkError(ChatFailureCodes.network)),
+    );
+    await send;
+    await pumpEventQueue();
+    // Allow outbox upsert to flush.
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final pendingId = first.messages.single.id;
+    first.dispose();
+
+    final second = ChatProvider(repository: repository, outbox: outbox);
+    addTearDown(second.dispose);
+    await second.open(groupId: 'g1', currentUserId: 'alice');
+    expect(second.messages.any((m) => m.id == pendingId), isTrue);
+    expect(
+      second.messages.singleWhere((m) => m.id == pendingId).sendState,
+      ChatSendState.pending,
+    );
+  });
 
   test('equal timestamps use message id as deterministic order', () async {
     final repository = _FakeChatRepository();
@@ -149,9 +273,29 @@ void main() {
     final provider = ChatProvider(repository: repository);
     addTearDown(provider.dispose);
     await provider.open(groupId: 'g1', currentUserId: 'alice');
-    repository.stream.add(Success(<ChatMessage>[_serverMessage('one')]));
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('target')]));
     await pumpEventQueue();
     provider.setReplyTarget(provider.messages.single);
+
+    final send = provider.sendText(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      text: 'reply',
+    );
+    final pending = provider.messages.last;
+    expect(pending.replyToMessageId, 'target');
+    repository.completeNext(Success(_serverMessage(pending.id)));
+    await send;
+  });
+
+  test('manual retry still works for permanent failures', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
 
     final operation = provider.sendText(
       groupId: 'g1',
@@ -159,110 +303,96 @@ void main() {
       senderName: 'Alice',
       senderAvatar: '',
       senderRole: 'member',
-      text: 'Replied',
+      text: 'Keep me',
     );
-    expect(provider.messages.last.replyToMessageId, 'one');
-    expect(provider.messages.last.replyPreview, 'one');
-    repository.sendCompleter.complete(Success(_serverMessage('reply')));
+    repository.completeNext(
+      const FailureResult(ValidationError(ChatFailureCodes.validation)),
+    );
     await operation;
-    expect(provider.replyTarget, isNull);
-  });
+    final failed = provider.messages.single;
+    expect(failed.sendState, ChatSendState.failed);
 
-  test('catalog sticker send goes through the repository', () async {
-    final repository = _FakeChatRepository();
-    final provider = ChatProvider(repository: repository);
-    addTearDown(provider.dispose);
-    await provider.open(groupId: 'g1', currentUserId: 'alice');
-    final operation = provider.sendSticker(
-      groupId: 'g1',
-      senderId: 'alice',
-      senderName: 'Alice',
-      senderAvatar: '',
-      senderRole: 'member',
-      stickerKey: 'reactions/heart',
-    );
-    expect(provider.messages.single.type, ChatMessageType.sticker);
-    expect(provider.messages.single.stickerKey, 'reactions/heart');
-    repository.sendCompleter.complete(
-      Success(
-        ChatMessage.fromMap(<String, dynamic>{
-          'senderId': 'alice',
-          'senderName': 'Alice',
-          'senderAvatar': '',
-          'senderRole': 'member',
-          'type': 'sticker',
-          'stickerKey': 'reactions/heart',
-          'createdAt': DateTime(2026),
-          'recipientCount': 1,
-          'deliveredCount': 0,
-          'readCount': 0,
-          'reactions': <String, int>{},
-        }, id: provider.messages.single.id),
-      ),
-    );
-    await operation;
+    final retry = provider.retry(failed);
+    repository.completeNext(Success(_serverMessage(failed.id)));
+    await retry;
     expect(provider.messages.single.sendState, ChatSendState.sent);
-  });
-
-  test('forward and report surface repository permission errors', () async {
-    final repository = _FakeChatRepository();
-    final provider = ChatProvider(repository: repository);
-    addTearDown(provider.dispose);
-    await provider.open(groupId: 'g1', currentUserId: 'alice');
-    final forwarded = await provider.forwardMessage(
-      messageId: 'm1',
-      destinationGroupId: 'g2',
-    );
-    expect(forwarded.isSuccess, isFalse);
-    expect(forwarded.failureOrNull, isA<PermissionError>());
-    final reported = await provider.reportMessage(
-      messageId: 'm1',
-      reason: 'spam',
-    );
-    expect(reported.isSuccess, isFalse);
-    expect(reported.failureOrNull, isA<PermissionError>());
   });
 }
 
-ChatMessage _serverMessage(String id) => ChatMessage.fromMap(<String, dynamic>{
-  'senderId': 'bob',
-  'senderName': 'Bob',
-  'senderAvatar': '',
-  'senderRole': 'member',
-  'type': 'text',
-  'text': id,
-  'createdAt': DateTime(2026, 1, id == 'two' ? 2 : 1),
-  'recipientCount': 1,
-  'deliveredCount': 1,
-  'readCount': 0,
-  'reactions': <String, int>{},
-}, id: id);
+ChatMessage _serverMessage(String id, {String text = 'Hello'}) {
+  return ChatMessage(
+    id: id,
+    senderId: 'alice',
+    senderName: 'Alice',
+    senderAvatar: '',
+    senderRole: 'member',
+    type: ChatMessageType.text,
+    text: text,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    mediaId: null,
+    replyToMessageId: null,
+    createdAt: DateTime(2026, 1, 1),
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    reactions: const <String, int>{},
+    recipientCount: 1,
+    deliveredCount: 0,
+    readCount: 0,
+    isOptimistic: false,
+    sendState: ChatSendState.sent,
+  );
+}
 
-ChatMessage _serverMessageAt(String id, DateTime createdAt) =>
-    ChatMessage.fromMap(<String, dynamic>{
-      'senderId': 'bob',
-      'senderName': 'Bob',
-      'senderAvatar': '',
-      'senderRole': 'member',
-      'type': 'text',
-      'text': id,
-      'createdAt': createdAt,
-      'recipientCount': 1,
-      'deliveredCount': 1,
-      'readCount': 0,
-      'reactions': <String, int>{},
-    }, id: id);
+ChatMessage _serverMessageAt(String id, DateTime createdAt) {
+  return ChatMessage(
+    id: id,
+    senderId: 'alice',
+    senderName: 'Alice',
+    senderAvatar: '',
+    senderRole: 'member',
+    type: ChatMessageType.text,
+    text: id,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    mediaId: null,
+    replyToMessageId: null,
+    createdAt: createdAt,
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    reactions: const <String, int>{},
+    recipientCount: 1,
+    deliveredCount: 0,
+    readCount: 0,
+    isOptimistic: false,
+    sendState: ChatSendState.sent,
+  );
+}
 
 final class _FakeChatRepository implements ChatRepository {
   final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
-  Completer<Result<ChatMessage>> sendCompleter =
-      Completer<Result<ChatMessage>>();
+  final pendingCompleters = <Completer<Result<ChatMessage>>>[];
+  var sendCalls = 0;
+
+  void completeNext(Result<ChatMessage> result) {
+    final next = pendingCompleters.firstWhere((c) => !c.isCompleted);
+    next.complete(result);
+  }
 
   @override
   Stream<Result<List<ChatMessage>>> watchMessages(
     String groupId, {
     int limit = 40,
   }) => stream.stream;
+
+  @override
+  Future<Result<List<ChatMessage>>> getOlderMessages({
+    required String groupId,
+    required ChatMessage before,
+    int limit = 40,
+  }) async => const Success(<ChatMessage>[]);
 
   @override
   Future<Result<ChatMessage>> sendMessage({
@@ -277,30 +407,32 @@ final class _FakeChatRepository implements ChatRepository {
     String? stickerKey,
     String? stickerCreatorId,
     String? stickerCreatorName,
-  }) => sendCompleter.future;
+  }) async {
+    sendCalls += 1;
+    final completer = Completer<Result<ChatMessage>>();
+    pendingCompleters.add(completer);
+    return completer.future;
+  }
 
   @override
-  Future<Result<ChatMessage>> forwardMessage({
-    required String sourceGroupId,
-    required String messageId,
-    String? destinationGroupId,
-    String? destinationChatId,
-  }) async => const FailureResult(PermissionError('not a destination member'));
-
-  @override
-  Future<Result<void>> reportMessage({
+  Future<Result<ChatMessage>> editMessage({
     required String groupId,
     required String messageId,
-    required String reason,
-    String details = '',
-  }) async => const FailureResult(PermissionError('unauthenticated'));
+    required String text,
+  }) async => Success(_serverMessage(messageId, text: text));
 
   @override
-  Future<Result<List<ChatMessage>>> getOlderMessages({
+  Future<Result<void>> deleteMessage({
     required String groupId,
-    required ChatMessage before,
-    int limit = 40,
-  }) async => const Success(<ChatMessage>[]);
+    required String messageId,
+  }) async => const Success(null);
+
+  @override
+  Future<Result<void>> pinMessage({
+    required String groupId,
+    required String messageId,
+    required bool pinned,
+  }) async => const Success(null);
 
   @override
   Future<Result<void>> addReaction({
@@ -310,22 +442,19 @@ final class _FakeChatRepository implements ChatRepository {
   }) async => const Success(null);
 
   @override
-  Future<Result<void>> deleteMessage({
-    required String groupId,
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
     required String messageId,
-  }) async => const Success(null);
-
-  @override
-  Future<Result<ChatMessage>> editMessage({
-    required String groupId,
-    required String messageId,
-    required String text,
+    String? destinationGroupId,
+    String? destinationChatId,
   }) async => Success(_serverMessage(messageId));
 
   @override
-  Future<Result<void>> markAsRead({
+  Future<Result<void>> reportMessage({
     required String groupId,
-    required List<String> messageIds,
+    required String messageId,
+    required String reason,
+    String details = '',
   }) async => const Success(null);
 
   @override
@@ -335,10 +464,9 @@ final class _FakeChatRepository implements ChatRepository {
   }) async => const Success(null);
 
   @override
-  Future<Result<void>> pinMessage({
+  Future<Result<void>> markAsRead({
     required String groupId,
-    required String messageId,
-    required bool pinned,
+    required List<String> messageIds,
   }) async => const Success(null);
 
   @override

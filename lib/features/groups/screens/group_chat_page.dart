@@ -341,14 +341,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final member = context.read<GroupProvider>().membership;
     if (user == null || member == null) return;
     _wasNearBottom = true;
-    await context.read<ChatProvider>().sendText(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      text: text,
-      replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
+    unawaited(
+      context.read<ChatProvider>().sendText(
+        groupId: widget.groupId,
+        senderId: user.id,
+        senderName: _senderName(user.displayName, user.email, member),
+        senderAvatar: user.avatarUrl ?? '',
+        senderRole: member.role.name,
+        text: text,
+        replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
+      ),
     );
   }
 
@@ -864,7 +866,7 @@ class _FailedMessage extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                message.failureMessage ?? copy.messageNotSent,
+                copy.chatSendFailureLabel(message.failureMessage),
                 style: TextStyle(
                   color: scheme.onErrorContainer.withValues(alpha: 0.8),
                   fontSize: 11.5,
