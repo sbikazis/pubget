@@ -27,8 +27,11 @@ class WhatsAppChatComposer extends StatefulWidget {
     required this.onSendText,
     required this.onSendMedia,
     required this.onSendSticker,
+    required this.onSendCustomSticker,
     required this.onSendVoice,
     required this.voiceCapture,
+    required this.currentUserId,
+    required this.currentUserName,
     this.stickerStore,
     this.userStickerStore,
     this.hintText,
@@ -46,8 +49,18 @@ class WhatsAppChatComposer extends StatefulWidget {
   })
   onSendMedia;
   final Future<void> Function(String stickerKey) onSendSticker;
+  final Future<void> Function({
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+    required String stickerCreatorId,
+    required String stickerCreatorName,
+  })
+  onSendCustomSticker;
   final Future<void> Function(VoiceClip clip) onSendVoice;
   final VoiceCapture voiceCapture;
+  final String currentUserId;
+  final String currentUserName;
   final StickerStore? stickerStore;
   final UserStickerStore? userStickerStore;
   final String? hintText;
@@ -363,6 +376,8 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           child: _panelOpen
               ? WaEmojiPanel(
                   userStickerStore: widget.userStickerStore,
+                  currentUserId: widget.currentUserId,
+                  currentUserName: widget.currentUserName,
                   onInsertEmoji: (emoji) {
                     final value = widget.controller.text;
                     final selection = widget.controller.selection;
@@ -383,11 +398,15 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                         required bytes,
                         required fileName,
                         required contentType,
+                        required stickerCreatorId,
+                        required stickerCreatorName,
                       }) async {
-                        await widget.onSendMedia(
+                        await widget.onSendCustomSticker(
                           bytes: bytes,
                           fileName: fileName,
                           contentType: contentType,
+                          stickerCreatorId: stickerCreatorId,
+                          stickerCreatorName: stickerCreatorName,
                         );
                         if (mounted) setState(() => _panelOpen = false);
                       },

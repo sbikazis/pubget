@@ -80,6 +80,8 @@ final class FirebaseChatRepository implements ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) => _guard(() async {
     final result = await _functions
         .httpsCallable('sendGroupMessage')
@@ -91,6 +93,8 @@ final class FirebaseChatRepository implements ChatRepository {
           'mediaId': ?mediaId,
           'replyToMessageId': ?replyToMessageId,
           'stickerKey': ?stickerKey,
+          'stickerCreatorId': ?stickerCreatorId,
+          'stickerCreatorName': ?stickerCreatorName,
         });
     return ChatMessage.fromMap(
       Map<String, dynamic>.from(result.data['message'] as Map),

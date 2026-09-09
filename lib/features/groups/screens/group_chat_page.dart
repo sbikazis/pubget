@@ -17,6 +17,7 @@ import '../../events/widgets/event_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
 import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../data/sticker_store.dart';
+import '../data/user_sticker_store.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
 import '../providers/chat_provider.dart';
@@ -29,6 +30,7 @@ import '../widgets/chat_message_actions_overlay.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_special_cards.dart';
 import '../widgets/event_center_sheet.dart';
+import '../widgets/sticker_detail_sheet.dart';
 import '../widgets/wa_composer/whatsapp_chat_composer.dart';
 import 'chat_background_picker_page.dart';
 import 'media_viewer_page.dart';
@@ -39,6 +41,7 @@ class GroupChatPage extends StatefulWidget {
     this.voiceCapture,
     this.audioPlayer,
     this.stickerStore,
+    this.userStickerStore,
     super.key,
   });
 
@@ -46,6 +49,7 @@ class GroupChatPage extends StatefulWidget {
   final VoiceCapture? voiceCapture;
   final ChatAudioPlayer? audioPlayer;
   final StickerStore? stickerStore;
+  final UserStickerStore? userStickerStore;
 
   @override
   State<GroupChatPage> createState() => _GroupChatPageState();
@@ -56,6 +60,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   final _stars = ChatStarStore();
+  late final UserStickerStore _userStickers =
+      widget.userStickerStore ?? UserStickerStore();
   bool _initialized = false;
   bool _wasNearBottom = true;
 
@@ -176,6 +182,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       AppNavigation.go(context, '/profile?uid=$uid');
                     },
                     onMediaTap: _openMedia,
+                    onStickerTap: (message) {
+                      unawaited(
+                        StickerDetailSheet.show(
+                          context,
+                          message: message,
+                          store: _userStickers,
+                        ),
+                      );
+                    },
                     onAudioTap: _playAudio,
                     onEventTap: (eventId) => EventLinks.open(context, eventId),
                     onGameTap: _openGameCard,
@@ -195,6 +210,24 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   focusNode: _focusNode,
                   groupId: widget.groupId,
                   stickerStore: widget.stickerStore,
+                  userStickerStore: _userStickers,
+                  currentUserId:
+                      context.read<AuthProvider>().currentUser?.id ?? '',
+                  currentUserName: () {
+                    final user = context.read<AuthProvider>().currentUser;
+                    final member = context.read<GroupProvider>().membership;
+                    if (user == null) return 'Pubget user';
+                    if (member == null) {
+                      return (user.displayName ?? '').trim().isNotEmpty
+                          ? user.displayName!.trim()
+                          : 'Pubget user';
+                    }
+                    return _senderName(
+                      user.displayName,
+                      user.email,
+                      member,
+                    );
+                  }(),
                   voiceCapture:
                       widget.voiceCapture ?? createDeviceVoiceCapture(),
                   hintText: AppStrings.of(context).pick('Message', 'مراسلة'),
@@ -209,6 +242,35 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         fileName: fileName,
                         contentType: contentType,
                       ),
+                  onSendCustomSticker:
+                      ({
+                        required Uint8List bytes,
+                        required String fileName,
+                        required String contentType,
+                        required String stickerCreatorId,
+                        required String stickerCreatorName,
+                      }) async {
+                        final user = context.read<AuthProvider>().currentUser;
+                        final member =
+                            context.read<GroupProvider>().membership;
+                        if (user == null || member == null) return;
+                        await context.read<ChatProvider>().sendCustomSticker(
+                          groupId: widget.groupId,
+                          senderId: user.id,
+                          senderName: _senderName(
+                            user.displayName,
+                            user.email,
+                            member,
+                          ),
+                          senderAvatar: user.avatarUrl ?? '',
+                          senderRole: member.role.name,
+                          bytes: bytes,
+                          fileName: fileName,
+                          contentType: contentType,
+                          stickerCreatorId: stickerCreatorId,
+                          stickerCreatorName: stickerCreatorName,
+                        );
+                      },
                   onSendSticker: (key) async {
                     final user = context.read<AuthProvider>().currentUser;
                     final member = context.read<GroupProvider>().membership;
@@ -554,6 +616,7 @@ class _MessageList extends StatelessWidget {
     required this.onSwipeReply,
     required this.onAvatarTap,
     required this.onMediaTap,
+    required this.onStickerTap,
     required this.onAudioTap,
     required this.onEventTap,
     required this.onGameTap,
@@ -568,6 +631,7 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onAvatarTap;
   final ValueChanged<ChatMessage> onMediaTap;
+  final ValueChanged<ChatMessage> onStickerTap;
   final ValueChanged<ChatMessage> onAudioTap;
   final ValueChanged<String> onEventTap;
   final ValueChanged<ChatMessage> onGameTap;
@@ -674,7 +738,13 @@ class _MessageList extends StatelessWidget {
               onLongPress: (rect) => onAction(message, rect),
               onSwipeReply: () => onSwipeReply(message),
               onAvatarTap: () => onAvatarTap(message),
-              onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
+              onMediaTap:
+                  message.isMedia && message.type != ChatMessageType.sticker
+                  ? () => onMediaTap(message)
+                  : null,
+              onStickerTap: message.type == ChatMessageType.sticker
+                  ? () => onStickerTap(message)
+                  : null,
               onAudioTap: message.type == ChatMessageType.audio
                   ? () => onAudioTap(message)
                   : null,

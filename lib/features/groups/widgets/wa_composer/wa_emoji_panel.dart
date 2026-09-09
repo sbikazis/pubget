@@ -19,6 +19,8 @@ class WaEmojiPanel extends StatefulWidget {
     required this.onSendCustomSticker,
     required this.onClose,
     required this.tabPrefKey,
+    required this.currentUserId,
+    required this.currentUserName,
     this.userStickerStore,
     super.key,
   });
@@ -28,10 +30,14 @@ class WaEmojiPanel extends StatefulWidget {
     required Uint8List bytes,
     required String fileName,
     required String contentType,
+    required String stickerCreatorId,
+    required String stickerCreatorName,
   })
   onSendCustomSticker;
   final VoidCallback onClose;
   final String tabPrefKey;
+  final String currentUserId;
+  final String currentUserName;
   final UserStickerStore? userStickerStore;
 
   @override
@@ -45,7 +51,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   final _search = TextEditingController();
   var _emojiCategoryIndex = 0;
   late final UserStickerStore _store;
-  List<String> _stickerPaths = const <String>[];
+  List<UserStickerEntry> _stickers = const <UserStickerEntry>[];
   var _loadingStickers = true;
 
   @override
@@ -64,11 +70,11 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         1 => WaPanelTab.emoji,
         _ => WaPanelTab.stickers,
       };
-      final paths = await _store.paths();
+      final stickers = await _store.entries();
       if (!mounted) return;
       setState(() {
         _tab = tab;
-        _stickerPaths = paths;
+        _stickers = stickers;
         _loadingStickers = false;
       });
     } catch (_) {
@@ -78,9 +84,9 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   }
 
   Future<void> _reloadStickers() async {
-    final paths = await _store.paths();
+    final stickers = await _store.entries();
     if (!mounted) return;
-    setState(() => _stickerPaths = paths);
+    setState(() => _stickers = stickers);
   }
 
   @override
@@ -99,11 +105,15 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
     await saveWaPanelTab(widget.tabPrefKey, tab == WaPanelTab.emoji ? 1 : 0);
   }
 
-  List<String> get _filteredStickerPaths {
-    if (_query.trim().isEmpty) return _stickerPaths;
+  List<UserStickerEntry> get _filteredStickers {
+    if (_query.trim().isEmpty) return _stickers;
     final q = _query.trim().toLowerCase();
-    return _stickerPaths
-        .where((path) => path.toLowerCase().contains(q))
+    return _stickers
+        .where(
+          (item) =>
+              item.creatorName.toLowerCase().contains(q) ||
+              item.path.toLowerCase().contains(q),
+        )
         .toList(growable: false);
   }
 
@@ -186,32 +196,47 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
     );
     if (action == null || !mounted) return;
 
-    final savedPath = await _store.addFromBytes(bytes, extension: 'png');
+    final saved = await _store.addFromBytes(
+      bytes,
+      extension: 'png',
+      creatorId: widget.currentUserId,
+      creatorName: widget.currentUserName,
+    );
     await _reloadStickers();
     if (action == _StickerSaveAction.saveAndSend) {
-      final name = savedPath.split(Platform.pathSeparator).last;
+      final name = saved.path.split(Platform.pathSeparator).last;
       await widget.onSendCustomSticker(
         bytes: bytes,
         fileName: name,
         contentType: 'image/png',
+        stickerCreatorId: widget.currentUserId,
+        stickerCreatorName: widget.currentUserName,
       );
     }
   }
 
-  Future<void> _sendStickerPath(String path) async {
-    final file = File(path);
+  Future<void> _sendStickerEntry(UserStickerEntry entry) async {
+    final file = File(entry.path);
     if (!file.existsSync()) return;
     final bytes = await file.readAsBytes();
-    final lower = path.toLowerCase();
+    final lower = entry.path.toLowerCase();
     final contentType = lower.endsWith('.jpg') || lower.endsWith('.jpeg')
         ? 'image/jpeg'
         : lower.endsWith('.webp')
         ? 'image/webp'
         : 'image/png';
+    final creatorId = entry.creatorId.trim().isNotEmpty
+        ? entry.creatorId
+        : widget.currentUserId;
+    final creatorName = entry.creatorName.trim().isNotEmpty
+        ? entry.creatorName
+        : widget.currentUserName;
     await widget.onSendCustomSticker(
       bytes: bytes,
-      fileName: path.split(Platform.pathSeparator).last,
+      fileName: entry.path.split(Platform.pathSeparator).last,
       contentType: contentType,
+      stickerCreatorId: creatorId,
+      stickerCreatorName: creatorName,
     );
   }
 
@@ -380,8 +405,8 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         child: CircularProgressIndicator(color: WaColors.cursorGreen),
       );
     }
-    final paths = _filteredStickerPaths;
-    if (paths.isEmpty) {
+    final items = _filteredStickers;
+    if (items.isEmpty) {
       return _emptyStickers();
     }
     return GridView.builder(
@@ -392,18 +417,18 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         crossAxisSpacing: 8,
         childAspectRatio: 1,
       ),
-      itemCount: paths.length + 1,
+      itemCount: items.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) return _createStickerCell();
-        final path = paths[index - 1];
+        final entry = items[index - 1];
         return InkWell(
           key: Key('user-sticker-$index'),
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _sendStickerPath(path),
+          onTap: () => _sendStickerEntry(entry),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.file(
-              File(path),
+              File(entry.path),
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => const ColoredBox(
                 color: WaColors.darkPill,

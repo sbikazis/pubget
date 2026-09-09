@@ -55,6 +55,8 @@ final class ChatMessage {
     required this.replyToMessageId,
     this.replyPreview,
     this.stickerKey,
+    this.stickerCreatorId,
+    this.stickerCreatorName,
     this.forwardedFrom,
     required this.createdAt,
     required this.editedAt,
@@ -88,6 +90,8 @@ final class ChatMessage {
     String? replyToMessageId,
     String? replyPreview,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
     Map<String, String>? forwardedFrom,
   }) {
     return ChatMessage(
@@ -104,6 +108,8 @@ final class ChatMessage {
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
       forwardedFrom: forwardedFrom,
       createdAt: DateTime.now(),
       editedAt: null,
@@ -156,6 +162,8 @@ final class ChatMessage {
           (map['replyToMessageId'] ?? map['replyToId']) as String?,
       replyPreview: map['replyPreview'] as String?,
       stickerKey: map['stickerKey'] as String?,
+      stickerCreatorId: map['stickerCreatorId'] as String?,
+      stickerCreatorName: map['stickerCreatorName'] as String?,
       forwardedFrom: _stringMap(map['forwardedFrom']),
       createdAt: _date(map['createdAt']),
       editedAt: _date(map['editedAt']),
@@ -190,6 +198,9 @@ final class ChatMessage {
   final String? replyToMessageId;
   final String? replyPreview;
   final String? stickerKey;
+  /// Original sticker author (not necessarily the message sender).
+  final String? stickerCreatorId;
+  final String? stickerCreatorName;
   final Map<String, String>? forwardedFrom;
   final DateTime? createdAt;
   final DateTime? editedAt;
@@ -258,6 +269,8 @@ final class ChatMessage {
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
       forwardedFrom: forwardedFrom,
       createdAt: createdAt ?? this.createdAt,
       editedAt: editedAt,

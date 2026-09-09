@@ -36,6 +36,8 @@ final class UnavailableChatRepository implements ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) async => _fail();
 
   @override

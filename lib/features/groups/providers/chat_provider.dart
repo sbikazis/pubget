@@ -169,6 +169,8 @@ final class ChatProvider extends ChangeNotifier {
       type: ChatMessageType.sticker,
       text: null,
       stickerKey: stickerKey,
+      stickerCreatorId: 'pubget',
+      stickerCreatorName: 'Pubget',
       replyToMessageId: replyId,
       replyPreview: _previewFor(_replyTarget),
     );
@@ -178,10 +180,56 @@ final class ChatProvider extends ChangeNotifier {
       messageId: pending.id,
       type: ChatMessageType.sticker,
       stickerKey: stickerKey,
+      stickerCreatorId: 'pubget',
+      stickerCreatorName: 'Pubget',
       replyToMessageId: replyId,
     );
     if (result.isSuccess) clearReplyTarget();
     _finishSend(pending.id, result);
+  }
+
+  Future<void> sendCustomSticker({
+    required String groupId,
+    required String senderId,
+    required String senderName,
+    required String senderAvatar,
+    required String senderRole,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+    required String stickerCreatorId,
+    required String stickerCreatorName,
+  }) async {
+    final mediaId = _newId();
+    final pending = ChatMessage.optimistic(
+      id: mediaId,
+      senderId: senderId,
+      senderName: senderName,
+      senderAvatar: senderAvatar,
+      senderRole: senderRole,
+      type: ChatMessageType.sticker,
+      text: null,
+      mediaId: mediaId,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
+      replyToMessageId: _replyTarget?.id,
+      replyPreview: _previewFor(_replyTarget),
+    );
+    _pendingUploads[mediaId] = _PendingMediaUpload(
+      groupId: groupId,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      senderId: senderId,
+      senderName: senderName,
+      senderAvatar: senderAvatar,
+      senderRole: senderRole,
+      forceType: ChatMessageType.sticker,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
+    );
+    _upsert(pending);
+    await _performMediaUpload(mediaId);
   }
 
   Future<void> sendMedia({
@@ -242,17 +290,20 @@ final class ChatProvider extends ChangeNotifier {
     if (_disposed) return;
     upload.fold(
       onSuccess: (media) async {
+        final type = payload.forceType ?? media.type;
         final pending = ChatMessage.optimistic(
           id: mediaId,
           senderId: payload.senderId,
           senderName: payload.senderName,
           senderAvatar: payload.senderAvatar,
           senderRole: payload.senderRole,
-          type: media.type,
+          type: type,
           text: null,
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
+          stickerCreatorId: payload.stickerCreatorId,
+          stickerCreatorName: payload.stickerCreatorName,
           replyToMessageId: _replyTarget?.id,
           replyPreview: _previewFor(_replyTarget),
         );
@@ -260,11 +311,13 @@ final class ChatProvider extends ChangeNotifier {
         final result = await _repository.sendMessage(
           groupId: payload.groupId,
           messageId: mediaId,
-          type: media.type,
+          type: type,
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
           replyToMessageId: pending.replyToMessageId,
+          stickerCreatorId: payload.stickerCreatorId,
+          stickerCreatorName: payload.stickerCreatorName,
         );
         if (result.isSuccess) clearReplyTarget();
         _finishSend(mediaId, result);
@@ -304,6 +357,8 @@ final class ChatProvider extends ChangeNotifier {
       mediaId: message.mediaId,
       replyToMessageId: message.replyToMessageId,
       stickerKey: message.stickerKey,
+      stickerCreatorId: message.stickerCreatorId,
+      stickerCreatorName: message.stickerCreatorName,
     );
     _finishSend(message.id, result);
   }
@@ -616,6 +671,9 @@ final class _PendingMediaUpload {
     required this.senderName,
     required this.senderAvatar,
     required this.senderRole,
+    this.forceType,
+    this.stickerCreatorId,
+    this.stickerCreatorName,
   });
 
   final String groupId;
@@ -626,4 +684,7 @@ final class _PendingMediaUpload {
   final String senderName;
   final String senderAvatar;
   final String senderRole;
+  final ChatMessageType? forceType;
+  final String? stickerCreatorId;
+  final String? stickerCreatorName;
 }
