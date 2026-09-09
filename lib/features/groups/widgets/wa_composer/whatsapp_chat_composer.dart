@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/sticker_store.dart';
 import '../../data/user_sticker_store.dart';
+import '../../models/chat_models.dart';
 import '../../services/voice_capture.dart';
 import 'wa_attachment_sheet.dart';
 import 'wa_colors.dart';
@@ -78,16 +81,26 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   var _mode = WaComposerMode.idle;
   var _slideCancel = false;
   var _lockedPaused = false;
+  var _previewPlaying = false;
+  var _cancelProgress = 0.0; // 0..1 while sliding to cancel
   Duration _recordElapsed = Duration.zero;
   Offset? _pointerStart;
   Timer? _tick;
-  Timer? _waveTick;
+  Timer? _armHoldTimer;
+  int? _activePointer;
+  StreamSubscription<double>? _ampSub;
   final _levels = List<double>.filled(30, 0.18);
-  final _random = math.Random();
+  AudioPlayer? _previewPlayer;
+  /// True while [voiceCapture.start] is in flight after long-press arm.
+  var _holdStarting = false;
+  var _finishAfterStart = false;
+  var _cancelAfterStart = false;
+  var _sending = false;
 
   late final AnimationController _micSendFlip;
   late final AnimationController _cameraFade;
   late final AnimationController _pulse;
+  late final AnimationController _trashBurst;
 
   @override
   void initState() {
@@ -107,6 +120,10 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
+    _trashBurst = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
     if (_hasText) _micSendFlip.value = 1;
   }
 
@@ -114,10 +131,17 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   void dispose() {
     widget.controller.removeListener(_onText);
     _tick?.cancel();
-    _waveTick?.cancel();
+    _armHoldTimer?.cancel();
+    if (_activePointer != null) {
+      _detachPointerRoute(_activePointer!);
+      _activePointer = null;
+    }
+    unawaited(_ampSub?.cancel());
+    unawaited(_previewPlayer?.dispose());
     _micSendFlip.dispose();
     _cameraFade.dispose();
     _pulse.dispose();
+    _trashBurst.dispose();
     super.dispose();
   }
 
@@ -239,108 +263,267 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   }
 
   Future<void> _startHold(Offset global) async {
-    if (_hasText || _mode != WaComposerMode.idle) return;
+    if (_hasText || _mode != WaComposerMode.idle || _holdStarting) return;
+    _holdStarting = true;
+    _finishAfterStart = false;
+    _cancelAfterStart = false;
     HapticFeedback.lightImpact();
     try {
       await widget.voiceCapture.start();
     } catch (_) {
+      _holdStarting = false;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission is required.')),
+        const SnackBar(
+          content: Text(
+            'يلزم السماح بالوصول إلى الميكروفون لتسجيل رسالة صوتية.',
+          ),
+        ),
       );
+      return;
+    }
+    if (!mounted) {
+      _holdStarting = false;
+      try {
+        await widget.voiceCapture.cancel();
+      } catch (_) {}
+      return;
+    }
+    if (_cancelAfterStart) {
+      _holdStarting = false;
+      _cancelAfterStart = false;
+      _finishAfterStart = false;
+      await _cancelRecord();
       return;
     }
     _pointerStart = global;
     _recordElapsed = Duration.zero;
     _slideCancel = false;
+    _cancelProgress = 0;
+    _lockedPaused = false;
+    _previewPlaying = false;
     _tick?.cancel();
-    _waveTick?.cancel();
+    await _ampSub?.cancel();
+    for (var i = 0; i < _levels.length; i++) {
+      _levels[i] = 0.18;
+    }
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (!mounted) return;
-      setState(() => _recordElapsed += const Duration(milliseconds: 200));
-    });
-    _waveTick = Timer.periodic(const Duration(milliseconds: 80), (_) {
       if (!mounted || _lockedPaused) return;
       setState(() {
-        for (var i = 0; i < _levels.length; i++) {
-          _levels[i] = 0.12 + _random.nextDouble() * 0.88;
+        _recordElapsed += const Duration(milliseconds: 200);
+        if (_recordElapsed.inSeconds >= kChatAudioMaxDurationSeconds) {
+          unawaited(_finishAndSend());
         }
       });
     });
+    _ampSub = widget.voiceCapture.amplitudeStream.listen((level) {
+      if (!mounted || _lockedPaused) return;
+      setState(() {
+        for (var i = 0; i < _levels.length - 1; i++) {
+          _levels[i] = _levels[i + 1];
+        }
+        _levels[_levels.length - 1] = level.clamp(0.08, 1.0);
+      });
+    });
     setState(() => _mode = WaComposerMode.holding);
+    _holdStarting = false;
     unawaited(_pulse.repeat(reverse: true));
+    if (_finishAfterStart) {
+      _finishAfterStart = false;
+      await _finishAndSend();
+    }
   }
 
   Future<void> _updateHold(Offset global) async {
     if (_mode != WaComposerMode.holding || _pointerStart == null) return;
     final dx = global.dx - _pointerStart!.dx;
     final dy = global.dy - _pointerStart!.dy;
-    // RTL: swipe toward trailing (visual left in LTR is cancel; in RTL reverse).
-    final rtl = Directionality.of(context) == TextDirection.rtl;
-    final cancelDelta = rtl ? dx : -dx;
+    // Composer is forced RTL: swipe toward visual left (positive dx in RTL).
+    final cancelDelta = dx;
     final locking = -dy > 80;
-    final cancelling = cancelDelta > 120;
+    final cancelling = cancelDelta > 80;
+    final progress = (cancelDelta / 120).clamp(0.0, 1.0);
     if (locking) {
+      HapticFeedback.mediumImpact();
       setState(() {
         _mode = WaComposerMode.locked;
         _slideCancel = false;
+        _cancelProgress = 0;
       });
       return;
     }
-    if (cancelling != _slideCancel) {
-      setState(() => _slideCancel = cancelling);
+    if (cancelling != _slideCancel || progress != _cancelProgress) {
+      setState(() {
+        _slideCancel = cancelling;
+        _cancelProgress = progress;
+      });
     }
   }
 
   Future<void> _endHold() async {
+    if (_holdStarting) {
+      if (_slideCancel || _cancelAfterStart) {
+        _cancelAfterStart = true;
+        _finishAfterStart = false;
+      } else {
+        _finishAfterStart = true;
+        _cancelAfterStart = false;
+      }
+      return;
+    }
     if (_mode == WaComposerMode.locked) return;
     if (_mode != WaComposerMode.holding) return;
     if (_slideCancel) {
-      await _cancelRecord();
+      await _cancelRecord(animated: true);
       return;
     }
     await _finishAndSend();
   }
 
-  Future<void> _cancelRecord() async {
+  Future<void> _cancelRecord({bool animated = false}) async {
     _tick?.cancel();
-    _waveTick?.cancel();
-    _pulse.stop();
-    _pulse.value = 0;
+    final sub = _ampSub;
+    _ampSub = null;
+    unawaited(sub?.cancel());
     try {
-      await widget.voiceCapture.stop();
-    } catch (_) {}
+      await widget.voiceCapture.cancel();
+    } catch (_) {
+      try {
+        await widget.voiceCapture.stop();
+      } catch (_) {}
+    }
     if (!mounted) return;
+    if (_pulse.isAnimating) _pulse.stop();
+    _pulse.reset();
+    await _stopPreview();
+    if (animated) {
+      HapticFeedback.heavyImpact();
+      unawaited(
+        _trashBurst.forward(from: 0).then((_) {
+          if (mounted) _trashBurst.reset();
+        }),
+      );
+    }
     setState(() {
       _mode = WaComposerMode.idle;
       _slideCancel = false;
+      _cancelProgress = 0;
       _lockedPaused = false;
+      _previewPlaying = false;
       _recordElapsed = Duration.zero;
     });
   }
 
   Future<void> _finishAndSend() async {
+    if (_sending || _mode == WaComposerMode.idle) return;
+    _sending = true;
     _tick?.cancel();
-    _waveTick?.cancel();
-    _pulse.stop();
-    _pulse.value = 0;
+    final sub = _ampSub;
+    _ampSub = null;
+    unawaited(sub?.cancel());
+
+    // Stop capture before UI teardown so callers/tests observe `stop` even if
+    // the widget is disposed mid-await.
     VoiceClip? clip;
     try {
       clip = await widget.voiceCapture.stop();
     } catch (_) {}
-    if (!mounted) return;
+
+    if (!mounted) {
+      _sending = false;
+      return;
+    }
+    if (_pulse.isAnimating) _pulse.stop();
+    _pulse.reset();
+    await _stopPreview();
+    if (!mounted) {
+      _sending = false;
+      return;
+    }
     setState(() {
       _mode = WaComposerMode.idle;
       _slideCancel = false;
+      _cancelProgress = 0;
       _lockedPaused = false;
+      _previewPlaying = false;
       _recordElapsed = Duration.zero;
     });
+    _sending = false;
     if (clip == null) return;
+    if (clip.exceedsLimits) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الرسائل الصوتية محدودة بـ 60 ثانية و 10 ميجابايت.'),
+        ),
+      );
+      return;
+    }
     await widget.onSendVoice(clip);
   }
 
+  Future<void> _toggleLockedPause() async {
+    if (_mode != WaComposerMode.locked) return;
+    if (_lockedPaused) {
+      await _stopPreview();
+      try {
+        await widget.voiceCapture.resume();
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _lockedPaused = false);
+      return;
+    }
+    try {
+      await widget.voiceCapture.pause();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _lockedPaused = true);
+  }
+
+  Future<void> _togglePreviewPlayback() async {
+    if (!_lockedPaused) return;
+    final path = widget.voiceCapture.recordingPath;
+    if (path == null || path.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('المعاينة غير متاحة على هذا الجهاز.')),
+      );
+      return;
+    }
+    _previewPlayer ??= AudioPlayer();
+    if (_previewPlaying) {
+      await _stopPreview();
+      return;
+    }
+    try {
+      await _previewPlayer!.stop();
+      await _previewPlayer!.play(DeviceFileSource(path));
+      if (!mounted) return;
+      setState(() => _previewPlaying = true);
+      _previewPlayer!.onPlayerComplete.listen((_) {
+        if (!mounted) return;
+        setState(() => _previewPlaying = false);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تشغيل المعاينة.')),
+      );
+    }
+  }
+
+  Future<void> _stopPreview() async {
+    try {
+      await _previewPlayer?.stop();
+    } catch (_) {}
+    if (_previewPlaying && mounted) {
+      setState(() => _previewPlaying = false);
+    } else {
+      _previewPlaying = false;
+    }
+  }
+
   String _formatElapsed(Duration d) {
-    final total = d.inSeconds;
+    final total = d.inSeconds.clamp(0, kChatAudioMaxDurationSeconds);
     final m = (total ~/ 60).toString().padLeft(1, '0');
     final s = (total % 60).toString().padLeft(2, '0');
     return '$m:$s';
@@ -419,81 +602,140 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     );
   }
 
-    Widget _buildMicOrSend(bool dark) {
+  void _attachPointerRoute(int pointer) {
+    if (_activePointer != null && _activePointer != pointer) {
+      _detachPointerRoute(_activePointer!);
+    }
+    _activePointer = pointer;
+    GestureBinding.instance.pointerRouter.addRoute(pointer, _onGlobalPointer);
+  }
+
+  void _detachPointerRoute(int pointer) {
+    GestureBinding.instance.pointerRouter.removeRoute(pointer, _onGlobalPointer);
+    if (_activePointer == pointer) {
+      _activePointer = null;
+    }
+  }
+
+  void _onGlobalPointer(PointerEvent event) {
+    if (_activePointer != null && event.pointer != _activePointer) return;
+    if (event is PointerMoveEvent) {
+      if (_mode == WaComposerMode.holding) {
+        unawaited(_updateHold(event.position));
+      }
+      return;
+    }
+    if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _armHoldTimer?.cancel();
+      _armHoldTimer = null;
+      _detachPointerRoute(event.pointer);
+      if (event is PointerCancelEvent) {
+        if (_holdStarting) {
+          _cancelAfterStart = true;
+          _finishAfterStart = false;
+          return;
+        }
+        if (_mode == WaComposerMode.holding) {
+          unawaited(_cancelRecord());
+        }
+        return;
+      }
+      // Pointer up: finish/cancel hold, or ignore when already locked.
+      unawaited(_endHold());
+    }
+  }
+
+  Widget _buildMicOrSend(bool dark) {
     final green = WaColors.send(context);
     final isSend = _hasText && _mode == WaComposerMode.idle;
     final holding = _mode == WaComposerMode.holding;
+    final locked = _mode == WaComposerMode.locked;
     final size = holding ? 60.0 : 48.0;
     final bg = holding ? WaColors.recordRed : green;
 
-    return Tooltip(
-      message: isSend || _mode == WaComposerMode.locked
-          ? 'Send message'
-          : 'Voice message',
-      child: GestureDetector(
-      onTap: () {
-        if (isSend) {
-          HapticFeedback.selectionClick();
-          widget.onSendText();
-          return;
-        }
-        if (_mode == WaComposerMode.locked) {
-          unawaited(_finishAndSend());
-        }
-      },
-      onLongPressStart: (details) {
-        if (!isSend) unawaited(_startHold(details.globalPosition));
-      },
-      onLongPressMoveUpdate: (details) {
-        unawaited(_updateHold(details.globalPosition));
-      },
-      onLongPressEnd: (_) {
-        unawaited(_endHold());
-      },
-      onTapDown: (_) {
-        if (!isSend && _mode == WaComposerMode.idle) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      child: AnimatedScale(
-        scale: holding ? 1.05 : 1,
-        duration: const Duration(milliseconds: 120),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: bg,
-            shape: BoxShape.circle,
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 2,
-                offset: Offset(0, 1),
+    final visual = AnimatedScale(
+      scale: holding ? 1.05 + (_cancelProgress * 0.08) : 1,
+      duration: const Duration(milliseconds: 120),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: bg,
+          shape: BoxShape.circle,
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 2,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: AnimatedBuilder(
+          animation: Listenable.merge(<Listenable>[
+            _micSendFlip,
+            _pulse,
+            _trashBurst,
+          ]),
+          builder: (context, _) {
+            final t = _micSendFlip.value;
+            final IconData icon;
+            if (isSend || locked) {
+              icon = Icons.send_rounded;
+            } else if (holding && _slideCancel) {
+              icon = Icons.delete;
+            } else if (holding && _cancelProgress > 0.55) {
+              icon = Icons.lock;
+            } else {
+              icon = Icons.mic;
+            }
+            return Transform.rotate(
+              angle: t * math.pi + (_trashBurst.value * 0.35),
+              child: Transform.scale(
+                scale: holding
+                    ? 0.9 +
+                          (_pulse.value * 0.1) +
+                          (_trashBurst.value * 0.2)
+                    : 1,
+                child: Icon(icon, color: Colors.white, size: holding ? 28 : 24),
               ),
-            ],
-          ),
-          child: AnimatedBuilder(
-            animation: Listenable.merge(<Listenable>[_micSendFlip, _pulse]),
-            builder: (context, _) {
-              final t = _micSendFlip.value;
-              final icon = isSend
-                  ? Icons.send_rounded
-                  : (_mode == WaComposerMode.locked
-                        ? Icons.send_rounded
-                        : Icons.mic);
-              return Transform.rotate(
-                angle: t * math.pi,
-                child: Transform.scale(
-                  scale: holding ? 0.9 + (_pulse.value * 0.1) : 1,
-                  child: Icon(icon, color: Colors.white, size: 24),
-                ),
-              );
-            },
-          ),
+            );
+          },
         ),
       ),
-      ),
+    );
+
+    if (isSend || locked) {
+      return GestureDetector(
+        key: const Key('composer-mic'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (isSend) {
+            HapticFeedback.selectionClick();
+            widget.onSendText();
+            return;
+          }
+          unawaited(_finishAndSend());
+        },
+        child: visual,
+      );
+    }
+
+    return Listener(
+      key: const Key('composer-mic'),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        if (_mode != WaComposerMode.idle || _hasText || _holdStarting) return;
+        _pointerStart = event.position;
+        _attachPointerRoute(event.pointer);
+        _armHoldTimer?.cancel();
+        _armHoldTimer = Timer(const Duration(milliseconds: 120), () {
+          if (!mounted) return;
+          if (_mode != WaComposerMode.idle || _hasText) return;
+          unawaited(_startHold(event.position));
+        });
+      },
+      child: visual,
     );
   }
 
@@ -625,105 +867,195 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   }
 
   Widget _holdingBar(bool dark) {
-    return Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: WaColors.darkPill,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: <Widget>[
-          FadeTransition(
-            opacity: _pulse,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: WaColors.pulseRed,
-                shape: BoxShape.circle,
+    return Transform.translate(
+      offset: Offset(_cancelProgress * 28, 0),
+      child: AnimatedContainer(
+        key: const Key('composer-voice-holding'),
+        duration: const Duration(milliseconds: 120),
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: _slideCancel
+              ? const Color(0xFF3A2025)
+              : WaColors.darkPill,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          children: <Widget>[
+            FadeTransition(
+              opacity: _pulse,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: WaColors.pulseRed,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            _formatElapsed(_recordElapsed),
-            style: const TextStyle(fontSize: 15, color: WaColors.iconMuted),
-          ),
-          const Spacer(),
-          Icon(
-            _slideCancel ? Icons.delete_outline : Icons.chevron_left,
-            color: WaColors.iconMuted,
-            size: 18,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            _slideCancel ? 'إلغاء' : 'اسحب للإلغاء',
-            style: const TextStyle(fontSize: 14, color: WaColors.iconMuted),
-          ),
-          const Spacer(),
-          const Icon(Icons.lock_open, color: WaColors.iconMuted, size: 18),
-          const Icon(Icons.keyboard_arrow_up, color: WaColors.iconMuted, size: 18),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              key: const Key('composer-voice-timer'),
+              _formatElapsed(_recordElapsed),
+              style: const TextStyle(fontSize: 15, color: WaColors.iconMuted),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: _waveform()),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 120),
+              child: _slideCancel
+                  ? const Row(
+                      key: ValueKey('cancel'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.delete, color: WaColors.recordRed, size: 18),
+                        SizedBox(width: 4),
+                        Text(
+                          'إلغاء',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: WaColors.recordRed,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const Row(
+                      key: ValueKey('hint'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          Icons.chevron_left,
+                          color: WaColors.iconMuted,
+                          size: 18,
+                        ),
+                        SizedBox(width: 2),
+                        Text(
+                          'اسحب للإلغاء',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: WaColors.iconMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.lock_open, color: WaColors.iconMuted, size: 18),
+            const Icon(
+              Icons.keyboard_arrow_up,
+              color: WaColors.iconMuted,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _lockedBar(bool dark) {
+    const btnConstraints = BoxConstraints(minWidth: 36, minHeight: 36);
     return Container(
+      key: const Key('composer-voice-locked'),
       height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
       decoration: BoxDecoration(
         color: WaColors.darkPill,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: <Widget>[
-          IconButton(
-            onPressed: _cancelRecord,
-            icon: const Icon(Icons.delete, color: WaColors.recordRed),
-          ),
-          IconButton(
-            onPressed: () => setState(() => _lockedPaused = !_lockedPaused),
-            icon: Icon(
-              _lockedPaused ? Icons.play_arrow : Icons.pause,
-              color: WaColors.iconMuted,
-            ),
-          ),
           Expanded(
             child: Row(
               children: <Widget>[
-                for (final level in _levels)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 1),
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 80),
-                          height: 8 + level * 22,
-                          decoration: BoxDecoration(
-                            color: WaColors.cursorGreen,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
+                IconButton(
+                  key: const Key('composer-voice-delete'),
+                  tooltip: 'Delete',
+                  padding: EdgeInsets.zero,
+                  constraints: btnConstraints,
+                  onPressed: () => unawaited(_cancelRecord(animated: true)),
+                  icon: const Icon(Icons.delete, color: WaColors.recordRed),
+                ),
+                IconButton(
+                  key: const Key('composer-voice-pause'),
+                  tooltip: _lockedPaused ? 'Resume' : 'Pause',
+                  padding: EdgeInsets.zero,
+                  constraints: btnConstraints,
+                  onPressed: () => unawaited(_toggleLockedPause()),
+                  icon: Icon(
+                    _lockedPaused ? Icons.mic : Icons.pause,
+                    color: WaColors.iconMuted,
+                  ),
+                ),
+                if (_lockedPaused)
+                  IconButton(
+                    key: const Key('composer-voice-preview'),
+                    tooltip: 'Preview',
+                    padding: EdgeInsets.zero,
+                    constraints: btnConstraints,
+                    onPressed: () => unawaited(_togglePreviewPlayback()),
+                    icon: Icon(
+                      _previewPlaying ? Icons.stop : Icons.play_arrow,
+                      color: WaColors.cursorGreen,
                     ),
                   ),
+                Expanded(child: _waveform()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    key: const Key('composer-voice-timer'),
+                    _formatElapsed(_recordElapsed),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: WaColors.iconMuted,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              _formatElapsed(_recordElapsed),
-              style: const TextStyle(fontSize: 15, color: WaColors.iconMuted),
+          GestureDetector(
+            key: const Key('composer-voice-send'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => unawaited(_finishAndSend()),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                Icons.send_rounded,
+                color: WaColors.send(context),
+              ),
             ),
           ),
-          IconButton(
-            onPressed: _finishAndSend,
-            icon: Icon(Icons.send_rounded, color: WaColors.send(context)),
-          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _waveform() {
+    return SizedBox(
+      height: 30,
+      child: Row(
+        children: <Widget>[
+          for (final level in _levels)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0.8),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 70),
+                    height: 6 + level * 22,
+                    decoration: BoxDecoration(
+                      color: _slideCancel
+                          ? WaColors.recordRed.withValues(alpha: 0.85)
+                          : WaColors.cursorGreen,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
