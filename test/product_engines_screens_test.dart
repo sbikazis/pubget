@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pubget/core/analytics/analytics.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
+import 'package:pubget/features/achievements/data/achievement_catalog.dart';
 import 'package:pubget/features/achievements/models/achievement_models.dart';
 import 'package:pubget/features/achievements/providers/achievement_provider.dart';
 import 'package:pubget/features/achievements/repositories/achievement_repository.dart';
@@ -47,28 +49,32 @@ void main() {
   testWidgets('achievements page shows locked and unlocked items', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     final auth = await _auth();
     final provider = AchievementProvider(repository: _FakeAchievementRepository());
     addTearDown(provider.dispose);
     addTearDown(auth.dispose);
 
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<AchievementProvider>.value(value: provider),
-        ],
-        child: const MaterialApp(home: AchievementsPage()),
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+            ChangeNotifierProvider<AchievementProvider>.value(value: provider),
+          ],
+          child: const MaterialApp(home: AchievementsPage()),
+        ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('First Circle'), findsOneWidget);
-    expect(find.text('First Victory'), findsOneWidget);
-    expect(find.text('Autumn Rally'), findsOneWidget);
-    expect(find.text('Unlocked'), findsOneWidget);
-    expect(find.text('Locked'), findsOneWidget);
-    expect(find.text('In season'), findsOneWidget);
+    expect(find.text('The Threshold'), findsWidgets);
+    await tester.tap(find.byKey(const Key('achievements-progress-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Keeper of Time'), findsOneWidget);
   });
 
   testWidgets('mafia lobby hides a start button that would fail', (
@@ -368,42 +374,22 @@ final class _NoOpAnalytics implements Analytics {
 
 final class _FakeAchievementRepository implements AchievementRepository {
   @override
-  Future<Result<List<AchievementItem>>> list() async => const Success(
-    <AchievementItem>[],
-  );
+  Future<Result<List<AchievementItem>>> list({String? userId}) async =>
+      Success(AchievementCatalog.lockedItems());
 
   @override
   Stream<Result<List<AchievementItem>>> watch(String userId) {
     expect(userId, 'alice');
+    final threshold = AchievementCatalog.byId('the_threshold')!;
+    final keeper = AchievementCatalog.byId('keeper_of_time')!;
     return Stream<Result<List<AchievementItem>>>.value(
-      const Success(<AchievementItem>[
+      Success(<AchievementItem>[
         AchievementItem(
-          id: 'first_group',
-          type: 'community',
-          title: 'First Circle',
-          description: 'Create your first group.',
-          icon: 'group',
+          definition: threshold,
           unlocked: true,
-          rewardCoins: 5,
+          unlockedAt: DateTime.utc(2026, 1, 1),
         ),
-        AchievementItem(
-          id: 'first_game_win',
-          type: 'game',
-          title: 'First Victory',
-          description: 'Win your first game.',
-          icon: 'game',
-          unlocked: false,
-        ),
-        AchievementItem(
-          id: 'autumn_2026_rally',
-          type: 'seasonal',
-          title: 'Autumn Rally',
-          description: 'Win a game during the Autumn 2026 season.',
-          icon: 'season',
-          unlocked: false,
-          seasonId: 'autumn_2026',
-          seasonState: 'active',
-        ),
+        AchievementItem(definition: keeper, unlocked: false),
       ]),
     );
   }
