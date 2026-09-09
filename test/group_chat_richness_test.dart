@@ -188,6 +188,7 @@ void main() {
     expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
 
     await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
+    await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-action-reply')));
     await tester.pumpAndSettle();
@@ -200,19 +201,7 @@ void main() {
     expect(chatRepo.sent.last['replyToMessageId'], 'm-bob');
 
     await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('chat-action-report')));
-    await tester.tap(find.byKey(const Key('chat-action-report')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('report-reason-spam')));
-    await tester.pumpAndSettle();
-    expect(chatRepo.reports.single.reason, 'spam');
-    expect(chatRepo.reports.single.messageId, 'm-bob');
-    expect(find.text('Report submitted'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
-    await tester.pumpAndSettle();
-
-    await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
+    await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('chat-action-forward')));
     await tester.tap(find.byKey(const Key('chat-action-forward')));

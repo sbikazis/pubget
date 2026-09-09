@@ -323,7 +323,7 @@ class _MessageList extends StatelessWidget {
           isMine: message.senderId == currentUserId,
           contrast: contrast,
           showSenderRole: false,
-          onLongPress: () => onAction(message),
+          onLongPress: (_) => onAction(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
         );
       },

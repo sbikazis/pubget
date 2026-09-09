@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/l10n/app_strings.dart';
@@ -17,6 +18,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.isMine,
     required this.contrast,
     required this.onLongPress,
+    this.onSwipeReply,
     this.onAvatarTap,
     required this.onMediaTap,
     this.onEventTap,
@@ -28,13 +30,16 @@ class ChatMessageBubble extends StatelessWidget {
     this.showTail = true,
     this.showAvatar = true,
     this.showHeader = true,
+    this.isStarred = false,
     super.key,
   });
 
   final ChatMessage message;
   final bool isMine;
   final ChatContrastTheme contrast;
-  final VoidCallback onLongPress;
+  /// Long-press (500ms) — receives the bubble's global rect for the overlay.
+  final ValueChanged<Rect> onLongPress;
+  final VoidCallback? onSwipeReply;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onMediaTap;
   final VoidCallback? onEventTap;
@@ -46,6 +51,7 @@ class ChatMessageBubble extends StatelessWidget {
   final bool showTail;
   final bool showAvatar;
   final bool showHeader;
+  final bool isStarred;
 
   static const double maxWidthFraction = 0.78;
   static const double avatarSize = 32;
@@ -71,7 +77,7 @@ class ChatMessageBubble extends StatelessWidget {
       return ChatDebateCard(
         message: message,
         contrast: contrast,
-        onReply: onLongPress,
+        onReply: () => onLongPress(Rect.zero),
       );
     }
     if (message.isMemberJoinedCard) {
@@ -100,7 +106,7 @@ class ChatMessageBubble extends StatelessWidget {
             contrast: contrast,
             maxWidth: maxBubble * 0.72,
             label: copy.messageDeleted,
-            onLongPress: onLongPress,
+            onLongPress: () => onLongPress(Rect.zero),
           );
         }
 
@@ -125,71 +131,90 @@ class ChatMessageBubble extends StatelessWidget {
                 top: 2,
                 bottom: 6,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  if (!isMine && showAvatar) ...[
-                    PubgetAvatar(
-                      imageUrl: message.senderAvatar,
-                      name: message.senderName,
-                      size: PubgetAvatarSize.small,
-                      onTap: onAvatarTap,
-                    ),
-                    const SizedBox(width: 6),
-                  ] else if (!isMine && !showAvatar)
-                    const SizedBox(width: avatarSize + 6),
-                  ConstrainedBox(
-                    key: ValueKey<String>('message-${message.id}'),
-                    constraints: BoxConstraints(maxWidth: bubbleMax),
-                    child: GestureDetector(
-                      onLongPress: onLongPress,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: <Widget>[
-                          Padding(
-                            padding: EdgeInsets.only(
-                              bottom: message.reactions.isNotEmpty ? 10 : 0,
-                            ),
-                            child: sticker
-                                ? _StickerColumn(
-                                    message: message,
-                                    isMine: isMine,
-                                    textColor: textColor,
-                                    showSenderRole: showSenderRole,
-                                    showHeader: showHeader,
-                                    onMediaTap: onMediaTap,
-                                  )
-                                : _BubbleChrome(
-                                    isMine: isMine,
-                                    contrast: contrast,
-                                    showTail: showTail,
-                                    child: _BubbleBody(
-                                      message: message,
-                                      isMine: isMine,
-                                      textColor: textColor,
-                                      showSenderRole: showSenderRole,
-                                      showHeader: showHeader,
-                                      replyPreview: replyPreview,
-                                      onMediaTap: onMediaTap,
-                                      onAudioTap: onAudioTap,
+              child: _SwipeReplyDetector(
+                enabled: onSwipeReply != null,
+                onSwipeReply: onSwipeReply,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    if (!isMine && showAvatar) ...[
+                      PubgetAvatar(
+                        imageUrl: message.senderAvatar,
+                        name: message.senderName,
+                        size: PubgetAvatarSize.small,
+                        onTap: onAvatarTap,
+                      ),
+                      const SizedBox(width: 6),
+                    ] else if (!isMine && !showAvatar)
+                      const SizedBox(width: avatarSize + 6),
+                    ConstrainedBox(
+                      key: ValueKey<String>('message-${message.id}'),
+                      constraints: BoxConstraints(maxWidth: bubbleMax),
+                      child: Builder(
+                        builder: (bubbleContext) {
+                          return _LongPress500(
+                            onLongPress: () {
+                              final box = bubbleContext.findRenderObject()
+                                  as RenderBox?;
+                              final rect = (box != null && box.hasSize)
+                                  ? (box.localToGlobal(Offset.zero) &
+                                      box.size)
+                                  : Rect.zero;
+                              onLongPress(rect);
+                            },
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: <Widget>[
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom:
+                                        message.reactions.isNotEmpty ? 10 : 0,
+                                  ),
+                                  child: sticker
+                                      ? _StickerColumn(
+                                          message: message,
+                                          isMine: isMine,
+                                          textColor: textColor,
+                                          showSenderRole: showSenderRole,
+                                          showHeader: showHeader,
+                                          isStarred: isStarred,
+                                          onMediaTap: onMediaTap,
+                                        )
+                                      : _BubbleChrome(
+                                          isMine: isMine,
+                                          contrast: contrast,
+                                          showTail: showTail,
+                                          child: _BubbleBody(
+                                            message: message,
+                                            isMine: isMine,
+                                            textColor: textColor,
+                                            showSenderRole: showSenderRole,
+                                            showHeader: showHeader,
+                                            isStarred: isStarred,
+                                            replyPreview: replyPreview,
+                                            onMediaTap: onMediaTap,
+                                            onAudioTap: onAudioTap,
+                                          ),
+                                        ),
+                                ),
+                                if (message.reactions.isNotEmpty)
+                                  PositionedDirectional(
+                                    start: isMine ? null : 8,
+                                    end: isMine ? 8 : null,
+                                    bottom: -2,
+                                    child: _ReactionPills(
+                                      reactions: message.reactions,
                                     ),
                                   ),
-                          ),
-                          if (message.reactions.isNotEmpty)
-                            PositionedDirectional(
-                              start: isMine ? null : 8,
-                              end: isMine ? 8 : null,
-                              bottom: -2,
-                              child: _ReactionPills(
-                                reactions: message.reactions,
-                              ),
+                              ],
                             ),
-                        ],
+                          );
+                        },
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -299,6 +324,7 @@ class _BubbleBody extends StatelessWidget {
     required this.textColor,
     required this.showSenderRole,
     required this.showHeader,
+    required this.isStarred,
     required this.replyPreview,
     required this.onMediaTap,
     required this.onAudioTap,
@@ -309,6 +335,7 @@ class _BubbleBody extends StatelessWidget {
   final Color textColor;
   final bool showSenderRole;
   final bool showHeader;
+  final bool isStarred;
   final String? replyPreview;
   final VoidCallback? onMediaTap;
   final VoidCallback? onAudioTap;
@@ -358,6 +385,7 @@ class _BubbleBody extends StatelessWidget {
             message: message,
             isMine: isMine,
             textColor: textColor,
+            isStarred: isStarred,
           ),
         ],
       ),
@@ -372,6 +400,7 @@ class _StickerColumn extends StatelessWidget {
     required this.textColor,
     required this.showSenderRole,
     required this.showHeader,
+    required this.isStarred,
     required this.onMediaTap,
   });
 
@@ -380,6 +409,7 @@ class _StickerColumn extends StatelessWidget {
   final Color textColor;
   final bool showSenderRole;
   final bool showHeader;
+  final bool isStarred;
   final VoidCallback? onMediaTap;
 
   @override
@@ -410,6 +440,7 @@ class _StickerColumn extends StatelessWidget {
               message: message,
               isMine: isMine,
               textColor: textColor,
+              isStarred: isStarred,
             ),
           ),
         ],
@@ -524,11 +555,13 @@ class _TimeStatusRow extends StatelessWidget {
     required this.message,
     required this.isMine,
     required this.textColor,
+    required this.isStarred,
   });
 
   final ChatMessage message;
   final bool isMine;
   final Color textColor;
+  final bool isStarred;
 
   @override
   Widget build(BuildContext context) {
@@ -539,6 +572,10 @@ class _TimeStatusRow extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          if (isStarred) ...[
+            Icon(Icons.star, size: 12, color: muted),
+            const SizedBox(width: 3),
+          ],
           if (message.disappearing) ...[
             Icon(Icons.timer_outlined, size: 12, color: muted),
             const SizedBox(width: 3),
@@ -1023,5 +1060,58 @@ class _SystemChip extends StatelessWidget {
         ? message.text!
         : copy.groupUpdate;
     return ChatDateDivider(label: label);
+  }
+}
+
+class _LongPress500 extends StatelessWidget {
+  const _LongPress500({required this.onLongPress, required this.child});
+
+  final VoidCallback onLongPress;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      gestures: <Type, GestureRecognizerFactory>{
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(
+            duration: const Duration(milliseconds: 500),
+          ),
+          (instance) {
+            instance.onLongPress = onLongPress;
+          },
+        ),
+      },
+      child: child,
+    );
+  }
+}
+
+class _SwipeReplyDetector extends StatelessWidget {
+  const _SwipeReplyDetector({
+    required this.enabled,
+    required this.onSwipeReply,
+    required this.child,
+  });
+
+  final bool enabled;
+  final VoidCallback? onSwipeReply;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    return GestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() >= 800) {
+          onSwipeReply?.call();
+        }
+      },
+      child: child,
+    );
   }
 }
