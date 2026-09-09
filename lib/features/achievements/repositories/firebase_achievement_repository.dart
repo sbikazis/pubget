@@ -3,116 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../data/achievement_catalog.dart';
 import '../models/achievement_models.dart';
 import 'achievement_repository.dart';
-
-final _catalog = <AchievementItem>[
-  AchievementItem(
-    id: 'first_group',
-    type: 'community',
-    title: 'First Circle',
-    description: 'Create your first group.',
-    icon: 'group',
-    unlocked: false,
-    rewardCoins: 5,
-  ),
-  AchievementItem(
-    id: 'first_edit',
-    type: 'creator',
-    title: 'First Cut',
-    description: 'Publish your first edit.',
-    icon: 'edit',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'first_friend',
-    type: 'social',
-    title: 'First Friend',
-    description: 'Accept or form your first friendship.',
-    icon: 'friend',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'first_fan',
-    type: 'social',
-    title: 'First Fan',
-    description: 'Receive your first fan through Respect.',
-    icon: 'fan',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'first_event_participation',
-    type: 'event',
-    title: 'Show Up',
-    description: 'Participate in your first event.',
-    icon: 'event',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'first_event_win',
-    type: 'event',
-    title: 'Event Victor',
-    description: 'Win your first event.',
-    icon: 'trophy',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'first_game_win',
-    type: 'game',
-    title: 'First Victory',
-    description: 'Win your first game.',
-    icon: 'game',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'creator_milestone',
-    type: 'creator',
-    title: 'Creator',
-    description: 'Publish your first Fan Work.',
-    icon: 'creator',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'edit_milestone',
-    type: 'creator',
-    title: 'Cut Five',
-    description: 'Publish five edits.',
-    icon: 'edit',
-    unlocked: false,
-    rewardCoins: 5,
-  ),
-  AchievementItem(
-    id: 'creator_fan_milestone',
-    type: 'creator',
-    title: 'First Circle of Fans',
-    description: 'Earn a fan as a creator.',
-    icon: 'fan',
-    unlocked: false,
-    rewardCoins: 5,
-  ),
-  AchievementItem(
-    id: 'community_milestone',
-    type: 'community',
-    title: 'In the Mix',
-    description: 'Finish your first game as a participant.',
-    icon: 'community',
-    unlocked: false,
-  ),
-  AchievementItem(
-    id: 'autumn_2026_rally',
-    type: 'seasonal',
-    title: 'Autumn Rally',
-    description: 'Win a game during the Autumn 2026 season.',
-    icon: 'season',
-    unlocked: false,
-    rewardCoins: 10,
-    seasonId: 'autumn_2026',
-    seasonStartAt: DateTime.utc(2026, 9, 1),
-    seasonEndAt: DateTime.utc(2026, 11, 30, 23, 59, 59, 999),
-    seasonState: 'active',
-    trigger: 'game_won',
-  ),
-];
 
 final class FirebaseAchievementRepository implements AchievementRepository {
   FirebaseAchievementRepository({
@@ -126,14 +19,19 @@ final class FirebaseAchievementRepository implements AchievementRepository {
   final FirebaseFunctions _functions;
 
   @override
-  Future<Result<List<AchievementItem>>> list() async {
+  Future<Result<List<AchievementItem>>> list({String? userId}) async {
     try {
-      final result = await _functions.httpsCallable('getAchievements').call();
+      final result = await _functions.httpsCallable('getAchievements').call(
+        userId == null ? null : <String, dynamic>{'userId': userId},
+      );
       final data = Map<String, dynamic>.from(result.data as Map);
       final items = (data['items'] as List<Object?>? ?? const <Object?>[])
           .whereType<Map>()
-          .map(_fromMap)
+          .map(_fromServerMap)
           .toList(growable: false);
+      if (items.isEmpty) {
+        return Success(AchievementCatalog.lockedItems());
+      }
       return Success(items);
     } on Object catch (error) {
       return FailureResult(_fail(error));
@@ -145,59 +43,143 @@ final class FirebaseAchievementRepository implements AchievementRepository {
     return _firestore
         .collection('user_achievements')
         .doc(userId)
-        .collection('items')
+        .collection('unlocked')
         .snapshots()
-        .map((snapshot) {
-          final unlocked = <String, Map<String, dynamic>>{
-            for (final doc in snapshot.docs) doc.id: doc.data(),
-          };
-          return Success(
-            _catalog
-                .map((item) {
-                  final data = unlocked[item.id];
-                  return AchievementItem(
-                    id: item.id,
-                    type: item.type,
-                    title: item.title,
-                    description: item.description,
-                    icon: item.icon,
-                    unlocked: data != null,
-                    unlockedAt: _date(data?['unlockedAt']),
-                    rewardCoins: item.rewardCoins,
-                    seasonId: item.seasonId,
-                    seasonStartAt: item.seasonStartAt,
-                    seasonEndAt: item.seasonEndAt,
-                    seasonState: item.seasonState,
-                    trigger: item.trigger,
-                  );
-                })
-                .toList(growable: false),
-          );
-        })
+        .asyncMap((unlockedSnap) => _buildSnapshot(userId, unlockedSnap))
         .handleError(
           (Object error) =>
               FailureResult<List<AchievementItem>>(_fail(error)),
         );
   }
-}
 
-AchievementItem _fromMap(Map<dynamic, dynamic> raw) {
-  final map = Map<String, dynamic>.from(raw);
-  return AchievementItem(
-    id: map['id'] as String? ?? '',
-    type: map['type'] as String? ?? '',
-    title: map['title'] as String? ?? '',
-    description: map['description'] as String? ?? '',
-    icon: map['icon'] as String? ?? '',
-    unlocked: map['unlocked'] == true,
-    unlockedAt: _date(map['unlockedAt']),
-    rewardCoins: (map['rewardCoins'] as num?)?.toInt() ?? 0,
-    seasonId: map['seasonId'] as String?,
-    seasonStartAt: _date(map['seasonStartAt']),
-    seasonEndAt: _date(map['seasonEndAt']),
-    seasonState: map['seasonState'] as String? ?? 'evergreen',
-    trigger: map['trigger'] as String?,
-  );
+  Future<Result<List<AchievementItem>>> _buildSnapshot(
+    String userId,
+    QuerySnapshot<Map<String, dynamic>> unlockedSnap,
+  ) async {
+    try {
+      final unlocked = <String, Map<String, dynamic>>{
+        for (final doc in unlockedSnap.docs) doc.id: doc.data(),
+      };
+      if (unlocked.isEmpty) {
+        final legacy = await _firestore
+            .collection('user_achievements')
+            .doc(userId)
+            .collection('items')
+            .get();
+        for (final doc in legacy.docs) {
+          unlocked[doc.id] = doc.data();
+        }
+      }
+      final progressSnap = await _firestore
+          .collection('user_achievement_progress')
+          .doc(userId)
+          .collection('progress')
+          .get();
+      final progress = <String, Map<String, dynamic>>{
+        for (final doc in progressSnap.docs) doc.id: doc.data(),
+      };
+      return Success(_merge(unlocked, progress));
+    } on Object catch (error) {
+      return FailureResult(_fail(error));
+    }
+  }
+
+  List<AchievementItem> _merge(
+    Map<String, Map<String, dynamic>> unlocked,
+    Map<String, Map<String, dynamic>> progress,
+  ) {
+    return AchievementCatalog.definitions.map((definition) {
+      final u = unlocked[definition.id];
+      final p = progress[definition.id];
+      final conditions = _conditionsFrom(definition, p, unlocked: u != null);
+      return AchievementItem(
+        definition: definition,
+        unlocked: u != null,
+        unlockedAt: _date(u?['unlockedAt']),
+        currentValue: (p?['currentValue'] as num?) ?? 0,
+        targetValue: (p?['targetValue'] as num?) ??
+            (definition.conditions.isEmpty
+                ? 0
+                : definition.conditions.first.target),
+        conditions: conditions,
+      );
+    }).toList(growable: false);
+  }
+
+  List<AchievementConditionProgress> _conditionsFrom(
+    AchievementDefinition definition,
+    Map<String, dynamic>? progress, {
+    required bool unlocked,
+  }) {
+    final raw = progress?['conditions'];
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return definition.conditions.map((c) {
+      final entry = map[c.id];
+      final data = entry is Map ? Map<String, dynamic>.from(entry) : null;
+      return AchievementConditionProgress(
+        id: c.id,
+        labelEn: c.labelEn,
+        labelAr: c.labelAr,
+        current: (data?['current'] as num?) ?? 0,
+        target: (data?['target'] as num?) ?? c.target,
+        met: unlocked || data?['met'] == true,
+      );
+    }).toList(growable: false);
+  }
+
+  AchievementItem _fromServerMap(Map<dynamic, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    final id = map['id'] as String? ?? '';
+    final local = AchievementCatalog.byId(id);
+    final definition = local ??
+        AchievementDefinition(
+          id: id,
+          rarity: parseRarity(map['rarity'] as String?),
+          nameEn: map['nameEn'] as String? ?? map['title'] as String? ?? id,
+          nameAr: map['nameAr'] as String? ?? map['title'] as String? ?? id,
+          descriptionEn: map['descriptionEn'] as String? ??
+              map['description'] as String? ??
+              '',
+          descriptionAr: map['descriptionAr'] as String? ??
+              map['description'] as String? ??
+              '',
+          meaningEn: map['meaningEn'] as String? ?? '',
+          meaningAr: map['meaningAr'] as String? ?? '',
+          assetPath: map['assetPath'] as String? ??
+              'assets/achievements/$id/badge.png',
+          animationType: parseAnimationType(map['animationType'] as String?),
+          rewardCoins: (map['rewardCoins'] as num?)?.toInt() ?? 0,
+          conditions: const <AchievementConditionProgress>[],
+        );
+
+    final conditionsRaw = map['conditions'];
+    final conditions = <AchievementConditionProgress>[];
+    if (conditionsRaw is List) {
+      for (final entry in conditionsRaw.whereType<Map>()) {
+        final c = Map<String, dynamic>.from(entry);
+        conditions.add(
+          AchievementConditionProgress(
+            id: c['id'] as String? ?? '',
+            labelEn: c['labelEn'] as String? ?? '',
+            labelAr: c['labelAr'] as String? ?? '',
+            current: (c['current'] as num?) ?? 0,
+            target: (c['target'] as num?) ?? 0,
+            met: c['met'] == true,
+          ),
+        );
+      }
+    }
+
+    return AchievementItem(
+      definition: definition,
+      unlocked: map['unlocked'] == true,
+      unlockedAt: _date(map['unlockedAt']),
+      currentValue: (map['currentValue'] as num?) ?? 0,
+      targetValue: (map['targetValue'] as num?) ?? 0,
+      conditions: conditions.isNotEmpty ? conditions : definition.conditions,
+    );
+  }
 }
 
 DateTime? _date(dynamic value) {

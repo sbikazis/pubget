@@ -295,9 +295,17 @@ test("games are readable by group members and never client-writable", async () =
     result: { winnerIds: ["alice"], scores: { alice: 99 } },
   }));
   await assertSucceeds(db("alice").doc("user_achievements/alice/items/first_game_win").get());
-  await assertFails(db("bob").doc("user_achievements/alice/items/first_game_win").get());
+  // Unlocked badges are readable by any signed-in visitor (profile strip).
+  await assertSucceeds(db("bob").doc("user_achievements/alice/items/first_game_win").get());
   await assertFails(db("alice").doc("user_achievements/alice/items/forged").set({
     achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("user_achievements/alice/unlocked/forged").set({
+    achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("user_achievement_progress/alice/progress/the_threshold").set({
+    currentValue: 99,
+    targetValue: 1,
   }));
   await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
 });

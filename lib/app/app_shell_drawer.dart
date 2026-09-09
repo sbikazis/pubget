@@ -59,6 +59,12 @@ abstract final class AppShellDrawerDestinations {
     (id: 'store', label: 'Dragon Store', icon: Icons.storefront_outlined, path: '/store'),
     (id: 'premium', label: 'Premium', icon: Icons.workspace_premium_outlined, path: '/premium'),
     (
+      id: 'achievements',
+      label: 'Achievements',
+      icon: Icons.emoji_events_outlined,
+      path: '/achievements',
+    ),
+    (
       id: 'settings',
       label: 'Settings',
       icon: Icons.settings_outlined,

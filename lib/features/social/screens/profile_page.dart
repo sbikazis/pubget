@@ -11,8 +11,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../achievements/l10n/achievement_copy.dart';
 import '../../achievements/models/achievement_models.dart';
 import '../../achievements/providers/achievement_provider.dart';
+import '../../achievements/widgets/achievement_badge_widget.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
@@ -67,7 +69,7 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       if (given.isNotEmpty) setState(() => _respect = given.first.value);
       try {
-        await context.read<AchievementProvider>().open(viewerId);
+        await context.read<AchievementProvider>().open(profileId);
       } on ProviderNotFoundException {
         // Achievements are optional on thin test trees.
       }
@@ -288,7 +290,11 @@ class _ProfileLifeReport extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.zero,
       children: <Widget>[
-        _ProfileHero(data: data, isOwner: profile.isOwner),
+        _ProfileHero(
+          data: data,
+          isOwner: profile.isOwner,
+          profileId: profileId,
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.lg,
@@ -342,6 +348,12 @@ class _ProfileLifeReport extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: AppSpacing.xl),
+              _AchievementsEntryButton(
+                isOwner: profile.isOwner,
+                displayName: data.name,
+                profileId: profileId,
+              ),
+              const SizedBox(height: AppSpacing.md),
               if (profile.isOwner)
                 _OwnerQuickActions(social: social, economy: economy)
               else
@@ -372,7 +384,11 @@ class _ProfileLifeReport extends StatelessWidget {
               ],
               if (profile.isOwner || data.privacy.achievements) ...[
                 const SizedBox(height: AppSpacing.xl),
-                _AchievementsSection(isOwner: profile.isOwner),
+                _AchievementsSection(
+                  isOwner: profile.isOwner,
+                  profileId: profileId,
+                  displayName: data.name,
+                ),
               ],
               if ((profile.isOwner || data.privacy.activity) &&
                   data.createdAt != null) ...[
@@ -388,10 +404,15 @@ class _ProfileLifeReport extends StatelessWidget {
 }
 
 class _ProfileHero extends StatelessWidget {
-  const _ProfileHero({required this.data, required this.isOwner});
+  const _ProfileHero({
+    required this.data,
+    required this.isOwner,
+    required this.profileId,
+  });
 
   final _ProfileViewData data;
   final bool isOwner;
+  final String profileId;
 
   @override
   Widget build(BuildContext context) {
@@ -520,6 +541,11 @@ class _ProfileHero extends StatelessWidget {
                     color: AppColors.lightTextMuted,
                   ),
                 ),
+              _ProfileAchievementStrip(
+                profileId: profileId,
+                displayName: data.name,
+                isOwner: isOwner,
+              ),
               if (data.socialLinks.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
                 ProfileSocialLinkChips(links: data.socialLinks),
@@ -530,6 +556,136 @@ class _ProfileHero extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ProfileAchievementStrip extends StatelessWidget {
+  const _ProfileAchievementStrip({
+    required this.profileId,
+    required this.displayName,
+    required this.isOwner,
+  });
+
+  final String profileId;
+  final String displayName;
+  final bool isOwner;
+
+  @override
+  Widget build(BuildContext context) {
+    List<AchievementItem> unlocked = const <AchievementItem>[];
+    try {
+      unlocked = context.watch<AchievementProvider>().unlocked;
+    } on ProviderNotFoundException {
+      return const SizedBox.shrink();
+    }
+    if (unlocked.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: SizedBox(
+        height: kAchievementStripBadgeSize,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: unlocked.length,
+          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+          itemBuilder: (context, index) {
+            final item = unlocked[index];
+            return AchievementBadgeWidget(
+              key: Key('profile-strip-badge-${item.id}'),
+              item: item,
+              size: kAchievementStripBadgeSize,
+              animate: true,
+              onTap: () => _openAchievements(
+                context,
+                profileId: profileId,
+                displayName: displayName,
+                isOwner: isOwner,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AchievementsEntryButton extends StatelessWidget {
+  const _AchievementsEntryButton({
+    required this.isOwner,
+    required this.displayName,
+    required this.profileId,
+  });
+
+  final bool isOwner;
+  final String displayName;
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AchievementCopy.of(context);
+    final label = copy.entryLabel(isOwner: isOwner, displayName: displayName);
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          gradient: LinearGradient(
+            colors: <Color>[
+              AppColors.royalPurple.withValues(alpha: 0.9),
+              AppColors.royalPurpleDark,
+            ],
+          ),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.55)),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: const Key('profile-achievements-entry'),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            onTap: () => _openAchievements(
+              context,
+              profileId: profileId,
+              displayName: displayName,
+              isOwner: isOwner,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
+              child: Row(
+                children: <Widget>[
+                  const Icon(Icons.emoji_events, color: AppColors.gold),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.gold),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _openAchievements(
+  BuildContext context, {
+  required String profileId,
+  required String displayName,
+  required bool isOwner,
+}) {
+  final encoded = Uri.encodeComponent(displayName);
+  AppNavigation.go(
+    context,
+    '/achievements?userId=$profileId&name=$encoded&owner=${isOwner ? 1 : 0}',
+  );
 }
 
 class _MetaChip extends StatelessWidget {
@@ -1063,47 +1219,64 @@ class _GroupsSectionState extends State<_GroupsSection> {
 }
 
 class _AchievementsSection extends StatelessWidget {
-  const _AchievementsSection({required this.isOwner});
+  const _AchievementsSection({
+    required this.isOwner,
+    required this.profileId,
+    required this.displayName,
+  });
 
   final bool isOwner;
+  final String profileId;
+  final String displayName;
 
   @override
   Widget build(BuildContext context) {
     List<AchievementItem> items = const <AchievementItem>[];
     try {
-      items = context.watch<AchievementProvider>().items;
+      items = context.watch<AchievementProvider>().unlocked;
     } on ProviderNotFoundException {
       items = const <AchievementItem>[];
     }
+    final copy = AchievementCopy.of(context);
     final preview = items.take(8).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         ProfileSectionHeader(
-          title: 'Achievements',
-          onViewAll: () => AppNavigation.go(context, '/achievements'),
+          title: copy.title,
+          onViewAll: () => _openAchievements(
+            context,
+            profileId: profileId,
+            displayName: displayName,
+            isOwner: isOwner,
+          ),
         ),
         if (preview.isEmpty)
           PubgetEmptyState(
             compact: true,
             icon: Icons.emoji_events_outlined,
-            title: 'No achievements yet',
-            message: isOwner
-                ? 'Play, create, and connect to unlock badges.'
-                : 'Badges will appear here when unlocked.',
+            title: copy.unlockedEmptyTitle,
+            message: copy.unlockedEmptyBody,
           )
         else
           SizedBox(
-            height: 108,
+            height: kAchievementStripBadgeSize + 8,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: preview.length,
               separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
               itemBuilder: (context, index) {
                 final item = preview[index];
-                return ProfileAchievementBadge(
-                  title: item.title,
-                  unlocked: item.unlocked,
+                return AchievementBadgeWidget(
+                  item: item,
+                  size: kAchievementStripBadgeSize,
+                  animate: true,
+                  onTap: () => _openAchievements(
+                    context,
+                    profileId: profileId,
+                    displayName: displayName,
+                    isOwner: isOwner,
+                  ),
                 );
               },
             ),

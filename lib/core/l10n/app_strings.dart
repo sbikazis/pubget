@@ -246,6 +246,7 @@ final class AppStrings {
     'anime-characters' => drawerAnimeCharacters,
     'store' => drawerStore,
     'premium' => drawerPremium,
+    'achievements' => achievements,
     'settings' => drawerSettings,
     'guide' => drawerGuide,
     'notifications' => notifications,
