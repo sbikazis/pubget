@@ -180,9 +180,7 @@ void main() {
     expect(find.text('hello from bob'), findsOneWidget);
     expect(find.byKey(const Key('group-chat-menu')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('composer-attach')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('composer-sticker')));
+    await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('sticker-reactions/heart')));
     await tester.pumpAndSettle();
@@ -194,7 +192,8 @@ void main() {
     await tester.tap(find.byKey(const Key('chat-action-reply')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('reply-composer-bar')), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'Quoted reply');
+    await tester.enterText(find.byType(TextField).first, 'Quoted reply');
+    await tester.pump();
     await tester.tap(find.byTooltip('Send message'));
     await tester.pumpAndSettle();
     expect(chatRepo.sent.last['text'], 'Quoted reply');

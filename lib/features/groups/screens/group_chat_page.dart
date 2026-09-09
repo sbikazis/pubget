@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
@@ -28,8 +27,7 @@ import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/event_center_sheet.dart';
-import '../widgets/sticker_picker_sheet.dart';
-import '../widgets/voice_recorder_sheet.dart';
+import '../widgets/wa_composer/whatsapp_chat_composer.dart';
 import 'chat_background_picker_page.dart';
 import 'media_viewer_page.dart';
 
@@ -53,6 +51,7 @@ class GroupChatPage extends StatefulWidget {
 
 class _GroupChatPageState extends State<GroupChatPage> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   bool _initialized = false;
   bool _wasNearBottom = true;
@@ -83,6 +82,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -183,17 +183,58 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     message: chat.replyTarget!,
                     onClear: chat.clearReplyTarget,
                   ),
-                _Composer(
+                WhatsAppChatComposer(
                   controller: _controller,
-                  onSend: _sendText,
-                  onMedia: _pickMedia,
-                  onGif: _pickGif,
-                  onSticker: _pickSticker,
-                  onVoice: _recordVoice,
-                  onEvents: () => EventCenterSheet.show(
-                    context,
-                    groupId: widget.groupId,
-                  ),
+                  focusNode: _focusNode,
+                  groupId: widget.groupId,
+                  stickerStore: widget.stickerStore,
+                  voiceCapture:
+                      widget.voiceCapture ?? createDeviceVoiceCapture(),
+                  hintText: AppStrings.of(context).pick('Message', 'مراسلة'),
+                  onSendText: _sendText,
+                  onSendMedia:
+                      ({
+                        required Uint8List bytes,
+                        required String fileName,
+                        required String contentType,
+                      }) => _sendPickedBytes(
+                        bytes: bytes,
+                        fileName: fileName,
+                        contentType: contentType,
+                      ),
+                  onSendSticker: (key) async {
+                    final user = context.read<AuthProvider>().currentUser;
+                    final member = context.read<GroupProvider>().membership;
+                    if (user == null || member == null) return;
+                    await context.read<ChatProvider>().sendSticker(
+                      groupId: widget.groupId,
+                      senderId: user.id,
+                      senderName: _senderName(
+                        user.displayName,
+                        user.email,
+                        member,
+                      ),
+                      senderAvatar: user.avatarUrl ?? '',
+                      senderRole: member.role.name,
+                      stickerKey: key,
+                    );
+                  },
+                  onSendVoice: (clip) async {
+                    if (clip.exceedsLimits) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(AppStrings.of(context).voiceNoteLimits),
+                        ),
+                      );
+                      return;
+                    }
+                    await _sendPickedBytes(
+                      bytes: clip.bytes,
+                      fileName: clip.fileName,
+                      contentType: clip.contentType,
+                    );
+                  },
                 ),
               ],
             ),
@@ -239,101 +280,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
       senderRole: member.role.name,
       text: text,
       replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
-    );
-  }
-
-  Future<void> _pickMedia(ImageSource source, bool video) async {
-    final picker = ImagePicker();
-    final selected = video
-        ? await picker.pickVideo(source: source)
-        : await picker.pickImage(source: source);
-    if (selected == null || !mounted) return;
-    final user = context.read<AuthProvider>().currentUser;
-    final member = context.read<GroupProvider>().membership;
-    if (user == null || member == null) return;
-    final bytes = await selected.readAsBytes();
-    final extension = selected.name.split('.').last.toLowerCase();
-    final contentType = video
-        ? (extension == 'webm' ? 'video/webm' : 'video/mp4')
-        : (extension == 'gif'
-              ? 'image/gif'
-              : extension == 'png'
-              ? 'image/png'
-              : 'image/jpeg');
-    if (!mounted) return;
-    await context.read<ChatProvider>().sendMedia(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      bytes: bytes,
-      fileName: selected.name,
-      contentType: contentType,
-    );
-  }
-
-  Future<void> _pickGif() async {
-    final picker = ImagePicker();
-    final selected = await picker.pickImage(source: ImageSource.gallery);
-    if (selected == null || !mounted) return;
-    final bytes = await selected.readAsBytes();
-    final type = chatMediaTypeFor(
-      contentType: selected.mimeType ?? 'image/gif',
-      fileName: selected.name,
-    );
-    if (type != ChatMessageType.gif) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a .gif file to send a GIF.')),
-      );
-      return;
-    }
-    await _sendPickedBytes(
-      bytes: bytes,
-      fileName: selected.name,
-      contentType: 'image/gif',
-    );
-  }
-
-  Future<void> _pickSticker() async {
-    final key = await StickerPickerSheet.show(
-      context,
-      store: widget.stickerStore,
-    );
-    if (key == null || !mounted) return;
-    final user = context.read<AuthProvider>().currentUser;
-    final member = context.read<GroupProvider>().membership;
-    if (user == null || member == null) return;
-    await context.read<ChatProvider>().sendSticker(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      stickerKey: key,
-    );
-  }
-
-  Future<void> _recordVoice() async {
-    final capture = widget.voiceCapture ?? createDeviceVoiceCapture();
-    final player = widget.audioPlayer ?? StorageChatAudioPlayer();
-    final clip = await VoiceRecorderSheet.show(
-      context,
-      capture: capture,
-      onPreview: (voice) => player.playBytes(voice.bytes),
-    );
-    if (clip == null || !mounted) return;
-    if (clip.exceedsLimits) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.of(context).voiceNoteLimits)),
-      );
-      return;
-    }
-    await _sendPickedBytes(
-      bytes: clip.bytes,
-      fileName: clip.fileName,
-      contentType: clip.contentType,
     );
   }
 
@@ -772,100 +718,6 @@ class _FailedMessage extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.controller,
-    required this.onSend,
-    required this.onMedia,
-    required this.onGif,
-    required this.onSticker,
-    required this.onVoice,
-    required this.onEvents,
-  });
-
-  final TextEditingController controller;
-  final VoidCallback onSend;
-  final void Function(ImageSource source, bool video) onMedia;
-  final VoidCallback onGif;
-  final VoidCallback onSticker;
-  final VoidCallback onVoice;
-  final VoidCallback onEvents;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AppStrings.of(context);
-    return Material(
-      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
-      elevation: 8,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          children: <Widget>[
-            PopupMenuButton<String>(
-              key: const Key('composer-attach'),
-              tooltip: copy.attachments,
-              icon: const Icon(Icons.add_circle_outline),
-              onSelected: (value) {
-                if (value == 'image') onMedia(ImageSource.gallery, false);
-                if (value == 'video') onMedia(ImageSource.gallery, true);
-                if (value == 'gif') onGif();
-                if (value == 'sticker') onSticker();
-                if (value == 'audio') onVoice();
-              },
-              itemBuilder: (_) => <PopupMenuEntry<String>>[
-                PopupMenuItem(value: 'image', child: Text(copy.attachImage)),
-                PopupMenuItem(value: 'video', child: Text(copy.attachVideo)),
-                PopupMenuItem(
-                  key: const Key('composer-gif'),
-                  value: 'gif',
-                  child: Text(copy.attachGif),
-                ),
-                PopupMenuItem(
-                  key: const Key('composer-sticker'),
-                  value: 'sticker',
-                  child: Text(copy.attachSticker),
-                ),
-                PopupMenuItem(
-                  key: const Key('composer-audio'),
-                  value: 'audio',
-                  child: Text(copy.voiceMessage),
-                ),
-              ],
-            ),
-            IconButton(
-              tooltip: copy.emoji,
-              onPressed: () => controller.text += ' 😊',
-              icon: const Icon(Icons.emoji_emotions_outlined),
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: copy.messageHint,
-                  isDense: true,
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: copy.groupEvents,
-              onPressed: onEvents,
-              icon: const Icon(Icons.celebration_outlined),
-            ),
-            IconButton(
-              tooltip: copy.sendMessage,
-              onPressed: onSend,
-              icon: const Icon(Icons.send_rounded),
-            ),
-          ],
         ),
       ),
     );
