@@ -38,13 +38,19 @@ Failure _mapCode(String code, String? message) {
       normalized == 'network-request-failed') {
     return const NetworkError('Check your connection and try again.');
   }
+  if (normalized == 'unauthenticated') {
+    return const PermissionError(
+      'Could not upload this video securely. Sign in again, then retry.',
+    );
+  }
+  // Storage rules deny (unauthorized) is usually not an expired session —
+  // e.g. production rules still blocking resumable UPDATE on edits/*.mp4.
   if (normalized == 'unauthorized' ||
       normalized == 'permission-denied' ||
-      normalized == 'unauthenticated' ||
       body.contains('not authorized') ||
       body.contains('permission')) {
     return const PermissionError(
-      'Could not upload this video securely. Sign in again, then retry.',
+      'Upload was blocked by storage security. Stay signed in and retry; if it keeps failing, rules may still be deploying.',
     );
   }
   if (normalized == 'failed-precondition') {

@@ -123,9 +123,16 @@ final class EditCopy {
 
   String friendlyFailure(Failure failure) {
     if (failure is PermissionError) {
+      final raw = failure.message.toLowerCase();
+      if (raw.contains('sign in again') || raw.contains('unauthenticated')) {
+        return _s.pick(
+          'Could not upload this video securely. Sign in again, then retry.',
+          'تعذر رفع الفيديو بشكل آمن. سجّل الدخول مجددًا ثم أعد المحاولة.',
+        );
+      }
       return _s.pick(
-        'Could not upload this video securely. Sign in again, then retry.',
-        'تعذر رفع الفيديو بشكل آمن. سجّل الدخول مجددًا ثم أعد المحاولة.',
+        'Upload was blocked by storage security. Stay signed in and retry in a moment.',
+        'تم حظر الرفع بواسطة أمان التخزين. ابقَ مسجّل الدخول وأعد المحاولة بعد لحظات.',
       );
     }
     if (failure is NetworkError) {
