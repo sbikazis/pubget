@@ -820,8 +820,20 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
         '/mafia': (parameters) =>
             MafiaGameScreen(gameId: parameters['gameId'] ?? ''),
-        '/achievements': (parameters) =>
-            AchievementsPage(highlightId: parameters['id']),
+        '/achievements': (parameters) {
+          final uid = parameters['userId'];
+          final name = parameters['name'];
+          final ownerFlag = parameters['owner'];
+          final isOwner = ownerFlag != '0';
+          return AchievementsPage(
+            highlightId: parameters['id'],
+            userId: (uid == null || uid.isEmpty) ? null : uid,
+            displayName: name == null || name.isEmpty
+                ? null
+                : Uri.decodeComponent(name),
+            isOwner: isOwner,
+          );
+        },
         '/games': (parameters) {
           final groupId = parameters['groupId'];
           return GameListScreen(

@@ -811,13 +811,34 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
+    match /achievement_definitions/{achievementId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
     match /user_achievements/{uid} {
-      allow read: if self(uid);
+      // Unlocked badges are visible to signed-in profile visitors.
+      allow read: if signedIn();
       allow write: if false;
       match /items/{achievementId} {
-        allow read: if self(uid);
+        allow read: if signedIn();
         allow write: if false;
       }
+      match /unlocked/{achievementId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+    }
+    match /user_achievement_progress/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /progress/{achievementId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+    }
+    match /user_achievement_stats/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
     }
 
     match /edits/{editId} {

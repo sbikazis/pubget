@@ -41,3 +41,13 @@ flutter:
     - assets/branding/pubget_settings.png
     - assets/branding/pubget_coin.png
     - assets/chat/pubget_default_wallpaper.png
+    - assets/achievements/the_threshold/badge.png
+    - assets/achievements/keeper_of_time/badge.png
+    - assets/achievements/shogun_of_the_realm/badge.png
+    - assets/achievements/thread_of_souls/badge.png
+    - assets/achievements/worldsmith/badge.png
+    - assets/achievements/arena_sovereign/badge.png
+    - assets/achievements/master_of_festivities/badge.png
+    - assets/achievements/crownbearer/badge.png
+    - assets/achievements/legend_of_the_gate/badge.png
+    - assets/achievements/dragon_of_legacy/badge.png

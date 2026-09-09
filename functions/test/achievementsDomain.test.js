@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createAchievementsDomain, CATALOG } = require("../src/achievementsDomain");
+const { createAchievementsDomain, CATALOG, BASE_IDS } = require("../src/achievementsDomain");
 
 class TestHttpsError extends Error {
   constructor(code, message) {
@@ -26,29 +26,47 @@ function clone(value) {
 function createFakeDb(seed = {}) {
   const store = new Map(Object.entries(clone(seed)));
   let chain = Promise.resolve();
-  const makeCollection = (base) => ({
-    doc(id) {
-      const resolvedId = id || `auto-${store.size + 1}`;
-      const resolvedPath = `${base}/${resolvedId}`;
-      return {
-        path: resolvedPath,
-        id: resolvedId,
-        collection(name) {
-          return makeCollection(`${resolvedPath}/${name}`);
-        },
-      };
-    },
-    async get() {
-      const prefix = `${base}/`;
-      const docs = [];
-      for (const [path, data] of store.entries()) {
-        if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) continue;
-        const id = path.slice(prefix.length);
-        docs.push({ id, data: () => clone(data) });
-      }
-      return { docs };
-    },
-  });
+
+  function makeDoc(path, id) {
+    return {
+      path,
+      id,
+      collection(name) {
+        return makeCollection(`${path}/${name}`);
+      },
+      async get() {
+        const data = store.get(path);
+        return { exists: data !== undefined, data: () => clone(data), id };
+      },
+      async set(data, opts = {}) {
+        if (opts.merge && store.has(path)) {
+          store.set(path, { ...store.get(path), ...clone(data) });
+        } else {
+          store.set(path, clone(data));
+        }
+      },
+    };
+  }
+
+  function makeCollection(base) {
+    return {
+      doc(id) {
+        const resolvedId = id || `auto-${store.size + 1}`;
+        return makeDoc(`${base}/${resolvedId}`, resolvedId);
+      },
+      async get() {
+        const prefix = `${base}/`;
+        const docs = [];
+        for (const [path, data] of store.entries()) {
+          if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) continue;
+          const id = path.slice(prefix.length);
+          docs.push({ id, data: () => clone(data) });
+        }
+        return { docs };
+      },
+    };
+  }
+
   return {
     store,
     collection(name) {
@@ -65,6 +83,13 @@ function createFakeDb(seed = {}) {
             if (store.has(ref.path)) throw new Error("already-exists");
             store.set(ref.path, clone(data));
           },
+          set(ref, data, opts = {}) {
+            if (opts.merge && store.has(ref.path)) {
+              store.set(ref.path, { ...store.get(ref.path), ...clone(data) });
+            } else {
+              store.set(ref.path, clone(data));
+            }
+          },
         };
         return callback(transaction);
       });
@@ -74,107 +99,136 @@ function createFakeDb(seed = {}) {
   };
 }
 
-test("catalog contains the required first-loop achievements", () => {
-  const ids = CATALOG.map((item) => item.id);
-  for (const id of [
-    "first_group", "first_edit", "first_friend", "first_fan",
-    "first_event_participation", "first_event_win", "first_game_win",
-    "creator_milestone", "community_milestone",
-  ]) {
-    assert.ok(ids.includes(id), id);
-  }
-});
-
-test("unlock is idempotent and grants coins once", async () => {
-  const db = createFakeDb();
-  const rewards = [];
-  const notes = [];
-  const domain = createAchievementsDomain({
+function domainOf(db, extras = {}) {
+  return createAchievementsDomain({
     db,
     FieldValue,
     HttpsError: TestHttpsError,
-    economy: {
-      applyReward: async (spec) => {
-        rewards.push(spec);
-        return { applied: true };
-      },
-    },
-    notificationBuilder: {
-      build: async (payload) => {
-        notes.push(payload);
-        return { created: 1 };
-      },
-    },
+    clock: { now: () => extras.now || new Date("2026-09-09T00:00:00.000Z") },
+    economy: extras.economy,
+    notificationBuilder: extras.notificationBuilder,
   });
-  const first = await domain.unlock("alice", "first_game_win");
-  const second = await domain.unlock("alice", "first_game_win");
-  assert.equal(first.unlocked, true);
-  assert.equal(second.reason, "already_unlocked");
-  assert.equal(rewards.length, 1);
-  assert.equal(rewards[0].type, "earn_achievement");
-  assert.equal(rewards[0].referenceId, "first_game_win");
-  assert.equal(notes.length, 1);
-  assert.equal(notes[0].id, "achievement-alice-first_game_win");
+}
+
+test("catalog is exactly the ten Pubget achievements", () => {
+  assert.equal(CATALOG.length, 10);
+  assert.deepEqual(
+    CATALOG.map((item) => item.id),
+    [
+      "the_threshold",
+      "keeper_of_time",
+      "shogun_of_the_realm",
+      "thread_of_souls",
+      "worldsmith",
+      "arena_sovereign",
+      "master_of_festivities",
+      "crownbearer",
+      "legend_of_the_gate",
+      "dragon_of_legacy",
+    ],
+  );
+  assert.equal(BASE_IDS.length, 8);
 });
 
-test("evaluate maps domain events and getAchievements is self-only", async () => {
+test("threshold unlocks on first edit and writes progress", async () => {
   const db = createFakeDb();
-  const domain = createAchievementsDomain({
-    db,
-    FieldValue,
-    HttpsError: TestHttpsError,
+  const domain = domainOf(db);
+  const results = await domain.evaluate({
+    type: "edit_published",
+    userId: "u1",
+    metadata: { publishedWorks: 1, impactScore: 0 },
   });
-  await domain.evaluate({ type: "group_created", userId: "alice" });
-  await domain.evaluate({ type: "friend_accepted", userIds: ["alice", "bob"] });
-  const alice = await domain.getAchievements({ auth: { uid: "alice" } });
-  const group = alice.items.find((item) => item.id === "first_group");
-  const friend = alice.items.find((item) => item.id === "first_friend");
-  assert.equal(group.unlocked, true);
-  assert.equal(friend.unlocked, true);
-  await assert.rejects(
-    domain.getAchievements({}),
-    (error) => error.code === "unauthenticated",
+  assert.equal(results.some((r) => r.unlocked && r.achievementId === "the_threshold"), true);
+  assert.ok(db.store.has("user_achievements/u1/unlocked/the_threshold"));
+  assert.ok(db.store.has("user_achievement_progress/u1/progress/the_threshold"));
+  const progress = db.store.get("user_achievement_progress/u1/progress/the_threshold");
+  assert.equal(progress.conditions.first_action.met, true);
+  assert.equal(progress.currentValue, 1);
+  assert.equal(progress.targetValue, 1);
+});
+
+test("threshold is idempotent", async () => {
+  const db = createFakeDb();
+  const domain = domainOf(db);
+  await domain.evaluate({ type: "message_sent", userId: "u1" });
+  const second = await domain.evaluate({ type: "group_joined", userId: "u1" });
+  assert.equal(
+    second.some((r) => r.achievementId === "the_threshold" && r.reason === "already_unlocked"),
+    true,
   );
 });
 
-test("seasonal achievements obey server time and stay idempotent", async () => {
-  let now = new Date("2026-08-15T00:00:00Z");
+test("arena progress bars use server numbers before unlock", async () => {
   const db = createFakeDb();
-  const rewards = [];
-  const domain = createAchievementsDomain({
-    db,
-    FieldValue,
-    HttpsError: TestHttpsError,
-    clock: { now: () => now },
-    economy: {
-      applyReward: async (spec) => {
-        rewards.push(spec);
-        return { applied: true };
-      },
-    },
+  const domain = domainOf(db);
+  await domain.evaluate({
+    type: "game_won",
+    userId: "u1",
+    metadata: { realWins: 18, realGames: 30 },
   });
-  const before = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
-  const seasonalBefore = before.find((item) => item.achievementId === "autumn_2026_rally");
-  assert.equal(seasonalBefore.unlocked, false);
-  assert.equal(seasonalBefore.reason, "season_not_started");
-  now = new Date("2026-09-03T12:00:00Z");
-  const during = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
-  assert.equal(during.find((item) => item.achievementId === "autumn_2026_rally").unlocked, true);
-  const duplicate = await domain.unlock("alice", "autumn_2026_rally");
-  assert.equal(duplicate.reason, "already_unlocked");
-  assert.equal(rewards.filter((item) => item.referenceId === "autumn_2026_rally").length, 1);
-  const listed = await domain.getAchievements({ auth: { uid: "alice" } });
-  const rally = listed.items.find((item) => item.id === "autumn_2026_rally");
-  assert.equal(rally.seasonState, "active");
-  assert.equal(rally.unlocked, true);
-  now = new Date("2026-12-15T00:00:00Z");
-  const after = await domain.unlock("bob", "autumn_2026_rally");
-  assert.equal(after.unlocked, false);
-  assert.equal(after.reason, "season_ended");
-  const historical = await domain.getAchievements({ auth: { uid: "alice" } });
-  const ended = historical.items.find((item) => item.id === "autumn_2026_rally");
-  assert.equal(ended.seasonState, "ended");
-  assert.equal(ended.unlocked, true);
-  const invalid = await domain.unlock("alice", "not-real");
-  assert.equal(invalid.reason, "invalid");
+  const progress = db.store.get("user_achievement_progress/u1/progress/arena_sovereign");
+  assert.equal(progress.conditions.wins_30.current, 18);
+  assert.equal(progress.conditions.wins_30.target, 30);
+  assert.equal(progress.conditions.wins_30.met, false);
+  assert.equal(progress.conditions.winrate_55.current, 60);
+  assert.equal(db.store.has("user_achievements/u1/unlocked/arena_sovereign"), false);
+
+  await domain.evaluate({
+    type: "game_won",
+    userId: "u1",
+    metadata: { realWins: 30, realGames: 50 },
+  });
+  assert.ok(db.store.has("user_achievements/u1/unlocked/arena_sovereign"));
+});
+
+test("composites unlock only after prerequisites", async () => {
+  const db = createFakeDb();
+  const domain = domainOf(db);
+  // Seed five base unlocks.
+  for (const id of BASE_IDS.slice(0, 5)) {
+    await domain.unlock("u1", id, { source: "test" });
+  }
+  assert.ok(db.store.has("user_achievements/u1/unlocked/legend_of_the_gate"));
+
+  // Dragon still blocked without keeper+crown+age.
+  assert.equal(db.store.has("user_achievements/u1/unlocked/dragon_of_legacy"), false);
+
+  await domain.unlock("u1", "keeper_of_time", { source: "test" });
+  await domain.unlock("u1", "crownbearer", { source: "test" });
+  await db.collection("user_achievement_stats").doc("u1").set({
+    accountCreatedAt: "2023-01-01T00:00:00.000Z",
+  }, { merge: true });
+  await domain.evaluate({ type: "achievement_reconcile", userId: "u1" });
+  assert.ok(db.store.has("user_achievements/u1/unlocked/dragon_of_legacy"));
+});
+
+test("getAchievements returns bilingual fields and progress", async () => {
+  const db = createFakeDb();
+  const domain = domainOf(db);
+  await domain.evaluate({
+    type: "edit_published",
+    userId: "u1",
+    metadata: { publishedWorks: 1 },
+  });
+  const payload = await domain.getAchievements({
+    auth: { uid: "u1" },
+    data: {},
+  });
+  assert.equal(payload.items.length, 10);
+  const threshold = payload.items.find((item) => item.id === "the_threshold");
+  assert.equal(threshold.nameAr, "العتبة");
+  assert.equal(threshold.nameEn, "The Threshold");
+  assert.equal(threshold.unlocked, true);
+  assert.ok(threshold.unlockedAt);
+  assert.equal(threshold.conditions[0].met, true);
+  assert.equal(threshold.assetPath.includes("the_threshold"), true);
+});
+
+test("client-facing catalog shogun lists separate conditions", () => {
+  const shogun = CATALOG.find((item) => item.id === "shogun_of_the_realm");
+  assert.equal(shogun.conditions.length, 4);
+  assert.deepEqual(
+    shogun.conditions.map((c) => c.id),
+    ["members_50", "member_age_3d", "member_message_1", "stable_7d"],
+  );
 });
