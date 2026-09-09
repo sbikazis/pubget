@@ -62,7 +62,7 @@ final class AchievementProvider extends ChangeNotifier {
     _state = LoadingState.loading;
     notifyListeners();
     await _loadCelebrated(userId);
-    // Prefer callable for full progress, then watch unlocks for live updates.
+    // Prefer callable for full progress, then watch unlocks + progress live.
     final listed = await _repository.list(userId: userId);
     if (_disposed || _userId != userId) return;
     listed.fold(
