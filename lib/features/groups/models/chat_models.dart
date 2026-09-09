@@ -252,6 +252,7 @@ final class ChatMessage {
     ChatSendState? sendState,
     bool? isOptimistic,
     String? failureMessage,
+    bool clearFailureMessage = false,
     DateTime? createdAt,
     DateTime? deletedAt,
   }) {
@@ -282,7 +283,9 @@ final class ChatMessage {
       readCount: readCount,
       isOptimistic: isOptimistic ?? this.isOptimistic,
       sendState: sendState ?? this.sendState,
-      failureMessage: failureMessage ?? this.failureMessage,
+      failureMessage: clearFailureMessage
+          ? null
+          : (failureMessage ?? this.failureMessage),
       gameActivity: gameActivity,
       systemKind: systemKind,
       senderTitle: senderTitle,

@@ -9,8 +9,14 @@ import 'package:pubget/features/private_chat/models/private_chat_models.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_list_provider.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_provider.dart';
 import 'package:pubget/features/private_chat/repositories/private_chat_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
   test(
     'optimistic private message remains pending until server confirmation',
     () async {
@@ -29,7 +35,7 @@ void main() {
 
       expect(provider.messages.single.sendState, ChatSendState.pending);
       final pending = provider.messages.single;
-      repository.sendCompleter.complete(Success(_serverMessage(pending.id)));
+      repository.completeNext(Success(_serverMessage(pending.id)));
       await operation;
 
       expect(provider.messages.single.sendState, ChatSendState.sent);
@@ -37,7 +43,7 @@ void main() {
     },
   );
 
-  test('failed private send remains visible and can be retried or deleted', () async {
+  test('network failure stays pending; permanent failure can be deleted', () async {
     final repository = _FakePrivateChatRepository();
     final provider = PrivateChatProvider(repository: repository);
     addTearDown(provider.dispose);
@@ -50,43 +56,34 @@ void main() {
       senderAvatar: '',
       text: 'Keep me',
     );
-    repository.sendCompleter.complete(
-      const FailureResult(NetworkError('offline')),
+    repository.completeNext(
+      const FailureResult(NetworkError('chat_network')),
     );
     await operation;
+    expect(provider.messages.single.sendState, ChatSendState.pending);
 
-    final failed = provider.messages.single;
-    expect(failed.sendState, ChatSendState.failed);
-    expect(failed.failureMessage, 'offline');
-
-    repository.sendCompleter = Completer<Result<ChatMessage>>();
-    final retry = provider.retry(failed);
-    repository.sendCompleter.complete(Success(_serverMessage(failed.id)));
-    await retry;
-    expect(provider.messages.single.sendState, ChatSendState.sent);
-
-    repository.sendCompleter = Completer<Result<ChatMessage>>();
-    final second = provider.sendText(
+    final permanent = provider.sendText(
       chatId: 'c1',
       senderId: 'alice',
       senderName: 'Alice',
       senderAvatar: '',
       text: 'Remove me',
     );
-    repository.sendCompleter.complete(
-      const FailureResult(NetworkError('offline')),
+    repository.completeNext(
+      const FailureResult(ValidationError('chat_validation')),
     );
-    await second;
-    final failedAgain = provider.messages.last;
-    provider.removeFailed(failedAgain.id);
+    await permanent;
+    final failed = provider.messages.last;
+    expect(failed.sendState, ChatSendState.failed);
+    provider.removeFailed(failed.id);
     expect(
-      provider.messages.any((message) => message.id == failedAgain.id),
+      provider.messages.any((message) => message.id == failed.id),
       isFalse,
     );
   });
 
   test(
-    'stream merges incrementally and preserves failed local messages',
+    'stream merges incrementally and preserves pending local messages',
     () async {
       final repository = _FakePrivateChatRepository();
       final provider = PrivateChatProvider(repository: repository);
@@ -102,8 +99,8 @@ void main() {
         senderAvatar: '',
         text: 'offline',
       );
-      repository.sendCompleter.complete(
-        const FailureResult(NetworkError('offline')),
+      repository.completeNext(
+        const FailureResult(NetworkError('chat_network')),
       );
       await send;
       repository.stream.add(
@@ -115,7 +112,7 @@ void main() {
       expect(provider.messages.map((message) => message.id), contains('two'));
       expect(
         provider.messages.where(
-          (message) => message.sendState == ChatSendState.failed,
+          (message) => message.sendState == ChatSendState.pending,
         ),
         hasLength(1),
       );
@@ -220,8 +217,12 @@ ChatMessage _serverMessageAt(String id, DateTime createdAt) =>
 final class _FakePrivateChatRepository implements PrivateChatRepository {
   final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
   final chats = StreamController<Result<List<PrivateChatSummary>>>.broadcast();
-  Completer<Result<ChatMessage>> sendCompleter =
-      Completer<Result<ChatMessage>>();
+  final pendingCompleters = <Completer<Result<ChatMessage>>>[];
+
+  void completeNext(Result<ChatMessage> result) {
+    final next = pendingCompleters.firstWhere((c) => !c.isCompleted);
+    next.complete(result);
+  }
 
   @override
   Future<Result<String>> startChat(String otherUserId) async =>
@@ -253,7 +254,11 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
-  }) => sendCompleter.future;
+  }) {
+    final completer = Completer<Result<ChatMessage>>();
+    pendingCompleters.add(completer);
+    return completer.future;
+  }
 
   @override
   Future<Result<List<ChatMessage>>> getOlderMessages({

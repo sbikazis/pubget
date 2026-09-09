@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -176,14 +177,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
     _wasNearBottom = true;
-    await context.read<PrivateChatProvider>().sendText(
-      chatId: widget.chatId,
-      senderId: user.id,
-      senderName: user.displayName?.trim().isNotEmpty == true
-          ? user.displayName!
-          : user.email,
-      senderAvatar: user.avatarUrl ?? '',
-      text: text,
+    unawaited(
+      context.read<PrivateChatProvider>().sendText(
+        chatId: widget.chatId,
+        senderId: user.id,
+        senderName: user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!
+            : user.email,
+        senderAvatar: user.avatarUrl ?? '',
+        text: text,
+      ),
     );
   }
 
@@ -339,23 +342,24 @@ class _FailedMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chat = context.read<PrivateChatProvider>();
+    final copy = AppStrings.of(context);
     return Card(
       key: ValueKey<String>('failed-${message.id}'),
       color: Theme.of(context).colorScheme.errorContainer,
       margin: const EdgeInsets.all(AppSpacing.sm),
       child: ListTile(
         leading: const Icon(Icons.error_outline),
-        title: Text(message.text ?? 'Media message'),
-        subtitle: Text(message.failureMessage ?? 'Message was not sent.'),
+        title: Text(message.text ?? copy.mediaMessage),
+        subtitle: Text(copy.chatSendFailureLabel(message.failureMessage)),
         trailing: Wrap(
           children: <Widget>[
             IconButton(
-              tooltip: 'Retry',
+              tooltip: copy.retry,
               onPressed: () => chat.retry(message),
               icon: const Icon(Icons.refresh),
             ),
             IconButton(
-              tooltip: 'Delete failed message',
+              tooltip: copy.deleteFailedMessage,
               onPressed: () => chat.removeFailed(message.id),
               icon: const Icon(Icons.delete_outline),
             ),

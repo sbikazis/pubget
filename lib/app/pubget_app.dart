@@ -290,8 +290,10 @@ class PubgetApp extends StatelessWidget {
               RoleplayProvider(repository: context.read<RoleplayRepository>()),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
-          create: (context) =>
-              ChatProvider(repository: context.read<ChatRepository>()),
+          create: (context) => ChatProvider(
+            repository: context.read<ChatRepository>(),
+            network: context.read<NetworkService>(),
+          ),
         ),
         provider.ChangeNotifierProxyProvider<AuthProvider, HomeProvider>(
           create: (context) => HomeProvider(
@@ -354,6 +356,7 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<PrivateChatProvider>(
           create: (context) => PrivateChatProvider(
             repository: context.read<PrivateChatRepository>(),
+            network: context.read<NetworkService>(),
           ),
         ),
         provider.ChangeNotifierProvider<EventListProvider>(
