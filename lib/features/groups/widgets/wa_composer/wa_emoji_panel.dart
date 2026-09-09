@@ -1,29 +1,38 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../data/sticker_catalog.dart';
-import '../../data/sticker_store.dart';
+
+import '../../data/emoji_library.dart';
+import '../../data/user_sticker_store.dart';
 import 'wa_colors.dart';
 import 'whatsapp_chat_composer.dart';
 
-enum WaPanelTab { stickers, gif, emoji }
+enum WaPanelTab { stickers, emoji }
 
 class WaEmojiPanel extends StatefulWidget {
   const WaEmojiPanel({
     required this.onInsertEmoji,
-    required this.onSendSticker,
-    required this.onRequestGif,
+    required this.onSendCustomSticker,
     required this.onClose,
     required this.tabPrefKey,
-    this.stickerStore,
+    this.userStickerStore,
     super.key,
   });
 
   final ValueChanged<String> onInsertEmoji;
-  final Future<void> Function(String stickerKey) onSendSticker;
-  final Future<void> Function() onRequestGif;
+  final Future<void> Function({
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+  })
+  onSendCustomSticker;
   final VoidCallback onClose;
   final String tabPrefKey;
-  final StickerStore? stickerStore;
+  final UserStickerStore? userStickerStore;
 
   @override
   State<WaEmojiPanel> createState() => _WaEmojiPanelState();
@@ -34,29 +43,44 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   var _searching = false;
   var _query = '';
   final _search = TextEditingController();
-  var _packIndex = 0;
-  StickerStore? _store;
-
-  static const _emojis = <String>[
-    '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '🤔', '😎',
-    '😭', '😡', '👍', '👎', '🙏', '🔥', '❤️', '✨', '🎉', '👏',
-    '💯', '🌙', '⭐', '🌸', '🐱', '🐶', '🍕', '⚽', '🎮', '🎵',
-    '👋', '💪', '🤝', '😴', '🤯', '🥳', '😇', '🫶', '💬', '📌',
-  ];
+  var _emojiCategoryIndex = 0;
+  late final UserStickerStore _store;
+  List<String> _stickerPaths = const <String>[];
+  var _loadingStickers = true;
 
   @override
   void initState() {
     super.initState();
-    _store = widget.stickerStore ?? StickerStore();
-    unawaitedLoad();
+    _store = widget.userStickerStore ?? UserStickerStore();
+    unawaited(_bootstrap());
   }
 
-  Future<void> unawaitedLoad() async {
-    final index = await loadWaPanelTab(widget.tabPrefKey);
+  Future<void> _bootstrap() async {
+    try {
+      final raw = await loadWaPanelTab(widget.tabPrefKey);
+      // Legacy tabs: stickers=0, gif=1, emoji=2 → map gif→emoji, emoji→emoji.
+      final tab = switch (raw) {
+        2 => WaPanelTab.emoji,
+        1 => WaPanelTab.emoji,
+        _ => WaPanelTab.stickers,
+      };
+      final paths = await _store.paths();
+      if (!mounted) return;
+      setState(() {
+        _tab = tab;
+        _stickerPaths = paths;
+        _loadingStickers = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingStickers = false);
+    }
+  }
+
+  Future<void> _reloadStickers() async {
+    final paths = await _store.paths();
     if (!mounted) return;
-    setState(() {
-      _tab = WaPanelTab.values[index.clamp(0, WaPanelTab.values.length - 1)];
-    });
+    setState(() => _stickerPaths = paths);
   }
 
   @override
@@ -72,27 +96,123 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
       _query = '';
       _search.clear();
     });
-    await saveWaPanelTab(widget.tabPrefKey, tab.index);
+    await saveWaPanelTab(widget.tabPrefKey, tab == WaPanelTab.emoji ? 1 : 0);
   }
 
-  List<StickerItem> get _stickers {
-    final base = List<StickerItem>.of(stickerCatalog);
-    if (_query.trim().isEmpty) return base;
+  List<String> get _filteredStickerPaths {
+    if (_query.trim().isEmpty) return _stickerPaths;
     final q = _query.trim().toLowerCase();
-    return base
-        .where(
-          (item) =>
-              item.name.toLowerCase().contains(q) ||
-              item.category.toLowerCase().contains(q) ||
-              item.key.toLowerCase().contains(q),
-        )
+    return _stickerPaths
+        .where((path) => path.toLowerCase().contains(q))
         .toList(growable: false);
   }
 
-  List<String> get _filteredEmojis {
-    if (_query.trim().isEmpty) return _emojis;
-    // Simple filter: show all when searching by empty semantics; emoji has no names here.
-    return _emojis;
+  List<EmojiCategory> get _emojiCategories {
+    if (_query.trim().isEmpty) return emojiLibrary;
+    final q = _query.trim();
+    return emojiLibrary
+        .map(
+          (cat) => EmojiCategory(
+            id: cat.id,
+            labelAr: cat.labelAr,
+            emojis: cat.emojis.where((e) => e.contains(q)).toList(growable: false),
+          ),
+        )
+        .where((cat) => cat.emojis.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _createSticker() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null || !mounted) return;
+
+    String path = picked.path;
+    try {
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        compressFormat: ImageCompressFormat.png,
+        compressQuality: 92,
+        maxWidth: 512,
+        maxHeight: 512,
+        uiSettings: <PlatformUiSettings>[
+          AndroidUiSettings(
+            toolbarTitle: 'قص الملصق',
+            toolbarColor: WaColors.cursorGreen,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: false,
+            hideBottomControls: false,
+            aspectRatioPresets: const <CropAspectRatioPresetData>[
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'قص الملصق',
+            aspectRatioPresets: const <CropAspectRatioPresetData>[
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+          if (kIsWeb)
+            WebUiSettings(
+              context: context,
+              presentStyle: WebPresentStyle.dialog,
+              size: const CropperSize(width: 520, height: 520),
+            ),
+        ],
+      );
+      if (cropped != null) path = cropped.path;
+    } catch (_) {
+      // Desktop/tests: cropper may be unavailable — use original image.
+    }
+
+    if (!mounted) return;
+    final file = File(path);
+    if (!file.existsSync()) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+
+    final action = await showModalBottomSheet<_StickerSaveAction>(
+      context: context,
+      backgroundColor: WaColors.darkPanel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => _StickerPreviewSheet(bytes: bytes),
+    );
+    if (action == null || !mounted) return;
+
+    final savedPath = await _store.addFromBytes(bytes, extension: 'png');
+    await _reloadStickers();
+    if (action == _StickerSaveAction.saveAndSend) {
+      final name = savedPath.split(Platform.pathSeparator).last;
+      await widget.onSendCustomSticker(
+        bytes: bytes,
+        fileName: name,
+        contentType: 'image/png',
+      );
+    }
+  }
+
+  Future<void> _sendStickerPath(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) return;
+    final bytes = await file.readAsBytes();
+    final lower = path.toLowerCase();
+    final contentType = lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+        ? 'image/jpeg'
+        : lower.endsWith('.webp')
+        ? 'image/webp'
+        : 'image/png';
+    await widget.onSendCustomSticker(
+      bytes: bytes,
+      fileName: path.split(Platform.pathSeparator).last,
+      contentType: contentType,
+    );
   }
 
   @override
@@ -123,7 +243,8 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
               child: _searching ? _searchHeader() : _normalHeader(),
             ),
             Expanded(child: _body()),
-            _packsBar(),
+            if (_tab == WaPanelTab.emoji) _emojiCategoriesBar(),
+            if (_tab == WaPanelTab.stickers) _stickerPacksBar(),
           ],
         ),
       ),
@@ -136,7 +257,8 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
       child: Row(
         children: <Widget>[
           IconButton(
-            onPressed: () {},
+            key: const Key('composer-create-sticker-header'),
+            onPressed: _createSticker,
             icon: const Icon(Icons.edit, size: 22, color: WaColors.iconMuted),
           ),
           Expanded(
@@ -154,23 +276,18 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
                       _segment(
                         selected: _tab == WaPanelTab.stickers,
                         onTap: () => _selectTab(WaPanelTab.stickers),
-                        child: const Icon(Icons.sticky_note_2_outlined, size: 18),
-                      ),
-                      _segment(
-                        selected: _tab == WaPanelTab.gif,
-                        onTap: () => _selectTab(WaPanelTab.gif),
-                        child: const Text(
-                          'GIF',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                          ),
+                        child: const Icon(
+                          Icons.sticky_note_2_outlined,
+                          size: 18,
                         ),
                       ),
                       _segment(
                         selected: _tab == WaPanelTab.emoji,
                         onTap: () => _selectTab(WaPanelTab.emoji),
-                        child: const Icon(Icons.emoji_emotions_outlined, size: 18),
+                        child: const Icon(
+                          Icons.emoji_emotions_outlined,
+                          size: 18,
+                        ),
                       ),
                     ],
                   ),
@@ -200,6 +317,11 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           hintText: 'بحث',
           hintStyle: const TextStyle(color: WaColors.iconMuted),
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
           prefixIcon: IconButton(
             onPressed: () => setState(() {
               _searching = false;
@@ -247,14 +369,21 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
 
   Widget _body() {
     return switch (_tab) {
-      WaPanelTab.stickers => _stickerGrid(),
-      WaPanelTab.gif => _gifPane(),
+      WaPanelTab.stickers => _stickerBody(),
       WaPanelTab.emoji => _emojiGrid(),
     };
   }
 
-  Widget _stickerGrid() {
-    final items = _stickers;
+  Widget _stickerBody() {
+    if (_loadingStickers) {
+      return const Center(
+        child: CircularProgressIndicator(color: WaColors.cursorGreen),
+      );
+    }
+    final paths = _filteredStickerPaths;
+    if (paths.isEmpty) {
+      return _emptyStickers();
+    }
     return GridView.builder(
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -263,38 +392,71 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         crossAxisSpacing: 8,
         childAspectRatio: 1,
       ),
-      itemCount: items.length + 1,
+      itemCount: paths.length + 1,
       itemBuilder: (context, index) {
-        if (index == 0) {
-          return _createStickerCell();
-        }
-        final item = items[index - 1];
+        if (index == 0) return _createStickerCell();
+        final path = paths[index - 1];
         return InkWell(
-          key: Key('sticker-${item.key}'),
+          key: Key('user-sticker-$index'),
           borderRadius: BorderRadius.circular(12),
-          onTap: () async {
-            await _store?.remember(item.key);
-            await widget.onSendSticker(item.key);
-          },
-          child: StickerMark(stickerKey: item.key, size: 78),
+          onTap: () => _sendStickerPath(path),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const ColoredBox(
+                color: WaColors.darkPill,
+                child: Icon(Icons.broken_image, color: WaColors.iconMuted),
+              ),
+            ),
+          ),
         );
       },
     );
   }
 
+  Widget _emptyStickers() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          const Text(
+            'ليس لديك ملصقات بعد',
+            key: Key('stickers-empty-message'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: WaColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'أنشئ ملصقك الأول من صورة',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: WaColors.iconMuted, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: 112,
+            height: 112,
+            child: _createStickerCell(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _createStickerCell() {
     return Material(
+      key: const Key('composer-create-sticker'),
       color: WaColors.createStickerBg,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () async {
-          final picker = ImagePicker();
-          final file = await picker.pickImage(source: ImageSource.gallery);
-          if (file == null) return;
-          // Custom sticker editor is a follow-up; pick sends as image via GIF/media path.
-          await widget.onRequestGif();
-        },
+        onTap: _createSticker,
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
@@ -320,18 +482,15 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
     );
   }
 
-  Widget _gifPane() {
-    return Center(
-      child: FilledButton.tonal(
-        key: const Key('composer-gif'),
-        onPressed: widget.onRequestGif,
-        child: const Text('اختر GIF من المعرض'),
-      ),
-    );
-  }
-
   Widget _emojiGrid() {
-    final items = _filteredEmojis;
+    final cats = _emojiCategories;
+    if (cats.isEmpty) {
+      return const Center(
+        child: Text('لا نتائج', style: TextStyle(color: WaColors.iconMuted)),
+      );
+    }
+    final safeIndex = _emojiCategoryIndex.clamp(0, cats.length - 1);
+    final items = cats[safeIndex].emojis;
     return GridView.builder(
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -343,6 +502,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
       itemBuilder: (context, index) {
         final emoji = items[index];
         return InkWell(
+          key: Key('emoji-$emoji'),
           onTap: () => widget.onInsertEmoji(emoji),
           child: Center(
             child: Text(emoji, style: const TextStyle(fontSize: 26)),
@@ -352,39 +512,71 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
     );
   }
 
-  Widget _packsBar() {
-    final packs = stickerCategories;
+  Widget _emojiCategoriesBar() {
+    final cats = _emojiCategories;
+    if (cats.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 72,
+      height: 56,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        itemCount: packs.length + 1,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemCount: cats.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, index) {
-          if (index == 0) {
-            return _packChip(
-              selected: false,
-              child: const Icon(Icons.dashboard_customize_outlined,
-                  color: WaColors.iconMuted),
-              badge: Icons.add,
-              badgeColor: WaColors.iconMuted,
-              onTap: () {},
-            );
-          }
-          final selected = _packIndex == index - 1;
-          return _packChip(
-            selected: selected,
-            child: Icon(
-              Icons.sticky_note_2,
-              color: selected ? Colors.white : WaColors.iconMuted,
+          final selected = _emojiCategoryIndex == index;
+          final cat = cats[index];
+          return InkWell(
+            key: Key('emoji-cat-${cat.id}'),
+            onTap: () => setState(() => _emojiCategoryIndex = index),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? WaColors.segmentActive : WaColors.darkPill,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                cat.labelAr,
+                style: TextStyle(
+                  color: selected ? Colors.white : WaColors.iconMuted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-            badge: index == 1 ? Icons.star : Icons.add,
-            badgeColor:
-                index == 1 ? WaColors.cursorGreen : WaColors.iconMuted,
-            onTap: () => setState(() => _packIndex = index - 1),
           );
         },
+      ),
+    );
+  }
+
+  Widget _stickerPacksBar() {
+    return SizedBox(
+      height: 72,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        children: <Widget>[
+          _packChip(
+            selected: true,
+            child: const Icon(Icons.sticky_note_2, color: Colors.white),
+            badge: Icons.star,
+            badgeColor: WaColors.cursorGreen,
+            onTap: () {},
+          ),
+          const SizedBox(width: 8),
+          _packChip(
+            selected: false,
+            child: const Icon(
+              Icons.add,
+              color: WaColors.iconMuted,
+            ),
+            badge: Icons.add,
+            badgeColor: WaColors.iconMuted,
+            onTap: _createSticker,
+          ),
+        ],
       ),
     );
   }
@@ -428,6 +620,87 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           ),
         ),
       ],
+    );
+  }
+}
+
+enum _StickerSaveAction { save, saveAndSend }
+
+class _StickerPreviewSheet extends StatelessWidget {
+  const _StickerPreviewSheet({required this.bytes});
+
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: WaColors.handle,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'معاينة الملصق',
+              style: TextStyle(
+                color: WaColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.memory(
+                bytes,
+                width: 160,
+                height: 160,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    key: const Key('sticker-save'),
+                    onPressed: () =>
+                        Navigator.pop(context, _StickerSaveAction.save),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: WaColors.cursorGreen,
+                      side: const BorderSide(color: WaColors.cursorGreen),
+                      minimumSize: const Size.fromHeight(46),
+                    ),
+                    child: const Text('حفظ'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    key: const Key('sticker-save-send'),
+                    onPressed: () =>
+                        Navigator.pop(context, _StickerSaveAction.saveAndSend),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: WaColors.cursorGreen,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(46),
+                    ),
+                    child: const Text('حفظ وإرسال'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
