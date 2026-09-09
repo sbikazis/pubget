@@ -449,7 +449,11 @@ final class AnimeListProvider extends ChangeNotifier {
             : pageResult.items;
         final searching = searchQuery != null && searchQuery.trim().isNotEmpty;
         if (searching && page == 1) {
-          merged = AnimeSearchRanker.rank(merged, searchQuery);
+          merged = AnimeSearchRanker.rank(
+            merged,
+            query,
+            keepUnmatched: true,
+          );
         }
         _items = merged;
         if (!searching && page == 1) {
