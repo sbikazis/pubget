@@ -26,6 +26,7 @@ import '../services/default_voice_capture.dart';
 import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
 import '../widgets/chat_message_bubble.dart';
+import '../widgets/chat_special_cards.dart';
 import '../widgets/event_center_sheet.dart';
 import '../widgets/wa_composer/whatsapp_chat_composer.dart';
 import 'chat_background_picker_page.dart';
@@ -611,47 +612,162 @@ class _MessageList extends StatelessWidget {
         icon: Icons.forum_outlined,
       );
     }
+    final messages = chat.messages;
+    final now = DateTime.now();
+    // item slots: [encryption?] + optional load-more + (date? + message)*
+    final rows = <_ChatListRow>[];
+    rows.add(const _ChatListRow.encryption());
+    if (chat.hasMore) rows.add(const _ChatListRow.loadMore());
+    DateTime? lastDay;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      final day = message.createdAt == null
+          ? null
+          : DateTime(
+              message.createdAt!.year,
+              message.createdAt!.month,
+              message.createdAt!.day,
+            );
+      if (day != null && (lastDay == null || day != lastDay)) {
+        rows.add(
+          _ChatListRow.date(chatDayLabel(message.createdAt, now: now)),
+        );
+        lastDay = day;
+      }
+      final prev = i > 0 ? messages[i - 1] : null;
+      final next = i + 1 < messages.length ? messages[i + 1] : null;
+      final samePrev = prev != null &&
+          prev.senderId == message.senderId &&
+          prev.type == message.type &&
+          !message.isDeleted &&
+          prev.type != ChatMessageType.system &&
+          prev.type != ChatMessageType.game &&
+          prev.type != ChatMessageType.event;
+      final sameNext = next != null &&
+          next.senderId == message.senderId &&
+          next.type == message.type &&
+          !next.isDeleted;
+      rows.add(
+        _ChatListRow.message(
+          message,
+          showAvatar: !sameNext,
+          showHeader: !samePrev,
+          showTail: !sameNext,
+        ),
+      );
+    }
+
     return ListView.builder(
       controller: controller,
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: chat.messages.length + (chat.hasMore ? 1 : 0),
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        if (index == 0 && chat.hasMore) {
-          return TextButton.icon(
-            onPressed: chat.loadMore,
-            icon: const Icon(Icons.history),
-            label: Text(AppStrings.of(context).loadOlderMessages),
-          );
+        final row = rows[index];
+        switch (row.kind) {
+          case _ChatListKind.encryption:
+            return const ChatEncryptionBanner();
+          case _ChatListKind.loadMore:
+            return TextButton.icon(
+              onPressed: chat.loadMore,
+              icon: const Icon(Icons.history),
+              label: Text(AppStrings.of(context).loadOlderMessages),
+            );
+          case _ChatListKind.date:
+            return ChatDateDivider(label: row.dateLabel!);
+          case _ChatListKind.message:
+            final message = row.message!;
+            if (message.sendState == ChatSendState.failed) {
+              return _FailedMessage(message: message);
+            }
+            return ChatMessageBubble(
+              key: ValueKey<String>(message.id),
+              message: message,
+              isMine: message.senderId == currentUserId,
+              contrast: contrast,
+              showAvatar: row.showAvatar,
+              showHeader: row.showHeader,
+              showTail: row.showTail,
+              onLongPress: () => onAction(message),
+              onAvatarTap: () => onAvatarTap(message),
+              onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
+              onAudioTap: message.type == ChatMessageType.audio
+                  ? () => onAudioTap(message)
+                  : null,
+              onWelcomeMember: message.isMemberJoinedCard
+                  ? () async {
+                      final user = context.read<AuthProvider>().currentUser;
+                      final member = context.read<GroupProvider>().membership;
+                      final groupId = chat.groupId;
+                      if (user == null || member == null || groupId == null) {
+                        return;
+                      }
+                      await context.read<ChatProvider>().sendSticker(
+                        groupId: groupId,
+                        senderId: user.id,
+                        senderName: user.displayName ?? user.email,
+                        senderAvatar: user.avatarUrl ?? '',
+                        senderRole: member.role.name,
+                        stickerKey: 'gestures/wave',
+                      );
+                    }
+                  : null,
+              onEventTap:
+                  message.type == ChatMessageType.event &&
+                      (message.mediaId ?? '').isNotEmpty
+                  ? () => onEventTap(message.mediaId!)
+                  : null,
+              onGameTap:
+                  message.type == ChatMessageType.game &&
+                      (message.mediaId ?? '').isNotEmpty
+                  ? () => onGameTap(message)
+                  : null,
+            );
         }
-        final message = chat.messages[index - (chat.hasMore ? 1 : 0)];
-        if (message.sendState == ChatSendState.failed) {
-          return _FailedMessage(message: message);
-        }
-        return ChatMessageBubble(
-          key: ValueKey<String>(message.id),
-          message: message,
-          isMine: message.senderId == currentUserId,
-          contrast: contrast,
-          onLongPress: () => onAction(message),
-          onAvatarTap: () => onAvatarTap(message),
-          onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
-          onAudioTap: message.type == ChatMessageType.audio
-              ? () => onAudioTap(message)
-              : null,
-          onEventTap:
-              message.type == ChatMessageType.event &&
-                  (message.mediaId ?? '').isNotEmpty
-              ? () => onEventTap(message.mediaId!)
-              : null,
-          onGameTap:
-              message.type == ChatMessageType.game &&
-                  (message.mediaId ?? '').isNotEmpty
-              ? () => onGameTap(message)
-              : null,
-        );
       },
     );
   }
+}
+
+enum _ChatListKind { encryption, loadMore, date, message }
+
+final class _ChatListRow {
+  const _ChatListRow.encryption()
+      : kind = _ChatListKind.encryption,
+        message = null,
+        dateLabel = null,
+        showAvatar = true,
+        showHeader = true,
+        showTail = true;
+
+  const _ChatListRow.loadMore()
+      : kind = _ChatListKind.loadMore,
+        message = null,
+        dateLabel = null,
+        showAvatar = true,
+        showHeader = true,
+        showTail = true;
+
+  const _ChatListRow.date(this.dateLabel)
+      : kind = _ChatListKind.date,
+        message = null,
+        showAvatar = true,
+        showHeader = true,
+        showTail = true;
+
+  const _ChatListRow.message(
+    this.message, {
+    required this.showAvatar,
+    required this.showHeader,
+    required this.showTail,
+  })  : kind = _ChatListKind.message,
+        dateLabel = null;
+
+  final _ChatListKind kind;
+  final ChatMessage? message;
+  final String? dateLabel;
+  final bool showAvatar;
+  final bool showHeader;
+  final bool showTail;
 }
 
 class _FailedMessage extends StatelessWidget {
