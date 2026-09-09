@@ -292,10 +292,10 @@ exports.finalizeEditUpload = onCall(
   { region: "us-central1", timeoutSeconds: 300, memory: "1GiB" },
   editsDomain.finalizeUpload,
 );
-// Bucket for pubget-aaf27.firebasestorage.app is US-aligned; europe-west3
-// finalize handlers can miss object events and leave edits stuck in uploading.
+// Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
+// Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   processEditVideo,
 );
 
