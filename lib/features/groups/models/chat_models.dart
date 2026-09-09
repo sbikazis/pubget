@@ -68,6 +68,10 @@ final class ChatMessage {
     required this.sendState,
     this.failureMessage,
     this.gameActivity,
+    this.systemKind,
+    this.senderTitle,
+    this.disappearing = false,
+    this.cardMeta,
   });
 
   factory ChatMessage.optimistic({
@@ -112,6 +116,10 @@ final class ChatMessage {
       isOptimistic: true,
       sendState: ChatSendState.pending,
       gameActivity: null,
+      systemKind: null,
+      senderTitle: null,
+      disappearing: false,
+      cardMeta: null,
     );
   }
 
@@ -160,6 +168,12 @@ final class ChatMessage {
       isOptimistic: false,
       sendState: sendState,
       gameActivity: ChatGameActivity.tryParse(map['gameActivity']),
+      systemKind: map['systemKind'] as String?,
+      senderTitle: map['senderTitle'] as String?,
+      disappearing: map['disappearing'] == true || map['expiresAt'] != null,
+      cardMeta: map['cardMeta'] is Map
+          ? Map<String, dynamic>.from(map['cardMeta'] as Map)
+          : null,
     );
   }
 
@@ -189,8 +203,21 @@ final class ChatMessage {
   final ChatSendState sendState;
   final String? failureMessage;
   final ChatGameActivity? gameActivity;
+  /// system | member_joined | debate | encryption …
+  final String? systemKind;
+  final String? senderTitle;
+  final bool disappearing;
+  final Map<String, dynamic>? cardMeta;
 
   bool get isDeleted => deletedAt != null;
+  bool get isMemberJoinedCard =>
+      type == ChatMessageType.system &&
+      (systemKind == 'member_joined' ||
+          (text ?? '').toLowerCase().contains('joined'));
+  bool get isDebateCard =>
+      systemKind == 'debate' ||
+      (cardMeta != null && cardMeta!['kind'] == 'debate');
+  bool get isEncryptionNotice => systemKind == 'encryption';
   bool get isCatalogSticker =>
       type == ChatMessageType.sticker &&
       stickerKey != null &&
@@ -244,6 +271,10 @@ final class ChatMessage {
       sendState: sendState ?? this.sendState,
       failureMessage: failureMessage ?? this.failureMessage,
       gameActivity: gameActivity,
+      systemKind: systemKind,
+      senderTitle: senderTitle,
+      disappearing: disappearing,
+      cardMeta: cardMeta,
     );
   }
 }
@@ -254,27 +285,58 @@ final class ChatGameActivity {
     required this.gameType,
     this.title,
     this.winnerLabel,
+    this.hostName,
+    this.playerCount,
+    this.maxPlayers,
+    this.status,
+    this.participantAvatars = const <String>[],
   });
 
   final String kind;
   final String gameType;
   final String? title;
   final String? winnerLabel;
+  final String? hostName;
+  final int? playerCount;
+  final int? maxPlayers;
+  final String? status;
+  final List<String> participantAvatars;
 
   bool get isCreated => kind == 'created';
   bool get isMafia => gameType == 'mafia';
-  String get actionLabel => isCreated ? 'Join' : 'View result';
+  bool get isFull =>
+      playerCount != null &&
+      maxPlayers != null &&
+      playerCount! >= maxPlayers!;
+  bool get isStarted => status == 'started' || status == 'live' || kind == 'started';
+  String get actionLabel {
+    if (isStarted) return 'View';
+    if (isFull) return 'Full';
+    return isCreated ? 'Join' : 'View result';
+  }
 
   static ChatGameActivity? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final kind = raw['kind'] as String? ?? '';
     final gameType = raw['gameType'] as String? ?? '';
     if (kind.isEmpty && gameType.isEmpty) return null;
+    final avatars = <String>[];
+    final rawAvatars = raw['participantAvatars'] ?? raw['avatars'];
+    if (rawAvatars is List) {
+      for (final item in rawAvatars) {
+        if (item is String && item.trim().isNotEmpty) avatars.add(item);
+      }
+    }
     return ChatGameActivity(
       kind: kind,
       gameType: gameType,
       title: raw['title'] as String?,
       winnerLabel: raw['winnerLabel'] as String?,
+      hostName: raw['hostName'] as String?,
+      playerCount: (raw['playerCount'] as num?)?.toInt(),
+      maxPlayers: (raw['maxPlayers'] as num?)?.toInt(),
+      status: raw['status'] as String?,
+      participantAvatars: avatars,
     );
   }
 }

@@ -1,18 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_radius.dart';
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
 import 'chat_contrast_theme.dart';
+import 'chat_special_cards.dart';
 
-/// WhatsApp-style group chat bubble — shrink-wrap width, RTL-aware alignment.
-///
-/// Built from scratch for prompt 49 corrective: never expands to full screen
-/// width; avatar + name/role on one line for others; time + delivery inline;
-/// reactions as overlapping edge pills; deleted as a compact Arabic state.
+/// WhatsApp-faithful group chat bubble with shrink-wrap, tails, and rich cards.
 class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
     required this.message,
@@ -24,8 +22,12 @@ class ChatMessageBubble extends StatelessWidget {
     this.onEventTap,
     this.onGameTap,
     this.onAudioTap,
+    this.onWelcomeMember,
     this.replyPreview,
     this.showSenderRole = true,
+    this.showTail = true,
+    this.showAvatar = true,
+    this.showHeader = true,
     super.key,
   });
 
@@ -38,37 +40,58 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback? onEventTap;
   final VoidCallback? onGameTap;
   final VoidCallback? onAudioTap;
+  final VoidCallback? onWelcomeMember;
   final String? replyPreview;
   final bool showSenderRole;
+  final bool showTail;
+  final bool showAvatar;
+  final bool showHeader;
 
-  static const double _maxWidthFraction = 0.78;
-  static const double _avatarSize = 32;
-  static const double _bubbleRadius = 14;
+  static const double maxWidthFraction = 0.78;
+  static const double avatarSize = 32;
+  static const double bubbleRadius = 10;
 
   @override
   Widget build(BuildContext context) {
-    if (message.type == ChatMessageType.system ||
-        message.type == ChatMessageType.event ||
-        message.type == ChatMessageType.game) {
-      return _SystemChip(
+    if (message.type == ChatMessageType.game) {
+      return ChatGameLobbyCard(
         message: message,
         contrast: contrast,
-        onTap: message.type == ChatMessageType.event
-            ? onEventTap
-            : message.type == ChatMessageType.game
-                ? onGameTap
-                : null,
+        onJoin: onGameTap,
       );
+    }
+    if (message.type == ChatMessageType.event) {
+      return ChatEventCard(
+        message: message,
+        contrast: contrast,
+        onOpen: onEventTap,
+      );
+    }
+    if (message.isDebateCard) {
+      return ChatDebateCard(
+        message: message,
+        contrast: contrast,
+        onReply: onLongPress,
+      );
+    }
+    if (message.isMemberJoinedCard) {
+      return ChatNewMemberCard(
+        message: message,
+        contrast: contrast,
+        onWelcome: onWelcomeMember,
+      );
+    }
+    if (message.type == ChatMessageType.system) {
+      return _SystemChip(message: message, contrast: contrast);
     }
 
     final copy = AppStrings.of(context);
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final parentW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final maxBubble = parentW * _maxWidthFraction;
+        final maxBubble = parentW * maxWidthFraction;
 
         if (message.isDeleted) {
           return _DeletedBubble(
@@ -87,7 +110,8 @@ class ChatMessageBubble extends StatelessWidget {
         final alignment = isMine
             ? AlignmentDirectional.centerEnd
             : AlignmentDirectional.centerStart;
-        final avatarGap = isMine ? 0.0 : _avatarSize + 6;
+        final avatarGap =
+            (!isMine && showAvatar) ? avatarSize + 6 : 0.0;
         final bubbleMax = (maxBubble - avatarGap).clamp(120.0, parentW);
 
         return Semantics(
@@ -96,16 +120,16 @@ class ChatMessageBubble extends StatelessWidget {
             alignment: alignment,
             child: Padding(
               padding: const EdgeInsetsDirectional.only(
-                start: AppSpacing.sm,
-                end: AppSpacing.sm,
-                top: AppSpacing.xs,
-                bottom: AppSpacing.sm,
+                start: 10,
+                end: 10,
+                top: 2,
+                bottom: 6,
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
-                  if (!isMine) ...[
+                  if (!isMine && showAvatar) ...[
                     PubgetAvatar(
                       imageUrl: message.senderAvatar,
                       name: message.senderName,
@@ -113,7 +137,8 @@ class ChatMessageBubble extends StatelessWidget {
                       onTap: onAvatarTap,
                     ),
                     const SizedBox(width: 6),
-                  ],
+                  ] else if (!isMine && !showAvatar)
+                    const SizedBox(width: avatarSize + 6),
                   ConstrainedBox(
                     key: ValueKey<String>('message-${message.id}'),
                     constraints: BoxConstraints(maxWidth: bubbleMax),
@@ -132,55 +157,22 @@ class ChatMessageBubble extends StatelessWidget {
                                     isMine: isMine,
                                     textColor: textColor,
                                     showSenderRole: showSenderRole,
+                                    showHeader: showHeader,
                                     onMediaTap: onMediaTap,
                                   )
-                                : DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: isMine
-                                          ? contrast.outgoingBubble
-                                          : contrast.incomingBubble,
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: const Radius.circular(
-                                          _bubbleRadius,
-                                        ),
-                                        topRight: const Radius.circular(
-                                          _bubbleRadius,
-                                        ),
-                                        bottomLeft: Radius.circular(
-                                          isMine ? _bubbleRadius : 4,
-                                        ),
-                                        bottomRight: Radius.circular(
-                                          isMine ? 4 : _bubbleRadius,
-                                        ),
-                                      ),
-                                      border: Border.all(
-                                        color: contrast.border,
-                                        width: 0.6,
-                                      ),
-                                      boxShadow: <BoxShadow>[
-                                        BoxShadow(
-                                          color: contrast.shadow,
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 1),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        10,
-                                        6,
-                                        10,
-                                        5,
-                                      ),
-                                      child: _BubbleBody(
-                                        message: message,
-                                        isMine: isMine,
-                                        textColor: textColor,
-                                        showSenderRole: showSenderRole,
-                                        replyPreview: replyPreview,
-                                        onMediaTap: onMediaTap,
-                                        onAudioTap: onAudioTap,
-                                      ),
+                                : _BubbleChrome(
+                                    isMine: isMine,
+                                    contrast: contrast,
+                                    showTail: showTail,
+                                    child: _BubbleBody(
+                                      message: message,
+                                      isMine: isMine,
+                                      textColor: textColor,
+                                      showSenderRole: showSenderRole,
+                                      showHeader: showHeader,
+                                      replyPreview: replyPreview,
+                                      onMediaTap: onMediaTap,
+                                      onAudioTap: onAudioTap,
                                     ),
                                   ),
                           ),
@@ -207,12 +199,106 @@ class ChatMessageBubble extends StatelessWidget {
   }
 }
 
+class _BubbleChrome extends StatelessWidget {
+  const _BubbleChrome({
+    required this.isMine,
+    required this.contrast,
+    required this.showTail,
+    required this.child,
+  });
+
+  final bool isMine;
+  final ChatContrastTheme contrast;
+  final bool showTail;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = ChatMessageBubble.bubbleRadius;
+    // Tail on the bottom trailing corner of the first message in a cluster.
+    final borderRadius = BorderRadius.only(
+      topLeft: Radius.circular(radius),
+      topRight: Radius.circular(radius),
+      bottomLeft: Radius.circular(isMine ? radius : (showTail ? 2 : radius)),
+      bottomRight: Radius.circular(isMine ? (showTail ? 2 : radius) : radius),
+    );
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: isMine ? contrast.outgoingBubble : contrast.incomingBubble,
+            borderRadius: borderRadius,
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: contrast.shadow.withValues(alpha: 0.25),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 5),
+            child: child,
+          ),
+        ),
+        if (showTail)
+          Positioned(
+            bottom: 0,
+            right: isMine ? -6 : null,
+            left: isMine ? null : -6,
+            child: CustomPaint(
+              size: const Size(8, 10),
+              painter: _BubbleTailPainter(
+                color: isMine
+                    ? contrast.outgoingBubble
+                    : contrast.incomingBubble,
+                isMine: isMine,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _BubbleTailPainter extends CustomPainter {
+  _BubbleTailPainter({required this.color, required this.isMine});
+
+  final Color color;
+  final bool isMine;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    if (isMine) {
+      path
+        ..moveTo(0, 0)
+        ..lineTo(size.width, size.height)
+        ..lineTo(0, size.height)
+        ..close();
+    } else {
+      path
+        ..moveTo(size.width, 0)
+        ..lineTo(0, size.height)
+        ..lineTo(size.width, size.height)
+        ..close();
+    }
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleTailPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.isMine != isMine;
+}
+
 class _BubbleBody extends StatelessWidget {
   const _BubbleBody({
     required this.message,
     required this.isMine,
     required this.textColor,
     required this.showSenderRole,
+    required this.showHeader,
     required this.replyPreview,
     required this.onMediaTap,
     required this.onAudioTap,
@@ -222,6 +308,7 @@ class _BubbleBody extends StatelessWidget {
   final bool isMine;
   final Color textColor;
   final bool showSenderRole;
+  final bool showHeader;
   final String? replyPreview;
   final VoidCallback? onMediaTap;
   final VoidCallback? onAudioTap;
@@ -229,14 +316,12 @@ class _BubbleBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
-    // IntrinsicWidth keeps the bubble shrink-wrapped to content while still
-    // allowing the time row to sit on the trailing edge (WhatsApp layout).
     return IntrinsicWidth(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (!isMine)
+          if (!isMine && showHeader)
             _SenderHeader(
               name: message.senderName,
               role: message.senderRole,
@@ -258,6 +343,7 @@ class _BubbleBody extends StatelessWidget {
             _ReplyQuote(
               text: replyPreview ?? message.replyPreview!,
               textColor: textColor,
+              isMine: isMine,
             ),
             const SizedBox(height: 4),
           ],
@@ -285,6 +371,7 @@ class _StickerColumn extends StatelessWidget {
     required this.isMine,
     required this.textColor,
     required this.showSenderRole,
+    required this.showHeader,
     required this.onMediaTap,
   });
 
@@ -292,6 +379,7 @@ class _StickerColumn extends StatelessWidget {
   final bool isMine;
   final Color textColor;
   final bool showSenderRole;
+  final bool showHeader;
   final VoidCallback? onMediaTap;
 
   @override
@@ -301,7 +389,7 @@ class _StickerColumn extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (!isMine)
+          if (!isMine && showHeader)
             Padding(
               padding: const EdgeInsets.only(bottom: 4, left: 4),
               child: _SenderHeader(
@@ -343,33 +431,63 @@ class _SenderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _roleColor(role);
+    final color = roleColor(role);
     final copy = AppStrings.of(context);
-    // No Flexible — Flexible expands the bubble to maxWidth (card look).
     return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  height: 1.15,
-                ),
+          Flexible(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                height: 1.15,
+              ),
+            ),
           ),
           if (showRole) ...[
             const SizedBox(width: 4),
+            Icon(_roleIcon(role), size: 12, color: color),
+            const SizedBox(width: 2),
             _InlineRoleChip(label: copy.roleLabel(role), color: color),
           ],
+          // Reserved slot for premium / extra badges.
+          const SizedBox(width: 4),
+          const SizedBox(width: 14, height: 14),
         ],
       ),
     );
   }
+}
+
+IconData _roleIcon(String role) {
+  return switch (role) {
+    'founder' => Icons.workspace_premium,
+    'shogun' => Icons.shield,
+    'commander' => Icons.military_tech,
+    'captain' => Icons.star,
+    'sensei' => Icons.school,
+    'senpai' => Icons.favorite,
+    _ => Icons.person,
+  };
+}
+
+Color roleColor(String role) {
+  return switch (role) {
+    'founder' => const Color(0xFFD8A838),
+    'shogun' => const Color(0xFFE06B86),
+    'commander' => const Color(0xFF4EB7D8),
+    'captain' => const Color(0xFF6DCB91),
+    'sensei' => const Color(0xFF9B75E8),
+    'senpai' => const Color(0xFF7AA2F7),
+    _ => const Color(0xFF9B75E8),
+  };
 }
 
 class _InlineRoleChip extends StatelessWidget {
@@ -415,38 +533,89 @@ class _TimeStatusRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
-    final muted = textColor.withValues(alpha: 0.72);
+    final muted = textColor.withValues(alpha: 0.65);
     return Align(
       alignment: AlignmentDirectional.centerEnd,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          if (message.disappearing) ...[
+            Icon(Icons.timer_outlined, size: 12, color: muted),
+            const SizedBox(width: 3),
+          ],
           Text(
-            _formatTime(message.createdAt, copy),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: muted,
-                  fontSize: 10.5,
-                  height: 1,
-                ),
+            formatChatTime(message.createdAt, copy),
+            style: TextStyle(color: muted, fontSize: 11, height: 1),
           ),
           if (message.editedAt != null)
             Text(
               ' · ${copy.edited}',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: muted,
-                    fontSize: 10.5,
-                    height: 1,
-                  ),
+              style: TextStyle(color: muted, fontSize: 11, height: 1),
             ),
           if (isMine) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: 3),
             MessageDeliveryIndicator(
               sendState: message.sendState,
               deliveryState: message.deliveryState,
-              size: 8,
+              size: 14,
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+String formatChatTime(DateTime? value, AppStrings copy) {
+  if (value == null) return '';
+  final local = value.toLocal();
+  final hour24 = local.hour;
+  final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final isAr = copy.locale.languageCode == 'ar';
+  final suffix = hour24 >= 12
+      ? (isAr ? 'م' : 'PM')
+      : (isAr ? 'ص' : 'AM');
+  return '$hour12:$minute $suffix';
+}
+
+class _ReplyQuote extends StatelessWidget {
+  const _ReplyQuote({
+    required this.text,
+    required this.textColor,
+    required this.isMine,
+  });
+
+  final String text;
+  final Color textColor;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: textColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border(
+          left: isMine
+              ? BorderSide.none
+              : BorderSide(color: textColor.withValues(alpha: 0.55), width: 3),
+          right: isMine
+              ? BorderSide(color: textColor.withValues(alpha: 0.55), width: 3)
+              : BorderSide.none,
+        ),
+      ),
+      child: Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: textColor.withValues(alpha: 0.85),
+          fontSize: 12.5,
+          height: 1.3,
+        ),
       ),
     );
   }
@@ -476,13 +645,6 @@ class _ReactionPills extends StatelessWidget {
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.12),
                   ),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x33000000),
-                      blurRadius: 3,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -536,24 +698,20 @@ class _DeletedBubble extends StatelessWidget {
         child: Container(
           key: ValueKey<String>('message-${message.id}'),
           constraints: BoxConstraints(maxWidth: maxWidth),
-          margin: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs,
-          ),
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: (isMine ? contrast.outgoingBubble : contrast.incomingBubble)
                 .withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: contrast.border.withValues(alpha: 0.5)),
           ),
           child: Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: textColor,
-                  fontStyle: FontStyle.italic,
-                  fontSize: 12.5,
-                ),
+            style: TextStyle(
+              color: textColor,
+              fontStyle: FontStyle.italic,
+              fontSize: 12.5,
+            ),
           ),
         ),
       ),
@@ -583,184 +741,287 @@ class _MessageContent extends StatelessWidget {
         child: StickerMark(stickerKey: message.stickerKey ?? '', size: 112),
       );
     }
+    if (message.type == ChatMessageType.audio) {
+      return _VoiceBubble(
+        message: message,
+        textColor: textColor,
+        onTap: onAudioTap,
+        label: copy.voiceMessage,
+      );
+    }
     if (message.type == ChatMessageType.image ||
         message.type == ChatMessageType.video ||
         message.type == ChatMessageType.gif ||
         message.type == ChatMessageType.sticker) {
-      return InkWell(
-        onTap: onMediaTap,
-        child: Stack(
-          alignment: Alignment.center,
-          children: <Widget>[
-            AppImageLoader(
-              imageUrl: message.thumbnailUrl ?? message.mediaUrl ?? '',
-              width: 220,
-              height: message.type == ChatMessageType.sticker ? 160 : 180,
-              memCacheWidth: 440,
-              memCacheHeight: 360,
-              fit: BoxFit.cover,
-              borderRadius: message.type == ChatMessageType.sticker
-                  ? null
-                  : BorderRadius.circular(8),
-            ),
-            if (message.type == ChatMessageType.video)
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(AppSpacing.sm),
-                  child: Icon(Icons.play_arrow, color: Colors.white, size: 32),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          InkWell(
+            onTap: onMediaTap,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: AspectRatio(
+                aspectRatio: 4 / 3,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    AppImageLoader(
+                      imageUrl: message.thumbnailUrl ?? message.mediaUrl ?? '',
+                      fit: BoxFit.cover,
+                    ),
+                    if (message.type == ChatMessageType.video)
+                      const Center(
+                        child: CircleAvatar(
+                          radius: 22,
+                          backgroundColor: Color(0x99000000),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    if (message.type == ChatMessageType.video)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'VIDEO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
+          ),
+          if ((message.text ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            FormattedChatText(text: message.text!, color: textColor),
           ],
-        ),
+        ],
       );
     }
-    if (message.type == ChatMessageType.audio) {
-      return InkWell(
-        key: Key('audio-play-${message.id}'),
-        onTap: onAudioTap,
+    return FormattedChatText(
+      text: message.text?.trim().isNotEmpty == true
+          ? message.text!
+          : '',
+      color: textColor,
+    );
+  }
+}
+
+class _VoiceBubble extends StatefulWidget {
+  const _VoiceBubble({
+    required this.message,
+    required this.textColor,
+    required this.onTap,
+    required this.label,
+  });
+
+  final ChatMessage message;
+  final Color textColor;
+  final VoidCallback? onTap;
+  final String label;
+
+  @override
+  State<_VoiceBubble> createState() => _VoiceBubbleState();
+}
+
+class _VoiceBubbleState extends State<_VoiceBubble> {
+  var _playing = false;
+  var _speed = 1.0;
+  final _levels = List<double>.generate(
+    28,
+    (i) => 0.25 + math.sin(i * 0.55).abs() * 0.75,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _playing ? const Color(0xFF53BDEB) : widget.textColor;
+    return InkWell(
+      onTap: () {
+        setState(() => _playing = !_playing);
+        widget.onTap?.call();
+      },
+      child: SizedBox(
+        width: 220,
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.play_circle_fill, color: textColor, size: 28),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: active.withValues(alpha: 0.18),
+              child: Icon(
+                _playing ? Icons.pause : Icons.play_arrow,
+                color: active,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  SizedBox(
+                    height: 28,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        for (final level in _levels)
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 0.8),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 120),
+                                height: 6 + level * (_playing ? 20 : 14),
+                                decoration: BoxDecoration(
+                                  color: active.withValues(
+                                    alpha: _playing ? 0.95 : 0.55,
+                                  ),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: widget.textColor.withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(width: 6),
-            Text(
-              copy.voiceMessage,
-              style: TextStyle(color: textColor, fontSize: 14),
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _speed = _speed == 1
+                      ? 1.5
+                      : _speed == 1.5
+                          ? 2
+                          : 1;
+                });
+              },
+              child: Text(
+                _speed == 1
+                    ? '1x'
+                    : _speed == 1.5
+                        ? '1.5x'
+                        : '2x',
+                style: TextStyle(
+                  color: active,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ],
         ),
-      );
-    }
-    return Text(
-      message.text ?? '',
-      textWidthBasis: TextWidthBasis.longestLine,
-      style: TextStyle(
-        color: textColor,
-        fontSize: 15,
-        height: 1.35,
       ),
     );
   }
 }
 
-class _ReplyQuote extends StatelessWidget {
-  const _ReplyQuote({required this.text, required this.textColor});
+/// Supports *bold*, _italic_, ~strike~, `code`.
+class FormattedChatText extends StatelessWidget {
+  const FormattedChatText({required this.text, required this.color, super.key});
 
   final String text;
-  final Color textColor;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(
-          left: BorderSide(color: textColor.withValues(alpha: 0.7), width: 2.5),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-        child: Text(
-          text,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textWidthBasis: TextWidthBasis.longestLine,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: textColor.withValues(alpha: 0.9),
-                fontSize: 12,
-              ),
-        ),
-      ),
+    return Text.rich(
+      TextSpan(children: _parse(text, color)),
+      style: TextStyle(color: color, fontSize: 15.5, height: 1.35),
     );
+  }
+
+  static List<InlineSpan> _parse(String input, Color color) {
+    final pattern = RegExp(
+      r'(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|`[^`\n]+`)',
+    );
+    final spans = <InlineSpan>[];
+    var start = 0;
+    for (final match in pattern.allMatches(input)) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: input.substring(start, match.start)));
+      }
+      final token = match.group(0)!;
+      if (token.startsWith('*')) {
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        );
+      } else if (token.startsWith('_')) {
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: const TextStyle(fontStyle: FontStyle.italic),
+          ),
+        );
+      } else if (token.startsWith('~')) {
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: const TextStyle(decoration: TextDecoration.lineThrough),
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: TextStyle(
+              fontFamily: 'monospace',
+              backgroundColor: color.withValues(alpha: 0.12),
+            ),
+          ),
+        );
+      }
+      start = match.end;
+    }
+    if (start < input.length) {
+      spans.add(TextSpan(text: input.substring(start)));
+    }
+    if (spans.isEmpty) spans.add(TextSpan(text: input));
+    return spans;
   }
 }
 
 class _SystemChip extends StatelessWidget {
-  const _SystemChip({
-    required this.message,
-    required this.contrast,
-    this.onTap,
-  });
+  const _SystemChip({required this.message, required this.contrast});
 
   final ChatMessage message;
   final ChatContrastTheme contrast;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
-    final label = switch (message.type) {
-      ChatMessageType.event => copy.eventCard,
-      ChatMessageType.game => copy.gameCard,
-      _ => copy.groupUpdate,
-    };
-    final action = message.type == ChatMessageType.game
-        ? (message.gameActivity?.actionLabel ?? copy.open)
-        : null;
-    return Center(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          key: ValueKey<String>('message-${message.id}'),
-          margin: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.xs,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: contrast.incomingBubble.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            border: Border.all(color: contrast.border.withValues(alpha: 0.6)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                message.text?.isNotEmpty == true ? message.text! : label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: contrast.incomingText,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (action != null && onTap != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  action,
-                  style: TextStyle(
-                    color: contrast.incomingText.withValues(alpha: 0.85),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+    final label = (message.text ?? '').trim().isNotEmpty
+        ? message.text!
+        : copy.groupUpdate;
+    return ChatDateDivider(label: label);
   }
-}
-
-Color _roleColor(String role) => switch (role) {
-      'founder' => const Color(0xFFD8A838),
-      'shogun' => const Color(0xFFE06B86),
-      'commander' => const Color(0xFF4EB7D8),
-      'captain' => const Color(0xFF6DCB91),
-      'sensei' => const Color(0xFF9B75E8),
-      'senpai' => const Color(0xFF7AA2F7),
-      _ => const Color(0xFF9B75E8),
-    };
-
-String _formatTime(DateTime? value, AppStrings copy) {
-  if (value == null) return copy.now;
-  final hour = value.hour.toString().padLeft(2, '0');
-  final minute = value.minute.toString().padLeft(2, '0');
-  return '$hour:$minute';
 }
