@@ -352,11 +352,13 @@ class _BubbleBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (!isMine && showHeader)
+          if (showHeader)
             _SenderHeader(
               name: message.senderName,
               role: message.senderRole,
               showRole: showSenderRole,
+              badgeOnly: isMine,
+              alignEnd: isMine,
             ),
           if (message.forwardedFrom != null)
             Padding(
@@ -425,13 +427,15 @@ class _StickerColumn extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (!isMine && showHeader)
+          if (showHeader)
             Padding(
-              padding: const EdgeInsets.only(bottom: 4, left: 4),
+              padding: const EdgeInsets.only(bottom: 4, left: 4, right: 4),
               child: _SenderHeader(
                 name: message.senderName,
                 role: message.senderRole,
                 showRole: showSenderRole,
+                badgeOnly: isMine,
+                alignEnd: isMine,
               ),
             ),
           _MessageContent(
@@ -461,53 +465,107 @@ class _SenderHeader extends StatelessWidget {
     required this.name,
     required this.role,
     required this.showRole,
+    this.badgeOnly = false,
+    this.alignEnd = false,
   });
 
   final String name;
   final String role;
   final bool showRole;
+  /// Own bubbles: rank badge only (no display name).
+  final bool badgeOnly;
+  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rank = parsePubgetRank(role);
     final color = rankColorResolver(rank, isDarkMode: isDark);
-    final badgeAsset =
-        showRole && rankShowsBubbleBadge(rank) ? pubgetRankBadgeAsset(rank) : null;
+    final showBadge = showRole && rankShowsBubbleBadge(rank);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          // Badge first in Row = visual right in RTL (app default).
-          if (badgeAsset != null) ...[
-            Image.asset(
-              badgeAsset,
-              width: 16,
-              height: 16,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => Icon(
-                Icons.military_tech,
-                size: 16,
-                color: color,
+      child: Align(
+        alignment: alignEnd
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            // Badge first in Row = visual right in RTL (app default).
+            if (showBadge) ...[
+              _RankBadgeGlow(rank: rank, size: badgeOnly ? 18 : 16),
+              if (!badgeOnly) const SizedBox(width: 4),
+            ],
+            if (!badgeOnly)
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.15,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
           ],
-          Flexible(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                height: 1.15,
+        ),
+      ),
+    );
+  }
+}
+
+/// Rank badge with progressive glow — higher ranks shine brighter.
+class _RankBadgeGlow extends StatelessWidget {
+  const _RankBadgeGlow({required this.rank, this.size = 16});
+
+  final PubgetRank rank;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = pubgetRankBadgeAsset(rank);
+    final glow = rankBadgeGlowColor(rank);
+    final strength = rankBadgeGlowStrength(rank);
+    final blur = 2.0 + (strength * 10.0);
+    final spread = strength * 1.4;
+    final fallback = Icon(Icons.military_tech, size: size, color: glow);
+
+    final image = asset == null
+        ? fallback
+        : Image.asset(
+            asset,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => fallback,
+          );
+
+    return SizedBox(
+      width: size + 4,
+      height: size + 4,
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: glow.withValues(alpha: 0.25 + strength * 0.55),
+                blurRadius: blur,
+                spreadRadius: spread,
               ),
-            ),
+              if (strength >= 0.55)
+                BoxShadow(
+                  color: glow.withValues(alpha: 0.18 + strength * 0.25),
+                  blurRadius: blur * 1.6,
+                  spreadRadius: spread * 0.4,
+                ),
+            ],
           ),
-        ],
+          child: image,
+        ),
       ),
     );
   }

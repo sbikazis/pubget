@@ -252,7 +252,7 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                             isMine: widget.isMine,
                             contrast: widget.contrast,
                             showAvatar: false,
-                            showHeader: !widget.isMine,
+                            showHeader: true,
                             showTail: true,
                             onLongPress: (_) {},
                             onMediaTap: null,

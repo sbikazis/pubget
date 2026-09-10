@@ -237,8 +237,25 @@ Color rankColorResolver(PubgetRank rank, {required bool isDarkMode}) {
 Color rankColorForRoleString(String? role, {required bool isDarkMode}) =>
     rankColorResolver(parsePubgetRank(role), isDarkMode: isDarkMode);
 
-bool rankShowsBubbleBadge(PubgetRank rank) =>
-    rank.index >= PubgetRank.hatamoto.index;
+/// Chat bubbles always show the rank badge (own = badge only; others = name + badge).
+bool rankShowsBubbleBadge(PubgetRank rank) => true;
+
+/// Soft glow strength for rank badges in chat (0.12‥0.90 by ladder progress).
+double rankBadgeGlowStrength(PubgetRank rank) {
+  final t = rank.index / PubgetRank.mikado.index; // 0‥1
+  return 0.12 + (t * 0.78);
+}
+
+/// Glow / highlight color for the badge (core-tinted; SHŌGUN uses crimson).
+Color rankBadgeGlowColor(PubgetRank rank) => switch (rank) {
+  PubgetRank.ronin => const Color(0xFF9A93D2),
+  PubgetRank.gokenin => const Color(0xFFAF8DD8),
+  PubgetRank.samurai => const Color(0xFFE08593),
+  PubgetRank.hatamoto => const Color(0xFF9790D5),
+  PubgetRank.daimyo => const Color(0xFFB589DC),
+  PubgetRank.shogun => const Color(0xFFE77E8D),
+  PubgetRank.mikado => const Color(0xFFD4AF37), // imperial gold gleam
+};
 
 bool rankHasAdminEntryHub(PubgetRank rank) =>
     rank.index >= PubgetRank.gokenin.index;
