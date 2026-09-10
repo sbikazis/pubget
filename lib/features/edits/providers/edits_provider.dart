@@ -91,6 +91,19 @@ final class EditsProvider extends ChangeNotifier {
     _activeIndex = index;
   }
 
+  /// Ensure a freshly published Edit is visible at the front of the feed.
+  void promotePublished(Edit edit) {
+    if (!edit.isPublished) return;
+    final existing = _items.indexWhere((item) => item.id == edit.id);
+    if (existing >= 0) {
+      _items.removeAt(existing);
+    }
+    _items.insert(0, edit);
+    _state = LoadingState.loaded;
+    _activeIndex = 0;
+    notifyListeners();
+  }
+
   Future<Result<void>> like(String editId, bool like) async {
     final key = 'like:$editId';
     if (!_pendingActions.add(key)) {

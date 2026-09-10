@@ -53,10 +53,13 @@ import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
+import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/edits/l10n/edit_copy.dart';
+import '../features/edits/widgets/global_edit_upload_bar.dart';
 import '../features/anime/data/anime_http_client.dart';
 import '../features/anime/models/anime_models.dart';
 import '../features/anime/providers/anime_providers.dart';
@@ -335,6 +338,15 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<EditsProvider>(
           create: (context) =>
               EditsProvider(repository: context.read<EditsRepository>()),
+        ),
+        provider.ChangeNotifierProvider<EditUploadManager>(
+          create: (context) {
+            final manager = EditUploadManager(
+              repository: context.read<EditsRepository>(),
+            );
+            unawaited(manager.attachLifecycle());
+            return manager;
+          },
         ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
@@ -667,11 +679,39 @@ class _PubgetRouterHost extends StatefulWidget {
 
 class _PubgetRouterHostState extends State<_PubgetRouterHost> {
   RouterConfig<AppRoute>? _router;
+  var _uploadCallbacksBound = false;
+
+  void _bindUploadCallbacks(BuildContext context) {
+    if (_uploadCallbacksBound) return;
+    _uploadCallbacksBound = true;
+    final manager = context.read<EditUploadManager>();
+    manager.onNavigateToPublished = (editId) {
+      if (!mounted) return;
+      unawaited(AppNavigation.go(context, '/edits'));
+    };
+    manager.onPublishedWhileBackgrounded = (editId) {
+      if (!mounted) return;
+      final copy = EditCopy.of(context);
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${copy.publishedNotificationTitle} — ${copy.publishedNotificationBody}',
+          ),
+          action: SnackBarAction(
+            label: copy.openEdit,
+            onPressed: () => AppNavigation.go(context, '/edits'),
+          ),
+        ),
+      );
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     PubgetLinks.analytics = context.read<Analytics>();
     _router ??= _createRouter(context);
+    _bindUploadCallbacks(context);
     final settings = context.watch<SettingsProvider>();
     return MaterialApp.router(
       title: 'Pubget',
@@ -695,6 +735,11 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) {
+        return EditUploadOverlayHost(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       routerConfig: _router!,
     );
   }
