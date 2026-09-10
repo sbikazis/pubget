@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pubget/core/widgets/pubget_bottom_sheet.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -186,7 +187,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
     final bytes = await file.readAsBytes();
     if (!mounted) return;
 
-    final action = await showModalBottomSheet<_StickerSaveAction>(
+    final action = await PubgetBottomSheet.present<_StickerSaveAction>(
       context: context,
       backgroundColor: WaColors.darkPanel,
       shape: const RoundedRectangleBorder(

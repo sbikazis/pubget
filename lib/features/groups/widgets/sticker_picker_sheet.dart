@@ -11,10 +11,9 @@ class StickerPickerSheet extends StatefulWidget {
   final StickerStore? store;
 
   static Future<String?> show(BuildContext context, {StickerStore? store}) {
-    return showModalBottomSheet<String>(
+    return PubgetBottomSheet.present<String>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => StickerPickerSheet(store: store),
     );
   }

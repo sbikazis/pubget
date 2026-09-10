@@ -7,11 +7,16 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
 import '../../../../app/app_router.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/widgets/pubget_bottom_sheet.dart';
 import '../../../games/models/game_type_registry.dart';
 import '../../../games/widgets/game_widgets.dart';
 import 'wa_colors.dart';
 
 /// Premium Telegram / iOS 18–style attachment picker.
+///
+/// Always presented via [PubgetBottomSheet] so dismiss includes drag-down,
+/// barrier tap, close control, and hardware back.
 Future<void> showPremiumAttachmentSheet(
   BuildContext context, {
   required String groupId,
@@ -20,55 +25,18 @@ Future<void> showPremiumAttachmentSheet(
   required VoidCallback onGames,
   required VoidCallback onCreateEvent,
 }) {
-  return showGeneralDialog<void>(
+  return PubgetBottomSheet.present<void>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 800),
-    pageBuilder: (context, animation, secondaryAnimation) {
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.50),
+    builder: (sheetContext) {
       return _PremiumAttachmentSheet(
         groupId: groupId,
         onCamera: onCamera,
         onGallery: onGallery,
         onGames: onGames,
         onCreateEvent: onCreateEvent,
-      );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return Stack(
-        children: <Widget>[
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).maybePop(),
-              child: FadeTransition(
-                opacity: curved,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: ColoredBox(
-                    color: Colors.black.withValues(alpha: 0.50),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(curved),
-              child: FadeTransition(opacity: curved, child: child),
-            ),
-          ),
-        ],
       );
     },
   );
@@ -151,19 +119,23 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                 ],
               ),
               child: Padding(
-                padding: EdgeInsets.fromLTRB(24, 12, 24, 24 + bottom),
+                padding: EdgeInsets.fromLTRB(24, 4, 24, 24 + bottom),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Container(
-                      width: 36,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.20),
-                        borderRadius: BorderRadius.circular(3),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: IconButton(
+                        key: const Key('sheet-close'),
+                        tooltip: AppStrings.of(context).close,
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: Icon(
+                          PhosphorIconsDuotone.x,
+                          color: Colors.white.withValues(alpha: 0.72),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
                     Row(
                       children: <Widget>[
                         Expanded(
@@ -245,10 +217,10 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                             ),
                             glow: const Color(0xFF10B981),
                             onTap: () async {
-                              await showModalBottomSheet<void>(
+                              await PubgetBottomSheet.present<void>(
                                 context: context,
-                                backgroundColor: _sheetBg,
                                 isScrollControlled: true,
+                                backgroundColor: _sheetBg,
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.vertical(
                                     top: Radius.circular(28),
@@ -402,24 +374,30 @@ class _WaGamesSheet extends StatelessWidget {
       height: height,
       child: Column(
         children: <Widget>[
-          const SizedBox(height: 12),
-          Container(
-            width: 36,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.20),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'الألعاب',
-              style: GoogleFonts.cairo(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: WaColors.textPrimary,
-              ),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: <Widget>[
+                const Spacer(),
+                Text(
+                  'الألعاب',
+                  style: GoogleFonts.cairo(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: WaColors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  key: const Key('sheet-close'),
+                  tooltip: AppStrings.of(context).close,
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: Icon(
+                    PhosphorIconsDuotone.x,
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(

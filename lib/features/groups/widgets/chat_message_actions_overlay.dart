@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pubget/core/widgets/pubget_bottom_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_models.dart';
@@ -45,7 +46,11 @@ const kChatQuickReactions = <String>[
 const _kReactionBarColor = Color(0xFF232D36);
 const _kDimScrim = Color(0x99000000); // black ~60%
 
-/// Shows the WhatsApp-style long-press reaction overlay via [OverlayEntry].
+/// Shows the WhatsApp-style long-press reaction overlay.
+///
+/// Uses a modal route (not raw [OverlayEntry]) so Android/iOS back pops this
+/// layer only — never the whole chat or app. Dismiss paths: scrim tap, AppBar
+/// close, and hardware/gesture back.
 Future<ChatMessageActionResult?> showChatMessageActions(
   BuildContext context, {
   required ChatMessage message,
@@ -57,17 +62,14 @@ Future<ChatMessageActionResult?> showChatMessageActions(
   required bool isStarred,
 }) {
   HapticFeedback.lightImpact();
-  final overlay = Overlay.of(context, rootOverlay: true);
-  final completer = Completer<ChatMessageActionResult?>();
-  late OverlayEntry entry;
-
-  void finish(ChatMessageActionResult? result) {
-    if (entry.mounted) entry.remove();
-    if (!completer.isCompleted) completer.complete(result);
-  }
-
-  entry = OverlayEntry(
-    builder: (overlayContext) {
+  return showGeneralDialog<ChatMessageActionResult>(
+    context: context,
+    useRootNavigator: true,
+    barrierDismissible: true,
+    barrierLabel: 'chat-message-actions',
+    barrierColor: Colors.transparent,
+    transitionDuration: Duration.zero,
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
       return ReactionOverlay(
         message: message,
         isMine: isMine,
@@ -76,12 +78,14 @@ Future<ChatMessageActionResult?> showChatMessageActions(
         canEdit: canEdit,
         canCopy: canCopy,
         isStarred: isStarred,
-        onResult: finish,
+        onResult: (result) {
+          if (dialogContext.mounted) {
+            Navigator.of(dialogContext).pop(result);
+          }
+        },
       );
     },
   );
-  overlay.insert(entry);
-  return completer.future;
 }
 
 /// Complete WhatsApp-style reaction overlay.
@@ -616,7 +620,7 @@ Future<String?> _showMoreEmojiSheet(BuildContext context) {
     '😡',
     '👀',
   ];
-  return showModalBottomSheet<String>(
+  return PubgetBottomSheet.present<String>(
     context: context,
     backgroundColor: const Color(0xFF111B21),
     shape: const RoundedRectangleBorder(

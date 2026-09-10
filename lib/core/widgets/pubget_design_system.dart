@@ -6,6 +6,7 @@ export 'pubget_avatar.dart';
 export 'pubget_badge.dart';
 export 'pubget_banners.dart';
 export 'pubget_bottom_sheet.dart';
+export 'pubget_page_scaffold.dart';
 export 'pubget_buttons.dart';
 export 'pubget_card.dart';
 export 'pubget_dialogs.dart';

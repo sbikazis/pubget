@@ -254,9 +254,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Future<void> _showActions(ChatMessage message) async {
-    final action = await showModalBottomSheet<String>(
+    final action = await PubgetBottomSheet.present<String>(
       context: context,
-      showDragHandle: true,
       builder: (context) => SafeArea(
         child: Wrap(
           children: <Widget>[

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pubget/core/widgets/pubget_bottom_sheet.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/widgets/app_image_loader.dart';
@@ -19,7 +20,7 @@ class StickerDetailSheet extends StatefulWidget {
     required ChatMessage message,
     required UserStickerStore store,
   }) {
-    return showModalBottomSheet<void>(
+    return PubgetBottomSheet.present<void>(
       context: context,
       backgroundColor: WaColors.darkPanel,
       isScrollControlled: true,

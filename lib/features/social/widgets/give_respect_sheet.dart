@@ -18,7 +18,7 @@ Future<bool> showGiveRespectSheet(
   int initialValue = 5,
   bool silentFailure = false,
 }) async {
-  final result = await showModalBottomSheet<bool>(
+  final result = await PubgetBottomSheet.present<bool>(
     context: context,
     backgroundColor: const Color(0xFF1A1228),
     shape: const RoundedRectangleBorder(
