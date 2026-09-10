@@ -118,14 +118,14 @@ class _NotificationTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  _title(item.type),
+                  _title(item),
                   style: TextStyle(
                     fontWeight: item.isUnread
                         ? FontWeight.w800
                         : FontWeight.w500,
                   ),
                 ),
-                Text(item.action),
+                Text(_body(item)),
               ],
             ),
           ),
@@ -147,22 +147,55 @@ class _NotificationTile extends StatelessWidget {
     'edit_published' => Icons.movie_filter_outlined,
     'edit_failed' => Icons.error_outline,
     'edit_needs_review' => Icons.hourglass_top_outlined,
+    'rank_promoted' => Icons.trending_up,
+    'rank_demoted' => Icons.trending_down,
+    'member_warning' => Icons.warning_amber_outlined,
     _ => Icons.notifications_none,
   };
 
-  String _title(String type) => switch (type) {
-    'group_message' => 'New group message',
-    'join_request' => 'Join request',
-    'request_accepted' => 'Request accepted',
-    'friend_request' => 'Friend request',
-    'respect_received' => 'Respect received',
-    'game_invite' => 'Game invite',
-    'game_started' => 'Game starting',
-    'game_completed' => 'Game result',
-    'achievement_unlocked' => 'Achievement unlocked',
-    'edit_published' => 'Edit published',
-    'edit_failed' => 'Edit processing failed',
-    'edit_needs_review' => 'Edit held for review',
-    _ => 'Notification',
-  };
+  String _metadataText(AppNotification item, String key) {
+    final value = item.metadata[key];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return '';
+  }
+
+  String _title(AppNotification item) {
+    final fromMeta = _metadataText(item, 'title');
+    if (fromMeta.isNotEmpty &&
+        (item.type == 'rank_promoted' ||
+            item.type == 'rank_demoted' ||
+            item.type == 'member_warning')) {
+      return fromMeta;
+    }
+    return switch (item.type) {
+      'group_message' => 'New group message',
+      'join_request' => 'Join request',
+      'request_accepted' => 'Request accepted',
+      'friend_request' => 'Friend request',
+      'respect_received' => 'Respect received',
+      'game_invite' => 'Game invite',
+      'game_started' => 'Game starting',
+      'game_completed' => 'Game result',
+      'achievement_unlocked' => 'Achievement unlocked',
+      'edit_published' => 'Edit published',
+      'edit_failed' => 'Edit processing failed',
+      'edit_needs_review' => 'Edit held for review',
+      'rank_promoted' => 'Rank promoted',
+      'rank_demoted' => 'Rank demoted',
+      'member_warning' => 'Member warning',
+      _ => fromMeta.isNotEmpty ? fromMeta : 'Notification',
+    };
+  }
+
+  String _body(AppNotification item) {
+    final fromMeta = _metadataText(item, 'body');
+    if (fromMeta.isNotEmpty &&
+        (item.type == 'rank_promoted' ||
+            item.type == 'rank_demoted' ||
+            item.type == 'member_warning')) {
+      return fromMeta;
+    }
+    if (fromMeta.isNotEmpty && item.action.trim().isEmpty) return fromMeta;
+    return item.action;
+  }
 }
