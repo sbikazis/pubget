@@ -71,6 +71,7 @@ final class SocialProvider extends ChangeNotifier {
   Future<Result<bool>> giveRespect({
     required String toUserId,
     required int value,
+    bool silentFailure = false,
   }) async {
     final userId = _userId;
     if (userId == null) {
@@ -127,7 +128,13 @@ final class SocialProvider extends ChangeNotifier {
     }
     if (!result.isSuccess) {
       _snapshot = previous;
-      _setFailure(result.failureOrNull!);
+      if (silentFailure) {
+        _failure = null;
+        _state = LoadingState.loaded;
+        notifyListeners();
+      } else {
+        _setFailure(result.failureOrNull!);
+      }
       return FailureResult<bool>(result.failureOrNull!);
     }
     unawaited(load(userId));

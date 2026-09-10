@@ -725,7 +725,11 @@ function createAchievementsDomain({
         }
         if (event.type === "edit_published" && uid) {
           const stats = await readStats(uid);
-          const works = Number(meta.publishedWorks ?? ((Number(stats.publishedWorks) || 0) + 1));
+          // Prefer absolute counts from the caller so re-delivery does not double-count.
+          const absolute = meta.publishedWorks ?? meta.publishedCount;
+          const works = absolute != null
+            ? Number(absolute) || 0
+            : ((Number(stats.publishedWorks) || 0) + 1);
           const impact = Number(meta.impactScore ?? stats.impactScore) || 0;
           await push(evaluateWorldsmith(uid, { publishedWorks: works, impactScore: impact }));
         }

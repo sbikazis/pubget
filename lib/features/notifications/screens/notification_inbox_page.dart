@@ -144,6 +144,9 @@ class _NotificationTile extends StatelessWidget {
     'game_invite' || 'game_started' || 'game_completed' =>
       Icons.sports_esports_outlined,
     'achievement_unlocked' => Icons.emoji_events_outlined,
+    'edit_published' => Icons.movie_filter_outlined,
+    'edit_failed' => Icons.error_outline,
+    'edit_needs_review' => Icons.hourglass_top_outlined,
     _ => Icons.notifications_none,
   };
 
@@ -157,6 +160,9 @@ class _NotificationTile extends StatelessWidget {
     'game_started' => 'Game starting',
     'game_completed' => 'Game result',
     'achievement_unlocked' => 'Achievement unlocked',
+    'edit_published' => 'Edit published',
+    'edit_failed' => 'Edit processing failed',
+    'edit_needs_review' => 'Edit held for review',
     _ => 'Notification',
   };
 }

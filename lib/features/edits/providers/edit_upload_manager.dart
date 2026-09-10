@@ -118,6 +118,8 @@ final class EditUploadManager extends ChangeNotifier
     SharedPreferences? preferences,
     this.onNavigateToPublished,
     this.onPublishedWhileBackgrounded,
+    this.onFailedWhileBackgrounded,
+    this.shouldForceNavigateToPublished,
   }) : _repository = repository,
        _preferences = preferences;
 
@@ -127,6 +129,9 @@ final class EditUploadManager extends ChangeNotifier
   SharedPreferences? _preferences;
   void Function(String editId)? onNavigateToPublished;
   void Function(String editId)? onPublishedWhileBackgrounded;
+  void Function(String editId, String? message)? onFailedWhileBackgrounded;
+  /// When false, show a soft "ready" offer instead of forcing feed navigation.
+  bool Function(String editId)? shouldForceNavigateToPublished;
 
   final List<EditUploadJob> _jobs = <EditUploadJob>[];
   final Map<String, StreamSubscription<Result<Edit>>> _watches =
@@ -138,6 +143,7 @@ final class EditUploadManager extends ChangeNotifier
   var _disposed = false;
   String? _highlightEditId;
   String? _cancelingEditId;
+  String? _softPublishedOfferId;
 
   void _notify() {
     if (_disposed) return;
@@ -160,6 +166,31 @@ final class EditUploadManager extends ChangeNotifier
   bool get hasVisibleJobs => visibleJobs.isNotEmpty;
   bool get expanded => _expanded;
   String? get highlightEditId => _highlightEditId;
+  String? get softPublishedOfferId => _softPublishedOfferId;
+
+  String? consumeHighlightEditId() {
+    final id = _highlightEditId;
+    _highlightEditId = null;
+    return id;
+  }
+
+  String? consumeSoftPublishedOffer() {
+    final id = _softPublishedOfferId;
+    _softPublishedOfferId = null;
+    return id;
+  }
+
+  /// Accept a deferred soft offer — focuses the feed on [editId].
+  void acceptSoftPublishedOffer(String editId) {
+    _softPublishedOfferId = null;
+    _highlightEditId = editId;
+    _notify();
+  }
+
+  void setHighlightEditId(String editId) {
+    _highlightEditId = editId;
+    _notify();
+  }
 
   EditUploadJob? get primaryJob {
     final visible = visibleJobs;
@@ -302,12 +333,6 @@ final class EditUploadManager extends ChangeNotifier
   }
 
   void toggleExpanded() => setExpanded(!_expanded);
-
-  String? consumeHighlightEditId() {
-    final id = _highlightEditId;
-    _highlightEditId = null;
-    return id;
-  }
 
   Future<void> cancel(String localId) async {
     final job = _jobs.cast<EditUploadJob?>().firstWhere(
@@ -493,22 +518,31 @@ final class EditUploadManager extends ChangeNotifier
   }
 
   void _applyServerStatus(EditUploadJob job, Edit edit) {
+    final before = job.phase;
     switch (edit.statusEnum) {
       case EditStatus.published:
         job.phase = EditUploadJobPhase.published;
         job.progress = 1;
         job.errorMessage = null;
-        _onPublished(edit.id);
+        if (before != EditUploadJobPhase.published) {
+          _onPublished(edit.id);
+        }
       case EditStatus.needsReview:
         job.phase = EditUploadJobPhase.needsReview;
         job.progress = 1;
         job.errorMessage = edit.userFacingFailure;
         job.failureReason = edit.failureReason;
+        if (before != EditUploadJobPhase.needsReview) {
+          _onTerminalFailure(edit.id, edit.userFacingFailure);
+        }
       case EditStatus.failed:
       case EditStatus.rejected:
         job.phase = EditUploadJobPhase.failed;
         job.errorMessage = edit.userFacingFailure;
         job.failureReason = edit.failureReason;
+        if (before != EditUploadJobPhase.failed) {
+          _onTerminalFailure(edit.id, edit.userFacingFailure);
+        }
       case EditStatus.processing:
       case EditStatus.uploading:
         job.phase = EditUploadJobPhase.processing;
@@ -520,10 +554,19 @@ final class EditUploadManager extends ChangeNotifier
   }
 
   void _onPublished(String editId) {
-    _highlightEditId = editId;
+    final force = shouldForceNavigateToPublished?.call(editId) ?? true;
     if (_foreground) {
-      onNavigateToPublished?.call(editId);
+      if (force) {
+        _highlightEditId = editId;
+        _softPublishedOfferId = null;
+        onNavigateToPublished?.call(editId);
+      } else {
+        // Soft offer — keep watching current clip; highlight deferred until accept.
+        _softPublishedOfferId = editId;
+        onNavigateToPublished?.call(editId);
+      }
     } else {
+      _highlightEditId = editId;
       onPublishedWhileBackgrounded?.call(editId);
     }
     // Auto-dismiss published jobs after a short window so the bar clears.
@@ -536,6 +579,11 @@ final class EditUploadManager extends ChangeNotifier
       );
       if (job != null) await dismiss(job.localId);
     });
+  }
+
+  void _onTerminalFailure(String editId, String? message) {
+    if (_foreground) return;
+    onFailedWhileBackgrounded?.call(editId, message);
   }
 
   Future<void> _reconcileActiveJobs() async {

@@ -236,7 +236,65 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
   };
 }
 
-function createEditPipeline({ db, bucket, economy, achievements }) {
+function createEditPipeline({ db, bucket, economy, achievements, notifications }) {
+  async function notifyCreator({ creatorId, editId, kind, reason }) {
+    if (!notifications || typeof notifications.build !== "function") return;
+    const destination = `/edits?highlight=${encodeURIComponent(editId)}`;
+    try {
+      if (kind === "published") {
+        await notifications.build({
+          id: `edit_published_${editId}`,
+          recipientIds: [creatorId],
+          type: "edit_published",
+          actorId: creatorId,
+          targetId: editId,
+          action: "published",
+          destination,
+          title: "Edit published",
+          body: "Your Edit is live. Tap to watch it.",
+          pushWorthy: true,
+          metadata: { editId },
+        });
+        return;
+      }
+      if (kind === "needs_review") {
+        await notifications.build({
+          id: `edit_review_${editId}`,
+          recipientIds: [creatorId],
+          type: "edit_needs_review",
+          actorId: creatorId,
+          targetId: editId,
+          action: "needs_review",
+          destination,
+          title: "Edit held for review",
+          body: reason || "Your Edit is waiting for moderation review.",
+          pushWorthy: true,
+          metadata: { editId, reason: reason || null },
+        });
+        return;
+      }
+      await notifications.build({
+        id: `edit_failed_${editId}`,
+        recipientIds: [creatorId],
+        type: "edit_failed",
+        actorId: creatorId,
+        targetId: editId,
+        action: "failed",
+        destination,
+        title: "Edit processing failed",
+        body: reason || "We could not finish processing your Edit. Open the app to retry.",
+        pushWorthy: true,
+        metadata: { editId, reason: reason || null },
+      });
+    } catch (error) {
+      console.error("Edit outcome notification failed", {
+        editId,
+        kind,
+        error: error && error.message ? error.message : String(error),
+      });
+    }
+  }
+
   return async function processEdit(event) {
     const object = event.data || {};
     const match = /^edits\/([^/]+)\/([^/]+)\.mp4$/.exec(object.name || "");
@@ -250,6 +308,12 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
         Number(object.size || 0) > EDITS_CONFIG.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
+      await notifyCreator({
+        creatorId,
+        editId,
+        kind: "failed",
+        reason: "This video is not a supported MP4, or it is too large.",
+      });
       return null;
     }
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pubget-edit-"));
@@ -263,6 +327,12 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
       const durationSeconds = probed.durationSeconds;
       if (durationSeconds <= 0 || durationSeconds > EDITS_CONFIG.maxDurationSeconds) {
         await ref.update({ status: "failed", failureReason: "duration" });
+        await notifyCreator({
+          creatorId,
+          editId,
+          kind: "failed",
+          reason: "Videos can be up to 3 minutes long.",
+        });
         return null;
       }
 
@@ -349,7 +419,25 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
         decision.update.publishedAt = new Date();
       }
       await ref.update(decision.update);
-      if (!decision.publish) return null;
+      if (!decision.publish) {
+        const status = decision.update.status;
+        if (status === "needs_review") {
+          await notifyCreator({
+            creatorId,
+            editId,
+            kind: "needs_review",
+            reason: decision.update.moderationReason || decision.reason,
+          });
+        } else if (status === "rejected" || status === "failed") {
+          await notifyCreator({
+            creatorId,
+            editId,
+            kind: "failed",
+            reason: decision.update.moderationReason || decision.reason,
+          });
+        }
+        return null;
+      }
       if (economy && typeof economy.applyReward === "function") {
         await economy.applyReward({
           userId: creatorId,
@@ -359,16 +447,28 @@ function createEditPipeline({ db, bucket, economy, achievements }) {
         });
       }
       if (achievements && typeof achievements.evaluate === "function") {
+        // publishedWorks is an absolute count so re-evaluation is idempotent.
         await achievements.evaluate({
           type: "edit_published",
           userId: creatorId,
           source: "edit",
-          metadata: { editId, publishedCount: (published.size || 0) + 1 },
+          metadata: {
+            editId,
+            publishedWorks: (published.size || 0) + 1,
+            publishedCount: (published.size || 0) + 1,
+          },
         });
       }
+      await notifyCreator({ creatorId, editId, kind: "published" });
     } catch (error) {
       await ref.update({ status: "failed", failureReason: "processing-failed" });
       console.error("Edit processing failed", { editId, error: error.message });
+      await notifyCreator({
+        creatorId,
+        editId,
+        kind: "failed",
+        reason: "We could not finish processing your Edit. Open the app to retry.",
+      });
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
     }
