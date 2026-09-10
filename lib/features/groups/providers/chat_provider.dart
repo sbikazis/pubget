@@ -55,7 +55,9 @@ final class ChatProvider extends ChangeNotifier {
   ChatMessage? get replyTarget => _replyTarget;
 
   void setReplyTarget(ChatMessage? message) {
-    _replyTarget = message == null || message.isDeleted ? null : message;
+    final next = message == null || message.isDeleted ? null : message;
+    if (_replyTarget?.id == next?.id) return;
+    _replyTarget = next;
     notifyListeners();
   }
 
@@ -146,6 +148,7 @@ final class ChatProvider extends ChangeNotifier {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     final replyId = replyToMessageId ?? _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final pending = ChatMessage.optimistic(
       id: _newId(),
       senderId: senderId,
@@ -155,8 +158,10 @@ final class ChatProvider extends ChangeNotifier {
       type: ChatMessageType.text,
       text: trimmed,
       replyToMessageId: replyId,
-      replyPreview: _previewFor(_replyTarget),
+      replyPreview: replyPreview,
     );
+    // Drop reply chrome in the same notify as the optimistic bubble.
+    _replyTarget = null;
     _upsert(pending);
     unawaited(_persistPending(pending));
     final result = await _repository.sendMessage(
@@ -166,7 +171,6 @@ final class ChatProvider extends ChangeNotifier {
       text: trimmed,
       replyToMessageId: replyId,
     );
-    if (result.isSuccess) clearReplyTarget();
     _finishSend(pending.id, result);
   }
 
@@ -180,6 +184,7 @@ final class ChatProvider extends ChangeNotifier {
     String? replyToMessageId,
   }) async {
     final replyId = replyToMessageId ?? _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final pending = ChatMessage.optimistic(
       id: _newId(),
       senderId: senderId,
@@ -192,8 +197,9 @@ final class ChatProvider extends ChangeNotifier {
       stickerCreatorId: 'pubget',
       stickerCreatorName: 'Pubget',
       replyToMessageId: replyId,
-      replyPreview: _previewFor(_replyTarget),
+      replyPreview: replyPreview,
     );
+    _replyTarget = null;
     _upsert(pending);
     unawaited(_persistPending(pending));
     final result = await _repository.sendMessage(
@@ -205,7 +211,6 @@ final class ChatProvider extends ChangeNotifier {
       stickerCreatorName: 'Pubget',
       replyToMessageId: replyId,
     );
-    if (result.isSuccess) clearReplyTarget();
     _finishSend(pending.id, result);
   }
 
@@ -590,7 +595,15 @@ final class ChatProvider extends ChangeNotifier {
             unawaited(_outbox.remove(groupId, message.id));
           }
         }
-        _replaceOrdered(index, message);
+        // Keep local createdAt so serverTimestamp reconcile does not reshuffle
+        // the bubble and yank the scroll position.
+        final reconciled = local.createdAt != null
+            ? message.copyWith(
+                createdAt: local.createdAt,
+                sendState: ChatSendState.sent,
+              )
+            : message.copyWith(sendState: ChatSendState.sent);
+        _replaceOrdered(index, reconciled);
         continue;
       }
       if (local.sendState != ChatSendState.failed) {
@@ -658,7 +671,15 @@ final class ChatProvider extends ChangeNotifier {
         if (groupId != null) {
           unawaited(_outbox.remove(groupId, id));
         }
-        _upsert(message);
+        final index = _messageIndex[id];
+        final local = index != null ? _messages[index] : null;
+        final reconciled = local?.createdAt != null
+            ? message.copyWith(
+                createdAt: local!.createdAt,
+                sendState: ChatSendState.sent,
+              )
+            : message.copyWith(sendState: ChatSendState.sent);
+        _upsert(reconciled);
       },
       onFailure: (failure) {
         final index = _messageIndex[id];

@@ -34,6 +34,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final _scrollController = ScrollController();
   bool _initialized = false;
   bool _wasNearBottom = true;
+  int _lastSeenMessageCount = 0;
+  int _lastMarkedReadCount = -1;
 
   @override
   void didChangeDependencies() {
@@ -73,11 +75,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         ? summary.first.otherAvatarUrl(uid)
         : null;
     final contrast = ChatContrastTheme.fromBackground(null);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_wasNearBottom) _scrollToLatest();
-      unawaited(chat.markAsRead(chat.messages));
-    });
+    _syncScrollAndReadReceipts(chat);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context) ??
@@ -161,13 +159,35 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
+  void _syncScrollAndReadReceipts(PrivateChatProvider chat) {
+    final count = chat.messages.length;
+    final shouldScroll =
+        _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
+    final shouldMarkRead = count != _lastMarkedReadCount;
+    _lastSeenMessageCount = count;
+    if (!shouldScroll && !shouldMarkRead) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (shouldScroll && _wasNearBottom) {
+        _scrollToLatest();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_wasNearBottom) _scrollToLatest();
+        });
+      }
+      if (shouldMarkRead) {
+        _lastMarkedReadCount = count;
+        unawaited(chat.markAsRead(chat.messages));
+      }
+    });
+  }
+
   void _scrollToLatest() {
     if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOut,
-    );
+    final target = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if ((target - current).abs() < 1) return;
+    _scrollController.jumpTo(target);
   }
 
   Future<void> _sendText() async {

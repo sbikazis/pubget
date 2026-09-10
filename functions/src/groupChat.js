@@ -280,7 +280,9 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       response = message;
     });
     if (achievements && typeof achievements.evaluate === "function") {
-      await achievements.evaluate({
+      // Fire-and-forget: do not block the send callable on achievements work.
+      // Awaiting this made clients keep the pending clock longer than needed.
+      achievements.evaluate({
         type: "message_sent",
         userId: uid,
         source: "group_chat",

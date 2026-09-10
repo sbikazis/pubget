@@ -197,7 +197,9 @@ void main() {
     expect(find.byKey(const Key('reply-composer-bar')), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'Quoted reply');
     await tester.pump();
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byIcon(Icons.send_rounded), findsWidgets);
+    await tester.tap(find.byIcon(Icons.send_rounded).last);
     await tester.pumpAndSettle();
     expect(chatRepo.sent.last['text'], 'Quoted reply');
     expect(chatRepo.sent.last['replyToMessageId'], 'm-bob');
