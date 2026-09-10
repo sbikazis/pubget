@@ -614,6 +614,8 @@ exports.recalculateInviteRanks = onDocumentUpdated(
   groupsDomain.recalculateInviteRanks,
 );
 
+// Seat recalculation on membership create/delete and invite/manual-role changes.
+// (Deploy retry hardening: keep this export so MIKADO seats ship with main.)
 exports.recalculateAutoSeatsOnMemberWrite = onDocumentWritten(
   "groups/{groupId}/members/{memberId}",
   groupsDomain.onMemberMembershipChanged,
