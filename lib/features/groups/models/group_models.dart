@@ -1,56 +1,10 @@
+export 'pubget_rank.dart';
+
+import 'pubget_rank.dart';
+
 enum GroupType { public, animeRoleplay, openRoleplay }
 
 enum JoinPolicy { open, approval, inviteOnly }
-
-enum GroupRole { founder, shogun, commander, captain, sensei, senpai, member }
-
-enum GroupPermission {
-  manageMembers,
-  manageMessages,
-  deleteMessages,
-  pin,
-  manageEvents,
-  manageGames,
-  manageSettings,
-  invite,
-  manageRequests,
-  manageRoles,
-  manageBackground,
-}
-
-final Map<GroupRole, Set<GroupPermission>> defaultRolePermissions =
-    <GroupRole, Set<GroupPermission>>{
-      GroupRole.founder: GroupPermission.values.toSet(),
-      GroupRole.shogun: GroupPermission.values.toSet(),
-      GroupRole.commander: <GroupPermission>{
-        GroupPermission.manageMembers,
-        GroupPermission.manageMessages,
-        GroupPermission.deleteMessages,
-        GroupPermission.pin,
-        GroupPermission.manageEvents,
-        GroupPermission.manageGames,
-        GroupPermission.invite,
-        GroupPermission.manageRequests,
-      },
-      GroupRole.captain: <GroupPermission>{
-        GroupPermission.manageMessages,
-        GroupPermission.deleteMessages,
-        GroupPermission.pin,
-        GroupPermission.manageEvents,
-        GroupPermission.invite,
-      },
-      GroupRole.sensei: <GroupPermission>{
-        GroupPermission.manageMessages,
-        GroupPermission.deleteMessages,
-        GroupPermission.pin,
-        GroupPermission.invite,
-      },
-      GroupRole.senpai: <GroupPermission>{
-        GroupPermission.pin,
-        GroupPermission.invite,
-      },
-      GroupRole.member: <GroupPermission>{},
-    };
 
 final class Group {
   const Group({
@@ -260,7 +214,7 @@ final class GroupMember {
   });
 
   final String uid;
-  final GroupRole role;
+  final PubgetRank role;
   final String? customRoleId;
   final Map<String, dynamic>? roleplayCharacter;
   final DateTime? joinedAt;
@@ -269,22 +223,21 @@ final class GroupMember {
   final DateTime? lastReadAt;
 
   /// Permissions from the group role document, when loaded.
-  /// `null` means fall back to [defaultRolePermissions] for [role].
+  /// `null` means fall back to [defaultRankPermissions] for [role].
   final Set<GroupPermission>? effectivePermissions;
 
   String get roleDocumentId =>
       (customRoleId != null && customRoleId!.trim().isNotEmpty)
       ? customRoleId!.trim()
-      : role.name;
+      : pubgetRankStorageId(role);
 
-  /// Matches Cloud Functions `loadPermissions`: founder always manages
-  /// events; otherwise the role document (or default role set) is used.
+  /// Matches Cloud Functions `loadPermissions`: mikado always manages
+  /// events; otherwise the role document (or default rank set) is used.
   bool get canManageEvents =>
       memberCanManageEvents(this, roleDocument: null);
 
   bool get canManageGames =>
-      defaultRolePermissions[role]?.contains(GroupPermission.manageGames) ??
-      false;
+      memberPermissions(this).contains(GroupPermission.manageGames);
 
   /// Client UX gate. Server `kickMember` / `banMember` remain authoritative.
   bool get canManageMembers => memberCanManageMembers(this);
@@ -293,12 +246,10 @@ final class GroupMember {
   bool get canManageSettings => memberCanManageSettings(this);
 
   factory GroupMember.fromMap(Map<String, dynamic> map, {required String uid}) {
+    final rankRaw = map['rankV2'] as String? ?? map['role'] as String?;
     return GroupMember(
       uid: uid,
-      role: GroupRole.values.firstWhere(
-        (value) => value.name == map['role'],
-        orElse: () => GroupRole.member,
-      ),
+      role: parsePubgetRank(rankRaw),
       customRoleId: map['customRoleId'] as String?,
       roleplayCharacter: map['roleplayCharacter'] is Map
           ? Map<String, dynamic>.from(map['roleplayCharacter'] as Map)
@@ -324,6 +275,16 @@ final class GroupMember {
       );
 }
 
+Set<GroupPermission> memberPermissions(
+  GroupMember? member, {
+  GroupRoleDefinition? roleDocument,
+}) {
+  if (member == null) return const <GroupPermission>{};
+  return roleDocument?.permissions ??
+      member.effectivePermissions ??
+      permissionsForRank(member.role);
+}
+
 bool memberCanCreateEvents(GroupMember? member) => member != null;
 
 /// Client mirror of server event-management authorization. Server remains
@@ -333,37 +294,27 @@ bool memberCanManageEvents(
   GroupRoleDefinition? roleDocument,
 }) {
   if (member == null) return false;
-  if (member.role == GroupRole.founder) return true;
-  final granted =
-      roleDocument?.permissions ??
-      member.effectivePermissions ??
-      defaultRolePermissions[member.role] ??
-      const <GroupPermission>{};
-  return granted.contains(GroupPermission.manageEvents);
+  if (member.role == PubgetRank.mikado) return true;
+  return memberPermissions(
+    member,
+    roleDocument: roleDocument,
+  ).contains(GroupPermission.manageEvents);
 }
 
 /// Client mirror of server member-management authorization. Server remains
 /// authoritative; this is UX gating only.
 bool memberCanManageMembers(GroupMember? member) {
   if (member == null) return false;
-  if (member.role == GroupRole.founder) return true;
-  final granted =
-      member.effectivePermissions ??
-      defaultRolePermissions[member.role] ??
-      const <GroupPermission>{};
-  return granted.contains(GroupPermission.manageMembers);
+  if (member.role == PubgetRank.mikado) return true;
+  return memberPermissions(member).contains(GroupPermission.kickBan);
 }
 
 /// Client mirror of server settings authorization. Server remains
-/// authoritative; this is UX gating only. Founder always manages settings.
+/// authoritative; this is UX gating only. Mikado always manages settings.
 bool memberCanManageSettings(GroupMember? member) {
   if (member == null) return false;
-  if (member.role == GroupRole.founder) return true;
-  final granted =
-      member.effectivePermissions ??
-      defaultRolePermissions[member.role] ??
-      const <GroupPermission>{};
-  return granted.contains(GroupPermission.manageSettings);
+  if (member.role == PubgetRank.mikado) return true;
+  return memberPermissions(member).contains(GroupPermission.manageSettings);
 }
 
 final class GroupRoleDefinition {
@@ -375,7 +326,7 @@ final class GroupRoleDefinition {
   });
 
   final String id;
-  final GroupRole name;
+  final PubgetRank name;
   final Set<GroupPermission> permissions;
   final int position;
 
@@ -383,24 +334,18 @@ final class GroupRoleDefinition {
     Map<String, dynamic> map, {
     required String id,
   }) {
+    final permissions = <GroupPermission>{};
+    final rawPermissions = map['permissions'] is List
+        ? (map['permissions'] as List)
+        : const <dynamic>[];
+    for (final value in rawPermissions.whereType<String>()) {
+      final parsed = parseGroupPermission(value);
+      if (parsed != null) permissions.add(parsed);
+    }
     return GroupRoleDefinition(
       id: id,
-      name: GroupRole.values.firstWhere(
-        (value) => value.name == map['name'],
-        orElse: () => GroupRole.member,
-      ),
-      permissions:
-          (map['permissions'] is List
-                  ? (map['permissions'] as List)
-                  : const <dynamic>[])
-              .whereType<String>()
-              .map(
-                (value) => GroupPermission.values.firstWhere(
-                  (permission) => permission.name == value,
-                  orElse: () => GroupPermission.invite,
-                ),
-              )
-              .toSet(),
+      name: parsePubgetRank(map['name'] as String? ?? id),
+      permissions: permissions,
       position: (map['position'] as num?)?.toInt() ?? 0,
     );
   }
@@ -536,12 +481,30 @@ String groupJoinPolicyLabel(JoinPolicy policy) => switch (policy) {
   JoinPolicy.inviteOnly => 'Invite only',
 };
 
-String groupRoleLabel(GroupRole role) => switch (role) {
-  GroupRole.founder => 'Founder',
-  GroupRole.shogun => 'Shogun',
-  GroupRole.commander => 'Commander',
-  GroupRole.captain => 'Captain',
-  GroupRole.sensei => 'Sensei',
-  GroupRole.senpai => 'Senpai',
-  GroupRole.member => 'Member',
-};
+String groupRoleLabel(PubgetRank role) => pubgetRankDisplayName(role);
+
+List<PubgetRank> assignableRanksUnderCeiling({
+  required PubgetRank actor,
+  required PubgetRank targetCurrent,
+}) {
+  return PubgetRank.values
+      .where(
+        (desired) => canAssignRank(
+          actor: actor,
+          targetCurrent: targetCurrent,
+          desired: desired,
+        ),
+      )
+      .toList(growable: false);
+}
+
+int compareMembersByRankThenJoined(GroupMember a, GroupMember b) {
+  final byRank = b.role.index.compareTo(a.role.index);
+  if (byRank != 0) return byRank;
+  final aJoined = a.joinedAt;
+  final bJoined = b.joinedAt;
+  if (aJoined == null && bJoined == null) return a.uid.compareTo(b.uid);
+  if (aJoined == null) return 1;
+  if (bJoined == null) return -1;
+  return aJoined.compareTo(bJoined);
+}

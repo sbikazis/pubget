@@ -8,6 +8,7 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
+import '../models/group_models.dart';
 import 'chat_contrast_theme.dart';
 import 'chat_special_cards.dart';
 
@@ -468,13 +469,31 @@ class _SenderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = roleColor(role);
-    final copy = AppStrings.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rank = parsePubgetRank(role);
+    final color = rankColorResolver(rank, isDarkMode: isDark);
+    final badgeAsset =
+        showRole && rankShowsBubbleBadge(rank) ? pubgetRankBadgeAsset(rank) : null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          // Badge first in Row = visual right in RTL (app default).
+          if (badgeAsset != null) ...[
+            Image.asset(
+              badgeAsset,
+              width: 16,
+              height: 16,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => Icon(
+                Icons.military_tech,
+                size: 16,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           Flexible(
             child: Text(
               name,
@@ -488,73 +507,14 @@ class _SenderHeader extends StatelessWidget {
               ),
             ),
           ),
-          if (showRole) ...[
-            const SizedBox(width: 4),
-            Icon(_roleIcon(role), size: 12, color: color),
-            const SizedBox(width: 2),
-            _InlineRoleChip(label: copy.roleLabel(role), color: color),
-          ],
-          // Reserved slot for premium / extra badges.
-          const SizedBox(width: 4),
-          const SizedBox(width: 14, height: 14),
         ],
       ),
     );
   }
 }
 
-IconData _roleIcon(String role) {
-  return switch (role) {
-    'founder' => Icons.workspace_premium,
-    'shogun' => Icons.shield,
-    'commander' => Icons.military_tech,
-    'captain' => Icons.star,
-    'sensei' => Icons.school,
-    'senpai' => Icons.favorite,
-    _ => Icons.person,
-  };
-}
-
-Color roleColor(String role) {
-  return switch (role) {
-    'founder' => const Color(0xFFD8A838),
-    'shogun' => const Color(0xFFE06B86),
-    'commander' => const Color(0xFF4EB7D8),
-    'captain' => const Color(0xFF6DCB91),
-    'sensei' => const Color(0xFF9B75E8),
-    'senpai' => const Color(0xFF7AA2F7),
-    _ => const Color(0xFF9B75E8),
-  };
-}
-
-class _InlineRoleChip extends StatelessWidget {
-  const _InlineRoleChip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-          ),
-        ),
-      ),
-    );
-  }
-}
+Color roleColor(String role, {bool isDarkMode = false}) =>
+    rankColorForRoleString(role, isDarkMode: isDarkMode);
 
 class _TimeStatusRow extends StatelessWidget {
   const _TimeStatusRow({

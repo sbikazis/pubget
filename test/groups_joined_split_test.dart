@@ -140,7 +140,7 @@ final class _SplitGroupRepository implements GroupRepository {
   ) async => Success(
     GroupMember(
       uid: userId,
-      role: groupId == founded.id ? GroupRole.founder : GroupRole.member,
+      role: groupId == founded.id ? PubgetRank.mikado : PubgetRank.ronin,
     ),
   );
 

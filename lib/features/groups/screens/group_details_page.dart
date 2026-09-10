@@ -14,6 +14,7 @@ import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
 import '../providers/group_provider.dart';
+import '../widgets/group_entry_hub.dart';
 import 'group_join_sheet.dart';
 
 class GroupDetailsPage extends StatefulWidget {
@@ -42,7 +43,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       await provider.load(groupId: widget.groupId, userId: userId);
       if (members == null) return;
       await members.load(widget.groupId);
-      if (provider.isFounder) {
+      if (provider.isFounder || provider.hasEntryHub) {
         await members.loadRequests(widget.groupId);
       }
     });
@@ -64,7 +65,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     if (!_redirected &&
         provider.state == LoadingState.loaded &&
         provider.isMember &&
-        !provider.isFounder) {
+        !provider.isFounder &&
+        !provider.hasEntryHub) {
       _redirected = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -72,13 +74,22 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         }
       });
     }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rankAccent = provider.viewerRank == null
+        ? null
+        : rankColorResolver(provider.viewerRank!, isDarkMode: isDark);
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         title: Text(
-          provider.isFounder ? GroupCopy.of(context).controlPanel : copy.groupDetails,
+          provider.isFounder
+              ? GroupCopy.of(context).controlPanel
+              : provider.hasEntryHub
+                  ? 'Entry Hub'
+                  : copy.groupDetails,
         ),
+        foregroundColor: rankAccent,
         actions: <Widget>[
           PubgetIconButton(
             icon: Icons.share_outlined,
@@ -116,7 +127,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 ? const SizedBox.shrink()
                 : provider.isFounder
                     ? _FounderPanel(group: group)
-                    : _VisitorDetails(group: group),
+                    : provider.hasEntryHub
+                        ? GroupEntryHub(group: group)
+                        : _VisitorDetails(group: group),
           ),
         ),
       ),
@@ -289,6 +302,8 @@ class _FounderPanel extends StatelessWidget {
       members = null;
     }
     final pending = members?.requests.length ?? 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = rankColorResolver(PubgetRank.mikado, isDarkMode: isDark);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
@@ -312,6 +327,10 @@ class _FounderPanel extends StatelessWidget {
                 label: copy.joinPolicyLabel(group.joinPolicy.name),
                 compact: true,
               ),
+              PubgetBadge(
+                label: pubgetRankDisplayName(PubgetRank.mikado),
+                compact: true,
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -321,6 +340,7 @@ class _FounderPanel extends StatelessWidget {
             icon: Icons.inbox_outlined,
             title: groupCopy.requestInbox,
             subtitle: groupCopy.pendingCount(pending),
+            accent: accent,
             onTap: () => AppNavigation.go(
               context,
               '/group-requests?groupId=${group.id}',
@@ -329,6 +349,7 @@ class _FounderPanel extends StatelessWidget {
           _PanelTile(
             icon: Icons.groups_outlined,
             title: copy.manageMembers,
+            accent: accent,
             onTap: () => AppNavigation.go(
               context,
               '/group-members?groupId=${group.id}',
@@ -337,6 +358,7 @@ class _FounderPanel extends StatelessWidget {
           _PanelTile(
             icon: Icons.gavel_outlined,
             title: groupCopy.manageRules,
+            accent: accent,
             onTap: () => AppNavigation.go(
               context,
               '/group-settings?groupId=${group.id}',
@@ -345,6 +367,7 @@ class _FounderPanel extends StatelessWidget {
           _PanelTile(
             icon: Icons.tune_outlined,
             title: copy.groupSettings,
+            accent: accent,
             onTap: () => AppNavigation.go(
               context,
               '/group-settings?groupId=${group.id}',
@@ -625,15 +648,18 @@ class _PanelTile extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.subtitle,
+    this.accent,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
+    final color = accent ?? AppColors.royalPurple;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: PubgetCard(
@@ -641,7 +667,7 @@ class _PanelTile extends StatelessWidget {
         child: ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
-            backgroundColor: AppColors.royalPurple.withValues(alpha: 0.16),
+            backgroundColor: color.withValues(alpha: 0.16),
             child: Icon(icon, color: AppColors.gold),
           ),
           title: Text(title),

@@ -434,7 +434,7 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<GroupMember?>> getMembership(
     String groupId,
     String userId,
-  ) async => Success(GroupMember(uid: userId, role: GroupRole.member));
+  ) async => Success(GroupMember(uid: userId, role: PubgetRank.ronin));
 
   @override
   Future<Result<void>> joinGroup({

@@ -614,6 +614,11 @@ exports.recalculateInviteRanks = onDocumentUpdated(
   groupsDomain.recalculateInviteRanks,
 );
 
+exports.recalculateAutoSeatsOnMemberWrite = onDocumentWritten(
+  "groups/{groupId}/members/{memberId}",
+  groupsDomain.onMemberMembershipChanged,
+);
+
 exports.giveRespect = onCall(
   { region: "us-central1" },
   socialGraph.giveRespect,

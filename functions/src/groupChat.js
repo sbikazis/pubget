@@ -27,9 +27,11 @@ const REPORT_REASONS = Object.freeze([
 ]);
 const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
 const AUDIO_MAX_DURATION_SECONDS = 60;
+const { hasPermission, normalizeRole } = require("./pubgetRanks");
+
 const PERMISSIONS = {
   delete: "deleteMessages",
-  pin: "pin",
+  pin: "pinOwnMessages",
   background: "manageBackground",
 };
 
@@ -83,10 +85,8 @@ function displayIdentity(member, uid) {
   return { senderName, senderAvatar };
 }
 
-function can(member, role, permission) {
-  return member.role === "founder" ||
-    Boolean(role && Array.isArray(role.permissions) &&
-      role.permissions.includes(permission));
+function can(member, role, permission, group) {
+  return hasPermission(member, role, permission, group);
 }
 
 async function actorContext(transaction, db, groupId, uid, HttpsError) {
@@ -98,7 +98,7 @@ async function actorContext(transaction, db, groupId, uid, HttpsError) {
   }
   const memberData = member.data() || {};
   const role = await transaction.get(
-    groupRef(db, groupId).collection("roles").doc(memberData.role || "member"),
+    groupRef(db, groupId).collection("roles").doc(memberData.role || "ronin"),
   );
   return {
     group: group.data() || {},
@@ -246,7 +246,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         senderId: uid,
         senderName: identity.senderName,
         senderAvatar: identity.senderAvatar,
-        senderRole: context.member.role || "member",
+        senderRole: context.member.role || "ronin",
         type: data.type,
         text: data.type === "text" ? data.text.trim() : null,
         mediaId: catalogSticker || !MEDIA_TYPES.has(data.type) ? null : data.mediaId,
@@ -554,7 +554,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         }
         const identity = {
           ...displayIdentity(context.member, uid),
-          senderRole: context.member.role || "member",
+          senderRole: context.member.role || "ronin",
         };
         const message = buildForwardedMessage({
           source,
@@ -707,7 +707,7 @@ function buildForwardedMessage({
     senderId: uid,
     senderName: identity.senderName,
     senderAvatar: identity.senderAvatar,
-    senderRole: identity.senderRole || "member",
+    senderRole: identity.senderRole || "ronin",
     type: source.type,
     text: source.type === "text" ? source.text : null,
     mediaId: destMediaId,

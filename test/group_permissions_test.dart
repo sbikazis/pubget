@@ -4,18 +4,18 @@ import 'package:pubget/features/groups/models/group_models.dart';
 void main() {
   test('default role with manageEvents can manage events', () {
     expect(
-      const GroupMember(uid: 'c1', role: GroupRole.captain).canManageEvents,
+      const GroupMember(uid: 'c1', role: PubgetRank.hatamoto).canManageEvents,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 's1', role: GroupRole.shogun).canManageEvents,
+      const GroupMember(uid: 's1', role: PubgetRank.shogun).canManageEvents,
       isTrue,
     );
   });
 
   test('plain members can create events without manageEvents', () {
     expect(
-      memberCanCreateEvents(const GroupMember(uid: 'm1', role: GroupRole.member)),
+      memberCanCreateEvents(const GroupMember(uid: 'm1', role: PubgetRank.ronin)),
       isTrue,
     );
     expect(memberCanCreateEvents(null), isFalse);
@@ -23,11 +23,11 @@ void main() {
 
   test('default role without manageEvents cannot manage events', () {
     expect(
-      const GroupMember(uid: 'm1', role: GroupRole.member).canManageEvents,
+      const GroupMember(uid: 'm1', role: PubgetRank.ronin).canManageEvents,
       isFalse,
     );
     expect(
-      const GroupMember(uid: 's2', role: GroupRole.sensei).canManageEvents,
+      const GroupMember(uid: 's2', role: PubgetRank.samurai).canManageEvents,
       isFalse,
     );
   });
@@ -35,7 +35,7 @@ void main() {
   test('custom role with manageEvents can manage events', () {
     final member = const GroupMember(
       uid: 'm1',
-      role: GroupRole.member,
+      role: PubgetRank.ronin,
       customRoleId: 'moderator',
     ).withEffectivePermissions({GroupPermission.manageEvents});
     expect(member.canManageEvents, isTrue);
@@ -45,7 +45,7 @@ void main() {
   test('custom role without manageEvents cannot manage events', () {
     final member = const GroupMember(
       uid: 'c1',
-      role: GroupRole.captain,
+      role: PubgetRank.hatamoto,
     ).withEffectivePermissions({GroupPermission.invite});
     expect(member.canManageEvents, isFalse);
   });
@@ -56,23 +56,23 @@ void main() {
 
   test('founder and shogun can manage members; members cannot', () {
     expect(
-      const GroupMember(uid: 'a1', role: GroupRole.founder).canManageMembers,
+      const GroupMember(uid: 'a1', role: PubgetRank.mikado).canManageMembers,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'a2', role: GroupRole.shogun).canManageMembers,
+      const GroupMember(uid: 'a2', role: PubgetRank.shogun).canManageMembers,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'c1', role: GroupRole.commander).canManageMembers,
+      const GroupMember(uid: 'c1', role: PubgetRank.daimyo).canManageMembers,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'm1', role: GroupRole.member).canManageMembers,
+      const GroupMember(uid: 'm1', role: PubgetRank.ronin).canManageMembers,
       isFalse,
     );
     expect(
-      const GroupMember(uid: 's1', role: GroupRole.senpai).canManageMembers,
+      const GroupMember(uid: 's1', role: PubgetRank.gokenin).canManageMembers,
       isFalse,
     );
     expect(memberCanManageMembers(null), isFalse);
@@ -80,19 +80,19 @@ void main() {
 
   test('founder and shogun can manage settings; members cannot', () {
     expect(
-      const GroupMember(uid: 'a1', role: GroupRole.founder).canManageSettings,
+      const GroupMember(uid: 'a1', role: PubgetRank.mikado).canManageSettings,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'a2', role: GroupRole.shogun).canManageSettings,
+      const GroupMember(uid: 'a2', role: PubgetRank.shogun).canManageSettings,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'c1', role: GroupRole.commander).canManageSettings,
+      const GroupMember(uid: 'c1', role: PubgetRank.daimyo).canManageSettings,
       isFalse,
     );
     expect(
-      const GroupMember(uid: 'm1', role: GroupRole.member).canManageSettings,
+      const GroupMember(uid: 'm1', role: PubgetRank.ronin).canManageSettings,
       isFalse,
     );
     expect(memberCanManageSettings(null), isFalse);
@@ -102,7 +102,7 @@ void main() {
     expect(
       const GroupMember(
         uid: 'a1',
-        role: GroupRole.founder,
+        role: PubgetRank.mikado,
       ).withEffectivePermissions(const <GroupPermission>{}).canManageSettings,
       isTrue,
     );
@@ -111,7 +111,7 @@ void main() {
   test('custom role with manageSettings can manage settings', () {
     final member = const GroupMember(
       uid: 'm1',
-      role: GroupRole.member,
+      role: PubgetRank.ronin,
     ).withEffectivePermissions({GroupPermission.manageSettings});
     expect(member.canManageSettings, isTrue);
   });
@@ -120,7 +120,7 @@ void main() {
     expect(
       const GroupMember(
         uid: 'a1',
-        role: GroupRole.founder,
+        role: PubgetRank.mikado,
       ).withEffectivePermissions(const <GroupPermission>{}).canManageMembers,
       isTrue,
     );
@@ -128,18 +128,18 @@ void main() {
 
   test('founder and admin-equivalent roles can manage events', () {
     expect(
-      const GroupMember(uid: 'a1', role: GroupRole.founder).canManageEvents,
+      const GroupMember(uid: 'a1', role: PubgetRank.mikado).canManageEvents,
       isTrue,
     );
     expect(
       const GroupMember(
         uid: 'a1',
-        role: GroupRole.founder,
+        role: PubgetRank.mikado,
       ).withEffectivePermissions(const <GroupPermission>{}).canManageEvents,
       isTrue,
     );
     expect(
-      const GroupMember(uid: 'a2', role: GroupRole.shogun).canManageEvents,
+      const GroupMember(uid: 'a2', role: PubgetRank.shogun).canManageEvents,
       isTrue,
     );
   });

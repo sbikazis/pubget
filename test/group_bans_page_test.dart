@@ -16,7 +16,7 @@ import 'authentication_test_support.dart';
 void main() {
   testWidgets('authorized user can unban a banned member', (tester) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.mikado);
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
@@ -35,7 +35,7 @@ void main() {
 
   testWidgets('unauthorized user cannot unban', (tester) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.ronin);
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
@@ -100,7 +100,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) async => const Success<void>(null);
 
@@ -108,7 +108,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) async => const Success<void>(null);
 
   @override
@@ -166,7 +166,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
 final class _FakeGroupRepository implements GroupRepository {
   _FakeGroupRepository({required this.viewerRole});
 
-  final GroupRole viewerRole;
+  final PubgetRank viewerRole;
 
   static final group = Group(
     id: 'g1',
