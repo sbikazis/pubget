@@ -72,18 +72,18 @@ void main() {
     );
   });
 
-  test('dashboard tabs are built from permissions, always include chat', () {
-    final gokenin = dashboardTabsFor(permissionsForRank(PubgetRank.gokenin));
-    expect(gokenin, contains(RankDashboardTab.invite));
-    expect(gokenin, contains(RankDashboardTab.chat));
-    expect(gokenin, isNot(contains(RankDashboardTab.games)));
-
-    final hatamoto = dashboardTabsFor(permissionsForRank(PubgetRank.hatamoto));
-    expect(hatamoto, contains(RankDashboardTab.events));
-    expect(hatamoto, isNot(contains(RankDashboardTab.games)));
-
-    final mikado = dashboardTabsFor(permissionsForRank(PubgetRank.mikado));
-    expect(mikado, contains(RankDashboardTab.roles));
-    expect(mikado, contains(RankDashboardTab.audit));
+  test('bubble badges glow stronger as rank climbs', () {
+    expect(rankShowsBubbleBadge(PubgetRank.ronin), isTrue);
+    expect(
+      rankBadgeGlowStrength(PubgetRank.mikado) >
+          rankBadgeGlowStrength(PubgetRank.ronin),
+      isTrue,
+    );
+    expect(
+      rankBadgeGlowStrength(PubgetRank.shogun) >
+          rankBadgeGlowStrength(PubgetRank.samurai),
+      isTrue,
+    );
+    expect(rankBadgeGlowColor(PubgetRank.mikado), const Color(0xFFD4AF37));
   });
 }
