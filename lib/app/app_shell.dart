@@ -79,6 +79,7 @@ class _AppShellState extends State<AppShell> {
 
     return AppShellScope(
       openDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+      currentTab: tab,
       child: Scaffold(
         key: _scaffoldKey,
         drawer: const AppShellDrawer(),

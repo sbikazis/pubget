@@ -97,7 +97,7 @@ void main() {
     );
     await tester.tap(find.text('Open respect'));
     await tester.pumpAndSettle();
-    expect(find.text('Give Respect'), findsOneWidget);
+    expect(find.text('منح الاحترام'), findsOneWidget);
     await tester.tap(find.byKey(const Key('edit-give-respect')));
     await tester.pumpAndSettle();
     expect(socialRepository.respectCalls, 1);

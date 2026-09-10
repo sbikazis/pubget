@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/app/app_shell_scope.dart';
+import 'package:pubget/app/app_shell_tab.dart';
 import 'package:pubget/features/home/screens/home_page.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
           textDirection: TextDirection.rtl,
           child: AppShellScope(
             openDrawer: () {},
+            currentTab: AppShellTab.discover,
             child: const Scaffold(
               appBar: HomeTopBar(
                 name: 'Zak',
