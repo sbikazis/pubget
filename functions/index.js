@@ -194,6 +194,7 @@ const processEditVideo = createEditPipeline({
   bucket: getStorage().bucket(),
   economy: economyDomain,
   achievements: achievementsDomain,
+  notifications: notificationBuilder,
 });
 const editsDomain = createEditsDomain({
   db: getFirestore(),

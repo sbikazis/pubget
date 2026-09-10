@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../app/app_route.dart';
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
 import '../../../core/constants/limits.dart';
@@ -67,6 +68,7 @@ class _EditFeedPageState extends State<EditFeedPage>
       _uploads!.addListener(_onUploadsChanged);
       _pullHighlight();
     }
+    _readRouteHighlight();
   }
 
   @override
@@ -76,13 +78,33 @@ class _EditFeedPageState extends State<EditFeedPage>
     setState(() => _appResumed = resumed);
   }
 
-  void _onUploadsChanged() => _pullHighlight();
+  void _onUploadsChanged() {
+    _pullHighlight();
+    _pullSoftOfferHint();
+  }
 
   void _pullHighlight() {
     final id = _uploads?.highlightEditId;
     if (id == null || id.isEmpty) return;
     _uploads?.consumeHighlightEditId();
     _pendingHighlight = id;
+    unawaited(_focusHighlight());
+  }
+
+  void _pullSoftOfferHint() {
+    // Soft offer is handled via SnackBar in PubgetApp; highlight applies on accept.
+  }
+
+  void _readRouteHighlight() {
+    final delegate = Router.of(context).routerDelegate;
+    if (delegate is! AppRouterDelegate) return;
+    final config = delegate.currentConfiguration;
+    if (config is! ParameterizedRoute) return;
+    if (config.path != '/edits') return;
+    final highlight = config.parameters['highlight'];
+    if (highlight == null || highlight.isEmpty) return;
+    if (_pendingHighlight == highlight) return;
+    _pendingHighlight = highlight;
     unawaited(_focusHighlight());
   }
 
@@ -868,6 +890,7 @@ class _EditActionRail extends StatelessWidget {
       context,
       toUserId: edit.displayCreatorId,
       initialValue: given.isEmpty ? Limits.fanThreshold : given.first.value,
+      silentFailure: true,
     );
     if (!context.mounted || !becameFan) return;
     ScaffoldMessenger.of(context).showSnackBar(

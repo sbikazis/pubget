@@ -58,6 +58,7 @@ import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
 import '../features/edits/widgets/global_edit_upload_bar.dart';
 import '../features/anime/data/anime_http_client.dart';
@@ -156,6 +157,7 @@ import '../features/social/screens/profile_page.dart';
 import 'app_route.dart';
 import 'app_router.dart';
 import 'app_shell.dart';
+import 'app_shell_scope.dart';
 import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
 import 'unknown_link_page.dart';
@@ -685,22 +687,85 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
     if (_uploadCallbacksBound) return;
     _uploadCallbacksBound = true;
     final manager = context.read<EditUploadManager>();
+
+    manager.shouldForceNavigateToPublished = (editId) {
+      final shell = AppShellScope.maybeOf(context);
+      if (shell == null || !shell.isEditsVisible) return true;
+      final edits = context.read<EditsProvider>();
+      final items = edits.items;
+      if (items.isEmpty) return true;
+      final index = edits.activeIndex.clamp(0, items.length - 1);
+      final watching = items[index].id;
+      // Soft offer when already watching a different clip.
+      return watching == editId;
+    };
+
     manager.onNavigateToPublished = (editId) {
       if (!mounted) return;
-      unawaited(AppNavigation.go(context, '/edits'));
+      final soft = manager.softPublishedOfferId == editId;
+      if (soft) {
+        final copy = EditCopy.of(context);
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(copy.videoReadyOffer),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: copy.watchNow,
+              onPressed: () {
+                manager.acceptSoftPublishedOffer(editId);
+                unawaited(
+                  AppNavigation.go(
+                    context,
+                    PubgetLinks.editHighlightPath(editId),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        return;
+      }
+      unawaited(
+        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
+      );
     };
+
     manager.onPublishedWhileBackgrounded = (editId) {
+      // Server push is the primary signal while backgrounded; local snackbar
+      // only helps when the process is still alive.
       if (!mounted) return;
       final copy = EditCopy.of(context);
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      messenger?.showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
           content: Text(
             '${copy.publishedNotificationTitle} — ${copy.publishedNotificationBody}',
           ),
           action: SnackBarAction(
             label: copy.openEdit,
-            onPressed: () => AppNavigation.go(context, '/edits'),
+            onPressed: () => AppNavigation.go(
+              context,
+              PubgetLinks.editHighlightPath(editId),
+            ),
+          ),
+        ),
+      );
+    };
+
+    manager.onFailedWhileBackgrounded = (editId, message) {
+      if (!mounted) return;
+      final copy = EditCopy.of(context);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(message ?? copy.failedNotificationBody),
+          backgroundColor: Theme.of(context).colorScheme.errorContainer,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: copy.openEdit,
+            onPressed: () => AppNavigation.go(
+              context,
+              PubgetLinks.editHighlightPath(editId),
+            ),
           ),
         ),
       );
@@ -736,8 +801,13 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: (context, child) {
-        return EditUploadOverlayHost(
-          child: child ?? const SizedBox.shrink(),
+        return NotificationDeepLinkBinder(
+          messaging: widget.firebaseState.isReady
+              ? FirebaseMessaging.instance
+              : null,
+          child: EditUploadOverlayHost(
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
       routerConfig: _router!,

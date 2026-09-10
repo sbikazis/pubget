@@ -99,7 +99,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('منح الاحترام'), findsOneWidget);
     await tester.tap(find.byKey(const Key('edit-give-respect')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    // Sheet closes optimistically; server call continues in background.
+    await tester.pump(const Duration(milliseconds: 50));
     expect(socialRepository.respectCalls, 1);
   });
 }

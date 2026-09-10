@@ -60,6 +60,17 @@ final class EditCopy {
     'Your Edit is live. Open Edits to watch it.',
     'مقطعك متاح الآن. افتح المقاطع لمشاهدته.',
   );
+  String get failedNotificationBody => _s.pick(
+    'Edit processing failed. Open the app to retry or delete the draft.',
+    'فشلت معالجة المقطع. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
+  );
+  String get videoReadyOffer => _s.pick(
+    'Your Edit is ready — watch it now?',
+    'مقطعك جاهز — شاهده الآن؟',
+  );
+  String get watchNow => _s.pick('Watch now', 'شاهده الآن');
+  String get openEdit =>
+      _s.pick('Open published Edit', 'فتح المقطع المنشور');
   String get noVideoYet => _s.pick(
     'Add an MP4 to begin — any aspect ratio works',
     'أضف فيديو MP4 للبدء — أي نسبة عرض مدعومة',
@@ -106,8 +117,6 @@ final class EditCopy {
   String get delete => _s.pick('Delete', 'حذف');
   String get mention => _s.pick('Mention', 'إشارة');
   String get sticker => _s.pick('Sticker', 'ملصق');
-  String get openEdit =>
-      _s.pick('Open published Edit', 'فتح المقطع المنشور');
   String get mute => _s.pick('Mute', 'كتم');
   String get unmute => _s.pick('Unmute', 'إلغاء الكتم');
   String get play => _s.pick('Play', 'تشغيل');

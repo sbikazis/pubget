@@ -38,6 +38,16 @@ abstract final class PubgetLinks {
 
   static String fanWork(String workId) => canonical(fanWorkPath(workId));
 
+  /// Deep link into the Edits feed focused on a specific clip.
+  static String editHighlightPath(String editId) {
+    final trimmed = editId.trim();
+    if (trimmed.isEmpty) return '/edits';
+    return '/edits?highlight=${Uri.encodeQueryComponent(trimmed)}';
+  }
+
+  static String editHighlight(String editId) =>
+      canonical(editHighlightPath(editId));
+
   static String gamePath(String gameId) =>
       _encodedPath('/game', gameId) ?? '';
 
