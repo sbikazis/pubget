@@ -43,7 +43,18 @@ final class GroupProvider extends ChangeNotifier {
   LeaveState get leaveState => _leaveState;
   Future<void>? get leaveOperation => _leaveOperation;
   bool get isMember => _membership != null;
-  bool get isFounder => _membership?.role == GroupRole.founder;
+  /// Mikado rank or document founder id match (ownership fallback).
+  bool get isFounder =>
+      _membership?.role == PubgetRank.mikado ||
+      (_group != null &&
+          _membership != null &&
+          _group!.founderId == _membership!.uid);
+  PubgetRank? get viewerRank => _membership?.role;
+  Set<GroupPermission> get viewerPermissions => memberPermissions(_membership);
+  bool get hasEntryHub =>
+      viewerRank != null && rankHasAdminEntryHub(viewerRank!);
+  bool get usesFullDashboard =>
+      viewerRank != null && rankUsesFullDashboard(viewerRank!);
   bool get canManageEvents => memberCanManageEvents(_membership);
   bool get canCreateEvents => memberCanCreateEvents(_membership);
   bool get canManageSettings => memberCanManageSettings(_membership);
@@ -80,7 +91,7 @@ final class GroupProvider extends ChangeNotifier {
         _group = group;
         _membership = GroupMember(
           uid: group.founderId,
-          role: GroupRole.founder,
+          role: PubgetRank.mikado,
         );
         _state = LoadingState.loaded;
         notifyListeners();

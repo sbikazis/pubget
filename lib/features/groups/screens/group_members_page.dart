@@ -12,14 +12,18 @@ import '../providers/group_members_provider.dart';
 import '../providers/group_provider.dart';
 import 'role_permissions_page.dart';
 
-/// Menu values for a non-founder member row. Kick/ban are omitted when the
-/// viewer cannot manage members (server still enforces the callable).
-List<String> groupMemberMenuActions({required bool canManageMembers}) {
+/// Menu values for a member row. Kick/ban are omitted when the viewer cannot
+/// manage members (server still enforces the callable).
+List<String> groupMemberMenuActions({
+  required bool canManageMembers,
+  required bool canChangeRole,
+  required bool canTransfer,
+}) {
   return <String>[
-    'role',
+    if (canChangeRole) 'role',
     if (canManageMembers) 'kick',
     if (canManageMembers) 'ban',
-    'transfer',
+    if (canTransfer) 'transfer',
   ];
 }
 
@@ -65,12 +69,17 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
+    final groups = context.watch<GroupProvider>();
+    final viewerId = context.watch<AuthProvider>().currentUser?.id;
     final canManageMembers = _viewerCanManageMembers(context);
+    final viewerRank = groups.viewerRank;
     final copy = AppStrings.of(context);
     final query = _search.text.trim().toLowerCase();
+    final sorted = [...provider.members]
+      ..sort(compareMembersByRankThenJoined);
     final visible = query.isEmpty
-        ? provider.members
-        : provider.members
+        ? sorted
+        : sorted
             .where((member) => member.uid.toLowerCase().contains(query))
             .toList(growable: false);
     return Scaffold(
@@ -93,15 +102,17 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
                 '/group-bans?groupId=${widget.groupId}',
               ),
             ),
-          PubgetIconButton(
-            icon: Icons.admin_panel_settings_outlined,
-            tooltip: 'Edit role permissions',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => RolePermissionsPage(groupId: widget.groupId),
+          if (viewerRank != null &&
+              rankHasPermission(viewerRank, GroupPermission.manageRoles))
+            PubgetIconButton(
+              icon: Icons.admin_panel_settings_outlined,
+              tooltip: 'Edit role permissions',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RolePermissionsPage(groupId: widget.groupId),
+                ),
               ),
             ),
-          ),
         ],
       ),
       body: PubgetAtmosphere(
@@ -151,7 +162,10 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
                     }
                     return _MemberCard(
                       member: visible[index],
+                      viewerId: viewerId,
+                      viewerRank: viewerRank,
                       canManageMembers: canManageMembers,
+                      isFounderViewer: groups.isFounder,
                     );
                   },
                 ),
@@ -216,16 +230,45 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
 }
 
 class _MemberCard extends StatelessWidget {
-  const _MemberCard({required this.member, required this.canManageMembers});
+  const _MemberCard({
+    required this.member,
+    required this.viewerId,
+    required this.viewerRank,
+    required this.canManageMembers,
+    required this.isFounderViewer,
+  });
 
   final GroupMember member;
+  final String? viewerId;
+  final PubgetRank? viewerRank;
   final bool canManageMembers;
+  final bool isFounderViewer;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.read<GroupMembersProvider>();
-    final actions = groupMemberMenuActions(canManageMembers: canManageMembers);
     final copy = AppStrings.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = rankColorResolver(member.role, isDarkMode: isDark);
+    final badge = pubgetRankBadgeAsset(member.role);
+    final isSelf = viewerId != null && viewerId == member.uid;
+    final rankBlocked = viewerRank == null ||
+        member.role.index >= viewerRank!.index;
+    final assignable = viewerRank == null
+        ? const <PubgetRank>[]
+        : assignableRanksUnderCeiling(
+            actor: viewerRank!,
+            targetCurrent: member.role,
+          );
+    final canChangeRole = !isSelf && !rankBlocked && assignable.isNotEmpty;
+    final canKickBan = canManageMembers && !isSelf && !rankBlocked;
+    final canTransfer =
+        isFounderViewer && !isSelf && member.role != PubgetRank.mikado;
+    final actions = groupMemberMenuActions(
+      canManageMembers: canKickBan,
+      canChangeRole: canChangeRole,
+      canTransfer: canTransfer,
+    );
     return PubgetCard(
       child: Row(
         children: <Widget>[
@@ -239,17 +282,49 @@ class _MemberCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(member.uid),
+                Row(
+                  children: <Widget>[
+                    if (badge != null) ...[
+                      Image.asset(
+                        badge,
+                        width: 18,
+                        height: 18,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => Icon(
+                          Icons.military_tech,
+                          size: 16,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(
+                      child: Text(
+                        member.uid,
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 Text(
                   '${copy.roleLabel(member.role.name)} • ${member.inviteCount} invites',
+                  style: TextStyle(color: color.withValues(alpha: 0.85)),
                 ),
               ],
             ),
           ),
-          if (member.role != GroupRole.founder)
+          if (actions.isNotEmpty)
             PopupMenuButton<String>(
               key: Key('member-menu-${member.uid}'),
-              onSelected: (action) => _act(context, provider, action),
+              onSelected: (action) => _act(
+                context,
+                provider,
+                action,
+                assignable: assignable,
+              ),
               itemBuilder: (_) => actions
                   .map(
                     (value) => PopupMenuItem<String>(
@@ -278,14 +353,15 @@ class _MemberCard extends StatelessWidget {
   Future<void> _act(
     BuildContext context,
     GroupMembersProvider provider,
-    String action,
-  ) async {
+    String action, {
+    required List<PubgetRank> assignable,
+  }) async {
     if (action == 'role') {
-      final role = await showDialog<GroupRole>(
+      final role = await showDialog<PubgetRank>(
         context: context,
         builder: (dialogContext) => SimpleDialog(
           title: const Text('Change role'),
-          children: GroupRole.values
+          children: assignable
               .map(
                 (role) => SimpleDialogOption(
                   key: Key('pick-role-${role.name}'),
@@ -306,7 +382,7 @@ class _MemberCard extends StatelessWidget {
           ? 'Transfer ownership?'
           : '${action[0].toUpperCase()}${action.substring(1)} member?',
       message: action == 'transfer'
-          ? 'This changes the Founder role. A second confirmation follows.'
+          ? 'This changes the MIKADO role. A second confirmation follows.'
           : 'Confirm this sensitive group action.',
       confirmLabel: 'Continue',
       cancelLabel: 'Cancel',
@@ -316,7 +392,7 @@ class _MemberCard extends StatelessWidget {
       final second = await PubgetConfirmationDialog.show(
         context,
         title: 'Final ownership confirmation',
-        message: 'You will no longer be the Founder.',
+        message: 'You will no longer be the MIKADO.',
         confirmLabel: 'Transfer',
         cancelLabel: 'Cancel',
       );

@@ -94,14 +94,14 @@ final class UnavailableGroupMembersRepository
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) async => _fail();
   @override
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) async => _fail();
   @override
   Future<Result<void>> kickMember({

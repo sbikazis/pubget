@@ -564,13 +564,13 @@ final class AppStrings {
   };
 
   String roleLabel(String role) => switch (role) {
-    'founder' => pick('Founder', 'المؤسس'),
-    'shogun' => pick('Shogun', 'شوغون'),
-    'commander' => pick('Commander', 'قائد'),
-    'captain' => pick('Captain', 'كابتن'),
-    'sensei' => pick('Sensei', 'سينسي'),
-    'senpai' => pick('Senpai', 'سينباي'),
-    'member' => pick('Member', 'عضو'),
+    'mikado' || 'founder' => pick('MIKADO', 'ميكادو'),
+    'shogun' => pick('SHŌGUN', 'شوغون'),
+    'daimyo' || 'commander' => pick('DAIMYŌ', 'دايميو'),
+    'hatamoto' || 'captain' => pick('HATAMOTO', 'هاتاموتو'),
+    'samurai' || 'sensei' => pick('SAMURAI', 'ساموراي'),
+    'gokenin' || 'senpai' => pick('GOKENIN', 'غوكينين'),
+    'ronin' || 'member' => pick('RŌNIN', 'رونين'),
     _ => role,
   };
 

@@ -1,6 +1,7 @@
 "use strict";
 
-const { ROLE_PERMISSIONS } = require("../groupsDomain");
+const { ROLE_PERMISSIONS, normalizeRole } = require("../groupsDomain");
+const { hasPermission } = require("../pubgetRanks");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
@@ -81,16 +82,16 @@ function createMafiaDomain({
     ]);
     if (!group.exists) return { member: false, manageGames: false, missingGroup: true };
     if (!member.exists) return { member: false, manageGames: false, group };
-    const role = member.data().role || "member";
+    const data = member.data() || {};
+    const groupData = group.data() || {};
+    const role = normalizeRole(data.rankV2 || data.role || "ronin");
     const roleSnap = await transaction.get(
       db.collection("groups").doc(groupId).collection("roles").doc(role),
     );
-    const permissions = roleSnap.exists && Array.isArray(roleSnap.data().permissions)
-      ? roleSnap.data().permissions
-      : (ROLE_PERMISSIONS[role] || []);
+    const roleDoc = roleSnap.exists ? roleSnap.data() : { permissions: ROLE_PERMISSIONS[role] || [] };
     return {
       member: true,
-      manageGames: role === "founder" || permissions.includes("manageGames"),
+      manageGames: hasPermission(data, roleDoc, "manageGames", groupData),
       role,
       group,
     };

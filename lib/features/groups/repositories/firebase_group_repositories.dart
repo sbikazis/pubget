@@ -316,12 +316,12 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) => _guard(
     () => _call('updateRolePermissions', <String, dynamic>{
       'groupId': groupId,
-      'role': role.name,
+      'role': pubgetRankStorageId(role),
       'permissions': permissions
           .map((permission) => permission.name)
           .toList(growable: false),
@@ -336,12 +336,12 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) => _guard(
     () => _call('changeRole', {
       'groupId': groupId,
       'uid': uid,
-      'role': role.name,
+      'role': pubgetRankStorageId(role),
     }),
   );
 

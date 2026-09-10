@@ -47,6 +47,7 @@ flutter:
     - assets/branding/pubget_settings.png
     - assets/branding/pubget_coin.png
     - assets/chat/pubget_default_wallpaper.png
+    - assets/ranks/
     - assets/achievements/the_threshold/badge.png
     - assets/achievements/keeper_of_time/badge.png
     - assets/achievements/shogun_of_the_realm/badge.png

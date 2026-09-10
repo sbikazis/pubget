@@ -56,7 +56,7 @@ class _GroupBansPageState extends State<GroupBansPage> {
           ? const PubgetEmptyState(
               title: 'You cannot manage bans',
               message:
-                  'Only the founder or a role with manageMembers can '
+                  'Only MIKADO or a role with kickBan can '
                   'see and unban users.',
               icon: Icons.lock_outline,
             )

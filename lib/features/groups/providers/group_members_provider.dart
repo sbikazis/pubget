@@ -104,7 +104,7 @@ final class GroupMembersProvider extends ChangeNotifier {
   }
 
   Future<Result<void>> updateRolePermissions(
-    GroupRole role,
+    PubgetRank role,
     Set<GroupPermission> permissions,
   ) async {
     final result = await _repository.updateRolePermissions(
@@ -120,7 +120,7 @@ final class GroupMembersProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<Result<void>> changeRole(String uid, GroupRole role) => _act(
+  Future<Result<void>> changeRole(String uid, PubgetRank role) => _act(
     () => _repository.changeRole(groupId: _groupId!, uid: uid, role: role),
   );
 

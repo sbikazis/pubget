@@ -7,7 +7,8 @@
 // Chat documents are never constructed here. Create/complete emit a
 // toGameActivity contract; chatCardWriter posts the system card.
 
-const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const { ROLE_PERMISSIONS, normalizeRole } = require("./groupsDomain");
+const { hasPermission } = require("./pubgetRanks");
 const { engineFor } = require("./gameEngines");
 const { secretRef, isExpired } = require("./gameEngines/helpers");
 const { postFromActivity } = require("./chatCardWriter");
@@ -276,14 +277,14 @@ async function loadPermissions(transaction, db, groupId, uid) {
     return { member: false, manageGames: false, role: null, missingGroup: true };
   }
   if (!member.exists) return { member: false, manageGames: false, role: null };
-  const role = member.data().role || "member";
+  const data = member.data() || {};
+  const groupData = group.data() || {};
+  const role = normalizeRole(data.rankV2 || data.role || "ronin");
   const roleSnap = await transaction.get(roleRef(db, groupId, role));
-  const permissions = roleSnap.exists && Array.isArray(roleSnap.data().permissions)
-    ? roleSnap.data().permissions
-    : (ROLE_PERMISSIONS[role] || []);
+  const roleDoc = roleSnap.exists ? roleSnap.data() : { permissions: ROLE_PERMISSIONS[role] || [] };
   return {
     member: true,
-    manageGames: role === "founder" || permissions.includes("manageGames"),
+    manageGames: hasPermission(data, roleDoc, "manageGames", groupData),
     role,
   };
 }

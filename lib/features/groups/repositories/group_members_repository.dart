@@ -16,13 +16,13 @@ abstract interface class GroupMembersRepository {
   });
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   });
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   });
   Future<Result<void>> kickMember({
     required String groupId,

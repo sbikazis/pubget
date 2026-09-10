@@ -18,7 +18,9 @@ void main() {
     expect(AppStrings.arabic.groupDetails, 'تفاصيل المجموعة');
     expect(AppStrings.english.openChat, 'Open chat');
     expect(AppStrings.arabic.addMembers, 'إضافة أعضاء');
-    expect(AppStrings.english.roleLabel('shogun'), 'Shogun');
+    expect(AppStrings.english.roleLabel('shogun'), 'SHŌGUN');
+    expect(AppStrings.english.roleLabel('founder'), 'MIKADO');
+    expect(AppStrings.english.roleLabel('ronin'), 'RŌNIN');
     expect(AppStrings.arabic.joinPolicyLabel('approval'), 'بطلب');
   });
 
@@ -26,7 +28,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      await _harness(role: GroupRole.founder),
+      await _harness(role: PubgetRank.mikado),
     );
     await tester.pump();
     await tester.pump();
@@ -56,7 +58,7 @@ void main() {
   });
 }
 
-Future<Widget> _harness({required GroupRole? role}) async {
+Future<Widget> _harness({required PubgetRank? role}) async {
   final authRepository = FakeAuthRepository(
     user: const AuthUser(id: 'alice', email: 'alice@example.com'),
   );
@@ -76,7 +78,7 @@ Future<Widget> _harness({required GroupRole? role}) async {
 final class _FakeGroupRepository implements GroupRepository {
   _FakeGroupRepository({required this.viewerRole});
 
-  final GroupRole? viewerRole;
+  final PubgetRank? viewerRole;
 
   static final group = Group(
     id: 'g1',
