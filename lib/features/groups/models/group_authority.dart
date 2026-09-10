@@ -1,5 +1,4 @@
 import 'group_models.dart';
-import 'pubget_rank.dart';
 
 /// Centralized group authority — UI asks these helpers; Cloud Functions remain
 /// the enforcement boundary. Never scatter `if (role == shogun)` in widgets.

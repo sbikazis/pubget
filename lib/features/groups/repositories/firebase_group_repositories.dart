@@ -286,10 +286,11 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
         i,
         i + 10 > members.length ? members.length : i + 10,
       );
-      final refs = chunk
-          .map((member) => _firestore.collection('users').doc(member.uid))
-          .toList(growable: false);
-      final docs = await _firestore.getAll(refs);
+      final docs = await Future.wait(
+        chunk.map(
+          (member) => _firestore.collection('users').doc(member.uid).get(),
+        ),
+      );
       for (var j = 0; j < chunk.length; j++) {
         final data = docs[j].data();
         if (data == null) {
