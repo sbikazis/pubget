@@ -110,9 +110,16 @@ class _CameraScreenState extends State<CameraScreen>
     super.dispose();
   }
 
-  ResolutionPreset get _preset => _quality == _CaptureQuality.max
-      ? ResolutionPreset.max
-      : ResolutionPreset.veryHigh;
+  /// Prefer max sensor capture; never drop below [ResolutionPreset.veryHigh].
+  List<ResolutionPreset> get _presetCandidates => _quality == _CaptureQuality.max
+      ? const <ResolutionPreset>[
+          ResolutionPreset.max,
+          ResolutionPreset.veryHigh,
+        ]
+      : const <ResolutionPreset>[
+          ResolutionPreset.veryHigh,
+          ResolutionPreset.max,
+        ];
 
   Future<void> _bootstrap() async {
     if (kIsWeb) {
@@ -140,17 +147,41 @@ class _CameraScreenState extends State<CameraScreen>
     required bool front,
   }) async {
     final previous = _controller;
-    final controller = CameraController(
-      description,
-      _preset,
-      enableAudio: true,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
+    CameraController? controller;
+    Object? lastError;
+    for (final preset in _presetCandidates) {
+      final candidate = CameraController(
+        description,
+        preset,
+        // Audio kept on so long-press video capture has a mic track.
+        enableAudio: true,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+      try {
+        await candidate.initialize();
+        await candidate.setFocusMode(FocusMode.auto);
+        await candidate.setExposureMode(ExposureMode.auto);
+        try {
+          await candidate.setFlashMode(FlashMode.auto);
+        } catch (_) {}
+        await _applyFlash(candidate);
+        controller = candidate;
+        debugPrint(
+          'Pubget camera initialized preset=$preset '
+          'preview=${candidate.value.previewSize}',
+        );
+        break;
+      } catch (error) {
+        lastError = error;
+        await candidate.dispose();
+      }
+    }
+    if (controller == null) {
+      debugPrint('Pubget camera init failed: $lastError');
+      if (mounted) setState(() => _error = 'fallback');
+      return;
+    }
     try {
-      await controller.initialize();
-      await controller.setFocusMode(FocusMode.auto);
-      await controller.setExposureMode(ExposureMode.auto);
-      await _applyFlash(controller);
       final minZ = await controller.getMinZoomLevel();
       final maxZ = await controller.getMaxZoomLevel();
       await previous?.dispose();
@@ -214,23 +245,51 @@ class _CameraScreenState extends State<CameraScreen>
     await _attachCamera(next, front: !_usingFront);
   }
 
-  Future<void> _onFocusTap(TapUpDetails details, Size viewSize) async {
+  Future<void> _onFocusTap(TapDownDetails details, Size viewSize) async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final local = details.localPosition;
-    final xp = (local.dx / viewSize.width).clamp(0.0, 1.0);
-    final yp = (local.dy / viewSize.height).clamp(0.0, 1.0);
+    final point = Offset(
+      (local.dx / viewSize.width).clamp(0.0, 1.0),
+      (local.dy / viewSize.height).clamp(0.0, 1.0),
+    );
     setState(() => _focusPoint = local);
     _focusPulse
       ..reset()
       ..forward();
     HapticFeedback.selectionClick();
     try {
-      await controller.setFocusPoint(Offset(xp, yp));
-      await controller.setExposurePoint(Offset(xp, yp));
+      await controller.setFocusPoint(point);
+      await controller.setExposurePoint(point);
       await controller.setFocusMode(FocusMode.auto);
       await controller.setExposureMode(ExposureMode.auto);
     } catch (_) {}
+  }
+
+  /// Small preview-only thumb — never replaces the original send bytes.
+  Future<Uint8List?> _thumbnailForPreview(Uint8List fullBytes) async {
+    try {
+      final codec = await instantiateImageCodec(fullBytes, targetWidth: 320);
+      final frame = await codec.getNextFrame();
+      final data = await frame.image.toByteData(format: ImageByteFormat.png);
+      frame.image.dispose();
+      return data?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _logCaptureResolution(Uint8List bytes) async {
+    try {
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final width = frame.image.width;
+      final height = frame.image.height;
+      frame.image.dispose();
+      debugPrint('Pubget camera capture resolution: ${width}x$height');
+    } catch (error) {
+      debugPrint('Pubget camera capture resolution: unknown ($error)');
+    }
   }
 
   Future<void> _onScaleStart(ScaleStartDetails _) async {
@@ -263,9 +322,12 @@ class _CameraScreenState extends State<CameraScreen>
     );
     if (picked == null || !mounted) return;
     final bytes = await picked.readAsBytes();
+    final thumb = await _thumbnailForPreview(bytes);
+    if (!mounted) return;
+    await _logCaptureResolution(bytes);
     if (!mounted) return;
     setState(() {
-      _galleryThumb = bytes;
+      _galleryThumb = thumb;
       _capturedBytes = bytes;
       _capturedName = picked.name;
       _capturedType = 'image/jpeg';
@@ -312,15 +374,27 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller != null && controller.value.isInitialized) {
       setState(() => _busy = true);
       try {
-        final file = await controller.takePicture();
+        // Let continuous AF converge before still capture (critical for sharpness).
+        await controller.setFocusMode(FocusMode.auto);
+        await controller.setExposureMode(ExposureMode.auto);
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        if (!mounted) return;
+        if (!controller.value.isInitialized) {
+          setState(() => _busy = false);
+          return;
+        }
+        // Must use sensor capture — never screenshot the preview layer.
+        final XFile file = await controller.takePicture();
         final bytes = await file.readAsBytes();
+        await _logCaptureResolution(bytes);
+        final thumb = await _thumbnailForPreview(bytes);
         if (!mounted) return;
         setState(() {
           _capturedBytes = bytes;
           _capturedName = 'capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
           _capturedType = 'image/jpeg';
           _capturedIsVideo = false;
-          _galleryThumb = bytes;
+          _galleryThumb = thumb;
           _busy = false;
         });
       } catch (_) {
@@ -340,13 +414,15 @@ class _CameraScreenState extends State<CameraScreen>
     );
     if (picked == null || !mounted) return;
     final bytes = await picked.readAsBytes();
+    await _logCaptureResolution(bytes);
+    final thumb = await _thumbnailForPreview(bytes);
     if (!mounted) return;
     setState(() {
       _capturedBytes = bytes;
       _capturedName = picked.name;
       _capturedType = 'image/jpeg';
       _capturedIsVideo = false;
-      _galleryThumb = bytes;
+      _galleryThumb = thumb;
     });
   }
 
@@ -574,7 +650,7 @@ class _CameraScreenState extends State<CameraScreen>
         final viewSize = Size(constraints.maxWidth, constraints.maxHeight);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapUp: (details) => _onFocusTap(details, viewSize),
+          onTapDown: (details) => unawaited(_onFocusTap(details, viewSize)),
           onScaleStart: _onScaleStart,
           onScaleUpdate: _onScaleUpdate,
           child: Stack(

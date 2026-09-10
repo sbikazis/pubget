@@ -214,7 +214,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
 
   Future<void> _openGalleryFlow() async {
     final picker = ImagePicker();
-    final files = await picker.pickMultiImage(imageQuality: 85);
+    final files = await picker.pickMultiImage(imageQuality: 100);
     if (files.isEmpty || !mounted) {
       // Allow video via single pick if multi returned empty after cancel.
       return;
