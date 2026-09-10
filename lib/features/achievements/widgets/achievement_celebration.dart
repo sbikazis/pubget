@@ -6,6 +6,8 @@ import '../models/achievement_models.dart';
 import 'achievement_badge_widget.dart';
 
 /// Full-screen unlock celebration (1–2s). Shown once per unlock id.
+///
+/// Dismiss paths: barrier tap, hardware/gesture back, and auto-close timer.
 abstract final class AchievementCelebration {
   static Future<void> show(
     BuildContext context, {

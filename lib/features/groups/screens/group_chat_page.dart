@@ -600,9 +600,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final chats = context.read<PrivateChatListProvider>();
     await Future.wait<void>([groups.loadJoined(user.id), chats.open(user.id)]);
     if (!mounted) return;
-    final destination = await showModalBottomSheet<_ForwardTarget>(
+    final destination = await PubgetBottomSheet.present<_ForwardTarget>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => _ForwardSheet(
         currentGroupId: widget.groupId,

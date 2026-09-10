@@ -57,6 +57,13 @@ class _WaMediaPreviewPageState extends State<WaMediaPreviewPage> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          key: const Key('app-back'),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+          icon: const BackButtonIcon(),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
         actions: <Widget>[
           IconButton(onPressed: () {}, icon: const Icon(Icons.crop)),
           IconButton(onPressed: () {}, icon: const Icon(Icons.text_fields)),

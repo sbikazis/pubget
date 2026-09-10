@@ -485,7 +485,7 @@ class _DetailsBody extends StatelessWidget {
   }
 
   Future<void> _report(BuildContext context) async {
-    final reason = await showModalBottomSheet<FanWorkReportReason>(
+    final reason = await PubgetBottomSheet.present<FanWorkReportReason>(
       context: context,
       builder: (context) => SafeArea(
         child: Column(

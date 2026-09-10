@@ -118,6 +118,7 @@ final class AppStrings {
   );
   String get backToSignIn => pick('Back to sign in', 'العودة لتسجيل الدخول');
   String get back => pick('Back', 'رجوع');
+  String get close => pick('Close', 'إغلاق');
   String get reconnectToReset =>
       pick('Reconnect to send a reset link.', 'أعد الاتصال لإرسال رابط إعادة التعيين.');
   String get sendResetLink => pick('Send reset link', 'إرسال رابط إعادة التعيين');

@@ -19,7 +19,7 @@ class EditCommentsSheet extends StatefulWidget {
   final Edit edit;
 
   static Future<void> show(BuildContext context, Edit edit) {
-    return showModalBottomSheet<void>(
+    return PubgetBottomSheet.present<void>(
       context: context,
       isScrollControlled: true,
       builder: (context) => Padding(

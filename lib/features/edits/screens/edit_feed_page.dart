@@ -909,7 +909,7 @@ class _EditActionRail extends StatelessWidget {
     String? viewerId,
   ) async {
     final copy = EditCopy.of(context);
-    await showModalBottomSheet<void>(
+    await PubgetBottomSheet.present<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1228),
       builder: (context) => SafeArea(
