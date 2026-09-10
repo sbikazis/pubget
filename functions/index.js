@@ -289,7 +289,7 @@ exports.retryEditProcessing = onCall(
   editsDomain.retryProcessing,
 );
 exports.finalizeEditUpload = onCall(
-  { region: "us-central1", timeoutSeconds: 300, memory: "1GiB" },
+  { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;

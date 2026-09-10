@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -18,6 +20,7 @@ import '../../social/repositories/profile_repository.dart';
 import '../../social/widgets/give_respect_sheet.dart';
 import '../l10n/edit_copy.dart';
 import '../models/edit_models.dart';
+import '../providers/edit_upload_manager.dart';
 import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
 import '../widgets/edit_comments_sheet.dart';
@@ -32,16 +35,70 @@ class EditFeedPage extends StatefulWidget {
 class _EditFeedPageState extends State<EditFeedPage> {
   final _page = PageController();
   var _activeIndex = 0;
+  String? _pendingHighlight;
+  EditUploadManager? _uploads;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<EditsProvider>();
-    Future<void>.microtask(provider.load);
+    Future<void>.microtask(() async {
+      await provider.load(refresh: true);
+      if (!mounted) return;
+      await _focusHighlight();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uploads = context.read<EditUploadManager>();
+    if (!identical(uploads, _uploads)) {
+      _uploads?.removeListener(_onUploadsChanged);
+      _uploads = uploads;
+      _uploads!.addListener(_onUploadsChanged);
+      _pullHighlight();
+    }
+  }
+
+  void _onUploadsChanged() => _pullHighlight();
+
+  void _pullHighlight() {
+    final id = _uploads?.highlightEditId;
+    if (id == null || id.isEmpty) return;
+    _uploads?.consumeHighlightEditId();
+    _pendingHighlight = id;
+    unawaited(_focusHighlight());
+  }
+
+  Future<void> _focusHighlight() async {
+    final id = _pendingHighlight;
+    if (id == null || id.isEmpty) return;
+    final provider = context.read<EditsProvider>();
+    final result = await context.read<EditsRepository>().getEdit(id);
+    if (!mounted) return;
+    final edit = result.valueOrNull;
+    if (edit != null && edit.isPublished) {
+      provider.promotePublished(edit);
+    } else {
+      await provider.load(refresh: true);
+      if (!mounted) return;
+    }
+    final index = provider.items.indexWhere((item) => item.id == id);
+    if (index < 0 || !_page.hasClients) return;
+    _pendingHighlight = null;
+    _activeIndex = index;
+    provider.setActiveIndex(index);
+    await _page.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   void dispose() {
+    _uploads?.removeListener(_onUploadsChanged);
     _page.dispose();
     super.dispose();
   }

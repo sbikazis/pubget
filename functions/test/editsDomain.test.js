@@ -176,6 +176,9 @@ test("finalizeUpload and retryProcessing recover stuck uploading/processing", as
     data: { editId: "e1" },
   });
   assert.equal(finalized.ok, true);
+  assert.equal(finalized.status, "processing");
+  // Processing is kicked without awaiting — flush the microtask queue.
+  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(calls, ["edits/alice/e1.mp4"]);
   assert.equal(db.store.get("edits/e1").status, "published");
 

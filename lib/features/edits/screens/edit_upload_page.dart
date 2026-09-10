@@ -20,6 +20,7 @@ import '../data/edit_duration_probe.dart';
 import '../data/edit_validator.dart';
 import '../l10n/edit_copy.dart';
 import '../models/edit_models.dart';
+import '../providers/edit_upload_manager.dart';
 import '../repositories/edits_repository.dart';
 
 enum _UploadPhase {
@@ -431,59 +432,35 @@ class _EditUploadPageState extends State<EditUploadPage>
         '${DateTime.now().millisecondsSinceEpoch}-${video.name}-$size';
     setState(() {
       _submitting = true;
-      _phase = _UploadPhase.uploading;
       _error = null;
-      _progress = 0;
     });
     await _persistDraft();
     if (!mounted) return;
-    final source = !kIsWeb && video.path.isNotEmpty
-        ? EditUploadSource.file(video.path)
-        : EditUploadSource.memory(await video.readAsBytes());
+
+    // Capture source before leaving the page — upload continues in background.
+    final localPath = !kIsWeb && video.path.isNotEmpty ? video.path : null;
+    List<int>? bytes;
+    if (localPath == null) {
+      bytes = await video.readAsBytes();
+    }
     if (!mounted) return;
-    final copy = EditCopy.of(context);
-    final result = await context.read<EditsRepository>().uploadEdit(
-      source: source,
-      contentType: 'video/mp4',
+
+    final manager = context.read<EditUploadManager>();
+    await manager.enqueue(
       caption: _caption.text,
       animeTag: _anime.text,
+      contentType: 'video/mp4',
       fileName: video.name,
+      localPath: localPath,
+      bytes: bytes,
       sizeBytes: size,
       idempotencyKey: _idempotencyKey,
       resumeEditId: _editId,
       resumeVideoPath: _videoPath,
-      onStarted: (editId, path) {
-        _editId = editId;
-        _videoPath = path;
-        _persistDraft();
-      },
-      onProgress: (value) {
-        if (mounted) setState(() => _progress = value);
-      },
     );
     if (!mounted) return;
-    result.fold(
-      onSuccess: (edit) {
-        _editId = edit.id;
-        _applyServerEdit(edit);
-        if (!edit.isPublished && !edit.isFailed) {
-          _phase = _UploadPhase.processing;
-          _listen(edit.id);
-        }
-        _submitting = false;
-        _persistDraft();
-        setState(() {});
-      },
-      onFailure: (failure) {
-        final offline = context.read<NetworkService>().isOffline;
-        setState(() {
-          _submitting = false;
-          _phase = offline ? _UploadPhase.paused : _UploadPhase.failed;
-          _error = copy.friendlyFailure(failure);
-        });
-        _persistDraft();
-      },
-    );
+    // Immediate exit — never trap the user on the publish screen.
+    await AppNavigation.go(context, '/home');
   }
 
   void _listen(String editId) {

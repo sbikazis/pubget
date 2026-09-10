@@ -30,21 +30,39 @@ final class EditCopy {
   String get deleteDraft => _s.pick('Delete draft', 'حذف المسودة');
   String get cancelUpload => _s.pick('Cancel upload', 'إلغاء الرفع');
   String get uploading => _s.pick('Uploading', 'جارٍ الرفع');
+  String get queued => _s.pick('Queued', 'في الانتظار');
+  String get dismiss => _s.pick('Dismiss', 'إخفاء');
   String get paused =>
       _s.pick('Paused — waiting for connection', 'متوقف مؤقتًا — بانتظار الاتصال');
   String get processing =>
       _s.pick('Processing on the server', 'جارٍ المعالجة على الخادم');
   String get published => _s.pick('Published', 'تم النشر');
+  String get needsReview => _s.pick(
+    'Held for review',
+    'قيد المراجعة الإشرافية',
+  );
   String get publishedMessage => _s.pick(
     'Your Edit is live. Open it in the feed.',
     'مقطعك متاح الآن. افتحه من المقاطع.',
   );
+  String get publishingInBackground => _s.pick(
+    'Publishing in the background…',
+    'جارٍ النشر في الخلفية…',
+  );
+  String queueCount(int count) =>
+      _s.pick('$count uploads', '$count رفع');
   String get draftStatus => _s.pick('Draft', 'مسودة');
   String get readyStatus => _s.pick('Ready to publish', 'جاهز للنشر');
   String get failedStatus => _s.pick('Needs attention', 'يحتاج إجراءً');
+  String get publishedNotificationTitle =>
+      _s.pick('Edit published', 'تم نشر المقطع');
+  String get publishedNotificationBody => _s.pick(
+    'Your Edit is live. Open Edits to watch it.',
+    'مقطعك متاح الآن. افتح المقاطع لمشاهدته.',
+  );
   String get noVideoYet => _s.pick(
-    'Add a vertical MP4 to begin',
-    'أضف فيديو عموديًا بصيغة MP4 للبدء',
+    'Add an MP4 to begin — any aspect ratio works',
+    'أضف فيديو MP4 للبدء — أي نسبة عرض مدعومة',
   );
   String get previewUnavailable => _s.pick(
     'Preview unavailable — the local file is gone. Choose the video again.',
@@ -97,6 +115,14 @@ final class EditCopy {
   }
 
   String failureFor(Edit edit) {
+    if (edit.statusEnum == EditStatus.needsReview ||
+        edit.moderationStatus == 'needs_review') {
+      return edit.moderationReason ??
+          _s.pick(
+            'This Edit is held for review (possible third-party watermark).',
+            'هذا المقطع قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
+          );
+    }
     if (edit.moderationStatus == 'flagged' ||
         edit.statusEnum == EditStatus.rejected) {
       return edit.moderationReason ??
@@ -113,6 +139,10 @@ final class EditCopy {
       'duration' => _s.pick(
           'Videos can be up to 3 minutes long.',
           'مدة الفيديو يمكن أن تصل إلى 3 دقائق.',
+        ),
+      'aspect-unrecoverable' => _s.pick(
+          'We could not prepare this video for full-screen display. Delete the draft or try another file.',
+          'تعذر تجهيز هذا الفيديو للعرض بملء الشاشة. احذف المسودة أو جرّب ملفًا آخر.',
         ),
       _ => _s.pick(
           'Processing failed. You can retry or replace the video.',
