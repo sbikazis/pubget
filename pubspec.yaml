@@ -31,9 +31,9 @@ dependencies:
   camera: ^0.11.2+1
   image_cropper: ^12.2.1
   path_provider: ^2.1.5
-  phosphor_flutter: ^2.1.0
   google_fonts: ^6.3.2
   flutter_animate: ^4.5.2
+  phosphor_icons: ^3.0.1
 
 dev_dependencies:
   flutter_test:
