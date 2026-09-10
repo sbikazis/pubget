@@ -541,6 +541,103 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     return { ok: true };
   }
 
+  async function warnMember(request) {
+    const { uid, groupId, targetUid } = await requestContext(request, "manageMembers");
+    const type = String((request.data && request.data.type) || "").trim();
+    const details = String((request.data && request.data.details) || "").trim();
+    const allowedTypes = new Set([
+      "harassment",
+      "abuse",
+      "groupRules",
+      "inappropriateContent",
+      "chatMisuse",
+      "toxicBehavior",
+      "other",
+    ]);
+    if (!allowedTypes.has(type) || details.length < 4 || details.length > 2000) {
+      throw new HttpsError("invalid-argument", "Warning type and details are required.");
+    }
+    await db.runTransaction(async (transaction) => {
+      const context = await actorContext(transaction, groupId, uid);
+      const actorRole = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
+      const targetRef = memberPath(db, groupId, targetUid);
+      const target = await transaction.get(targetRef);
+      const actorRank = memberRank(context.data);
+      const targetRank = memberRank(target.exists ? target.data() : {});
+      if (!permissionFor(context.data, actorRole.data(), "moderateChat", context.group.data()) ||
+          !target.exists || targetRank === "mikado" ||
+          targetUid === uid ||
+          ROLE_POSITIONS[actorRank] <= ROLE_POSITIONS[targetRank]) {
+        throw new HttpsError("permission-denied", "You cannot warn this member.");
+      }
+      const warningRef = groupPath(db, groupId).collection("warnings").doc();
+      transaction.set(warningRef, {
+        targetUid,
+        byUid: uid,
+        type,
+        details,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(groupPath(db, groupId).collection("rankAudit").doc(), {
+        type: "warning",
+        from: targetRank,
+        to: targetRank,
+        targetUid,
+        byUid: uid,
+        reason: `${type}: ${details}`,
+        at: FieldValue.serverTimestamp(),
+      });
+      const warningsCount = Number((target.data() || {}).warningsCount || 0) + 1;
+      transaction.update(targetRef, {
+        warningsCount,
+        lastActiveAt: FieldValue.serverTimestamp(),
+      });
+      const groupName = (context.group.data() || {}).name || "المجموعة";
+      transaction.set(
+        db.collection("users").doc(targetUid).collection("notifications").doc(),
+        buildInboxNotification({
+          type: "member_warning",
+          actorId: uid,
+          targetId: targetUid,
+          action: "open_group",
+          destination: `/group?groupId=${groupId}`,
+          groupKey: groupId,
+          groupId,
+          title: "تحذير من إدارة المجموعة",
+          body: `تلقيت تحذيراً في ${groupName}`,
+          metadata: {
+            title: "تحذير من إدارة المجموعة",
+            body: `تلقيت تحذيراً في ${groupName}`,
+            warningType: type,
+            details,
+            groupId,
+            groupName,
+          },
+        }),
+      );
+    });
+    return { ok: true };
+  }
+
+  function buildInboxNotification({
+    type, actorId, targetId, action, destination, groupKey, groupId, title, body, metadata,
+  }) {
+    return {
+      type,
+      actorId: actorId || null,
+      targetId: targetId || "",
+      action: action || "",
+      destination: destination || "/home",
+      groupKey: groupKey || groupId || null,
+      groupId: groupId || null,
+      title: title || "",
+      body: body || "",
+      metadata: Object.assign({ title, body }, metadata || {}),
+      createdAt: FieldValue.serverTimestamp(),
+      readAt: null,
+    };
+  }
+
   async function changeRole(request) {
     const { uid, groupId, targetUid } = await requestContext(request, "manageRoles");
     const desired = normalizeRole(request.data && request.data.role);
@@ -599,16 +696,32 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       });
       const promote = ROLE_POSITIONS[desired] > ROLE_POSITIONS[targetRank];
       const label = rankLabel(desired);
+      const groupName = (context.group.data() || {}).name || "المجموعة";
       transaction.set(
         db.collection("users").doc(targetUid).collection("notifications").doc(),
-        {
+        buildInboxNotification({
           type: promote ? "rank_promoted" : "rank_demoted",
-          title: promote ? `أصبحت ${label}` : `رتبتك الآن ${label}`,
-          body: `تم تعيين رتبتك إلى ${label}`,
+          actorId: uid,
+          targetId: targetUid,
+          action: "open_group",
+          destination: `/group?groupId=${groupId}`,
+          groupKey: groupId,
           groupId,
-          createdAt: FieldValue.serverTimestamp(),
-          readAt: null,
-        },
+          title: promote ? `تمت ترقيتك إلى ${label}` : `تم تخفيض رتبتك إلى ${label}`,
+          body: promote
+            ? `تمت ترقيتك إلى ${label} في مجموعة ${groupName}.`
+            : `تم تخفيض رتبتك إلى ${label} في مجموعة ${groupName}.`,
+          metadata: {
+            title: promote ? `تمت ترقيتك إلى ${label}` : `تم تخفيض رتبتك إلى ${label}`,
+            body: promote
+              ? `تمت ترقيتك إلى ${label} في مجموعة ${groupName}.`
+              : `تم تخفيض رتبتك إلى ${label} في مجموعة ${groupName}.`,
+            from: targetRank,
+            to: desired,
+            groupId,
+            groupName,
+          },
+        }),
       );
       if (promote) {
         transaction.set(groupPath(db, groupId).collection("messages").doc(), {
@@ -1056,6 +1169,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     updateGroupSettings,
     updateRolePermissions,
     promoteGroup,
+    warnMember,
   };
 }
 

@@ -677,6 +677,19 @@ service cloud.firestore {
         allow read: if self(uid) || canManageGroupMembers(groupId);
         allow create, update, delete: if false;
       }
+      match /rankAudit/{auditId} {
+        // Managers with roles/kick may inspect hierarchy history.
+        allow read: if groupMember(groupId) &&
+          (canManageGroupMembers(groupId) || groupModerator(groupId));
+        allow create, update, delete: if false;
+      }
+      match /warnings/{warningId} {
+        allow read: if groupMember(groupId) &&
+          (resource.data.targetUid == request.auth.uid ||
+           groupModerator(groupId) ||
+           canManageGroupMembers(groupId));
+        allow create, update, delete: if false;
+      }
       match /messageReports/{reportId} {
         allow read: if signedIn() &&
           resource.data.reporterId == request.auth.uid;

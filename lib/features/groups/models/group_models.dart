@@ -207,7 +207,16 @@ final class GroupMember {
     this.customRoleId,
     this.roleplayCharacter,
     this.joinedAt,
+    this.rankChangedAt,
     this.inviteCount = 0,
+    this.effectiveInviteCount = 0,
+    this.warningsCount = 0,
+    this.isManualRole = false,
+    this.seatSource,
+    this.invitedBy,
+    this.displayName,
+    this.username,
+    this.avatarUrl,
     this.lastActiveAt,
     this.lastReadAt,
     this.effectivePermissions,
@@ -218,13 +227,60 @@ final class GroupMember {
   final String? customRoleId;
   final Map<String, dynamic>? roleplayCharacter;
   final DateTime? joinedAt;
+
+  /// When the member obtained their **current** rank (server: `rankChangedAt`).
+  final DateTime? rankChangedAt;
   final int inviteCount;
+  final int effectiveInviteCount;
+  final int warningsCount;
+  final bool isManualRole;
+  final String? seatSource;
+  final String? invitedBy;
+  final String? displayName;
+  final String? username;
+  final String? avatarUrl;
   final DateTime? lastActiveAt;
   final DateTime? lastReadAt;
 
   /// Permissions from the group role document, when loaded.
   /// `null` means fall back to [defaultRankPermissions] for [role].
   final Set<GroupPermission>? effectivePermissions;
+
+  /// Seniority key for current rank — prefer rank assignment time.
+  DateTime? get rankSeniorityAt => rankChangedAt ?? joinedAt;
+
+  String? get roleplayName {
+    final raw = roleplayCharacter?['name'] ?? roleplayCharacter?['characterName'];
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String get primaryIdentity {
+    final rp = roleplayName;
+    if (rp != null) return rp;
+    final display = displayName?.trim();
+    if (display != null && display.isNotEmpty) return display;
+    final user = username?.trim();
+    if (user != null && user.isNotEmpty) return user;
+    return uid;
+  }
+
+  String? get secondaryIdentity {
+    if (roleplayName == null) {
+      final user = username?.trim();
+      final display = displayName?.trim();
+      if (user == null || user.isEmpty) return null;
+      if (display == null || display.isEmpty) return null;
+      if (display.toLowerCase() == user.toLowerCase()) return null;
+      return '@$user';
+    }
+    final display = displayName?.trim();
+    if (display != null && display.isNotEmpty) return display;
+    final user = username?.trim();
+    if (user != null && user.isNotEmpty) return '@$user';
+    return null;
+  }
 
   String get roleDocumentId =>
       (customRoleId != null && customRoleId!.trim().isNotEmpty)
@@ -255,23 +311,78 @@ final class GroupMember {
           ? Map<String, dynamic>.from(map['roleplayCharacter'] as Map)
           : null,
       joinedAt: _date(map['joinedAt']),
+      rankChangedAt: _date(map['rankChangedAt'] ?? map['rankAssignedAt']),
       inviteCount: (map['inviteCount'] as num?)?.toInt() ?? 0,
+      effectiveInviteCount:
+          (map['effectiveInviteCount'] as num?)?.toInt() ??
+          (map['inviteCount'] as num?)?.toInt() ??
+          0,
+      warningsCount: (map['warningsCount'] as num?)?.toInt() ?? 0,
+      isManualRole: map['isManualRole'] as bool? ?? false,
+      seatSource: map['seatSource'] as String?,
+      invitedBy: map['invitedBy'] as String? ?? map['invitedByUid'] as String?,
+      displayName: map['displayName'] as String? ?? map['realUserName'] as String?,
+      username: map['username'] as String?,
+      avatarUrl:
+          map['avatarUrl'] as String? ?? map['realUserImageUrl'] as String?,
       lastActiveAt: _date(map['lastActiveAt']),
       lastReadAt: _date(map['lastReadAt']),
     );
   }
 
+  GroupMember copyWith({
+    PubgetRank? role,
+    String? customRoleId,
+    Map<String, dynamic>? roleplayCharacter,
+    DateTime? joinedAt,
+    DateTime? rankChangedAt,
+    int? inviteCount,
+    int? effectiveInviteCount,
+    int? warningsCount,
+    bool? isManualRole,
+    String? seatSource,
+    String? invitedBy,
+    String? displayName,
+    String? username,
+    String? avatarUrl,
+    DateTime? lastActiveAt,
+    DateTime? lastReadAt,
+    Set<GroupPermission>? effectivePermissions,
+  }) {
+    return GroupMember(
+      uid: uid,
+      role: role ?? this.role,
+      customRoleId: customRoleId ?? this.customRoleId,
+      roleplayCharacter: roleplayCharacter ?? this.roleplayCharacter,
+      joinedAt: joinedAt ?? this.joinedAt,
+      rankChangedAt: rankChangedAt ?? this.rankChangedAt,
+      inviteCount: inviteCount ?? this.inviteCount,
+      effectiveInviteCount: effectiveInviteCount ?? this.effectiveInviteCount,
+      warningsCount: warningsCount ?? this.warningsCount,
+      isManualRole: isManualRole ?? this.isManualRole,
+      seatSource: seatSource ?? this.seatSource,
+      invitedBy: invitedBy ?? this.invitedBy,
+      displayName: displayName ?? this.displayName,
+      username: username ?? this.username,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+      effectivePermissions: effectivePermissions ?? this.effectivePermissions,
+    );
+  }
+
   GroupMember withEffectivePermissions(Set<GroupPermission> permissions) =>
-      GroupMember(
-        uid: uid,
-        role: role,
-        customRoleId: customRoleId,
-        roleplayCharacter: roleplayCharacter,
-        joinedAt: joinedAt,
-        inviteCount: inviteCount,
-        lastActiveAt: lastActiveAt,
-        lastReadAt: lastReadAt,
-        effectivePermissions: permissions,
+      copyWith(effectivePermissions: permissions);
+
+  GroupMember withProfile({
+    String? displayName,
+    String? username,
+    String? avatarUrl,
+  }) =>
+      copyWith(
+        displayName: displayName ?? this.displayName,
+        username: username ?? this.username,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
       );
 }
 
@@ -356,17 +467,25 @@ final class GroupBan {
     required this.uid,
     this.bannedByUid,
     this.createdAt,
+    this.lastRole,
+    this.reason,
   });
 
   final String uid;
   final String? bannedByUid;
   final DateTime? createdAt;
+  final PubgetRank? lastRole;
+  final String? reason;
 
   factory GroupBan.fromMap(Map<String, dynamic> map, {required String uid}) =>
       GroupBan(
         uid: uid,
         bannedByUid: map['bannedByUid'] as String?,
         createdAt: _date(map['createdAt']),
+        lastRole: map['lastRole'] == null
+            ? null
+            : parsePubgetRank(map['lastRole'] as String?),
+        reason: map['reason'] as String?,
       );
 }
 
@@ -501,10 +620,13 @@ List<PubgetRank> assignableRanksUnderCeiling({
 int compareMembersByRankThenJoined(GroupMember a, GroupMember b) {
   final byRank = b.role.index.compareTo(a.role.index);
   if (byRank != 0) return byRank;
-  final aJoined = a.joinedAt;
-  final bJoined = b.joinedAt;
-  if (aJoined == null && bJoined == null) return a.uid.compareTo(b.uid);
-  if (aJoined == null) return 1;
-  if (bJoined == null) return -1;
-  return aJoined.compareTo(bJoined);
+  // Within the same rank: seniority ascending (oldest current-rank first).
+  final aSeniority = a.rankSeniorityAt;
+  final bSeniority = b.rankSeniorityAt;
+  if (aSeniority == null && bSeniority == null) return a.uid.compareTo(b.uid);
+  if (aSeniority == null) return 1;
+  if (bSeniority == null) return -1;
+  final bySeniority = aSeniority.compareTo(bSeniority);
+  if (bySeniority != 0) return bySeniority;
+  return a.uid.compareTo(b.uid);
 }

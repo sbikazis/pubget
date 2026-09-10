@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import '../repositories/group_repository.dart';
 
@@ -59,6 +60,12 @@ final class GroupProvider extends ChangeNotifier {
   bool get canCreateEvents => memberCanCreateEvents(_membership);
   bool get canManageSettings => memberCanManageSettings(_membership);
   bool get canManageMembers => memberCanManageMembers(_membership);
+  bool get canInvite => GroupAuthority.canInvite(_membership);
+  bool get canUnban => GroupAuthority.canUnban(_membership);
+  bool get canManageRoles => GroupAuthority.canManageRoles(_membership);
+  bool get canWarn => GroupAuthority.canWarn(_membership);
+  bool get canViewBannedMembers =>
+      GroupAuthority.canViewBannedMembers(_membership);
   int get unreadCount =>
       _joinedGroups.where((group) => group.hasUnread).length;
   bool get viewerBanned => _viewerBanned;

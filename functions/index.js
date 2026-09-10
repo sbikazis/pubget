@@ -317,6 +317,7 @@ exports.rejectJoinRequest = onCall(
   groupsDomain.rejectJoinRequest,
 );
 exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.warnMember = onCall({ region: "us-central1" }, groupsDomain.warnMember);
 exports.updateGroupSettings = onCall(
   { region: "us-central1" },
   groupsDomain.updateGroupSettings,
