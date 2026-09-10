@@ -76,6 +76,19 @@ final class EditCopy {
   );
   String get failedLoad =>
       _s.pick('Edits could not load.', 'تعذّر تحميل المقاطع.');
+  String get brokenClip => _s.pick(
+    'This clip could not be played.',
+    'تعذّر تشغيل هذا المقطع.',
+  );
+  String get offlineClip => _s.pick(
+    'Offline — retry when you are connected.',
+    'بدون اتصال — أعد المحاولة عند توفر الإنترنت.',
+  );
+  String get retryClip => _s.pick('Retry', 'إعادة المحاولة');
+  String get becameFan => _s.pick(
+    'You are now a Fan of this creator!',
+    'أصبحت الآن من معجبي هذا المبدع!',
+  );
   String get fan => _s.pick('Fan', 'مشجع');
   String get like => _s.pick('Like', 'إعجاب');
   String get comment => _s.pick('Comment', 'تعليق');

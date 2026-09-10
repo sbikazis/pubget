@@ -1,14 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_icons/phosphor_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
 import '../../../core/constants/limits.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -23,6 +27,7 @@ import '../models/edit_models.dart';
 import '../providers/edit_upload_manager.dart';
 import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
+import '../widgets/edit_action_button.dart';
 import '../widgets/edit_comments_sheet.dart';
 
 class EditFeedPage extends StatefulWidget {
@@ -32,15 +37,18 @@ class EditFeedPage extends StatefulWidget {
   State<EditFeedPage> createState() => _EditFeedPageState();
 }
 
-class _EditFeedPageState extends State<EditFeedPage> {
+class _EditFeedPageState extends State<EditFeedPage>
+    with WidgetsBindingObserver {
   final _page = PageController();
   var _activeIndex = 0;
   String? _pendingHighlight;
   EditUploadManager? _uploads;
+  var _appResumed = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final provider = context.read<EditsProvider>();
     Future<void>.microtask(() async {
       await provider.load(refresh: true);
@@ -59,6 +67,13 @@ class _EditFeedPageState extends State<EditFeedPage> {
       _uploads!.addListener(_onUploadsChanged);
       _pullHighlight();
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _appResumed) return;
+    setState(() => _appResumed = resumed);
   }
 
   void _onUploadsChanged() => _pullHighlight();
@@ -96,8 +111,19 @@ class _EditFeedPageState extends State<EditFeedPage> {
     );
   }
 
+  void _skipToNext() {
+    final items = context.read<EditsProvider>().items;
+    if (_activeIndex + 1 >= items.length) return;
+    _page.animateToPage(
+      _activeIndex + 1,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _uploads?.removeListener(_onUploadsChanged);
     _page.dispose();
     super.dispose();
@@ -108,23 +134,51 @@ class _EditFeedPageState extends State<EditFeedPage> {
     final copy = EditCopy.of(context);
     final provider = context.watch<EditsProvider>();
     final offline = context.watch<NetworkService>().isOffline;
+    final shell = AppShellScope.maybeOf(context);
+    final feedVisible = (shell?.isEditsVisible ?? true) && _appResumed;
+
+    // Soft error toast for optimistic rollback (like/save).
+    final actionFailure = provider.lastActionFailure;
+    if (actionFailure != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<EditsProvider>().clearActionFailure();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(actionFailure.message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(milliseconds: 1800),
+          ),
+        );
+      });
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF07060C),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         leading: const AppShellMenuButton(),
         title: Text(copy.feedTitle),
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: _body(copy, provider, offline),
+      body: _body(copy, provider, offline, feedVisible),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.royalPurple,
+        foregroundColor: Colors.white,
         onPressed: () => AppNavigation.go(context, '/edits/upload'),
-        child: const Icon(Icons.add),
+        child: const PhosphorIcon(PhosphorIconsRegular.plus, size: 26),
       ),
     );
   }
 
-  Widget _body(EditCopy copy, EditsProvider provider, bool offline) {
+  Widget _body(
+    EditCopy copy,
+    EditsProvider provider,
+    bool offline,
+    bool feedVisible,
+  ) {
     if (provider.state == LoadingState.loading ||
         provider.state == LoadingState.initial) {
       return const Center(child: PubgetSkeleton.card(width: 240, height: 320));
@@ -133,7 +187,7 @@ class _EditFeedPageState extends State<EditFeedPage> {
       return PubgetEmptyState(
         title: copy.noEdits,
         message: copy.noEditsMessage,
-        icon: Icons.movie_filter_outlined,
+        icon: PhosphorIconsRegular.filmStrip,
         action: PubgetPrimaryButton(
           onPressed: () => AppNavigation.go(context, '/edits/upload'),
           semanticLabel: copy.uploadTitle,
@@ -151,6 +205,7 @@ class _EditFeedPageState extends State<EditFeedPage> {
       return PubgetOfflineState(onRetry: () => provider.load(refresh: true));
     }
     return RefreshIndicator(
+      color: AppColors.gold,
       onRefresh: () => provider.load(refresh: true),
       child: PageView.builder(
         controller: _page,
@@ -162,15 +217,18 @@ class _EditFeedPageState extends State<EditFeedPage> {
           if (index >= provider.items.length - 2) provider.loadMore();
         },
         itemBuilder: (context, index) {
-          final edit = provider.displayOf(provider.items[index]);
+          final edit = provider.items[index];
           final prefetch = index == _activeIndex + Limits.editPrefetchCount;
-          return _EditVideoItem(
+          final active = feedVisible && index == _activeIndex;
+          return EditFeedVideoItem(
             key: ValueKey<String>(edit.id),
             edit: edit,
-            active: index == _activeIndex,
-            prefetch: prefetch,
-            liked: provider.isLiked(edit.id),
-            saved: provider.isSaved(edit.id),
+            active: active,
+            prefetch: feedVisible && prefetch,
+            onBroken: () {
+              provider.skipBroken(edit.id);
+              _skipToNext();
+            },
           );
         },
       ),
@@ -178,59 +236,61 @@ class _EditFeedPageState extends State<EditFeedPage> {
   }
 }
 
-class _EditVideoItem extends StatefulWidget {
-  const _EditVideoItem({
+/// Full-screen clip cell with isolated action rail and single-controller policy.
+class EditFeedVideoItem extends StatefulWidget {
+  const EditFeedVideoItem({
     required this.edit,
     required this.active,
     required this.prefetch,
-    required this.liked,
-    required this.saved,
+    required this.onBroken,
     super.key,
   });
 
   final Edit edit;
   final bool active;
   final bool prefetch;
-  final bool liked;
-  final bool saved;
+  final VoidCallback onBroken;
 
   @override
-  State<_EditVideoItem> createState() => _EditVideoItemState();
+  State<EditFeedVideoItem> createState() => _EditFeedVideoItemState();
 }
 
-class _EditVideoItemState extends State<_EditVideoItem> {
+class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   VideoPlayerController? _controller;
   PublicProfile? _profile;
   PublicProfile? _originalProfile;
   var _loadingVideo = false;
+  var _loadFailed = false;
   var _impressionSent = false;
   var _viewSent = false;
-  var _replayed = false;
   double _maxPercent = 0;
   String? _sessionId;
   int _lastReportedSecond = 0;
+  var _userPaused = false;
+  var _showPlayGlyph = false;
+  Timer? _glyphTimer;
 
   @override
   void initState() {
     super.initState();
     _loadProfiles();
     if (widget.active || widget.prefetch) {
-      _ensureController();
+      unawaited(_ensureController());
     }
   }
 
   @override
-  void didUpdateWidget(covariant _EditVideoItem oldWidget) {
+  void didUpdateWidget(covariant EditFeedVideoItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.active || widget.prefetch) {
-      _ensureController();
+      unawaited(_ensureController());
     } else {
       _disposeController();
     }
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    if (widget.active && !controller.value.isPlaying) {
-      _activate();
+    if (widget.active && !_userPaused && !controller.value.isPlaying) {
+      unawaited(_activate());
     } else if (!widget.active && controller.value.isPlaying) {
       controller.pause();
     }
@@ -238,6 +298,7 @@ class _EditVideoItemState extends State<_EditVideoItem> {
 
   @override
   void dispose() {
+    _glyphTimer?.cancel();
     _sendView(force: true);
     _disposeController();
     super.dispose();
@@ -259,12 +320,15 @@ class _EditVideoItemState extends State<_EditVideoItem> {
         _originalProfile = original;
       });
     } on ProviderNotFoundException {
-      // Profile repository is optional in isolated tests.
+      // Optional in isolated tests.
     }
   }
 
   Future<void> _ensureController() async {
-    if (_controller != null || _loadingVideo || !widget.edit.hasPlayableVideo) {
+    if (_controller != null ||
+        _loadingVideo ||
+        _loadFailed ||
+        !widget.edit.hasPlayableVideo) {
       return;
     }
     _loadingVideo = true;
@@ -273,7 +337,8 @@ class _EditVideoItemState extends State<_EditVideoItem> {
         widget.edit.videoUrl,
       );
       await controller.initialize();
-      await controller.setLooping(false);
+      // TikTok / IG Reels style seamless loop while visible.
+      await controller.setLooping(true);
       controller.addListener(_trackProgress);
       if (!mounted) {
         await controller.dispose();
@@ -282,10 +347,14 @@ class _EditVideoItemState extends State<_EditVideoItem> {
       _controller = controller;
       _loadingVideo = false;
       setState(() {});
-      if (widget.active) await _activate();
+      if (widget.active && !_userPaused) await _activate();
     } catch (_) {
       _loadingVideo = false;
-      if (mounted) setState(() {});
+      _loadFailed = true;
+      if (mounted) {
+        setState(() {});
+        widget.onBroken();
+      }
     }
   }
 
@@ -297,7 +366,7 @@ class _EditVideoItemState extends State<_EditVideoItem> {
   }
 
   Future<void> _activate() async {
-    if (!widget.edit.hasPlayableVideo) return;
+    if (!widget.edit.hasPlayableVideo || !widget.active) return;
     if (!_impressionSent) {
       _impressionSent = true;
       context.read<EditsProvider>().impression(
@@ -308,7 +377,6 @@ class _EditVideoItemState extends State<_EditVideoItem> {
     final controller = _controller;
     if (controller == null || !mounted) return;
     if (_sessionId == null) {
-      if (!mounted) return;
       final session = await context.read<EditsProvider>().startPlayback(
         widget.edit.id,
       );
@@ -325,7 +393,9 @@ class _EditVideoItemState extends State<_EditVideoItem> {
         );
       }
     }
-    if (mounted) await controller.play();
+    if (mounted && widget.active && !_userPaused) {
+      await controller.play();
+    }
   }
 
   void _trackProgress() {
@@ -340,10 +410,7 @@ class _EditVideoItemState extends State<_EditVideoItem> {
       _lastReportedSecond = second;
       _sendView();
     }
-    if (controller.value.position >= controller.value.duration &&
-        !controller.value.isPlaying) {
-      _sendView(force: true);
-    }
+    if (mounted) setState(() {});
   }
 
   void _sendView({bool force = false}) {
@@ -357,18 +424,36 @@ class _EditVideoItemState extends State<_EditVideoItem> {
     );
   }
 
-  Future<void> _replay() async {
+  void _togglePlayPause() {
     final controller = _controller;
-    if (controller == null) return;
-    await controller.seekTo(Duration.zero);
-    _sessionId = null;
-    _viewSent = false;
-    _maxPercent = 0;
-    _lastReportedSecond = 0;
-    if (!_replayed) {
-      _replayed = true;
-    }
-    await _activate();
+    if (controller == null || !controller.value.isInitialized) return;
+    setState(() {
+      if (controller.value.isPlaying) {
+        controller.pause();
+        _userPaused = true;
+        _showPlayGlyph = true;
+      } else {
+        controller.play();
+        _userPaused = false;
+        _showPlayGlyph = true;
+      }
+    });
+    _glyphTimer?.cancel();
+    _glyphTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      setState(() => _showPlayGlyph = false);
+    });
+  }
+
+  Future<void> _seekFraction(double value) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final duration = controller.value.duration;
+    if (duration.inMilliseconds <= 0) return;
+    final target = Duration(
+      milliseconds: (duration.inMilliseconds * value.clamp(0, 1)).round(),
+    );
+    await controller.seekTo(target);
   }
 
   @override
@@ -376,36 +461,70 @@ class _EditVideoItemState extends State<_EditVideoItem> {
     final copy = EditCopy.of(context);
     final controller = _controller;
     final ready = controller != null && controller.value.isInitialized;
+    final offline = context.select<NetworkService, bool>((n) => n.isOffline);
+
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
+        // Thumbnail always underneath so there is never a black void.
+        if (widget.edit.hasThumbnail)
+          AppImageLoader(
+            imageUrl: widget.edit.thumbnailUrl,
+            fit: BoxFit.cover,
+          )
+        else
+          const ColoredBox(color: Color(0xFF140C22)),
         if (ready)
           GestureDetector(
-            onTap: () {
-              if (controller.value.position >= controller.value.duration &&
-                  !controller.value.isPlaying) {
-                _replay();
-                return;
-              }
-              setState(() {
-                controller.value.isPlaying
-                    ? controller.pause()
-                    : controller.play();
-              });
-            },
-            child: Center(
-              child: AspectRatio(
-                aspectRatio: controller.value.aspectRatio,
-                child: VideoPlayer(controller),
+            behavior: HitTestBehavior.opaque,
+            onTap: _togglePlayPause,
+            child: ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: controller.value.aspectRatio == 0
+                      ? 9 / 16
+                      : controller.value.aspectRatio,
+                  child: VideoPlayer(controller),
+                ),
               ),
             ),
           )
-        else if (widget.edit.hasThumbnail)
-          AppImageLoader(imageUrl: widget.edit.thumbnailUrl, fit: BoxFit.cover)
-        else
-          const ColoredBox(
-            color: Color(0xFF140C22),
-            child: Center(child: Icon(Icons.movie_filter_outlined, color: Colors.white54, size: 48)),
+        else if (_loadingVideo || (!_loadFailed && widget.edit.hasPlayableVideo))
+          const Center(
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: AppColors.gold,
+              ),
+            ),
+          )
+        else if (_loadFailed || (!widget.edit.hasPlayableVideo && offline))
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const PhosphorIcon(
+                  PhosphorIconsRegular.warningCircle,
+                  color: Colors.white70,
+                  size: 36,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  offline ? copy.offlineClip : copy.brokenClip,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _loadFailed = false;
+                    unawaited(_ensureController());
+                  },
+                  child: Text(copy.retryClip),
+                ),
+              ],
+            ),
           ),
         const DecoratedBox(
           decoration: BoxDecoration(
@@ -413,17 +532,40 @@ class _EditVideoItemState extends State<_EditVideoItem> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: <Color>[
+                Color(0x66000000),
                 Colors.transparent,
                 Color(0xCC07060C),
               ],
+              stops: <double>[0, 0.35, 1],
             ),
           ),
         ),
+        if (_showPlayGlyph)
+          IgnorePointer(
+            child: Center(
+              child: AnimatedOpacity(
+                opacity: _showPlayGlyph ? 1 : 0,
+                duration: const Duration(milliseconds: 120),
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: PhosphorIcon(
+                    _userPaused ? EditActionIcons.play : EditActionIcons.pause,
+                    size: 42,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
         PositionedDirectional(
           start: AppSpacing.md,
-          end: 84,
-          bottom: AppSpacing.xl,
-          child: _CreatorBlock(
+          end: 88,
+          bottom: AppSpacing.xl + 10,
+          child: _CreatorOverlay(
             edit: widget.edit,
             profile: _profile,
             originalProfile: _originalProfile,
@@ -432,21 +574,59 @@ class _EditVideoItemState extends State<_EditVideoItem> {
         ),
         PositionedDirectional(
           end: AppSpacing.sm,
-          bottom: AppSpacing.xl,
-          child: _ActionRail(
-            edit: widget.edit,
-            liked: widget.liked,
-            saved: widget.saved,
-            copy: copy,
-          ),
+          bottom: AppSpacing.xl + 10,
+          child: _EditActionRail(edit: widget.edit, copy: copy),
         ),
+        if (ready)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _Scrubber(
+              controller: controller,
+              onSeek: _seekFraction,
+            ),
+          ),
       ],
     );
   }
 }
 
-class _CreatorBlock extends StatelessWidget {
-  const _CreatorBlock({
+class _Scrubber extends StatelessWidget {
+  const _Scrubber({required this.controller, required this.onSeek});
+
+  final VideoPlayerController controller;
+  final ValueChanged<double> onSeek;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = controller.value;
+    final duration = value.duration.inMilliseconds;
+    final position = duration <= 0
+        ? 0.0
+        : (value.position.inMilliseconds / duration).clamp(0.0, 1.0);
+    return Material(
+      color: Colors.transparent,
+      child: SliderTheme(
+        data: SliderTheme.of(context).copyWith(
+          trackHeight: 2,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+          activeTrackColor: AppColors.gold,
+          inactiveTrackColor: Colors.white24,
+          thumbColor: AppColors.gold,
+        ),
+        child: Slider(
+          value: position,
+          onChanged: onSeek,
+        ),
+      ),
+    );
+  }
+}
+
+class _CreatorOverlay extends StatelessWidget {
+  const _CreatorOverlay({
     required this.edit,
     required this.profile,
     required this.originalProfile,
@@ -460,36 +640,79 @@ class _CreatorBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final social = context.watch<SocialProvider>().snapshot;
-    final given = social.givenRespect.where(
-      (item) => item.toUserId == edit.displayCreatorId,
-    );
-    final isFan = given.any((item) => item.value >= SocialSnapshot.fanThreshold);
+    final given = context.select<SocialProvider, int>((social) {
+      final matches = social.snapshot.givenRespect.where(
+        (item) => item.toUserId == edit.displayCreatorId,
+      );
+      if (matches.isEmpty) return 0;
+      return matches.first.value;
+    });
+    final isFan = given >= SocialSnapshot.fanThreshold;
     final name = profile?.primaryName(fallback: edit.displayCreatorId) ??
         edit.displayCreatorId;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            PubgetAvatar(
-              imageUrl: profile?.avatarUrl,
-              name: name,
-              size: PubgetAvatarSize.small,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(
-                name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+        InkWell(
+          onTap: () => AppNavigation.go(
+            context,
+            '/profile?uid=${edit.displayCreatorId}',
+          ),
+          borderRadius: BorderRadius.circular(24),
+          child: Row(
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.gold, width: 1.5),
+                ),
+                child: PubgetAvatar(
+                  imageUrl: profile?.avatarUrl,
+                  name: name,
+                  size: PubgetAvatarSize.small,
                 ),
               ),
-            ),
-            if (isFan)
-              PubgetBadge(label: copy.fan, compact: true),
-          ],
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    shadows: <Shadow>[
+                      Shadow(blurRadius: 8, color: Colors.black54),
+                    ],
+                  ),
+                ),
+              ),
+              if (isFan)
+                Container(
+                  margin: const EdgeInsetsDirectional.only(start: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    copy.fan,
+                    style: const TextStyle(
+                      color: AppColors.royalNight,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         if (edit.isRepost) ...[
           const SizedBox(height: AppSpacing.xs),
@@ -499,19 +722,29 @@ class _CreatorBlock extends StatelessWidget {
           ),
         ],
         const SizedBox(height: AppSpacing.sm),
-        Text(edit.caption, style: const TextStyle(color: Colors.white)),
+        if (edit.caption.isNotEmpty)
+          Text(
+            edit.caption,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              height: 1.3,
+              shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black45)],
+            ),
+          ),
         if (edit.animeTag.isNotEmpty)
           Text(
-            edit.animeTag,
-            style: const TextStyle(color: Colors.white70),
+            '#${edit.animeTag}',
+            style: const TextStyle(color: AppColors.goldLight, fontSize: 13),
           ),
         const SizedBox(height: AppSpacing.xs),
         Text(
           copy.views(edit.viewsCount),
           style: const TextStyle(
-            color: Colors.white,
+            color: Colors.white70,
             fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
+            fontSize: 12,
           ),
         ),
       ],
@@ -519,84 +752,131 @@ class _CreatorBlock extends StatelessWidget {
   }
 }
 
-class _ActionRail extends StatelessWidget {
-  const _ActionRail({
-    required this.edit,
-    required this.liked,
-    required this.saved,
-    required this.copy,
-  });
+/// Side rail — each button selects only its own slice of EditsProvider.
+class _EditActionRail extends StatelessWidget {
+  const _EditActionRail({required this.edit, required this.copy});
 
   final Edit edit;
-  final bool liked;
-  final bool saved;
   final EditCopy copy;
 
   @override
   Widget build(BuildContext context) {
-    final viewerId = context.watch<AuthProvider>().currentUser?.id;
+    final viewerId = context.select<AuthProvider, String?>(
+      (auth) => auth.currentUser?.id,
+    );
+    final liked = context.select<EditsProvider, bool>(
+      (p) => p.isLiked(edit.id),
+    );
+    final saved = context.select<EditsProvider, bool>(
+      (p) => p.isSaved(edit.id),
+    );
+    final likes = context.select<EditsProvider, int>(
+      (p) => p.likesCountOf(edit.id),
+    );
     final provider = context.read<EditsProvider>();
     final now = DateTime.now();
+
     return Column(
       children: <Widget>[
-        _Action(
-          icon: liked ? Icons.favorite : Icons.favorite_border,
-          label: copy.compactCount(edit.likesCount),
+        EditActionButton(
+          key: ValueKey('like-${edit.id}'),
+          icon: EditActionIcons.like,
+          activeIcon: EditActionIcons.likeActive,
+          active: liked,
+          activeColor: const Color(0xFFFF4D6D),
+          animateCount: true,
+          label: copy.compactCount(likes),
           semanticLabel: copy.like,
           onTap: () => provider.like(edit.id, !liked),
         ),
-        _Action(
-          icon: Icons.mode_comment_outlined,
+        EditActionButton(
+          icon: EditActionIcons.comment,
+          activeIcon: EditActionIcons.comment,
           label: copy.compactCount(edit.commentsCount),
           semanticLabel: copy.comment,
           onTap: () => EditCommentsSheet.show(context, edit),
         ),
-        _Action(
-          icon: Icons.ios_share_outlined,
+        EditActionButton(
+          icon: EditActionIcons.share,
+          activeIcon: EditActionIcons.share,
           label: copy.share,
           semanticLabel: copy.share,
-          onTap: () => provider.share(edit.id),
+          onTap: () => _share(context, provider),
         ),
-        _Action(
-          icon: saved ? Icons.bookmark : Icons.bookmark_border,
+        EditActionButton(
+          icon: EditActionIcons.save,
+          activeIcon: EditActionIcons.saveActive,
+          active: saved,
+          activeColor: AppColors.gold,
           label: copy.save,
           semanticLabel: copy.save,
           onTap: () => provider.save(edit.id, save: !saved),
         ),
         if (edit.canReceiveRespectFrom(viewerId))
-          _Action(
-            icon: Icons.auto_awesome,
+          EditActionButton(
+            key: ValueKey('respect-${edit.id}'),
+            icon: EditActionIcons.respect,
+            activeIcon: EditActionIcons.respectActive,
+            activeColor: AppColors.gold,
             label: copy.respect,
             semanticLabel: copy.respect,
-            onTap: () {
-              final given = context
-                  .read<SocialProvider>()
-                  .snapshot
-                  .givenRespect
-                  .where((item) => item.toUserId == edit.displayCreatorId);
-              showGiveRespectSheet(
-                context,
-                toUserId: edit.displayCreatorId,
-                initialValue: given.isEmpty
-                    ? Limits.fanThreshold
-                    : given.first.value,
-              );
-            },
+            onTap: () => _respect(context),
           ),
         if (edit.canRepost(now: now, viewerId: viewerId))
-          _Action(
-            icon: Icons.repeat,
+          EditActionButton(
+            icon: EditActionIcons.repost,
+            activeIcon: EditActionIcons.repost,
             label: copy.repost,
             semanticLabel: copy.repost,
             onTap: () => provider.repost(edit.id),
           ),
-        _Action(
-          icon: Icons.more_horiz,
+        EditActionButton(
+          icon: EditActionIcons.more,
+          activeIcon: EditActionIcons.more,
           label: copy.more,
           semanticLabel: copy.more,
           onTap: () => _more(context, provider, viewerId),
         ),
       ],
+    );
+  }
+
+  Future<void> _share(BuildContext context, EditsProvider provider) async {
+    // Open the share sheet immediately (optimistic UX); signal in parallel.
+    unawaited(provider.share(edit.id));
+    final url = PubgetLinks.canonical('/edits');
+    final text = edit.caption.isEmpty
+        ? url
+        : '${edit.caption}\n$url';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(text: text, title: 'Pubget Edit'),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      await PubgetLinks.copy(context, url, type: 'edit');
+    }
+  }
+
+  Future<void> _respect(BuildContext context) async {
+    final given = context
+        .read<SocialProvider>()
+        .snapshot
+        .givenRespect
+        .where((item) => item.toUserId == edit.displayCreatorId);
+    final becameFan = await showGiveRespectSheet(
+      context,
+      toUserId: edit.displayCreatorId,
+      initialValue: given.isEmpty ? Limits.fanThreshold : given.first.value,
+    );
+    if (!context.mounted || !becameFan) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(EditCopy.of(context).becameFan),
+        backgroundColor: AppColors.royalPurpleDark,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 2200),
+      ),
     );
   }
 
@@ -608,13 +888,17 @@ class _ActionRail extends StatelessWidget {
     final copy = EditCopy.of(context);
     await showModalBottomSheet<void>(
       context: context,
+      backgroundColor: const Color(0xFF1A1228),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: Text(copy.report),
+              leading: const PhosphorIcon(
+                PhosphorIconsRegular.flag,
+                color: Colors.white70,
+              ),
+              title: Text(copy.report, style: const TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 provider.report(edit.id);
@@ -622,8 +906,14 @@ class _ActionRail extends StatelessWidget {
             ),
             if (viewerId != null && viewerId == edit.creatorId)
               ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: Text(copy.delete),
+                leading: const PhosphorIcon(
+                  PhosphorIconsRegular.trash,
+                  color: Colors.white70,
+                ),
+                title: Text(
+                  copy.delete,
+                  style: const TextStyle(color: Colors.white),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   context.read<EditsRepository>().deleteEdit(edit.id);
@@ -631,40 +921,6 @@ class _ActionRail extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _Action extends StatelessWidget {
-  const _Action({
-    required this.icon,
-    required this.label,
-    required this.semanticLabel,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String semanticLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Column(
-        children: <Widget>[
-          IconButton(
-            onPressed: onTap,
-            tooltip: semanticLabel,
-            icon: Icon(icon, color: Colors.white, size: 28),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white, fontSize: 11),
-          ),
-        ],
       ),
     );
   }

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Lets tab pages open the [AppShell] drawer without nested-Scaffold lookup.
+import '../../../app/app_shell_tab.dart';
+
 final class AppShellScope extends InheritedWidget {
   const AppShellScope({
     required this.openDrawer,
+    required this.currentTab,
     required super.child,
     super.key,
   });
 
   final VoidCallback openDrawer;
+  final AppShellTab currentTab;
 
   static AppShellScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<AppShellScope>();
@@ -20,9 +23,11 @@ final class AppShellScope extends InheritedWidget {
     return scope!;
   }
 
+  bool get isEditsVisible => currentTab == AppShellTab.edits;
+
   @override
   bool updateShouldNotify(AppShellScope oldWidget) =>
-      openDrawer != oldWidget.openDrawer;
+      openDrawer != oldWidget.openDrawer || currentTab != oldWidget.currentTab;
 }
 
 class AppShellMenuButton extends StatelessWidget {
@@ -44,14 +49,6 @@ class AppShellMenuButton extends StatelessWidget {
       constraints: boxed == null
           ? null
           : BoxConstraints.tightFor(width: boxed, height: boxed),
-      style: boxed == null
-          ? null
-          : IconButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: Size(boxed, boxed),
-              maximumSize: Size(boxed, boxed),
-              padding: EdgeInsets.zero,
-            ),
       onPressed: () => AppShellScope.maybeOf(context)?.openDrawer(),
     );
   }
