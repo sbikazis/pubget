@@ -75,8 +75,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @visibleForTesting
   AppRoute? get pendingRoute => _pendingRoute;
 
-  bool get canPop =>
-      _stack.length > 1 || !AppRouter.isRoot(_stack.last);
+  bool get canPop => _stack.length > 1 || !AppRouter.isRoot(_stack.last);
 
   @visibleForTesting
   List<AppRoute> get stack => List<AppRoute>.unmodifiable(_stack);
@@ -200,8 +199,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
           when designSystemPage != null &&
               (path == '/design-system' || path == '/design-system/') =>
         designSystemPage!,
-      ParameterizedRoute(:final path)
-          when path == '/' || path.isEmpty =>
+      ParameterizedRoute(:final path) when path == '/' || path.isEmpty =>
         homePage,
       FoundationRoute() => homePage,
       _ => domainPages['/unknown'] ?? homePage,
@@ -217,6 +215,31 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     return Navigator(
       key: navigatorKey,
       pages: <Page<void>>[MaterialPage<void>(key: pageKey, child: page)],
+      // v2 game screens use named navigation for secondary destinations
+      // (rules, for example). Keep those destinations on the same router
+      // registry instead of relying on an app-level MaterialApp route table.
+      onGenerateRoute: (settings) {
+        final uri = Uri.tryParse(settings.name ?? '');
+        if (uri == null) return null;
+        final route = AppRouter.routeFromUri(uri);
+        if (route case ParameterizedRoute(:final path, :final parameters)) {
+          final builder = parameterizedPages[path];
+          if (builder != null) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => builder(parameters),
+            );
+          }
+          final domain = domainPages[path];
+          if (domain != null) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => domain,
+            );
+          }
+        }
+        return null;
+      },
       onDidRemovePage: (page) {
         // Overlay routes (Drawer) share this Navigator. Ignore those pops.
         // In-app back is handled by [popStack]; do not reset to splash.
@@ -395,14 +418,14 @@ AppRoute _routeFromUri(Uri uri) {
   if (path == '/unknown') {
     return const ParameterizedRoute(path: '/unknown');
   }
-  return _requireEntityId(
-    ParameterizedRoute(path: path, parameters: query),
-  );
+  return _requireEntityId(ParameterizedRoute(path: path, parameters: query));
 }
 
 const _requiredEntityKeys = <String, String>{
   '/event': 'eventId',
   '/game': 'gameId',
+  '/games/waiting': 'gameId',
+  '/games/room': 'gameId',
   '/mafia': 'gameId',
   '/fan-work': 'workId',
   '/group': 'groupId',

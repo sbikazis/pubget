@@ -1,0 +1,665 @@
+PUBGET REBIRTH — PROMPT 1
+إعادة بناء نظام GAMES بالكامل — باستثناء Mafia
+أنت تعمل على إعادة بناء Pubget، وليس على ترقيع نظام الألعاب القديم.
+
+هذه المهمة مخصصة حصريًا لـ Games Domain، مع استثناء Mafia الذي سيُعاد بناؤه في Prompt 2.
+
+1. القاعدة الأساسية غير القابلة للتفاوض
+في Pubget يوجد نظامان مستقلان تمامًا:
+
+Games
+نشاط تفاعلي قابل للعب، له:
+
+Players
+بداية
+حالة لعب
+نهاية
+Winner / Draw / Loss
+Score/Reward
+Game History
+Events
+نظام اجتماعي مستقل، وليس لعبة.
+
+ممنوع دمج Games و Events في Domain واحد.
+
+لا تستخدم Event Model لتمثيل Game.
+
+لا تجعل Game نوعًا من Event.
+
+لا تجعل Event نوعًا من Game.
+
+لا تنشئ abstraction مشتركة تجعل منطق النظامين متشابكًا.
+
+الـChat يستطيع فقط استقبال رسائل نظامية ناتجة عن Game، ولكنه لا يمتلك منطق اللعبة.
+
+2. الألعاب الموجودة في Pubget 1.0
+الألعاب الحالية والوحيدة هي:
+
+Guess Character
+Anime Chain
+Emoji Anime Guess
+Mafia
+في هذا Prompt نفذ فقط:
+
+Guess Character
+Anime Chain
+Emoji Anime Guess
+ولا تنشئ Mafia هنا.
+
+لا تضف ألعابًا أخرى.
+
+لا تنشئ Placeholder لألعاب لم يتم تحديدها.
+
+البنية يجب أن تكون قابلة لإضافة ألعاب مستقبلية لاحقًا، لكن لا تضف أي لعبة مستقبلية الآن.
+
+3. مكان إنشاء الألعاب
+اللعبة لا تُنشأ من Home.
+
+اللعبة لا تُنشأ من زر + في Home.
+
+اللعبة لا تُنشأ من صفحة عامة.
+
+الطريقة الوحيدة لإنشاء Game هي:
+
+Group Chat → Game Button → Game Center/Create Game
+
+أي أن Game مرتبط دائمًا بمجموعة ودردشة تلك المجموعة.
+
+4. حدود إنشاء الألعاب
+كل مستخدم يستطيع إنشاء:
+
+حد أقصى لعبتين جديدتين في اليوم الواحد.
+
+المشاركة في ألعاب الآخرين لا تُحسب ضمن هذا الحد.
+
+الحد يخص الإنشاء فقط.
+
+عند الوصول إلى الحد:
+
+امنع إنشاء لعبة ثالثة.
+اعرض للمستخدم سبب المنع بوضوح.
+لا تنشئ Document ثم تفشل العملية لاحقًا.
+التحقق من الحد يجب أن يكون Server-side وليس مجرد UI check.
+
+يجب منع race conditions بحيث لا يستطيع المستخدم إنشاء 3 ألعاب في نفس اللحظة عبر عدة requests.
+
+5. Mafia لها صلاحيات مستقلة
+لا تطبق قاعدة إنشاء الألعاب العامة على Mafia بشكل أعمى.
+
+Mafia لها Permission منفصلة سيتم تنفيذها في Prompt 2.
+
+6. Game Center
+من داخل المجموعة يوجد خيار:
+
+Games
+
+عند فتحه تظهر واجهة Game Center الخاصة بالمجموعة.
+
+الواجهة يجب أن تكون Premium، واضحة، سريعة، ولا تشبه قائمة نصية بدائية.
+
+Game Center يحتوي على أقسام منظمة:
+
+Available Games
+الألعاب الأربع المتاحة في Pubget.
+
+Active Games
+الألعاب التي بدأت أو توجد في حالة تشغيل فعلية.
+
+Waiting Games
+الألعاب التي توجد في Waiting Room.
+
+Recent Games
+الألعاب المنتهية مؤخرًا.
+
+Game History
+الألعاب السابقة مع نتائجها.
+
+Rules
+قواعد كل لعبة.
+
+Game Information
+مثل:
+
+عدد اللاعبين
+مدة اللعبة التقريبية
+مستوى الصعوبة
+طريقة الفوز
+نوع اللعبة
+الألعاب الأربع متاحة دائمًا.
+
+لا تسمح لصاحب المجموعة بإخفاء لعبة أو تعطيلها.
+
+7. إنشاء Game
+عندما يضغط المستخدم Create Game:
+
+يعرض له فقط الألعاب المسموح له بإنشائها.
+
+بعد اختيار اللعبة:
+
+إنشاء Game instance
+التحقق من الصلاحيات
+التحقق من Daily Creation Limit
+إنشاء Waiting Room
+نقل Creator مباشرة إلى Waiting Room
+إنشاء Game Announcement في Group Chat
+الـAnnouncement يجب أن يحتوي على:
+
+اسم اللعبة
+أيقونة اللعبة
+Creator
+عدد اللاعبين الحالي
+العدد المطلوب
+حالة اللعبة
+زر Join
+زر Open Game / Waiting Room
+8. Game Waiting Room
+Waiting Room مستقلة عن Chat.
+
+الـCreator يرى:
+
+Game title
+Rules
+Players
+Player count
+Required player count
+Status
+Start conditions
+Cancel button
+المستخدم الذي دخل Waiting Room يستطيع العودة إلى Chat طالما اللعبة لم تبدأ.
+
+لكن بمجرد بدء اللعبة:
+
+لا يمكن العودة إلى Chat أثناء اللعب.
+
+9. اكتمال عدد اللاعبين
+لكل لعبة Minimum/Maximum محدد.
+
+لا تسمح ببدء اللعبة قبل اكتمال شروطها.
+
+عند اكتمال العدد:
+
+اقفل Join
+تحقق Server-side من جميع اللاعبين
+ثبت Player list
+انقل اللعبة إلى Game Room
+لا تسمح بأي Player جديد
+10. Waiting Room Timeout
+Waiting Room لا يمكن أن تبقى إلى الأبد.
+
+كل لعبة لها Waiting Timeout مناسب لحجمها وطبيعتها.
+
+إذا انتهت المهلة قبل اكتمال العدد:
+
+Cancel Game
+احذف Game Announcement النشط من Chat
+أغلق Waiting Room
+لا تعتبر اللعبة Played Game
+لا تمنح Rewards
+اكتب حالة cancellation في السجل الداخلي فقط
+لا تترك Games معلقة.
+
+لا تترك Join Requests معلقة.
+
+لا تترك Waiting Room orphaned.
+
+11. Chat Integration
+Chat لا يتحكم في Game Engine.
+
+Game Engine مستقل.
+
+لكن Game Engine ينشر System Messages إلى Chat.
+
+أمثلة:
+
+Game Created
+Waiting Room Opened
+Players Joined
+Game Started
+Major Game Result
+Game Finished
+Winner
+Draw
+Reward
+الرسائل النظامية لا يجب أن تسمح للمستخدمين بتغيير Game State من خلالها.
+
+12. Game Archive داخل المجموعة
+بعد انتهاء Game:
+
+تنتقل اللعبة إلى History/Archive.
+تحفظ جميع البيانات اللازمة.
+النتيجة لا تتغير.
+اللاعبون والنتيجة والـduration والـreward محفوظة.
+لا تظهر كـActive Game.
+الـArchive يعرض بشكل أنيق وليس كـraw database list.
+
+13. Game State Machine
+استخدم State Machine واضحة.
+
+الحالات الأساسية:
+
+CREATED
+WAITING
+STARTING
+IN_PROGRESS
+COMPLETED
+CANCELLED
+ولا تسمح بالانتقال إلى حالات غير منطقية.
+
+مثلاً:
+
+COMPLETED → WAITING
+CANCELLED → IN_PROGRESS
+IN_PROGRESS → CREATED
+كلها ممنوعة.
+
+14. Disconnect / App Close
+إذا أغلق المستخدم التطبيق مؤقتًا أو خرج منه ثم عاد، لا تعتبره Deleted.
+
+الـGame State محفوظ على Server.
+
+عند العودة:
+
+استرجع الحالة الصحيحة.
+أعد المستخدم إلى المكان الصحيح إذا كانت اللعبة ما زالت تسمح بذلك.
+لا تعيد تشغيل اللعبة.
+لا تعيد توزيع الشخصيات.
+لا تعيد خصم Reward.
+أما إذا قام المستخدم بانسحاب صريح داخل اللعبة، تعامل مع ذلك حسب قواعد اللعبة.
+
+15. Rewards
+نظام المكافآت يستخدم Coins الموجود أصلًا في Pubget.
+
+قاعدة أساسية:
+
+Loss = 2 Coins
+Draw = 5 Coins
+Win = من 7 إلى 10 Coins حسب صعوبة اللعبة.
+لا تجعل المكافآت ضخمة.
+
+لا تجعل الخسارة أفضل من الفوز.
+
+كل Reward يجب أن يُصرف مرة واحدة فقط باستخدام idempotency.
+
+لا يمكن إعادة الحصول على Reward بإعادة إرسال request.
+
+16. GUESS CHARACTER
+الفكرة
+لعبة 1v1.
+
+Player A ضد Player B.
+
+كل لاعب يختار شخصية سرية للخصم.
+
+الشخصية يجب أن تأتي من Anime/Character API المعتمد في Pubget.
+
+لا تخزن اسمًا حرًا إذا كان النظام يستطيع تحديد Character ID.
+
+Flow
+Waiting Room
+↓
+Player A + Player B
+↓
+Character Selection
+↓
+Both Ready
+↓
+Game Start
+↓
+Turn-based Questions
+↓
+Yes/No Answers
+↓
+Guess Attempt
+↓
+Win / Continue
+↓
+10-minute Global Game Timeout
+↓
+Result
+↓
+Reward
+↓
+Chat Result Message
+↓
+Archive
+Character Selection
+كل لاعب لديه Timer لاختيار شخصيته.
+
+يجب منع:
+
+اختيار نفس الشخصية للخصم إذا كانت قواعد اللعبة تمنع ذلك
+invalid Character IDs
+شخصية غير موجودة
+selection بعد انتهاء timer
+إذا لم يختر اللاعب في الوقت المحدد:
+
+اعتبره forfeited وخسر اللعبة.
+
+Questions
+كل سؤال يجب أن تكون إجابته المنطقية:
+
+Yes
+No
+لكن النظام يجب أن يفهم مرادفات الإجابة واللغات واللهجات المختلفة التي يمكن للمستخدم استخدامها.
+
+مع ذلك، UI الأساسي يعرض أزرارًا واضحة:
+
+نعم
+لا
+
+لا تعتمد على NLP لتغيير Game State إذا كان يمكن استخدام buttons.
+
+Turn
+كل Player لديه دور.
+
+في دوره يستطيع:
+
+Ask Question
+أو:
+
+Make Guess
+إذا اختار Guess:
+
+يفتح Character Picker/Search.
+
+إذا كانت الشخصية صحيحة:
+
+Player يفوز
+اللعبة تنتهي.
+إذا كانت خاطئة:
+
+النظام يعلن أن التخمين خاطئ
+لا تنتهي اللعبة
+ينتقل الدور حسب Game Rules.
+Question Timer
+لكل Question Timer مستقل.
+
+إذا انتهى Timer بدون إجابة:
+
+يخسر اللاعب/يفقد الدور حسب الحالة.
+لا تترك اللعبة معلقة.
+Global Timer
+الحد الأقصى للعبة:
+
+10 دقائق.
+
+إذا انتهى الوقت دون فائز:
+
+Draw
+
+Reward = 5 Coins لكل لاعب.
+
+Resign
+يمكن لأي Player الانسحاب.
+
+في Guess Character:
+
+الانسحاب = خسارة مباشرة.
+
+الطرف الآخر = Winner.
+
+17. ANIME CHAIN
+هذه اللعبة تستخدم Turn-Based Chain Engine.
+
+الفكرة:
+
+كل لاعب يجب أن يقدم Anime صالحًا في دوره، ويجب أن يرتبط إدخاله بالقيمة التي تحددها اللعبة من إجابة اللاعب السابق.
+
+استخدم Anime Database للتحقق من العناوين.
+
+لا تسمح بإدخال Anime غير موجود في قاعدة البيانات.
+
+لا تسمح بتكرار Anime تم استخدامه سابقًا في نفس Match.
+
+Flow
+Waiting
+↓
+Players Ready
+↓
+Game Start
+↓
+Player Turn
+↓
+Anime Selection
+↓
+Validation
+↓
+Correct → Next Player
+Wrong → Penalty / Elimination
+Timeout → Penalty / Elimination
+↓
+Continue
+↓
+Last Player Standing / Winning Condition
+↓
+Result
+↓
+Reward
+↓
+Chat Announcement
+↓
+Archive
+اللعبة 1v1 في Pubget 1.0.
+
+Turn Timer
+كل Turn له Timer.
+
+إذا لم يقدم اللاعب Anime صالحًا:
+
+يُعتبر الدور فاشلًا.
+
+إذا أدى ذلك إلى حالة فوز مباشرة للخصم، تنتهي اللعبة.
+
+لا تنتظر إلى الأبد.
+
+Validation
+يجب أن يكون Server-authoritative.
+
+تحقق من:
+
+Anime exists
+Title valid
+Not already used
+Satisfies chain rule
+Player is current player
+Match is IN_PROGRESS
+Turn has not expired
+UI
+واجهة اللعبة يجب أن تكون مختلفة بصريًا عن Guess Character.
+
+تظهر:
+
+Current Chain
+Current Player
+Timer
+Used Anime
+Player Score/State
+Input/Search
+Submit
+Rules
+يجب أن يكون من السهل فهم اللعبة بدون قراءة شرح طويل.
+
+18. EMOJI ANIME GUESS
+هذه لعبة جماعية صغيرة.
+
+عدد اللاعبين:
+
+2 إلى 4.
+
+Core Loop
+Waiting Room
+↓
+Players 2–4
+↓
+Start
+↓
+Turn Owner
+↓
+System selects Anime
+↓
+System presents 3–4 Emojis
+↓
+Other Players Guess
+↓
+Correct Answer
+↓
+Point
+↓
+Turn Changes
+↓
+Next Round
+↓
+Game End
+↓
+Winner
+↓
+Reward
+↓
+Chat Announcement
+↓
+Archive
+Emoji Generation
+كل Round:
+
+Anime واحد
+3–4 Emojis
+بدون كلمات
+بدون اسم Anime
+بدون spoiler مباشر يكشف الاسم بسهولة.
+الصعوبة يجب أن تؤثر على جودة العلاقة بين Emojis وAnime.
+
+Guess
+المستخدم يكتب/يبحث عن Anime.
+
+استخدم Anime Database.
+
+يجب دعم Alternative Titles.
+
+لا تقبل Anime غير موجود.
+
+Timer
+لكل Round Timer.
+
+إذا لم توجد إجابة صحيحة:
+
+الجولة تنتهي
+لا يحصل أحد على النقطة
+الدور ينتقل.
+Score
+الإجابة الصحيحة = Point.
+
+احتفظ بـ scoreboard مباشر.
+
+في النهاية:
+
+أعلى Score = Winner
+التعادل = Draw
+Turn
+كل لاعب يحصل على دور متساوٍ.
+
+لا تجعل Player واحدًا يحصل على أدوار أكثر من الآخرين بسبب race condition أو disconnect.
+
+19. UI/UX QUALITY
+كل Game يجب أن يكون له:
+
+Visual identity مستقل
+Color treatment مناسب
+Game-specific icons
+Game-specific animations
+Clear state
+Clear timer
+Responsive layout
+Loading state
+Empty state
+Error state
+Reconnect state
+لكن حافظ على Pubget Design System:
+
+Royal Purple
+Gold
+Premium
+Modern
+Anime-inspired
+Not childish
+Dark + Light
+Arabic-first UI
+20. Performance
+لا تستخدم listeners عشوائية على Collections كاملة.
+
+استخدم:
+
+targeted realtime listeners
+pagination
+lazy loading
+cached static data
+debounced search
+batched writes حيث مناسب
+transactions حيث يلزم
+idempotency
+duplicate request prevention
+لا تعيد تحميل الصفحة كاملة عند كل Game Event.
+
+لا تجعل Chat يعيد بناء نفسه عند تغير Game State.
+
+21. Security
+Client ليس مصدر الحقيقة.
+
+Server هو مصدر الحقيقة في:
+
+Game Creation Limit
+Player Join
+Start
+Character Selection
+Answers
+Turns
+Timer
+Score
+Winner
+Draw
+Rewards
+Completion
+Cancellation
+لا تثق في Flutter Client لتحديد Winner أو Reward.
+
+22. إزالة النظام القديم
+اعتبر Game system القديم Legacy.
+
+لا تضع فوقه طبقة جديدة إذا كانت ستسبب تعارضًا.
+
+ابحث عن:
+
+old Game models
+old Game providers
+old Game services
+old Game UI
+old Firestore listeners
+old routes
+old game collections
+old state machines
+ثم أزل أو اعزل القديم بشكل نظيف.
+
+لا تترك نظامين يتنافسان على نفس Game.
+
+23. Acceptance Criteria
+لا تعتبر Prompt مكتملًا حتى:
+
+إنشاء Game يعمل من Chat فقط.
+Daily limit يعمل Server-side.
+Waiting Room تعمل.
+Timeout يعمل.
+Join يغلق عند بدء اللعبة.
+Game Room مستقلة عن Chat.
+لا يمكن العودة إلى Chat أثناء اللعب.
+Chat يستقبل Game system messages.
+كل Game له UI مستقل.
+النتائج تحفظ في Archive.
+Rewards لا تتكرر.
+Disconnect لا يكسر Game.
+لا توجد orphaned games.
+لا توجد duplicate games.
+لا توجد invalid state transitions.
+Games لا تعتمد على Events.
+Events لا تدخل في Game Engine.
+نفذ هذه المهمة كاملة، اختبرها، أصلح أي أخطاء، ثم اترك المشروع في حالة مستقرة وجاهزة لـ Prompt 2.
+
+لا تنتقل إلى بناء Mafia الآن.
