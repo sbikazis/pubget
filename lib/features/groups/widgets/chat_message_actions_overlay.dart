@@ -19,6 +19,7 @@ enum ChatMessageAction {
   info,
   delete,
   react,
+  report,
   dismiss,
 }
 
@@ -26,22 +27,14 @@ final class ChatMessageActionResult {
   const ChatMessageActionResult.action(this.action) : reaction = null;
 
   const ChatMessageActionResult.reaction(this.reaction)
-      : action = ChatMessageAction.react;
+    : action = ChatMessageAction.react;
 
   final ChatMessageAction action;
   final String? reaction;
 }
 
 /// WhatsApp quick reactions (order matches the product bar).
-const kChatQuickReactions = <String>[
-  '👍',
-  '❤️',
-  '😂',
-  '😮',
-  '😥',
-  '🙏',
-  '✌️',
-];
+const kChatQuickReactions = <String>['👍', '❤️', '😂', '😮', '😥', '🙏', '✌️'];
 
 const _kReactionBarColor = Color(0xFF232D36);
 const _kDimScrim = Color(0x99000000); // black ~60%
@@ -59,6 +52,7 @@ Future<ChatMessageActionResult?> showChatMessageActions(
   required Rect bubbleRect,
   required bool canEdit,
   required bool canCopy,
+  bool canReport = false,
   required bool isStarred,
 }) {
   HapticFeedback.lightImpact();
@@ -77,6 +71,7 @@ Future<ChatMessageActionResult?> showChatMessageActions(
         bubbleRect: bubbleRect,
         canEdit: canEdit,
         canCopy: canCopy,
+        canReport: canReport,
         isStarred: isStarred,
         onResult: (result) {
           if (dialogContext.mounted) {
@@ -104,6 +99,7 @@ class ReactionOverlay extends StatefulWidget {
     required this.bubbleRect,
     required this.canEdit,
     required this.canCopy,
+    required this.canReport,
     required this.isStarred,
     required this.onResult,
     super.key,
@@ -115,6 +111,7 @@ class ReactionOverlay extends StatefulWidget {
   final Rect bubbleRect;
   final bool canEdit;
   final bool canCopy;
+  final bool canReport;
   final bool isStarred;
   final ValueChanged<ChatMessageActionResult?> onResult;
 
@@ -137,9 +134,10 @@ class _ReactionOverlayState extends State<ReactionOverlay>
       duration: const Duration(milliseconds: 180),
     );
     _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _scale = Tween<double>(begin: 0.88, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
+    _scale = Tween<double>(
+      begin: 0.88,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
     _controller.forward();
   }
 
@@ -157,15 +155,11 @@ class _ReactionOverlayState extends State<ReactionOverlay>
   }
 
   void _select(ChatMessageAction action) {
-    unawaited(
-      _complete(ChatMessageActionResult.action(action)),
-    );
+    unawaited(_complete(ChatMessageActionResult.action(action)));
   }
 
   void _react(String emoji) {
-    unawaited(
-      _complete(ChatMessageActionResult.reaction(emoji)),
-    );
+    unawaited(_complete(ChatMessageActionResult.reaction(emoji)));
   }
 
   Future<void> _pickMoreEmoji() async {
@@ -304,6 +298,7 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                     opacity: _fade,
                     child: _OverflowActionsMenu(
                       canCopy: widget.canCopy,
+                      canReport: widget.canReport,
                       canEdit: widget.canEdit,
                       isStarred: widget.isStarred,
                       pinned: widget.message.pinnedAt != null,
@@ -447,6 +442,7 @@ class _SelectionAppBar extends StatelessWidget {
 class _OverflowActionsMenu extends StatelessWidget {
   const _OverflowActionsMenu({
     required this.canCopy,
+    required this.canReport,
     required this.canEdit,
     required this.isStarred,
     required this.pinned,
@@ -454,6 +450,7 @@ class _OverflowActionsMenu extends StatelessWidget {
   });
 
   final bool canCopy;
+  final bool canReport;
   final bool canEdit;
   final bool isStarred;
   final bool pinned;
@@ -481,6 +478,13 @@ class _OverflowActionsMenu extends StatelessWidget {
           label: 'تعديل',
           icon: Icons.edit_outlined,
           action: ChatMessageAction.edit,
+        ),
+      if (canReport)
+        _overflowItem(
+          key: const Key('chat-action-report'),
+          label: 'إبلاغ',
+          icon: Icons.flag_outlined,
+          action: ChatMessageAction.report,
         ),
       _overflowItem(
         key: const Key('chat-action-info'),
@@ -544,10 +548,7 @@ class _OverflowActionsMenu extends StatelessWidget {
 }
 
 class _ReactionPill extends StatelessWidget {
-  const _ReactionPill({
-    required this.onPick,
-    required this.onMore,
-  });
+  const _ReactionPill({required this.onPick, required this.onMore});
 
   final ValueChanged<String> onPick;
   final VoidCallback onMore;
@@ -588,11 +589,7 @@ class _ReactionPill extends StatelessWidget {
                   child: const SizedBox(
                     width: 34,
                     height: 34,
-                    child: Icon(
-                      Icons.add,
-                      size: 20,
-                      color: Color(0xFF8696A0),
-                    ),
+                    child: Icon(Icons.add, size: 20, color: Color(0xFF8696A0)),
                   ),
                 ),
               ),

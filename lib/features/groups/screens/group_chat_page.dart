@@ -535,6 +535,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           : bubbleRect,
       canEdit: canEdit,
       canCopy: canCopy,
+      canReport: !isMine && !message.isDeleted,
       isStarred: _stars.isStarred(message.id),
     );
     if (!mounted || result == null) return;
@@ -571,9 +572,42 @@ class _GroupChatPageState extends State<GroupChatPage> {
         final emoji = result.reaction ?? '❤️';
         await chat.addReaction(message.id, emoji);
         return;
+      case ChatMessageAction.report:
+        await _reportMessage(message);
+        return;
       case ChatMessageAction.dismiss:
         return;
     }
+  }
+
+  Future<void> _reportMessage(ChatMessage message) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Report message'),
+        children: reportReasons
+            .map(
+              (value) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, value),
+                child: Text(value),
+              ),
+            )
+            .toList(growable: false),
+      ),
+    );
+    if (reason == null || !mounted) return;
+    final result = await context.read<ChatProvider>().reportMessage(
+      messageId: message.id,
+      reason: reason,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.isSuccess ? 'Report submitted' : 'Unable to submit report',
+        ),
+      ),
+    );
   }
 
   Future<void> _showMessageInfo(ChatMessage message) async {
@@ -614,37 +648,59 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _editMessage(ChatMessage message) async {
     final controller = TextEditingController(text: message.text ?? '');
-    final next = await showDialog<String>(
+    final next = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit message'),
-        content: TextField(
-          key: const Key('chat-edit-field'),
-          controller: controller,
-          autofocus: true,
-          maxLines: 4,
-          decoration: const InputDecoration(hintText: 'Update your message'),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+      builder: (dialogContext) {
+        var saving = false;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Edit message'),
+            content: TextField(
+              key: const Key('chat-edit-field'),
+              controller: controller,
+              autofocus: true,
+              maxLines: 4,
+              enabled: !saving,
+              decoration: const InputDecoration(
+                hintText: 'Update your message',
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final value = controller.text.trim();
+                  if (value.isEmpty || value == message.text?.trim()) return;
+                  setState(() => saving = true);
+                  final result = await context.read<ChatProvider>().editMessage(
+                    messageId: message.id,
+                    text: value,
+                  );
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, result.isSuccess);
+                  }
+                },
+                child: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     controller.dispose();
-    if (next == null || !mounted) return;
-    final trimmed = next.trim();
-    if (trimmed.isEmpty || trimmed == message.text?.trim()) return;
-    await context.read<ChatProvider>().editMessage(
-      messageId: message.id,
-      text: trimmed,
-    );
+    if (next == null || !mounted || next) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Unable to edit message')));
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {

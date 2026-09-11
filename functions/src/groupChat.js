@@ -34,6 +34,17 @@ const PERMISSIONS = {
   pin: "pinOwnMessages",
   background: "manageBackground",
 };
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+function timestampDate(value) {
+  if (value instanceof Date) return value;
+  if (value && typeof value.toDate === "function") return value.toDate();
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -312,6 +323,13 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       if (current.senderId !== uid || current.type !== "text" ||
           current.deletedAt) {
         throw new HttpsError("permission-denied", "This message cannot be edited.");
+      }
+      const createdAt = timestampDate(current.createdAt);
+      if (!createdAt || Date.now() - createdAt.getTime() > EDIT_WINDOW_MS) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Messages can only be edited within 15 minutes.",
+        );
       }
       transaction.update(ref, {
         text: text.trim(),
@@ -834,6 +852,7 @@ module.exports = {
   USER_MESSAGE_TYPES,
   adminChatCardDocument,
   createGroupChat,
+  EDIT_WINDOW_MS,
   expectedMediaType,
   resolveStickerCreator,
   validString,
