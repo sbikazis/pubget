@@ -1,0 +1,1501 @@
+أنت تعمل الآن على إعادة بناء نظام الفيديو القصير داخل تطبيق Pubget.
+
+Pubget ليس تطبيق فيديو عام، وليس نسخة من TikTok، بل هو Anime Social Universe: منصة اجتماعية متخصصة في الأنمي والثقافة اليابانية، تجمع الهوية الاجتماعية، الرتب، الاحترام، المعجبين، المجموعات، الدردشة، الأحداث، الألعاب، الأعمال الإبداعية، والـ Anime Hub.
+
+لذلك أريد منك إعادة بناء نظام الفيديو القصير بالكامل ليصبح أحد أقوى الأنظمة داخل Pubget، مع هوية Pubget الواضحة.
+
+IMPORTANT: هذا ليس طلب تحسين بسيط للنظام الحالي. النظام الحالي موجود بشكل جزئي فقط، وبعض وظائفه تعمل، لكنه يمثل تقريبًا 40% فقط من الجودة المطلوبة. قم بإعادة بناء النظام معماريًا ووظيفيًا وواجهاتيًا من جديد.
+
+لا تحافظ على أي implementation قديم لمجرد أنه موجود. احتفظ فقط بما يمكن إعادة استخدامه بأمان ويتوافق مع المواصفة التالية. إذا كان implementation قديمًا يسبب تعارضًا مع المواصفة، استبدله.
+
+==================================================
+
+IDENTITY — هوية النظام ==================================================
+لا أريد اسمًا نهائيًا عاديًا مثل "Videos".
+
+اسم النظام يجب أن يرتبط بـ:
+
+الإبداع
+عالم الأنمي
+الثقافة اليابانية
+شخصية Pubget
+صناعة المستخدم لمحتواه وهويته
+صمّم اسمًا داخليًا/تجاريًا مناسبًا للنظام أثناء التنفيذ، على أن يكون قابلًا للتغيير لاحقًا من مكان مركزي واحد دون إعادة بناء النظام.
+
+لا تجعل الاسم نسخة من TikTok أو Instagram.
+
+الهدف: أن يشعر المستخدم أن هذه هي مساحة الإبداع الخاصة بمجتمع Pubget.
+
+================================================== 2. CORE CONTENT MODEL
+المحتوى الأساسي هو:
+
+SHORT VERTICAL VIDEO
+
+الحد الأقصى: 60 ثانية.
+
+لا يوجد Photo Reel.
+
+الفيديو هو أساس النظام.
+
+الصور لا تتحول إلى Reel slideshow. الصور لها أنظمة أخرى داخل Pubget مثل Events/Fan Works وغيرها.
+
+المحتوى يجب أن يكون أساسًا مرتبطًا بعالم الأنمي والثقافة اليابانية.
+
+أمثلة:
+
+Anime edits
+AMV
+Anime scenes
+Character edits
+Anime moments
+Anime memes
+Anime transformations
+Character comparisons بصيغة فيديو
+Anime theories بصيغة فيديو
+Anime recommendations
+Anime reviews
+Japanese culture related creative videos
+Cosplay
+Fan-made content
+Original anime-inspired creations
+لا تجعل النظام عامًا لدرجة أن يصبح منصة فيديو عشوائية.
+
+يمكن السماح بأن يكون الفيديو إبداعيًا وواسعًا، لكن الهوية الأساسية يجب أن تبقى Anime / Japanese culture / Pubget community.
+
+================================================== 3. CREATION METADATA
+عند نشر Reel، لا تجعل المستخدم يكتب Caption فقط.
+
+أنشئ نظام Metadata غنيًا ومرنًا.
+
+يمكن أن يحتوي Reel على:
+
+Caption
+Hashtags
+Anime tags
+Character tags
+Creator/artist references عندما تكون مناسبة
+Audio
+Original audio
+Existing Pubget audio
+Group reference عند مشاركة Reel في مجموعة
+Event reference إذا كان الفيديو متعلقًا بحدث
+Mentioned users
+Content category
+Optional location/context metadata إذا احتجته لاحقًا، لكن لا تطلب معلومات غير ضرورية من المستخدم.
+اجعل إضافة هذه العناصر سهلة جدًا من شاشة النشر.
+
+استخدم autocomplete وsearch بدل إجبار المستخدم على كتابة أسماء الأنمي والشخصيات يدويًا.
+
+================================================== 4. VIDEO CREATION
+أنشئ flow واضحًا:
+
+Create → Select/Record Video → Edit → Metadata → Preview → Publish
+
+المستخدم يستطيع:
+
+اختيار فيديو من الجهاز
+تسجيل فيديو إذا كان ذلك مناسبًا للمنصة
+قص الفيديو
+اختيار الجزء المطلوب
+تعديل بداية/نهاية الفيديو
+اختيار Cover
+إضافة Caption
+Hashtags
+Anime
+Characters
+Mentions
+Audio
+لا أريد محرر فيديو احترافيًا ثقيلًا.
+
+لا تبنِ Premiere Pro داخل Pubget.
+
+وفي نفس الوقت لا تجعل التحرير سطحيًا جدًا.
+
+المستوى المطلوب: MEDIUM / SMART / FAST.
+
+يجب أن يحتوي المحرر على مجموعة معتدلة من الأدوات المهمة مثل:
+
+Trim
+Crop / framing
+Speed بشكل محدود
+Volume
+Original audio control
+Added audio control
+Simple text overlay
+Text timing البسيط
+Basic filters/effects الخفيفة إذا كانت لا تؤثر على الأداء
+Cover selection
+Preview
+أي feature إضافية يجب أن تحقق واحدًا من:
+
+قيمة حقيقية للمستخدم
+هوية Pubget
+سهولة الاستخدام
+عدم تحميل التطبيق بشكل غير ضروري
+لا تضف أدوات ثقيلة لمجرد تقليد TikTok.
+
+================================================== 5. COVER
+المستخدم يستطيع:
+
+A. اختيار Frame من الفيديو.
+
+B. رفع صورة من جهازه كـ Cover.
+
+يجب معالجة:
+
+aspect ratio
+cropping
+safe area
+preview
+حتى لا تظهر الصور مشوهة.
+
+================================================== 6. AUDIO SYSTEM
+أريد نظام Audio متكامل.
+
+يدعم:
+
+Original audio الصوت الموجود أصلًا داخل الفيديو.
+
+Audio Library مكتبة أصوات داخل Pubget.
+
+Reuse Audio المستخدم يستطيع استخدام Audio مستخدم في Reel آخر.
+
+Audio Page عند الضغط على Audio يظهر:
+
+اسم الصوت
+صاحب الصوت
+عدد استخداماته
+Reels التي تستخدمه
+زر استخدام الصوت
+صفحة/Feed للفيديوهات التي استخدمت الصوت
+Attribution إذا تم استخدام صوت مستخدم آخر، يظهر مصدر الصوت بطريقة واضحة.
+
+Original Audio إذا كان الصوت أصليًا للمستخدم، يجب أن يظهر كـ Original Audio مرتبطًا به.
+
+IMPORTANT: لا تفترض وجود مكتبة موسيقى تجارية ضخمة بدون ترخيص. صمم Audio architecture provider-agnostic. يجب أن يكون النظام قادرًا على دعم:
+
+original/user-uploaded audio
+licensed audio إذا تم توفيره مستقبلًا
+reusable Pubget audio
+ولا تبنِ حلًا قانونيًا وهميًا لموسيقى محمية بحقوق النشر.
+
+================================================== 7. REELS HOME EXPERIENCE
+التجربة الأساسية يجب أن تكون Full-screen vertical video feed.
+
+الإحساس العام: Fast Immersive Premium Smooth Anime-centric
+
+لكن:
+
+DO NOT COPY TIKTOK BLINDLY.
+
+استخدم أفضل مبادئ short-video UX المعروفة، ثم أضف Pubget identity.
+
+الفيديو:
+
+Full-screen
+Vertical
+Auto-play
+Smooth transitions
+Preloading
+Intelligent caching
+Adaptive quality
+عند فتح Reel من:
+
+Trending
+Search
+Profile
+Audio
+Hashtag
+Anime
+Character
+Home
+Shared link
+يجب فتح نفس Reel Viewer الموحد.
+
+================================================== 8. PUBGET VIDEO UI
+صمّم UI خاصًا بـ Pubget.
+
+لا أريد نسخة TikTok بألوان TikTok.
+
+الهوية:
+
+Royal purple
+Gold
+Black/dark surfaces عند الحاجة
+Light mode compatible
+Premium
+Cold
+Modern
+Royal
+Anime-world feeling
+لكن لا تضع الذهب والبنفسجي في كل بكسل.
+
+استخدمهما بذكاء.
+
+واجهة الفيديو يجب أن تكون واضحة ولا تغطي الفيديو.
+
+صمّم hierarchy قويًا.
+
+يجب أن يظهر بوضوح:
+
+Creator
+Follow/Fan/Respect action
+Caption
+Hashtags
+Anime/Character context
+Audio
+Social actions
+================================================== 9. PUBGET FOLLOW SYSTEM
+لا تستخدم كلمة Follow كنسخة مباشرة من الشبكات الأخرى.
+
+Pubget لديه مفهوم Respect وFans.
+
+الزر الرئيسي لصانع الفيديو يجب أن يكون مرتبطًا بنظام Pubget.
+
+عند الضغط عليه:
+
+افتح Bottom Sheet أنيقة.
+
+داخلها:
+
+Creator identity
+Current respect relationship
+Give Respect
+Current respect level
+Fan status
+Explanation بسيطة
+إذا أعطى المستخدم للcreator مقدار Respect يصل إلى 5 أو أكثر، يصبح من Fans لهذا المستخدم وفق نظام Pubget.
+
+أي احترام أقل من threshold لا يجعله Fan.
+
+يجب أن يتكامل هذا مع Social Graph.
+
+لا تنشئ نظام متابعة منفصلًا ينافس نظام Fans/Respect الحالي.
+
+إذا احتجت internally إلى graph edge، استخدم Social Graph الموجود بدل إنشاء نظام اجتماعي منفصل.
+
+================================================== 10. SOCIAL ACTIONS
+أريد:
+
+Like
+Double tap Like
+Comment
+Reply
+Save
+Share
+Send to Private Chat
+Share to Group
+External Share
+Follow/Fan/Respect
+Report
+Not Interested
+Block
+Mute
+وأريد Pubget touch في طريقة تنفيذها.
+
+لا تجعل الأزرار نسخة حرفية من TikTok.
+
+استخدم:
+
+gestures
+bottom sheets
+micro-interactions
+subtle animations
+haptic feedback إذا كان مناسبًا
+Pubget iconography
+Pubget terminology
+لكن لا تجعل animations ثقيلة.
+
+Double tap: يؤدي إلى Like مع animation مميز لـ Pubget.
+
+================================================== 11. COMMENTS
+نظام التعليقات يجب أن يكون قويًا.
+
+يجب أن يدعم:
+
+Text comments
+Replies
+Nested discussion
+Like comments
+Mention users
+Delete own comment
+Report comment
+Block/mute user
+Pin comment للcreator
+Creator reply indication
+Comment sorting
+Load more / pagination
+Real-time behavior حيث يكون مفيدًا
+وأريد إضافة Pubget مهمة:
+
+STICKER COMMENTS.
+
+المستخدم يستطيع إرسال Sticker من نظام Stickers الموجود أصلًا في Pubget كتعليق.
+
+لا تبنِ Sticker system جديدًا.
+
+استعمل نظام Stickers الموجود:
+
+saved stickers
+created stickers
+sticker collections
+يجب أن يكون إرسال Sticker في التعليقات سريعًا جدًا.
+
+================================================== 12. COMMENT QUALITY
+لا تحمل جميع التعليقات مرة واحدة.
+
+استخدم:
+
+pagination
+lazy loading
+optimistic interactions where safe
+duplicate prevention
+retry
+loading placeholders
+empty states
+error states
+اجعل تجربة التعليقات قريبة في القوة من أفضل short-video platforms، لكن بهوية Pubget.
+
+================================================== 13. FEED TYPES
+أنشئ على الأقل:
+
+FOR YOU / Recommended
+FOLLOWING / Fans & social graph
+TRENDING
+لكن لا تجعلها مجرد tabs سطحية.
+
+كل Feed له ranking logic مختلف.
+
+================================================== 14. RECOMMENDATION ENGINE
+هذه من أهم أجزاء المشروع.
+
+أريد Recommendation Engine قوية جدًا.
+
+لا تستخدم: "most likes = recommended".
+
+هذا غير مقبول.
+
+استخدم أكبر عدد منطقي من signals.
+
+Signals تشمل:
+
+Behavior:
+
+watch time
+completion rate
+partial watch
+skip speed
+rewatches
+repeated viewing
+pauses
+shares
+saves
+likes
+comments
+replies
+profile visits
+creator follows/fan conversions
+audio interactions
+hashtag interactions
+anime interactions
+character interactions
+search behavior
+negative feedback
+not interested
+hides
+blocks
+muted creators
+Content affinity:
+
+anime preferences
+character preferences
+genre/category
+hashtags
+audio affinity
+creator affinity
+topic affinity
+Social signals:
+
+creators user follows/is a Fan of
+friends/social graph
+group membership
+groups user interacts with
+users with similar interests
+interactions between users
+Freshness:
+
+new content discovery
+recent engagement
+velocity of engagement
+Quality:
+
+completion rate
+retention
+meaningful interactions
+negative feedback
+content reports
+creator quality signals
+Diversity: لا تعرض للمستخدم 20 فيديو من نفس الأنمي فقط.
+
+يجب أن يكون هناك controlled diversity.
+
+================================================== 15. PUBGET SOCIAL GRAPH INTEGRATION
+هذا REQUIRED.
+
+اربط Reels مع Social Recommendation Graph في Pubget.
+
+مثال:
+
+User watches One Piece Reel → interacts with it → system understands One Piece affinity → recommends One Piece content → Anime Hub understands interest → recommends relevant anime → relevant creators appear → relevant groups appear → relevant events appear → related Reels appear
+
+لكن لا تجعل النظام حلقة مغلقة بشكل مزعج.
+
+يجب أن يكون Graph قادرًا على اكتشاف اهتمامات جديدة.
+
+Reels يجب أن يكون أحد مصادر البيانات الرئيسية للـ recommendation graph.
+
+================================================== 16. TRENDING
+أنشئ Trending مستقل.
+
+Trending لا يعني: "أكثر فيديوهات likes فقط".
+
+استخدم:
+
+engagement velocity
+views
+completion
+shares
+saves
+comments
+rewatches
+recency
+creator diversity
+negative feedback
+content quality
+أريد أن تكون Trending مساحة لاكتشاف ما يحدث الآن داخل Pubget.
+
+أضف Pubget touch واضح في presentation.
+
+================================================== 17. HASHTAGS
+أنشئ Hashtag system كامل.
+
+كل hashtag له Page.
+
+Page يحتوي:
+
+hashtag title
+total usage
+trending/recent content
+top Reels
+related hashtags
+relevant anime/characters where applicable
+عند الضغط على hashtag من Reel: يفتح صفحة hashtag.
+
+Hashtags يجب أن تدخل في recommendation engine.
+
+لا تعتمد فقط على النص.
+
+================================================== 18. SEARCH
+Search يجب أن يستطيع اكتشاف Reels.
+
+ابحث في:
+
+Reels
+Creators
+Anime
+Characters
+Hashtags
+Audio
+نتائج Reels يجب أن تكون ranked.
+
+مثال: بحث المستخدم عن Naruto → Reels مرتبطة بـ Naruto → creators → hashtags → audio → characters
+
+================================================== 19. ANIME HUB INTEGRATION
+Reels يجب أن يكون متصلًا بـ Anime Hub.
+
+إذا Reel مرتبط بأنمي: يجب أن يستطيع المستخدم الانتقال من Reel إلى Anime page.
+
+ومن Anime page يمكن اكتشاف:
+
+Reels
+creators
+related content
+إذا Reel مرتبط بشخصية: يمكن الانتقال إلى Character context.
+
+هذه نقطة أساسية في هوية Pubget.
+
+================================================== 20. PROFILE INTEGRATION
+في Profile:
+
+المعلومات الأساسية للمستخدم تظهر في الأعلى عبر أزرار/sections مناسبة.
+
+ثم يكون قسم أعمال الفيديو في الأسفل.
+
+اعرض Reels بطريقة مناسبة مثل grid/preview system.
+
+عند فتح Reel من Profile: يدخل المستخدم إلى Reel Viewer.
+
+ثم يستطيع swipe: Reel 1 → Reel 2 → Reel 3 → ...
+
+ويجب أن تكون navigation داخل نفس creator context عندما بدأ الدخول من Profile.
+
+================================================== 21. GROUP INTEGRATION
+المستخدم لا ينشر Reel "داخل المجموعة" كـ owner context.
+
+Reel هو محتوى مستقل.
+
+لكن المستخدم يستطيع:
+
+Share Reel إلى Group
+إرسال Reel إلى Chat
+إرسال Reel إلى Private Chat
+عند المشاركة داخل Group Chat: أنشئ rich Reel message/card.
+
+يحتوي:
+
+thumbnail
+creator
+title/caption مختصر
+play/open
+relevant audio/context
+لا تكرر رفع الفيديو نفسه.
+
+استخدم reference إلى Reel.
+
+================================================== 22. EVENTS / GAMES SEPARATION
+لا تربط Reels بـ Games أو Events بشكل إلزامي.
+
+لكن architecture يجب أن تسمح بإضافة reference مستقبلًا إذا كان هناك سبب حقيقي.
+
+لا تجعل Reel engine dependent على Events أو Games.
+
+================================================== 23. NOTIFICATIONS
+نظام Notifications قريب في قوة concept من TikTok، لكن بهوية Pubget.
+
+أرسل إشعارات للأحداث المهمة مثل:
+
+Like
+Comment
+Reply
+Mention
+Share where appropriate
+Fan/Respect milestone
+New interaction
+Creator-related meaningful events
+لا ترسل إشعارًا لكل شيء بلا تفكير.
+
+استخدم intelligent notification grouping.
+
+مثال: بدل: User A liked User B liked User C liked
+
+أظهر: "3 من المستخدمين أعجبوا بفيديوك"
+
+لكن التعليقات المهمة يجب ألا تضيع.
+
+عند فتح notification: يجب أن يستطيع المستخدم الوصول مباشرة إلى Reel/comment/context.
+
+================================================== 24. CREATOR ANALYTICS
+كل creator يجب أن يحصل على Dashboard للمحتوى الخاص به.
+
+أظهر أرقامًا واضحة.
+
+لكل Reel:
+
+Views
+Unique viewers إن أمكن
+Watch time
+Average watch duration
+Completion rate
+Rewatch rate
+Likes
+Comments
+Replies
+Shares
+Saves
+Fans gained
+Respect received
+Profile visits
+Traffic source
+Hashtag performance
+Audio performance
+Audience behavior
+Retention curve إذا كان ممكنًا
+لا تعرض أرقامًا وهمية.
+
+إذا لم تتوفر metric بسبب limitation تقنية، لا تخترعها.
+
+================================================== 25. CREATOR ANALYTICS OVERVIEW
+أضف Overview للمستخدم:
+
+Total views
+Total watch time
+Engagement
+Fans gained
+Best performing Reel
+Trending Reel
+Growth
+Top anime topics
+Top characters
+Top hashtags
+Top audio
+اجعل البيانات مفهومة لمستخدم عادي.
+
+================================================== 26. UPLOAD PIPELINE
+عند الضغط على Publish:
+
+لا تجعل المستخدم ينتظر داخل شاشة النشر.
+
+Flow:
+
+Publish → return to main/reels experience → global upload progress indicator → upload → processing → thumbnail generation → quality processing → moderation/safety checks → ready → Reel becomes available
+
+يجب أن يرى المستخدم global progress bar/status.
+
+مثل: Uploading... Processing... Preparing... Published
+
+عند اكتمال النشر: يظهر Reel مباشرة في feed/profile.
+
+================================================== 27. UPLOAD RESILIENCE
+الرفع يجب أن يكون resilient.
+
+يجب التعامل مع:
+
+weak Wi-Fi
+temporary network loss
+app backgrounding
+retry
+failed upload
+interrupted upload
+duplicate publish
+timeout
+إذا فشل الرفع: لا تفقد الفيديو أو metadata.
+
+أعط المستخدم إمكانية retry.
+
+لا تنشر Reel مرتين بسبب retry.
+
+استخدم idempotency.
+
+================================================== 28. VIDEO QUALITY
+أريد أفضل توازن ممكن بين:
+
+QUALITY SPEED DATA USAGE
+
+لا ترسل دائمًا أعلى جودة regardless of network.
+
+استخدم adaptive streaming/quality architecture.
+
+يجب أن يدعم النظام عدة quality representations.
+
+مثال منطقي:
+
+High
+Medium
+Low
+الجودة تختار تلقائيًا حسب:
+
+connection quality
+buffering
+device capability
+current playback conditions
+إذا الشبكة ضعيفة: خفض الجودة بدل إيقاف الفيديو.
+
+إذا الشبكة جيدة: ارفع الجودة.
+
+يجب أن يكون الانتقال smooth.
+
+================================================== 29. PLAYBACK PERFORMANCE
+هذا REQUIRED بشدة.
+
+أريد:
+
+preloading للفيديو التالي
+intelligent buffering
+caching
+memory control
+dispose off-screen players
+avoid multiple active video controllers
+avoid unnecessary rebuilds
+lazy loading
+pagination
+image thumbnail caching
+efficient decoding
+network retry
+لا تجعل 10 فيديوهات تعمل في الخلفية.
+
+فقط الفيديو الحالي + preload منطقي لما بعده.
+
+================================================== 30. DEVICE PERFORMANCE
+Pubget يجب أن يعمل جيدًا حتى على أجهزة متوسطة وضعيفة.
+
+لا تفترض أن المستخدم لديه flagship phone.
+
+Avoid:
+
+huge memory usage
+unnecessary animations
+excessive providers rebuilds
+repeated Firestore listeners
+downloading original-resolution videos unnecessarily
+loading all comments
+loading all likes
+loading all creator data
+================================================== 31. VIEW COUNT
+لا تحسب كل video frame أو كل page open كمشاهدة.
+
+ضع تعريفًا واضحًا للـ View.
+
+يجب أن تكون هناك threshold معقولة للمشاهدة قبل احتساب view.
+
+منع:
+
+accidental instant opens
+rapid repeated fake views
+refresh farming
+================================================== 32. REWATCH SIGNAL
+Rewatch ليس مجرد view ثانية.
+
+سجل behavior بطريقة تساعد recommendation engine على فهم أن الفيديو أعجب المستخدم.
+
+مثال: المستخدم شاهد 95% ثم أعاد تشغيله → strong positive signal.
+
+================================================== 33. CONTENT QUALITY / RANKING
+لا تكافئ clickbait فقط.
+
+يجب أن يوازن ranking بين:
+
+watch quality
+retention
+meaningful interaction
+social value
+content relevance
+freshness
+creator quality
+diversity
+ويجب أن تؤثر negative signals بقوة.
+
+================================================== 34. NOT INTERESTED
+أضف:
+
+Not Interested
+
+عند اختياره:
+
+قلل هذا النوع من المحتوى
+لا تعرض نفس Reel مرة أخرى بسهولة
+لا تعاقب creator بشكل غير مبرر
+استخدم signal لتحسين personalization
+يجب أن يكون reversible من Settings إذا كان ذلك مناسبًا.
+
+================================================== 35. CONTENT MODERATION
+أنشئ نظام Moderation.
+
+يجب أن يستطيع المستخدم:
+
+Report Reel
+Report comment
+Report audio
+Block creator
+Mute creator
+Not Interested
+ضع categories مناسبة للبلاغات.
+
+لا تجعل moderation UI معقدة.
+
+================================================== 36. COPYRIGHT
+بما أن Pubget Anime platform، حقوق المحتوى مهمة جدًا.
+
+لا تفترض أن كل مقطع Anime يمكن استخدامه بلا قيود.
+
+صمّم architecture تسمح بـ:
+
+reports
+takedown workflow
+content status
+moderation
+copyright claim state
+disabling/restricting content عند الحاجة
+ولا تجعل النظام يدّعي أن Pubget يملك حقوق جميع الأنمي أو الموسيقى.
+
+================================================== 37. EXTERNAL SHARING
+كل Reel يجب أن يكون قابلًا للمشاركة خارجيًا.
+
+أنشئ deep link concept:
+
+/reel/{reelId}
+
+عند فتح الرابط:
+
+إذا التطبيق موجود → افتح Reel
+إذا غير موجود → fallback مناسب
+إذا المستخدم غير logged in → يمكنه مشاهدة المحتوى العام حسب سياسة Pubget
+لا تجعل الرابط يفتح صفحة غامضة.
+
+================================================== 38. GUEST VIEWING
+إذا كان المحتوى عامًا: يمكن السماح بمشاهدة Reel بدون تسجيل الدخول حسب architecture الحالية.
+
+لكن:
+
+Like
+Comment
+Save
+Respect
+Share to private
+Fan
+تتطلب authentication.
+
+لا تعرض بيانات خاصة.
+
+================================================== 39. DRAFTS
+أضف Draft system.
+
+إذا بدأ المستخدم إنشاء Reel ولم ينشره: يمكن حفظه كمسودة.
+
+Draft يجب أن يحفظ:
+
+video reference
+metadata
+caption
+hashtags
+audio
+cover
+edit configuration
+لا تجعل Drafts تعتمد على رفع الفيديو النهائي إلى public storage.
+
+================================================== 40. CONTENT STATE MACHINE
+كل Reel يجب أن يمتلك state واضحًا.
+
+مثل:
+
+draft uploading processing moderation_pending ready published failed restricted removed archived
+
+لا تستخدم boolean chaos مثل: isUploaded isReady isDeleted isProcessing isPublished
+
+معًا بدون state machine.
+
+================================================== 41. DATA ARCHITECTURE
+اتبع architecture الخاصة بـ Pubget:
+
+UI ↓ Provider / Controller ↓ Repository ↓ Service ↓ Firebase / Media Provider
+
+لا تضع business logic داخل Widgets.
+
+لا تجعل UI يتعامل مباشرة مع Firestore في كل مكان.
+
+أنشئ domain واضح:
+
+Reels Video Audio Comments Interactions Recommendations Analytics Hashtags Moderation
+
+يمكن تقسيمها إلى repositories/services مستقلة.
+
+================================================== 42. FIRESTORE
+صمّم Firestore structure scalable.
+
+لا تعتمد على:
+
+huge documents
+arrays ضخمة
+comments داخل Reel document
+likes داخل Reel document
+viewers داخل Reel document
+استخدم subcollections/independent collections حسب الحاجة.
+
+Pagination REQUIRED.
+
+Indexes REQUIRED.
+
+Security Rules REQUIRED.
+
+================================================== 43. SECURITY
+كل action حساس يجب أن يتحقق منه server-side عندما يلزم.
+
+خصوصًا:
+
+counters الحساسة
+rewards/Respect
+analytics
+moderation
+publish state
+creator ownership
+deletes
+reports
+recommendation signals
+anti-abuse
+upload authorization
+لا تثق في client فقط.
+
+================================================== 44. ANTI-ABUSE
+أضف protection ضد:
+
+fake views
+like spam
+comment spam
+repeated publish
+notification spam
+abusive uploads
+rapid interactions
+recommendation manipulation
+لا تجعل هذا النظام ثقيلًا على التطبيق.
+
+================================================== 45. DELETION
+Creator يستطيع حذف Reel الخاص به وفق permissions الحالية.
+
+عند الحذف:
+
+يختفي من feeds
+يختفي من profile
+لا يظهر في search
+لا يظهر في hashtag pages
+لا يظهر في audio pages كمحتوى نشط
+shared links تعطي state مناسب
+analytics/history يمكن الاحتفاظ بما يلزم داخليًا
+لا تحذف البيانات المطلوبة للتدقيق/security بلا سبب.
+
+================================================== 46. UI STATES
+كل شاشة يجب أن تحتوي على:
+
+Loading Loaded Empty Error Retry Offline/poor connection حيث يلزم
+
+لا أريد:
+
+white blank screen
+infinite spinner
+frozen UI
+unhandled exception
+================================================== 47. REELS ENTRY POINTS
+يمكن الوصول إلى Reels من:
+
+Home
+Trending
+Search
+Profile
+Anime
+Character
+Hashtag
+Audio
+Shared links
+Creator content
+Group shared Reel
+Private chat shared Reel
+كلها يجب أن تدخل نفس Reel Viewer architecture.
+
+================================================== 48. DISCOVERY ON HOME
+Home لا تعرض فقط random videos.
+
+أنشئ قسمًا ذكيًا للفيديوهات.
+
+يمكن أن يكون:
+
+For You
+Trending
+Recommended
+Rising Creators
+Anime-based recommendations
+لكن لا تجعل Home مزدحمة.
+
+استخدم ranking وUI hierarchy مناسبين لـ Pubget.
+
+================================================== 49. CREATOR DISCOVERY
+Reels يجب أن يساعد المستخدم على اكتشاف creators.
+
+إذا Reel جيد: → Creator → Creator profile → Respect → Fan → Other Reels → Anime interests
+
+هذا يجب أن يدخل في Social Graph.
+
+================================================== 50. CREATIVE IDENTITY
+أريد Pubget touch في كل شيء.
+
+أمثلة:
+
+Respect بدل Follow
+Fans بدل Followers
+Pubget-specific animations
+Pubget iconography
+Royal visual language
+Anime identity
+creator rank integration
+creator badge/rank where appropriate
+Respect interactions
+social status
+لكن:
+
+لا تضع rank داخل Reel بطريقة تسرق الانتباه من المحتوى.
+
+================================================== 51. RANK / CREATOR IDENTITY
+Creator identity يمكن أن تظهر مع:
+
+profile image
+username
+Pubget rank
+verified/status badges إذا كانت موجودة
+Fan relationship
+استخدم نظام الرتب الحالي.
+
+لا تنشئ نظام ranks جديد.
+
+================================================== 52. COMMENT CREATOR CONTEXT
+إذا صاحب Reel علّق: أظهر Creator indicator.
+
+إذا creator pinned comment: يظهر بوضوح.
+
+================================================== 53. SHARE CARD
+عند Share إلى Group/Chat:
+
+أنشئ rich preview.
+
+لا ترسل: "Check this video"
+
+بل أرسل card مناسب يحتوي:
+
+cover
+creator
+caption preview
+audio
+open button
+================================================== 54. ANALYTICS EVENT SYSTEM
+أنشئ event tracking داخلي موحد.
+
+أمثلة:
+
+reel_impression reel_view_started reel_view_completed reel_skipped reel_rewatched reel_liked reel_commented reel_shared reel_saved reel_profile_opened reel_creator_fan_added reel_audio_opened reel_hashtag_opened reel_anime_opened reel_not_interested reel_reported
+
+لكن: لا تسجل events بلا حدود.
+
+استخدم batching عندما يكون ذلك مناسبًا.
+
+================================================== 55. RECOMMENDATION FEEDBACK LOOP
+Recommendation engine يجب أن يتعلم من كل session.
+
+مثال:
+
+User opens feed → watches Reel A 92% → skips Reel B after 1 sec → rewatches Reel A → opens anime → likes A → opens creator → gives Respect → becomes Fan
+
+هذا أقوى signal من مجرد Like.
+
+استخدم session-level behavior.
+
+================================================== 56. EXPLORATION VS EXPLOITATION
+لا تجعل algorithm يعرض فقط ما يعرف أنه يحبه.
+
+استخدم balance:
+
+70–90% highly relevant content + 10–30% intelligent discovery
+
+النسب ليست hardcoded نهائيًا إذا كان experimentation system أفضل.
+
+الهدف: اكتشاف اهتمامات جديدة بدون تدمير personalization.
+
+================================================== 57. CONTENT DIVERSITY
+منع feed من أن يصبح:
+
+Naruto Naruto Naruto Naruto Naruto
+
+حتى لو كان المستخدم يحب Naruto.
+
+استخدم diversity by:
+
+anime
+creator
+character
+audio
+topic
+مع احترام اهتمام المستخدم.
+
+================================================== 58. PERFORMANCE ARCHITECTURE
+Flutter:
+
+avoid unnecessary rebuilds
+isolate heavy work
+efficient video controller lifecycle
+dispose correctly
+pagination
+caching
+prefetch
+optimized thumbnails
+no huge in-memory lists
+no full feed loading
+no synchronous heavy processing on UI thread
+Provider architecture يجب ألا تسبب rebuilding للـ entire Reel feed عند Like واحد.
+
+================================================== 59. VIDEO PROCESSING
+Video processing يجب ألا يحدث بالكامل على UI thread.
+
+إذا كانت المنصة الحالية لا توفر transcoding مناسبًا: صمّم MediaService abstraction تسمح باستخدام provider مناسب مستقبلًا.
+
+لا تربط domain logic بمزود واحد.
+
+================================================== 60. STORAGE
+الفيديوهات الكبيرة تحتاج media infrastructure حقيقية.
+
+لا تخزن video bytes داخل Firestore.
+
+استخدم Media Storage abstraction.
+
+إذا كان Firebase Storage غير متاح حاليًا بسبب إعدادات المشروع، لا توقف إعادة بناء الـ domain.
+
+أنشئ abstraction واضحة بحيث يمكن ربط provider لاحقًا.
+
+لا تغير provider بشكل عشوائي.
+
+================================================== 61. OFFLINE / WEAK NETWORK
+عند ضعف الإنترنت:
+
+الفيديو الحالي يجب أن يستمر قدر الإمكان.
+
+إذا لا يمكن:
+
+خفض الجودة
+retry
+buffer
+ولا تجعل الشاشة تعلق.
+
+أما actions: Like Save etc.
+
+يمكن أن تكون optimistic حيث آمنة مع reconciliation.
+
+================================================== 62. GLOBAL UPLOAD STATUS
+أريد Global Upload Manager.
+
+يمكن للمستخدم مغادرة شاشة النشر.
+
+يظل upload قائمًا.
+
+يظهر indicator صغير/شريط global.
+
+يمكن للمستخدم الضغط عليه لرؤية:
+
+current upload
+progress
+processing
+completed
+failed
+يجب ألا يمنع المستخدم من استخدام Pubget أثناء الرفع.
+
+================================================== 63. MULTIPLE UPLOADS
+إذا كان النظام يسمح مستقبلًا بأكثر من upload: architecture يجب أن تدعم queue.
+
+لكن لا تسمح حاليًا بفوضى upload spam.
+
+ضع limits مناسبة.
+
+================================================== 64. NOTIFICATION INTELLIGENCE
+لا ترسل notifications لكل impression.
+
+لا يوجد notification للمشاهدة.
+
+Likes/comments وغيرها يجب أن تستخدم grouping ذكيًا.
+
+================================================== 65. SETTINGS
+أضف إعدادات مناسبة مثل:
+
+Autoplay behavior
+Data usage
+Notifications
+Content preferences
+Recommendation controls
+Blocked/muted creators
+لا تضع 50 setting لا يحتاجها المستخدم.
+
+================================================== 66. RECOMMENDATION RESET
+أضف طريقة مستقبلية/واضحة لإعادة ضبط recommendation profile.
+
+إذا لم يكن مناسبًا في MVP، architecture يجب أن تسمح به.
+
+================================================== 67. SAFETY / AGE AWARENESS
+بما أن Pubget مجتمع كبير، يجب أن تكون moderation architecture قابلة لتطبيق content safety policies.
+
+لا تعتمد على أن كل Anime content آمن تلقائيًا.
+
+يجب أن تكون هناك states للـ moderation/restriction/report.
+
+================================================== 68. ADMIN/MODERATION READINESS
+حتى لو لم نبنِ Admin Dashboard كامل الآن:
+
+صمّم البيانات بحيث يستطيع نظام الإدارة مستقبلًا:
+
+review reports
+inspect Reel
+restrict
+remove
+restore
+inspect creator
+inspect audio
+inspect abuse signals
+================================================== 69. EMAIL / SECURITY ALERTS
+إذا كانت infrastructure الحالية تسمح بإرسال security/moderation alerts عبر email، يمكن تجهيز architecture لذلك.
+
+إذا لم يكن ذلك ممكنًا بدون external setup: لا تكسر النظام بسببه.
+
+اجعله optional integration.
+
+لا ترسل رسائل إلى أي email إلا من خلال configuration آمنة في المشروع.
+
+================================================== 70. TESTING
+بعد التنفيذ، اختبر:
+
+Creation Editing Cover Audio Publish Upload failure Retry Weak network Feed Autoplay Swipe Like Double tap Comment Reply Sticker comment Save Share Group share Private share External share Respect Fan conversion Profile Audio page Hashtag page Anime integration Search Notifications Analytics Delete Report Block Not Interested Pagination Caching App backgrounding Reconnection Duplicate actions
+
+================================================== 71. RACE CONDITIONS
+اختبر الحالات التالية:
+
+user double taps like rapidly
+user likes/unlikes rapidly
+user publishes twice
+network reconnects during publish
+app closes during upload
+user leaves while video is loading
+user swipes rapidly through videos
+comments arrive simultaneously
+multiple users interact simultaneously
+creator deletes while another user opens Reel
+لا تسمح بحالات مستحيلة.
+
+================================================== 72. DATA CONSISTENCY
+Counters مثل: likes comments shares saves views
+
+يجب ألا تعتمد على client increment blindly.
+
+استخدم server-safe mechanisms عند الحاجة.
+
+================================================== 73. ACCESSIBILITY
+اهتم بـ:
+
+readable text
+sufficient contrast
+touch targets
+RTL Arabic
+English compatibility
+dynamic text where practical
+Pubget Arabic-first.
+
+================================================== 74. INTERNATIONALIZATION
+لا hardcode Arabic strings داخل business logic.
+
+استخدم localization architecture.
+
+الواجهة الحالية عربية، لكن النظام يجب أن يكون قابلًا للغات أخرى.
+
+================================================== 75. NO PLACEHOLDER PRODUCT
+ممنوع تنفيذ:
+
+fake recommendation
+fake analytics
+fake trending
+fake audio counts
+fake views
+hardcoded creator data
+hardcoded videos
+placeholder buttons pretending to work
+إذا feature غير مكتملة بسبب external dependency: نفذ architecture الحقيقية ووضح dependency بدل fake behavior.
+
+================================================== 76. MIGRATION FROM CURRENT REELS
+افحص النظام الحالي أولًا.
+
+أنشئ inventory:
+
+existing Reel screens
+existing models
+existing providers
+existing services
+existing Firestore collections
+existing Storage logic
+existing video player
+existing upload flow
+existing interactions
+ثم صنف:
+
+KEEP REFACTOR REPLACE DELETE
+
+لا تقم بتغيير unrelated Pubget systems.
+
+إذا كانت existing data compatible: استخدم migration strategy.
+
+إذا كانت schema القديمة سيئة: أنشئ new schema مع safe migration/compatibility layer.
+
+لا تفقد المحتوى الموجود بدون سبب.
+
+================================================== 77. ARCHITECTURAL ISOLATION
+Reels يجب أن يكون Domain مستقلًا.
+
+لكن يمكنه التواصل مع:
+
+Users
+Profiles
+Respect
+Fans
+Social Graph
+Anime Hub
+Characters
+Groups
+Chat
+Notifications
+Search
+عبر clear interfaces.
+
+لا تجعل Reels يعتمد مباشرة على internal implementation لكل هذه الأنظمة.
+
+================================================== 78. FUTURE EXTENSIBILITY
+صمم النظام ليقبل مستقبلًا:
+
+longer videos
+remix
+duet
+collaborative edits
+creator challenges
+sponsored content
+advanced audio
+creator monetization
+live video
+لكن لا تنفذ هذه الأشياء الآن إلا إذا كانت ضرورية للبنية.
+
+لا تضخم MVP بلا سبب.
+
+================================================== 79. PUBGET-SPECIFIC DIFFERENTIATORS
+أريدك أن تضيف أفكارًا مبتكرة خاصة بـ Pubget، لكن ضمن هذه المواصفة.
+
+أمثلة على الاتجاهات المقبولة:
+
+Respect-based creator relationship
+Fan identity
+Anime-aware recommendation
+Character-aware discovery
+Anime-specific tags
+Audio culture
+Creator ranks
+Anime Hub → Reel discovery
+Reel → Anime discovery
+Reel → Group discovery
+Social Graph-driven recommendations
+Pubget creative identity
+community discovery
+أي ميزة جديدة يجب أن تسأل نفسها:
+
+"هل تجعل Pubget أكثر تميزًا كـ Anime Social Universe؟"
+
+إذا كانت الإجابة لا، لا تضفها.
+
+================================================== 80. DESIGN PRINCIPLE
+الهدف النهائي:
+
+ليس: "TikTok داخل Pubget."
+
+بل:
+
+"أفضل تجربة short-form anime creativity داخل Pubget."
+
+TikTok يمكن أن يكون reference للـ interaction patterns.
+
+لكن Pubget يجب أن يكون:
+
+مختلفًا
+أرقى
+أكثر اجتماعية
+أكثر ارتباطًا بالأنمي
+أكثر ارتباطًا بهوية المستخدم
+مرتبطًا بالRespect/Fans
+مرتبطًا بالAnime Hub
+مرتبطًا بالSocial Graph
+جزءًا حقيقيًا من Anime Social Universe
+================================================== 81. FINAL IMPLEMENTATION RULE
+قبل كتابة code:
+
+افحص المشروع.
+افهم architecture الحالية.
+افحص Reels الحالي بالكامل.
+افحص dependencies.
+افحص models/providers/services.
+افحص Firebase collections/rules ذات العلاقة.
+اكتب internal implementation plan.
+حدد الملفات التي ستتغير.
+حدد الملفات الجديدة.
+نفذ النظام.
+لا تسألني عن قرارات UI/product التي تم حسمها هنا.
+
+إذا وجدت تفاصيل تقنية غير محددة: اختر الحل الأكثر:
+
+stable
+scalable
+performant
+secure
+maintainable
+compatible with Flutter/Firebase
+compatible with Pubget architecture
+ولا تغير Product Direction.
+
+================================================== 82. FINAL ACCEPTANCE CRITERIA
+اعتبر المهمة غير مكتملة إذا:
+
+Reels مجرد فيديو player
+recommendation مجرد chronological feed
+comments basic فقط
+audio غير موجود
+audio page غير موجودة
+hashtag system ناقص
+Anime integration ناقص
+Social Graph غير مستخدم
+Respect/Fan integration ناقص
+analytics وهمية
+upload blocks UI
+weak network يوقف الفيديو
+feed يسبب memory issues
+duplicate actions ممكنة
+old implementation remains and conflicts
+UI looks like a generic TikTok clone
+Pubget identity is missing
+mobile performance is poor
+المهمة مكتملة فقط عندما يصبح النظام:
+
+FAST SMOOTH SCALABLE SOCIAL ANIME-CENTRIC CREATIVE PREMIUM PUBGET-NATIVE
+
+================================================== 83. IMPORTANT — DO NOT MODIFY UNRELATED SYSTEMS
+لا تقم بإعادة بناء:
+
+Groups
+Chat
+Games
+Mafia
+Events
+Auth
+إلا عند الحاجة لإنشاء integration points واضحة مع Reels.
+
+لا تكسر أي نظام موجود.
+
+إذا احتجت تغيير interface مشترك: حافظ على backward compatibility قدر الإمكان.
+
+================================================== 84. FINAL DELIVERY
+بعد التنفيذ:
+
+run analyzer
+fix all relevant errors
+run tests
+test critical flows
+test performance
+verify Firebase rules
+verify indexes
+verify upload states
+verify navigation
+verify deep links
+verify Arabic RTL
+verify dark/light themes
+verify no obvious memory leaks
+verify no duplicate listeners
+verify no infinite loading states
+ثم أعطني تقريرًا نهائيًا يحتوي على:
+
+What was rebuilt
+What was reused
+What was replaced
+New files
+Modified files
+Firebase changes
+Storage/media requirements
+Security changes
+Recommendation architecture
+Analytics architecture
+Remaining external dependencies
+Known limitations
+Tests performed
+Any migration required for old Reels data
+لا تقل "done" فقط.
+
+أريد تقريرًا تقنيًا واضحًا يثبت أن النظام تم تنفيذه ف
