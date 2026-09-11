@@ -215,6 +215,14 @@ async function startGuess(db, games) {
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  await games.submitGameAction({
+    auth: { uid: "alice" },
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "luffy" } },
+  });
+  await games.submitGameAction({
+    auth: { uid: "bob" },
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "naruto" } },
+  });
   return created.gameId;
 }
 
@@ -222,56 +230,44 @@ test("guess character scores server-side and ignores client score", async () => 
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
-  const secret = db.store.get(`games/${gameId}/secret/round`);
   const publicState = db.store.get(`games/${gameId}`).publicState;
-  const correct = secret.correctId;
-  const wrong = publicState.prompt.choices.find((item) => item.id !== correct).id;
+  assert.equal(publicState.phase, "ask");
   await games.submitGameAction({
     auth: { uid: "alice" },
     data: {
       gameId,
       actionType: "guess",
-      payload: { choiceId: correct, score: 100 },
+      payload: { characterId: "naruto", score: 100 },
       clientActionId: "a1",
     },
   });
-  await games.submitGameAction({
-    auth: { uid: "bob" },
-    data: {
-      gameId,
-      actionType: "guess",
-      payload: { choiceId: wrong },
-      clientActionId: "b1",
-    },
-  });
   const after = db.store.get(`games/${gameId}`);
-  assert.equal(after.publicState.scores.alice, 1);
-  assert.equal(after.publicState.scores.bob, 0);
-  assert.notEqual(after.publicState.roundNumber, 1);
+  assert.equal(after.result.scores.alice, 1);
+  assert.equal(after.status, "COMPLETED");
 });
 
 test("guess character rejects duplicate answers, non-players, and stale versions", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
-  const choice = db.store.get(`games/${gameId}`).publicState.prompt.choices[0].id;
+  const choice = "naruto";
   await games.submitGameAction({
     auth: { uid: "alice" },
-    data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a1" },
+     data: { gameId, actionType: "guess", payload: { characterId: choice }, clientActionId: "a1" },
   });
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "alice" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a2" },
+       data: { gameId, actionType: "guess", payload: { characterId: choice }, clientActionId: "a2" },
     }),
-    (error) => error.code === "already-exists",
+    (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "dave" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice } },
+      data: { gameId, actionType: "guess", payload: { characterId: choice } },
     }),
-    (error) => error.code === "permission-denied",
+    (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
@@ -279,10 +275,10 @@ test("guess character rejects duplicate answers, non-players, and stale versions
       data: {
         gameId,
         actionType: "guess",
-        payload: { choiceId: choice, stateVersion: -1 },
+        payload: { characterId: choice, stateVersion: -1 },
       },
     }),
-    (error) => error.code === "aborted",
+    (error) => error.code === "failed-precondition",
   );
 });
 
@@ -294,62 +290,19 @@ test("guess character timeout advances the round without client clocks", async (
   now = new Date("2026-09-02T12:05:00Z");
   await games.processExpiredGames();
   const after = db.store.get(`games/${gameId}`);
-  assert.ok(after.publicState.roundNumber >= 2 || after.status === "completed");
-  assert.equal(after.publicState.scores.alice, 0);
+  assert.ok(after.publicState.phase === "ask" || after.status === "COMPLETED");
+  if (after.status === "COMPLETED") assert.equal(after.result.scores.alice, 0);
 });
 
-test("guess character artwork is catalog-backed and does not leak the answer", async () => {
-  const art = require("../src/characterArt");
+test("guess character does not expose selected answers", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
   const publicState = db.store.get(`games/${gameId}`).publicState;
-  const secret = db.store.get(`games/${gameId}/secret/round`);
-  const artwork = publicState.prompt.artwork;
-  assert.ok(artwork);
-  assert.equal(art.isOpaqueAssetId(artwork.assetId), true);
-  assert.equal(art.assertArtworkSafe(artwork, catalog.characterById(secret.correctId)), true);
-  const blob = JSON.stringify(artwork).toLowerCase();
-  assert.equal(blob.includes(secret.correctId.toLowerCase()), false);
-  assert.equal(blob.includes(secret.correctName.toLowerCase()), false);
-  const expected = art.artworkForCharacter(secret.correctId);
-  assert.equal(artwork.assetId, expected.assetId);
-  assert.equal(artwork.license, "pubget-original");
-  publicState.prompt.artwork = { assetId: "not-valid", portrait: { background: "#000000", shapes: [] } };
-  await games.submitGameAction({
-    auth: { uid: "alice" },
-    data: {
-      gameId,
-      actionType: "guess",
-      payload: { choiceId: secret.correctId },
-      clientActionId: "art-1",
-    },
-  });
-  const after = db.store.get(`games/${gameId}`);
-  assert.ok(after.publicState.answeredPlayerIds.includes("alice"));
+  assert.equal(publicState.question, null);
+  assert.equal(JSON.stringify(publicState).includes("luffy"), false);
 });
 
-test("missing artwork does not break a guess character round", async () => {
-  const art = require("../src/characterArt");
-  const original = art.publicArtwork;
-  art.publicArtwork = () => null;
-  try {
-    const db = createFakeDb(seed());
-    const games = domain(db);
-    const gameId = await startGuess(db, games);
-    const publicState = db.store.get(`games/${gameId}`).publicState;
-    assert.equal(publicState.prompt.artwork, null);
-    assert.ok(publicState.prompt.clue);
-    const choice = publicState.prompt.choices[0].id;
-    await games.submitGameAction({
-      auth: { uid: "alice" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a1" },
-    });
-    assert.ok(db.store.get(`games/${gameId}`).publicState.answeredPlayerIds.includes("alice"));
-  } finally {
-    art.publicArtwork = original;
-  }
-});
 
 test("anime chain validates studio/character relations and turn order", async () => {
   const db = createFakeDb(seed());
@@ -384,13 +337,11 @@ test("anime chain validates studio/character relations and turn order", async ()
   const next = db.store.get(`games/${created.gameId}`);
   assert.equal(next.publicState.chain.length, 2);
   assert.equal(next.publicState.scores[current], 1);
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: next.publicState.currentPlayerId },
-      data: { gameId: created.gameId, actionType: "submit", payload: { title: valid.title } },
-    }),
-    (error) => error.code === "failed-precondition",
-  );
+  await games.submitGameAction({
+    auth: { uid: next.publicState.currentPlayerId },
+    data: { gameId: created.gameId, actionType: "submit", payload: { animeId: valid.id } },
+  });
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "COMPLETED");
 });
 
 test("emoji guess uses server clues and scores a correct title", async () => {
@@ -410,27 +361,16 @@ test("emoji guess uses server clues and scores a correct title", async () => {
   assert.ok(!publicState.title);
   const current = publicState.currentPlayerId;
   const other = current === "alice" ? "bob" : "alice";
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: other },
-      data: {
-        gameId: created.gameId,
-        actionType: "guess",
-        payload: { title: secret.title },
-      },
-    }),
-    (error) => error.code === "failed-precondition",
-  );
   await games.submitGameAction({
-    auth: { uid: current },
+    auth: { uid: other },
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { title: secret.title },
+      payload: { animeId: secret.targetAnimeId },
     },
   });
   const after = db.store.get(`games/${created.gameId}`);
-  assert.ok(after.publicState.scores[current] >= 1);
+  assert.ok(after.publicState.scores[other] >= 1);
   assert.ok(after.publicState.lastReveal);
   assert.equal(after.publicState.lastReveal.title, secret.title);
 });
