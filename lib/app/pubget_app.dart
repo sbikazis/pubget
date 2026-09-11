@@ -99,9 +99,17 @@ import '../features/games/providers/game_providers.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
 import '../features/games/repositories/unavailable_game_repository.dart';
-import '../features/games/screens/game_create_page.dart';
+import '../features/games/providers/games_session_provider_v2.dart';
+import '../features/games/repositories/firebase_games_repository_v2.dart';
+import '../features/games/repositories/games_repository_v2.dart';
+import '../features/games/repositories/unavailable_games_repository_v2.dart';
 import '../features/games/screens/game_details_screen.dart';
-import '../features/games/screens/game_list_screen.dart';
+import '../features/games/screens/games_center_v2_screen.dart';
+import '../features/games/screens/game_create_v2_screen.dart';
+import '../features/games/screens/game_waiting_v2_screen.dart';
+import '../features/games/screens/game_room_v2_screen.dart';
+import '../features/games/screens/game_history_v2_screen.dart';
+import '../features/games/screens/game_rules_v2_screen.dart';
 import '../features/mafia/providers/mafia_provider.dart';
 import '../features/mafia/repositories/firebase_mafia_repository.dart';
 import '../features/mafia/repositories/mafia_repository.dart';
@@ -202,9 +210,7 @@ class PubgetApp extends StatelessWidget {
             final network = context.read<NetworkService>();
             return CachedAnimeRepository(
               inner: JikanAnimeRepository(
-                http: ResilientAnimeHttpClient(
-                  inner: PackageAnimeHttpClient(),
-                ),
+                http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
               isOnline: () => network.isOnline,
             );
@@ -409,7 +415,10 @@ class PubgetApp extends StatelessWidget {
             analytics: context.read<Analytics>(),
           ),
         ),
-        provider.ChangeNotifierProxyProvider<AuthProvider, AnimeLibraryProvider>(
+        provider.ChangeNotifierProxyProvider<
+          AuthProvider,
+          AnimeLibraryProvider
+        >(
           create: (context) {
             final library = AnimeLibraryProvider(
               repository: context.read<AnimeLibraryRepository>(),
@@ -431,6 +440,22 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>
               GameListProvider(repository: context.read<GameRepository>()),
+        ),
+        provider.Provider<GamesRepositoryV2>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseGamesRepositoryV2(
+                  firestore: FirebaseFirestore.instance,
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableGamesRepositoryV2(
+                  'Games are unavailable until Firebase is ready.',
+                ),
+        ),
+        provider.ChangeNotifierProvider<GamesSessionProviderV2>(
+          create: (context) =>
+              GamesSessionProviderV2(context.read<GamesRepositoryV2>()),
         ),
         provider.ChangeNotifierProxyProvider<AuthProvider, GameProvider>(
           create: (context) {
@@ -544,6 +569,7 @@ class PubgetApp extends StatelessWidget {
       child: _PubgetRouterHost(firebaseState: firebaseState),
     );
   }
+
   (
     AuthRepository,
     UserRepository,
@@ -805,9 +831,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           messaging: widget.firebaseState.isReady
               ? FirebaseMessaging.instance
               : null,
-          child: EditUploadOverlayHost(
-            child: child ?? const SizedBox.shrink(),
-          ),
+          child: EditUploadOverlayHost(child: child ?? const SizedBox.shrink()),
         );
       },
       routerConfig: _router!,
@@ -931,8 +955,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
         '/anime/ratings': (parameters) => const AnimeRatingsPage(),
-        '/anime/characters': (parameters) =>
-            const AnimePopularCharactersPage(),
+        '/anime/characters': (parameters) => const AnimePopularCharactersPage(),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
@@ -954,12 +977,53 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/games': (parameters) {
           final groupId = parameters['groupId'];
-          return GameListScreen(
-            groupId: (groupId == null || groupId.isEmpty) ? null : groupId,
-          );
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (groupId == null || groupId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GamesCenterV2Screen(groupId: groupId, userId: userId);
         },
-        '/games/create': (parameters) =>
-            GameCreatePage(groupId: parameters['groupId']),
+        '/games/center': (parameters) {
+          final groupId = parameters['groupId'];
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (groupId == null || groupId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GamesCenterV2Screen(groupId: groupId, userId: userId);
+        },
+        '/games/create': (parameters) {
+          final groupId = parameters['groupId'];
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (groupId == null || groupId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GamesCreateV2Screen(groupId: groupId, userId: userId);
+        },
+        '/games/waiting': (parameters) {
+          final gameId = parameters['gameId'];
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (gameId == null || gameId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GameWaitingV2Screen(gameId: gameId, userId: userId);
+        },
+        '/games/room': (parameters) {
+          final gameId = parameters['gameId'];
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (gameId == null || gameId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GameRoomV2Screen(gameId: gameId, userId: userId);
+        },
+        '/games/history': (parameters) {
+          final groupId = parameters['groupId'];
+          final userId = context.read<AuthProvider>().currentUser?.id ?? '';
+          if (groupId == null || groupId.isEmpty) {
+            return const UnknownLinkPage();
+          }
+          return GameHistoryV2Screen(groupId: groupId, userId: userId);
+        },
+        '/games/rules': (parameters) => const GameRulesV2Screen(),
         '/fan-work': (parameters) {
           final workId = parameters['workId'] ?? '';
           final view = parameters['view'];
