@@ -52,6 +52,8 @@ Future<ChatMessageActionResult?> showChatMessageActions(
   required Rect bubbleRect,
   required bool canEdit,
   required bool canCopy,
+  bool canDelete = false,
+  bool canPin = false,
   bool canReport = false,
   required bool isStarred,
 }) {
@@ -71,6 +73,8 @@ Future<ChatMessageActionResult?> showChatMessageActions(
         bubbleRect: bubbleRect,
         canEdit: canEdit,
         canCopy: canCopy,
+        canDelete: canDelete,
+        canPin: canPin,
         canReport: canReport,
         isStarred: isStarred,
         onResult: (result) {
@@ -99,6 +103,8 @@ class ReactionOverlay extends StatefulWidget {
     required this.bubbleRect,
     required this.canEdit,
     required this.canCopy,
+    required this.canDelete,
+    required this.canPin,
     required this.canReport,
     required this.isStarred,
     required this.onResult,
@@ -111,6 +117,8 @@ class ReactionOverlay extends StatefulWidget {
   final Rect bubbleRect;
   final bool canEdit;
   final bool canCopy;
+  final bool canDelete;
+  final bool canPin;
   final bool canReport;
   final bool isStarred;
   final ValueChanged<ChatMessageActionResult?> onResult;
@@ -273,6 +281,8 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                     isStarred: widget.isStarred,
                     canCopy: widget.canCopy,
                     canEdit: widget.canEdit,
+                    canDelete: widget.canDelete,
+                    canPin: widget.canPin,
                     pinned: widget.message.pinnedAt != null,
                     showOverflow: _showOverflow,
                     onToggleOverflow: () =>
@@ -300,6 +310,7 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                       canCopy: widget.canCopy,
                       canReport: widget.canReport,
                       canEdit: widget.canEdit,
+                      canPin: widget.canPin,
                       isStarred: widget.isStarred,
                       pinned: widget.message.pinnedAt != null,
                       onSelect: (action) {
@@ -352,6 +363,8 @@ class _SelectionAppBar extends StatelessWidget {
     required this.isStarred,
     required this.canCopy,
     required this.canEdit,
+    required this.canDelete,
+    required this.canPin,
     required this.pinned,
     required this.showOverflow,
     required this.onToggleOverflow,
@@ -362,6 +375,8 @@ class _SelectionAppBar extends StatelessWidget {
   final bool isStarred;
   final bool canCopy;
   final bool canEdit;
+  final bool canDelete;
+  final bool canPin;
   final bool pinned;
   final bool showOverflow;
   final VoidCallback onToggleOverflow;
@@ -410,12 +425,13 @@ class _SelectionAppBar extends StatelessWidget {
                   color: Colors.white,
                 ),
               ),
-              IconButton(
-                key: const Key('chat-action-delete'),
-                tooltip: 'Delete',
-                onPressed: () => onSelect(ChatMessageAction.delete),
-                icon: const Icon(Icons.delete_outline, color: Colors.white),
-              ),
+              if (canDelete)
+                IconButton(
+                  key: const Key('chat-action-delete'),
+                  tooltip: 'Delete',
+                  onPressed: () => onSelect(ChatMessageAction.delete),
+                  icon: const Icon(Icons.delete_outline, color: Colors.white),
+                ),
               IconButton(
                 key: const Key('chat-action-forward'),
                 tooltip: 'Forward',
@@ -444,6 +460,7 @@ class _OverflowActionsMenu extends StatelessWidget {
     required this.canCopy,
     required this.canReport,
     required this.canEdit,
+    required this.canPin,
     required this.isStarred,
     required this.pinned,
     required this.onSelect,
@@ -452,6 +469,7 @@ class _OverflowActionsMenu extends StatelessWidget {
   final bool canCopy;
   final bool canReport;
   final bool canEdit;
+  final bool canPin;
   final bool isStarred;
   final bool pinned;
   final ValueChanged<ChatMessageAction> onSelect;
@@ -466,12 +484,13 @@ class _OverflowActionsMenu extends StatelessWidget {
           icon: Icons.copy_all_outlined,
           action: ChatMessageAction.copy,
         ),
-      _overflowItem(
-        key: const Key('chat-action-pin'),
-        label: pinned ? 'إلغاء التثبيت' : 'تثبيت',
-        icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
-        action: ChatMessageAction.pin,
-      ),
+      if (canPin)
+        _overflowItem(
+          key: const Key('chat-action-pin'),
+          label: pinned ? 'إلغاء التثبيت' : 'تثبيت',
+          icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+          action: ChatMessageAction.pin,
+        ),
       if (canEdit)
         _overflowItem(
           key: const Key('chat-action-edit'),

@@ -503,6 +503,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _showActions(ChatMessage message, Rect bubbleRect) async {
     final user = context.read<AuthProvider>().currentUser;
     final isMine = user != null && message.senderId == user.id;
+    final permissions = context.read<GroupProvider>().viewerPermissions;
+    final canDelete =
+        isMine || permissions.contains(GroupPermission.deleteMessages);
+    final canPin = permissions.contains(GroupPermission.pinOwnMessages);
     final canEdit =
         isMine &&
         message.type == ChatMessageType.text &&
@@ -537,6 +541,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
           : bubbleRect,
       canEdit: canEdit,
       canCopy: canCopy,
+      canDelete: canDelete && !message.isDeleted,
+      canPin: canPin && !message.isDeleted,
       canReport: !isMine && !message.isDeleted,
       isStarred: _stars.isStarred(message.id),
     );
@@ -555,7 +561,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
         await _forwardMessage(message);
         return;
       case ChatMessageAction.pin:
-        await chat.pinMessage(message.id, message.pinnedAt == null);
+        final result = await chat.pinMessage(
+          message.id,
+          message.pinnedAt == null,
+        );
+        if (!mounted || result.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to update pin', 'تعذر تحديث التثبيت'),
+            ),
+          ),
+        );
         return;
       case ChatMessageAction.star:
         await _stars.toggle(message.id);
@@ -568,7 +588,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
         await _showMessageInfo(message);
         return;
       case ChatMessageAction.delete:
-        await chat.deleteMessage(message.id);
+        final result = await chat.deleteMessage(message.id);
+        if (!mounted || result.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to delete message', 'تعذر حذف الرسالة'),
+            ),
+          ),
+        );
         return;
       case ChatMessageAction.react:
         final emoji = result.reaction ?? '❤️';
