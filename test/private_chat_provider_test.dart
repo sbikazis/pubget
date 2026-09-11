@@ -100,6 +100,42 @@ void main() {
     repository.completeNextReceipt();
   });
 
+  test('leave cannot clear state belonging to a newer open session', () async {
+    final repository = _FakePrivateChatRepository()..delayCancel = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'a', currentUserId: 'alice');
+    final leaving = provider.leaveChat();
+    final opening = provider.open(chatId: 'b', currentUserId: 'alice');
+    repository.cancelGate.complete();
+    await Future.wait(<Future<void>>[leaving, opening]);
+    expect(provider.chatId, 'b');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('b')]));
+    await pumpEventQueue();
+    expect(provider.messages.single.id, 'b');
+  });
+
+  test('stale delivered completion cannot contaminate overlapping B IDs',
+      () async {
+    final repository = _FakePrivateChatRepository()..holdReceipts = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'a', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('same')]));
+    await pumpEventQueue();
+    await provider.open(chatId: 'b', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('same')]));
+    await pumpEventQueue();
+    expect(repository.receiptChatIds, orderedEquals(<String>['a', 'b']));
+    repository.completeNextReceipt(); // stale A completion
+    await pumpEventQueue();
+    repository.completeNextReceipt(const FailureResult(NetworkError()));
+    repository.holdReceipts = false;
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('same')]));
+    await pumpEventQueue();
+    expect(repository.receiptChatIds, orderedEquals(<String>['a', 'b', 'b']));
+  });
+
   test('a failed media upload remains manually retryable', () async {
     final repository = _FakePrivateChatRepository();
     repository.uploadResults.add(const FailureResult(NetworkError()));
@@ -307,22 +343,27 @@ ChatMessage _serverMessageAt(String id, DateTime createdAt) =>
     }, id: id);
 
 final class _FakePrivateChatRepository implements PrivateChatRepository {
-  final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
+  final cancelGate = Completer<void>();
+  late final StreamController<Result<List<ChatMessage>>> stream =
+      StreamController<Result<List<ChatMessage>>>.broadcast(
+        onCancel: () => delayCancel ? cancelGate.future : null,
+      );
   final chats = StreamController<Result<List<PrivateChatSummary>>>.broadcast();
   final pendingCompleters = <Completer<Result<ChatMessage>>>[];
   final pendingReceiptCompleters = <Completer<Result<void>>>[];
   final uploadResults = <Result<ChatMediaUpload>>[];
   final receiptChatIds = <String>[];
   bool holdReceipts = false;
+  bool delayCancel = false;
 
   void completeNext(Result<ChatMessage> result) {
     final next = pendingCompleters.firstWhere((c) => !c.isCompleted);
     next.complete(result);
   }
 
-  void completeNextReceipt() {
+  void completeNextReceipt([Result<void>? result]) {
     final next = pendingReceiptCompleters.firstWhere((c) => !c.isCompleted);
-    next.complete(const Success<void>(null));
+    next.complete(result ?? const Success<void>(null));
   }
 
   @override

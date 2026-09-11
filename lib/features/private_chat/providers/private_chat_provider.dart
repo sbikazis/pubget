@@ -104,11 +104,12 @@ final class PrivateChatProvider extends ChangeNotifier {
 
   /// Detaches the live page session while retaining durable pending sends.
   Future<void> leaveChat() async {
-    ++_sessionGeneration;
+    final generation = ++_sessionGeneration;
     _pageActive = false;
     _receiptRetryTimer?.cancel();
     _receiptRetryTimer = null;
     await _subscription?.cancel();
+    if (_disposed || generation != _sessionGeneration) return;
     _subscription = null;
     _cancelAllAutoRetries();
     _pendingDeliveredIds.clear();
@@ -788,6 +789,9 @@ final class PrivateChatProvider extends ChangeNotifier {
               chatId: receiptChatId,
               messageIds: deliveredIds,
             );
+      if (!_isCurrent(receiptChatId, activeGeneration)) {
+        return;
+      }
       if (delivered.isSuccess) {
         _deliveredMessageIds.addAll(deliveredIds);
         _pendingDeliveredIds.removeAll(deliveredIds);
