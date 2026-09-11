@@ -43,6 +43,7 @@ class ChatMessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
   final ChatContrastTheme contrast;
+
   /// Long-press (500ms) — receives the bubble's global rect for the overlay.
   final ValueChanged<Rect> onLongPress;
   final VoidCallback? onSwipeReply;
@@ -101,7 +102,8 @@ class ChatMessageBubble extends StatelessWidget {
     final copy = AppStrings.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final parentW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+        final parentW =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
         final maxBubble = parentW * maxWidthFraction;
@@ -118,13 +120,13 @@ class ChatMessageBubble extends StatelessWidget {
         }
 
         final sticker = message.type == ChatMessageType.sticker;
-        final textColor =
-            isMine ? contrast.outgoingText : contrast.incomingText;
+        final textColor = isMine
+            ? contrast.outgoingText
+            : contrast.incomingText;
         final alignment = isMine
             ? AlignmentDirectional.centerEnd
             : AlignmentDirectional.centerStart;
-        final avatarGap =
-            (!isMine && showAvatar) ? avatarSize + 6 : 0.0;
+        final avatarGap = (!isMine && showAvatar) ? avatarSize + 6 : 0.0;
         final bubbleMax = (maxBubble - avatarGap).clamp(120.0, parentW);
 
         return Semantics(
@@ -162,11 +164,11 @@ class ChatMessageBubble extends StatelessWidget {
                         builder: (bubbleContext) {
                           return _LongPress500(
                             onLongPress: () {
-                              final box = bubbleContext.findRenderObject()
-                                  as RenderBox?;
+                              final box =
+                                  bubbleContext.findRenderObject()
+                                      as RenderBox?;
                               final rect = (box != null && box.hasSize)
-                                  ? (box.localToGlobal(Offset.zero) &
-                                      box.size)
+                                  ? (box.localToGlobal(Offset.zero) & box.size)
                                   : Rect.zero;
                               onLongPress(rect);
                             },
@@ -175,8 +177,9 @@ class ChatMessageBubble extends StatelessWidget {
                               children: <Widget>[
                                 Padding(
                                   padding: EdgeInsets.only(
-                                    bottom:
-                                        message.reactions.isNotEmpty ? 10 : 0,
+                                    bottom: message.reactions.isNotEmpty
+                                        ? 10
+                                        : 0,
                                   ),
                                   child: sticker
                                       ? _StickerColumn(
@@ -370,10 +373,10 @@ class _BubbleBody extends StatelessWidget {
               child: Text(
                 copy.forwarded,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: textColor.withValues(alpha: 0.75),
-                      fontStyle: FontStyle.italic,
-                      fontSize: 11,
-                    ),
+                  color: textColor.withValues(alpha: 0.75),
+                  fontStyle: FontStyle.italic,
+                  fontSize: 11,
+                ),
               ),
             ),
           if ((replyPreview ?? message.replyPreview) != null) ...[
@@ -476,6 +479,7 @@ class _SenderHeader extends StatelessWidget {
   final String name;
   final String role;
   final bool showRole;
+
   /// Own bubbles: rank badge only (no display name).
   final bool badgeOnly;
   final bool alignEnd;
@@ -645,9 +649,7 @@ String formatChatTime(DateTime? value, AppStrings copy) {
   final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
   final minute = local.minute.toString().padLeft(2, '0');
   final isAr = copy.locale.languageCode == 'ar';
-  final suffix = hour24 >= 12
-      ? (isAr ? 'م' : 'PM')
-      : (isAr ? 'ص' : 'AM');
+  final suffix = hour24 >= 12 ? (isAr ? 'م' : 'PM') : (isAr ? 'ص' : 'AM');
   return '$hour12:$minute $suffix';
 }
 
@@ -836,10 +838,7 @@ class _MessageContent extends StatelessWidget {
         child: SizedBox(
           width: 140,
           height: 140,
-          child: _OptimisticMediaFrame(
-            message: message,
-            fit: BoxFit.contain,
-          ),
+          child: _OptimisticMediaFrame(message: message, fit: BoxFit.contain),
         ),
       );
     }
@@ -858,10 +857,7 @@ class _MessageContent extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    _OptimisticMediaFrame(
-                      message: message,
-                      fit: BoxFit.cover,
-                    ),
+                    _OptimisticMediaFrame(message: message, fit: BoxFit.cover),
                     if (message.type == ChatMessageType.video)
                       const Center(
                         child: CircleAvatar(
@@ -910,9 +906,7 @@ class _MessageContent extends StatelessWidget {
       );
     }
     return FormattedChatText(
-      text: message.text?.trim().isNotEmpty == true
-          ? message.text!
-          : '',
+      text: message.text?.trim().isNotEmpty == true ? message.text! : '',
       color: textColor,
     );
   }
@@ -977,7 +971,9 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
                         for (final level in _levels)
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 0.8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 0.8,
+                              ),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 120),
                                 height: 6 + level * (_playing ? 20 : 14),
@@ -1011,16 +1007,16 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
                   _speed = _speed == 1
                       ? 1.5
                       : _speed == 1.5
-                          ? 2
-                          : 1;
+                      ? 2
+                      : 1;
                 });
               },
               child: Text(
                 _speed == 1
                     ? '1x'
                     : _speed == 1.5
-                        ? '1.5x'
-                        : '2x',
+                    ? '1.5x'
+                    : '2x',
                 style: TextStyle(
                   color: active,
                   fontWeight: FontWeight.w800,
@@ -1051,9 +1047,7 @@ class FormattedChatText extends StatelessWidget {
   }
 
   static List<InlineSpan> _parse(String input, Color color) {
-    final pattern = RegExp(
-      r'(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|`[^`\n]+`)',
-    );
+    final pattern = RegExp(r'(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|`[^`\n]+`)');
     final spans = <InlineSpan>[];
     var start = 0;
     for (final match in pattern.allMatches(input)) {
@@ -1132,13 +1126,13 @@ class _LongPress500 extends StatelessWidget {
       gestures: <Type, GestureRecognizerFactory>{
         LongPressGestureRecognizer:
             GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-          () => LongPressGestureRecognizer(
-            duration: const Duration(milliseconds: 500),
-          ),
-          (instance) {
-            instance.onLongPress = onLongPress;
-          },
-        ),
+              () => LongPressGestureRecognizer(
+                duration: const Duration(milliseconds: 500),
+              ),
+              (instance) {
+                instance.onLongPress = onLongPress;
+              },
+            ),
       },
       child: child,
     );
@@ -1175,10 +1169,7 @@ class _SwipeReplyDetector extends StatelessWidget {
 /// Local preview + per-message upload overlay. Progress ticks use
 /// [ValueListenableBuilder] only — never rebuild the chat page.
 class _OptimisticMediaFrame extends StatelessWidget {
-  const _OptimisticMediaFrame({
-    required this.message,
-    this.fit = BoxFit.cover,
-  });
+  const _OptimisticMediaFrame({required this.message, this.fit = BoxFit.cover});
 
   final ChatMessage message;
   final BoxFit fit;
@@ -1196,8 +1187,9 @@ class _OptimisticMediaFrame extends StatelessWidget {
     final local = chat.localPreviewBytes(message.id);
     final isVideo = message.type == ChatMessageType.video;
     // Video bytes are not a displayable raster; keep a solid placeholder.
-    final Uint8List? preview =
-        (!isVideo && local != null && local.isNotEmpty) ? local : null;
+    final Uint8List? preview = (!isVideo && local != null && local.isNotEmpty)
+        ? local
+        : null;
 
     final Widget media;
     if (remote != null) {
@@ -1212,7 +1204,9 @@ class _OptimisticMediaFrame extends StatelessWidget {
             : ColoredBox(
                 color: const Color(0xFF1A1A22),
                 child: Icon(
-                  isVideo ? Icons.videocam_outlined : Icons.broken_image_outlined,
+                  isVideo
+                      ? Icons.videocam_outlined
+                      : Icons.broken_image_outlined,
                   color: Colors.white54,
                 ),
               ),
@@ -1230,17 +1224,51 @@ class _OptimisticMediaFrame extends StatelessWidget {
     }
 
     final listenable = chat.uploadUiListenable(message.id);
-    if (listenable == null) return media;
+    if (listenable == null && message.sendState != ChatSendState.failed) {
+      return media;
+    }
 
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
         media,
-        ValueListenableBuilder<MediaUploadUiState>(
-          valueListenable: listenable,
-          builder: (context, ui, _) => _MediaUploadOverlay(state: ui),
-        ),
+        if (listenable != null)
+          ValueListenableBuilder<MediaUploadUiState>(
+            valueListenable: listenable,
+            builder: (context, ui, _) => _MediaUploadOverlay(state: ui),
+          ),
+        if (message.sendState == ChatSendState.failed)
+          _MediaRetryOverlay(message: message),
       ],
+    );
+  }
+}
+
+class _MediaRetryOverlay extends StatelessWidget {
+  const _MediaRetryOverlay({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final chat = context.read<ChatProvider>();
+    return ColoredBox(
+      color: const Color(0xAA1A1A22),
+      child: Center(
+        child: TextButton.icon(
+          key: const Key('media-retry'),
+          onPressed: () => chat.retry(message),
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          label: Text(
+            AppStrings.of(context).pick('Try again', 'إعادة المحاولة'),
+            style: const TextStyle(color: Colors.white),
+          ),
+          style: TextButton.styleFrom(
+            backgroundColor: Colors.black54,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
     );
   }
 }
