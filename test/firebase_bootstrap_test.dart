@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/app/firebase_bootstrap.dart';
+import 'package:pubget/app/firebase_web_options.dart';
 
 void main() {
   test('unavailable Firebase state is explicit and non-ready', () {
@@ -16,6 +17,19 @@ void main() {
     expect(state.status, FirebaseInitializationStatus.initialized);
     expect(state.isReady, isTrue);
     expect(state.message, isNull);
+  });
+
+  test('web configuration names every required build variable', () {
+    expect(
+      FirebaseWebOptions.requiredEnvironmentKeys,
+      containsAll(<String>[
+        'FIREBASE_WEB_API_KEY',
+        'FIREBASE_WEB_APP_ID',
+        'FIREBASE_WEB_MESSAGING_SENDER_ID',
+        'FIREBASE_WEB_PROJECT_ID',
+        'FIREBASE_WEB_AUTH_DOMAIN',
+      ]),
+    );
   });
 
   test(

@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import 'firebase_web_options.dart';
+
 enum FirebaseInitializationStatus { initialized, unavailable }
 
 final class FirebaseInitializationState {
@@ -36,24 +38,36 @@ final class FirebaseInitializationState {
   bool get isReady => status == FirebaseInitializationStatus.initialized;
 }
 
-/// Initializes Firebase using the native platform configuration already
-/// checked into the project. There is intentionally no invented environment
-/// switch or hard-coded Firebase configuration in the new application.
+/// Initializes Firebase from native platform files or verified web build-time
+/// configuration. No Firebase client configuration is hard-coded here.
 abstract final class FirebaseBootstrap {
   static const unexpectedInitializationMessage =
       'Pubget could not start Firebase on this device.';
 
   static Future<FirebaseInitializationState> initialize() async {
     if (kIsWeb) {
-      return const FirebaseInitializationState.unavailable(
-        'Firebase Web options are not configured for this project.',
-      );
+      final options = FirebaseWebOptions.current;
+      if (options == null) {
+        final missing = FirebaseWebOptions.missingEnvironmentKeys.join(', ');
+        return FirebaseInitializationState.unavailable(
+          'Firebase Web options are not configured for this project.',
+          diagnosticMessage: 'Missing build variables: $missing',
+        );
+      }
+
+      return _initialize(options: options);
     }
 
+    return _initialize();
+  }
+
+  static Future<FirebaseInitializationState> _initialize({
+    FirebaseOptions? options,
+  }) async {
     try {
       final app = Firebase.apps.isNotEmpty
           ? Firebase.app()
-          : await Firebase.initializeApp();
+          : await Firebase.initializeApp(options: options);
       return FirebaseInitializationState.initialized(app);
     } on FirebaseException catch (error, stackTrace) {
       _logInitializationFailure(error, stackTrace);
