@@ -2,20 +2,37 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum EventType {
   poll,
-  multipleChoice,
-  ranking,
-  versus,
+  comparison,
   theory,
+  challenge,
+  ranking,
+  question,
   prediction,
   quiz,
   imageComparison,
   characterComparison,
   animeComparison,
-  openDiscussion,
-  challenge,
+  openDiscussion;
+
+  // Source compatibility for older widgets/tests; these are not additional
+  // persisted Event types.
+  static const multipleChoice = EventType.question;
+  static const versus = EventType.comparison;
 }
 
-enum EventStatus { draft, scheduled, active, ended, cancelled, archived }
+enum EventScope { group, multiGroup, global }
+
+enum EventStatus {
+  draft,
+  active,
+  ended,
+  archived,
+  deleted;
+
+  // Legacy aliases remain compile-time aliases, never persisted states.
+  static const scheduled = EventStatus.active;
+  static const cancelled = EventStatus.deleted;
+}
 
 final class EventOption {
   const EventOption({
@@ -206,7 +223,8 @@ final class EventConfiguration {
       allowUpdate: map['allowUpdate'] == true,
       allowVoting: map['allowVoting'] == true,
       completionRule: map['completionRule'] as String? ?? '',
-      criterion: map['criterion'] as String? ?? map['question'] as String? ?? '',
+      criterion:
+          map['criterion'] as String? ?? map['question'] as String? ?? '',
       challengeKind: map['challengeKind'] as String? ?? '',
       targetEventId: map['targetEventId'] as String? ?? '',
     );
@@ -293,6 +311,8 @@ final class PubgetEvent {
     required this.updatedAt,
     this.coverUrl = '',
     this.templateId,
+    this.scope = EventScope.group,
+    this.groupIds = const <String>[],
     this.version = 1,
   });
 
@@ -314,16 +334,17 @@ final class PubgetEvent {
   final DateTime? updatedAt;
   final String coverUrl;
   final String? templateId;
+  final EventScope scope;
+  final List<String> groupIds;
   final int version;
 
-  bool get isOpen =>
-      status == EventStatus.active || status == EventStatus.scheduled;
+  bool get isOpen => status == EventStatus.active;
   bool get isHistorical =>
       status == EventStatus.ended || status == EventStatus.archived;
   bool get isReadOnly =>
       status == EventStatus.ended ||
       status == EventStatus.archived ||
-      status == EventStatus.cancelled;
+      status == EventStatus.deleted;
 
   /// UI hint. The backend still rejects expired participation.
   bool isExpired([DateTime? now]) {
@@ -345,6 +366,8 @@ final class PubgetEvent {
     'type': type.name,
     'creatorId': creatorId,
     'groupId': groupId,
+    'scope': scope.name,
+    'groupIds': groupIds,
     'title': title,
     'description': description,
     'configuration': configuration.toMap(),
@@ -380,10 +403,7 @@ final class PubgetEvent {
   factory PubgetEvent.fromMap(Map<String, dynamic> map, {required String id}) {
     return PubgetEvent(
       id: id,
-      type: EventType.values.firstWhere(
-        (value) => value.name == map['type'],
-        orElse: () => EventType.poll,
-      ),
+      type: _eventType(map['type']),
       creatorId: map['creatorId'] as String? ?? '',
       groupId: map['groupId'] as String?,
       title: map['title'] as String? ?? '',
@@ -393,10 +413,7 @@ final class PubgetEvent {
             ? Map<String, dynamic>.from(map['configuration'] as Map)
             : null,
       ),
-      status: EventStatus.values.firstWhere(
-        (value) => value.name == map['status'],
-        orElse: () => EventStatus.draft,
-      ),
+      status: _eventStatus(map['status']),
       startAt: _date(map['startAt']),
       endAt: _date(map['endAt']),
       participantsCount: (map['participantsCount'] as num?)?.toInt() ?? 0,
@@ -413,6 +430,12 @@ final class PubgetEvent {
       updatedAt: _date(map['updatedAt']),
       coverUrl: map['coverUrl'] as String? ?? '',
       templateId: map['templateId'] as String?,
+      scope: _eventScope(map['scope'], map['groupId']),
+      groupIds:
+          (map['groupIds'] as List<Object?>?)?.whereType<String>().toList(
+            growable: false,
+          ) ??
+          const <String>[],
       version: (map['version'] as num?)?.toInt() ?? 1,
     );
   }
@@ -481,6 +504,8 @@ final class EventDraft {
   const EventDraft({
     this.eventId,
     this.groupId,
+    this.scope = EventScope.group,
+    this.groupIds = const <String>[],
     this.type = EventType.poll,
     this.title = '',
     this.description = '',
@@ -492,6 +517,8 @@ final class EventDraft {
 
   final String? eventId;
   final String? groupId;
+  final EventScope scope;
+  final List<String> groupIds;
   final EventType type;
   final String title;
   final String description;
@@ -503,6 +530,8 @@ final class EventDraft {
   factory EventDraft.fromEvent(PubgetEvent event) => EventDraft(
     eventId: event.id,
     groupId: event.groupId,
+    scope: event.scope,
+    groupIds: event.groupIds,
     type: event.type,
     title: event.title,
     description: event.description,
@@ -515,6 +544,8 @@ final class EventDraft {
   EventDraft copyWith({
     String? eventId,
     String? groupId,
+    EventScope? scope,
+    List<String>? groupIds,
     EventType? type,
     String? title,
     String? description,
@@ -526,6 +557,8 @@ final class EventDraft {
   }) => EventDraft(
     eventId: eventId ?? this.eventId,
     groupId: groupId ?? this.groupId,
+    scope: scope ?? this.scope,
+    groupIds: groupIds ?? this.groupIds,
     type: type ?? this.type,
     title: title ?? this.title,
     description: description ?? this.description,
@@ -539,6 +572,8 @@ final class EventDraft {
     return <String, dynamic>{
       if (eventId != null) 'eventId': eventId,
       if (groupId != null) 'groupId': groupId,
+      'scope': scope.name,
+      if (groupIds.isNotEmpty) 'groupIds': groupIds,
       'type': type.name,
       'title': title,
       'description': description,
@@ -550,7 +585,8 @@ final class EventDraft {
       'candidates': configuration.options.map((item) => item.toMap()).toList(),
       'items': configuration.options.map((item) => item.toMap()).toList(),
       'questions': configuration.questions.map((item) => item.toMap()).toList(),
-      if (configuration.criterion.isNotEmpty) 'criterion': configuration.criterion,
+      if (configuration.criterion.isNotEmpty)
+        'criterion': configuration.criterion,
       if (configuration.challengeKind.isNotEmpty)
         'challengeKind': configuration.challengeKind,
       if (configuration.targetEventId.isNotEmpty)
@@ -590,4 +626,46 @@ DateTime? _date(dynamic value) {
   } catch (_) {
     return null;
   }
+}
+
+EventType _eventType(dynamic raw) {
+  final value = raw is String ? raw : '';
+  final normalized = switch (value) {
+    'multipleChoice' => 'question',
+    'versus' => 'comparison',
+    _ => value,
+  };
+  return EventType.values.firstWhere(
+    (item) => item.name == normalized,
+    orElse: () => EventType.poll,
+  );
+}
+
+EventStatus _eventStatus(dynamic raw) {
+  final value = raw is String ? raw : '';
+  final normalized = switch (value) {
+    'DRAFT' || 'draft' || 'scheduled' => 'draft',
+    'ACTIVE' || 'active' => 'active',
+    'ENDED' || 'ended' => 'ended',
+    'ARCHIVED' || 'archived' => 'archived',
+    'DELETED' || 'deleted' || 'cancelled' => 'deleted',
+    _ => value,
+  };
+  return EventStatus.values.firstWhere(
+    (item) => item.name == normalized,
+    orElse: () => EventStatus.draft,
+  );
+}
+
+EventScope _eventScope(dynamic raw, dynamic groupId) {
+  final value = raw is String ? raw : '';
+  return switch (value) {
+    'multiGroup' || 'MULTI_GROUP' || 'multi_group' => EventScope.multiGroup,
+    'global' || 'GLOBAL' => EventScope.global,
+    'group' || 'GROUP' => EventScope.group,
+    _ =>
+      groupId is String && groupId.isNotEmpty
+          ? EventScope.group
+          : EventScope.global,
+  };
 }

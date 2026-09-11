@@ -1,6 +1,6 @@
 "use strict";
 
-// Events domain (PROMPT 11).
+// Events domain (Events Rebirth Prompt 3).
 //
 // Independent of group-chat internals: chat activity is posted through
 // postEventChatActivity as type "event" system cards. Notifications use the
@@ -11,6 +11,7 @@ const { hasPermission } = require("./pubgetRanks");
 const catalog = require("./gameCatalog");
 
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+const MIN_DURATION_MS = 5 * 60 * 1000;
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const OPTION_MAX = 10;
@@ -19,23 +20,36 @@ const TEXT_MAX = 1000;
 const EVENT_ID_MAX = 128;
 
 const EVENT_TYPES = [
-  "poll", "multipleChoice", "ranking", "versus", "theory", "prediction",
-  "quiz", "imageComparison", "characterComparison", "animeComparison",
-  "openDiscussion", "challenge",
+  "poll", "comparison", "theory", "challenge", "ranking", "question",
+  "prediction", "quiz", "imageComparison", "characterComparison",
+  "animeComparison", "openDiscussion",
 ];
 
 const STATUSES = [
-  "draft", "scheduled", "active", "ended", "cancelled", "archived",
+  "DRAFT", "ACTIVE", "ENDED", "ARCHIVED", "DELETED",
 ];
 
 const TRANSITIONS = {
-  draft: new Set(["scheduled", "active", "cancelled"]),
-  scheduled: new Set(["active", "cancelled"]),
-  active: new Set(["ended", "cancelled"]),
-  ended: new Set(["archived"]),
-  cancelled: new Set(["archived"]),
-  archived: new Set(),
+  DRAFT: new Set(["ACTIVE", "DELETED"]),
+  ACTIVE: new Set(["ENDED"]),
+  ENDED: new Set(["ARCHIVED"]),
+  ARCHIVED: new Set(),
+  DELETED: new Set(),
 };
+
+const EVENT_SCOPES = Object.freeze(["group", "multiGroup", "global"]);
+const LEGACY_TYPE_ALIASES = Object.freeze({
+  multipleChoice: "question",
+  versus: "comparison",
+});
+const LEGACY_STATUS_ALIASES = Object.freeze({
+  draft: "DRAFT",
+  scheduled: "ACTIVE",
+  active: "ACTIVE",
+  ended: "ENDED",
+  archived: "ARCHIVED",
+  cancelled: "DELETED",
+});
 
 const TEMPLATES = {
   animeBattle: { type: "versus", title: "Anime Battle" },
@@ -64,12 +78,40 @@ const IMAGE_MIME_TYPES = Object.freeze([
 ]);
 
 const COMPARISON_TYPES = Object.freeze([
+  "comparison",
   "imageComparison", "characterComparison", "animeComparison",
 ]);
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
     value.trim().length <= max;
+}
+
+function normalizeEventType(value) {
+  const type = typeof value === "string" ? value.trim() : "";
+  return LEGACY_TYPE_ALIASES[type] || type;
+}
+
+function normalizeEventStatus(value) {
+  const status = typeof value === "string" ? value.trim() : "";
+  return LEGACY_STATUS_ALIASES[status] || status;
+}
+
+function normalizeScope(input) {
+  const value = typeof input === "string" ? input.trim() : "";
+  if (value === "MULTI_GROUP" || value === "multi_group") return "multiGroup";
+  if (value === "GLOBAL") return "global";
+  if (value === "GROUP") return "group";
+  return EVENT_SCOPES.includes(value) ? value : "";
+}
+
+function utcDayKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+function eventCreationLimitRef(db, uid, now = new Date()) {
+  return db.collection("event_creation_limits")
+    .doc(`${uid}_${utcDayKey(now)}`);
 }
 
 function requireAuth(request, HttpsError) {
@@ -104,8 +146,10 @@ function roleRef(db, groupId, role) {
 }
 
 function assertTransition(from, to, HttpsError) {
-  if (!STATUSES.includes(from) || !STATUSES.includes(to) ||
-      !TRANSITIONS[from].has(to)) {
+  const canonicalFrom = normalizeEventStatus(from);
+  const canonicalTo = normalizeEventStatus(to);
+  if (!STATUSES.includes(canonicalFrom) || !STATUSES.includes(canonicalTo) ||
+      !TRANSITIONS[canonicalFrom].has(canonicalTo)) {
     throw new HttpsError(
       "failed-precondition",
       `Cannot move an event from ${from} to ${to}.`,
@@ -132,6 +176,9 @@ function assertDuration(startAt, endAt, HttpsError) {
   }
   if (end.getTime() <= start.getTime()) {
     throw new HttpsError("invalid-argument", "End time must be after start time.");
+  }
+  if (end.getTime() - start.getTime() < MIN_DURATION_MS) {
+    throw new HttpsError("invalid-argument", "Events must last at least 5 minutes.");
   }
   if (end.getTime() - start.getTime() > MAX_DURATION_MS) {
     throw new HttpsError("invalid-argument", "Events cannot last longer than 7 days.");
@@ -411,12 +458,12 @@ function validateConfiguration(type, raw) {
     ? (input.question || input.prompt || input.title).trim()
     : "";
   const source = input.options || input.candidates || input.items;
-  const min = type === "versus" ? 2 : OPTION_MIN;
+  const min = type === "comparison" ? 2 : OPTION_MIN;
   const options = normalizeOptions(source, { min, max: OPTION_MAX });
   if (!question || !options) return null;
   let maxSelections = 1;
   if (type === "poll" && allowMultiple) maxSelections = options.length;
-  if (type === "multipleChoice") {
+  if (type === "question") {
     maxSelections = Number.isInteger(input.maxSelections) ? input.maxSelections : 1;
     if (maxSelections < 1 || maxSelections > options.length) return null;
   }
@@ -652,6 +699,31 @@ async function loadPermissions(transaction, db, groupId, uid) {
   };
 }
 
+async function loadScopePermissions(
+  transaction,
+  db,
+  { scope, groupId, groupIds },
+  uid,
+) {
+  if (scope === "global") {
+    return { member: true, manageEvents: false, groups: [] };
+  }
+  const ids = scope === "multiGroup" ? groupIds : [groupId];
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { member: false, manageEvents: false, groups: [] };
+  }
+  const permissions = [];
+  for (const id of ids) {
+    permissions.push(await loadPermissions(transaction, db, id, uid));
+  }
+  return {
+    member: permissions.every((item) => item.member),
+    manageEvents: permissions.some((item) => item.manageEvents),
+    missingGroup: permissions.some((item) => item.missingGroup),
+    groups: permissions,
+  };
+}
+
 function displayNameOf(user, uid) {
   if (user && validString(user.username, 80)) return user.username.trim();
   if (user && validString(user.displayName, 80)) return user.displayName.trim();
@@ -777,11 +849,18 @@ async function verifyChallengeCompletion(transaction, db, uid, configuration, ev
 function createEventsDomain({
   db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
 }) {
-  async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
+  async function notifyEventLifecycle({
+    kind, eventId, groupId, groupIds = [], scope = "group", creatorId, title,
+  }) {
     if (!validString(eventId, EVENT_ID_MAX)) return;
     const started = kind === "started";
-    let recipientIds = started
-      ? await listGroupMemberIds(db, groupId)
+    const targetGroups = [
+      ...(validString(groupId, 128) ? [groupId] : []),
+      ...(Array.isArray(groupIds) ? groupIds : []),
+    ].filter((id, index, all) => validString(id, 128) && all.indexOf(id) === index);
+    let recipientIds = started && scope !== "global"
+      ? (await Promise.all(targetGroups.map((id) => listGroupMemberIds(db, id))))
+        .flat()
       : await listActiveParticipantIds(db, eventId);
     if (!started && recipientIds.length === 0) {
       recipientIds = await listGroupMemberIds(db, groupId);
@@ -797,7 +876,11 @@ function createEventsDomain({
       targetId: eventId,
       action: started ? "started" : "ended",
       destination: `/event/${eventId}`,
-      metadata: { groupId: groupId || "" },
+       metadata: {
+         groupId: groupId || "",
+         groupIds: targetGroups,
+         scope,
+       },
       title: started ? "Event started" : "Event ended",
       body: title || (started ? "An event just started." : "Results are ready."),
       pushWorthy: started,
@@ -807,9 +890,25 @@ function createEventsDomain({
   async function saveEventDraft(request) {
     const uid = requireAuth(request, HttpsError);
     const input = applyTemplate(request.data || {});
-    const type = EVENT_TYPES.includes(input.type) ? input.type : null;
+    const legacyCaller = !request.data ||
+      !Object.prototype.hasOwnProperty.call(request.data, "scope");
+    const type = normalizeEventType(input.type || "");
+    const scope = normalizeScope(input.scope || (input.groupId ? "group" : ""));
+    const rawGroupIds = Array.isArray(input.groupIds)
+      ? input.groupIds.filter((value) => validString(value, 128)).map((value) => value.trim())
+      : [];
+    const groupIds = [...new Set(rawGroupIds)];
+    const groupId = validString(input.groupId, 128) ? input.groupId.trim() : null;
+    const scopeValid = scope === "global"
+      ? !groupId && groupIds.length === 0
+      : scope === "multiGroup"
+        ? !groupId && groupIds.length >= 2 && groupIds.length <= 20
+        : scope === "group" && Boolean(groupId) && groupIds.length === 0;
     if (!type || !validString(input.title, TITLE_MAX)) {
       throw new HttpsError("invalid-argument", "A valid type and title are required.");
+    }
+    if (!EVENT_TYPES.includes(type) || !scopeValid) {
+      throw new HttpsError("invalid-argument", "Choose a valid Event scope and type.");
     }
     if (typeof input.description === "string" && input.description.length > DESCRIPTION_MAX) {
       throw new HttpsError("invalid-argument", "Description is too long.");
@@ -818,27 +917,22 @@ function createEventsDomain({
     if (!configuration) {
       throw new HttpsError("invalid-argument", "Event configuration is invalid.");
     }
-    const groupId = input.groupId ? String(input.groupId).trim() : null;
-    if (groupId && !validString(groupId, 128)) {
-      throw new HttpsError("invalid-argument", "groupId is invalid.");
-    }
     const existingId = validString(input.eventId, EVENT_ID_MAX) ? input.eventId.trim() : null;
     const ref = existingId ? eventRef(db, existingId) : db.collection("events").doc();
     await db.runTransaction(async (transaction) => {
-      const access = await loadPermissions(transaction, db, groupId, uid);
-      if (groupId && access.missingGroup) {
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        { scope, groupId, groupIds },
+        uid,
+      );
+      if (access.missingGroup) {
         throw new HttpsError("not-found", "Group not found.");
       }
-      if (groupId && !access.member) {
+      if (scope !== "global" && !access.member) {
         throw new HttpsError(
           "permission-denied",
-          "Join the group to create events.",
-        );
-      }
-      if (!groupId) {
-        throw new HttpsError(
-          "invalid-argument",
-          "Events must belong to a group in this version.",
+          "You must belong to every selected group to create this Event.",
         );
       }
       const existing = await transaction.get(ref);
@@ -847,11 +941,14 @@ function createEventsDomain({
         if (current.creatorId !== uid) {
           throw new HttpsError("permission-denied", "You cannot edit this draft.");
         }
-        if (current.status !== "draft") {
+        if (normalizeEventStatus(current.status) !== "DRAFT") {
           throw new HttpsError("failed-precondition", "Only drafts can be edited this way.");
         }
         transaction.update(ref, {
           type,
+          scope,
+          groupId,
+          groupIds,
           title: input.title.trim(),
           description: typeof input.description === "string" ? input.description.trim() : "",
           configuration,
@@ -859,18 +956,24 @@ function createEventsDomain({
           coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
           searchName: searchNameOf(input.title),
           updatedAt: FieldValue.serverTimestamp(),
-          version: 1,
+          previewedAt: null,
+          resultLockedAt: null,
+          legacyMode: legacyCaller,
+          version: 2,
         });
         return;
       }
       transaction.create(ref, {
         type,
         creatorId: uid,
+        scope,
         groupId,
+        groupIds,
+        audienceMemberIds: [],
         title: input.title.trim(),
         description: typeof input.description === "string" ? input.description.trim() : "",
         configuration,
-        status: "draft",
+        status: "DRAFT",
         startAt: null,
         endAt: null,
         participantsCount: 0,
@@ -880,19 +983,58 @@ function createEventsDomain({
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         publishedAt: null,
-        cancelledAt: null,
+        deletedAt: null,
         archivedAt: null,
         templateId: TEMPLATES[input.templateId] ? input.templateId : null,
         coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
         searchName: searchNameOf(input.title),
-        version: 1,
+        previewedAt: null,
+        resultLockedAt: null,
+        legacyMode: legacyCaller,
+        version: 2,
       });
     });
-    return { ok: true, eventId: ref.id, status: "draft" };
+    return { ok: true, eventId: ref.id, status: "DRAFT", scope, type };
+  }
+
+  async function previewEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    let preview;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const current = snapshot.data() || {};
+      if (current.creatorId !== uid) {
+        throw new HttpsError("permission-denied", "Only the creator can preview this Event.");
+      }
+      if (normalizeEventStatus(current.status) !== "DRAFT") {
+        throw new HttpsError("failed-precondition", "Only drafts can be previewed.");
+      }
+      preview = {
+        eventId: ref.id,
+        type: normalizeEventType(current.type),
+        scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+        title: current.title,
+        description: current.description || "",
+        configuration: current.configuration || {},
+      };
+      transaction.update(ref, {
+        previewedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true, ...preview };
   }
 
   async function publishEvent(request) {
     const uid = requireAuth(request, HttpsError);
+    const legacyCaller = !request.data ||
+      !Object.prototype.hasOwnProperty.call(request.data, "scope");
     const eventId = request.data && request.data.eventId;
     if (!validString(eventId, EVENT_ID_MAX)) {
       throw new HttpsError("invalid-argument", "eventId is required.");
@@ -906,33 +1048,94 @@ function createEventsDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
-      if (!access.member) {
-        throw new HttpsError("permission-denied", "Join the group to publish events.");
+      const status = normalizeEventStatus(current.status);
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const groupIds = Array.isArray(current.groupIds) ? current.groupIds : [];
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        { scope, groupId: current.groupId || null, groupIds },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "Join every selected group to publish.");
       }
       if (current.creatorId !== uid && !access.manageEvents) {
         throw new HttpsError("permission-denied", "You cannot publish this event.");
       }
-      if (current.status !== "draft" && current.status !== "scheduled") {
-        if (current.status === "active" || current.status === "scheduled") {
-          published = { status: current.status, eventId: ref.id };
+      if (status !== "DRAFT") {
+        if (status === "ACTIVE") {
+          published = {
+            status: legacyCaller ? "active" : "ACTIVE",
+            canonicalStatus: "ACTIVE",
+            eventId: ref.id,
+          };
           return;
         }
         throw new HttpsError("failed-precondition", "This event cannot be published.");
       }
-      const now = Date.now();
-      const nextStatus = start.getTime() <= now ? "active" : "scheduled";
-      assertTransition(current.status === "scheduled" ? "scheduled" : "draft", nextStatus, HttpsError);
+      if (!legacyCaller && request.data.previewConfirmed !== true && !current.previewedAt) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Preview the Event and confirm it before publishing.",
+        );
+      }
+      const limitRef = eventCreationLimitRef(db, uid);
+      const limitSnapshot = await transaction.get(limitRef);
+      const limit = limitSnapshot.exists ? limitSnapshot.data() || {} : {};
+      const count = Number.isInteger(limit.count) ? limit.count : 0;
+      if (count >= 2) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "You can publish at most two Events per day.",
+        );
+      }
+      const audienceMemberIds = scope === "global"
+        ? []
+        : uniqueRecipientIds(
+          (await Promise.all(
+            (scope === "multiGroup" ? groupIds : [current.groupId])
+              .filter(Boolean)
+              .map((id) => listGroupMemberIds(db, id)),
+          )).flat(),
+        );
+      assertTransition("DRAFT", "ACTIVE", HttpsError);
       transaction.update(ref, {
-        status: nextStatus,
+        status: legacyCaller ? "active" : "ACTIVE",
         startAt: start,
         endAt: end,
+        audienceMemberIds,
+        legacyMode: legacyCaller,
         publishedAt: FieldValue.serverTimestamp(),
+        resultLockedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      published = { status: nextStatus, eventId: ref.id, groupId: current.groupId, title: current.title };
+      if (limitSnapshot.exists) {
+        transaction.update(limitRef, {
+          count: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.create(limitRef, {
+          uid,
+          day: utcDayKey(),
+          count: 1,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      published = {
+        status: legacyCaller ? "active" : "ACTIVE",
+        canonicalStatus: "ACTIVE",
+        eventId: ref.id,
+        groupId: current.groupId || null,
+        groupIds,
+        scope,
+        title: current.title,
+        startsAt: start.getTime(),
+      };
     });
-    if (published && published.status === "active") {
+    if (published && published.canonicalStatus === "ACTIVE" && published.startsAt <= Date.now()) {
       await postEventChatActivity(db, FieldValue, {
         groupId: published.groupId,
         eventId: published.eventId,
@@ -943,6 +1146,8 @@ function createEventsDomain({
         kind: "started",
         eventId: published.eventId,
         groupId: published.groupId,
+        groupIds: published.groupIds,
+        scope: published.scope,
         creatorId: uid,
         title: published.title,
       });
@@ -951,7 +1156,7 @@ function createEventsDomain({
         groupId: published.groupId,
         eventId: published.eventId,
         kind: "created",
-        text: `Event scheduled: ${published.title}`,
+        text: `Event published: ${published.title}`,
       });
     }
     return { ok: true, ...published };
@@ -969,28 +1174,46 @@ function createEventsDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status === "cancelled" || current.status === "archived") {
+      const status = normalizeEventStatus(current.status);
+      if (status === "DELETED" || status === "ARCHIVED") {
         cancelled = { eventId: ref.id, status: current.status };
         return;
       }
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (current.creatorId !== uid && !access.manageEvents) {
         throw new HttpsError("permission-denied", "You cannot cancel this event.");
       }
-      assertTransition(current.status, "cancelled", HttpsError);
+      if (status !== "DRAFT" && status !== "ACTIVE") {
+        throw new HttpsError("failed-precondition", "This Event cannot be deleted now.");
+      }
+      assertTransition(status, "DELETED", HttpsError);
       transaction.update(ref, {
-        status: "cancelled",
-        cancelledAt: FieldValue.serverTimestamp(),
+        status: "DELETED",
+        deletedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      cancelled = { eventId: ref.id, status: "cancelled", groupId: current.groupId, title: current.title };
+      cancelled = {
+        eventId: ref.id,
+        status: "DELETED",
+        groupId: current.groupId,
+        title: current.title,
+      };
     });
-    if (cancelled && cancelled.groupId && cancelled.status === "cancelled") {
+    if (cancelled && cancelled.groupId && cancelled.status === "DELETED") {
       await postEventChatActivity(db, FieldValue, {
         groupId: cancelled.groupId,
         eventId: cancelled.eventId,
-        kind: "cancelled",
-        text: `Event cancelled: ${cancelled.title}`,
+        kind: "deleted",
+        text: `Event deleted: ${cancelled.title}`,
       });
     }
     return { ok: true, ...cancelled };
@@ -998,23 +1221,29 @@ function createEventsDomain({
 
   async function finalizeEvent(transaction, snapshot, { reason }) {
     const current = snapshot.data() || {};
-    if (current.status === "ended" || current.status === "archived") {
+    const status = normalizeEventStatus(current.status);
+    if (status === "ENDED" || status === "ARCHIVED" || status === "DELETED") {
       return current;
     }
-    assertTransition(current.status, "ended", HttpsError);
+    assertTransition(status, "ENDED", HttpsError);
     const result = calculateResult({
       type: current.type,
       configuration: current.configuration || {},
       tally: current.tally || {},
       responsesCount: current.responsesCount || 0,
     });
+    const endedStatus = typeof current.status === "string" &&
+      current.status === current.status.toLowerCase()
+      ? "ended"
+      : "ENDED";
     transaction.update(snapshot.ref, {
-      status: "ended",
+      status: endedStatus,
       result,
       endedReason: reason || "completed",
+      resultLockedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return { ...current, status: "ended", result };
+    return { ...current, status: endedStatus, result };
   }
 
   async function endEvent(request) {
@@ -1029,15 +1258,26 @@ function createEventsDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (!access.manageEvents && current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot end this event.");
       }
       ended = await finalizeEvent(transaction, snapshot, { reason: "manual" });
     });
-    if (ended && ended.status === "ended") {
+    if (ended && normalizeEventStatus(ended.status) === "ENDED") {
       await postEventChatActivity(db, FieldValue, {
         groupId: ended.groupId,
+        groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+        scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
         eventId: ref.id,
         kind: "ended",
         text: `Event ended: ${ended.title}`,
@@ -1051,7 +1291,7 @@ function createEventsDomain({
       });
       await grantEventRewards(ref.id, ended);
     }
-    return { ok: true, eventId: ref.id, status: "ended", result: ended.result };
+      return { ok: true, eventId: ref.id, status: "ENDED", result: ended.result };
   }
 
   async function archiveEvent(request) {
@@ -1065,19 +1305,32 @@ function createEventsDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status === "archived") return;
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const status = normalizeEventStatus(current.status);
+      if (status === "ARCHIVED") return;
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (!access.manageEvents && current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot archive this event.");
       }
-      assertTransition(current.status, "archived", HttpsError);
+      assertTransition(status, "ARCHIVED", HttpsError);
       transaction.update(ref, {
-        status: "archived",
+        status: typeof current.status === "string" &&
+          current.status === current.status.toLowerCase()
+          ? "archived"
+          : "ARCHIVED",
         archivedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
-    return { ok: true, eventId: ref.id, status: "archived" };
+    return { ok: true, eventId: ref.id, status: "ARCHIVED" };
   }
 
   async function deleteEventDraft(request) {
@@ -1094,10 +1347,14 @@ function createEventsDomain({
       if (current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot delete this draft.");
       }
-      if (current.status !== "draft") {
+      if (normalizeEventStatus(current.status) !== "DRAFT") {
         throw new HttpsError("failed-precondition", "Only drafts can be deleted.");
       }
-      transaction.delete(ref);
+      transaction.update(ref, {
+        status: "DELETED",
+        deletedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
     return { ok: true };
   }
@@ -1118,12 +1375,26 @@ function createEventsDomain({
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
-      if (!access.member) {
-        throw new HttpsError("permission-denied", "Join the group to participate.");
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot access this Event.");
       }
-      if (current.status !== "active" && current.status !== "scheduled") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "This event is not open to join.");
+      }
+      const start = dateOf(current.startAt);
+      if (start && start.getTime() > Date.now()) {
+        throw new HttpsError("failed-precondition", "This Event has not started yet.");
       }
       if (existing.exists && !existing.data().leftAt) return;
       const userData = user.exists ? user.data() : {};
@@ -1163,7 +1434,7 @@ function createEventsDomain({
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status !== "active" && current.status !== "scheduled") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "You cannot leave this event now.");
       }
       if (!existing.exists || existing.data().leftAt) return;
@@ -1194,12 +1465,26 @@ function createEventsDomain({
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
-      if (!access.member) {
-        throw new HttpsError("permission-denied", "Join the group to participate.");
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot access this Event.");
       }
-      if (current.status !== "active") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "This event is not accepting responses.");
+      }
+      const start = dateOf(current.startAt);
+      if (start && start.getTime() > Date.now()) {
+        throw new HttpsError("failed-precondition", "This Event has not started yet.");
       }
       const end = dateOf(current.endAt);
       if (end && end.getTime() <= Date.now()) {
@@ -1216,7 +1501,9 @@ function createEventsDomain({
         );
         responseData = { ...responseData, ...verified };
       }
-      if (prior.exists && configuration.allowUpdate !== true) {
+      const legacyUpdatesAllowed = current.legacyMode === true &&
+        configuration.allowUpdate === true;
+      if (prior.exists && !legacyUpdatesAllowed) {
         throw new HttpsError("already-exists", "You already submitted a response.");
       }
       const userData = user.exists ? user.data() : {};
@@ -1289,12 +1576,24 @@ function createEventsDomain({
 
   async function processEventLifecycle() {
     const now = new Date();
-    const activating = await db.collection("events")
-      .where("status", "==", "scheduled")
-      .where("startAt", "<=", now)
-      .limit(25)
-      .get();
-    for (const doc of activating.docs) {
+    const [canonicalExpiring, legacyExpiring, legacyScheduled] = await Promise.all([
+      db.collection("events")
+        .where("status", "==", "ACTIVE")
+        .where("endAt", "<=", now)
+        .limit(25)
+        .get(),
+      db.collection("events")
+        .where("status", "==", "active")
+        .where("endAt", "<=", now)
+        .limit(25)
+        .get(),
+      db.collection("events")
+        .where("status", "==", "scheduled")
+        .where("startAt", "<=", now)
+        .limit(25)
+        .get(),
+    ]);
+    for (const doc of legacyScheduled.docs) {
       await db.runTransaction(async (transaction) => {
         const snap = await transaction.get(doc.ref);
         if (!snap.exists || snap.data().status !== "scheduled") return;
@@ -1303,35 +1602,20 @@ function createEventsDomain({
           updatedAt: FieldValue.serverTimestamp(),
         });
       });
-      const data = doc.data() || {};
-      await postEventChatActivity(db, FieldValue, {
-        groupId: data.groupId,
-        eventId: doc.id,
-        kind: "started",
-        text: `Event started: ${data.title || "Event"}`,
-      });
-      await notifyEventLifecycle({
-        kind: "started",
-        eventId: doc.id,
-        groupId: data.groupId,
-        creatorId: data.creatorId,
-        title: data.title,
-      });
     }
-
-    const expiring = await db.collection("events")
-      .where("status", "==", "active")
-      .where("endAt", "<=", now)
-      .limit(25)
-      .get();
-    for (const doc of expiring.docs) {
+    const expiring = [
+      ...canonicalExpiring.docs,
+      ...legacyExpiring.docs.filter((item) =>
+        !canonicalExpiring.docs.some((canonical) => canonical.id === item.id)),
+    ];
+    for (const doc of expiring) {
       let ended;
       await db.runTransaction(async (transaction) => {
         const snap = await transaction.get(doc.ref);
-        if (!snap.exists || snap.data().status !== "active") return;
+        if (!snap.exists || normalizeEventStatus(snap.data().status) !== "ACTIVE") return;
         ended = await finalizeEvent(transaction, snap, { reason: "expired" });
       });
-      if (ended && ended.status === "ended") {
+      if (ended && normalizeEventStatus(ended.status) === "ENDED") {
         await postEventChatActivity(db, FieldValue, {
           groupId: ended.groupId,
           eventId: doc.id,
@@ -1342,6 +1626,8 @@ function createEventsDomain({
           kind: "ended",
           eventId: doc.id,
           groupId: ended.groupId,
+          groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+          scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
           creatorId: ended.creatorId,
           title: ended.title,
         });
@@ -1349,6 +1635,140 @@ function createEventsDomain({
       }
     }
     return { ok: true };
+  }
+
+  async function getEventAnalytics(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    let event;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      event = snapshot.data() || {};
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(event.scope || (event.groupId ? "group" : "global")),
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (event.creatorId !== uid && !access.manageEvents) {
+        throw new HttpsError("permission-denied", "Only the creator can view raw Event details.");
+      }
+    });
+    const [responses, participants] = await Promise.all([
+      ref.collection("responses").get(),
+      ref.collection("participants").get(),
+    ]);
+    return {
+      ok: true,
+      eventId: ref.id,
+      status: normalizeEventStatus(event.status),
+      tally: event.tally || {},
+      result: event.result || null,
+      participants: participants.docs.map((doc) => ({
+        userId: doc.id,
+        ...(doc.data() || {}),
+      })),
+      responses: responses.docs.map((doc) => ({
+        userId: doc.id,
+        ...(doc.data() || {}),
+      })),
+    };
+  }
+
+  async function addEventComment(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    const text = request.data && request.data.text;
+    if (!validString(eventId, EVENT_ID_MAX) || !validString(text, TEXT_MAX)) {
+      throw new HttpsError("invalid-argument", "Event and comment text are required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    const comment = ref.collection("comments").doc();
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const event = snapshot.data() || {};
+      const status = normalizeEventStatus(event.status);
+      if (status !== "ACTIVE" && status !== "ENDED" && status !== "ARCHIVED") {
+        throw new HttpsError("failed-precondition", "Comments are not open for this Event.");
+      }
+      const scope = normalizeScope(event.scope || (event.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot comment on this Event.");
+      }
+      transaction.create(comment, {
+        userId: uid,
+        text: text.trim(),
+        createdAt: FieldValue.serverTimestamp(),
+        deletedAt: null,
+      });
+    });
+    return { ok: true, eventId: ref.id, commentId: comment.id };
+  }
+
+  async function reactToEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    const reaction = request.data && request.data.reaction;
+    if (!validString(eventId, EVENT_ID_MAX) || !validString(reaction, 32)) {
+      throw new HttpsError("invalid-argument", "Event and reaction are required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    const reactionRef = ref.collection("reactions").doc(uid);
+    await db.runTransaction(async (transaction) => {
+      const [snapshot, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(reactionRef),
+      ]);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const event = snapshot.data() || {};
+      const status = normalizeEventStatus(event.status);
+      if (status === "DELETED" || status === "DRAFT") {
+        throw new HttpsError("failed-precondition", "This Event is not visible.");
+      }
+      const scope = normalizeScope(event.scope || (event.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot react to this Event.");
+      }
+      transaction.set(reactionRef, {
+        userId: uid,
+        reaction: reaction.trim().slice(0, 32),
+        createdAt: existing.exists
+          ? (existing.data() || {}).createdAt || FieldValue.serverTimestamp()
+          : FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true, eventId: ref.id };
   }
 
   async function grantEventRewards(eventId, event) {
@@ -1375,6 +1795,7 @@ function createEventsDomain({
 
   return {
     saveEventDraft,
+    previewEvent,
     publishEvent,
     cancelEvent,
     endEvent,
@@ -1384,12 +1805,17 @@ function createEventsDomain({
     leaveEvent,
     submitEventResponse,
     processEventLifecycle,
+    getEventAnalytics,
+    addEventComment,
+    reactToEvent,
   };
 }
 
 module.exports = {
   EVENT_TYPES,
   MAX_DURATION_MS,
+  MIN_DURATION_MS,
+  EVENT_SCOPES,
   STATUSES,
   TEMPLATES,
   TRANSITIONS,
@@ -1403,4 +1829,6 @@ module.exports = {
   validateResponse,
   CHALLENGE_KINDS,
   COMPARISON_TYPES,
+  normalizeEventType,
+  normalizeEventStatus,
 };

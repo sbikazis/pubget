@@ -414,6 +414,10 @@ exports.saveEventDraft = onCall(
   { region: "us-central1" },
   eventsDomain.saveEventDraft,
 );
+exports.previewEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.previewEvent,
+);
 exports.publishEvent = onCall(
   { region: "us-central1" },
   eventsDomain.publishEvent,
@@ -445,6 +449,18 @@ exports.leaveEvent = onCall(
 exports.submitEventResponse = onCall(
   { region: "us-central1" },
   eventsDomain.submitEventResponse,
+);
+exports.getEventAnalytics = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventAnalytics,
+);
+exports.addEventComment = onCall(
+  { region: "us-central1" },
+  eventsDomain.addEventComment,
+);
+exports.reactToEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reactToEvent,
 );
 exports.createGame = onCall(
   { region: "us-central1" },

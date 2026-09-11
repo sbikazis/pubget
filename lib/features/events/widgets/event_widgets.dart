@@ -82,7 +82,10 @@ class EventHomeStrip extends StatelessWidget {
     if (list.state == LoadingState.initial) {
       Future<void>.microtask(list.loadHome);
     }
-    final events = <PubgetEvent>[...list.active, ...list.upcoming];
+    final events = <PubgetEvent>[
+      ...list.active,
+      ...list.upcoming,
+    ].take(3).toList(growable: false);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: Column(
