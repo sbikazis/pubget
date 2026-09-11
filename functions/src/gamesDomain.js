@@ -442,23 +442,28 @@ function createGamesDomain({
       // The economy service owns the idempotent ledger.  Supplying the
       // outcome in metadata lets deployments with outcome-specific rates
       // apply 5 / 7..10 / 2 without ever issuing a second grant.
-      const recipients = draw ? playerIds : playerIds;
-      await economy.grantDomainRewards(recipients, {
-        type: "earn_game",
-        referenceId: gameId,
-        source: "game",
-        metadata: {
-          gameType: game.type || "",
-          outcome: rewardType,
-          difficulty: (game.configuration && game.configuration.difficulty) || "normal",
-          winnerIds,
-          rewardAmount: draw ? 5 :
-            (game.configuration && game.configuration.difficulty === "easy" ? 7 :
-              game.configuration && game.configuration.difficulty === "hard" ? 10 : 8),
-          lossAmount: 2,
-          winners: [...winners],
-        },
-      });
+      const winAmount = game.configuration &&
+          game.configuration.difficulty === "easy" ? 7 :
+        game.configuration &&
+          game.configuration.difficulty === "hard" ? 10 : 8;
+      for (const playerId of playerIds) {
+        const amount = draw ? 5 : (winners.has(playerId) ? winAmount : 2);
+        await economy.grantDomainRewards([playerId], {
+          type: "earn_game",
+          referenceId: gameId,
+          source: "game",
+          metadata: {
+            gameType: game.type || "",
+            outcome: draw ? "draw" : (winners.has(playerId) ? "win" : "loss"),
+            difficulty: (game.configuration && game.configuration.difficulty) || "normal",
+            winnerIds,
+            amountOverride: amount,
+            rewardAmount: winAmount,
+            lossAmount: 2,
+            winners: [...winners],
+          },
+        });
+      }
     }
     if (achievements && typeof achievements.evaluate === "function") {
       if (winnerIds.length > 0) {
@@ -1057,6 +1062,13 @@ function createGamesDomain({
       }
       if (current.status !== "IN_PROGRESS") {
         throw new HttpsError("failed-precondition", "Actions can only be submitted while the game is active.");
+      }
+      if (Number.isInteger(input.expectedVersion) &&
+          input.expectedVersion !== Number(current.stateVersion || 0)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The game changed; refresh before submitting another action.",
+        );
       }
       if (!existing.exists || existing.data().status === "left" || existing.data().leftAt) {
         throw new HttpsError("permission-denied", "You are not a participant in this game.");

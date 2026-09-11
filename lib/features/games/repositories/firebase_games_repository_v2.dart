@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
@@ -17,7 +19,7 @@ final class FirebaseGamesRepositoryV2 implements GamesRepositoryV2 {
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
   CollectionReference<Map<String, dynamic>> get _games =>
-      _firestore.collection('games_v2');
+      _firestore.collection('games');
 
   @override
   Future<Result<GameSessionV2>> create({
@@ -25,9 +27,10 @@ final class FirebaseGamesRepositoryV2 implements GamesRepositoryV2 {
     required GameTypeV2 type,
     required String requestId,
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('gamesV2Create').call({
+    final result = await _functions.httpsCallable('createGame').call({
       'groupId': groupId,
       'type': type.name,
+      'title': _titleFor(type),
       'requestId': requestId,
       'schemaVersion': gamesSchemaVersion,
     });
@@ -42,26 +45,77 @@ final class FirebaseGamesRepositoryV2 implements GamesRepositoryV2 {
 
   @override
   Future<Result<void>> command(GameCommandRequest request) => _guard(() async {
-    await _functions.httpsCallable('gamesV2Command').call(request.toMap());
+    final callable = switch (request.command) {
+      'join' => 'joinGame',
+      'leave' => 'leaveGame',
+      'start' => 'startGame',
+      'cancel' => 'cancelGame',
+      _ => 'submitGameAction',
+    };
+    final data = switch (request.command) {
+      'join' || 'leave' || 'start' || 'cancel' => {
+        'gameId': request.gameId,
+        'requestId': request.requestId,
+        'expectedVersion': request.expectedVersion,
+      },
+      _ => {
+        'gameId': request.gameId,
+        'actionType': request.command,
+        'payload': request.payload,
+        'clientActionId': request.requestId,
+        'expectedVersion': request.expectedVersion,
+        'schemaVersion': gamesSchemaVersion,
+      },
+    };
+    await _functions.httpsCallable(callable).call(data);
   });
 
   @override
-  Stream<Result<GameSessionV2>> watchSession(String gameId) => _games
-      .doc(gameId)
-      .snapshots()
-      .map((snapshot) {
-        if (!snapshot.exists || snapshot.data() == null) {
-          return const FailureResult<GameSessionV2>(
-            NotFoundError('This game session no longer exists.'),
-          );
-        }
-        return Success(
-          GameSessionV2.fromMap(snapshot.data()!, id: snapshot.id),
-        );
-      })
-      .handleError(
-        (Object error) => FailureResult<GameSessionV2>(_failure(error)),
-      );
+  Stream<Result<GameSessionV2>> watchSession(String gameId) {
+    final controller = StreamController<Result<GameSessionV2>>();
+    Map<String, dynamic>? gameData;
+    List<Map<String, dynamic>> players = const [];
+    late StreamSubscription<Map<String, dynamic>> gameSub;
+    late StreamSubscription<QuerySnapshot<Map<String, dynamic>>> playerSub;
+    void emit() {
+      final data = gameData;
+      if (data == null) return;
+      final merged = <String, dynamic>{...data, 'players': players};
+      try {
+        controller.add(Success(GameSessionV2.fromMap(merged, id: gameId)));
+      } catch (error) {
+        controller.add(FailureResult(_failure(error)));
+      }
+    }
+    gameSub = _games.doc(gameId).snapshots().map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw const NotFoundError('This game session no longer exists.');
+      }
+      return snapshot.data()!;
+    }).listen((data) {
+      gameData = data;
+      emit();
+    }, onError: (Object error) {
+      controller.add(FailureResult(_failure(error)));
+    });
+    playerSub = _games.doc(gameId).collection('participants').snapshots().listen(
+      (snapshot) {
+        players = snapshot.docs.map((doc) => <String, dynamic>{
+          ...doc.data(),
+          'userId': doc.id,
+        }).toList(growable: false);
+        emit();
+      },
+      onError: (Object error) {
+        controller.add(FailureResult(_failure(error)));
+      },
+    );
+    controller.onCancel = () async {
+      await gameSub.cancel();
+      await playerSub.cancel();
+    };
+    return controller.stream;
+  }
 
   @override
   Stream<Result<Map<String, dynamic>>> watchPrivateState({
@@ -80,13 +134,13 @@ final class FirebaseGamesRepositoryV2 implements GamesRepositoryV2 {
     String? cursor,
     int limit = 20,
   }) => _guard(() async {
-    var query = _games
+    var query = _firestore
+        .collection('game_history')
         .where('groupId', isEqualTo: groupId)
-        .where('status', isEqualTo: 'completed')
         .orderBy('endedAt', descending: true)
         .limit(limit.clamp(1, 50));
     if (cursor != null && cursor.isNotEmpty) {
-      final anchor = await _games.doc(cursor).get();
+      final anchor = await _firestore.collection('game_history').doc(cursor).get();
       if (anchor.exists) query = query.startAfterDocument(anchor);
     }
     final snapshot = await query.get();
@@ -105,6 +159,12 @@ final class FirebaseGamesRepositoryV2 implements GamesRepositoryV2 {
       return FailureResult(_failure(error));
     }
   }
+
+  String _titleFor(GameTypeV2 type) => switch (type) {
+    GameTypeV2.guessCharacter => 'Guess Character',
+    GameTypeV2.animeChain => 'Anime Chain',
+    GameTypeV2.emojiAnimeGuess => 'Emoji Anime Guess',
+  };
 
   Failure _failure(Object error) {
     if (error is FirebaseFunctionsException) {
