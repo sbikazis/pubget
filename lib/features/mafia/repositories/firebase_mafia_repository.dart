@@ -53,32 +53,24 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int nightNumber,
-  }) => _guard(() async {
-    await _games
-        .doc(gameId)
-        .collection('night_actions')
-        .doc('${_uid()}_n$nightNumber')
-        .set({
-          'playerId': _uid(),
-          'targetId': targetId,
-          'nightNumber': nightNumber,
-          'submittedAt': FieldValue.serverTimestamp(),
-        });
-  });
+  }) => _submitAction(
+    gameId: gameId,
+    actionType: 'night_action',
+    targetId: targetId,
+    stateVersion: null,
+  );
 
   @override
   Future<Result<void>> submitVote({
     required String gameId,
     required String targetId,
     required int dayNumber,
-  }) => _guard(() async {
-    await _games.doc(gameId).collection('votes').doc('${_uid()}_d$dayNumber').set({
-      'voterId': _uid(),
-      'targetId': targetId,
-      'dayNumber': dayNumber,
-      'time': FieldValue.serverTimestamp(),
-    });
-  });
+  }) => _submitAction(
+    gameId: gameId,
+    actionType: 'vote',
+    targetId: targetId,
+    stateVersion: null,
+  );
 
   @override
   Future<Result<void>> sendChat({
@@ -86,21 +78,32 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     required String text,
     required MafiaPlayer self,
   }) => _guard(() async {
-    await _games.doc(gameId).collection('chat').add({
-      'senderId': self.userId,
-      'sender': self.username,
-      'senderAvatar': self.avatar,
+    await _functions.httpsCallable('sendMafiaMessage').call({
+      'gameId': gameId,
       'text': text.trim(),
-      'time': FieldValue.serverTimestamp(),
-      'type': 'player',
     });
   });
 
   @override
   Future<Result<void>> heartbeat(String gameId) => _guard(() async {
-    await _games.doc(gameId).collection('players').doc(_uid()).update({
-      'lastSeenAt': FieldValue.serverTimestamp(),
-      'isDisconnected': false,
+    await _functions.httpsCallable('heartbeatMafia').call({'gameId': gameId});
+  });
+
+  Future<Result<void>> _submitAction({
+    required String gameId,
+    required String actionType,
+    required String targetId,
+    required int? stateVersion,
+  }) => _guard(() async {
+    final actionId = '${_uid()}_${DateTime.now().microsecondsSinceEpoch}';
+    await _functions.httpsCallable('submitMafiaAction').call({
+      'gameId': gameId,
+      'actionId': actionId,
+      'actionType': actionType,
+      'targetId': targetId,
+      ...?(stateVersion == null
+          ? null
+          : <String, dynamic>{'expectedStateVersion': stateVersion}),
     });
   });
 
@@ -117,9 +120,7 @@ final class FirebaseMafiaRepository implements MafiaRepository {
           }
           return Success(MafiaGame.fromMap(snapshot.data()!, id: snapshot.id));
         })
-        .handleError(
-          (Object error) => FailureResult<MafiaGame>(_fail(error)),
-        );
+        .handleError((Object error) => FailureResult<MafiaGame>(_fail(error)));
   }
 
   @override
@@ -192,6 +193,25 @@ final class FirebaseMafiaRepository implements MafiaRepository {
             snapshot.docs.map((doc) => doc.data()).toList(growable: false),
           );
         })
+        .handleError(
+          (Object error) =>
+              FailureResult<List<Map<String, dynamic>>>(_fail(error)),
+        );
+  }
+
+  @override
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaChat(String gameId) {
+    return _games
+        .doc(gameId)
+        .collection('mafia_chat')
+        .orderBy('time')
+        .limit(80)
+        .snapshots()
+        .map(
+          (snapshot) => Success(
+            snapshot.docs.map((doc) => doc.data()).toList(growable: false),
+          ),
+        )
         .handleError(
           (Object error) =>
               FailureResult<List<Map<String, dynamic>>>(_fail(error)),

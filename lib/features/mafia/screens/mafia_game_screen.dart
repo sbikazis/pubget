@@ -51,7 +51,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     final state = context.watch<MafiaProvider>();
     final game = state.game;
     final uid = context.watch<AuthProvider>().currentUser?.id;
-    final canLeave = game != null &&
+    final canLeave =
+        game != null &&
         !game.isFinished &&
         MafiaLeaveCopy.canLeave(game.status) &&
         state.self != null &&
@@ -106,11 +107,18 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                     _PlayActions(game: game, userId: uid),
                   if (game.isFinished) _Result(game: game),
                   const SizedBox(height: AppSpacing.lg),
-                  Text('Events', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Events',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   for (final event in state.events.take(8))
                     ListTile(
                       dense: true,
-                      title: Text(event['message'] as String? ?? event['type'] as String? ?? ''),
+                      title: Text(
+                        event['message'] as String? ??
+                            event['type'] as String? ??
+                            '',
+                      ),
                     ),
                   if (_canChat(game, state.self)) ...[
                     PubgetTextField(controller: _chat, label: 'Discussion'),
@@ -118,13 +126,22 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                       onPressed: state.busy
                           ? null
                           : () {
-                              context.read<MafiaProvider>().sendChat(_chat.text);
+                              context.read<MafiaProvider>().sendChat(
+                                _chat.text,
+                              );
                               _chat.clear();
                             },
                       semanticLabel: 'Send',
                       child: const Text('Send'),
                     ),
                     for (final line in state.chat.take(12))
+                      Text('${line['sender']}: ${line['text']}'),
+                  ],
+                  if (state.privateState.team == 'mafias' &&
+                      state.mafiaChat.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    const Text('Private Mafia channel'),
+                    for (final line in state.mafiaChat.take(12))
                       Text('${line['sender']}: ${line['text']}'),
                   ],
                   if (state.failure != null) Text(state.failure!.message),
@@ -162,9 +179,9 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     return self != null &&
         self.isAlive &&
         self.canSpeak &&
-        (game.currentPhase == 'day' ||
-            game.currentPhase == 'discussion' ||
-            game.currentPhase == 'voting');
+        (game.phase == 'DAY' ||
+            game.phase == 'DISCUSSION' ||
+            game.phase == 'VOTING');
   }
 }
 
@@ -181,9 +198,13 @@ class _LobbyHeader extends StatelessWidget {
         children: <Widget>[
           Text('Mafia', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppSpacing.sm),
-          Text('Phase: ${game.currentPhase}'),
-          Text('${game.playersCount}/${game.maxPlayers} players · min ${game.minPlayers}'),
-          GameDeadlineTimer(deadlineAt: game.phaseEndsAt ?? game.countdownEndsAt),
+          Text('Phase: ${_phaseLabel(game.phase)}'),
+          Text(
+            '${game.playersCount}/${game.maxPlayers} players · min ${game.minPlayers}',
+          ),
+          GameDeadlineTimer(
+            deadlineAt: game.phaseEndsAt ?? game.countdownEndsAt,
+          ),
         ],
       ),
     );
@@ -210,7 +231,9 @@ class _PlayerStrip extends StatelessWidget {
             ListTile(
               dense: true,
               leading: Icon(
-                player.isAlive ? Icons.person_outline : Icons.person_off_outlined,
+                player.isAlive
+                    ? Icons.person_outline
+                    : Icons.person_off_outlined,
               ),
               title: Text(player.username),
               subtitle: Text(
@@ -237,8 +260,8 @@ class _LobbyActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<MafiaProvider>();
     final joined = provider.players.any((item) => item.userId == userId);
-    final canStart = userId == game.createdBy &&
-        game.playersCount >= game.minPlayers;
+    final canStart =
+        userId == game.createdBy && game.playersCount >= game.minPlayers;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -250,7 +273,9 @@ class _LobbyActions extends StatelessWidget {
           ),
         if (userId == game.createdBy)
           PubgetPrimaryButton(
-            onPressed: provider.busy || !canStart ? null : () => provider.start(),
+            onPressed: provider.busy || !canStart
+                ? null
+                : () => provider.start(),
             semanticLabel: GameStrings.start,
             child: const Text(GameStrings.start),
           ),
@@ -273,27 +298,31 @@ class _PlayActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<MafiaProvider>();
     final self = provider.self;
-    final alive = provider.players.where((item) => item.isAlive && !item.hasLeft);
+    final alive = provider.players.where(
+      (item) => item.isAlive && !item.hasLeft,
+    );
     if (self == null || !self.isAlive) {
       return const Text('You are spectating.');
     }
-    if (game.currentPhase == 'night' && self.canUseAbility) {
+    if (game.phase == 'NIGHT' && self.canUseAbility) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('Choose a night target. The server validates your role.'),
+          Text(_nightInstruction(provider.privateState.role)),
           for (final player in alive)
             if (player.userId != userId)
               ListTile(
                 title: Text(player.username),
                 onTap: provider.busy
                     ? null
-                    : () => provider.nightAction(player.userId),
+                    : () => provider.privateState.role == 'don'
+                          ? provider.donInvestigation(player.userId)
+                          : provider.nightAction(player.userId),
               ),
         ],
       );
     }
-    if (game.currentPhase == 'voting' && self.canVote) {
+    if (game.phase == 'VOTING' && self.canVote) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -302,13 +331,32 @@ class _PlayActions extends StatelessWidget {
             if (player.userId != userId)
               ListTile(
                 title: Text(player.username),
-                onTap: provider.busy ? null : () => provider.vote(player.userId),
+                onTap: provider.busy
+                    ? null
+                    : () => provider.vote(player.userId),
               ),
         ],
       );
     }
-    return Text('Current phase: ${game.currentPhase}');
+    return Text('Current phase: ${_phaseLabel(game.phase)}');
   }
+}
+
+String _phaseLabel(String phase) {
+  return switch (phase) {
+    'WAITING' => 'Waiting room',
+    'STARTING' => 'Starting',
+    'ROLE_REVEAL' => 'Role reveal',
+    'NIGHT' => 'Night',
+    'DAY' => 'Day',
+    'DISCUSSION' => 'Discussion',
+    'VOTING' => 'Voting',
+    'VOTE_RESULT' => 'Vote result',
+    'RESOLUTION' => 'Resolution',
+    'GAME_OVER' => 'Game over',
+    'CANCELLED' => 'Cancelled',
+    _ => phase,
+  };
 }
 
 class _Result extends StatelessWidget {
@@ -340,4 +388,14 @@ class _Result extends StatelessWidget {
       ),
     );
   }
+}
+
+String _nightInstruction(String role) {
+  return switch (role) {
+    'doctor' => 'Doctor: choose one player to protect.',
+    'detective' => 'Detective: investigate one player privately.',
+    'don' => 'Don: choose a player to investigate privately.',
+    'mafia' => 'Mafia: choose a target for the night kill.',
+    _ => 'You have no night action.',
+  };
 }

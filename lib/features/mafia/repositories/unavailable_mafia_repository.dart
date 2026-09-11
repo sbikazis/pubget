@@ -71,4 +71,8 @@ final class UnavailableMafiaRepository implements MafiaRepository {
   @override
   Stream<Result<List<Map<String, dynamic>>>> watchChat(String gameId) =>
       Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
+
+  @override
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaChat(String gameId) =>
+      Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
 }

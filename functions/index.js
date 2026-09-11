@@ -44,6 +44,7 @@ const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
+const { createMafiaActionDomain } = require("./src/mafia/actionDomain");
 
 initializeApp();
 
@@ -152,6 +153,12 @@ const mafiaDomain = createMafiaDomain({
   Timestamp,
   HttpsError,
   notificationBuilder,
+});
+const mafiaActionDomain = createMafiaActionDomain({
+  db: getFirestore(),
+  FieldValue,
+  Timestamp,
+  HttpsError,
 });
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
@@ -501,6 +508,18 @@ exports.joinMafiaGame = onCall(
 exports.startMafiaGame = onCall(
   { region: "us-central1" },
   mafiaDomain.startMafiaGame,
+);
+exports.submitMafiaAction = onCall(
+  { region: "us-central1" },
+  mafiaActionDomain.submitMafiaAction,
+);
+exports.sendMafiaMessage = onCall(
+  { region: "us-central1" },
+  mafiaActionDomain.sendMafiaMessage,
+);
+exports.heartbeatMafia = onCall(
+  { region: "us-central1" },
+  mafiaActionDomain.heartbeatMafia,
 );
 exports.getAchievements = onCall(
   { region: "us-central1" },
