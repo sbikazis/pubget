@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../app/app_router.dart';
 import '../../data/sticker_store.dart';
 import '../../data/user_sticker_store.dart';
 import '../../models/chat_models.dart';
@@ -91,11 +92,13 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   StreamSubscription<double>? _ampSub;
   final _levels = List<double>.filled(30, 0.18);
   AudioPlayer? _previewPlayer;
+
   /// True while [voiceCapture.start] is in flight after long-press arm.
   var _holdStarting = false;
   var _finishAfterStart = false;
   var _cancelAfterStart = false;
   var _sending = false;
+  var _mediaFlowBusy = false;
 
   late final AnimationController _micSendFlip;
   late final AnimationController _cameraFade;
@@ -200,48 +203,62 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
         // Sheet opens nested games sheet itself.
       },
       onCreateEvent: () {
-        Navigator.of(context).pop();
-        // Navigation handled inside sheet.
+        AppNavigation.go(
+          context,
+          '/events/create?groupId=${Uri.encodeComponent(widget.groupId)}',
+        );
       },
     );
   }
 
   Future<void> _openCamera() async {
-    final result = await WaInAppCameraPage.open(context);
-    if (result == null || !mounted) return;
-    await _previewAndSend(result);
+    if (_mediaFlowBusy) return;
+    _mediaFlowBusy = true;
+    try {
+      final result = await WaInAppCameraPage.open(context);
+      if (result == null || !mounted) return;
+      await _previewAndSend(result);
+    } finally {
+      _mediaFlowBusy = false;
+    }
   }
 
   Future<void> _openGalleryFlow() async {
-    final picker = ImagePicker();
-    final files = await picker.pickMultiImage(imageQuality: 100);
-    if (files.isEmpty || !mounted) {
-      // Allow video via single pick if multi returned empty after cancel.
-      return;
-    }
-    for (final file in files.take(30)) {
-      final bytes = await file.readAsBytes();
-      if (!mounted) return;
-      final ext = file.name.split('.').last.toLowerCase();
-      final contentType = ext == 'png'
-          ? 'image/png'
-          : ext == 'gif'
-          ? 'image/gif'
-          : 'image/jpeg';
-      final confirmed = await WaMediaPreviewPage.open(
-        context,
-        bytes: bytes,
-        fileName: file.name,
-        contentType: contentType,
-        isVideo: false,
-      );
-      if (confirmed == true) {
-        await widget.onSendMedia(
+    if (_mediaFlowBusy) return;
+    _mediaFlowBusy = true;
+    try {
+      final picker = ImagePicker();
+      final files = await picker.pickMultiImage(imageQuality: 100);
+      if (files.isEmpty || !mounted) {
+        // Allow video via single pick if multi returned empty after cancel.
+        return;
+      }
+      for (final file in files.take(30)) {
+        final bytes = await file.readAsBytes();
+        if (!mounted) return;
+        final ext = file.name.split('.').last.toLowerCase();
+        final contentType = ext == 'png'
+            ? 'image/png'
+            : ext == 'gif'
+            ? 'image/gif'
+            : 'image/jpeg';
+        final confirmed = await WaMediaPreviewPage.open(
+          context,
           bytes: bytes,
           fileName: file.name,
           contentType: contentType,
+          isVideo: false,
         );
+        if (confirmed == true) {
+          await widget.onSendMedia(
+            bytes: bytes,
+            fileName: file.name,
+            contentType: contentType,
+          );
+        }
       }
+    } finally {
+      _mediaFlowBusy = false;
     }
   }
 
@@ -505,9 +522,9 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
       });
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر تشغيل المعاينة.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تعذر تشغيل المعاينة.')));
     }
   }
 
@@ -559,15 +576,19 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           child: _panelOpen
               ? WaEmojiPanel(
                   userStickerStore: widget.userStickerStore,
+                  stickerStore: widget.stickerStore,
                   currentUserId: widget.currentUserId,
                   currentUserName: widget.currentUserName,
+                  onSendSticker: widget.onSendSticker,
                   onInsertEmoji: (emoji) {
                     final value = widget.controller.text;
                     final selection = widget.controller.selection;
                     final start = selection.isValid
                         ? selection.start
                         : value.length;
-                    final end = selection.isValid ? selection.end : value.length;
+                    final end = selection.isValid
+                        ? selection.end
+                        : value.length;
                     final next = value.replaceRange(start, end, emoji);
                     widget.controller.value = TextEditingValue(
                       text: next,
@@ -611,7 +632,10 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   }
 
   void _detachPointerRoute(int pointer) {
-    GestureBinding.instance.pointerRouter.removeRoute(pointer, _onGlobalPointer);
+    GestureBinding.instance.pointerRouter.removeRoute(
+      pointer,
+      _onGlobalPointer,
+    );
     if (_activePointer == pointer) {
       _activePointer = null;
     }
@@ -693,9 +717,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
               angle: t * math.pi + (_trashBurst.value * 0.35),
               child: Transform.scale(
                 scale: holding
-                    ? 0.9 +
-                          (_pulse.value * 0.1) +
-                          (_trashBurst.value * 0.2)
+                    ? 0.9 + (_pulse.value * 0.1) + (_trashBurst.value * 0.2)
                     : 1,
                 child: Icon(icon, color: Colors.white, size: holding ? 28 : 24),
               ),
@@ -875,9 +897,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
         height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: _slideCancel
-              ? const Color(0xFF3A2025)
-              : WaColors.darkPill,
+          color: _slideCancel ? const Color(0xFF3A2025) : WaColors.darkPill,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(
@@ -1021,10 +1041,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
             onTap: () => unawaited(_finishAndSend()),
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Icon(
-                Icons.send_rounded,
-                color: WaColors.send(context),
-              ),
+              child: Icon(Icons.send_rounded, color: WaColors.send(context)),
             ),
           ),
         ],

@@ -111,7 +111,8 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   /// Prefer max sensor capture; never drop below [ResolutionPreset.veryHigh].
-  List<ResolutionPreset> get _presetCandidates => _quality == _CaptureQuality.max
+  List<ResolutionPreset> get _presetCandidates =>
+      _quality == _CaptureQuality.max
       ? const <ResolutionPreset>[
           ResolutionPreset.max,
           ResolutionPreset.veryHigh,
@@ -279,19 +280,6 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Future<void> _logCaptureResolution(Uint8List bytes) async {
-    try {
-      final codec = await instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final width = frame.image.width;
-      final height = frame.image.height;
-      frame.image.dispose();
-      debugPrint('Pubget camera capture resolution: ${width}x$height');
-    } catch (error) {
-      debugPrint('Pubget camera capture resolution: unknown ($error)');
-    }
-  }
-
   Future<void> _onScaleStart(ScaleStartDetails _) async {
     _baseZoom = _zoom;
   }
@@ -324,7 +312,6 @@ class _CameraScreenState extends State<CameraScreen>
     final bytes = await picked.readAsBytes();
     final thumb = await _thumbnailForPreview(bytes);
     if (!mounted) return;
-    await _logCaptureResolution(bytes);
     if (!mounted) return;
     setState(() {
       _galleryThumb = thumb;
@@ -386,12 +373,12 @@ class _CameraScreenState extends State<CameraScreen>
         // Must use sensor capture — never screenshot the preview layer.
         final XFile file = await controller.takePicture();
         final bytes = await file.readAsBytes();
-        await _logCaptureResolution(bytes);
         final thumb = await _thumbnailForPreview(bytes);
         if (!mounted) return;
         setState(() {
           _capturedBytes = bytes;
-          _capturedName = 'capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          _capturedName =
+              'capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
           _capturedType = 'image/jpeg';
           _capturedIsVideo = false;
           _galleryThumb = thumb;
@@ -414,7 +401,6 @@ class _CameraScreenState extends State<CameraScreen>
     );
     if (picked == null || !mounted) return;
     final bytes = await picked.readAsBytes();
-    await _logCaptureResolution(bytes);
     final thumb = await _thumbnailForPreview(bytes);
     if (!mounted) return;
     setState(() {
@@ -766,16 +752,16 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onFlip;
 
   IconData get _flashIcon => switch (flash) {
-        _FlashCycle.auto => PhosphorIconsDuotone.lightning,
-        _FlashCycle.on => PhosphorIconsFill.lightning,
-        _FlashCycle.off => PhosphorIconsDuotone.lightningSlash,
-      };
+    _FlashCycle.auto => PhosphorIconsDuotone.lightning,
+    _FlashCycle.on => PhosphorIconsFill.lightning,
+    _FlashCycle.off => PhosphorIconsDuotone.lightningSlash,
+  };
 
   String get _flashLabel => switch (flash) {
-        _FlashCycle.auto => 'تلقائي',
-        _FlashCycle.on => 'تشغيل',
-        _FlashCycle.off => 'إيقاف',
-      };
+    _FlashCycle.auto => 'تلقائي',
+    _FlashCycle.on => 'تشغيل',
+    _FlashCycle.off => 'إيقاف',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -794,10 +780,7 @@ class _TopBar extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                _GlassIconButton(
-                  icon: PhosphorIconsDuotone.x,
-                  onTap: onClose,
-                ),
+                _GlassIconButton(icon: PhosphorIconsDuotone.x, onTap: onClose),
                 const Spacer(),
                 _GlassIconButton(
                   icon: _flashIcon,
@@ -1071,7 +1054,9 @@ class _ControlsSheet extends StatelessWidget {
           child: GestureDetector(
             onTap: () {},
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                 child: Container(

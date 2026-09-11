@@ -60,6 +60,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   final _stars = ChatStarStore();
+  ChatProvider? _chatProvider;
   late final UserStickerStore _userStickers =
       widget.userStickerStore ?? UserStickerStore();
   bool _initialized = false;
@@ -73,6 +74,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _chatProvider ??= context.read<ChatProvider>();
     if (_initialized) return;
     _initialized = true;
     _scrollController.addListener(_onScroll);
@@ -95,7 +97,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   void dispose() {
-    unawaited(context.read<ChatProvider>().leaveGroup());
+    unawaited(_chatProvider?.leaveGroup());
     _scrollController.removeListener(_onScroll);
     _controller.dispose();
     _focusNode.dispose();
