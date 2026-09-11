@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/rank_colors.dart';
+
 /// Pubget MIKADO-edition group ranks (ordinal 0‥6).
 /// Compare with [index] only — never by display name.
 enum PubgetRank {
@@ -8,7 +10,7 @@ enum PubgetRank {
   samurai, // ⚔️ SAMURAI
   hatamoto, // 🛡️ HATAMOTO
   daimyo, // 🏯 DAIMYŌ
-  shogun, // ⚔️ SHŌGUN
+  shogun, // 🪖 SHŌGUN (kabuto — never reuse SAMURAI swords)
   mikado, // 👑 MIKADO
 }
 
@@ -185,53 +187,21 @@ String pubgetRankEmoji(PubgetRank rank) => switch (rank) {
   PubgetRank.samurai => '⚔️',
   PubgetRank.hatamoto => '🛡️',
   PubgetRank.daimyo => '🏯',
-  PubgetRank.shogun => '⚔️',
+  PubgetRank.shogun => '🪖',
   PubgetRank.mikado => '👑',
 };
 
-String? pubgetRankBadgeAsset(PubgetRank rank) => switch (rank) {
-  PubgetRank.ronin => 'assets/ranks/ronin.png',
-  PubgetRank.gokenin => 'assets/ranks/gokenin.png',
-  PubgetRank.samurai => 'assets/ranks/samurai.png',
-  PubgetRank.hatamoto => 'assets/ranks/hatamoto.png',
-  PubgetRank.daimyo => 'assets/ranks/daimyo.png',
-  PubgetRank.shogun => 'assets/ranks/shogun.png',
-  PubgetRank.mikado => 'assets/ranks/mikado.png',
-};
+String? pubgetRankBadgeAsset(PubgetRank rank) =>
+    RankColors.assetForKey(rank.name);
 
-/// Core badge color (never used as body text for SHŌGUN — use crimson text).
-Color pubgetRankCoreColor(PubgetRank rank) => switch (rank) {
-  PubgetRank.ronin => const Color(0xFF25204A),
-  PubgetRank.gokenin => const Color(0xFF4B2A73),
-  PubgetRank.samurai => const Color(0xFF8F2636),
-  PubgetRank.hatamoto => const Color(0xFF302A68),
-  PubgetRank.daimyo => const Color(0xFF5B2A86),
-  PubgetRank.shogun => const Color(0xFF111018),
-  PubgetRank.mikado => const Color(0xFF5E2A84),
-};
+/// Core badge color (aligned with [RankColors.nameColor]).
+Color pubgetRankCoreColor(PubgetRank rank) =>
+    RankColors.colorForKey(rank.name);
 
 /// Central resolver — never persist these colors.
+/// Uses the fixed MIKADO-edition palette (not theme purple).
 Color rankColorResolver(PubgetRank rank, {required bool isDarkMode}) {
-  if (isDarkMode) {
-    return switch (rank) {
-      PubgetRank.ronin => const Color(0xFF9A93D2),
-      PubgetRank.gokenin => const Color(0xFFAF8DD8),
-      PubgetRank.samurai => const Color(0xFFE08593),
-      PubgetRank.hatamoto => const Color(0xFF9790D5),
-      PubgetRank.daimyo => const Color(0xFFB589DC),
-      PubgetRank.shogun => const Color(0xFFE77E8D),
-      PubgetRank.mikado => const Color(0xFFB989DC),
-    };
-  }
-  return switch (rank) {
-    PubgetRank.ronin => const Color(0xFF362D76),
-    PubgetRank.gokenin => const Color(0xFF4E287C),
-    PubgetRank.samurai => const Color(0xFF851E2E),
-    PubgetRank.hatamoto => const Color(0xFF322B78),
-    PubgetRank.daimyo => const Color(0xFF552380),
-    PubgetRank.shogun => const Color(0xFF8C1728),
-    PubgetRank.mikado => const Color(0xFF592380),
-  };
+  return RankColors.colorForKey(rank.name);
 }
 
 Color rankColorForRoleString(String? role, {required bool isDarkMode}) =>
@@ -246,16 +216,26 @@ double rankBadgeGlowStrength(PubgetRank rank) {
   return 0.12 + (t * 0.78);
 }
 
-/// Glow / highlight color for the badge (core-tinted; SHŌGUN uses crimson).
+/// Glow / highlight color for the badge.
 Color rankBadgeGlowColor(PubgetRank rank) => switch (rank) {
-  PubgetRank.ronin => const Color(0xFF9A93D2),
-  PubgetRank.gokenin => const Color(0xFFAF8DD8),
-  PubgetRank.samurai => const Color(0xFFE08593),
-  PubgetRank.hatamoto => const Color(0xFF9790D5),
-  PubgetRank.daimyo => const Color(0xFFB589DC),
-  PubgetRank.shogun => const Color(0xFFE77E8D),
-  PubgetRank.mikado => const Color(0xFFD4AF37), // imperial gold gleam
+  PubgetRank.shogun => RankColors.shogunGold,
+  PubgetRank.mikado => const Color(0xFF7A1FFF),
+  _ => RankColors.colorForKey(rank.name),
 };
+
+/// Username style (MIKADO glow included).
+TextStyle pubgetRankNameTextStyle(
+  PubgetRank rank, {
+  double fontSize = 13,
+  FontWeight fontWeight = FontWeight.w700,
+  double height = 1.15,
+}) =>
+    RankColors.nameTextStyleForKey(
+      rank.name,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      height: height,
+    );
 
 bool rankHasAdminEntryHub(PubgetRank rank) =>
     rank.index >= PubgetRank.gokenin.index;
