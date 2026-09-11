@@ -44,8 +44,19 @@ abstract final class GameLinks {
   }
 
   static void openCreate(BuildContext context, {String? groupId}) {
-    final suffix = groupId == null || groupId.isEmpty ? '' : '?groupId=$groupId';
+    if (groupId == null || groupId.isEmpty) return;
+    final suffix = '?groupId=${Uri.encodeComponent(groupId)}';
     AppNavigation.go(context, '/games/create$suffix');
+  }
+
+  /// Opens the group-scoped v2 center. Games are intentionally not a global
+  /// destination; callers must always provide the owning group.
+  static void openCenter(BuildContext context, {required String groupId}) {
+    if (groupId.isEmpty) return;
+    AppNavigation.go(
+      context,
+      '/games/center?groupId=${Uri.encodeComponent(groupId)}',
+    );
   }
 }
 
@@ -75,9 +86,7 @@ class GameCard extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         leading: Icon(spec.icon),
         title: Text(game.title),
-        subtitle: Text(
-          '${spec.name} · ${game.participantsCount} players',
-        ),
+        subtitle: Text('${spec.name} · ${game.participantsCount} players'),
         trailing: GameStatusBadge(status: game.status),
       ),
     );
@@ -260,8 +269,8 @@ class GameHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionGames,
-            actionLabel: GameStrings.seeAll,
-            onAction: () => AppNavigation.go(context, '/games'),
+            // Home has no group scope. Do not expose a global Games entry
+            // point; Games is entered from a group chat instead.
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && games.isEmpty)
@@ -282,10 +291,7 @@ class GameHomeStrip extends StatelessWidget {
                     const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  return SizedBox(
-                    width: 220,
-                    child: GameCard(game: game),
-                  );
+                  return SizedBox(width: 220, child: GameCard(game: game));
                 },
               ),
             ),

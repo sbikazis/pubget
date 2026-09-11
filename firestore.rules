@@ -800,7 +800,7 @@ service cloud.firestore {
       function gameVisible() {
         return signedIn() && gameExists() &&
           (gameData().creatorId == request.auth.uid ||
-           (gameData().status != 'draft' &&
+            (gameData().status != 'CREATED' &&
             gameData().groupId is string &&
             groupMember(gameData().groupId)));
       }
@@ -832,9 +832,12 @@ service cloud.firestore {
     }
 
     match /game_history/{gameId} {
-      allow read: if signedIn();
+      allow read: if signedIn() &&
+        resource.data.groupId is string && groupMember(resource.data.groupId);
       allow write: if false;
     }
+    match /game_creation_limits/{limitId} { allow read, write: if false; }
+    match /game_request_idempotency/{requestId} { allow read, write: if false; }
     match /achievements/{achievementId} {
       allow read: if signedIn();
       allow write: if false;

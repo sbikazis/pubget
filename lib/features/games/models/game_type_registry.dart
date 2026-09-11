@@ -42,6 +42,7 @@ final class GameTypeSpec {
   final IconData icon;
   final int version;
   final bool implemented;
+
   /// True when [createGame] can create this type. Mafia is playable
   /// (`implemented`) but only through `createMafiaGame`.
   final bool genericCreate;
@@ -56,7 +57,7 @@ abstract final class GameTypeRegistry {
       name: 'Guess the Character',
       description: 'Identify the character from clues.',
       icon: Icons.person_search_outlined,
-      version: 1,
+      version: 2,
       implemented: true,
       capabilities: GameCapabilities(
         usesScoring: true,
@@ -70,7 +71,7 @@ abstract final class GameTypeRegistry {
       name: 'Anime Chain',
       description: 'Keep a chain of related anime titles going.',
       icon: Icons.link_outlined,
-      version: 1,
+      version: 2,
       implemented: true,
       capabilities: GameCapabilities(
         usesRounds: true,
@@ -84,7 +85,7 @@ abstract final class GameTypeRegistry {
       name: 'Emoji Anime Guess',
       description: 'Guess the anime from emoji clues.',
       icon: Icons.emoji_emotions_outlined,
-      version: 1,
+      version: 2,
       implemented: true,
       capabilities: GameCapabilities(
         usesScoring: true,
@@ -126,12 +127,23 @@ abstract final class GameTypeRegistry {
     return null;
   }
 
+  /// All registered implementations, including Mafia's isolated legacy
+  /// feature. Prompt 1 callers must use [promptOneCatalog] or [genericCreate]
+  /// so Mafia cannot enter the generic creation flow.
   static List<GameTypeSpec> get implemented =>
       specs.values.where((spec) => spec.implemented).toList(growable: false);
 
   static List<GameTypeSpec> get genericCreate => specs.values
       .where((spec) => spec.implemented && spec.genericCreate)
       .toList(growable: false);
+
+  /// Prompt 1 catalog. Mafia remains registered for its dedicated Prompt 2
+  /// implementation, but is intentionally absent from this catalog.
+  static List<GameTypeSpec> get promptOneCatalog => const <GameType>[
+    GameType.guessCharacter,
+    GameType.animeChain,
+    GameType.emojiAnimeGuess,
+  ].map(of).toList(growable: false);
 
   static bool isRegistered(GameType type) => specs.containsKey(type);
 
