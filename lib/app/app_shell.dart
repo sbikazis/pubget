@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/pubget_design_system.dart';
-import '../features/edits/screens/edit_feed_page.dart';
+import '../features/reels/screens/reels_feed_page.dart';
 import '../features/groups/screens/groups_home_page.dart';
 import '../features/groups/screens/joined_groups_page.dart';
 import '../features/home/screens/home_page.dart';
@@ -74,7 +74,7 @@ class _AppShellState extends State<AppShell> {
           GroupsHomePage(),
           JoinedGroupsPage(),
           PrivateChatsListScreen(),
-          EditFeedPage(),
+          ReelsFeedPage(),
         ];
 
     return AppShellScope(
