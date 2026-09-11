@@ -1,0 +1,579 @@
+PUBGET REBIRTH — PROMPT 2
+بناء Mafia Engine الكامل من الصفر
+هذه المهمة مخصصة حصريًا للعبة Mafia.
+
+لا تعدل Event System.
+
+لا تحول Mafia إلى Event.
+
+لا تجعل Mafia تعتمد على Event Engine.
+
+Mafia هي Game Domain مستقلة داخل Games.
+
+1. فلسفة Mafia في Pubget
+Mafia ليست مجرد لعبة أسئلة.
+
+إنها Social Deduction Game كاملة تعتمد على:
+
+Secret Roles
+Teams
+Private Information
+Night Actions
+Day Discussion
+Voting
+Elimination
+Win Conditions
+Server-authoritative State Machine
+يجب أن يكون النظام قادرًا على إدارة اللعبة بدون Moderator بشري.
+
+2. إنشاء Mafia
+Mafia تُنشأ من:
+
+Group Chat → Games → Mafia
+
+ولا يمكن إنشاء Mafia إلا من الرتب المسموح لها بإنشائها.
+
+الرتبة الدنيا Member ممنوعة من إنشاء Mafia.
+
+التحقق يجب أن يكون Server-side.
+
+ولا تسمح بتجاوز Permission عبر API أو Flutter Client.
+
+3. Waiting Room
+Creator ينتقل مباشرة إلى Mafia Waiting Room.
+
+ينشر Chat System Card:
+
+Mafia Game Created
+
+وتحتوي على:
+
+Creator
+Player count
+Required range
+Join button
+Game status
+Rules
+في Waiting Room يمكن للمستخدم العودة إلى Chat.
+
+4. Player Count
+استخدم نظام Mafia جماعيًا.
+
+الحد الأدنى المقترح:
+
+7 Players
+
+والحد الأقصى:
+
+15 Players
+
+إذا كان المشروع الحالي يحتوي على حد مختلف فعليًا ومثبت في الكود/الـspec، حافظ على الحد الموجود بدل خلق تضارب.
+
+لا تبدأ اللعبة قبل الوصول إلى Minimum.
+
+بعد Start: Join ممنوع نهائيًا.
+
+5. Role Distribution
+لا تجعل النظام يوزع Roles بشكل عشوائي غير متوازن.
+
+استخدم Role Distribution deterministic based on player count.
+
+Roles الأساسية:
+
+Mafia
+الفريق الشرير.
+
+Detective
+يفحص لاعبًا واحدًا في كل Night.
+
+Doctor
+يحمي لاعبًا واحدًا في كل Night.
+
+Citizen
+لا يملك Night Ability.
+
+Don
+قائد Mafia.
+
+Don يستطيع:
+
+المشاركة في Mafia Kill
+استخدام قدرة التحقيق الخاصة به حسب إعداد Mafia المعتمد
+لكن لا تضف Roles غريبة أو Neutral Roles في Pubget 1.0.
+
+لا تضف:
+
+Jester
+Serial Killer
+Vigilante
+Witch
+Cupid
+أي Role آخر
+إلا في إصدار مستقبلي.
+
+6. Role Privacy
+Role Assignment يتم Server-side.
+
+كل لاعب يرى Role الخاص به فقط.
+
+Mafia members يعرفون أعضاء Mafia الآخرين.
+
+Town لا يعرف Mafia.
+
+Detective لا يرى Role الخام للاعب.
+
+Detective يحصل فقط على نتيجة Investigation.
+
+Doctor لا يعرف إن كان Target تعرض لهجوم.
+
+7. Mafia Win Condition
+Mafia تفوز عندما يصبح عدد Mafia الأحياء مساويًا لعدد باقي اللاعبين الأحياء أو يتجاوزه.
+
+Town تفوز عندما يتم التخلص من جميع Mafia.
+
+يجب فحص Win Condition بعد كل عملية تغير عدد اللاعبين الأحياء.
+
+لا تنتظر إلى Phase التالية إذا كانت نتيجة الفوز أصبحت حتمية.
+
+8. Game State Machine
+استخدم:
+
+WAITING
+STARTING
+ROLE_REVEAL
+NIGHT
+DAY
+DISCUSSION
+VOTING
+VOTE_RESULT
+RESOLUTION
+GAME_OVER
+CANCELLED
+لا تسمح بقفزات غير منطقية.
+
+9. Game Start
+بعد اكتمال العدد:
+
+Lock Player List
+Assign Roles
+Create Private Role States
+Create Public Game State
+Enter ROLE_REVEAL
+Give each player their role
+Start first phase
+لا يمكن إعادة توزيع Roles بعد بدء اللعبة.
+
+10. Night
+Night لها Timer Server-authoritative.
+
+اللاعب لا يحدد Timer.
+
+الـClient يعرض فقط Countdown.
+
+في Night:
+
+Mafia
+تختار Target.
+
+إذا كان هناك أكثر من Mafia:
+
+كل Mafia يستطيع إرسال Target.
+Server يحسب القرار النهائي وفق Mafia resolution rule.
+لا يمكن Client تغيير النتيجة مباشرة.
+Doctor
+يختار Player للحماية.
+
+Detective
+يختار Player للتحقيق.
+
+Don
+يستخدم Ability الخاصة به وفق Role Rules.
+
+Citizen
+لا يملك Action.
+
+11. Night Resolution
+لا تعرض النتائج الفردية للاعبين الآخرين.
+
+Server يقوم بترتيب:
+
+Validate Actions
+Resolve Mafia Target
+Resolve Doctor Protection
+Resolve Investigation
+Resolve Don Ability
+Resolve Death
+Write Night Result
+Check Win Condition
+Move to Day
+كل resolution يجب أن يكون deterministic.
+
+12. Doctor
+Doctor يستطيع حماية Player واحد في كل Night.
+
+يمكنه حماية نفسه.
+
+لمنع abuse غير المنطقي، لا يمكنه حماية نفس Player في ليلتين متتاليتين.
+
+إذا كان Target هو Mafia Target:
+
+لا يموت Target.
+
+Doctor لا يعرف أن عملية الإنقاذ نجحت إلا من النتيجة العامة إذا كانت القواعد تكشف ذلك.
+
+13. Detective
+كل Night يستطيع اختيار Player حي واحد.
+
+Server يرجع:
+
+Mafia
+Not Mafia
+ولا يرجع Role الخام.
+
+النتيجة Private.
+
+لا يمكن للاعب آخر قراءتها من Firestore.
+
+14. Don
+Don جزء من Mafia.
+
+Don يعرف Mafia teammates.
+
+يمكن لـDon استخدام قدرة التحقق الخاصة به لمعرفة ما إذا كان لاعب معين هو Detective.
+
+النتيجة Private للـDon.
+
+15. Day
+بعد Night:
+
+Server يحدد هل حدث قتل.
+
+إذا قتل Player:
+
+Public announcement
+Player becomes eliminated
+Player loses active role participation
+Player can no longer vote
+Player can no longer use abilities
+إذا لم يمت أحد:
+
+أعلن أن Night انتهت بدون Death.
+
+16. Discussion
+Day Discussion يجب أن تكون منظمة.
+
+كل Player حي يحصل على Turn.
+
+استخدم Speaking Order.
+
+Timer لكل Player.
+
+اللاعب يستطيع:
+
+Speak
+End Turn
+لا يستطيع اللاعب:
+
+تعطيل Game
+تجاوز Turn
+التحدث كـactive player بعد انتهاء Turn
+إذا خرج لاعب من التطبيق، لا توقف اللعبة.
+
+17. Voting
+بعد Discussion:
+
+كل Player حي يصوت.
+
+لا يمكن للاعب التصويت لنفسه إذا كانت قواعد Mafia المختارة تمنع ذلك.
+
+التصويت Secret.
+
+Server يحسب النتائج.
+
+Player ذو أعلى عدد أصوات يتم Eliminated.
+
+18. Tie
+إذا حدث تعادل:
+
+افتح Re-Vote بين المتعادلين فقط.
+امنح اللاعبين وقتًا إضافيًا.
+أعد التصويت.
+إذا استمر التعادل:
+لا يتم إقصاء أحد.
+انتقل إلى Night التالية.
+لا تجعل Tie تسبب Game Freeze.
+
+19. Elimination
+عند Elimination:
+
+Role Reveal = نعم.
+Player يصبح Dead.
+لا يستطيع استخدام Actions.
+لا يستطيع التصويت.
+لا يستطيع المشاركة في Discussion.
+لا يستطيع التأثير على Game State.
+يظهر Last Words قصيرة قبل انتقاله إلى Spectator.
+
+20. Dead Players
+Dead Player يستطيع فتح Game Room كمشاهد.
+
+لكن:
+
+لا يستطيع رؤية Private Information لم تكن متاحة له أثناء حياته.
+
+ولا يستطيع رؤية:
+
+Roles السرية للآخرين
+Private Actions
+Detective Results
+Mafia communication
+إلا المعلومات التي أصبحت Public وفق قواعد اللعبة.
+
+21. Mafia Communication
+Mafia members يجب أن يكون لديهم Private Mafia Channel/Action Area داخل Game Room.
+
+هذا لا يعني إنشاء Chat عام جديد في Firestore.
+
+يجب أن تكون البيانات محمية Security Rules + Server Authorization.
+
+Town لا يستطيع الوصول إليها.
+
+22. Disconnect
+هذه نقطة حرجة.
+
+إذا أغلق اللاعب التطبيق:
+
+لا توقف اللعبة.
+
+يصبح:
+
+DISCONNECTED
+وتبدأ Reconnect Window.
+
+إذا عاد:
+
+استرجع Game State.
+استرجع Role.
+استرجع Phase.
+استرجع Timer الحالي.
+لا تعيد تشغيل اللعبة.
+إذا لم يعد خلال Reconnect Window:
+
+يتم التعامل معه كـInactive Player.
+
+في Night:
+
+لا تنتظر إلى الأبد.
+استخدم Auto-resolution حسب Role.
+في Discussion:
+
+يتم تجاوز Turn.
+في Voting:
+
+يعتبر Abstain إذا كان النظام يسمح بذلك، وإلا لا ينتظر اللاعب.
+إذا أدى غياب اللاعب إلى كسر Game Condition، نفذ Game Resolution الآمن.
+
+المبدأ: لاعب واحد لا يستطيع تجميد Mafia.
+
+23. Explicit Resign
+إذا ضغط اللاعب:
+
+Leave Game
+
+أثناء Mafia:
+
+لا تسمح له بإفساد State Machine.
+
+يصبح Eliminated/Inactive.
+
+كشف الهوية يتم وفق قواعد Elimination.
+
+لا تمنحه أي Reward باعتباره Winner.
+
+ولا تعيد اللاعب إلى اللعبة.
+
+24. App Background
+إذا خرج المستخدم من التطبيق مؤقتًا:
+
+لا تعتبره Resigned.
+
+مثال:
+
+Home Button → App Background → Return
+
+يجب أن يستمر Game.
+
+عند العودة:
+
+fetch current state
+synchronize
+display current phase
+25. Timers
+كل Timer يجب أن يعتمد على:
+
+serverStartedAt
+serverEndsAt
+وليس على:
+
+Timer(Duration(...))
+في Client فقط.
+
+Client Countdown مجرد visualization.
+
+إذا عدل المستخدم ساعة الهاتف: لا يتأثر Game.
+
+26. Anti-Cheat
+Client لا يستطيع:
+
+تغيير Role
+تغيير Score
+إنهاء Phase
+تغيير Timer
+قتل Player
+حماية Player
+تغيير Vote
+معرفة Private Role
+إعطاء Reward
+إعلان Winner
+كل ذلك Server-authoritative.
+
+27. Idempotency
+كل Action له unique action ID.
+
+إذا أرسل المستخدم نفس Action مرتين:
+
+يتم تنفيذها مرة واحدة.
+
+مثلاً:
+
+Doctor Protect
+Detective Investigate
+Mafia Kill
+Vote
+لا يمكن duplicate request أن تضاعف التأثير.
+
+28. Mafia UI
+Mafia يجب أن تكون أكثر تجربة تفاعلية في Pubget.
+
+لا تستخدم UI عام لكل الألعاب.
+
+استخدم:
+
+Phase indicator
+Night/Day atmosphere
+Role Card
+Player grid
+Alive/Dead state
+Timer
+Action panel
+Discussion interface
+Voting interface
+Result screen
+Victory screen
+كل شيء واضح بالعربية.
+
+29. Game End
+عند تحقق Win Condition:
+
+Stop timers
+Lock actions
+Resolve Winner
+Reveal final roles
+Calculate rewards
+Save immutable result
+Send Chat Result Message
+Move to Archive
+لا يمكن لأي request بعد GAME_OVER تغيير النتيجة.
+
+30. Rewards
+Mafia هي اللعبة الأعلى صعوبة.
+
+استخدم Reward:
+
+Winner = 10 Coins
+Loser = 2 Coins
+لا يوجد Draw في Mafia.
+إذا انتهت اللعبة بسبب technical cancellation:
+
+لا تمنح Loss Reward.
+
+31. Chat
+Chat يستقبل فقط System Messages:
+
+Mafia Created
+Waiting Room
+Mafia Started
+Night Started
+Day Started
+Player Eliminated
+Mafia Won / Town Won
+Rewards
+لا تجعل Chat يتحكم في Mafia Engine.
+
+32. Archive
+بعد النهاية:
+
+احفظ:
+
+Game ID
+Group
+Creator
+Players
+Roles
+Team
+Phase history
+Eliminations
+Voting results
+Winner
+Rewards
+Duration
+CreatedAt
+StartedAt
+EndedAt
+لكن لا تعرض Private information قبل نهاية اللعبة.
+
+33. قاعدة مهمة جدًا
+لا تحاول تقليد تطبيق Mafia موجود على الإنترنت حرفيًا.
+
+استخدم قواعد Mafia الكلاسيكية كأساس، لكن نفذها داخل Pubget وفق هذه المواصفات وPubget UX.
+
+34. الاختبارات المطلوبة
+اختبر على الأقل:
+
+Minimum players
+Maximum players
+Role distribution
+Mafia kill
+Doctor save
+Detective investigation
+Don investigation
+Voting
+Tie
+Re-vote
+Night with no death
+Mafia win
+Town win
+Disconnect
+Reconnect
+App background
+Explicit leave
+Duplicate action
+Timer expiration
+Simultaneous requests
+GAME_OVER locking
+لا تعتبر Mafia مكتملة حتى لا يستطيع لاعب واحد أو request واحد كسر اللعبة.
+
+35. ممنوع
+لا تضف:
+
+Events داخل Mafia
+Event cards
+Polls داخل Mafia
+Mafia كنوع Event
+Roles إضافية
+Rewards إضافية
+أنظمة اجتماعية جديدة
+ألعاب جديدة
+Mafia تبقى Game مستقلة.
+
+بعد إكمالها، اختبرها end-to-end واترك النظام مستقرًا.
