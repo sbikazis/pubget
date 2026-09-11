@@ -440,7 +440,7 @@ class _WaGamesSheet extends StatelessWidget {
                     onPressed: () {
                       Navigator.pop(context);
                       Navigator.pop(context);
-                      GameLinks.openCreate(context, groupId: groupId);
+                      GameLinks.openCenter(context, groupId: groupId);
                     },
                     child: Text('لعب', style: GoogleFonts.cairo()),
                   ),

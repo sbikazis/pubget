@@ -14,34 +14,46 @@ const {
 } = require("./helpers");
 
 const CHAIN_RULE =
-  "Next title must share at least one character or the same studio, " +
-  "and must not already appear in the chain.";
+  "Each title must share a character or studio with the immediately previous canonical title.";
 
 function configOf(game) {
   const configuration = game.configuration || {};
   return {
     timerSeconds: clampInt(configuration.timerSeconds, 25, 12, 60),
-    maxChain: clampInt(configuration.roundCount, 8, 5, 16),
+    maxChain: clampInt(configuration.roundCount, 8, 2, 16),
   };
 }
 
+function playersOf(state) {
+  return Array.isArray(state.playerOrder)
+    ? state.playerOrder
+    : Object.keys(state.scores || {});
+}
+
+function opponentOf(state, playerId) {
+  return playersOf(state).find((id) => id !== playerId) || null;
+}
+
 function complete(transaction, {
-  db, gameRef, FieldValue, game, gameId, scores, now, reason,
+  db, gameRef, FieldValue, game, gameId, scores, now, reason, winnerIds,
 }) {
-  const outcome = winnersFromScores(scores);
+  const outcome = winnerIds
+    ? { winnerIds, draw: false }
+    : winnersFromScores(scores);
+  const chain = (game.publicState && game.publicState.chain) || [];
   const result = {
     kind: "animeChain",
     winnerIds: outcome.winnerIds,
     scores,
     summary: {
       draw: outcome.draw,
-      chainLength: ((game.publicState && game.publicState.chain) || []).length,
+      chainLength: chain.length,
       reason: reason || "completed",
       rule: CHAIN_RULE,
     },
   };
   transaction.update(gameRef, {
-    status: "completed",
+    status: "COMPLETED",
     result,
     endedAt: now,
     publicState: {
@@ -68,9 +80,12 @@ function complete(transaction, {
   return { completed: true, result };
 }
 
-function initialize({
-  transaction, gameRef, FieldValue, game, playerIds, random, now,
-}) {
+function initialize({ transaction, gameRef, FieldValue, game, playerIds, random, now }) {
+  // The domain admits only two players for Anime Chain. Keep this guard in the
+  // engine too, so a malformed server-side start can never become a 3+ player match.
+  if (!Array.isArray(playerIds) || playerIds.length !== 2) {
+    throw new Error("Anime Chain requires exactly two players.");
+  }
   if (game.publicState && game.publicState.engine === "animeChain") return;
   const seed = pickOne(catalog.ANIME, random);
   const cfg = configOf(game);
@@ -81,9 +96,10 @@ function initialize({
     chain: [{ animeId: seed.id, title: seed.title }],
     currentPlayerId: playerIds[0],
     turnIndex: 0,
-    playerOrder: playerIds,
+    playerOrder: [...playerIds],
     scores: emptyScores(playerIds),
     lastMove: null,
+    failedTurns: [],
   };
   transaction.update(gameRef, {
     publicState,
@@ -96,8 +112,31 @@ function initialize({
 
 function nextPlayer(order, currentId) {
   const index = order.indexOf(currentId);
-  if (index < 0) return order[0];
   return order[(index + 1) % order.length];
+}
+
+function canonicalAnime(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  // IDs are authoritative. Title lookup is retained only as a catalog adapter
+  // convenience; an arbitrary title can never enter game state.
+  if (typeof payload.animeId === "string") return catalog.byAnimeId(payload.animeId);
+  if (typeof payload.title === "string") return catalog.animeByTitle(payload.title);
+  if (typeof payload.value === "string") return catalog.animeByTitle(payload.value);
+  return null;
+}
+
+function failedTurn(transaction, ctx, reason) {
+  const { game, gameRef, FieldValue, db, gameId, now, uid } = ctx;
+  const state = game.publicState || {};
+  const scores = { ...(state.scores || {}) };
+  const winnerId = opponentOf(state, uid);
+  const failedTurns = [...(state.failedTurns || []), { playerId: uid, reason }];
+  game.publicState = { ...state, failedTurns };
+  return complete(transaction, {
+    db, gameRef, FieldValue, game, gameId, scores, now,
+    reason,
+    winnerIds: winnerId ? [winnerId] : [],
+  });
 }
 
 function applyAction(ctx) {
@@ -117,25 +156,20 @@ function applyAction(ctx) {
     throw new HttpsError("failed-precondition", "This turn has already ended.");
   }
   if (action.actionType !== "submit" && action.actionType !== "guess") {
-    throw new HttpsError("invalid-argument", "Anime Chain expects a title.");
+    return failedTurn(transaction, { ...ctx, db, gameId }, "invalid_action");
   }
-  const raw = action.payload && (action.payload.animeId || action.payload.title || action.payload.value);
-  const match = typeof raw === "string" && raw.startsWith && catalog.byAnimeId(raw)
-    ? catalog.byAnimeId(raw)
-    : catalog.animeByTitle(raw);
+  const match = canonicalAnime(action.payload);
   if (!match) {
-    throw new HttpsError("invalid-argument", "That title is not in the Anime Chain catalog.");
+    return failedTurn(transaction, { ...ctx, db, gameId }, "invalid_anime");
   }
   const chain = state.chain || [];
   if (chain.some((item) => item.animeId === match.id)) {
-    throw new HttpsError("failed-precondition", "That title is already in the chain.");
+    return failedTurn(transaction, { ...ctx, db, gameId }, "duplicate_anime");
   }
   const last = chain[chain.length - 1];
-  if (!catalog.sharesRelation(last.animeId, match.id)) {
-    throw new HttpsError(
-      "failed-precondition",
-      "That title does not share a character or studio with the last link.",
-    );
+  if (!last || !catalog.byAnimeId(last.animeId) ||
+      !catalog.sharesRelation(last.animeId, match.id)) {
+    return failedTurn(transaction, { ...ctx, db, gameId }, "broken_chain");
   }
   const scores = { ...(state.scores || {}) };
   scores[uid] = (scores[uid] || 0) + 1;
@@ -167,45 +201,10 @@ function applyAction(ctx) {
 }
 
 function onTimeout(ctx) {
-  const {
-    transaction, gameRef, FieldValue, game, now, db, gameId,
-  } = ctx;
+  const { game, now } = ctx;
   const state = game.publicState || {};
   if (state.phase !== "turn") return { completed: false, result: null };
-  const order = state.playerOrder || Object.keys(state.scores || {});
-  const skipped = state.currentPlayerId;
-  const skips = { ...(state.skips || {}) };
-  skips[skipped] = (skips[skipped] || 0) + 1;
-  const currentPlayerId = nextPlayer(order, skipped);
-  const consecutiveSkips = (state.consecutiveSkips || 0) + 1;
-  if (consecutiveSkips >= order.length) {
-    game.publicState = { ...state, skips };
-    return complete(transaction, {
-      db, gameRef, FieldValue, game, gameId,
-      scores: state.scores || {},
-      now,
-      reason: "timeout",
-    });
-  }
-  const cfg = configOf(game);
-  transaction.update(gameRef, {
-    publicState: {
-      ...state,
-      currentPlayerId,
-      skips,
-      consecutiveSkips,
-      lastMove: { type: "timeout", playerId: skipped },
-    },
-    stateVersion: bumpVersion(game),
-    deadlineAt: deadlineAt(now, cfg.timerSeconds),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  return { completed: false, result: null };
+  return failedTurn(ctx.transaction, { ...ctx, uid: state.currentPlayerId, now }, "timeout");
 }
 
-module.exports = {
-  initialize,
-  applyAction,
-  onTimeout,
-  CHAIN_RULE,
-};
+module.exports = { initialize, applyAction, onTimeout, CHAIN_RULE };

@@ -20,12 +20,7 @@ const ACTION_TYPE_MAX = 64;
 const PAYLOAD_JSON_MAX = 8192;
 const RECIPIENT_CAP = 200;
 
-const GAME_TYPES = [
-  "guessCharacter",
-  "animeChain",
-  "emojiAnimeGuess",
-  "mafia",
-];
+const GAME_TYPES = ["guessCharacter", "animeChain", "emojiAnimeGuess"];
 
 const GAME_TYPE_REGISTRY = {
   guessCharacter: {
@@ -44,7 +39,7 @@ const GAME_TYPE_REGISTRY = {
     implemented: true,
     genericCreate: true,
     capabilities: {
-      usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 8,
+      usesRounds: true, usesScoring: true, minPlayers: 2, maxPlayers: 2,
       defaultRounds: 8, defaultTimer: 25,
     },
   },
@@ -58,29 +53,22 @@ const GAME_TYPE_REGISTRY = {
       defaultRounds: 1, defaultTimer: 25,
     },
   },
-  mafia: {
-    name: "Mafia",
-    version: 1,
-    implemented: true,
-    genericCreate: false,
-    capabilities: { usesRounds: true, usesScoring: false, minPlayers: 4, maxPlayers: 16 },
-  },
 };
 
 const STATUSES = [
-  "draft", "waiting", "active", "paused", "completed", "cancelled",
+  "CREATED", "WAITING", "STARTING", "IN_PROGRESS", "COMPLETED", "CANCELLED",
 ];
 
 const TRANSITIONS = {
-  draft: new Set(["waiting", "cancelled"]),
-  waiting: new Set(["active", "cancelled"]),
-  active: new Set(["paused", "completed", "cancelled"]),
-  paused: new Set(["active", "cancelled"]),
-  completed: new Set(),
-  cancelled: new Set(),
+  CREATED: new Set(["WAITING", "CANCELLED"]),
+  WAITING: new Set(["STARTING", "CANCELLED"]),
+  STARTING: new Set(["IN_PROGRESS", "CANCELLED"]),
+  IN_PROGRESS: new Set(["COMPLETED", "CANCELLED"]),
+  COMPLETED: new Set(),
+  CANCELLED: new Set(),
 };
 
-const TERMINAL = new Set(["completed", "cancelled"]);
+const TERMINAL = new Set(["COMPLETED", "CANCELLED"]);
 
 const EVENT_SCHEMA_VERSION = 1;
 
@@ -175,8 +163,11 @@ function normalizeConfiguration(raw, spec) {
     : {};
   const minCap = caps.minPlayers || 1;
   const maxCap = caps.maxPlayers || 16;
-  const minPlayers = clampInt(input.minPlayers, minCap, minCap, maxCap);
-  const maxPlayers = clampInt(input.maxPlayers, maxCap, minPlayers, maxCap);
+  // Player cardinality is a property of the game, not a client preference.
+  // Keeping this server authoritative also prevents a creator from opening a
+  // game which its engine cannot actually play.
+  const minPlayers = minCap;
+  const maxPlayers = maxCap;
   const difficultySource = input.difficulty || extra.difficulty;
   const difficulty = ["easy", "normal", "hard"].includes(difficultySource)
     ? difficultySource
@@ -366,6 +357,16 @@ function createGamesDomain({
     }
   }
 
+  async function retractAnnouncement(gameId, groupId) {
+    if (!validString(gameId, GAME_ID_MAX) || !validString(groupId, 128)) return;
+    try {
+      await groupRef(db, groupId).collection("messages")
+        .doc(`card-game-${gameId}-created`).delete();
+    } catch (_) {
+      // Retraction is best effort; the authoritative game is already cancelled.
+    }
+  }
+
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
     let recipientIds;
@@ -431,13 +432,38 @@ function createGamesDomain({
       ? result.winnerIds
       : (Array.isArray(game.result && game.result.winnerIds) ? game.result.winnerIds : []);
     const participants = await activePlayerIds(gameId);
-    if (economy && typeof economy.grantDomainRewards === "function" && winnerIds.length > 0) {
-      await economy.grantDomainRewards(winnerIds, {
-        type: "earn_game",
-        referenceId: gameId,
-        source: "game",
-        metadata: { gameType: game.type || "" },
-      });
+    if (economy && typeof economy.grantDomainRewards === "function") {
+      const playerIds = Array.isArray(game.playerOrder) && game.playerOrder.length
+        ? game.playerOrder : participants;
+      const draw = Boolean(result && (result.draw || result.kind === "draw")) ||
+        winnerIds.length === 0;
+      const winners = new Set(winnerIds);
+      const rewardType = draw ? "draw" : "win";
+      // The economy service owns the idempotent ledger.  Supplying the
+      // outcome in metadata lets deployments with outcome-specific rates
+      // apply 5 / 7..10 / 2 without ever issuing a second grant.
+      const winAmount = game.configuration &&
+          game.configuration.difficulty === "easy" ? 7 :
+        game.configuration &&
+          game.configuration.difficulty === "hard" ? 10 : 8;
+      for (const playerId of playerIds) {
+        const amount = draw ? 5 : (winners.has(playerId) ? winAmount : 2);
+        await economy.grantDomainRewards([playerId], {
+          type: "earn_game",
+          referenceId: gameId,
+          source: "game",
+          metadata: {
+            gameType: game.type || "",
+            outcome: draw ? "draw" : (winners.has(playerId) ? "win" : "loss"),
+            difficulty: (game.configuration && game.configuration.difficulty) || "normal",
+            winnerIds,
+            amountOverride: amount,
+            rewardAmount: winAmount,
+            lossAmount: 2,
+            winners: [...winners],
+          },
+        });
+      }
     }
     if (achievements && typeof achievements.evaluate === "function") {
       if (winnerIds.length > 0) {
@@ -478,7 +504,7 @@ function createGamesDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) return;
       const current = snapshot.data() || {};
-      if (current.status !== "active") return;
+      if (current.status !== "IN_PROGRESS") return;
       if (current.publicState && current.publicState.engine) return;
       const engine = engineFor(current.type);
       if (!engine || typeof engine.initialize !== "function") return;
@@ -507,7 +533,7 @@ function createGamesDomain({
       ]);
       if (!snapshot.exists) return;
       const current = snapshot.data() || {};
-      if (current.status !== "active") return;
+      if (current.status !== "IN_PROGRESS") return;
       if (!isExpired(current.deadlineAt, nowOf())) return;
       const engine = engineFor(current.type);
       if (!engine || typeof engine.onTimeout !== "function") return;
@@ -560,21 +586,42 @@ function createGamesDomain({
     }
     const configuration = normalizeConfiguration(input.configuration, spec);
     const asDraft = input.asDraft === true;
-    const status = asDraft ? "draft" : "waiting";
+    const status = asDraft ? "CREATED" : "WAITING";
     const ref = db.collection("games").doc();
     const title = input.title.trim();
+    const waitingDeadline = new Date(nowOf().getTime() + 2 * 60 * 1000);
+    const utcDay = new Date(nowOf()).toISOString().slice(0, 10);
+    const limitRef = db.collection("game_creation_limits").doc(`${uid}_${utcDay}`);
+    const requestKey = validString(input.requestId, GAME_ID_MAX) ? input.requestId.trim() : null;
+    const requestRef = requestKey
+      ? db.collection("game_request_idempotency").doc(`${uid}_${requestKey}`)
+      : null;
+    let replay = null;
     await db.runTransaction(async (transaction) => {
+      if (requestRef) {
+        const priorRequest = await transaction.get(requestRef);
+        if (priorRequest.exists) {
+          replay = priorRequest.data() || null;
+          return;
+        }
+      }
       const access = await loadPermissions(transaction, db, input.groupId.trim(), uid);
       if (access.missingGroup) throw new HttpsError("not-found", "Group not found.");
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to create a game.");
       }
-      if (!access.manageGames) {
-        throw new HttpsError("permission-denied", "You need Manage Games to create a game.");
+      const limitSnap = await transaction.get(limitRef);
+      const limitData = limitSnap.exists ? (limitSnap.data() || {}) : {};
+      if ((limitData.count || 0) >= 2) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "Daily game creation limit reached (2 games per UTC day).",
+        );
       }
       const user = await transaction.get(db.collection("users").doc(uid));
       const now = FieldValue.serverTimestamp();
       transaction.create(ref, {
+        schemaVersion: 2,
         type: input.type,
         title,
         description: typeof input.description === "string" ? input.description.trim() : "",
@@ -584,18 +631,34 @@ function createGamesDomain({
         groupId: input.groupId.trim(),
         configuration,
         participantsCount: asDraft ? 0 : 1,
+        playerOrder: asDraft ? [] : [uid],
+        joinLocked: false,
         result: null,
         currentRoundNumber: null,
         publicState: null,
         currentPhase: status,
         stateVersion: 0,
-        deadlineAt: null,
+         deadlineAt: asDraft ? null : waitingDeadline,
         createdAt: now,
         updatedAt: now,
         startedAt: null,
         endedAt: null,
         searchName: searchNameOf(title),
       });
+      if (limitSnap.exists) {
+        transaction.update(limitRef, { count: (limitData.count || 0) + 1, updatedAt: now });
+      } else {
+        transaction.create(limitRef, { userId: uid, utcDay, count: 1, updatedAt: now });
+      }
+      if (requestRef) {
+        transaction.create(requestRef, {
+          userId: uid,
+          requestId: requestKey,
+          gameId: ref.id,
+          status,
+          createdAt: now,
+        });
+      }
       if (!asDraft) {
         transaction.create(participantRef(db, ref.id, uid), {
           gameId: ref.id,
@@ -614,7 +677,19 @@ function createGamesDomain({
         actorId: uid,
         payload: { status, type: input.type },
       });
+      // This is an isolated hand-off to chat; chat never drives game state.
+      transaction.create(
+        db.collection("game_chat_outbox").doc(`${ref.id}_created`),
+        {
+          gameId: ref.id,
+          groupId: input.groupId.trim(),
+          kind: "created",
+          status: "pending",
+          createdAt: now,
+        },
+      );
     });
+    if (replay && replay.gameId) return { gameId: replay.gameId, status: replay.status };
     if (!asDraft) {
       await notifyGame({
         kind: "invite",
@@ -654,17 +729,17 @@ function createGamesDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
       const current = snapshot.data() || {};
-      if (current.status === "waiting") return;
+      if (current.status === "WAITING") return;
       const access = await loadPermissions(transaction, db, current.groupId, uid);
       if (current.creatorId !== uid && !access.manageGames) {
         throw new HttpsError("permission-denied", "You cannot initialize this game.");
       }
-      assertTransition(current.status, "waiting", HttpsError);
+      assertTransition(current.status, "WAITING", HttpsError);
       const user = await transaction.get(db.collection("users").doc(uid));
       const person = await transaction.get(participantRef(db, ref.id, uid));
       const now = FieldValue.serverTimestamp();
       transaction.update(ref, {
-        status: "waiting",
+        status: "WAITING",
         updatedAt: now,
         participantsCount: person.exists && !person.data().leftAt
           ? current.participantsCount
@@ -705,10 +780,10 @@ function createGamesDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      if (current.status === "active" || current.status === "paused") {
+      if (current.joinLocked || current.status === "IN_PROGRESS" || current.status === "STARTING") {
         throw new HttpsError("failed-precondition", "This game has already started.");
       }
-      if (current.status !== "waiting") {
+      if (current.status !== "WAITING") {
         throw new HttpsError("failed-precondition", "This game is not open to join.");
       }
       if (existing.exists && existing.data().status !== "left" && !existing.data().leftAt) {
@@ -731,6 +806,7 @@ function createGamesDomain({
       });
       transaction.update(ref, {
         participantsCount: FieldValue.increment(1),
+        playerOrder: [...(current.playerOrder || []), uid],
         updatedAt: now,
       });
       writeEvent(transaction, db, FieldValue, {
@@ -760,6 +836,9 @@ function createGamesDomain({
       const current = snapshot.data() || {};
       if (TERMINAL.has(current.status)) {
         throw new HttpsError("failed-precondition", "This game is already finished.");
+      }
+      if (current.status === "STARTING" || current.status === "IN_PROGRESS") {
+        throw new HttpsError("failed-precondition", "Players are frozen after the game starts; resign explicitly.");
       }
       if (!existing.exists) {
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
@@ -804,6 +883,13 @@ function createGamesDomain({
         skipped = true;
         return;
       }
+      // startGame is deliberately idempotent across the two internal
+      // transitions (WAITING -> STARTING -> IN_PROGRESS). A retried request
+      // may observe the final state after the first transaction committed.
+      if (target === "STARTING" && current.status === "IN_PROGRESS") {
+        skipped = true;
+        return;
+      }
       const access = await loadPermissions(transaction, db, current.groupId, uid);
       if (current.creatorId !== uid && !access.manageGames) {
         throw new HttpsError("permission-denied", "You cannot change this game.");
@@ -816,19 +902,37 @@ function createGamesDomain({
         );
       }
       assertTransition(current.status, target, HttpsError);
-      if (target === "active" && current.status === "waiting") {
+      if ((target === "STARTING" || target === "IN_PROGRESS") && current.status === "WAITING") {
         const minPlayers = (current.configuration && current.configuration.minPlayers) || 1;
+        const maxPlayers = (current.configuration && current.configuration.maxPlayers) || 16;
         if ((current.participantsCount || 0) < minPlayers) {
           throw new HttpsError("failed-precondition", "Not enough players to start.");
+        }
+        if ((current.participantsCount || 0) > maxPlayers) {
+          throw new HttpsError("failed-precondition", "Too many players for this game.");
         }
       }
       const now = FieldValue.serverTimestamp();
       const update = {
         status: target,
+        currentPhase: target,
+        stateVersion: (current.stateVersion || 0) + 1,
         updatedAt: now,
         ...(typeof extra === "function" ? extra(current, now) : {}),
       };
       transaction.update(ref, update);
+      if (target === "CANCELLED") {
+        transaction.set(
+          db.collection("game_chat_outbox").doc(`${ref.id}_cancelled`),
+          {
+            gameId: ref.id,
+            groupId: current.groupId,
+            kind: "cancelled",
+            status: "pending",
+            createdAt: now,
+          },
+        );
+      }
       writeEvent(transaction, db, FieldValue, {
         gameId: ref.id,
         eventId: oneShotEvent ? `${ref.id}_${eventType}` : undefined,
@@ -842,14 +946,28 @@ function createGamesDomain({
 
   async function startGame(request) {
     const result = await mutateStatus(request, {
-      target: "active",
+      target: "STARTING",
       eventType: "game_started",
-      fromStatuses: ["waiting"],
+      fromStatuses: ["WAITING"],
       extra: (current, now) => ({
         startedAt: current.startedAt || now,
       }),
     });
     if (!result.skipped && result.game) {
+      await db.runTransaction(async (transaction) => {
+        const ref = gameRef(db, request.data.gameId.trim());
+        const snap = await transaction.get(ref);
+        if (!snap.exists || snap.data().status !== "STARTING") return;
+        transaction.update(ref, {
+          status: "IN_PROGRESS",
+          currentPhase: "IN_PROGRESS",
+          joinLocked: true,
+          playerOrder: Array.isArray(snap.data().playerOrder)
+            ? [...snap.data().playerOrder] : [],
+          stateVersion: (snap.data().stateVersion || 0) + 1,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
       await notifyGame({
         kind: "started",
         gameId: request.data.gameId.trim(),
@@ -864,59 +982,37 @@ function createGamesDomain({
   }
 
   async function pauseGame(request) {
-    await mutateStatus(request, {
-      target: "paused",
-      eventType: "game_paused",
-      fromStatuses: ["active"],
-      oneShotEvent: false,
-      extra: () => ({}),
-    });
-    return { ok: true };
+    throw new HttpsError("failed-precondition", "Games cannot be paused.");
   }
 
   async function resumeGame(request) {
-    await mutateStatus(request, {
-      target: "active",
-      eventType: "game_resumed",
-      fromStatuses: ["paused"],
-      oneShotEvent: false,
-      extra: () => ({}),
-    });
-    return { ok: true };
+    throw new HttpsError("failed-precondition", "Games cannot be resumed.");
   }
 
   async function endGame(request) {
-    const result = await mutateStatus(request, {
-      target: "completed",
-      eventType: "game_completed",
-      fromStatuses: ["active", "paused"],
-      extra: (current, now) => ({
-        endedAt: now,
-        result: current.result || {
-          kind: current.type,
-          winnerIds: [],
-          scores: {},
-          summary: {},
-        },
-      }),
-    });
-    if (!result.skipped && result.game) {
-      await afterComplete(
-        request.data.gameId.trim(),
-        result.game,
-        result.game.result,
-      );
-    }
-    return { ok: true };
+    // Completion is exclusively a server/engine operation.  In particular,
+    // an administrator must not be able to manufacture a result or reward.
+    throw new HttpsError(
+      "failed-precondition",
+      "Games can only be completed by their engine.",
+    );
   }
 
   async function cancelGame(request) {
-    await mutateStatus(request, {
-      target: "cancelled",
+    const result = await mutateStatus(request, {
+      target: "CANCELLED",
       eventType: "game_cancelled",
-      fromStatuses: ["draft", "waiting", "active", "paused"],
-      extra: (_, now) => ({ endedAt: now }),
+      fromStatuses: ["CREATED", "WAITING", "STARTING", "IN_PROGRESS"],
+       extra: (current, now) => ({
+         endedAt: now,
+         currentPhase: "CANCELLED",
+         joinLocked: true,
+         stateVersion: (current.stateVersion || 0) + 1,
+       }),
     });
+    if (!result.skipped && result.game) {
+      await retractAnnouncement(request.data.gameId.trim(), result.game.groupId);
+    }
     return { ok: true };
   }
 
@@ -938,6 +1034,8 @@ function createGamesDomain({
     const refSecret = secretRef(ref);
     let completed = null;
     let completedGame = null;
+    let replay = false;
+    let priorResult = null;
     await db.runTransaction(async (transaction) => {
       const [snapshot, existing, prior, secretSnap] = await Promise.all([
         transaction.get(ref),
@@ -951,16 +1049,30 @@ function createGamesDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      if (current.status === "completed" || current.status === "cancelled") {
+      // Idempotency is checked before terminal-state validation: a retried
+      // client request must receive the prior action result even if that
+      // action completed the game.
+      if (prior.exists) {
+        replay = true;
+        priorResult = (prior.data() || {}).result || null;
+        return;
+      }
+      if (current.status === "COMPLETED" || current.status === "CANCELLED") {
         throw new HttpsError("failed-precondition", "This game is already finished.");
       }
-      if (current.status !== "active") {
+      if (current.status !== "IN_PROGRESS") {
         throw new HttpsError("failed-precondition", "Actions can only be submitted while the game is active.");
+      }
+      if (Number.isInteger(input.expectedVersion) &&
+          input.expectedVersion !== Number(current.stateVersion || 0)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The game changed; refresh before submitting another action.",
+        );
       }
       if (!existing.exists || existing.data().status === "left" || existing.data().leftAt) {
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
-      if (prior.exists) return;
       const now = FieldValue.serverTimestamp();
       transaction.create(stored, {
         actionId,
@@ -978,8 +1090,37 @@ function createGamesDomain({
         actorId: uid,
         payload: { actionType: action.actionType, actionId },
       });
-      const engine = engineFor(current.type);
-      if (engine && typeof engine.applyAction === "function") {
+      if (action.actionType === "resign") {
+        const scores = (current.publicState && current.publicState.scores) || {};
+        const winnerIds = Object.keys(scores).filter((id) => id !== uid);
+        const result = {
+          kind: current.type,
+          winnerIds,
+          scores,
+          summary: { reason: "resign", resignedPlayerId: uid },
+        };
+        transaction.update(ref, {
+          status: "COMPLETED",
+          currentPhase: "game_over",
+          result,
+          endedAt: nowOf(),
+          deadlineAt: null,
+          updatedAt: now,
+        });
+        transaction.set(db.collection("game_history").doc(gameId), {
+          gameId,
+          type: current.type,
+          groupId: current.groupId,
+          participants: Object.keys(scores),
+          result,
+          endedAt: nowOf(),
+          createdAt: now,
+        });
+        completed = result;
+        completedGame = current;
+      } else {
+        const engine = engineFor(current.type);
+        if (engine && typeof engine.applyAction === "function") {
         const outcome = engine.applyAction({
           transaction,
           db,
@@ -998,20 +1139,54 @@ function createGamesDomain({
           completed = outcome.result;
           completedGame = current;
         }
-      } else {
-        transaction.update(ref, { updatedAt: now });
+        transaction.update(stored, { result: outcome.result || null });
+        } else {
+          transaction.update(ref, { updatedAt: now });
+        }
       }
     });
     if (completed && completedGame) {
       await afterComplete(gameId, completedGame, completed);
     }
-    return { ok: true, actionId };
+    return { ok: true, actionId, replay, result: replay ? priorResult : (completed || null) };
   }
 
   async function processExpiredGames() {
     const now = nowOf();
+    const waitingSnapshot = await db.collection("games")
+      .where("status", "==", "WAITING")
+      .where("deadlineAt", "<=", now)
+      .orderBy("deadlineAt", "asc")
+      .limit(50)
+      .get();
+    for (const doc of (waitingSnapshot.docs || [])) {
+      let cancelledGame = null;
+      await db.runTransaction(async (transaction) => {
+        const ref = gameRef(db, doc.id);
+        const snap = await transaction.get(ref);
+        if (!snap.exists || snap.data().status !== "WAITING") return;
+        cancelledGame = snap.data();
+        transaction.update(ref, {
+          status: "CANCELLED",
+          currentPhase: "CANCELLED",
+          joinLocked: true,
+          stateVersion: (snap.data().stateVersion || 0) + 1,
+          endedAt: now,
+          updatedAt: FieldValue.serverTimestamp(),
+          cancellationReason: "WAITING_TIMEOUT",
+        });
+        writeEvent(transaction, db, FieldValue, {
+          gameId: doc.id,
+          eventId: `${doc.id}_waiting_timeout`,
+          type: "game_cancelled",
+          actorId: null,
+          payload: { reason: "WAITING_TIMEOUT" },
+        });
+      });
+      if (cancelledGame) await retractAnnouncement(doc.id, cancelledGame.groupId);
+    }
     const snapshot = await db.collection("games")
-      .where("status", "==", "active")
+      .where("status", "==", "IN_PROGRESS")
       .where("deadlineAt", "<=", now)
       .orderBy("deadlineAt", "asc")
       .limit(50)
@@ -1022,8 +1197,8 @@ function createGamesDomain({
     }
     return {
       ok: true,
-      scanned: docs.length,
-      expired: docs.length,
+      scanned: docs.length + (waitingSnapshot.docs || []).length,
+      expired: docs.length + (waitingSnapshot.docs || []).length,
       limit: 50,
     };
   }

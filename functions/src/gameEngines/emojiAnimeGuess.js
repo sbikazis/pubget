@@ -22,16 +22,40 @@ function configOf(game) {
   };
 }
 
+// The catalog is authoritative. These aliases cover the common search names
+// used by anime databases while still resolving to a canonical catalog item.
+const ALIASES = Object.freeze({
+  haikyuu: "haikyuu",
+  "haikyuu!!": "haikyuu",
+  "the melancholy of haruhi suzumiya": null,
+  "frieren beyond journey's end": "frieren",
+  "frieren beyond journeys end": "frieren",
+});
+
+function resolveAnime(value) {
+  if (value && typeof value === "object") {
+    return resolveAnime(value.animeId || value.id || value.title || value.value);
+  }
+  if (typeof value !== "string" || !value.trim()) return null;
+  const byId = catalog.byAnimeId(value.trim());
+  if (byId) return byId;
+  const normalized = catalog.normalizeTitle(value);
+  const aliasId = ALIASES[normalized];
+  if (aliasId) return catalog.byAnimeId(aliasId);
+  return catalog.animeByTitle(value);
+}
+
 function pickTarget(usedIds, random) {
   const used = usedIds || [];
   const pool = catalog.ANIME.filter((item) => !used.includes(item.id));
-  const source = pool.length ? pool : catalog.ANIME;
-  return pickOne(source, random);
+  return pickOne(pool.length ? pool : catalog.ANIME, random);
 }
 
 function publicEmojis(target) {
-  const clues = Array.isArray(target.emojiClues) ? target.emojiClues : [];
-  return clues.map((item) => String(item)).filter(Boolean).slice(0, 4);
+  return (Array.isArray(target && target.emojiClues) ? target.emojiClues : [])
+    .map((item) => String(item))
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function writeTurn(transaction, {
@@ -82,7 +106,7 @@ function complete(transaction, {
     summary: { draw: outcome.draw },
   };
   transaction.update(gameRef, {
-    status: "completed",
+    status: "COMPLETED",
     result,
     endedAt: now,
     publicState: {
@@ -113,8 +137,7 @@ function complete(transaction, {
 
 function nextPlayer(order, currentId) {
   const index = order.indexOf(currentId);
-  if (index < 0) return order[0];
-  return order[(index + 1) % order.length];
+  return order[(index < 0 ? 0 : index + 1) % order.length];
 }
 
 function advanceTurn(transaction, ctx, { lastReveal, scores, usedIds }) {
@@ -123,13 +146,12 @@ function advanceTurn(transaction, ctx, { lastReveal, scores, usedIds }) {
   const order = state.playerOrder || Object.keys(scores);
   const nextIndex = (state.turnIndex || 0) + 1;
   const totalTurns = state.totalTurns || order.length;
+  game.publicState = { ...state, lastReveal, scores };
   if (nextIndex >= totalTurns) {
-    game.publicState = { ...state, scores };
     return complete(transaction, {
       db, gameRef, FieldValue, game, gameId, scores, now, lastReveal,
     });
   }
-  game.publicState = { ...state, lastReveal, scores };
   writeTurn(transaction, {
     gameRef, FieldValue, game, now, random, scores,
     playerOrder: order,
@@ -151,7 +173,7 @@ function initialize({
   writeTurn(transaction, {
     gameRef, FieldValue, game, now, random,
     scores: emptyScores(playerIds),
-    playerOrder: playerIds,
+    playerOrder: [...playerIds],
     currentPlayerId: playerIds[0],
     turnIndex: 0,
     totalTurns,
@@ -170,69 +192,74 @@ function applyAction(ctx) {
     throw new HttpsError("failed-precondition", "Guesses are not being accepted.");
   }
   if (isExpired(game.deadlineAt, now)) {
-    throw new HttpsError("failed-precondition", "This turn has already ended.");
+    throw new HttpsError("failed-precondition", "This round has already ended.");
   }
-  if (uid !== state.currentPlayerId) {
-    throw new HttpsError("failed-precondition", "It is not your turn.");
+  // The turn owner supplies the clue; every other player may guess.
+  if (uid === state.currentPlayerId) {
+    throw new HttpsError("failed-precondition", "The turn owner cannot guess.");
   }
   if ((state.answeredPlayerIds || []).includes(uid)) {
-    throw new HttpsError("already-exists", "You already guessed this turn.");
+    throw new HttpsError("already-exists", "You already guessed this round.");
   }
   if (action.actionType !== "guess" && action.actionType !== "submit") {
-    throw new HttpsError("invalid-argument", "Submit an anime title.");
+    throw new HttpsError("invalid-argument", "Submit an anime selection.");
   }
-  const raw = action.payload && (action.payload.title || action.payload.value || action.payload.animeId);
-  const match = catalog.byAnimeId(raw) || catalog.animeByTitle(raw);
-  const title = match ? match.title : (typeof raw === "string" ? raw.trim() : "");
-  if (!title) {
-    throw new HttpsError("invalid-argument", "A title is required.");
+  const payload = action.payload || {};
+  const submitted = payload.animeId || payload.selection || payload.title ||
+    payload.value;
+  const match = resolveAnime(submitted);
+  if (!match) {
+    throw new HttpsError("invalid-argument", "Select an anime from the catalog.");
   }
   const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
   if (!secret) {
-    throw new HttpsError("failed-precondition", "This turn is still being prepared.");
+    throw new HttpsError("failed-precondition", "This round is still being prepared.");
   }
-  const correct = catalog.normalizeTitle(title) === catalog.normalizeTitle(secret.title);
+  const answered = [...(state.answeredPlayerIds || []), uid];
   const scores = { ...(state.scores || {}) };
-  if (correct) {
-    scores[uid] = (scores[uid] || 0) + 1;
-  }
+  const correct = match.id === secret.targetAnimeId;
+  if (correct) scores[uid] = (scores[uid] || 0) + 1;
   const lastReveal = {
     title: secret.title,
     animeId: secret.targetAnimeId,
     winnerId: correct ? uid : null,
-    guessedTitle: match ? match.title : title,
+    guessedTitle: match.title,
     correct,
   };
-  return advanceTurn(transaction, ctx, {
-    lastReveal,
-    scores,
-    usedIds: secret.usedAnimeIds || [],
+  // A correct answer closes immediately. A round with no correct answer
+  // closes once every eligible guesser has answered.
+  const guessers = (state.playerOrder || Object.keys(scores))
+    .filter((id) => id !== state.currentPlayerId);
+  if (correct || answered.length >= guessers.length) {
+    return advanceTurn(transaction, ctx, {
+      lastReveal, scores, usedIds: secret.usedAnimeIds || [],
+    });
+  }
+  game.publicState = { ...state, scores, answeredPlayerIds: answered };
+  transaction.update(ctx.gameRef, {
+    publicState: game.publicState,
+    stateVersion: bumpVersion(game),
+    updatedAt: ctx.FieldValue.serverTimestamp(),
   });
+  return { completed: false, result: null };
 }
 
 function onTimeout(ctx) {
   const { game, secretSnap } = ctx;
   const state = game.publicState || {};
-  if (state.phase !== "guess") {
-    return { completed: false, result: null };
-  }
+  if (state.phase !== "guess") return { completed: false, result: null };
   const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
-  const lastReveal = {
-    title: (secret && secret.title) || "",
-    animeId: (secret && secret.targetAnimeId) || "",
-    winnerId: null,
-    correct: false,
-    reason: "timeout",
-  };
   return advanceTurn(ctx.transaction, ctx, {
-    lastReveal,
+    lastReveal: {
+      title: (secret && secret.title) || "",
+      animeId: (secret && secret.targetAnimeId) || "",
+      winnerId: null,
+      correct: false,
+      reason: "timeout",
+    },
     scores: state.scores || {},
     usedIds: (secret && secret.usedAnimeIds) || [],
   });
 }
 
-module.exports = {
-  initialize,
-  applyAction,
-  onTimeout,
-};
+module.exports = { initialize, applyAction, onTimeout };
