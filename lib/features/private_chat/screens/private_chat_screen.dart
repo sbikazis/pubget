@@ -55,6 +55,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
+    unawaited(context.read<PrivateChatProvider>().leaveChat());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -69,8 +70,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final title = summary.isNotEmpty
         ? summary.first.otherDisplayName(uid)
         : (widget.otherUserId?.trim().isNotEmpty == true
-            ? widget.otherUserId!
-            : 'Private chat');
+              ? widget.otherUserId!
+              : 'Private chat');
     final avatarUrl = summary.isNotEmpty
         ? summary.first.otherAvatarUrl(uid)
         : null;
@@ -78,7 +79,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     _syncScrollAndReadReceipts(chat);
     return Scaffold(
       appBar: AppBar(
-        leading: AppBackButton.maybeOf(context) ??
+        leading:
+            AppBackButton.maybeOf(context) ??
             AppBackButton(
               onPressed: () => AppNavigation.go(context, '/private'),
             ),
@@ -91,16 +93,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               size: PubgetAvatarSize.small,
             ),
             const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(title, overflow: TextOverflow.ellipsis),
-            ),
+            Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: <Widget>[
           IconButton(
             tooltip: 'Hide conversation',
             onPressed: () async {
-              final result = await context.read<PrivateChatProvider>().hideChat();
+              final result = await context
+                  .read<PrivateChatProvider>()
+                  .hideChat();
               if (!context.mounted) return;
               if (result.isSuccess) {
                 await AppNavigation.go(context, '/private');

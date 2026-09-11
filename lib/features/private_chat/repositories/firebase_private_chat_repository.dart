@@ -51,9 +51,9 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
 
   @override
   Future<Result<String>> startChat(String otherUserId) => _guard(() async {
-    final result = await _functions
-        .httpsCallable('startPrivateChat')
-        .call(<String, dynamic>{'otherUserId': otherUserId});
+    final result = await _functions.httpsCallable('startPrivateChat').call(
+      <String, dynamic>{'otherUserId': otherUserId},
+    );
     return result.data['chatId'] as String;
   });
 
@@ -169,10 +169,8 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   Future<Result<void>> deleteMessage({
     required String chatId,
     required String messageId,
-  }) => _call('deletePrivateMessage', {
-    'chatId': chatId,
-    'messageId': messageId,
-  });
+  }) =>
+      _call('deletePrivateMessage', {'chatId': chatId, 'messageId': messageId});
 
   @override
   Future<Result<void>> markAsRead({
@@ -277,15 +275,16 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
 Failure _chatFailure(Object error) {
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => const PermissionError(
-        ChatFailureCodes.permission,
-      ),
+      'unauthenticated' ||
+      'permission-denied' => const PermissionError(ChatFailureCodes.permission),
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
-      'unavailable' || 'deadline-exceeded' || 'resource-exhausted' =>
-        const NetworkError(ChatFailureCodes.network),
-      'invalid-argument' || 'failed-precondition' || 'already-exists' =>
-        const ValidationError(ChatFailureCodes.validation),
-      _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'resource-exhausted' => const NetworkError(ChatFailureCodes.network),
+      'invalid-argument' ||
+      'failed-precondition' ||
+      'already-exists' => const ValidationError(ChatFailureCodes.validation),
+      _ => UnknownError(error.message ?? ChatFailureCodes.unknown),
     };
   }
   if (error is FirebaseException &&

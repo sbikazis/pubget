@@ -35,6 +35,8 @@ final class PrivateChatProvider extends ChangeNotifier {
   final Map<String, int> _autoRetryAttempt = <String, int>{};
   final Map<String, Timer> _autoRetryTimers = <String, Timer>{};
   final Set<String> _autoRetryInFlight = <String>{};
+  final Set<String> _pendingDeliveredIds = <String>{};
+  final Set<String> _pendingReadIds = <String>{};
   StreamSubscription<Result<List<ChatMessage>>>? _subscription;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
@@ -43,7 +45,11 @@ final class PrivateChatProvider extends ChangeNotifier {
   bool _hasMore = true;
   bool _loadingMore = false;
   bool _disposed = false;
+  bool _pageActive = false;
   bool _readInFlight = false;
+  bool _receiptInFlight = false;
+  Timer? _receiptRetryTimer;
+  int _receiptRetryAttempt = 0;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   Map<String, double> get uploadProgress => Map.unmodifiable(_uploadProgress);
@@ -56,11 +62,14 @@ final class PrivateChatProvider extends ChangeNotifier {
     required String chatId,
     required String currentUserId,
   }) async {
-    if (_chatId == chatId && _currentUserId == currentUserId) return;
+    if (_chatId == chatId && _currentUserId == currentUserId && _pageActive) {
+      return;
+    }
     await _subscription?.cancel();
     _cancelAllAutoRetries();
     _chatId = chatId;
     _currentUserId = currentUserId;
+    _pageActive = true;
     _messages.clear();
     _messageIndex.clear();
     _deliveredMessageIds.clear();
@@ -82,6 +91,16 @@ final class PrivateChatProvider extends ChangeNotifier {
           },
         );
     await _restoreOutbox(chatId);
+  }
+
+  /// Detaches the live page session while retaining durable pending sends.
+  Future<void> leaveChat() async {
+    _pageActive = false;
+    _receiptRetryTimer?.cancel();
+    _receiptRetryTimer = null;
+    await _subscription?.cancel();
+    _subscription = null;
+    _cancelAllAutoRetries();
   }
 
   Future<void> loadMore() async {
@@ -263,17 +282,21 @@ final class PrivateChatProvider extends ChangeNotifier {
     _autoRetryAttempt[message.id] = 0;
     if (_pendingUploads.containsKey(message.id) &&
         (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
-      _upsert(message.copyWith(
-        sendState: ChatSendState.pending,
-        clearFailureMessage: true,
-      ));
+      _upsert(
+        message.copyWith(
+          sendState: ChatSendState.pending,
+          clearFailureMessage: true,
+        ),
+      );
       await _performMediaUpload(message.id);
       return;
     }
-    _upsert(message.copyWith(
-      sendState: ChatSendState.pending,
-      clearFailureMessage: true,
-    ));
+    _upsert(
+      message.copyWith(
+        sendState: ChatSendState.pending,
+        clearFailureMessage: true,
+      ),
+    );
     unawaited(_persistPending(message));
     final result = await _repository.sendMessage(
       chatId: _chatId ?? '',
@@ -319,31 +342,19 @@ final class PrivateChatProvider extends ChangeNotifier {
   Future<void> markAsRead(List<ChatMessage> visibleMessages) async {
     final chatId = _chatId;
     final uid = _currentUserId;
-    if (chatId == null || uid == null || _readInFlight) return;
-    final ids = visibleMessages
-        .where(
-          (message) =>
-              message.senderId != uid &&
-              !message.isOptimistic &&
-              !_readMessageIds.contains(message.id),
-        )
-        .map((message) => message.id)
-        .take(50)
-        .toList(growable: false);
-    if (ids.isEmpty) return;
-    _readInFlight = true;
-    final result = await _repository.markAsRead(
-      chatId: chatId,
-      messageIds: ids,
+    if (!_pageActive || chatId == null || uid == null) return;
+    _pendingReadIds.addAll(
+      visibleMessages
+          .where(
+            (message) =>
+                message.senderId != uid &&
+                !message.isOptimistic &&
+                !_readMessageIds.contains(message.id),
+          )
+          .map((message) => message.id)
+          .toList(),
     );
-    _readInFlight = false;
-    if (result.isSuccess) {
-      _readMessageIds.addAll(ids);
-      _deliveredMessageIds.addAll(ids);
-    } else {
-      _failure = result.failureOrNull;
-      _safeNotify();
-    }
+    _drainReceipts();
   }
 
   Future<Result<void>> hideChat() async {
@@ -392,7 +403,13 @@ final class PrivateChatProvider extends ChangeNotifier {
             unawaited(_outbox.remove(chatId, message.id));
           }
         }
-        _replaceOrdered(index, message);
+        final reconciled = local.createdAt != null
+            ? message.copyWith(
+                createdAt: local.createdAt,
+                sendState: ChatSendState.sent,
+              )
+            : message.copyWith(sendState: ChatSendState.sent);
+        _replaceOrdered(index, reconciled);
         continue;
       }
       if (local.sendState != ChatSendState.failed) {
@@ -474,7 +491,8 @@ final class PrivateChatProvider extends ChangeNotifier {
           }
           return;
         }
-        if (isTransientChatFailure(failure)) {
+        if (isTransientChatFailure(failure) &&
+            (_autoRetryAttempt[id] ?? 0) < kChatSendMaxAggressiveRetries) {
           _messages[index] = current.copyWith(
             sendState: ChatSendState.pending,
             clearFailureMessage: true,
@@ -616,32 +634,87 @@ final class PrivateChatProvider extends ChangeNotifier {
   }
 
   Future<void> _markDelivered(List<ChatMessage> incoming) async {
+    if (!_pageActive) return;
     final chatId = _chatId;
     final uid = _currentUserId;
     if (chatId == null || uid == null) return;
-    final ids = incoming
-        .where(
-          (message) =>
-              message.senderId != uid &&
-              !message.isOptimistic &&
-              !_deliveredMessageIds.contains(message.id),
-        )
-        .map((message) => message.id)
+    _pendingDeliveredIds.addAll(
+      incoming
+          .where(
+            (message) =>
+                message.senderId != uid &&
+                !message.isOptimistic &&
+                !_deliveredMessageIds.contains(message.id),
+          )
+          .map((message) => message.id)
+          .toList(),
+    );
+    _drainReceipts();
+  }
+
+  void _drainReceipts() {
+    if (!_pageActive || _receiptInFlight) return;
+    final chatId = _chatId;
+    if (chatId == null) return;
+    final readIds = _pendingReadIds
+        .where((id) => !_readMessageIds.contains(id))
         .take(50)
         .toList(growable: false);
-    if (ids.isEmpty) return;
-    final result = await _repository.markAsDelivered(
-      chatId: chatId,
-      messageIds: ids,
-    );
-    if (result.isSuccess) _deliveredMessageIds.addAll(ids);
+    final deliveredIds = _pendingDeliveredIds
+        .where((id) => !_deliveredMessageIds.contains(id))
+        .take(50)
+        .toList(growable: false);
+    if (readIds.isEmpty && deliveredIds.isEmpty) return;
+    _receiptInFlight = true;
+    unawaited(() async {
+      final read = readIds.isEmpty
+          ? const Success<void>(null)
+          : await _repository.markAsRead(chatId: chatId, messageIds: readIds);
+      if (read.isSuccess) {
+        _readMessageIds.addAll(readIds);
+        _deliveredMessageIds.addAll(readIds);
+        _pendingReadIds.removeAll(readIds);
+        // mark-as-read also records delivery on the server; do not issue a
+        // second delivery callable for the same batch.
+        _pendingDeliveredIds.removeAll(readIds);
+      }
+      final delivered = deliveredIds.isEmpty
+          ? const Success<void>(null)
+          : await _repository.markAsDelivered(
+              chatId: chatId,
+              messageIds: deliveredIds,
+            );
+      if (delivered.isSuccess) {
+        _deliveredMessageIds.addAll(deliveredIds);
+        _pendingDeliveredIds.removeAll(deliveredIds);
+      }
+      if (!read.isSuccess || !delivered.isSuccess) {
+        _failure = (!read.isSuccess
+            ? read.failureOrNull
+            : delivered.failureOrNull);
+        if (_receiptRetryAttempt++ < 3 && _pageActive) {
+          _receiptRetryTimer?.cancel();
+          _receiptRetryTimer = Timer(
+            chatSendBackoffDelay(_receiptRetryAttempt),
+            _drainReceipts,
+          );
+        }
+        _safeNotify();
+      } else {
+        _receiptRetryAttempt = 0;
+      }
+      _receiptInFlight = false;
+      if (_pageActive) _drainReceipts();
+    }());
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _pageActive = false;
     _network?.removeListener(_onNetworkChanged);
     _cancelAllAutoRetries();
+    _receiptRetryTimer?.cancel();
     unawaited(_subscription?.cancel());
     super.dispose();
   }
