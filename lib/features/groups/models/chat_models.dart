@@ -40,6 +40,25 @@ enum ChatSendState { pending, sent, failed }
 
 enum ChatDeliveryState { notDelivered, delivered, read }
 
+/// In-bubble media send stages (progress UI must not rebuild the whole page).
+enum MediaUploadPhase { uploading, processing }
+
+final class MediaUploadUiState {
+  const MediaUploadUiState({
+    required this.phase,
+    this.progress = 0,
+  });
+
+  final MediaUploadPhase phase;
+
+  /// 0‥1 while [phase] is [MediaUploadPhase.uploading]; ignored while processing.
+  final double progress;
+
+  static const uploadingStart = MediaUploadUiState(
+    phase: MediaUploadPhase.uploading,
+  );
+}
+
 final class ChatMessage {
   const ChatMessage({
     required this.id,

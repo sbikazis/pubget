@@ -317,6 +317,106 @@ void main() {
     await retry;
     expect(provider.messages.single.sendState, ChatSendState.sent);
   });
+
+  test(
+    'media upload progress ticks do not notify ChatProvider listeners',
+    () async {
+      final repository = _ProgressiveUploadRepository();
+      final provider = ChatProvider(repository: repository);
+      addTearDown(provider.dispose);
+      await provider.open(groupId: 'g1', currentUserId: 'alice');
+
+      var notifications = 0;
+      provider.addListener(() => notifications++);
+
+      final sendFuture = provider.sendMedia(
+        groupId: 'g1',
+        senderId: 'alice',
+        senderName: 'Alice',
+        senderAvatar: '',
+        senderRole: 'member',
+        bytes: Uint8List.fromList(<int>[1, 2, 3, 4, 5]),
+        fileName: 'shot.jpg',
+        contentType: 'image/jpeg',
+      );
+
+      expect(notifications, 1, reason: 'only optimistic insert notifies');
+      final revisionAfterInsert = provider.contentRevision;
+      final messageId = provider.messages.single.id;
+      expect(provider.localPreviewBytes(messageId), isNotNull);
+      expect(
+        provider.uploadUiListenable(messageId)!.value.phase,
+        MediaUploadPhase.uploading,
+      );
+
+      repository.emitProgress(0.2);
+      repository.emitProgress(0.55);
+      repository.emitProgress(0.9);
+      expect(
+        notifications,
+        1,
+        reason: 'progress must not call notifyListeners',
+      );
+      expect(provider.contentRevision, revisionAfterInsert);
+      expect(
+        provider.uploadUiListenable(messageId)!.value.progress,
+        closeTo(0.9, 0.001),
+      );
+
+      repository.completeBytesUploaded();
+      expect(
+        provider.uploadUiListenable(messageId)!.value.phase,
+        MediaUploadPhase.processing,
+      );
+      expect(notifications, 1);
+
+      repository.completeUpload(
+        ChatMediaUpload(
+          mediaUrl: 'groups/g1/media/${messageId}_medium.jpg',
+          thumbnailUrl: 'groups/g1/media/${messageId}_thumb.jpg',
+          mediaId: messageId,
+          type: ChatMessageType.image,
+        ),
+      );
+      // fold(onSuccess: async ...) is fire-and-forget; wait for sendMessage.
+      await Future<void>.delayed(Duration.zero);
+      for (var i = 0; i < 20 && repository.pendingCompleters.isEmpty; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(repository.pendingCompleters, isNotEmpty);
+      repository.completeNext(
+        Success(
+          ChatMessage(
+            id: messageId,
+            senderId: 'alice',
+            senderName: 'Alice',
+            senderAvatar: '',
+            senderRole: 'member',
+            type: ChatMessageType.image,
+            text: null,
+            mediaUrl: 'groups/g1/media/${messageId}_medium.jpg',
+            thumbnailUrl: 'groups/g1/media/${messageId}_thumb.jpg',
+            mediaId: messageId,
+            replyToMessageId: null,
+            createdAt: DateTime(2026, 1, 1),
+            editedAt: null,
+            deletedAt: null,
+            pinnedAt: null,
+            reactions: const <String, int>{},
+            recipientCount: 1,
+            deliveredCount: 0,
+            readCount: 0,
+            isOptimistic: false,
+            sendState: ChatSendState.sent,
+          ),
+        ),
+      );
+      await sendFuture;
+
+      expect(notifications, greaterThan(1));
+      expect(provider.uploadUiListenable(messageId), isNull);
+    },
+  );
 }
 
 ChatMessage _serverMessage(String id, {String text = 'Hello'}) {
@@ -483,5 +583,41 @@ final class _FakeChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) async => const FailureResult(NetworkError());
+}
+
+/// Lets tests drive upload progress without completing until asked.
+final class _ProgressiveUploadRepository extends _FakeChatRepository {
+  void Function(double progress)? _onProgress;
+  void Function()? _onBytesUploaded;
+  Completer<Result<ChatMediaUpload>>? _uploadCompleter;
+
+  void emitProgress(double value) => _onProgress?.call(value);
+
+  void completeBytesUploaded() => _onBytesUploaded?.call();
+
+  void completeUpload(ChatMediaUpload media) {
+    final completer = _uploadCompleter;
+    if (completer == null || completer.isCompleted) return;
+    completer.complete(Success(media));
+  }
+
+  @override
+  Future<Result<ChatMediaUpload>> uploadMedia({
+    required String groupId,
+    required String mediaId,
+    required Uint8List bytes,
+    required String fileName,
+    required String contentType,
+    required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
+  }) {
+    _onProgress = onProgress;
+    _onBytesUploaded = onBytesUploaded;
+    final completer = Completer<Result<ChatMediaUpload>>();
+    _uploadCompleter = completer;
+    onProgress(0);
+    return completer.future;
+  }
 }

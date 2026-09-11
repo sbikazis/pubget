@@ -220,6 +220,7 @@ final class FirebaseChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) => _guard(() async {
     final extension = _extension(fileName, contentType);
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
@@ -243,6 +244,9 @@ final class FirebaseChatRepository implements ChatRepository {
     });
     await task;
     onProgress(1);
+    onBytesUploaded?.call();
+    // Client wait for Cloud Function processing. 1 minute is enough for typical
+    // image/voice pipelines; large videos may time out and surface retry UI.
     final mediaSnapshot = await _firestore
         .collection('groups')
         .doc(groupId)
@@ -254,7 +258,7 @@ final class FirebaseChatRepository implements ChatRepository {
               snapshot.data()?['status'] == 'ready' ||
               snapshot.data()?['status'] == 'failed',
         )
-        .timeout(const Duration(minutes: 3));
+        .timeout(const Duration(minutes: 1));
     final data = mediaSnapshot.data() ?? const <String, dynamic>{};
     if (data['status'] != 'ready') {
       throw StateError('Media processing failed.');
