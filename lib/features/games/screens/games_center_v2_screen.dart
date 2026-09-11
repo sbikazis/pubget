@@ -143,7 +143,12 @@ class _ActiveGameTile extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     color: GameV2Palette.purple.withValues(alpha: .10),
     child: ListTile(
-      onTap: () => Navigator.pushNamed(context, '/games/${game.id}'),
+       onTap: () => Navigator.pushNamed(
+         context,
+         game.status == GameLifecycleStatusV2.waiting
+             ? '/games/waiting?gameId=${Uri.encodeComponent(game.id)}'
+             : '/games/room?gameId=${Uri.encodeComponent(game.id)}',
+       ),
       leading: const Icon(Icons.bolt, color: GameV2Palette.gold),
       title: Text(gameTypeArabic(game.type), style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text('${game.players.length} لاعبين · ${gameStatusArabic(game.status)}'),

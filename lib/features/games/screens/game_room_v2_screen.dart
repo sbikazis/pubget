@@ -72,12 +72,11 @@ class _GameRoomV2ScreenState extends State<GameRoomV2Screen> {
               const SizedBox(height: 18),
               _PromptCard(session: session),
               const SizedBox(height: 16),
-              TextField(controller: _answer, textInputAction: TextInputAction.done, decoration: const InputDecoration(labelText: 'اكتب إجابتك')),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () => _submit(session),
-                icon: const Icon(Icons.send),
-                label: const Text('إرسال الإجابة'),
+              _ActionArea(
+                session: session,
+                controller: _answer,
+                userId: widget.userId,
+                onSubmit: _submit,
               ),
               const SizedBox(height: 20),
               Text('كل لاعب يلعب دوره. ركّز على الشاشة، فالوقت لا ينتظر.', style: Theme.of(context).textTheme.bodySmall),
@@ -88,19 +87,32 @@ class _GameRoomV2ScreenState extends State<GameRoomV2Screen> {
     );
   }
 
-  Future<void> _submit(GameSessionV2 session) async {
+  Future<void> _submit(
+    GameSessionV2 session, [
+    String? requestedCommand,
+  ]) async {
     final value = _answer.text.trim();
     if (value.isEmpty) return;
+    final command = requestedCommand ??
+        switch (session.type) {
+          GameTypeV2.guessCharacter => 'guess',
+          GameTypeV2.animeChain => 'submit',
+          GameTypeV2.emojiAnimeGuess => 'guess',
+        };
     final result = await context.read<GamesSessionProviderV2>().send(GameCommandRequest(
       requestId: '${widget.userId}-${DateTime.now().microsecondsSinceEpoch}',
       gameId: session.id,
       expectedVersion: session.version,
-      command: switch (session.type) {
-        GameTypeV2.guessCharacter => 'guess',
-        GameTypeV2.animeChain => 'chain',
-        GameTypeV2.emojiAnimeGuess => 'guess',
-      },
-      payload: {'answer': value},
+        command: command,
+        payload: switch (command) {
+          'select' => {'characterId': value},
+          'ask' => {'question': value},
+          _ => switch (session.type) {
+            GameTypeV2.guessCharacter => {'characterId': value},
+            GameTypeV2.animeChain => {'animeId': value},
+            GameTypeV2.emojiAnimeGuess => {'animeId': value},
+          },
+        },
     ));
     if (!mounted) return;
     if (!result.isSuccess) {
@@ -110,6 +122,112 @@ class _GameRoomV2ScreenState extends State<GameRoomV2Screen> {
     } else {
       _answer.clear();
     }
+  }
+}
+
+class _ActionArea extends StatelessWidget {
+  const _ActionArea({
+    required this.session,
+    required this.controller,
+    required this.userId,
+    required this.onSubmit,
+  });
+
+  final GameSessionV2 session;
+  final TextEditingController controller;
+  final String userId;
+  final Future<void> Function(GameSessionV2, [String? command]) onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = session.state;
+    final phase = state['phase']?.toString();
+    if (session.type == GameTypeV2.guessCharacter && phase == 'selection') {
+      return _input(context, 'Character ID من الكتالوج', 'اختيار الشخصية السرية',
+          Icons.person_search, onSubmit, command: 'select');
+    }
+    if (session.type == GameTypeV2.guessCharacter && phase == 'answer') {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton(
+              onPressed: () => _answer(context, 'yes'),
+              child: const Text('نعم'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _answer(context, 'no'),
+              child: const Text('لا'),
+            ),
+          ),
+        ],
+      );
+    }
+    if (session.type == GameTypeV2.guessCharacter && phase == 'ask') {
+      return Column(
+        children: [
+          _input(context, 'سؤال بنعم أو لا', 'طرح سؤال',
+              Icons.help_outline, onSubmit, command: 'ask'),
+          const SizedBox(height: 10),
+          _input(context, 'Character ID', 'تخمين الشخصية',
+              Icons.gps_fixed, onSubmit),
+        ],
+      );
+    }
+    if (session.type == GameTypeV2.emojiAnimeGuess &&
+        state['currentPlayerId'] == userId) {
+      return const Text('أنت صاحب الدور. اللاعبون الآخرون يخمنون الآن.');
+    }
+    return _input(
+      context,
+      session.type == GameTypeV2.animeChain ? 'Anime ID' : 'Anime ID أو عنوان بديل',
+      'إرسال التخمين',
+      Icons.send,
+      onSubmit,
+    );
+  }
+
+  Widget _input(
+    BuildContext context,
+    String hint,
+    String label,
+    IconData icon,
+    Future<void> Function(GameSessionV2, [String? command]) submit, {
+    String? command,
+  }) => Row(
+    children: [
+      Expanded(
+        child: TextField(
+          controller: controller,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(labelText: label, hintText: hint),
+        ),
+      ),
+      const SizedBox(width: 8),
+      IconButton.filled(
+        tooltip: label,
+        icon: Icon(icon),
+        onPressed: () => submit(session, command),
+      ),
+    ],
+  );
+
+  Future<void> _answer(BuildContext context, String answer) async {
+    final result = await context.read<GamesSessionProviderV2>().send(
+      GameCommandRequest(
+        requestId: '$userId-${DateTime.now().microsecondsSinceEpoch}',
+        gameId: session.id,
+        expectedVersion: session.version,
+        command: 'answer',
+        payload: {'answer': answer},
+      ),
+    );
+    if (!context.mounted || result.isSuccess) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.failureOrNull!.message)),
+    );
   }
 }
 
@@ -124,10 +242,14 @@ class _ScoreStrip extends StatelessWidget {
         const Icon(Icons.emoji_events_outlined, color: GameV2Palette.gold),
         const SizedBox(width: 10),
         Expanded(child: Text('لوحة النتائج', style: Theme.of(context).textTheme.titleMedium)),
-        ...session.players.take(3).map((player) => Padding(
+        ...session.players.take(3).map((player) {
+          final scores = session.state['scores'];
+          final score = scores is Map ? scores[player.userId] ?? player.score : player.score;
+          return Padding(
           padding: const EdgeInsets.only(right: 12),
-          child: Text('${player.displayName.isEmpty ? player.userId : player.displayName}: ${player.score}'),
-        )),
+           child: Text('${player.displayName.isEmpty ? player.userId : player.displayName}: $score'),
+         );
+        }),
       ]),
     ),
   );

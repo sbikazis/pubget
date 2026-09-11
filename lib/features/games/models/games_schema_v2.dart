@@ -120,7 +120,9 @@ final class GameSessionV2 {
             throw FormatException('Unsupported game status: ${map['status']}'),
       ),
       creatorId: map['creatorId'] as String? ?? '',
-      version: (map['version'] as num?)?.toInt() ?? 0,
+      version: (map['version'] as num?)?.toInt() ??
+          (map['stateVersion'] as num?)?.toInt() ??
+          0,
       players: rawPlayers is List
           ? rawPlayers
                 .whereType<Map>()
@@ -137,6 +139,8 @@ final class GameSessionV2 {
       deadlineAt: _date(map['deadlineAt']),
       state: map['state'] is Map
           ? Map<String, dynamic>.from(map['state'] as Map)
+          : map['publicState'] is Map
+              ? Map<String, dynamic>.from(map['publicState'] as Map)
           : const <String, dynamic>{},
     );
   }
@@ -169,10 +173,19 @@ final class GameSessionV2 {
       status == GameLifecycleStatusV2.cancelled;
 }
 
-String _statusName(Object? value) => switch (value) {
-  'in_progress' => 'inProgress',
-  _ => value?.toString() ?? '',
-};
+String _statusName(Object? value) {
+  final raw = value?.toString() ?? '';
+  final normalized = raw.toLowerCase();
+  return switch (normalized) {
+    'created' => 'created',
+    'waiting' => 'waiting',
+    'starting' => 'starting',
+    'in_progress' || 'inprogress' => 'inProgress',
+    'completed' => 'completed',
+    'cancelled' || 'canceled' => 'cancelled',
+    _ => raw,
+  };
+}
 
 final class GuessCharacterState {
   const GuessCharacterState({

@@ -26,6 +26,7 @@ final class GamesSessionProviderV2 extends ChangeNotifier {
   StreamSubscription<Result<GameSessionV2>>? _subscription;
   GameSessionV2? _session;
   String? _sessionId;
+  int _generation = 0;
   bool _disposed = false;
 
   GameSessionV2? get session => _session;
@@ -34,15 +35,19 @@ final class GamesSessionProviderV2 extends ChangeNotifier {
 
   Future<void> open(String gameId) async {
     final token = gameId;
+    final generation = ++_generation;
     await _subscription?.cancel();
+    if (_disposed || generation != _generation) return;
     _sessionId = token;
     _session = null;
     _safeNotify();
     _subscription = _repository.watchSession(gameId).listen((result) {
-      if (_disposed || _sessionId != token) return;
+      if (_disposed || generation != _generation || _sessionId != token) return;
       result.fold(
         onSuccess: (session) {
-          if (_sessionId == token) _session = session;
+          if (generation == _generation && _sessionId == token) {
+            _session = session;
+          }
         },
         onFailure: (_) {},
       );
@@ -70,6 +75,7 @@ final class GamesSessionProviderV2 extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _generation++;
     unawaited(_subscription?.cancel());
     super.dispose();
   }
