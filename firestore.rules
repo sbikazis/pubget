@@ -772,9 +772,15 @@ service cloud.firestore {
       function eventVisible() {
         return signedIn() && eventExists() &&
           (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'draft' &&
-            eventData().groupId is string &&
-            groupMember(eventData().groupId)));
+           (eventData().status != 'DRAFT' &&
+            eventData().status != 'DELETED' &&
+            (eventData().scope == 'global' ||
+             (eventData().scope == 'group' &&
+              eventData().groupId is string &&
+              groupMember(eventData().groupId)) ||
+             (eventData().scope == 'multiGroup' &&
+              eventData().audienceMemberIds is list &&
+              eventData().audienceMemberIds.hasAny([request.auth.uid])))));
       }
       allow read: if eventVisible();
       allow create, update, delete: if false;
@@ -785,7 +791,16 @@ service cloud.firestore {
       match /responses/{uid} {
         allow read: if eventVisible() &&
           (request.auth.uid == uid ||
-           eventData().status in ['ended', 'archived']);
+           (eventData().creatorId == request.auth.uid &&
+            eventData().status in ['ENDED', 'ARCHIVED']));
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if eventVisible();
+        allow create, update, delete: if false;
+      }
+      match /reactions/{uid} {
+        allow read: if eventVisible();
         allow create, update, delete: if false;
       }
     }

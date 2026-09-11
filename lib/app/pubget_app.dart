@@ -83,6 +83,7 @@ import '../features/anime/repositories/firebase_anime_library_repository.dart';
 import '../features/anime/repositories/unavailable_anime_hub_social_repository.dart';
 import '../features/anime/repositories/unavailable_anime_library_repository.dart';
 import '../features/events/providers/event_providers.dart';
+import '../features/events/models/event_models.dart';
 import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
 import '../features/events/repositories/unavailable_event_repository.dart';
@@ -927,11 +928,21 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/events/create': (parameters) {
           final groupId = parameters['groupId'];
+          final scope = parameters['scope'] == 'global'
+              ? EventScope.global
+              : EventScope.group;
           if (groupId == null || groupId.isEmpty) {
+            if (scope == EventScope.global) {
+              return EventBuilderPage(
+                scope: scope,
+                templateId: parameters['templateId'],
+              );
+            }
             return CreateEventEntryPage(templateId: parameters['templateId']);
           }
           return EventBuilderPage(
             groupId: groupId,
+            scope: scope,
             templateId: parameters['templateId'],
           );
         },

@@ -22,6 +22,23 @@ class EventListScreen extends StatefulWidget {
 }
 
 class _EventListScreenState extends State<EventListScreen> {
+  String _query = '';
+  EventType? _typeFilter;
+
+  List<PubgetEvent> _filter(List<PubgetEvent> events) {
+    final query = _query.trim().toLowerCase();
+    return events
+        .where((event) {
+          final matchesQuery =
+              query.isEmpty ||
+              event.title.toLowerCase().contains(query) ||
+              event.description.toLowerCase().contains(query);
+          final matchesType = _typeFilter == null || event.type == _typeFilter;
+          return matchesQuery && matchesType;
+        })
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -104,16 +121,63 @@ class _EventListScreenState extends State<EventListScreen> {
                 ? list.loadHome()
                 : list.loadGroup(widget.groupId!),
           ),
-          child: groupId == null
-              ? TabBarView(
-                  children: <Widget>[
-                    _EventTiles(events: list.active),
-                    _EventTiles(events: list.upcoming),
-                    _EventTiles(events: list.recent),
-                    _EventTiles(events: list.mine),
-                  ],
-                )
-              : _EventTiles(events: list.groupEvents),
+          child: Column(
+            children: <Widget>[
+              if (groupId == null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                    0,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(
+                            hintText: 'Search Events',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onChanged: (value) => setState(() => _query = value),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      DropdownButton<EventType?>(
+                        value: _typeFilter,
+                        hint: const Text('Type'),
+                        items: <DropdownMenuItem<EventType?>>[
+                          const DropdownMenuItem<EventType?>(
+                            value: null,
+                            child: Text('All'),
+                          ),
+                          ...EventType.values.map(
+                            (type) => DropdownMenuItem<EventType?>(
+                              value: type,
+                              child: Text(EventTypeRegistry.of(type).label),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _typeFilter = value),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: groupId == null
+                    ? TabBarView(
+                        children: <Widget>[
+                          _EventTiles(events: _filter(list.active)),
+                          _EventTiles(events: _filter(list.upcoming)),
+                          _EventTiles(events: _filter(list.recent)),
+                          _EventTiles(events: _filter(list.mine)),
+                        ],
+                      )
+                    : _EventTiles(events: _filter(list.groupEvents)),
+              ),
+            ],
+          ),
         ),
       ),
     );

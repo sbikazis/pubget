@@ -283,8 +283,18 @@ final class EventBuilderProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get saving => _saving;
 
-  void start({String? groupId, String? templateId}) {
-    var next = EventDraft(groupId: groupId, templateId: templateId);
+  void start({
+    String? groupId,
+    String? templateId,
+    EventScope scope = EventScope.group,
+    List<String> groupIds = const <String>[],
+  }) {
+    var next = EventDraft(
+      groupId: groupId,
+      groupIds: groupIds,
+      scope: scope,
+      templateId: templateId,
+    );
     if (templateId != null) {
       final type = EventTypeRegistry.templates[templateId];
       if (type != null) {

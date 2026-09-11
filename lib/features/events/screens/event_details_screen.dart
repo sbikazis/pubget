@@ -81,11 +81,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             tooltip: EventStrings.share,
             onPressed: () {
               context.read<EventProvider>().share(widget.eventId);
-              EventLinks.share(
-                context,
-                widget.eventId,
-                title: event?.title,
-              );
+              EventLinks.share(context, widget.eventId, title: event?.title);
             },
             icon: const Icon(Icons.ios_share),
           ),
@@ -136,8 +132,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   const SizedBox(height: AppSpacing.md),
                   EventCountdown(event: event),
                   Text('${event.participantsCount} participating'),
-                  if (event.status == EventStatus.cancelled)
-                    const Text(EventStrings.cancelled),
+                  if (event.status == EventStatus.deleted)
+                    const Text(EventStrings.deleted),
                   if (event.status == EventStatus.archived)
                     const Text(EventStrings.archived),
                   if (event.status == EventStatus.ended)
@@ -464,7 +460,7 @@ class _ManageActions extends StatelessWidget {
               child: const Text(EventStrings.archiveEvent),
             ),
           if (event.status != EventStatus.archived &&
-              event.status != EventStatus.cancelled)
+              event.status != EventStatus.deleted)
             PubgetTextButton(
               onPressed: () => provider.cancel(event.id),
               semanticLabel: EventStrings.cancelEvent,
