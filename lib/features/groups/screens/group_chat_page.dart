@@ -100,11 +100,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
     final groupProvider = context.watch<GroupProvider>();
     final group = groupProvider.group;
     final contrast = ChatContrastTheme.fromBackground(group?.chatBackgroundUrl);
-    _syncScrollAndReadReceipts(chat);
     return Scaffold(
       endDrawer: _GroupMenu(
         groupId: widget.groupId,
@@ -157,53 +155,62 @@ class _GroupChatPageState extends State<GroupChatPage> {
           color: contrast.scrim,
           child: SafeArea(
             top: false,
-            child: Column(
-              children: <Widget>[
-                if (chat.state == LoadingState.offline ||
-                    chat.failure != null && chat.messages.isNotEmpty)
-                  _OfflineBanner(message: chat.failure?.message),
-                Expanded(
-                  child: _MessageList(
-                    chat: chat,
-                    contrast: contrast,
-                    currentUserId:
-                        context.read<AuthProvider>().currentUser?.id ?? '',
-                    controller: _scrollController,
-                    stars: _stars,
-                    onAction: _showActions,
-                    onSwipeReply: (message) {
-                      context.read<ChatProvider>().setReplyTarget(message);
-                    },
-                    onAvatarTap: (message) {
-                      final uid = message.senderId.trim();
-                      if (uid.isEmpty || uid == 'system') return;
-                      AppNavigation.go(context, '/profile?uid=$uid');
-                    },
-                    onMediaTap: _openMedia,
-                    onStickerTap: (message) {
-                      unawaited(
-                        StickerDetailSheet.show(
-                          context,
-                          message: message,
-                          store: _userStickers,
-                        ),
-                      );
-                    },
-                    onAudioTap: _playAudio,
-                    onEventTap: (eventId) => EventLinks.open(context, eventId),
-                    onGameTap: _openGameCard,
-                  ),
-                ),
-                if (chat.uploadProgress.isNotEmpty)
-                  LinearProgressIndicator(
-                    value: chat.uploadProgress.values.first,
-                  ),
-                if (chat.replyTarget != null)
-                  _ReplyComposerBar(
-                    message: chat.replyTarget!,
-                    onClear: chat.clearReplyTarget,
-                  ),
-                WhatsAppChatComposer(
+            child: Selector<ChatProvider, _ChatChromeSlice>(
+              selector: (_, chat) => _ChatChromeSlice(
+                revision: chat.contentRevision,
+                state: chat.state,
+                hasMore: chat.hasMore,
+                failureMessage: chat.failure?.message,
+                replyId: chat.replyTarget?.id,
+              ),
+              builder: (context, slice, _) {
+                final chat = context.read<ChatProvider>();
+                _syncScrollAndReadReceipts(chat);
+                return Column(
+                  children: <Widget>[
+                    if (slice.state == LoadingState.offline ||
+                        (slice.failureMessage != null &&
+                            chat.messages.isNotEmpty))
+                      _OfflineBanner(message: slice.failureMessage),
+                    Expanded(
+                      child: _MessageList(
+                        chat: chat,
+                        contrast: contrast,
+                        currentUserId:
+                            context.read<AuthProvider>().currentUser?.id ?? '',
+                        controller: _scrollController,
+                        stars: _stars,
+                        onAction: _showActions,
+                        onSwipeReply: (message) {
+                          context.read<ChatProvider>().setReplyTarget(message);
+                        },
+                        onAvatarTap: (message) {
+                          final uid = message.senderId.trim();
+                          if (uid.isEmpty || uid == 'system') return;
+                          AppNavigation.go(context, '/profile?uid=$uid');
+                        },
+                        onMediaTap: _openMedia,
+                        onStickerTap: (message) {
+                          unawaited(
+                            StickerDetailSheet.show(
+                              context,
+                              message: message,
+                              store: _userStickers,
+                            ),
+                          );
+                        },
+                        onAudioTap: _playAudio,
+                        onEventTap: (eventId) =>
+                            EventLinks.open(context, eventId),
+                        onGameTap: _openGameCard,
+                      ),
+                    ),
+                    if (chat.replyTarget != null)
+                      _ReplyComposerBar(
+                        message: chat.replyTarget!,
+                        onClear: chat.clearReplyTarget,
+                      ),
+                    WhatsAppChatComposer(
                   controller: _controller,
                   focusNode: _focusNode,
                   groupId: widget.groupId,
@@ -252,6 +259,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         final member =
                             context.read<GroupProvider>().membership;
                         if (user == null || member == null) return;
+                        _wasNearBottom = true;
                         await context.read<ChatProvider>().sendCustomSticker(
                           groupId: widget.groupId,
                           senderId: user.id,
@@ -303,7 +311,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     );
                   },
                 ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -386,6 +396,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final user = context.read<AuthProvider>().currentUser;
     final member = context.read<GroupProvider>().membership;
     if (user == null || member == null) return;
+    _wasNearBottom = true;
     await context.read<ChatProvider>().sendMedia(
       groupId: widget.groupId,
       senderId: user.id,
@@ -1287,6 +1298,35 @@ class _ForwardSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ChatChromeSlice {
+  const _ChatChromeSlice({
+    required this.revision,
+    required this.state,
+    required this.hasMore,
+    required this.failureMessage,
+    required this.replyId,
+  });
+
+  final int revision;
+  final LoadingState state;
+  final bool hasMore;
+  final String? failureMessage;
+  final String? replyId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ChatChromeSlice &&
+      revision == other.revision &&
+      state == other.state &&
+      hasMore == other.hasMore &&
+      failureMessage == other.failureMessage &&
+      replyId == other.replyId;
+
+  @override
+  int get hashCode =>
+      Object.hash(revision, state, hasMore, failureMessage, replyId);
 }
 
 class _OfflineBanner extends StatelessWidget {

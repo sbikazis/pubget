@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_radius.dart';
@@ -9,6 +11,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
+import '../providers/chat_provider.dart';
 import 'chat_contrast_theme.dart';
 import 'chat_special_cards.dart';
 
@@ -825,8 +828,8 @@ class _MessageContent extends StatelessWidget {
         child: SizedBox(
           width: 140,
           height: 140,
-          child: AppImageLoader(
-            imageUrl: message.thumbnailUrl ?? message.mediaUrl ?? '',
+          child: _OptimisticMediaFrame(
+            message: message,
             fit: BoxFit.contain,
           ),
         ),
@@ -847,8 +850,8 @@ class _MessageContent extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    AppImageLoader(
-                      imageUrl: message.thumbnailUrl ?? message.mediaUrl ?? '',
+                    _OptimisticMediaFrame(
+                      message: message,
                       fit: BoxFit.cover,
                     ),
                     if (message.type == ChatMessageType.video)
@@ -1157,6 +1160,123 @@ class _SwipeReplyDetector extends StatelessWidget {
         }
       },
       child: child,
+    );
+  }
+}
+
+/// Local preview + per-message upload overlay. Progress ticks use
+/// [ValueListenableBuilder] only — never rebuild the chat page.
+class _OptimisticMediaFrame extends StatelessWidget {
+  const _OptimisticMediaFrame({
+    required this.message,
+    this.fit = BoxFit.cover,
+  });
+
+  final ChatMessage message;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    final chat = context.read<ChatProvider>();
+    final remote = () {
+      final thumb = message.thumbnailUrl?.trim();
+      if (thumb != null && thumb.isNotEmpty) return thumb;
+      final media = message.mediaUrl?.trim();
+      if (media != null && media.isNotEmpty) return media;
+      return null;
+    }();
+    final local = chat.localPreviewBytes(message.id);
+    final isVideo = message.type == ChatMessageType.video;
+    // Video bytes are not a displayable raster; keep a solid placeholder.
+    final Uint8List? preview =
+        (!isVideo && local != null && local.isNotEmpty) ? local : null;
+
+    final Widget media;
+    if (remote != null) {
+      media = AppImageLoader(
+        imageUrl: remote,
+        fit: fit,
+        placeholder: preview != null
+            ? Image.memory(preview, fit: fit, gaplessPlayback: true)
+            : null,
+        errorWidget: preview != null
+            ? Image.memory(preview, fit: fit, gaplessPlayback: true)
+            : ColoredBox(
+                color: const Color(0xFF1A1A22),
+                child: Icon(
+                  isVideo ? Icons.videocam_outlined : Icons.broken_image_outlined,
+                  color: Colors.white54,
+                ),
+              ),
+      );
+    } else if (preview != null) {
+      media = Image.memory(preview, fit: fit, gaplessPlayback: true);
+    } else {
+      media = ColoredBox(
+        color: const Color(0xFF1A1A22),
+        child: Icon(
+          isVideo ? Icons.videocam_outlined : Icons.image_outlined,
+          color: Colors.white54,
+        ),
+      );
+    }
+
+    final listenable = chat.uploadUiListenable(message.id);
+    if (listenable == null) return media;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        media,
+        ValueListenableBuilder<MediaUploadUiState>(
+          valueListenable: listenable,
+          builder: (context, ui, _) => _MediaUploadOverlay(state: ui),
+        ),
+      ],
+    );
+  }
+}
+
+class _MediaUploadOverlay extends StatelessWidget {
+  const _MediaUploadOverlay({required this.state});
+
+  final MediaUploadUiState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final uploading = state.phase == MediaUploadPhase.uploading;
+    final label = uploading
+        ? copy.pick('Uploading…', 'جارٍ الرفع…')
+        : copy.pick('Processing…', 'جارٍ المعالجة…');
+    return ColoredBox(
+      color: const Color(0x66000000),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(
+                value: uploading ? state.progress.clamp(0.0, 1.0) : null,
+                strokeWidth: 3,
+                color: Colors.white,
+                backgroundColor: Colors.white24,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -377,14 +377,19 @@ final class _FakeChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
-  }) async => Success(
-    ChatMediaUpload(
-      mediaUrl: 'groups/$groupId/media/${mediaId}_original.m4a',
-      thumbnailUrl: null,
-      mediaId: mediaId,
-      type: chatMediaTypeFor(contentType: contentType, fileName: fileName),
-    ),
-  );
+    void Function()? onBytesUploaded,
+  }) async {
+    onProgress(1);
+    onBytesUploaded?.call();
+    return Success(
+      ChatMediaUpload(
+        mediaUrl: 'groups/$groupId/media/${mediaId}_original.m4a',
+        thumbnailUrl: null,
+        mediaId: mediaId,
+        type: chatMediaTypeFor(contentType: contentType, fileName: fileName),
+      ),
+    );
+  }
 }
 
 final class _FakeGroupRepository implements GroupRepository {

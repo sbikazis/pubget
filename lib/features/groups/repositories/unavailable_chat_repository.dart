@@ -109,5 +109,6 @@ final class UnavailableChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) async => _fail();
 }
