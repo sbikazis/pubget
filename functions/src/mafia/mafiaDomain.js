@@ -150,18 +150,15 @@ function createMafiaDomain({
         groupId,
         createdBy: uid,
         createdAt: FieldValue.serverTimestamp(),
-        version: 2,
-        phaseVersion: 2,
-        stateVersion: 1,
-        status: "WAITING",
-        currentPhase: "WAITING",
+        version: 1,
+        status: "waiting",
+        currentPhase: "waiting",
         currentDay: 0,
         currentNight: 0,
         playersCount: 1,
         maxPlayers,
         minPlayers,
         winner: null,
-        winningTeam: null,
         countdownEndsAt,
         phaseEndsAt: null,
         isLocked: false,
@@ -169,8 +166,6 @@ function createMafiaDomain({
         endedAt: null,
         rewardsDistributed: false,
         historyWritten: false,
-        resultLocked: false,
-        revoteCount: 0,
       });
       transaction.create(ref.collection("players").doc(uid), publicPlayer(uid, name, avatar, FieldValue));
       transaction.set(ref.collection("players").doc(uid).collection("private").doc("data"), {
@@ -182,7 +177,7 @@ function createMafiaDomain({
         hasRunningGame: true,
       });
       transaction.create(ref.collection("events").doc(`${ref.id}_created`), {
-        type: "MafiaGameCreated",
+        type: "GameCreated",
         message: "A Mafia lobby is waiting for players.",
         createdAt: FieldValue.serverTimestamp(),
         payload: { minPlayers, maxPlayers },
@@ -212,7 +207,7 @@ function createMafiaDomain({
       },
       { id: ref.id, groupId, type: "mafia" },
     );
-     return { gameId: ref.id, status: "WAITING" };
+    return { gameId: ref.id, status: "waiting" };
   }
 
   async function joinMafiaGame(request) {
@@ -230,7 +225,7 @@ function createMafiaDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-       if (current.status !== "WAITING") {
+      if (current.status !== "waiting") {
         throw new HttpsError("failed-precondition", "This lobby is not open.");
       }
       const person = await transaction.get(ref.collection("players").doc(uid));
@@ -253,8 +248,8 @@ function createMafiaDomain({
       };
       if (fills) {
         update.isLocked = true;
-         update.status = "STARTING";
-         update.currentPhase = "STARTING";
+        update.status = "starting";
+        update.currentPhase = "starting";
         update.countdownEndsAt = Timestamp
           ? Timestamp.fromMillis(now.toMillis ? now.toMillis() : Date.now() + STARTING_SECONDS * 1000)
           : new Date(Date.now() + STARTING_SECONDS * 1000);
@@ -278,8 +273,8 @@ function createMafiaDomain({
       if (current.createdBy !== uid) {
         throw new HttpsError("permission-denied", "Only the host can start Mafia.");
       }
-       if (current.status === "STARTING") return;
-       if (current.status !== "WAITING") {
+      if (current.status === "starting") return;
+      if (current.status !== "waiting") {
         throw new HttpsError("failed-precondition", "This lobby cannot start.");
       }
       if ((current.playersCount || 0) < (current.minPlayers || DEFAULT_MIN)) {
@@ -287,8 +282,8 @@ function createMafiaDomain({
       }
       const now = Timestamp ? Timestamp.now() : new Date();
       transaction.update(ref, {
-         status: "STARTING",
-         currentPhase: "STARTING",
+        status: "starting",
+        currentPhase: "starting",
         isLocked: true,
         countdownEndsAt: Timestamp
           ? Timestamp.fromMillis((now.toMillis ? now.toMillis() : Date.now()) + STARTING_SECONDS * 1000)
@@ -301,7 +296,7 @@ function createMafiaDomain({
         payload: {},
       });
     });
-       return { ok: true, status: "STARTING" };
+    return { ok: true };
   }
 
   return {

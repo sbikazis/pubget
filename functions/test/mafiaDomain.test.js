@@ -141,7 +141,7 @@ test("mafia lobby create is server-side and join is idempotent", async () => {
     data: { groupId: "g1", minPlayers: 4, maxPlayers: 8 },
   });
   const game = db.store.get(`mafia_games/${created.gameId}`);
-  assert.equal(game.status, "WAITING");
+  assert.equal(game.status, "waiting");
   assert.equal(game.createdBy, "alice");
   assert.equal(game.playersCount, 1);
   assert.ok(db.store.get(`mafia_games/${created.gameId}/players/alice`));

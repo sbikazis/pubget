@@ -17,16 +17,14 @@ const db = admin.firestore();
 
 const DISCONNECT_THRESHOLD_SECONDS = 90;
 const ACTIVE_STATUSES = [
-  "STARTING",
-  "ROLE_REVEAL",
-  "NIGHT",
-  "DAY",
-  "DISCUSSION",
-  "VOTING",
-  "VOTE_RESULT",
-  "RESOLUTION",
+  "waiting",
+  "starting",
+  "night",
+  "day",
+  "discussion",
+  "voting",
+  "execution",
 ];
-const RECONNECT_WINDOW_SECONDS = 120;
 
 exports.markDisconnectedPlayers = onSchedule("every 1 minutes", async () => {
   const gamesSnap = await db
@@ -45,31 +43,11 @@ exports.markDisconnectedPlayers = onSchedule("every 1 minutes", async () => {
     playersSnap.docs.forEach((playerDoc) => {
       const player = playerDoc.data();
       if (player.hasLeft === true) return;
-       if (player.isDisconnected === true) {
-         const expiresAt = player.disconnectExpiresAt;
-         if (expiresAt && typeof expiresAt.toMillis === "function" &&
-             expiresAt.toMillis() <= Date.now() && player.isAlive === true) {
-           batch.update(playerDoc.ref, {
-             isAlive: false,
-             canVote: false,
-             canSpeak: false,
-             canUseAbility: false,
-             inactiveAt: admin.firestore.FieldValue.serverTimestamp(),
-             revealedRole: true,
-           });
-           hasChanges = true;
-         }
-         return;
-       }
+      if (player.isDisconnected === true) return; // مُعلَّم مسبقاً، لا داعي لإعادة الكتابة
 
       const lastSeenMs = player.lastSeenAt ? player.lastSeenAt.toMillis() : 0;
       if (lastSeenMs === 0 || lastSeenMs < thresholdMs) {
-         batch.update(playerDoc.ref, {
-           isDisconnected: true,
-           disconnectExpiresAt: admin.firestore.Timestamp.fromMillis(
-             Date.now() + RECONNECT_WINDOW_SECONDS * 1000,
-           ),
-         });
+        batch.update(playerDoc.ref, { isDisconnected: true });
         hasChanges = true;
       }
     });

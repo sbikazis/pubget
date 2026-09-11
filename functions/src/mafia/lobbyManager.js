@@ -11,9 +11,9 @@ const { assignRoles } = require("./roleAssigner");
 const db = admin.firestore();
 
 const STATUS = {
-  WAITING: "WAITING",
-  STARTING: "STARTING",
-  CANCELLED: "CANCELLED",
+  WAITING: "waiting",
+  STARTING: "starting",
+  CANCELLED: "cancelled",
 };
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
@@ -52,11 +52,7 @@ async function cancelLobby(gameId, gameData) {
     const snap = await tx.get(gameRef);
     const group = await tx.get(groupRef);
     if (!snap.exists || snap.data().status !== STATUS.WAITING) return false;
-     tx.update(gameRef, {
-       status: STATUS.CANCELLED,
-       currentPhase: STATUS.CANCELLED,
-       resultLocked: true,
-     });
+    tx.update(gameRef, { status: STATUS.CANCELLED, currentPhase: STATUS.CANCELLED });
     if (group.exists && group.data().activeGameId === gameId) {
       tx.update(groupRef, {
         activeGameId: admin.firestore.FieldValue.delete(),

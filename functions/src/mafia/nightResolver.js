@@ -29,7 +29,7 @@ function pickMajorityTarget(mafiaActions) {
 }
 
 function planNightResolution({ playersById, actions, nightNumber }) {
-  const actionsByRole = { mafia: [], don: [], doctor: [], detective: [] };
+  const actionsByRole = { mafia: [], doctor: [], detective: [], sniper: [], silencer: [] };
   const actionTaken = new Set();
   for (const action of actions || []) {
     if (!action || typeof action !== "object" ||
@@ -51,26 +51,37 @@ function planNightResolution({ playersById, actions, nightNumber }) {
     actionsByRole[actualPlayer.role].push(action);
   }
 
-  const validMafiaActions = [
-    ...actionsByRole.mafia,
-    ...actionsByRole.don,
-  ].filter((action) => {
+  const validMafiaActions = actionsByRole.mafia.filter((action) => {
     const target = playersById[action.targetId];
     return target && target.team !== "mafias";
   });
   const mafiaTargetId = pickMajorityTarget(validMafiaActions);
-  const doctorAction = actionsByRole.doctor[0];
-  const doctorTargetId = doctorAction ? doctorAction.targetId : null;
-  const doctorPreviousTargetId = Object.values(playersById)
-    .find((player) => player.role === "doctor")?.lastProtectedTargetId;
-  const effectiveDoctorTargetId = doctorTargetId === doctorPreviousTargetId
-    ? null
-    : doctorTargetId;
+  const doctorTargetId = actionsByRole.doctor[0] ? actionsByRole.doctor[0].targetId : null;
   const savedIds = [];
   const killedIds = [];
   if (mafiaTargetId) {
-    if (mafiaTargetId === effectiveDoctorTargetId) savedIds.push(mafiaTargetId);
+    if (mafiaTargetId === doctorTargetId) savedIds.push(mafiaTargetId);
     else killedIds.push(mafiaTargetId);
+  }
+
+  const sniperResults = [];
+  for (const action of actionsByRole.sniper) {
+    const sniper = playersById[action.playerId];
+    const target = playersById[action.targetId];
+    if (!sniper || sniper.usedBullet || !target) continue;
+    sniperResults.push({
+      sniperId: action.playerId,
+      targetId: action.targetId,
+      hitMafia: target.team === "mafias",
+    });
+    killedIds.push(action.targetId);
+  }
+
+  const silencedIds = [];
+  for (const action of actionsByRole.silencer) {
+    const target = playersById[action.targetId];
+    if (!target || killedIds.includes(action.targetId)) continue;
+    silencedIds.push(action.targetId);
   }
 
   const investigations = [];
@@ -82,27 +93,17 @@ function planNightResolution({ playersById, actions, nightNumber }) {
       detectiveId: action.playerId,
       targetId: action.targetId,
       targetTeam: target.team,
-      result: target.team === "mafias" ? "Mafia" : "Not Mafia",
-    });
-  }
-  const donInvestigations = [];
-  for (const action of actionsByRole.don) {
-    const target = playersById[action.targetId];
-    if (!target || target.isAlive !== true) continue;
-    donInvestigations.push({
-      donId: action.playerId,
-      targetId: action.targetId,
-      isDetective: target.role === "detective",
     });
   }
 
   return {
     mafiaTargetId,
-    doctorTargetId: effectiveDoctorTargetId,
+    doctorTargetId,
     killedIds: [...new Set(killedIds)],
     savedIds,
+    sniperResults,
+    silencedIds,
     investigations,
-    donInvestigations,
   };
 }
 
@@ -111,8 +112,8 @@ async function resolveNight(gameId, gameData) {
   const playersRef = gameRef.collection("players");
   const nightNumber = gameData.currentNight || 0;
   const currentGame = await gameRef.get();
-  if (!currentGame.exists || currentGame.data().status !== "NIGHT" ||
-      currentGame.data().currentPhase !== "NIGHT" ||
+  if (!currentGame.exists || currentGame.data().status !== "night" ||
+      currentGame.data().currentPhase !== "night" ||
       currentGame.data().currentNight !== nightNumber) return false;
 
   const [playersSnap, actionsSnap] = await Promise.all([
@@ -157,6 +158,21 @@ async function resolveNight(gameId, gameData) {
     });
   }
 
+  for (const shot of plan.sniperResults) {
+    const sniper = playersById[shot.sniperId];
+    if (sniper && sniper.privateRef) {
+      batch.update(sniper.privateRef, { usedBullet: true });
+    }
+    batch.set(eventsRef.doc(`night-${nightNumber}-sniper-${shot.sniperId}`), {
+      type: shot.hitMafia ? "PlayerKilled" : "SniperMissed",
+      message: shot.hitMafia
+        ? "The sniper hit a Mafia member."
+        : "The sniper hit an innocent villager.",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      payload: { playerId: shot.targetId, cause: "sniper" },
+    });
+  }
+
   killedIds.forEach((playerId) => {
     if (savedIds.has(playerId)) return;
     const player = playersById[playerId];
@@ -178,11 +194,10 @@ async function resolveNight(gameId, gameData) {
     });
   });
 
-  if (doctorTargetId) {
-    const doctor = Object.values(playersById).find((player) => player.role === "doctor");
-    if (doctor && doctor.privateRef) {
-      batch.update(doctor.privateRef, { lastProtectedTargetId: doctorTargetId });
-    }
+  for (const playerId of plan.silencedIds) {
+    const target = playersById[playerId];
+    if (!target || killedIds.has(playerId)) continue;
+    batch.update(target.ref, { canSpeak: false });
   }
 
   for (const investigation of plan.investigations) {
@@ -191,18 +206,7 @@ async function resolveNight(gameId, gameData) {
     batch.update(detective.privateRef, {
       lastInvestigationResult: {
         targetId: investigation.targetId,
-          result: investigation.result,
-        nightNumber,
-      },
-    });
-  }
-  for (const investigation of plan.donInvestigations) {
-    const don = playersById[investigation.donId];
-    if (!don || !don.privateRef) continue;
-    batch.update(don.privateRef, {
-      lastDonInvestigationResult: {
-        targetId: investigation.targetId,
-        isDetective: investigation.isDetective,
+        targetTeam: investigation.targetTeam,
         nightNumber,
       },
     });

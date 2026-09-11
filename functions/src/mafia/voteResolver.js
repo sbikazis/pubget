@@ -8,15 +8,16 @@ const ROLE_LABELS = {
   mafia: "Mafia",
   doctor: "the Doctor",
   detective: "the Detective",
-  don: "the Don",
+  sniper: "the Sniper",
+  silencer: "the Silencer",
+  good_boy: "the Good Boy",
   citizen: "a Citizen",
 };
 
-function planVoteResolution({ playersById, votes, dayNumber, round = 0 }) {
+function planVoteResolution({ playersById, votes, dayNumber }) {
   const validVotes = (votes || []).filter((vote) => {
     if (!vote || typeof vote !== "object" || typeof vote.voterId !== "string" ||
-      typeof vote.targetId !== "string" || !Number.isInteger(vote.dayNumber) ||
-      (vote.round ?? 0) !== round) {
+        typeof vote.targetId !== "string" || !Number.isInteger(vote.dayNumber)) {
       return false;
     }
     const voter = playersById[vote.voterId];
@@ -54,10 +55,9 @@ async function resolveVotes(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   const playersRef = gameRef.collection("players");
   const dayNumber = gameData.currentDay || 0;
-  const round = gameData.revoteCount || 0;
   const currentGame = await gameRef.get();
-  if (!currentGame.exists || currentGame.data().status !== "VOTING" ||
-      currentGame.data().currentPhase !== "VOTING" ||
+  if (!currentGame.exists || currentGame.data().status !== "voting" ||
+      currentGame.data().currentPhase !== "voting" ||
       currentGame.data().currentDay !== dayNumber) return false;
 
   const [playersSnap, votesSnap] = await Promise.all([
@@ -74,48 +74,25 @@ async function resolveVotes(gameId, gameData) {
     playersById,
     votes: votesSnap.docs.map((doc) => doc.data()),
     dayNumber,
-    round,
   });
   const eventsRef = gameRef.collection("events");
 
   if (plan.kind === "skip") {
     await eventsRef.doc(`vote-${dayNumber}-resolved`).set({
-      type: "VoteResolved",
+      type: "ExecutionSkipped",
       message: "Nobody voted. Nobody is eliminated.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { dayNumber },
-    });
-    await gameRef.update({
-      status: "VOTE_RESULT",
-      currentPhase: "VOTE_RESULT",
-      voteResult: { kind: "skip", tally: plan.tally },
     });
     return true;
   }
 
   if (plan.kind === "tie") {
-    const current = currentGame.data();
-    const isRevote = (current.revoteCount || 0) > 0;
     await eventsRef.doc(`vote-${dayNumber}-resolved`).set({
-      type: isRevote ? "VoteTieFinal" : "VoteTie",
-      message: isRevote
-        ? "The revote tied. Nobody is eliminated."
-        : "The vote tied. A revote is open between the tied players.",
+      type: "ExecutionSkipped",
+      message: "The vote tied. Nobody is eliminated.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      payload: { dayNumber, tally: plan.tally, revote: !isRevote },
-    });
-    await gameRef.update({
-      status: "VOTE_RESULT",
-      currentPhase: "VOTE_RESULT",
-      voteResult: {
-        kind: isRevote ? "final_tie" : "tie",
-        tally: plan.tally,
-        tiedPlayerIds: Object.entries(plan.tally)
-          .filter(([, count]) => count === Math.max(...Object.values(plan.tally)))
-          .map(([id]) => id),
-      },
-      revoteCount: isRevote ? current.revoteCount : 1,
-      revotePending: !isRevote,
+      payload: { dayNumber, tally: plan.tally },
     });
     return true;
   }
@@ -139,18 +116,12 @@ async function resolveVotes(gameId, gameData) {
     revealedRole: true,
   });
   batch.set(eventsRef.doc(`vote-${dayNumber}-resolved`), {
-    type: "PlayerEliminated",
+    type: "PlayerExecuted",
     message: `The village eliminated ${name}. They were ${roleLabel}.`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     payload: { playerId: plan.targetId, role, dayNumber },
   });
   await batch.commit();
-  await gameRef.update({
-    status: "VOTE_RESULT",
-    currentPhase: "VOTE_RESULT",
-    voteResult: { kind: "execute", targetId: plan.targetId, tally: plan.tally },
-    revotePending: false,
-  });
   return true;
 }
 

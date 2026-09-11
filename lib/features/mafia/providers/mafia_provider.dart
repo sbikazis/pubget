@@ -18,14 +18,12 @@ final class MafiaProvider extends ChangeNotifier {
   StreamSubscription<Result<MafiaPrivateState>>? _privateSub;
   StreamSubscription<Result<List<Map<String, dynamic>>>>? _eventsSub;
   StreamSubscription<Result<List<Map<String, dynamic>>>>? _chatSub;
-  StreamSubscription<Result<List<Map<String, dynamic>>>>? _mafiaChatSub;
   Timer? _heartbeat;
   MafiaGame? _game;
   List<MafiaPlayer> _players = const <MafiaPlayer>[];
   MafiaPrivateState _private = const MafiaPrivateState();
   List<Map<String, dynamic>> _events = const <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _chat = const <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _mafiaChat = const <Map<String, dynamic>>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _busy = false;
@@ -38,7 +36,6 @@ final class MafiaProvider extends ChangeNotifier {
   MafiaPrivateState get privateState => _private;
   List<Map<String, dynamic>> get events => _events;
   List<Map<String, dynamic>> get chat => _chat;
-  List<Map<String, dynamic>> get mafiaChat => _mafiaChat;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get busy => _busy;
@@ -94,10 +91,6 @@ final class MafiaProvider extends ChangeNotifier {
       result.fold(onSuccess: (value) => _chat = value, onFailure: (_) {});
       notifyListeners();
     });
-    _mafiaChatSub = _repository.watchMafiaChat(gameId).listen((result) {
-      result.fold(onSuccess: (value) => _mafiaChat = value, onFailure: (_) {});
-      notifyListeners();
-    });
     _heartbeat = Timer.periodic(const Duration(seconds: 25), (_) {
       unawaited(_repository.heartbeat(gameId));
     });
@@ -127,17 +120,6 @@ final class MafiaProvider extends ChangeNotifier {
       () => _repository.submitNightAction(
         gameId: _gameId!,
         targetId: targetId,
-        nightNumber: night,
-      ),
-    );
-  }
-
-  Future<Result<void>> donInvestigation(String targetId) {
-    final night = _game?.currentNight ?? 0;
-    return _run(
-      () => _repository.submitNightAction(
-        gameId: _gameId!,
-        targetId: '__don_investigate__$targetId',
         nightNumber: night,
       ),
     );
@@ -179,7 +161,6 @@ final class MafiaProvider extends ChangeNotifier {
     _private = const MafiaPrivateState();
     _events = const <Map<String, dynamic>>[];
     _chat = const <Map<String, dynamic>>[];
-    _mafiaChat = const <Map<String, dynamic>>[];
     _failure = null;
     _busy = false;
     _gameId = null;
@@ -212,7 +193,6 @@ final class MafiaProvider extends ChangeNotifier {
     await _privateSub?.cancel();
     await _eventsSub?.cancel();
     await _chatSub?.cancel();
-    await _mafiaChatSub?.cancel();
   }
 
   @override

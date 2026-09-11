@@ -10,20 +10,19 @@ const { ALL_ABILITIES } = require("./abilities");
 
 const db = admin.firestore();
 
-const ROLE_REVEAL_DURATION_SECONDS = 12;
+const FIRST_NIGHT_DURATION_SECONDS = 60;
 const MAX_PLAYERS = 50;
 
 async function cancelInvalidStartingGame(gameId, owner) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   return db.runTransaction(async (tx) => {
     const game = await tx.get(gameRef);
-    if (!game.exists || !["STARTING", "starting"].includes(game.data().status) ||
+    if (!game.exists || game.data().status !== "starting" ||
         game.data().roleAssignmentClaim?.owner !== owner) return false;
 
     tx.update(gameRef, {
-      status: "CANCELLED",
-      currentPhase: "CANCELLED",
-      resultLocked: true,
+      status: "cancelled",
+      currentPhase: "cancelled",
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     const groupId = game.data().groupId;
@@ -45,39 +44,35 @@ async function cancelInvalidStartingGame(gameId, owner) {
 }
 
 function computeRoleDistribution(playersCount, version) {
-  if (version === "advanced") {
-    const advanced = ["mafia", "mafia"];
-    if (playersCount >= 6) advanced.push("doctor");
-    if (playersCount >= 7) advanced.push("detective");
-    if (playersCount >= 8) advanced.push("good_boy");
-    if (playersCount >= 9) advanced.push("sniper");
-    if (playersCount >= 10) advanced.push("silencer");
-    while (advanced.length < playersCount) advanced.push("citizen");
-    return advanced.slice(0, playersCount);
-  }
-  // Keep the helper's original classic fixture contract for archived tests.
-  // New games pass numeric version 2 and use the five-role rules below.
-  if (version === "classic") {
-    const legacy = playersCount <= 4
-      ? ["mafia", "doctor", "detective"]
-      : ["mafia", "mafia", "doctor", "detective"];
-    while (legacy.length < playersCount) {
-      legacy.push(playersCount >= 8 && legacy.length === 7 ? "good_boy" : "citizen");
-    }
-    return legacy.slice(0, playersCount);
-  }
-  if (!Number.isInteger(playersCount) || playersCount < 4) return [];
-  // Don is the Mafia leader. The second Mafia member is introduced at five
-  // players and the third at ten; the remaining seats are town roles.
-  const mafiaCount = playersCount >= 10 ? 3 : playersCount >= 5 ? 2 : 1;
-  const distribution = ["don", ...Array(mafiaCount - 1).fill("mafia")];
-  if (playersCount >= 4) distribution.push("doctor");
-  if (playersCount >= 4) distribution.push("detective");
-  while (distribution.length < playersCount) distribution.push("citizen");
-  return distribution;
-}
+  const distribution = [];
 
-const LEGACY_ROLE_ASSIGNMENT_COPY = "Roles have been assigned. Night 1 has begun.";
+  if (version === "advanced") {
+    distribution.push("mafia", "mafia");
+    if (playersCount >= 6) distribution.push("doctor");
+    if (playersCount >= 7) distribution.push("detective");
+    // Named villager after core town roles, before combat roles.
+    if (playersCount >= 8) distribution.push("good_boy");
+    if (playersCount >= 9) distribution.push("sniper");
+    if (playersCount >= 10) distribution.push("silencer");
+  } else if (playersCount <= 4) {
+    // 4 players cannot support two Mafia without starting at parity.
+    distribution.push("mafia");
+    if (playersCount >= 4) distribution.push("doctor", "detective");
+  } else {
+    distribution.push("mafia", "mafia");
+    if (playersCount >= 5) distribution.push("doctor");
+    if (playersCount >= 6) distribution.push("detective");
+    // Live createMafiaGame stores version: 1 (classic). Gate here so the
+    // role is actually assigned, not only on the unused "advanced" path.
+    if (playersCount >= 8) distribution.push("good_boy");
+  }
+
+  while (distribution.length < playersCount) {
+    distribution.push("citizen");
+  }
+
+  return distribution.slice(0, playersCount);
+}
 
 function shuffle(array) {
   const result = [...array];
@@ -112,14 +107,14 @@ async function assignRoles(gameId, gameData) {
   );
 
   const phaseEndsAt = admin.firestore.Timestamp.fromMillis(
-    Date.now() + ROLE_REVEAL_DURATION_SECONDS * 1000
+    Date.now() + FIRST_NIGHT_DURATION_SECONDS * 1000
   );
   // A transaction claims the starting lobby exactly once.  The private
   // documents are created with merge because older lobbies may not have
   // pre-created them; no client supplied role is ever trusted.
   const assignment = await db.runTransaction(async (tx) => {
     const current = await tx.get(gameRef);
-    if (!current.exists || !["STARTING", "starting"].includes(current.data().status) ||
+    if (!current.exists || current.data().status !== "starting" ||
         current.data().rolesAssigned === true ||
         current.data().roleAssignmentClaim?.owner !== gameData.roleAssignmentOwner ||
         typeof current.data().roleAssignmentClaim?.expiresAt?.toMillis !== "function" ||
@@ -140,35 +135,19 @@ async function assignRoles(gameId, gameData) {
         currentActive.some((snap) => !activePlayers.some((player) => player.id === snap.id))) {
       return { assigned: false, invalid: true };
     }
-    const mafiaIds = activePlayers
-      .filter((_, index) => ["mafia", "don"].includes(distribution[index]))
-      .map((player) => player.id);
     activePlayers.forEach((playerDoc, index) => {
       const ability = ALL_ABILITIES[distribution[index]];
       tx.set(playerDoc.ref.collection("private").doc("data"), {
-        role: distribution[index],
-        team: distribution[index] === "don" || distribution[index] === "mafia"
-          ? "mafias"
-          : ability ? ability.team : "citizens",
-        mafiaTeammates: ["mafia", "don"].includes(distribution[index])
-          ? mafiaIds.filter((id) => id !== playerDoc.id)
-          : [],
-        lastInvestigationResult: null,
-        lastDonInvestigationResult: null,
+        role: distribution[index], team: ability ? ability.team : "citizens",
       }, { merge: true });
     });
     tx.update(gameRef, {
-      status: "ROLE_REVEAL", currentPhase: "ROLE_REVEAL", currentNight: 0,
-      rolesAssigned: true, roleRevealEndsAt: phaseEndsAt,
-      countdownEndsAt: admin.firestore.FieldValue.delete(), phaseEndsAt,
-      stateVersion: admin.firestore.FieldValue.increment(1),
+      status: "night", currentPhase: "night", currentNight: 1,
+      rolesAssigned: true, countdownEndsAt: admin.firestore.FieldValue.delete(), phaseEndsAt,
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     tx.set(gameRef.collection("events").doc("roles-assigned"), {
-      // Legacy copy retained for compatibility: Roles have been assigned.
-      // Night 1 has begun. The persisted phase is
-      // ROLE_REVEAL and the actual role is always private.
-      type: "RolesAssigned", message: "Roles have been assigned privately.",
+      type: "RolesAssigned", message: "Roles have been assigned. Night 1 has begun.",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { playersCount: activePlayers.length, version: gameData.version || "classic" },
     });

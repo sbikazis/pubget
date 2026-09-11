@@ -772,9 +772,15 @@ service cloud.firestore {
       function eventVisible() {
         return signedIn() && eventExists() &&
           (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'draft' &&
-            eventData().groupId is string &&
-            groupMember(eventData().groupId)));
+           (eventData().status != 'DRAFT' &&
+            eventData().status != 'DELETED' &&
+            (eventData().scope == 'global' ||
+             (eventData().scope == 'group' &&
+              eventData().groupId is string &&
+              groupMember(eventData().groupId)) ||
+             (eventData().scope == 'multiGroup' &&
+              eventData().audienceMemberIds is list &&
+              eventData().audienceMemberIds.hasAny([request.auth.uid])))));
       }
       allow read: if eventVisible();
       allow create, update, delete: if false;
@@ -785,7 +791,16 @@ service cloud.firestore {
       match /responses/{uid} {
         allow read: if eventVisible() &&
           (request.auth.uid == uid ||
-           eventData().status in ['ended', 'archived']);
+           (eventData().creatorId == request.auth.uid &&
+            eventData().status in ['ENDED', 'ARCHIVED']));
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if eventVisible();
+        allow create, update, delete: if false;
+      }
+      match /reactions/{uid} {
+        allow read: if eventVisible();
         allow create, update, delete: if false;
       }
     }
@@ -982,44 +997,104 @@ service cloud.firestore {
     match /promotions/{promotionId} { allow read: if signedIn(); allow write: if false; }
     match /physical_products/{productId} { allow read: if signedIn(); allow write: if false; }
 
-    // Mafia execution is Cloud Functions-only. Clients read projections and
-    // submit intents through callable functions; all writes stay server-owned.
+    // Game execution is Cloud Functions-only. Clients may establish a waiting
+    // lobby and submit bounded intent; all authoritative state remains server-owned.
     match /mafia_games/{gameId} {
       allow read: if signedIn() && groupMember(resource.data.groupId);
-      allow create, update: if false;
+      allow create: if mafiaGameCreate(gameId);
+      allow update: if mafiaJoinCounterUpdate(gameId) || mafiaLeaveCounterUpdate(gameId);
       allow delete: if false;
       match /players/{uid} {
         allow read: if mafiaGroupMember(gameId);
-        allow create, update, delete: if false;
+        allow create: if self(uid) && mafiaPublicPlayerDefaults(gameId, uid) &&
+          ((!exists(/databases/$(database)/documents/mafia_games/$(gameId)) &&
+             getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.createdBy == request.auth.uid) ||
+           (mafiaGame(gameId).data.status == 'waiting' &&
+             mafiaGame(gameId).data.playersCount < mafiaGame(gameId).data.maxPlayers &&
+             getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
+               mafiaGame(gameId).data.playersCount + 1));
+        allow delete: if self(uid) &&
+          mafiaGame(gameId).data.status == 'waiting' &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
+            mafiaGame(gameId).data.playersCount - 1 &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount >= 0 &&
+          getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.diff(
+            mafiaGame(gameId).data).affectedKeys().hasOnly(['playersCount']);
+        allow update: if self(uid) && changedOnly(['lastSeenAt','isDisconnected']) &&
+          request.resource.data.isDisconnected == false;
         match /private/{docId} { allow read: if self(uid); allow write: if false; }
       }
       match /night_actions/{actionId} {
         allow read: if false;
-        allow create, update, delete: if false;
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status == 'night' &&
+          mafiaGame(gameId).data.currentPhase == 'night' &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+           (!get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.keys().hasAny(['canUseAbility']) ||
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canUseAbility == true) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
+            in ['mafia','doctor','detective','sniper','silencer'] &&
+          actionId == request.auth.uid + '_n' + string(request.resource.data.nightNumber) &&
+          request.resource.data.playerId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['playerId','targetId','nightNumber','submittedAt']) &&
+          request.resource.data.keys().hasAll(['playerId','targetId','nightNumber','submittedAt']) &&
+          request.resource.data.nightNumber is int &&
+          request.resource.data.nightNumber == mafiaGame(gameId).data.currentNight &&
+          request.resource.data.submittedAt is timestamp &&
+          mafiaPhaseOpen(gameId) &&
+          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true &&
+          (
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role != 'mafia' ||
+            (
+              request.resource.data.targetId != request.auth.uid &&
+              get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)/private/data).data.role != 'mafia'
+            )
+          );
+        allow update, delete: if false;
       }
       match /votes/{voteId} {
-        allow read, create, update, delete: if false;
+        allow read: if mafiaGroupMember(gameId);
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status == 'voting' &&
+          mafiaGame(gameId).data.currentPhase == 'voting' &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canVote == true &&
+          voteId == request.auth.uid + '_d' + string(request.resource.data.dayNumber) &&
+          request.resource.data.voterId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['voterId','targetId','dayNumber','time']) &&
+          request.resource.data.dayNumber is int &&
+          request.resource.data.dayNumber == mafiaGame(gameId).data.currentDay &&
+          request.resource.data.time is timestamp &&
+          mafiaPhaseOpen(gameId) &&
+          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
+        allow update, delete: if false;
       }
-      match /action_receipts/{actionId} { allow read, write: if false; }
-      match /discussion_actions/{actionId} { allow read, write: if false; }
       match /events/{eventId} { allow read: if mafiaGroupMember(gameId); allow write: if false; }
       match /chat/{messageId} {
         allow read: if mafiaGroupMember(gameId);
-        allow create, update, delete: if false;
-      }
-      match /mafia_chat/{messageId} {
-        allow read: if mafiaPlayer(gameId) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.team == 'mafias';
-        allow create, update, delete: if false;
+        allow create: if mafiaPlayer(gameId) &&
+          mafiaGame(gameId).data.status in ['day','discussion','voting'] &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canSpeak == true &&
+          request.resource.data.keys().hasOnly(['senderId','sender','senderAvatar','text','time','type']) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.sender ==
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.username &&
+          request.resource.data.senderAvatar ==
+            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.avatar &&
+          request.resource.data.type == 'player' &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000;
+        allow update, delete: if false;
       }
     }
-    match /mafia_history/{gameId} {
-      allow read: if signedIn() &&
-        exists(/databases/$(database)/documents/mafia_games/$(gameId)) &&
-        mafiaGame(gameId).data.status == 'GAME_OVER' &&
-        groupMember(mafiaGame(gameId).data.groupId);
-      allow write: if false;
-    }
+    match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }
 
     // Joined tab: collection-group *list* of `members` is own-uid only.
     // `get` stays on nested groups/{groupId}/members/{uid} so a

@@ -8,29 +8,14 @@ abstract final class MafiaLeaveCopy {
   static const stay = 'Stay';
   static const title = 'Leave Mafia?';
 
-  static const _active = <String>{
-    'ROLE_REVEAL',
-    'NIGHT',
-    'DAY',
-    'DISCUSSION',
-    'VOTING',
-    'VOTE_RESULT',
-    'RESOLUTION',
-    'role_reveal',
-    'night',
-    'day',
-    'discussion',
-    'voting',
-  };
+  static const _active = <String>{'night', 'day', 'discussion', 'voting'};
 
   static bool canLeave(String status) {
-    return status == 'STARTING' ||
-        status == 'starting' ||
-        _active.contains(status);
+    return status == 'starting' || _active.contains(status);
   }
 
   static String bodyFor(String status) {
-    if (status == 'STARTING' || status == 'starting') {
+    if (status == 'starting') {
       return 'If the lobby then has fewer than the minimum players, it is '
           'cancelled. Otherwise you leave and the start continues. Roles '
           'are not assigned yet.';

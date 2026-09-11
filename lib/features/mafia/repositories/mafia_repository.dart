@@ -46,6 +46,4 @@ abstract interface class MafiaRepository {
   Stream<Result<List<Map<String, dynamic>>>> watchEvents(String gameId);
 
   Stream<Result<List<Map<String, dynamic>>>> watchChat(String gameId);
-
-  Stream<Result<List<Map<String, dynamic>>>> watchMafiaChat(String gameId);
 }

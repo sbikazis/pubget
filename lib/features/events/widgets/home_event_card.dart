@@ -14,9 +14,9 @@ class HomeEventCard extends StatelessWidget {
   final PubgetEvent event;
 
   static Color badgeColor(EventType type) => switch (type) {
-    EventType.poll || EventType.multipleChoice => const Color(0xFF6BA6E8),
+    EventType.poll || EventType.question => const Color(0xFF6BA6E8),
     EventType.ranking => const Color(0xFF3FAE6A),
-    EventType.versus => const Color(0xFFE26A3A),
+    EventType.comparison => const Color(0xFFE26A3A),
     EventType.theory => AppColors.royalPurpleLight,
     EventType.prediction => AppColors.gold,
     EventType.quiz => const Color(0xFF2EB3B0),
@@ -28,9 +28,9 @@ class HomeEventCard extends StatelessWidget {
   };
 
   static IconData badgeIcon(EventType type) => switch (type) {
-    EventType.poll || EventType.multipleChoice => Icons.poll_outlined,
+    EventType.poll || EventType.question => Icons.poll_outlined,
     EventType.ranking => Icons.format_list_numbered,
-    EventType.versus => Icons.sports_kabaddi_outlined,
+    EventType.comparison => Icons.sports_kabaddi_outlined,
     EventType.theory => Icons.auto_stories_outlined,
     EventType.prediction => Icons.insights_outlined,
     EventType.quiz => Icons.quiz_outlined,
@@ -46,7 +46,8 @@ class HomeEventCard extends StatelessWidget {
     final copy = AppStrings.of(context);
     final theme = Theme.of(context);
     final ended = event.isHistorical || event.isExpired();
-    final recentEnd = ended &&
+    final recentEnd =
+        ended &&
         event.endAt != null &&
         DateTime.now().difference(event.endAt!) <= const Duration(hours: 24);
     return Opacity(
@@ -91,7 +92,9 @@ class HomeEventCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Expanded(child: _EventBody(event: event, reveal: ended)),
+              Expanded(
+                child: _EventBody(event: event, reveal: ended),
+              ),
               const SizedBox(height: AppSpacing.sm),
               _EventFooter(event: event, ended: ended),
             ],
@@ -147,14 +150,14 @@ class _EventBody extends StatelessWidget {
     final votes = event.tally.votes;
     final total = votes.values.fold<int>(0, (sum, value) => sum + value);
     return switch (event.type) {
-      EventType.poll || EventType.multipleChoice => _OptionBars(
+      EventType.poll || EventType.question => _OptionBars(
         options: options.take(4).toList(growable: false),
         votes: votes,
         total: total,
         reveal: reveal,
       ),
       EventType.ranking => _RankingBody(options: options.take(3).toList()),
-      EventType.versus ||
+      EventType.comparison ||
       EventType.imageComparison ||
       EventType.characterComparison ||
       EventType.animeComparison => _VersusBody(
@@ -259,9 +262,7 @@ class _OptionBars extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: _Bar(
               label: option.label,
-              value: reveal && total > 0
-                  ? (votes[option.id] ?? 0) / total
-                  : 0,
+              value: reveal && total > 0 ? (votes[option.id] ?? 0) / total : 0,
             ),
           ),
       ],
@@ -284,10 +285,9 @@ class _Bar extends StatelessWidget {
           LinearProgressIndicator(
             minHeight: 18,
             value: value.clamp(0, 1),
-            backgroundColor: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
-                .withValues(alpha: 0.7),
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
             color: AppColors.royalPurpleLight,
           ),
           Padding(
@@ -381,9 +381,9 @@ class _VersusBody extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Text(
             'VS',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
         ),
         Expanded(child: _side(context, options[1])),
@@ -404,7 +404,9 @@ class _VersusBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: option.imageUrl.isEmpty
                 ? ColoredBox(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     child: const Center(child: Icon(Icons.image_outlined)),
                   )
                 : AppImageLoader(imageUrl: option.imageUrl, fit: BoxFit.cover),
@@ -423,7 +425,9 @@ class _VersusBody extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
         LinearProgressIndicator(
@@ -512,9 +516,9 @@ class _EventFooter extends StatelessWidget {
   String _actionLabel(AppStrings copy) {
     if (ended) return copy.seeResult;
     return switch (event.type) {
-      EventType.poll || EventType.multipleChoice => copy.vote,
+      EventType.poll || EventType.question => copy.vote,
       EventType.ranking => copy.rankChoices,
-      EventType.versus ||
+      EventType.comparison ||
       EventType.imageComparison ||
       EventType.characterComparison ||
       EventType.animeComparison => copy.vote,
@@ -533,23 +537,24 @@ class HomeEventsSection extends StatelessWidget {
   final List<PubgetEvent> events;
 
   static List<PubgetEvent> pickHome(List<PubgetEvent> input, DateTime now) {
-    final ranked = [...input]..sort((a, b) {
-      int rank(PubgetEvent event) {
-        if (event.status == EventStatus.active && !event.isExpired(now)) {
-          return 0;
+    final ranked = [...input]
+      ..sort((a, b) {
+        int rank(PubgetEvent event) {
+          if (event.status == EventStatus.active && !event.isExpired(now)) {
+            return 0;
+          }
+          if (event.status == EventStatus.active) return 1;
+          return 2;
         }
-        if (event.status == EventStatus.scheduled) return 1;
-        return 2;
-      }
 
-      final byStatus = rank(a).compareTo(rank(b));
-      if (byStatus != 0) return byStatus;
-      final byPeople = b.participantsCount.compareTo(a.participantsCount);
-      if (byPeople != 0) return byPeople;
-      final aLeft = a.remaining(now)?.inSeconds ?? 1 << 30;
-      final bLeft = b.remaining(now)?.inSeconds ?? 1 << 30;
-      return aLeft.compareTo(bLeft);
-    });
+        final byStatus = rank(a).compareTo(rank(b));
+        if (byStatus != 0) return byStatus;
+        final byPeople = b.participantsCount.compareTo(a.participantsCount);
+        if (byPeople != 0) return byPeople;
+        final aLeft = a.remaining(now)?.inSeconds ?? 1 << 30;
+        final bLeft = b.remaining(now)?.inSeconds ?? 1 << 30;
+        return aLeft.compareTo(bLeft);
+      });
     return ranked.take(2).toList(growable: false);
   }
 

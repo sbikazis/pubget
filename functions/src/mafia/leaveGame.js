@@ -65,9 +65,8 @@ async function leaveMafiaGame(request) {
     // marker only if it still identifies this exact game.
     tx.update(gameRef, {
       playersCount: transition.nextCount,
-      status: "CANCELLED",
-      currentPhase: "CANCELLED",
-      resultLocked: true,
+      status: "cancelled",
+      currentPhase: "cancelled",
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     if (typeof game.groupId === "string" && game.groupId) {
