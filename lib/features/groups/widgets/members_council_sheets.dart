@@ -284,7 +284,10 @@ class _RankManagementSheetState extends State<_RankManagementSheet> {
                         children: <Widget>[
                           Text(
                             target.primaryIdentity,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: pubgetRankNameTextStyle(
+                              target.role,
+                              fontSize: 15,
+                            ),
                           ),
                           if (target.secondaryIdentity != null)
                             Text(
