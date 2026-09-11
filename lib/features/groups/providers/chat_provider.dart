@@ -47,6 +47,7 @@ final class ChatProvider extends ChangeNotifier {
   bool _disposed = false;
   bool _readInFlight = false;
   ChatMessage? _replyTarget;
+
   /// Bumps only when the message list / chrome that GroupChatPage cares about
   /// changes — never on byte-upload progress ticks.
   int _contentRevision = 0;
@@ -65,10 +66,10 @@ final class ChatProvider extends ChangeNotifier {
   /// @Deprecated Prefer [uploadUiListenable]. Kept for tests that only assert
   /// a non-empty upload map shape.
   Map<String, double> get uploadProgress => <String, double>{
-        for (final entry in _uploadUi.entries)
-          if (entry.value.value.phase == MediaUploadPhase.uploading)
-            entry.key: entry.value.value.progress,
-      };
+    for (final entry in _uploadUi.entries)
+      if (entry.value.value.phase == MediaUploadPhase.uploading)
+        entry.key: entry.value.value.progress,
+  };
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
@@ -96,14 +97,7 @@ final class ChatProvider extends ChangeNotifier {
     required String currentUserId,
   }) async {
     if (_groupId == groupId && _currentUserId == currentUserId) return;
-    await _subscription?.cancel();
-    _cancelAllAutoRetries();
-    for (final notifier in _uploadUi.values) {
-      notifier.dispose();
-    }
-    _uploadUi.clear();
-    _localPreviews.clear();
-    _pendingUploads.clear();
+    await leaveGroup();
     _groupId = groupId;
     _currentUserId = currentUserId;
     _messages.clear();
@@ -128,6 +122,16 @@ final class ChatProvider extends ChangeNotifier {
           },
         );
     await _restoreOutbox(groupId);
+  }
+
+  /// Detach the live session while durable uploads/outbox entries continue.
+  Future<void> leaveGroup() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    _cancelAllAutoRetries();
+    _groupId = null;
+    _currentUserId = null;
+    _replyTarget = null;
   }
 
   Future<void> loadMore() async {
@@ -284,6 +288,7 @@ final class ChatProvider extends ChangeNotifier {
     );
     _beginLocalMediaPreview(mediaId, bytes);
     _upsert(pending);
+    unawaited(_persistPending(pending, groupId: groupId));
     await _performMediaUpload(mediaId);
   }
 
@@ -323,18 +328,25 @@ final class ChatProvider extends ChangeNotifier {
     );
     _beginLocalMediaPreview(mediaId, bytes);
     _upsert(pending);
+    unawaited(_persistPending(pending, groupId: groupId));
     await _performMediaUpload(mediaId);
   }
 
   void _beginLocalMediaPreview(String mediaId, Uint8List bytes) {
     _localPreviews[mediaId] = bytes;
-    _uploadUi.putIfAbsent(
-      mediaId,
-      () => ValueNotifier<MediaUploadUiState>(MediaUploadUiState.uploadingStart),
-    ).value = MediaUploadUiState.uploadingStart;
+    _uploadUi
+            .putIfAbsent(
+              mediaId,
+              () => ValueNotifier<MediaUploadUiState>(
+                MediaUploadUiState.uploadingStart,
+              ),
+            )
+            .value =
+        MediaUploadUiState.uploadingStart;
   }
 
   void _setUploadProgress(String mediaId, double progress) {
+    if (_disposed) return;
     final notifier = _uploadUi[mediaId];
     if (notifier == null) return;
     notifier.value = MediaUploadUiState(
@@ -345,9 +357,12 @@ final class ChatProvider extends ChangeNotifier {
   }
 
   void _setUploadProcessing(String mediaId) {
+    if (_disposed) return;
     final notifier = _uploadUi[mediaId];
     if (notifier == null) return;
-    notifier.value = const MediaUploadUiState(phase: MediaUploadPhase.processing);
+    notifier.value = const MediaUploadUiState(
+      phase: MediaUploadPhase.processing,
+    );
   }
 
   void _clearUploadUi(String mediaId, {bool clearPreview = true}) {
@@ -392,9 +407,10 @@ final class ChatProvider extends ChangeNotifier {
         );
         // Drop progress overlay; keep local bytes as AppImageLoader placeholder
         // until the remote frame paints (avoids empty-bubble flicker).
+        final isActiveGroup = _groupId == payload.groupId;
         _clearUploadUi(mediaId, clearPreview: false);
-        _upsert(pending);
-        unawaited(_persistPending(pending));
+        if (isActiveGroup) _upsert(pending);
+        unawaited(_persistPending(pending, groupId: payload.groupId));
         final result = await _repository.sendMessage(
           groupId: payload.groupId,
           messageId: mediaId,
@@ -407,13 +423,15 @@ final class ChatProvider extends ChangeNotifier {
           stickerCreatorName: payload.stickerCreatorName,
         );
         if (result.isSuccess) clearReplyTarget();
-        _finishSend(mediaId, result);
+        _finishSendForGroup(mediaId, result, payload.groupId);
         if (result.isSuccess) _pendingUploads.remove(mediaId);
       },
       onFailure: (failure) {
         // Keep local preview so failed/retry bubbles stay visible.
         _clearUploadUi(mediaId, clearPreview: false);
-        final index = _messages.indexWhere((item) => item.id == mediaId);
+        final index = _groupId == payload.groupId
+            ? _messages.indexWhere((item) => item.id == mediaId)
+            : -1;
         if (index != -1) {
           if (isTransientChatFailure(failure)) {
             _messages[index] = _messages[index].copyWith(
@@ -428,9 +446,11 @@ final class ChatProvider extends ChangeNotifier {
             );
           }
         }
-        _failure = failure;
-        _contentRevision++;
-        _safeNotify();
+        if (_groupId == payload.groupId) {
+          _failure = failure;
+          _contentRevision++;
+          _safeNotify();
+        }
       },
     );
   }
@@ -448,17 +468,21 @@ final class ChatProvider extends ChangeNotifier {
       if (payload != null) {
         _beginLocalMediaPreview(message.id, payload.bytes);
       }
-      _upsert(message.copyWith(
-        sendState: ChatSendState.pending,
-        clearFailureMessage: true,
-      ));
+      _upsert(
+        message.copyWith(
+          sendState: ChatSendState.pending,
+          clearFailureMessage: true,
+        ),
+      );
       await _performMediaUpload(message.id);
       return;
     }
-    _upsert(message.copyWith(
-      sendState: ChatSendState.pending,
-      clearFailureMessage: true,
-    ));
+    _upsert(
+      message.copyWith(
+        sendState: ChatSendState.pending,
+        clearFailureMessage: true,
+      ),
+    );
     unawaited(_persistPending(message));
     final result = await _repository.sendMessage(
       groupId: _groupId ?? '',
@@ -732,7 +756,21 @@ final class ChatProvider extends ChangeNotifier {
   }
 
   void _finishSend(String id, Result<ChatMessage> result) {
+    _finishSendForGroup(id, result, _groupId);
+  }
+
+  void _finishSendForGroup(
+    String id,
+    Result<ChatMessage> result,
+    String? targetGroupId,
+  ) {
     if (_disposed) return;
+    if (targetGroupId == null || targetGroupId != _groupId) {
+      if (result.isSuccess && targetGroupId != null) {
+        unawaited(_outbox.remove(targetGroupId, id));
+      }
+      return;
+    }
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
@@ -799,11 +837,11 @@ final class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _persistPending(ChatMessage message) async {
+  Future<void> _persistPending(ChatMessage message, {String? groupId}) async {
     try {
-      final groupId = _groupId;
-      if (groupId == null) return;
-      await _outbox.upsert(groupId, message);
+      final targetGroupId = groupId ?? _groupId;
+      if (targetGroupId == null) return;
+      await _outbox.upsert(targetGroupId, message);
     } catch (_) {}
   }
 
