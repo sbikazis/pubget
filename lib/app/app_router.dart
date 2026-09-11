@@ -117,11 +117,19 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 
   @override
   Future<bool> popRoute() async {
+    // 1) Sheets / dialogs / local MaterialPageRoutes on this navigator.
+    final navigator = navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      final handled = await navigator.maybePop();
+      if (handled) return true;
+    }
+    // 2) App route stack (one step only).
     if (canPop) {
       popStack();
       return true;
     }
-    return false;
+    // 3) Shell / login roots: absorb hardware back — never exit the app.
+    return true;
   }
 
   void clearPending() {
@@ -297,21 +305,31 @@ abstract final class AppNavigation {
     return delegate.navigate(AppRouter.routeFromString(path));
   }
 
-  static Future<void> back(BuildContext context) async {
-    final delegate = Router.maybeOf(context)?.routerDelegate;
-    if (delegate is AppRouterDelegate) {
-      delegate.popStack();
-      return;
-    }
+  /// Single-step dismiss: local navigator layer first, then app stack.
+  /// Never calls [SystemNavigator.pop] / never exits the app.
+  static Future<bool> popLayer(BuildContext context) async {
     final navigator = Navigator.maybeOf(context);
-    if (navigator != null && navigator.canPop()) navigator.pop();
+    if (navigator != null && navigator.canPop()) {
+      return navigator.maybePop();
+    }
+    final delegate = Router.maybeOf(context)?.routerDelegate;
+    if (delegate is AppRouterDelegate && delegate.canPop) {
+      delegate.popStack();
+      return true;
+    }
+    return false;
+  }
+
+  static Future<void> back(BuildContext context) async {
+    await popLayer(context);
   }
 
   static bool canPop(BuildContext context) {
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) return true;
     final delegate = Router.maybeOf(context)?.routerDelegate;
     if (delegate is AppRouterDelegate) return delegate.canPop;
-    final navigator = Navigator.maybeOf(context);
-    return navigator != null && navigator.canPop();
+    return false;
   }
 }
 

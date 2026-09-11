@@ -28,6 +28,12 @@ dependencies:
   shared_preferences: ^2.5.3
   record: ^6.2.1
   audioplayers: ^6.6.0
+  camera: ^0.11.2+1
+  image_cropper: ^12.2.1
+  path_provider: ^2.1.5
+  google_fonts: ^6.3.2
+  flutter_animate: ^4.5.2
+  phosphor_icons: ^3.0.1
 
 dev_dependencies:
   flutter_test:
@@ -41,6 +47,8 @@ flutter:
     - assets/branding/pubget_settings.png
     - assets/branding/pubget_coin.png
     - assets/chat/pubget_default_wallpaper.png
+    - assets/ranks/
+    - assets/images/ranks/
     - assets/achievements/the_threshold/badge.png
     - assets/achievements/keeper_of_time/badge.png
     - assets/achievements/shogun_of_the_realm/badge.png

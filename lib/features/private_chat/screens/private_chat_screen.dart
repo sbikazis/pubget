@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -33,6 +34,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final _scrollController = ScrollController();
   bool _initialized = false;
   bool _wasNearBottom = true;
+  int _lastSeenMessageCount = 0;
+  int _lastMarkedReadCount = -1;
 
   @override
   void didChangeDependencies() {
@@ -52,6 +55,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
+    unawaited(context.read<PrivateChatProvider>().leaveChat());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -66,20 +70,17 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final title = summary.isNotEmpty
         ? summary.first.otherDisplayName(uid)
         : (widget.otherUserId?.trim().isNotEmpty == true
-            ? widget.otherUserId!
-            : 'Private chat');
+              ? widget.otherUserId!
+              : 'Private chat');
     final avatarUrl = summary.isNotEmpty
         ? summary.first.otherAvatarUrl(uid)
         : null;
     final contrast = ChatContrastTheme.fromBackground(null);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_wasNearBottom) _scrollToLatest();
-      unawaited(chat.markAsRead(chat.messages));
-    });
+    _syncScrollAndReadReceipts(chat);
     return Scaffold(
       appBar: AppBar(
-        leading: AppBackButton.maybeOf(context) ??
+        leading:
+            AppBackButton.maybeOf(context) ??
             AppBackButton(
               onPressed: () => AppNavigation.go(context, '/private'),
             ),
@@ -92,16 +93,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               size: PubgetAvatarSize.small,
             ),
             const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(title, overflow: TextOverflow.ellipsis),
-            ),
+            Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: <Widget>[
           IconButton(
             tooltip: 'Hide conversation',
             onPressed: () async {
-              final result = await context.read<PrivateChatProvider>().hideChat();
+              final result = await context
+                  .read<PrivateChatProvider>()
+                  .hideChat();
               if (!context.mounted) return;
               if (result.isSuccess) {
                 await AppNavigation.go(context, '/private');
@@ -160,13 +161,35 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
+  void _syncScrollAndReadReceipts(PrivateChatProvider chat) {
+    final count = chat.messages.length;
+    final shouldScroll =
+        _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
+    final shouldMarkRead = count != _lastMarkedReadCount;
+    _lastSeenMessageCount = count;
+    if (!shouldScroll && !shouldMarkRead) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (shouldScroll && _wasNearBottom) {
+        _scrollToLatest();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_wasNearBottom) _scrollToLatest();
+        });
+      }
+      if (shouldMarkRead) {
+        _lastMarkedReadCount = count;
+        unawaited(chat.markAsRead(chat.messages));
+      }
+    });
+  }
+
   void _scrollToLatest() {
     if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOut,
-    );
+    final target = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if ((target - current).abs() < 1) return;
+    _scrollController.jumpTo(target);
   }
 
   Future<void> _sendText() async {
@@ -176,14 +199,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
     _wasNearBottom = true;
-    await context.read<PrivateChatProvider>().sendText(
-      chatId: widget.chatId,
-      senderId: user.id,
-      senderName: user.displayName?.trim().isNotEmpty == true
-          ? user.displayName!
-          : user.email,
-      senderAvatar: user.avatarUrl ?? '',
-      text: text,
+    unawaited(
+      context.read<PrivateChatProvider>().sendText(
+        chatId: widget.chatId,
+        senderId: user.id,
+        senderName: user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!
+            : user.email,
+        senderAvatar: user.avatarUrl ?? '',
+        text: text,
+      ),
     );
   }
 
@@ -231,9 +256,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Future<void> _showActions(ChatMessage message) async {
-    final action = await showModalBottomSheet<String>(
+    final action = await PubgetBottomSheet.present<String>(
       context: context,
-      showDragHandle: true,
       builder: (context) => SafeArea(
         child: Wrap(
           children: <Widget>[
@@ -323,7 +347,7 @@ class _MessageList extends StatelessWidget {
           isMine: message.senderId == currentUserId,
           contrast: contrast,
           showSenderRole: false,
-          onLongPress: () => onAction(message),
+          onLongPress: (_) => onAction(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
         );
       },
@@ -339,23 +363,24 @@ class _FailedMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chat = context.read<PrivateChatProvider>();
+    final copy = AppStrings.of(context);
     return Card(
       key: ValueKey<String>('failed-${message.id}'),
       color: Theme.of(context).colorScheme.errorContainer,
       margin: const EdgeInsets.all(AppSpacing.sm),
       child: ListTile(
         leading: const Icon(Icons.error_outline),
-        title: Text(message.text ?? 'Media message'),
-        subtitle: Text(message.failureMessage ?? 'Message was not sent.'),
+        title: Text(message.text ?? copy.mediaMessage),
+        subtitle: Text(copy.chatSendFailureLabel(message.failureMessage)),
         trailing: Wrap(
           children: <Widget>[
             IconButton(
-              tooltip: 'Retry',
+              tooltip: copy.retry,
               onPressed: () => chat.retry(message),
               icon: const Icon(Icons.refresh),
             ),
             IconButton(
-              tooltip: 'Delete failed message',
+              tooltip: copy.deleteFailedMessage,
               onPressed: () => chat.removeFailed(message.id),
               icon: const Icon(Icons.delete_outline),
             ),

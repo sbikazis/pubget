@@ -13,7 +13,7 @@ import 'authentication_test_support.dart';
 
 void main() {
   testWidgets('founder can save the five settings fields', (tester) async {
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.mikado);
     await tester.pumpWidget(await _harness(groups: groups));
     await tester.pumpAndSettle();
 
@@ -42,7 +42,7 @@ void main() {
   });
 
   testWidgets('unauthorized member cannot submit settings', (tester) async {
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.ronin);
     await tester.pumpWidget(await _harness(groups: groups));
     await tester.pumpAndSettle();
 
@@ -71,7 +71,7 @@ Future<Widget> _harness({required _FakeGroupRepository groups}) async {
 final class _FakeGroupRepository implements GroupRepository {
   _FakeGroupRepository({required this.viewerRole});
 
-  final GroupRole viewerRole;
+  final PubgetRank viewerRole;
   final settingsUpdates = <GroupSettingsUpdate>[];
   Group _group = group;
 

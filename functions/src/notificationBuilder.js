@@ -7,6 +7,9 @@ const PUSH_TYPES = new Set([
   "request_accepted",
   "friend_request",
   "respect_received",
+  "edit_published",
+  "edit_failed",
+  "edit_needs_review",
 ]);
 
 function validId(value) {

@@ -30,21 +30,50 @@ final class EditCopy {
   String get deleteDraft => _s.pick('Delete draft', 'حذف المسودة');
   String get cancelUpload => _s.pick('Cancel upload', 'إلغاء الرفع');
   String get uploading => _s.pick('Uploading', 'جارٍ الرفع');
+  String get queued => _s.pick('Queued', 'في الانتظار');
+  String get dismiss => _s.pick('Dismiss', 'إخفاء');
   String get paused =>
       _s.pick('Paused — waiting for connection', 'متوقف مؤقتًا — بانتظار الاتصال');
   String get processing =>
       _s.pick('Processing on the server', 'جارٍ المعالجة على الخادم');
   String get published => _s.pick('Published', 'تم النشر');
+  String get needsReview => _s.pick(
+    'Held for review',
+    'قيد المراجعة الإشرافية',
+  );
   String get publishedMessage => _s.pick(
     'Your Edit is live. Open it in the feed.',
     'مقطعك متاح الآن. افتحه من المقاطع.',
   );
+  String get publishingInBackground => _s.pick(
+    'Publishing in the background…',
+    'جارٍ النشر في الخلفية…',
+  );
+  String queueCount(int count) =>
+      _s.pick('$count uploads', '$count رفع');
   String get draftStatus => _s.pick('Draft', 'مسودة');
   String get readyStatus => _s.pick('Ready to publish', 'جاهز للنشر');
   String get failedStatus => _s.pick('Needs attention', 'يحتاج إجراءً');
+  String get publishedNotificationTitle =>
+      _s.pick('Edit published', 'تم نشر المقطع');
+  String get publishedNotificationBody => _s.pick(
+    'Your Edit is live. Open Edits to watch it.',
+    'مقطعك متاح الآن. افتح المقاطع لمشاهدته.',
+  );
+  String get failedNotificationBody => _s.pick(
+    'Edit processing failed. Open the app to retry or delete the draft.',
+    'فشلت معالجة المقطع. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
+  );
+  String get videoReadyOffer => _s.pick(
+    'Your Edit is ready — watch it now?',
+    'مقطعك جاهز — شاهده الآن؟',
+  );
+  String get watchNow => _s.pick('Watch now', 'شاهده الآن');
+  String get openEdit =>
+      _s.pick('Open published Edit', 'فتح المقطع المنشور');
   String get noVideoYet => _s.pick(
-    'Add a vertical MP4 to begin',
-    'أضف فيديو عموديًا بصيغة MP4 للبدء',
+    'Add an MP4 to begin — any aspect ratio works',
+    'أضف فيديو MP4 للبدء — أي نسبة عرض مدعومة',
   );
   String get previewUnavailable => _s.pick(
     'Preview unavailable — the local file is gone. Choose the video again.',
@@ -58,6 +87,19 @@ final class EditCopy {
   );
   String get failedLoad =>
       _s.pick('Edits could not load.', 'تعذّر تحميل المقاطع.');
+  String get brokenClip => _s.pick(
+    'This clip could not be played.',
+    'تعذّر تشغيل هذا المقطع.',
+  );
+  String get offlineClip => _s.pick(
+    'Offline — retry when you are connected.',
+    'بدون اتصال — أعد المحاولة عند توفر الإنترنت.',
+  );
+  String get retryClip => _s.pick('Retry', 'إعادة المحاولة');
+  String get becameFan => _s.pick(
+    'You are now a Fan of this creator!',
+    'أصبحت الآن من معجبي هذا المبدع!',
+  );
   String get fan => _s.pick('Fan', 'مشجع');
   String get like => _s.pick('Like', 'إعجاب');
   String get comment => _s.pick('Comment', 'تعليق');
@@ -75,8 +117,6 @@ final class EditCopy {
   String get delete => _s.pick('Delete', 'حذف');
   String get mention => _s.pick('Mention', 'إشارة');
   String get sticker => _s.pick('Sticker', 'ملصق');
-  String get openEdit =>
-      _s.pick('Open published Edit', 'فتح المقطع المنشور');
   String get mute => _s.pick('Mute', 'كتم');
   String get unmute => _s.pick('Unmute', 'إلغاء الكتم');
   String get play => _s.pick('Play', 'تشغيل');
@@ -97,6 +137,14 @@ final class EditCopy {
   }
 
   String failureFor(Edit edit) {
+    if (edit.statusEnum == EditStatus.needsReview ||
+        edit.moderationStatus == 'needs_review') {
+      return edit.moderationReason ??
+          _s.pick(
+            'This Edit is held for review (possible third-party watermark).',
+            'هذا المقطع قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
+          );
+    }
     if (edit.moderationStatus == 'flagged' ||
         edit.statusEnum == EditStatus.rejected) {
       return edit.moderationReason ??
@@ -114,6 +162,10 @@ final class EditCopy {
           'Videos can be up to 3 minutes long.',
           'مدة الفيديو يمكن أن تصل إلى 3 دقائق.',
         ),
+      'aspect-unrecoverable' => _s.pick(
+          'We could not prepare this video for full-screen display. Delete the draft or try another file.',
+          'تعذر تجهيز هذا الفيديو للعرض بملء الشاشة. احذف المسودة أو جرّب ملفًا آخر.',
+        ),
       _ => _s.pick(
           'Processing failed. You can retry or replace the video.',
           'فشلت المعالجة. يمكنك إعادة المحاولة أو استبدال الفيديو.',
@@ -123,9 +175,16 @@ final class EditCopy {
 
   String friendlyFailure(Failure failure) {
     if (failure is PermissionError) {
+      final raw = failure.message.toLowerCase();
+      if (raw.contains('sign in again') || raw.contains('unauthenticated')) {
+        return _s.pick(
+          'Could not upload this video securely. Sign in again, then retry.',
+          'تعذر رفع الفيديو بشكل آمن. سجّل الدخول مجددًا ثم أعد المحاولة.',
+        );
+      }
       return _s.pick(
-        'Could not upload this video securely. Sign in again, then retry.',
-        'تعذر رفع الفيديو بشكل آمن. سجّل الدخول مجددًا ثم أعد المحاولة.',
+        'Upload was blocked by storage security. Stay signed in and retry in a moment.',
+        'تم حظر الرفع بواسطة أمان التخزين. ابقَ مسجّل الدخول وأعد المحاولة بعد لحظات.',
       );
     }
     if (failure is NetworkError) {

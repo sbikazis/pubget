@@ -169,10 +169,9 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _openTerms(AuthDraftStore draft) async {
-    final accepted = await showModalBottomSheet<bool>(
+    final accepted = await PubgetBottomSheet.present<bool>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (sheetContext) {
         final height = MediaQuery.sizeOf(sheetContext).height * 0.86;
         return SafeArea(

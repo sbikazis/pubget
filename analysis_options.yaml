@@ -15,6 +15,7 @@ analyzer:
     - .local/**
     - lib_legacy/**
     - node_modules/**
+    - "**/node_modules/**"
     - test_legacy/**
 
 linter:

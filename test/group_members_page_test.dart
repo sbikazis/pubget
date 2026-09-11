@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/features/groups/models/group_authority.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_members_provider.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -16,81 +17,113 @@ import 'authentication_test_support.dart';
 void main() {
   test('kick and ban stay out of the menu without manageMembers', () {
     expect(
-      groupMemberMenuActions(canManageMembers: false),
+      groupMemberMenuActions(
+        canManageMembers: false,
+        canChangeRole: true,
+        canTransfer: true,
+      ),
       <String>['role', 'transfer'],
     );
     expect(
-      groupMemberMenuActions(canManageMembers: true),
+      groupMemberMenuActions(
+        canManageMembers: true,
+        canChangeRole: true,
+        canTransfer: true,
+      ),
       <String>['role', 'kick', 'ban', 'transfer'],
     );
   });
 
-  testWidgets('change-role dialog sends each picked role to the callable', (
+  testWidgets('change-role sheet sends each assignable rank to the callable', (
     tester,
   ) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.mikado);
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
     await tester.pumpAndSettle();
 
-    for (final role in GroupRole.values) {
+    final assignable = GroupAuthority.authorizedDestinations(
+      actor: const GroupMember(uid: 'alice', role: PubgetRank.mikado),
+      target: const GroupMember(uid: 'bob', role: PubgetRank.ronin),
+      promote: true,
+    );
+    expect(assignable, isNotEmpty);
+    expect(assignable, isNotEmpty);
+    for (final role in assignable) {
       members.changeRoleCalls.clear();
       await tester.tap(find.byKey(const Key('member-menu-bob')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Change role'));
+      await tester.tap(find.byKey(const Key('member-action-role')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(Key('pick-role-${role.name}')));
+      final roleFinder = find.byKey(Key('pick-role-${role.name}'));
+      await tester.scrollUntilVisible(
+        roleFinder,
+        120,
+        scrollable: find
+            .descendant(
+              of: find.byType(BottomSheet),
+              matching: find.byType(Scrollable),
+            )
+            .last,
+      );
       await tester.pumpAndSettle();
-      expect(members.changeRoleCalls, <GroupRole>[role]);
+      await tester.tap(roleFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-rank-change')));
+      await tester.pumpAndSettle();
+      expect(members.changeRoleCalls, <PubgetRank>[role]);
     }
+    expect(find.byKey(const Key('pick-role-mikado')), findsNothing);
   });
 
-  testWidgets('unauthorized member does not see kick or ban', (tester) async {
-    final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
-    await tester.pumpWidget(
-      await _harness(members: members, groups: groups),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('member-menu-bob')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Change role'), findsOneWidget);
-    expect(find.text('Kick'), findsNothing);
-    expect(find.text('Ban'), findsNothing);
-    expect(find.text('Transfer ownership'), findsOneWidget);
-  });
-
-  testWidgets('banned users action is hidden without manageMembers', (
+  testWidgets('unauthorized member does not see admin menu on equal ranks', (
     tester,
   ) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.member);
+    final groups = _FakeGroupRepository(
+      viewerRole: PubgetRank.ronin,
+      founderId: 'other-founder',
+    );
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Banned users'), findsNothing);
+    expect(find.byKey(const Key('member-menu-bob')), findsNothing);
+  });
+
+  testWidgets('banned users action is hidden without kickBan', (
+    tester,
+  ) async {
+    final members = _FakeMembersRepository();
+    final groups = _FakeGroupRepository(
+      viewerRole: PubgetRank.ronin,
+      founderId: 'other-founder',
+    );
+    await tester.pumpWidget(
+      await _harness(members: members, groups: groups),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('banned-members')), findsNothing);
   });
 
   testWidgets('authorized member can open banned users', (tester) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.mikado);
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Banned users'), findsOneWidget);
+    expect(find.byKey(const Key('banned-members')), findsOneWidget);
   });
 
   testWidgets('authorized member sees kick and ban', (tester) async {
     final members = _FakeMembersRepository();
-    final groups = _FakeGroupRepository(viewerRole: GroupRole.founder);
+    final groups = _FakeGroupRepository(viewerRole: PubgetRank.mikado);
     await tester.pumpWidget(
       await _harness(members: members, groups: groups),
     );
@@ -98,9 +131,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('member-menu-bob')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('member-action-kick')));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Kick'), findsOneWidget);
-    expect(find.text('Ban'), findsOneWidget);
+    expect(find.byKey(const Key('confirm-kick')), findsOneWidget);
+    expect(find.byKey(const Key('confirm-ban')), findsOneWidget);
   });
 }
 
@@ -126,7 +161,7 @@ Future<Widget> _harness({
 }
 
 final class _FakeMembersRepository implements GroupMembersRepository {
-  final changeRoleCalls = <GroupRole>[];
+  final changeRoleCalls = <PubgetRank>[];
 
   @override
   Future<Result<List<GroupMember>>> getMembers(
@@ -135,8 +170,8 @@ final class _FakeMembersRepository implements GroupMembersRepository {
     String? afterUid,
   }) async {
     return const Success<List<GroupMember>>([
-      GroupMember(uid: 'alice', role: GroupRole.founder),
-      GroupMember(uid: 'bob', role: GroupRole.member),
+      GroupMember(uid: 'alice', role: PubgetRank.mikado),
+      GroupMember(uid: 'bob', role: PubgetRank.ronin),
     ]);
   }
 
@@ -157,7 +192,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) async => const Success<void>(null);
 
@@ -165,7 +200,7 @@ final class _FakeMembersRepository implements GroupMembersRepository {
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) async {
     changeRoleCalls.add(role);
     return const Success<void>(null);
@@ -217,20 +252,52 @@ final class _FakeMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String uid,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> warnMember({
+    required String groupId,
+    required String uid,
+    required String type,
+    required String details,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<RankAuditEvent>>> getRankAudit(
+    String groupId, {
+    String? targetUid,
+    int limit = 40,
+  }) async => const Success<List<RankAuditEvent>>([]);
+
+  @override
+  Future<Result<List<MemberWarningRecord>>> getWarnings(
+    String groupId, {
+    required String targetUid,
+    int limit = 40,
+  }) async => const Success<List<MemberWarningRecord>>([]);
+
+  @override
+  Future<Result<List<GroupMember>>> lookupInviteCandidates({
+    required String query,
+    int limit = 12,
+  }) async => const Success<List<GroupMember>>([]);
 }
 
 final class _FakeGroupRepository implements GroupRepository {
-  _FakeGroupRepository({required this.viewerRole});
+  _FakeGroupRepository({
+    required this.viewerRole,
+    this.founderId = 'alice',
+  });
 
-  final GroupRole viewerRole;
+  final PubgetRank viewerRole;
+  final String founderId;
 
-  static final group = Group(
+  Group get group => Group(
     id: 'g1',
     name: 'Anime',
     description: '',
     type: GroupType.public,
     animeId: null,
-    founderId: 'alice',
+    founderId: founderId,
     membersCount: 2,
     maxMembers: 100,
     joinPolicy: JoinPolicy.open,
@@ -310,4 +377,3 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-

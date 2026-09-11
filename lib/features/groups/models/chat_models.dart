@@ -40,6 +40,25 @@ enum ChatSendState { pending, sent, failed }
 
 enum ChatDeliveryState { notDelivered, delivered, read }
 
+/// In-bubble media send stages (progress UI must not rebuild the whole page).
+enum MediaUploadPhase { uploading, processing }
+
+final class MediaUploadUiState {
+  const MediaUploadUiState({
+    required this.phase,
+    this.progress = 0,
+  });
+
+  final MediaUploadPhase phase;
+
+  /// 0‥1 while [phase] is [MediaUploadPhase.uploading]; ignored while processing.
+  final double progress;
+
+  static const uploadingStart = MediaUploadUiState(
+    phase: MediaUploadPhase.uploading,
+  );
+}
+
 final class ChatMessage {
   const ChatMessage({
     required this.id,
@@ -55,6 +74,8 @@ final class ChatMessage {
     required this.replyToMessageId,
     this.replyPreview,
     this.stickerKey,
+    this.stickerCreatorId,
+    this.stickerCreatorName,
     this.forwardedFrom,
     required this.createdAt,
     required this.editedAt,
@@ -68,6 +89,10 @@ final class ChatMessage {
     required this.sendState,
     this.failureMessage,
     this.gameActivity,
+    this.systemKind,
+    this.senderTitle,
+    this.disappearing = false,
+    this.cardMeta,
   });
 
   factory ChatMessage.optimistic({
@@ -84,6 +109,8 @@ final class ChatMessage {
     String? replyToMessageId,
     String? replyPreview,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
     Map<String, String>? forwardedFrom,
   }) {
     return ChatMessage(
@@ -100,6 +127,8 @@ final class ChatMessage {
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
       forwardedFrom: forwardedFrom,
       createdAt: DateTime.now(),
       editedAt: null,
@@ -112,6 +141,10 @@ final class ChatMessage {
       isOptimistic: true,
       sendState: ChatSendState.pending,
       gameActivity: null,
+      systemKind: null,
+      senderTitle: null,
+      disappearing: false,
+      cardMeta: null,
     );
   }
 
@@ -148,6 +181,8 @@ final class ChatMessage {
           (map['replyToMessageId'] ?? map['replyToId']) as String?,
       replyPreview: map['replyPreview'] as String?,
       stickerKey: map['stickerKey'] as String?,
+      stickerCreatorId: map['stickerCreatorId'] as String?,
+      stickerCreatorName: map['stickerCreatorName'] as String?,
       forwardedFrom: _stringMap(map['forwardedFrom']),
       createdAt: _date(map['createdAt']),
       editedAt: _date(map['editedAt']),
@@ -160,6 +195,12 @@ final class ChatMessage {
       isOptimistic: false,
       sendState: sendState,
       gameActivity: ChatGameActivity.tryParse(map['gameActivity']),
+      systemKind: map['systemKind'] as String?,
+      senderTitle: map['senderTitle'] as String?,
+      disappearing: map['disappearing'] == true || map['expiresAt'] != null,
+      cardMeta: map['cardMeta'] is Map
+          ? Map<String, dynamic>.from(map['cardMeta'] as Map)
+          : null,
     );
   }
 
@@ -176,6 +217,9 @@ final class ChatMessage {
   final String? replyToMessageId;
   final String? replyPreview;
   final String? stickerKey;
+  /// Original sticker author (not necessarily the message sender).
+  final String? stickerCreatorId;
+  final String? stickerCreatorName;
   final Map<String, String>? forwardedFrom;
   final DateTime? createdAt;
   final DateTime? editedAt;
@@ -189,8 +233,21 @@ final class ChatMessage {
   final ChatSendState sendState;
   final String? failureMessage;
   final ChatGameActivity? gameActivity;
+  /// system | member_joined | debate | encryption …
+  final String? systemKind;
+  final String? senderTitle;
+  final bool disappearing;
+  final Map<String, dynamic>? cardMeta;
 
   bool get isDeleted => deletedAt != null;
+  bool get isMemberJoinedCard =>
+      type == ChatMessageType.system &&
+      (systemKind == 'member_joined' ||
+          (text ?? '').toLowerCase().contains('joined'));
+  bool get isDebateCard =>
+      systemKind == 'debate' ||
+      (cardMeta != null && cardMeta!['kind'] == 'debate');
+  bool get isEncryptionNotice => systemKind == 'encryption';
   bool get isCatalogSticker =>
       type == ChatMessageType.sticker &&
       stickerKey != null &&
@@ -214,6 +271,7 @@ final class ChatMessage {
     ChatSendState? sendState,
     bool? isOptimistic,
     String? failureMessage,
+    bool clearFailureMessage = false,
     DateTime? createdAt,
     DateTime? deletedAt,
   }) {
@@ -231,6 +289,8 @@ final class ChatMessage {
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
+      stickerCreatorId: stickerCreatorId,
+      stickerCreatorName: stickerCreatorName,
       forwardedFrom: forwardedFrom,
       createdAt: createdAt ?? this.createdAt,
       editedAt: editedAt,
@@ -242,8 +302,14 @@ final class ChatMessage {
       readCount: readCount,
       isOptimistic: isOptimistic ?? this.isOptimistic,
       sendState: sendState ?? this.sendState,
-      failureMessage: failureMessage ?? this.failureMessage,
+      failureMessage: clearFailureMessage
+          ? null
+          : (failureMessage ?? this.failureMessage),
       gameActivity: gameActivity,
+      systemKind: systemKind,
+      senderTitle: senderTitle,
+      disappearing: disappearing,
+      cardMeta: cardMeta,
     );
   }
 }
@@ -254,27 +320,58 @@ final class ChatGameActivity {
     required this.gameType,
     this.title,
     this.winnerLabel,
+    this.hostName,
+    this.playerCount,
+    this.maxPlayers,
+    this.status,
+    this.participantAvatars = const <String>[],
   });
 
   final String kind;
   final String gameType;
   final String? title;
   final String? winnerLabel;
+  final String? hostName;
+  final int? playerCount;
+  final int? maxPlayers;
+  final String? status;
+  final List<String> participantAvatars;
 
   bool get isCreated => kind == 'created';
   bool get isMafia => gameType == 'mafia';
-  String get actionLabel => isCreated ? 'Join' : 'View result';
+  bool get isFull =>
+      playerCount != null &&
+      maxPlayers != null &&
+      playerCount! >= maxPlayers!;
+  bool get isStarted => status == 'started' || status == 'live' || kind == 'started';
+  String get actionLabel {
+    if (isStarted) return 'View';
+    if (isFull) return 'Full';
+    return isCreated ? 'Join' : 'View result';
+  }
 
   static ChatGameActivity? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final kind = raw['kind'] as String? ?? '';
     final gameType = raw['gameType'] as String? ?? '';
     if (kind.isEmpty && gameType.isEmpty) return null;
+    final avatars = <String>[];
+    final rawAvatars = raw['participantAvatars'] ?? raw['avatars'];
+    if (rawAvatars is List) {
+      for (final item in rawAvatars) {
+        if (item is String && item.trim().isNotEmpty) avatars.add(item);
+      }
+    }
     return ChatGameActivity(
       kind: kind,
       gameType: gameType,
       title: raw['title'] as String?,
       winnerLabel: raw['winnerLabel'] as String?,
+      hostName: raw['hostName'] as String?,
+      playerCount: (raw['playerCount'] as num?)?.toInt(),
+      maxPlayers: (raw['maxPlayers'] as num?)?.toInt(),
+      status: raw['status'] as String?,
+      participantAvatars: avatars,
     );
   }
 }

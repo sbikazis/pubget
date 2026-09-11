@@ -78,6 +78,7 @@ final class FirebaseAuthRepository implements AuthRepository {
   Future<Result<AuthUser>> signInWithGoogle() async {
     try {
       _googleInitialization ??= _googleSignIn.initialize(
+        clientId: kIsWeb ? _googleServerClientId : null,
         serverClientId: _googleServerClientId,
       );
       await _googleInitialization;

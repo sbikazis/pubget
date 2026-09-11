@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/app/app_shell_drawer.dart';
 import 'package:pubget/app/app_shell_scope.dart';
+import 'package:pubget/app/app_shell_tab.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -178,6 +179,7 @@ void main() {
         value: unread,
         child: AppShellScope(
           openDrawer: () {},
+          currentTab: AppShellTab.discover,
           child: const MaterialApp(
             home: Scaffold(
               drawer: AppShellDrawer(),
@@ -222,7 +224,7 @@ final class _UnreadGroupRepository implements GroupRepository {
   Future<Result<GroupMember?>> getMembership(
     String groupId,
     String userId,
-  ) async => Success(GroupMember(uid: userId, role: GroupRole.member));
+  ) async => Success(GroupMember(uid: userId, role: PubgetRank.ronin));
 
   @override
   Future<Result<void>> joinGroup({

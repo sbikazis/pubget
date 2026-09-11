@@ -7,14 +7,19 @@ enum EditStatus {
   uploading,
   processing,
   published,
+  needsReview,
   failed,
   rejected,
   removed,
   deleted;
 
   static EditStatus parse(String? raw) {
+    final normalized = switch (raw) {
+      'needs_review' => 'needsReview',
+      _ => raw,
+    };
     return EditStatus.values.firstWhere(
-      (value) => value.name == raw,
+      (value) => value.name == normalized,
       orElse: () => EditStatus.processing,
     );
   }
@@ -122,6 +127,7 @@ final class Edit {
   bool get isPublished => statusEnum == EditStatus.published;
   bool get isProcessing =>
       statusEnum == EditStatus.uploading || statusEnum == EditStatus.processing;
+  bool get isNeedsReview => statusEnum == EditStatus.needsReview;
   bool get isFailed =>
       statusEnum == EditStatus.failed || statusEnum == EditStatus.rejected;
   bool get isRepost => originalEditId != null && originalEditId!.isNotEmpty;
@@ -148,6 +154,11 @@ final class Edit {
   }
 
   String get userFacingFailure {
+    if (statusEnum == EditStatus.needsReview ||
+        moderationStatus == 'needs_review') {
+      return moderationReason ??
+          'This Edit is held for review (possible third-party watermark).';
+    }
     if (moderationStatus == 'flagged' || statusEnum == EditStatus.rejected) {
       return moderationReason ??
           'This Edit was flagged and was not published.';
@@ -156,6 +167,8 @@ final class Edit {
       'invalid-video' =>
         'This video is not a supported MP4, or it is too large.',
       'duration' => 'Videos can be up to 3 minutes long.',
+      'aspect-unrecoverable' =>
+        'We could not prepare this video for full-screen display. Delete the draft or try another file.',
       _ => 'Processing failed. You can retry or delete this draft.',
     };
   }

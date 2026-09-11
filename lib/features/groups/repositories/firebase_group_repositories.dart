@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import 'group_members_repository.dart';
 import 'group_repository.dart';
@@ -269,10 +270,44 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
         .limit(limit);
     if (afterUid != null) query = query.startAfter(<dynamic>[afterUid]);
     final snapshot = await query.get();
-    return snapshot.docs
+    final members = snapshot.docs
         .map((doc) => GroupMember.fromMap(doc.data(), uid: doc.id))
         .toList(growable: false);
+    return _hydrateMemberProfiles(members);
   });
+
+  Future<List<GroupMember>> _hydrateMemberProfiles(
+    List<GroupMember> members,
+  ) async {
+    if (members.isEmpty) return members;
+    final hydrated = <GroupMember>[];
+    for (var i = 0; i < members.length; i += 10) {
+      final chunk = members.sublist(
+        i,
+        i + 10 > members.length ? members.length : i + 10,
+      );
+      final docs = await Future.wait(
+        chunk.map(
+          (member) => _firestore.collection('users').doc(member.uid).get(),
+        ),
+      );
+      for (var j = 0; j < chunk.length; j++) {
+        final data = docs[j].data();
+        if (data == null) {
+          hydrated.add(chunk[j]);
+          continue;
+        }
+        hydrated.add(
+          chunk[j].withProfile(
+            displayName: data['displayName'] as String?,
+            username: data['username'] as String?,
+            avatarUrl: data['avatarUrl'] as String?,
+          ),
+        );
+      }
+    }
+    return hydrated;
+  }
 
   @override
   Future<Result<List<JoinRequest>>> getJoinRequests(String groupId) =>
@@ -316,12 +351,12 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) => _guard(
     () => _call('updateRolePermissions', <String, dynamic>{
       'groupId': groupId,
-      'role': role.name,
+      'role': pubgetRankStorageId(role),
       'permissions': permissions
           .map((permission) => permission.name)
           .toList(growable: false),
@@ -336,12 +371,12 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) => _guard(
     () => _call('changeRole', {
       'groupId': groupId,
       'uid': uid,
-      'role': role.name,
+      'role': pubgetRankStorageId(role),
     }),
   );
 
@@ -414,6 +449,106 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String uid,
   }) => _guard(() => _call('unbanMember', {'groupId': groupId, 'uid': uid}));
+
+  @override
+  Future<Result<void>> warnMember({
+    required String groupId,
+    required String uid,
+    required String type,
+    required String details,
+  }) => _guard(
+    () => _call('warnMember', {
+      'groupId': groupId,
+      'uid': uid,
+      'type': type,
+      'details': details,
+    }),
+  );
+
+  @override
+  Future<Result<List<RankAuditEvent>>> getRankAudit(
+    String groupId, {
+    String? targetUid,
+    int limit = 40,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('rankAudit')
+        .orderBy('at', descending: true)
+        .limit(targetUid == null ? limit : 120)
+        .get();
+    var events = snapshot.docs
+        .map((doc) => RankAuditEvent.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+    if (targetUid != null && targetUid.trim().isNotEmpty) {
+      final id = targetUid.trim();
+      events = events
+          .where((event) => event.targetUid == id)
+          .take(limit)
+          .toList(growable: false);
+    }
+    return events;
+  });
+
+  @override
+  Future<Result<List<MemberWarningRecord>>> getWarnings(
+    String groupId, {
+    required String targetUid,
+    int limit = 40,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('warnings')
+        .orderBy('createdAt', descending: true)
+        .limit(120)
+        .get();
+    return snapshot.docs
+        .map((doc) => MemberWarningRecord.fromMap(doc.data(), id: doc.id))
+        .where((warning) => warning.targetUid == targetUid)
+        .take(limit)
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<GroupMember>>> lookupInviteCandidates({
+    required String query,
+    int limit = 12,
+  }) => _guard(() async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return const <GroupMember>[];
+    final byId = await _firestore.collection('users').doc(trimmed).get();
+    if (byId.exists) {
+      final data = byId.data() ?? <String, dynamic>{};
+      return <GroupMember>[
+        GroupMember(
+          uid: byId.id,
+          role: PubgetRank.ronin,
+          displayName: data['displayName'] as String?,
+          username: data['username'] as String?,
+          avatarUrl: data['avatarUrl'] as String?,
+        ),
+      ];
+    }
+    final handle = trimmed.startsWith('@') ? trimmed.substring(1) : trimmed;
+    final snapshot = await _firestore
+        .collection('users')
+        .where('username', isEqualTo: handle)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map(
+          (doc) => GroupMember(
+            uid: doc.id,
+            role: PubgetRank.ronin,
+            displayName: doc.data()['displayName'] as String?,
+            username: doc.data()['username'] as String?,
+            avatarUrl: doc.data()['avatarUrl'] as String?,
+          ),
+        )
+        .toList(growable: false);
+  });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {

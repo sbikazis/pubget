@@ -194,6 +194,7 @@ const processEditVideo = createEditPipeline({
   bucket: getStorage().bucket(),
   economy: economyDomain,
   achievements: achievementsDomain,
+  notifications: notificationBuilder,
 });
 const editsDomain = createEditsDomain({
   db: getFirestore(),
@@ -289,7 +290,7 @@ exports.retryEditProcessing = onCall(
   editsDomain.retryProcessing,
 );
 exports.finalizeEditUpload = onCall(
-  { region: "us-central1", timeoutSeconds: 300, memory: "1GiB" },
+  { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
@@ -316,6 +317,7 @@ exports.rejectJoinRequest = onCall(
   groupsDomain.rejectJoinRequest,
 );
 exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.warnMember = onCall({ region: "us-central1" }, groupsDomain.warnMember);
 exports.updateGroupSettings = onCall(
   { region: "us-central1" },
   groupsDomain.updateGroupSettings,
@@ -611,6 +613,13 @@ exports.processGroupChatMedia = onObjectFinalized(
 exports.recalculateInviteRanks = onDocumentUpdated(
   "groups/{groupId}/invites/{inviteId}",
   groupsDomain.recalculateInviteRanks,
+);
+
+// Seat recalculation on membership create/delete and invite/manual-role changes.
+// (Deploy retry hardening: keep this export so MIKADO seats ship with main.)
+exports.recalculateAutoSeatsOnMemberWrite = onDocumentWritten(
+  "groups/{groupId}/members/{memberId}",
+  groupsDomain.onMemberMembershipChanged,
 );
 
 exports.giveRespect = onCall(

@@ -118,6 +118,7 @@ final class AppStrings {
   );
   String get backToSignIn => pick('Back to sign in', 'العودة لتسجيل الدخول');
   String get back => pick('Back', 'رجوع');
+  String get close => pick('Close', 'إغلاق');
   String get reconnectToReset =>
       pick('Reconnect to send a reset link.', 'أعد الاتصال لإرسال رابط إعادة التعيين.');
   String get sendResetLink => pick('Send reset link', 'إرسال رابط إعادة التعيين');
@@ -564,13 +565,13 @@ final class AppStrings {
   };
 
   String roleLabel(String role) => switch (role) {
-    'founder' => pick('Founder', 'المؤسس'),
-    'shogun' => pick('Shogun', 'شوغون'),
-    'commander' => pick('Commander', 'قائد'),
-    'captain' => pick('Captain', 'كابتن'),
-    'sensei' => pick('Sensei', 'سينسي'),
-    'senpai' => pick('Senpai', 'سينباي'),
-    'member' => pick('Member', 'عضو'),
+    'mikado' || 'founder' => pick('MIKADO', 'ميكادو'),
+    'shogun' => pick('SHŌGUN', 'شوغون'),
+    'daimyo' || 'commander' => pick('DAIMYŌ', 'دايميو'),
+    'hatamoto' || 'captain' => pick('HATAMOTO', 'هاتاموتو'),
+    'samurai' || 'sensei' => pick('SAMURAI', 'ساموراي'),
+    'gokenin' || 'senpai' => pick('GOKENIN', 'غوكينين'),
+    'ronin' || 'member' => pick('RŌNIN', 'رونين'),
     _ => role,
   };
 
@@ -646,6 +647,40 @@ final class AppStrings {
   String get mediaMessage => pick('Media message', 'رسالة وسائط');
   String get messageNotSent =>
       pick('Message was not sent.', 'لم تُرسل الرسالة.');
+  String get messageWaitingConnection => pick(
+    'Waiting for connection…',
+    'بانتظار الاتصال…',
+  );
+  String get messageRetryingAutomatically => pick(
+    'Retrying automatically…',
+    'جارٍ إعادة المحاولة تلقائياً…',
+  );
+  String get messageSendPermissionDenied => pick(
+    'You do not have permission to send in this chat.',
+    'ليست لديك صلاحية الإرسال في هذه المحادثة.',
+  );
+  String get messageSendNotFound => pick(
+    'This chat or message is no longer available.',
+    'هذه المحادثة أو الرسالة لم تعد متاحة.',
+  );
+  String get messageSendInvalid => pick(
+    'This message could not be sent.',
+    'تعذّر إرسال هذه الرسالة.',
+  );
+  String chatSendFailureLabel(String? code) {
+    switch (code) {
+      case 'chat_network':
+        return messageWaitingConnection;
+      case 'chat_permission':
+        return messageSendPermissionDenied;
+      case 'chat_not_found':
+        return messageSendNotFound;
+      case 'chat_validation':
+        return messageSendInvalid;
+      default:
+        return messageNotSent;
+    }
+  }
   String get retry => pick('Retry', 'إعادة المحاولة');
   String get deleteFailedMessage =>
       pick('Delete failed message', 'حذف الرسالة الفاشلة');

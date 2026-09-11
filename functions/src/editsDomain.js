@@ -603,7 +603,7 @@ function createEditsDomain({
     };
   }
 
-  async function kickProcessing(ref, data, videoPath) {
+  async function kickProcessing(ref, data, videoPath, { awaitProcessing = false } = {}) {
     const source = await resolveSourceObject(videoPath);
     if (!source.exists) {
       throw new HttpsError(
@@ -629,13 +629,25 @@ function createEditsDomain({
       processingStartedAt: FieldValue.serverTimestamp(),
     });
     if (typeof processEdit === "function") {
-      await processEdit({
+      const job = processEdit({
         data: {
           name: videoPath,
           contentType: "video/mp4",
           size: source.size,
         },
       });
+      if (awaitProcessing) {
+        await job;
+      } else {
+        // Return immediately so the client is never blocked in the publish UI.
+        // Storage onObjectFinalized is the durable processor; this kick is best-effort.
+        Promise.resolve(job).catch((error) => {
+          console.error("Edit processing kick failed", {
+            videoPath,
+            error: error && error.message ? error.message : String(error),
+          });
+        });
+      }
     }
     return { ok: true, videoPath, status: "processing" };
   }
@@ -669,7 +681,7 @@ function createEditsDomain({
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    return kickProcessing(ref, data, videoPath);
+    return kickProcessing(ref, data, videoPath, { awaitProcessing: false });
   }
 
   async function retryProcessing(request) {
@@ -684,7 +696,7 @@ function createEditsDomain({
       throw new HttpsError("permission-denied", "Only the creator can retry this Edit.");
     }
     // Allow stuck "processing" retries — never leave an Edit permanently dead.
-    if (!["failed", "rejected", "uploading", "processing"].includes(data.status)) {
+    if (!["failed", "rejected", "uploading", "processing", "needs_review"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Edit is not waiting for a retry.");
     }
     if (data.status === "published") {
@@ -694,7 +706,7 @@ function createEditsDomain({
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    return kickProcessing(ref, data, videoPath);
+    return kickProcessing(ref, data, videoPath, { awaitProcessing: true });
   }
 
   return {

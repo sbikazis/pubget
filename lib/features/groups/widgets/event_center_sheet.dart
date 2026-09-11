@@ -17,10 +17,9 @@ class EventCenterSheet extends StatelessWidget {
   final String groupId;
 
   static Future<void> show(BuildContext context, {required String groupId}) {
-    return showModalBottomSheet<void>(
+    return PubgetBottomSheet.present<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => EventCenterSheet(groupId: groupId),
     );
   }

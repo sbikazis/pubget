@@ -49,20 +49,35 @@ service cloud.firestore {
     function groupMember(groupId) {
       return signedIn() && groupExists(groupId) && member(groupId, request.auth.uid);
     }
-    function groupModerator(groupId) {
-      return signedIn() && groupExists(groupId) && groupMember(groupId) &&
-        get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
-          in ['founder', 'sensei', 'senpai'];
-    }
     function memberRoleName(groupId) {
       return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role;
     }
+    function memberRankV2(groupId) {
+      let data = get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data;
+      return data.keys().hasAny(['rankV2']) && data.rankV2 is string
+        ? data.rankV2
+        : memberRoleName(groupId);
+    }
+    // Moderators: HATAMOTO+ (and legacy founder/sensei/senpai during migration).
+    function groupModerator(groupId) {
+      return signedIn() && groupExists(groupId) && groupMember(groupId) &&
+        memberRankV2(groupId) in [
+          'mikado', 'shogun', 'daimyo', 'hatamoto',
+          'founder', 'commander', 'captain', 'sensei', 'senpai'
+        ];
+    }
     function canManageGroupMembers(groupId) {
       return groupMember(groupId) && (
-        memberRoleName(groupId) in ['founder', 'shogun', 'commander'] ||
+        memberRankV2(groupId) in [
+          'mikado', 'shogun', 'daimyo',
+          'founder', 'commander'
+        ] ||
+        (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRankV2(groupId))) &&
+         get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRankV2(groupId)))
+           .data.permissions.hasAny(['kickBan', 'manageMembers'])) ||
         (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId))) &&
          get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId)))
-           .data.permissions.hasAny(['manageMembers']))
+           .data.permissions.hasAny(['kickBan', 'manageMembers']))
       );
     }
     function mafiaGroupMember(gameId) {
@@ -207,7 +222,7 @@ service cloud.firestore {
         !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
         newMember.data.userId == uid &&
         newMember.data.groupId == groupId &&
-        newMember.data.role == 'member' &&
+        newMember.data.role in ['member', 'ronin'] &&
         consumesJoinRequest(groupId, uid) &&
         validReservationAfter(groupId, uid, newMember.data.characterKey);
     }
@@ -588,9 +603,9 @@ service cloud.firestore {
         // limited to an unprivileged member document for the caller.
         allow create: if
           ((self(uid) && isFounderAfter(groupId) &&
-             request.resource.data.role == 'founder') ||
+             request.resource.data.role in ['founder', 'mikado']) ||
            (groupModerator(groupId) && consumesJoinRequest(groupId, uid) &&
-             request.resource.data.role == 'member' &&
+             request.resource.data.role in ['member', 'ronin'] &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'accept' &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == uid &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membersCount ==
@@ -621,7 +636,7 @@ service cloud.firestore {
         allow create: if groupExists(groupId) && self(uid) && request.resource.data.userId == uid &&
           request.resource.data.groupId == groupId &&
           !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
-          request.resource.data.role == 'member' &&
+          request.resource.data.role in ['member', 'ronin'] &&
           request.resource.data.keys().hasOnly([
             'userId','groupId','role','displayName','characterName',
              'characterKey','characterImageUrl','characterReason','realUserName',
@@ -660,6 +675,19 @@ service cloud.firestore {
       }
       match /bans/{uid} {
         allow read: if self(uid) || canManageGroupMembers(groupId);
+        allow create, update, delete: if false;
+      }
+      match /rankAudit/{auditId} {
+        // Managers with roles/kick may inspect hierarchy history.
+        allow read: if groupMember(groupId) &&
+          (canManageGroupMembers(groupId) || groupModerator(groupId));
+        allow create, update, delete: if false;
+      }
+      match /warnings/{warningId} {
+        allow read: if groupMember(groupId) &&
+          (resource.data.targetUid == request.auth.uid ||
+           groupModerator(groupId) ||
+           canManageGroupMembers(groupId));
         allow create, update, delete: if false;
       }
       match /messageReports/{reportId} {

@@ -72,7 +72,7 @@ void main() {
                       ),
                       isMine: false,
                       contrast: contrast,
-                      onLongPress: () {},
+                      onLongPress: (_) {},
                       onMediaTap: null,
                     ),
                     ChatMessageBubble(
@@ -85,7 +85,7 @@ void main() {
                       ),
                       isMine: true,
                       contrast: contrast,
-                      onLongPress: () {},
+                      onLongPress: (_) {},
                       onMediaTap: null,
                     ),
                     ChatMessageBubble(
@@ -99,7 +99,7 @@ void main() {
                       ),
                       isMine: false,
                       contrast: contrast,
-                      onLongPress: () {},
+                      onLongPress: (_) {},
                       onMediaTap: null,
                     ),
                     ChatMessageBubble(
@@ -112,7 +112,7 @@ void main() {
                       ),
                       isMine: false,
                       contrast: contrast,
-                      onLongPress: () {},
+                      onLongPress: (_) {},
                       onMediaTap: null,
                     ),
                   ],

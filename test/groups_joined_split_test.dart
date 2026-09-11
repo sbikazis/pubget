@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/app/app_shell_scope.dart';
+import 'package:pubget/app/app_shell_tab.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
@@ -37,6 +38,7 @@ void main() {
           ],
           child: AppShellScope(
             openDrawer: () {},
+            currentTab: AppShellTab.discover,
             child: const MaterialApp(home: GroupsHomePage()),
           ),
         ),
@@ -84,6 +86,7 @@ void main() {
           ],
           child: AppShellScope(
             openDrawer: () {},
+            currentTab: AppShellTab.discover,
             child: const MaterialApp(home: JoinedGroupsPage()),
           ),
         ),
@@ -137,7 +140,7 @@ final class _SplitGroupRepository implements GroupRepository {
   ) async => Success(
     GroupMember(
       uid: userId,
-      role: groupId == founded.id ? GroupRole.founder : GroupRole.member,
+      role: groupId == founded.id ? PubgetRank.mikado : PubgetRank.ronin,
     ),
   );
 

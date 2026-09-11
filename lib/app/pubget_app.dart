@@ -53,10 +53,14 @@ import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
+import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/notifications/widgets/notification_deep_link_binder.dart';
+import '../features/edits/l10n/edit_copy.dart';
+import '../features/edits/widgets/global_edit_upload_bar.dart';
 import '../features/anime/data/anime_http_client.dart';
 import '../features/anime/models/anime_models.dart';
 import '../features/anime/providers/anime_providers.dart';
@@ -153,6 +157,7 @@ import '../features/social/screens/profile_page.dart';
 import 'app_route.dart';
 import 'app_router.dart';
 import 'app_shell.dart';
+import 'app_shell_scope.dart';
 import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
 import 'unknown_link_page.dart';
@@ -290,8 +295,10 @@ class PubgetApp extends StatelessWidget {
               RoleplayProvider(repository: context.read<RoleplayRepository>()),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
-          create: (context) =>
-              ChatProvider(repository: context.read<ChatRepository>()),
+          create: (context) => ChatProvider(
+            repository: context.read<ChatRepository>(),
+            network: context.read<NetworkService>(),
+          ),
         ),
         provider.ChangeNotifierProxyProvider<AuthProvider, HomeProvider>(
           create: (context) => HomeProvider(
@@ -334,6 +341,15 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               EditsProvider(repository: context.read<EditsRepository>()),
         ),
+        provider.ChangeNotifierProvider<EditUploadManager>(
+          create: (context) {
+            final manager = EditUploadManager(
+              repository: context.read<EditsRepository>(),
+            );
+            unawaited(manager.attachLifecycle());
+            return manager;
+          },
+        ),
         provider.ChangeNotifierProxyProvider<
           AuthProvider,
           PrivateChatListProvider
@@ -354,6 +370,7 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<PrivateChatProvider>(
           create: (context) => PrivateChatProvider(
             repository: context.read<PrivateChatRepository>(),
+            network: context.read<NetworkService>(),
           ),
         ),
         provider.ChangeNotifierProvider<EventListProvider>(
@@ -664,11 +681,102 @@ class _PubgetRouterHost extends StatefulWidget {
 
 class _PubgetRouterHostState extends State<_PubgetRouterHost> {
   RouterConfig<AppRoute>? _router;
+  var _uploadCallbacksBound = false;
+
+  void _bindUploadCallbacks(BuildContext context) {
+    if (_uploadCallbacksBound) return;
+    _uploadCallbacksBound = true;
+    final manager = context.read<EditUploadManager>();
+
+    manager.shouldForceNavigateToPublished = (editId) {
+      final shell = AppShellScope.maybeOf(context);
+      if (shell == null || !shell.isEditsVisible) return true;
+      final edits = context.read<EditsProvider>();
+      final items = edits.items;
+      if (items.isEmpty) return true;
+      final index = edits.activeIndex.clamp(0, items.length - 1);
+      final watching = items[index].id;
+      // Soft offer when already watching a different clip.
+      return watching == editId;
+    };
+
+    manager.onNavigateToPublished = (editId) {
+      if (!mounted) return;
+      final soft = manager.softPublishedOfferId == editId;
+      if (soft) {
+        final copy = EditCopy.of(context);
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(copy.videoReadyOffer),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: copy.watchNow,
+              onPressed: () {
+                manager.acceptSoftPublishedOffer(editId);
+                unawaited(
+                  AppNavigation.go(
+                    context,
+                    PubgetLinks.editHighlightPath(editId),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        return;
+      }
+      unawaited(
+        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
+      );
+    };
+
+    manager.onPublishedWhileBackgrounded = (editId) {
+      // Server push is the primary signal while backgrounded; local snackbar
+      // only helps when the process is still alive.
+      if (!mounted) return;
+      final copy = EditCopy.of(context);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${copy.publishedNotificationTitle} — ${copy.publishedNotificationBody}',
+          ),
+          action: SnackBarAction(
+            label: copy.openEdit,
+            onPressed: () => AppNavigation.go(
+              context,
+              PubgetLinks.editHighlightPath(editId),
+            ),
+          ),
+        ),
+      );
+    };
+
+    manager.onFailedWhileBackgrounded = (editId, message) {
+      if (!mounted) return;
+      final copy = EditCopy.of(context);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(message ?? copy.failedNotificationBody),
+          backgroundColor: Theme.of(context).colorScheme.errorContainer,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: copy.openEdit,
+            onPressed: () => AppNavigation.go(
+              context,
+              PubgetLinks.editHighlightPath(editId),
+            ),
+          ),
+        ),
+      );
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     PubgetLinks.analytics = context.read<Analytics>();
     _router ??= _createRouter(context);
+    _bindUploadCallbacks(context);
     final settings = context.watch<SettingsProvider>();
     return MaterialApp.router(
       title: 'Pubget',
@@ -692,6 +800,16 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) {
+        return NotificationDeepLinkBinder(
+          messaging: widget.firebaseState.isReady
+              ? FirebaseMessaging.instance
+              : null,
+          child: EditUploadOverlayHost(
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       routerConfig: _router!,
     );
   }

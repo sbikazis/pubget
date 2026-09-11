@@ -153,7 +153,7 @@ void main() {
             message: _msg(id: '1', text: 'مرحبا'),
             isMine: false,
             contrast: contrast,
-            onLongPress: () {},
+            onLongPress: (_) {},
             onMediaTap: null,
           ),
         ),
@@ -189,7 +189,7 @@ void main() {
                 message: _msg(id: 'o', text: 'منهم'),
                 isMine: false,
                 contrast: contrast,
-                onLongPress: () {},
+                onLongPress: (_) {},
                 onMediaTap: null,
               ),
               ChatMessageBubble(
@@ -202,7 +202,7 @@ void main() {
                 ),
                 isMine: true,
                 contrast: contrast,
-                onLongPress: () {},
+                onLongPress: (_) {},
                 onMediaTap: null,
               ),
             ],
@@ -229,7 +229,7 @@ void main() {
             ),
             isMine: false,
             contrast: contrast,
-            onLongPress: () {},
+            onLongPress: (_) {},
             onMediaTap: null,
           ),
         ),
@@ -255,7 +255,7 @@ void main() {
             ),
             isMine: false,
             contrast: contrast,
-            onLongPress: () {},
+            onLongPress: (_) {},
             onMediaTap: null,
           ),
         ),
@@ -283,15 +283,127 @@ void main() {
             ),
             isMine: true,
             contrast: contrast,
-            onLongPress: () {},
+            onLongPress: (_) {},
             onMediaTap: null,
           ),
         ),
       );
       await tester.pump();
 
-      expect(find.text('14:05'), findsOneWidget);
+      expect(find.text('2:05 م'), findsOneWidget);
       expect(find.byType(MessageDeliveryIndicator), findsOneWidget);
+    });
+
+    testWidgets('game messages render lobby cards with join CTA', (tester) async {
+      final contrast = ChatContrastTheme.fromBackground(null);
+      final message = ChatMessage(
+        id: 'g1',
+        senderId: 'host',
+        senderName: 'Host',
+        senderAvatar: '',
+        senderRole: 'founder',
+        type: ChatMessageType.game,
+        text: 'Lobby open',
+        mediaUrl: null,
+        thumbnailUrl: null,
+        mediaId: 'game-1',
+        replyToMessageId: null,
+        createdAt: DateTime(2026, 3, 1, 14, 5),
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        reactions: const <String, int>{},
+        recipientCount: 0,
+        deliveredCount: 0,
+        readCount: 0,
+        isOptimistic: false,
+        sendState: ChatSendState.sent,
+        gameActivity: const ChatGameActivity(
+          kind: 'created',
+          gameType: 'mafia',
+          title: 'Mafia Night',
+          hostName: 'Host',
+          playerCount: 3,
+          maxPlayers: 5,
+          status: 'waiting',
+        ),
+      );
+      await tester.pumpWidget(
+        _wrap(
+          ChatMessageBubble(
+            message: message,
+            isMine: false,
+            contrast: contrast,
+            onLongPress: (_) {},
+            onMediaTap: null,
+            onGameTap: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Mafia Night'), findsOneWidget);
+      expect(find.text('انضمام للعبة'), findsOneWidget);
+      expect(find.text('3/5'), findsOneWidget);
+    });
+
+    testWidgets('member joined renders rich welcome card', (tester) async {
+      final contrast = ChatContrastTheme.fromBackground(null);
+      final message = ChatMessage(
+        id: 'join1',
+        senderId: 'new',
+        senderName: 'سارة',
+        senderAvatar: '',
+        senderRole: 'member',
+        type: ChatMessageType.system,
+        text: 'سارة joined the group',
+        mediaUrl: null,
+        thumbnailUrl: null,
+        mediaId: null,
+        replyToMessageId: null,
+        createdAt: DateTime(2026, 3, 1, 14, 5),
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        reactions: const <String, int>{},
+        recipientCount: 0,
+        deliveredCount: 0,
+        readCount: 0,
+        isOptimistic: false,
+        sendState: ChatSendState.sent,
+        systemKind: 'member_joined',
+        senderTitle: 'محبة الأنمي',
+      );
+      await tester.pumpWidget(
+        _wrap(
+          ChatMessageBubble(
+            message: message,
+            isMine: false,
+            contrast: contrast,
+            onLongPress: (_) {},
+            onMediaTap: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('رحّبوا بالعضو الجديد'), findsOneWidget);
+      expect(find.text('سارة'), findsOneWidget);
+    });
+
+    testWidgets('formatted text renders bold markers', (tester) async {
+      final contrast = ChatContrastTheme.fromBackground(null);
+      await tester.pumpWidget(
+        _wrap(
+          ChatMessageBubble(
+            message: _msg(id: 'fmt', text: 'hello *world*'),
+            isMine: false,
+            contrast: contrast,
+            onLongPress: (_) {},
+            onMediaTap: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('hello world', findRichText: true), findsOneWidget);
     });
   });
 }

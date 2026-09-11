@@ -27,11 +27,24 @@ const REPORT_REASONS = Object.freeze([
 ]);
 const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
 const AUDIO_MAX_DURATION_SECONDS = 60;
+const { hasPermission, normalizeRole } = require("./pubgetRanks");
+
 const PERMISSIONS = {
   delete: "deleteMessages",
-  pin: "pin",
+  pin: "pinOwnMessages",
   background: "manageBackground",
 };
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+function timestampDate(value) {
+  if (value instanceof Date) return value;
+  if (value && typeof value.toDate === "function") return value.toDate();
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -83,10 +96,8 @@ function displayIdentity(member, uid) {
   return { senderName, senderAvatar };
 }
 
-function can(member, role, permission) {
-  return member.role === "founder" ||
-    Boolean(role && Array.isArray(role.permissions) &&
-      role.permissions.includes(permission));
+function can(member, role, permission, group) {
+  return hasPermission(member, role, permission, group);
 }
 
 async function actorContext(transaction, db, groupId, uid, HttpsError) {
@@ -98,7 +109,7 @@ async function actorContext(transaction, db, groupId, uid, HttpsError) {
   }
   const memberData = member.data() || {};
   const role = await transaction.get(
-    groupRef(db, groupId).collection("roles").doc(memberData.role || "member"),
+    groupRef(db, groupId).collection("roles").doc(memberData.role || "ronin"),
   );
   return {
     group: group.data() || {},
@@ -117,6 +128,22 @@ function isCatalogSticker(data) {
   return data && data.type === "sticker" &&
     typeof data.stickerKey === "string" &&
     Object.hasOwn(STICKER_CATALOG, data.stickerKey);
+}
+
+function resolveStickerCreator(data, uid, identity) {
+  if (!data || data.type !== "sticker") {
+    return { stickerCreatorId: null, stickerCreatorName: null };
+  }
+  if (isCatalogSticker(data)) {
+    return { stickerCreatorId: "pubget", stickerCreatorName: "Pubget" };
+  }
+  const creatorId = validString(data.stickerCreatorId, 128)
+    ? data.stickerCreatorId.trim()
+    : uid;
+  const creatorName = validString(data.stickerCreatorName, 80)
+    ? data.stickerCreatorName.trim()
+    : identity.senderName;
+  return { stickerCreatorId: creatorId, stickerCreatorName: creatorName };
 }
 
 function validateMessage(data, HttpsError) {
@@ -225,11 +252,12 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       }
       const identity = displayIdentity(context.member, uid);
       const recipientCount = Math.max(0, (context.group.membersCount || 1) - 1);
+      const stickerCreator = resolveStickerCreator(data, uid, identity);
       const message = {
         senderId: uid,
         senderName: identity.senderName,
         senderAvatar: identity.senderAvatar,
-        senderRole: context.member.role || "member",
+        senderRole: context.member.role || "ronin",
         type: data.type,
         text: data.type === "text" ? data.text.trim() : null,
         mediaId: catalogSticker || !MEDIA_TYPES.has(data.type) ? null : data.mediaId,
@@ -238,6 +266,8 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
           : null,
         thumbnailUrl: media ? media.thumbnailPath || null : null,
         stickerKey: catalogSticker ? data.stickerKey : null,
+        stickerCreatorId: stickerCreator.stickerCreatorId,
+        stickerCreatorName: stickerCreator.stickerCreatorName,
         replyToMessageId: data.replyToMessageId || null,
         replyPreview,
         forwardedFrom: null,
@@ -261,7 +291,9 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       response = message;
     });
     if (achievements && typeof achievements.evaluate === "function") {
-      await achievements.evaluate({
+      // Fire-and-forget: do not block the send callable on achievements work.
+      // Awaiting this made clients keep the pending clock longer than needed.
+      achievements.evaluate({
         type: "message_sent",
         userId: uid,
         source: "group_chat",
@@ -291,6 +323,13 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       if (current.senderId !== uid || current.type !== "text" ||
           current.deletedAt) {
         throw new HttpsError("permission-denied", "This message cannot be edited.");
+      }
+      const createdAt = timestampDate(current.createdAt);
+      if (!createdAt || Date.now() - createdAt.getTime() > EDIT_WINDOW_MS) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Messages can only be edited within 15 minutes.",
+        );
       }
       transaction.update(ref, {
         text: text.trim(),
@@ -535,7 +574,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         }
         const identity = {
           ...displayIdentity(context.member, uid),
-          senderRole: context.member.role || "member",
+          senderRole: context.member.role || "ronin",
         };
         const message = buildForwardedMessage({
           source,
@@ -688,7 +727,7 @@ function buildForwardedMessage({
     senderId: uid,
     senderName: identity.senderName,
     senderAvatar: identity.senderAvatar,
-    senderRole: identity.senderRole || "member",
+    senderRole: identity.senderRole || "ronin",
     type: source.type,
     text: source.type === "text" ? source.text : null,
     mediaId: destMediaId,
@@ -697,6 +736,8 @@ function buildForwardedMessage({
       : source.stickerKey ? null : source.mediaUrl || null,
     thumbnailUrl: destMedia ? destMedia.thumbnailPath || null : null,
     stickerKey: source.stickerKey || null,
+    stickerCreatorId: source.stickerCreatorId || null,
+    stickerCreatorName: source.stickerCreatorName || null,
     replyToMessageId: null,
     replyPreview: null,
     forwardedFrom,
@@ -811,7 +852,9 @@ module.exports = {
   USER_MESSAGE_TYPES,
   adminChatCardDocument,
   createGroupChat,
+  EDIT_WINDOW_MS,
   expectedMediaType,
+  resolveStickerCreator,
   validString,
   validateMessage,
   writeAdminChatCard,

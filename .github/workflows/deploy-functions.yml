@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'functions/**'
+      - '.github/workflows/deploy-functions.yml'
 
 jobs:
   deploy:
@@ -29,5 +30,28 @@ jobs:
       - name: Verify Functions SDK is installed
         run: cd functions && node -e "require.resolve('firebase-functions')"
 
+      # Cloud Functions list/deploy occasionally returns HTTP 503 UNAVAILABLE.
+      # Retry with backoff so a transient Google outage does not leave main
+      # without the latest functions (e.g. after a rank-system merge).
       - name: Deploy to Firebase
-        run: firebase deploy --only functions --force --debug --token "${{ secrets.FIREBASE_TOKEN }}"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          attempts=5
+          delay=20
+          for i in $(seq 1 "$attempts"); do
+            echo "Firebase functions deploy attempt ${i}/${attempts}..."
+            if firebase deploy --only functions --force --debug --token "$FIREBASE_TOKEN"; then
+              echo "Deploy succeeded on attempt ${i}."
+              exit 0
+            fi
+            status=$?
+            if [ "$i" -eq "$attempts" ]; then
+              echo "Deploy failed after ${attempts} attempts (last exit ${status})."
+              exit "$status"
+            fi
+            echo "Deploy attempt ${i} failed (exit ${status}). Waiting ${delay}s before retry..."
+            sleep "$delay"
+            delay=$((delay * 2))
+          done

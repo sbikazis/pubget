@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web"]
+modules = ["nodejs-20", "web", "python-base-3.13"]
 
 [nix]
 channel = "stable-25_05"
@@ -61,5 +61,5 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "flutter build web --pwa-strategy=none && python3 -m http.server 5000 --directory build/web"
+args = "bash scripts/run_replit_web.sh"
 waitForPort = 5000

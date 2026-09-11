@@ -6,7 +6,8 @@
 // postEventChatActivity as type "event" system cards. Notifications use the
 // existing notification builder. Group permissions reuse ROLE_PERMISSIONS.
 
-const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const { ROLE_PERMISSIONS, normalizeRole } = require("./groupsDomain");
+const { hasPermission } = require("./pubgetRanks");
 const catalog = require("./gameCatalog");
 
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -639,15 +640,14 @@ async function loadPermissions(transaction, db, groupId, uid) {
   if (!group.exists) return { member: false, manageEvents: false, role: null, missingGroup: true };
   if (!member.exists) return { member: false, manageEvents: false, role: null };
   const data = member.data() || {};
-  const role = data.role || "member";
+  const groupData = group.data() || {};
+  const role = normalizeRole(data.rankV2 || data.role || "ronin");
   const customRoleId = validString(data.customRoleId, 128) ? data.customRoleId.trim() : null;
   const roleSnap = await transaction.get(roleRef(db, groupId, customRoleId || role));
-  const permissions = roleSnap.exists && Array.isArray(roleSnap.data().permissions)
-    ? roleSnap.data().permissions
-    : (ROLE_PERMISSIONS[role] || []);
+  const roleDoc = roleSnap.exists ? roleSnap.data() : { permissions: ROLE_PERMISSIONS[role] || [] };
   return {
     member: true,
-    manageEvents: role === "founder" || permissions.includes("manageEvents"),
+    manageEvents: hasPermission(data, roleDoc, "manageEvents", groupData),
     role,
   };
 }

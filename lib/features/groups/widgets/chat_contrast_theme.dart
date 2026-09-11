@@ -87,11 +87,11 @@ final class ChatContrastTheme {
     required bool backgroundIsDark,
   }) {
     final incoming = backgroundIsDark
-        ? const Color(0xEE241B30)
-        : const Color(0xF7FFFFFF);
+        ? const Color(0xFF202C33)
+        : const Color(0xFFFFFFFF);
     final outgoing = backgroundIsDark
-        ? const Color(0xF06C3FC5)
-        : const Color(0xF0EDE5FF);
+        ? const Color(0xFF5B2F9E)
+        : const Color(0xFFE9D9FF);
     return ChatContrastTheme(
       background: BoxDecoration(
         gradient: LinearGradient(
@@ -121,11 +121,11 @@ final class ChatContrastTheme {
     required bool backgroundIsDark,
   }) {
     final incoming = backgroundIsDark
-        ? const Color(0xF2241B30)
-        : const Color(0xF7FFFFFF);
+        ? const Color(0xFF202C33)
+        : const Color(0xFFFFFFFF);
     final outgoing = backgroundIsDark
-        ? const Color(0xF26C3FC5)
-        : const Color(0xF0EDE5FF);
+        ? const Color(0xFF5B2F9E)
+        : const Color(0xFFE9D9FF);
     return ChatContrastTheme(
       background: BoxDecoration(
         image: DecorationImage(

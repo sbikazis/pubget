@@ -92,15 +92,21 @@ void main() {
     expect(provider.items.single.isPublished, isFalse);
   });
 
-  test('like overlay applies only after the server confirms', () async {
+  test('like overlay applies optimistically before the server confirms', () async {
     final repository = FakeEditsRepository()
       ..likeFailure = const ValidationError('blocked');
     final provider = EditsProvider(repository: repository);
     addTearDown(provider.dispose);
     await provider.load();
-    await provider.like('e1', true);
+
+    final pending = provider.like('e1', true);
+    expect(provider.isLiked('e1'), isTrue);
+    expect(provider.displayOf(provider.items.single).likesCount, 3);
+
+    await pending;
     expect(provider.isLiked('e1'), isFalse);
     expect(provider.displayOf(provider.items.single).likesCount, 2);
+    expect(provider.lastActionFailure, isA<ValidationError>());
 
     repository.likeFailure = null;
     await provider.like('e1', true);
@@ -113,11 +119,11 @@ void main() {
     final repository = FakeEditsRepository();
     final provider = EditsProvider(repository: repository);
     addTearDown(provider.dispose);
-    await Future.wait(<Future<void>>[
-      provider.like('e1', true),
-      provider.like('e1', true),
-    ]);
+    // Same desired state — second call is a no-op after optimistic settle.
+    await provider.like('e1', true);
+    await provider.like('e1', true);
     expect(repository.likeCalls, 1);
+    expect(provider.isLiked('e1'), isTrue);
   });
 
   testWidgets('comments sheet sorts, replies, and reports', (tester) async {

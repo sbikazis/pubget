@@ -1,24 +1,24 @@
 "use strict";
 
+const {
+  ROLES,
+  ROLE_POSITIONS,
+  ROLE_PERMISSIONS,
+  SEAT_CONFIG,
+  normalizeRole,
+  roleDefinition,
+  isApexOwner,
+  hasPermission,
+  canAssignRole,
+  computeAutoSeatAssignments,
+  manualSeatsRemaining,
+  manualSeatFullMessage,
+  assignmentCeiling,
+} = require("./pubgetRanks");
+
 const GROUP_TYPES = ["public", "animeRoleplay", "openRoleplay"];
 const ROLEPLAY_GROUP_TYPES = new Set(["animeRoleplay", "openRoleplay"]);
 const JOIN_POLICIES = ["open", "approval", "inviteOnly"];
-const ROLES = ["founder", "shogun", "commander", "captain", "sensei", "senpai", "member"];
-const ROLE_POSITIONS = Object.fromEntries(ROLES.map((role, index) => [role, ROLES.length - index]));
-const ROLE_PERMISSIONS = {
-  founder: ["manageMembers", "manageMessages", "deleteMessages", "pin",
-    "manageEvents", "manageGames", "manageSettings", "invite",
-    "manageRequests", "manageRoles", "manageBackground"],
-  shogun: ["manageMembers", "manageMessages", "deleteMessages", "pin",
-    "manageEvents", "manageGames", "manageSettings", "invite",
-    "manageRequests", "manageRoles", "manageBackground"],
-  commander: ["manageMembers", "manageMessages", "deleteMessages", "pin",
-    "manageEvents", "manageGames", "invite", "manageRequests"],
-  captain: ["manageMessages", "deleteMessages", "pin", "manageEvents", "invite"],
-  sensei: ["manageMessages", "deleteMessages", "pin", "invite"],
-  senpai: ["pin", "invite"],
-  member: [],
-};
 const CHARACTER_CATALOG = {
   hero: "The Hero",
   rival: "The Rival",
@@ -110,14 +110,6 @@ function rolePath(db, groupId, role) {
   return groupPath(db, groupId).collection("roles").doc(role);
 }
 
-function roleDefinition(role) {
-  return {
-    name: role,
-    permissions: ROLE_PERMISSIONS[role],
-    position: ROLE_POSITIONS[role],
-    isDefault: true,
-  };
-}
 
 function entitledMaxMembers(userData) {
   const custom = Number(userData && userData.customMaxMembersLimit) || 0;
@@ -125,30 +117,32 @@ function entitledMaxMembers(userData) {
   return Math.min(Math.max(Math.trunc(custom), 2), 500);
 }
 
-function inviteRankForCount(count) {
-  if (count >= 50) return "captain";
-  if (count >= 20) return "sensei";
-  if (count >= 5) return "senpai";
-  return "member";
-}
 
 function groupMemberData(uid, role, FieldValue, extras) {
   const extra = extras || {};
+  const normalized = normalizeRole(role);
   return {
     uid,
-    role,
+    role: normalized,
+    rankV2: normalized,
     customRoleId: null,
     roleplayCharacter: extra.character || null,
     invitedBy: extra.invitedBy || null,
     joinedAt: FieldValue.serverTimestamp(),
     inviteCount: 0,
+    effectiveInviteCount: 0,
+    isManualRole: extra.isManualRole === true,
+    seatSource: extra.seatSource || null,
     lastActiveAt: FieldValue.serverTimestamp(),
   };
 }
 
-function permissionFor(member, role, permission) {
-  return member && (member.role === "founder" ||
-    (role && role.permissions && role.permissions.includes(permission)));
+function permissionFor(member, role, permission, group) {
+  return hasPermission(member, role, permission, group);
+}
+
+function memberRank(member) {
+  return normalizeRole((member && (member.rankV2 || member.role)) || "ronin");
 }
 
 function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievements }) {
@@ -205,6 +199,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         type: data.type,
         animeId: data.animeId || null,
         founderId: uid,
+        migrationVersion: 2,
         membersCount: 1,
         maxMembers,
         joinPolicy: data.joinPolicy,
@@ -217,7 +212,10 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       });
       transaction.create(
         memberRef,
-        groupMemberData(uid, "founder", FieldValue, { character: data.character }),
+        Object.assign(
+          groupMemberData(uid, "mikado", FieldValue, { character: data.character }),
+          { rankV2: "mikado", isManualRole: true, seatSource: "manual" },
+        ),
       );
       if (data.character) {
         transaction.create(
@@ -309,7 +307,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       }
       transaction.create(
         memberRef,
-        groupMemberData(uid, "member", FieldValue, {
+        groupMemberData(uid, "ronin", FieldValue, {
           character,
           invitedBy: parseInvitedBy((request.data || {}).invitedBy),
         }),
@@ -354,7 +352,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
       const [role, target, ban] = await Promise.all([
-        transaction.get(rolePath(db, groupId, context.data.role)),
+        transaction.get(rolePath(db, groupId, memberRank(context.data))),
         transaction.get(memberPath(db, groupId, toUid)),
         transaction.get(groupPath(db, groupId).collection("bans").doc(toUid)),
       ]);
@@ -442,6 +440,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         membersCount: Math.max(1, (data.membersCount || 1) - 1),
       });
     });
+    await applyAutoSeatRecalculation(db, FieldValue, groupId);
     return { ok: true };
   }
 
@@ -459,7 +458,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     const { uid, groupId, targetUid } = await requestContext(request, "manageRequests");
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      const role = await transaction.get(rolePath(db, groupId, context.data.role));
+      const role = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
       if (!permissionFor(context.data, role.data(), "manageRequests")) {
         throw new HttpsError("permission-denied", "You cannot manage join requests.");
       }
@@ -507,7 +506,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       }
       transaction.create(
         memberRef,
-        groupMemberData(targetUid, "member", FieldValue, {
+        groupMemberData(targetUid, "ronin", FieldValue, {
           character,
           invitedBy: requestData.invitedBy || null,
         }),
@@ -533,7 +532,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     const { uid, groupId, targetUid } = await requestContext(request, "manageRequests");
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      const role = await transaction.get(rolePath(db, groupId, context.data.role));
+      const role = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
       if (!permissionFor(context.data, role.data(), "manageRequests")) {
         throw new HttpsError("permission-denied", "You cannot manage join requests.");
       }
@@ -542,31 +541,200 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     return { ok: true };
   }
 
+  async function warnMember(request) {
+    const { uid, groupId, targetUid } = await requestContext(request, "manageMembers");
+    const type = String((request.data && request.data.type) || "").trim();
+    const details = String((request.data && request.data.details) || "").trim();
+    const allowedTypes = new Set([
+      "harassment",
+      "abuse",
+      "groupRules",
+      "inappropriateContent",
+      "chatMisuse",
+      "toxicBehavior",
+      "other",
+    ]);
+    if (!allowedTypes.has(type) || details.length < 4 || details.length > 2000) {
+      throw new HttpsError("invalid-argument", "Warning type and details are required.");
+    }
+    await db.runTransaction(async (transaction) => {
+      const context = await actorContext(transaction, groupId, uid);
+      const actorRole = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
+      const targetRef = memberPath(db, groupId, targetUid);
+      const target = await transaction.get(targetRef);
+      const actorRank = memberRank(context.data);
+      const targetRank = memberRank(target.exists ? target.data() : {});
+      if (!permissionFor(context.data, actorRole.data(), "moderateChat", context.group.data()) ||
+          !target.exists || targetRank === "mikado" ||
+          targetUid === uid ||
+          ROLE_POSITIONS[actorRank] <= ROLE_POSITIONS[targetRank]) {
+        throw new HttpsError("permission-denied", "You cannot warn this member.");
+      }
+      const warningRef = groupPath(db, groupId).collection("warnings").doc();
+      transaction.set(warningRef, {
+        targetUid,
+        byUid: uid,
+        type,
+        details,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(groupPath(db, groupId).collection("rankAudit").doc(), {
+        type: "warning",
+        from: targetRank,
+        to: targetRank,
+        targetUid,
+        byUid: uid,
+        reason: `${type}: ${details}`,
+        at: FieldValue.serverTimestamp(),
+      });
+      const warningsCount = Number((target.data() || {}).warningsCount || 0) + 1;
+      transaction.update(targetRef, {
+        warningsCount,
+        lastActiveAt: FieldValue.serverTimestamp(),
+      });
+      const groupName = (context.group.data() || {}).name || "المجموعة";
+      transaction.set(
+        db.collection("users").doc(targetUid).collection("notifications").doc(),
+        buildInboxNotification({
+          type: "member_warning",
+          actorId: uid,
+          targetId: targetUid,
+          action: "open_group",
+          destination: `/group?groupId=${groupId}`,
+          groupKey: groupId,
+          groupId,
+          title: "تحذير من إدارة المجموعة",
+          body: `تلقيت تحذيراً في ${groupName}`,
+          metadata: {
+            title: "تحذير من إدارة المجموعة",
+            body: `تلقيت تحذيراً في ${groupName}`,
+            warningType: type,
+            details,
+            groupId,
+            groupName,
+          },
+        }),
+      );
+    });
+    return { ok: true };
+  }
+
+  function buildInboxNotification({
+    type, actorId, targetId, action, destination, groupKey, groupId, title, body, metadata,
+  }) {
+    return {
+      type,
+      actorId: actorId || null,
+      targetId: targetId || "",
+      action: action || "",
+      destination: destination || "/home",
+      groupKey: groupKey || groupId || null,
+      groupId: groupId || null,
+      title: title || "",
+      body: body || "",
+      metadata: Object.assign({ title, body }, metadata || {}),
+      createdAt: FieldValue.serverTimestamp(),
+      readAt: null,
+    };
+  }
+
   async function changeRole(request) {
     const { uid, groupId, targetUid } = await requestContext(request, "manageRoles");
-    const roleName = request.data && request.data.role;
-    if (!ROLES.includes(roleName) || roleName === "founder") {
+    const desired = normalizeRole(request.data && request.data.role);
+    if (!ROLES.includes(desired) || desired === "mikado") {
       throw new HttpsError("invalid-argument", "This role cannot be assigned.");
     }
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
+      const membersSnap = await transaction.get(
+        groupPath(db, groupId).collection("members"),
+      );
       const [actorRole, target] = await Promise.all([
-        transaction.get(rolePath(db, groupId, context.data.role)),
+        transaction.get(rolePath(db, groupId, memberRank(context.data))),
         transaction.get(memberPath(db, groupId, targetUid)),
       ]);
-      if (!permissionFor(context.data, actorRole.data(), "manageRoles") ||
-          !target.exists || target.data().role === "founder" ||
+      const actor = memberRank(context.data);
+      const targetData = target.exists ? (target.data() || {}) : {};
+      const targetRank = memberRank(targetData);
+      if (!permissionFor(context.data, actorRole.data(), "manageRoles", context.group.data()) ||
+          !target.exists || targetRank === "mikado" ||
           targetUid === uid ||
-          ROLE_POSITIONS[context.data.role] <= ROLE_POSITIONS[target.data().role] ||
-          ROLE_POSITIONS[context.data.role] <= ROLE_POSITIONS[roleName]) {
+          !canAssignRole(actor, targetRank, desired)) {
         throw new HttpsError("permission-denied", "You cannot change this role.");
       }
+      const members = membersSnap.docs.map((doc) =>
+        Object.assign({ uid: doc.id }, doc.data() || {}));
+      if (desired === "shogun") {
+        const existingShogun = members.some((m) =>
+          m.uid !== targetUid && memberRank(m) === "shogun");
+        if (existingShogun) {
+          throw new HttpsError("failed-precondition", "SHŌGUN seat is already filled.");
+        }
+      }
+      const manualHolders = members.filter((m) => {
+        if (m.uid === targetUid) return false;
+        return memberRank(m) === desired && m.isManualRole === true;
+      }).length;
+      if (manualSeatsRemaining(desired, manualHolders) <= 0) {
+        throw new HttpsError("failed-precondition", manualSeatFullMessage(desired));
+      }
       transaction.update(memberPath(db, groupId, targetUid), {
-        role: roleName,
+        role: desired,
+        rankV2: desired,
         isManualRole: true,
+        seatSource: "manual",
+        rankChangedAt: FieldValue.serverTimestamp(),
         lastActiveAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(groupPath(db, groupId).collection("rankAudit").doc(), {
+        type: "manual_assign",
+        from: targetRank,
+        to: desired,
+        targetUid,
+        byUid: uid,
+        at: FieldValue.serverTimestamp(),
+      });
+      const promote = ROLE_POSITIONS[desired] > ROLE_POSITIONS[targetRank];
+      const label = rankLabel(desired);
+      const groupName = (context.group.data() || {}).name || "المجموعة";
+      transaction.set(
+        db.collection("users").doc(targetUid).collection("notifications").doc(),
+        buildInboxNotification({
+          type: promote ? "rank_promoted" : "rank_demoted",
+          actorId: uid,
+          targetId: targetUid,
+          action: "open_group",
+          destination: `/group?groupId=${groupId}`,
+          groupKey: groupId,
+          groupId,
+          title: promote ? `تمت ترقيتك إلى ${label}` : `تم تخفيض رتبتك إلى ${label}`,
+          body: promote
+            ? `تمت ترقيتك إلى ${label} في مجموعة ${groupName}.`
+            : `تم تخفيض رتبتك إلى ${label} في مجموعة ${groupName}.`,
+          metadata: {
+            title: promote ? `تمت ترقيتك إلى ${label}` : `تم تخفيض رتبتك إلى ${label}`,
+            body: promote
+              ? `تمت ترقيتك إلى ${label} في مجموعة ${groupName}.`
+              : `تم تخفيض رتبتك إلى ${label} في مجموعة ${groupName}.`,
+            from: targetRank,
+            to: desired,
+            groupId,
+            groupName,
+          },
+        }),
+      );
+      if (promote) {
+        transaction.set(groupPath(db, groupId).collection("messages").doc(), {
+          type: "system",
+          text: `🏯 أصبح الآن ${label}`,
+          senderId: "system",
+          senderName: "Pubget",
+          senderRole: "system",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
     });
+    await applyAutoSeatRecalculation(db, FieldValue, groupId);
     return { ok: true };
   }
 
@@ -576,7 +744,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     const roleName = request.data && request.data.role;
     const permissions = request.data && request.data.permissions;
     const allowedPermissions = new Set(Object.values(ROLE_PERMISSIONS).flat());
-    if (!ROLES.includes(roleName) || roleName === "founder" ||
+    const normalizedRole = normalizeRole(roleName);
+    if (!ROLES.includes(normalizedRole) || normalizedRole === "mikado" ||
         !Array.isArray(permissions) ||
         permissions.some((permission) => !allowedPermissions.has(permission)) ||
         new Set(permissions).size !== permissions.length) {
@@ -584,10 +753,11 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     }
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      if ((context.group.data() || {}).founderId !== uid) {
-        throw new HttpsError("permission-denied", "Only the founder can edit roles.");
+      if ((context.group.data() || {}).founderId !== uid &&
+          memberRank(context.data) !== "mikado") {
+        throw new HttpsError("permission-denied", "Only MIKADO can edit roles.");
       }
-      transaction.update(rolePath(db, groupId, roleName), { permissions });
+      transaction.update(rolePath(db, groupId, normalizedRole), { permissions });
     });
     return { ok: true };
   }
@@ -597,12 +767,13 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     if (uid === targetUid) throw new HttpsError("invalid-argument", "You cannot target yourself.");
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      const actorRole = await transaction.get(rolePath(db, groupId, context.data.role));
+      const actorRole = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
       const targetRef = memberPath(db, groupId, targetUid);
       const target = await transaction.get(targetRef);
-      if (!permissionFor(context.data, actorRole.data(), "manageMembers") ||
-          !target.exists || target.data().role === "founder" ||
-          ROLE_POSITIONS[context.data.role] <= ROLE_POSITIONS[target.data().role]) {
+      const targetRank = memberRank(target.exists ? target.data() : {});
+      if (!permissionFor(context.data, actorRole.data(), "kickBan", context.group.data()) ||
+          !target.exists || targetRank === "mikado" ||
+          ROLE_POSITIONS[memberRank(context.data)] <= ROLE_POSITIONS[targetRank]) {
         throw new HttpsError("permission-denied", "You cannot remove this member.");
       }
       const group = context.group.data() || {};
@@ -620,10 +791,12 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         transaction.set(groupPath(db, groupId).collection("bans").doc(targetUid), {
           uid: targetUid,
           bannedByUid: uid,
+          lastRole: targetRank,
           createdAt: FieldValue.serverTimestamp(),
         });
       }
     });
+    await applyAutoSeatRecalculation(db, FieldValue, groupId);
     return { ok: true };
   }
 
@@ -655,9 +828,34 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
           confirmationData.expiresAt.toMillis() <= Date.now()) {
         throw new HttpsError("failed-precondition", "Ownership confirmation expired.");
       }
-      transaction.update(memberPath(db, groupId, uid), { role: "member" });
-      transaction.update(targetRef, { role: "founder" });
+      const membersSnap = await transaction.get(
+        groupPath(db, groupId).collection("members"),
+      );
+      const hasShogun = membersSnap.docs.some((doc) => {
+        if (doc.id === uid || doc.id === targetUid) return false;
+        return memberRank(doc.data()) === "shogun";
+      });
+      const demoteTo = hasShogun ? "daimyo" : "shogun";
+      transaction.update(memberPath(db, groupId, uid), {
+        role: demoteTo,
+        rankV2: demoteTo,
+        isManualRole: true,
+        seatSource: "manual",
+      });
+      transaction.update(targetRef, {
+        role: "mikado",
+        rankV2: "mikado",
+        isManualRole: true,
+        seatSource: "manual",
+      });
       transaction.update(groupPath(db, groupId), { founderId: targetUid });
+      transaction.set(groupPath(db, groupId).collection("rankAudit").doc(), {
+        type: "ownership_transfer",
+        fromUid: uid,
+        toUid: targetUid,
+        formerMikadoRank: demoteTo,
+        at: FieldValue.serverTimestamp(),
+      });
       transaction.delete(confirmationRef);
     });
     return { ok: true };
@@ -730,7 +928,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     }
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      const role = await transaction.get(rolePath(db, groupId, context.data.role));
+      const role = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
       if (!permissionFor(context.data, role.data(), "manageSettings")) {
         throw new HttpsError("permission-denied", "You cannot manage group settings.");
       }
@@ -743,11 +941,11 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     const { uid, groupId, targetUid } = await requestContext(request, "manageMembers");
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
-      const actorRole = await transaction.get(rolePath(db, groupId, context.data.role));
+      const actorRole = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
       const banRef = groupPath(db, groupId).collection("bans").doc(targetUid);
       const ban = await transaction.get(banRef);
-      if (!permissionFor(context.data, actorRole.data(), "manageMembers")) {
-        throw new HttpsError("permission-denied", "You cannot manage members.");
+      if (!permissionFor(context.data, actorRole.data(), "unban", context.group.data())) {
+        throw new HttpsError("permission-denied", "You cannot unban members.");
       }
       if (!ban.exists) return;
       transaction.delete(banRef);
@@ -848,14 +1046,35 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       if (!member.exists || !currentInvite.exists ||
           currentInvite.data().rankAppliedAt || !currentInvite.data().usedAt) return;
       const count = (member.data().inviteCount || 0) + 1;
-      const nextRole = inviteRankForCount(count);
-      const updates = { inviteCount: count };
-      if (member.data().isManualRole !== true) updates.role = nextRole;
-      transaction.update(memberRef, updates);
+      transaction.update(memberRef, { inviteCount: count });
       transaction.update(inviteRef, {
         rankAppliedAt: FieldValue.serverTimestamp(),
       });
     });
+    await applyAutoSeatRecalculation(db, FieldValue, groupId);
+    return null;
+  }
+
+  async function onMemberMembershipChanged(event) {
+    if (!event || !event.params || !event.params.groupId) return null;
+    const before = event.data && event.data.before && event.data.before.exists
+      ? event.data.before.data()
+      : null;
+    const after = event.data && event.data.after && event.data.after.exists
+      ? event.data.after.data()
+      : null;
+    // Create or delete always recalculates.
+    if (!before || !after) {
+      await applyAutoSeatRecalculation(db, FieldValue, event.params.groupId);
+      return null;
+    }
+    // Ignore seat-engine self writes (role/rankV2/seatSource/effectiveInviteCount).
+    const relevantChanged =
+      before.invitedBy !== after.invitedBy ||
+      before.isManualRole !== after.isManualRole ||
+      (before.inviteCount || 0) !== (after.inviteCount || 0);
+    if (!relevantChanged) return null;
+    await applyAutoSeatRecalculation(db, FieldValue, event.params.groupId);
     return null;
   }
 
@@ -940,6 +1159,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     leaveGroup,
     prepareOwnershipTransfer,
     recalculateInviteRanks,
+    onMemberMembershipChanged,
     rejectJoinRequest,
     releaseRoleplayCharacter,
     requestToJoin,
@@ -949,17 +1169,146 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     updateGroupSettings,
     updateRolePermissions,
     promoteGroup,
+    warnMember,
   };
 }
 
+
+function rankLabel(role) {
+  const id = normalizeRole(role);
+  return ({
+    ronin: "RŌNIN",
+    gokenin: "GOKENIN",
+    samurai: "SAMURAI",
+    hatamoto: "HATAMOTO",
+    daimyo: "DAIMYŌ",
+    shogun: "SHŌGUN",
+    mikado: "MIKADO",
+  })[id] || id;
+}
+
+function enqueueRankNotification(batch, db, FieldValue, {
+  uid, groupId, type, title, body, publicInChat,
+}) {
+  const ref = db.collection("users").doc(uid).collection("notifications").doc();
+  batch.set(ref, {
+    type,
+    title,
+    body,
+    groupId,
+    createdAt: FieldValue.serverTimestamp(),
+    readAt: null,
+  });
+  if (publicInChat && groupId) {
+    const msgRef = db.collection("groups").doc(groupId).collection("messages").doc();
+    batch.set(msgRef, {
+      type: "system",
+      text: body,
+      senderId: "system",
+      senderName: "Pubget",
+      senderRole: "system",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+async function applyAutoSeatRecalculation(db, FieldValue, groupId) {
+  const groupRef = db.collection("groups").doc(groupId);
+  const [membersSnap, bansSnap, groupSnap] = await Promise.all([
+    groupRef.collection("members").get(),
+    groupRef.collection("bans").get(),
+    groupRef.get(),
+  ]);
+  if (!groupSnap.exists) return;
+  const banned = new Set(bansSnap.docs.map((doc) => doc.id));
+  const members = membersSnap.docs.map((doc) =>
+    Object.assign({ uid: doc.id }, doc.data() || {}));
+  const { assignments, vacantAuto, effectiveInvites } =
+    computeAutoSeatAssignments(members, banned);
+
+  const batch = db.batch();
+  let writes = 0;
+  for (const member of members) {
+    const rank = memberRank(member);
+    if (rank === "mikado" || rank === "shogun" || member.isManualRole === true) {
+      const inviteCount = effectiveInvites[member.uid] || 0;
+      if ((member.effectiveInviteCount || 0) !== inviteCount) {
+        batch.update(groupRef.collection("members").doc(member.uid), {
+          effectiveInviteCount: inviteCount,
+        });
+        writes += 1;
+      }
+      continue;
+    }
+    const desired = assignments[member.uid] || "ronin";
+    const inviteCount = effectiveInvites[member.uid] || 0;
+    if (desired === rank &&
+        member.seatSource === (desired === "ronin" ? null : "auto") &&
+        (member.effectiveInviteCount || 0) === inviteCount) {
+      continue;
+    }
+    if (desired === rank && (member.effectiveInviteCount || 0) === inviteCount &&
+        ((desired === "ronin" && !member.seatSource) ||
+         (desired !== "ronin" && member.seatSource === "auto"))) {
+      continue;
+    }
+    const from = rank;
+    batch.update(groupRef.collection("members").doc(member.uid), {
+      role: desired,
+      rankV2: desired,
+      seatSource: desired === "ronin" ? null : "auto",
+      isManualRole: false,
+      effectiveInviteCount: inviteCount,
+      rankChangedAt: FieldValue.serverTimestamp(),
+    });
+    if (from !== desired) {
+      const promote = ROLE_POSITIONS[desired] > ROLE_POSITIONS[from];
+      batch.set(groupRef.collection("rankAudit").doc(), {
+        type: promote ? "auto_promote" : "auto_demote",
+        from,
+        to: desired,
+        targetUid: member.uid,
+        byUid: "system",
+        at: FieldValue.serverTimestamp(),
+      });
+      const label = rankLabel(desired);
+      enqueueRankNotification(batch, db, FieldValue, {
+        uid: member.uid,
+        groupId,
+        type: promote ? "rank_promoted" : "rank_demoted",
+        title: promote ? `أصبحت ${label}` : `رتبتك الآن ${label}`,
+        body: promote
+          ? `🏯 أصبحت مبروك — رتبتك الجديدة ${label}`
+          : `تم تحديث رتبتك إلى ${label}. واصل دعوة الأصدقاء لاستعادة مقعد أعلى.`,
+        publicInChat: promote,
+      });
+    }
+    writes += 1;
+  }
+  batch.set(groupRef.collection("seatState").doc("auto"), {
+    vacantAuto,
+    updatedAt: FieldValue.serverTimestamp(),
+    migrationVersion: 2,
+  }, { merge: true });
+  writes += 1;
+  if (writes > 0) await batch.commit();
+}
+
 module.exports = {
+  CHARACTER_CATALOG,
+  GROUP_PROMOTE_COST,
+  GROUP_PROMOTE_DAYS,
   GROUP_TYPES,
   JOIN_POLICIES,
   ROLE_PERMISSIONS,
   ROLES,
-  GROUP_PROMOTE_COST,
-  GROUP_PROMOTE_DAYS,
+  ROLE_POSITIONS,
+  SEAT_CONFIG,
+  applyAutoSeatRecalculation,
+  computeAutoSeatAssignments: require("./pubgetRanks").computeAutoSeatAssignments,
   createGroupsDomain,
   entitledMaxMembers,
-  inviteRankForCount,
+  groupInput,
+  normalizeRole,
+  parseCharacter,
 };
