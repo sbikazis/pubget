@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/rank_colors.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -481,9 +482,7 @@ class _SenderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final rank = parsePubgetRank(role);
-    final color = rankColorResolver(rank, isDarkMode: isDark);
     final showBadge = showRole && rankShowsBubbleBadge(rank);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
@@ -505,12 +504,7 @@ class _SenderHeader extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    height: 1.15,
-                  ),
+                  style: pubgetRankNameTextStyle(rank, fontSize: 13),
                 ),
               ),
           ],
@@ -543,8 +537,22 @@ class _RankBadgeGlow extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
             errorBuilder: (_, _, _) => fallback,
           );
+
+    final badged = rank == PubgetRank.shogun
+        ? Container(
+            width: size + 2,
+            height: size + 2,
+            padding: const EdgeInsets.all(1),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: RankColors.shogunGold, width: 1.2),
+            ),
+            child: image,
+          )
+        : image;
 
     return SizedBox(
       width: size + 4,
@@ -567,7 +575,7 @@ class _RankBadgeGlow extends StatelessWidget {
                 ),
             ],
           ),
-          child: image,
+          child: badged,
         ),
       ),
     );

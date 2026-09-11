@@ -284,7 +284,10 @@ class _RankManagementSheetState extends State<_RankManagementSheet> {
                         children: <Widget>[
                           Text(
                             target.primaryIdentity,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: pubgetRankNameTextStyle(
+                              target.role,
+                              fontSize: 15,
+                            ),
                           ),
                           if (target.secondaryIdentity != null)
                             Text(
@@ -304,6 +307,8 @@ class _RankManagementSheetState extends State<_RankManagementSheet> {
                                   badge,
                                   width: 18,
                                   height: 18,
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.medium,
                                   errorBuilder: (_, _, _) => Icon(
                                     Icons.military_tech,
                                     size: 16,
@@ -516,6 +521,8 @@ class _OccupancyChip extends StatelessWidget {
                   badge,
                   width: 14,
                   height: 14,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
                   errorBuilder: (_, _, _) =>
                       Icon(Icons.military_tech, size: 12, color: color),
                 ),
@@ -594,6 +601,8 @@ class _DestinationTile extends StatelessWidget {
                 badge,
                 width: 28,
                 height: 28,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
                 errorBuilder: (_, _, _) =>
                     Icon(Icons.military_tech, color: color),
               )

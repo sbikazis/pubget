@@ -20,26 +20,43 @@ void main() {
     expect(parsePubgetRank('???'), PubgetRank.ronin);
   });
 
-  test('color hex values match the engineering table', () {
-    expect(pubgetRankCoreColor(PubgetRank.ronin), const Color(0xFF25204A));
-    expect(pubgetRankCoreColor(PubgetRank.gokenin), const Color(0xFF4B2A73));
-    expect(pubgetRankCoreColor(PubgetRank.samurai), const Color(0xFF8F2636));
-    expect(pubgetRankCoreColor(PubgetRank.hatamoto), const Color(0xFF302A68));
-    expect(pubgetRankCoreColor(PubgetRank.daimyo), const Color(0xFF5B2A86));
-    expect(pubgetRankCoreColor(PubgetRank.shogun), const Color(0xFF111018));
-    expect(pubgetRankCoreColor(PubgetRank.mikado), const Color(0xFF5E2A84));
+  test('color hex values match RankColors MIKADO edition palette', () {
+    expect(pubgetRankCoreColor(PubgetRank.ronin), const Color(0xFF0A2A6B));
+    expect(pubgetRankCoreColor(PubgetRank.gokenin), const Color(0xFF0F3D2E));
+    expect(pubgetRankCoreColor(PubgetRank.samurai), const Color(0xFF8B1A1A));
+    expect(pubgetRankCoreColor(PubgetRank.hatamoto), const Color(0xFF14A092));
+    expect(pubgetRankCoreColor(PubgetRank.daimyo), const Color(0xFF0E8FB8));
+    expect(pubgetRankCoreColor(PubgetRank.shogun), const Color(0xFF9C1225));
+    expect(pubgetRankCoreColor(PubgetRank.mikado), const Color(0xFF7A1FFF));
 
     expect(
       rankColorResolver(PubgetRank.ronin, isDarkMode: false),
-      const Color(0xFF362D76),
+      const Color(0xFF0A2A6B),
     );
     expect(
       rankColorResolver(PubgetRank.shogun, isDarkMode: false),
-      const Color(0xFF8C1728),
+      const Color(0xFF9C1225),
     );
     expect(
       rankColorResolver(PubgetRank.mikado, isDarkMode: true),
-      const Color(0xFFB989DC),
+      const Color(0xFF7A1FFF),
+    );
+  });
+
+  test('SAMURAI and SHŌGUN badge assets are distinct', () {
+    expect(pubgetRankBadgeAsset(PubgetRank.samurai), isNotNull);
+    expect(pubgetRankBadgeAsset(PubgetRank.shogun), isNotNull);
+    expect(
+      pubgetRankBadgeAsset(PubgetRank.samurai),
+      isNot(pubgetRankBadgeAsset(PubgetRank.shogun)),
+    );
+    expect(
+      pubgetRankBadgeAsset(PubgetRank.shogun),
+      'assets/images/ranks/shogun.png',
+    );
+    expect(
+      pubgetRankBadgeAsset(PubgetRank.samurai),
+      'assets/images/ranks/samurai.png',
     );
   });
 
@@ -84,6 +101,7 @@ void main() {
           rankBadgeGlowStrength(PubgetRank.samurai),
       isTrue,
     );
-    expect(rankBadgeGlowColor(PubgetRank.mikado), const Color(0xFFD4AF37));
+    expect(rankBadgeGlowColor(PubgetRank.mikado), const Color(0xFF7A1FFF));
+    expect(rankBadgeGlowColor(PubgetRank.shogun), const Color(0xFFC9A227));
   });
 }

@@ -361,6 +361,8 @@ class _RankOverviewChip extends StatelessWidget {
                       badge,
                       width: 14,
                       height: 14,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
                       errorBuilder: (_, _, _) =>
                           Icon(Icons.military_tech, size: 12, color: color),
                     ),
@@ -422,8 +424,7 @@ class _CouncilMemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = rankColorResolver(member.role, isDarkMode: isDark);
+    final color = rankColorResolver(member.role, isDarkMode: false);
     final badge = pubgetRankBadgeAsset(member.role);
     final canRank = GroupAuthority.canManageTargetRank(
       actor: actor,
@@ -466,10 +467,7 @@ class _CouncilMemberCard extends StatelessWidget {
               children: <Widget>[
                 Text(
                   member.primaryIdentity,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: pubgetRankNameTextStyle(member.role, fontSize: 15),
                 ),
                 if (member.secondaryIdentity != null)
                   Text(
@@ -490,6 +488,7 @@ class _CouncilMemberCard extends StatelessWidget {
                         width: 18,
                         height: 18,
                         fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
                         errorBuilder: (_, _, _) => Icon(
                           Icons.military_tech,
                           size: 16,
