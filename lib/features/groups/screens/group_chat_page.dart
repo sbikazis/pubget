@@ -509,6 +509,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final canPin = permissions.contains(GroupPermission.pinOwnMessages);
     final canEdit =
         isMine &&
+        !message.isDeleted &&
         message.type == ChatMessageType.text &&
         !message.isOptimistic &&
         message.createdAt != null &&
@@ -516,6 +517,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
             const Duration(minutes: 15);
     final canCopy =
         message.text?.trim().isNotEmpty == true &&
+        !message.isDeleted &&
         !message.isMedia &&
         message.type != ChatMessageType.sticker &&
         message.type != ChatMessageType.audio;
@@ -541,6 +543,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
           : bubbleRect,
       canEdit: canEdit,
       canCopy: canCopy,
+      canReply: !message.isDeleted,
+      canForward: !message.isDeleted,
       canDelete: canDelete && !message.isDeleted,
       canPin: canPin && !message.isDeleted,
       canReport: !isMine && !message.isDeleted,
@@ -548,6 +552,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
     if (!mounted || result == null) return;
     if (result.action == ChatMessageAction.dismiss) return;
+    if (message.isDeleted &&
+        (result.action == ChatMessageAction.reply ||
+            result.action == ChatMessageAction.forward ||
+            result.action == ChatMessageAction.copy ||
+            result.action == ChatMessageAction.pin ||
+            result.action == ChatMessageAction.edit ||
+            result.action == ChatMessageAction.delete ||
+            result.action == ChatMessageAction.react ||
+            result.action == ChatMessageAction.report)) {
+      return;
+    }
 
     final chat = context.read<ChatProvider>();
     switch (result.action) {
@@ -629,15 +644,56 @@ class _GroupChatPageState extends State<GroupChatPage> {
       ),
     );
     if (reason == null || !mounted) return;
-    final result = await context.read<ChatProvider>().reportMessage(
-      messageId: message.id,
-      reason: reason,
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        var submitting = false;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Confirm report'),
+            content: Text('Submit this message report for “$reason”?'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: submitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('confirm-report'),
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        setState(() => submitting = true);
+                        final result = await context
+                            .read<ChatProvider>()
+                            .reportMessage(
+                              messageId: message.id,
+                              reason: reason,
+                            );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, result.isSuccess);
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Submit report'),
+              ),
+            ],
+          ),
+        );
+      },
     );
+    if (confirmed == null || !mounted) return;
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          result.isSuccess ? 'Report submitted' : 'Unable to submit report',
+          confirmed ? 'Report submitted' : 'Unable to submit report',
         ),
       ),
     );

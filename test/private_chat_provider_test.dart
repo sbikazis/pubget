@@ -43,6 +43,98 @@ void main() {
     },
   );
 
+  test('completion from an old chat cannot mutate the newly opened chat',
+      () async {
+    final repository = _FakePrivateChatRepository();
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'a', currentUserId: 'alice');
+    final send = provider.sendText(
+      chatId: 'a',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      text: 'old chat',
+    );
+    await provider.open(chatId: 'b', currentUserId: 'alice');
+    repository.completeNext(Success(_serverMessage('old')));
+    await send;
+    expect(provider.chatId, 'b');
+    expect(provider.messages, isEmpty);
+  });
+
+  test('direct callable success preserves optimistic createdAt', () async {
+    final repository = _FakePrivateChatRepository();
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+    final send = provider.sendText(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      text: 'keep timestamp',
+    );
+    final optimisticCreatedAt = provider.messages.single.createdAt;
+    final id = provider.messages.single.id;
+    repository.completeNext(Success(_serverMessage(id)));
+    await send;
+    expect(provider.messages.single.createdAt, optimisticCreatedAt);
+  });
+
+  test('stale receipt completion cannot drain receipts into a new chat',
+      () async {
+    final repository = _FakePrivateChatRepository()..holdReceipts = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'a', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('a-receipt')]));
+    await pumpEventQueue();
+    await provider.open(chatId: 'b', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('b-receipt')]));
+    await pumpEventQueue();
+    expect(repository.receiptChatIds, orderedEquals(<String>['a', 'b']));
+    repository.completeNextReceipt();
+    await pumpEventQueue();
+    expect(repository.receiptChatIds, orderedEquals(<String>['a', 'b']));
+    repository.completeNextReceipt();
+  });
+
+  test('a failed media upload remains manually retryable', () async {
+    final repository = _FakePrivateChatRepository();
+    repository.uploadResults.add(const FailureResult(NetworkError()));
+    repository.uploadResults.add(
+      const Success(
+        ChatMediaUpload(
+          mediaUrl: 'https://cdn.example/image.jpg',
+          thumbnailUrl: null,
+          mediaId: 'media-1',
+          type: ChatMessageType.image,
+        ),
+      ),
+    );
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+    final first = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1]),
+      fileName: 'image.jpg',
+      contentType: 'image/jpeg',
+    );
+    await first;
+    final pending = provider.messages.single;
+    expect(pending.sendState, ChatSendState.pending);
+    final retry = provider.retry(pending);
+    await pumpEventQueue();
+    repository.completeNext(Success(_serverMessage(pending.id)));
+    await retry;
+    expect(provider.messages.single.sendState, ChatSendState.sent);
+  });
+
   test('network failure stays pending; permanent failure can be deleted', () async {
     final repository = _FakePrivateChatRepository();
     final provider = PrivateChatProvider(repository: repository);
@@ -218,10 +310,19 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
   final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
   final chats = StreamController<Result<List<PrivateChatSummary>>>.broadcast();
   final pendingCompleters = <Completer<Result<ChatMessage>>>[];
+  final pendingReceiptCompleters = <Completer<Result<void>>>[];
+  final uploadResults = <Result<ChatMediaUpload>>[];
+  final receiptChatIds = <String>[];
+  bool holdReceipts = false;
 
   void completeNext(Result<ChatMessage> result) {
     final next = pendingCompleters.firstWhere((c) => !c.isCompleted);
     next.complete(result);
+  }
+
+  void completeNextReceipt() {
+    final next = pendingReceiptCompleters.firstWhere((c) => !c.isCompleted);
+    next.complete(const Success<void>(null));
   }
 
   @override
@@ -277,13 +378,25 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
   Future<Result<void>> markAsRead({
     required String chatId,
     required List<String> messageIds,
-  }) async => const Success(null);
+  }) {
+    receiptChatIds.add(chatId);
+    if (!holdReceipts) return Future.value(const Success(null));
+    final completer = Completer<Result<void>>();
+    pendingReceiptCompleters.add(completer);
+    return completer.future;
+  }
 
   @override
   Future<Result<void>> markAsDelivered({
     required String chatId,
     required List<String> messageIds,
-  }) async => const Success(null);
+  }) {
+    receiptChatIds.add(chatId);
+    if (!holdReceipts) return Future.value(const Success(null));
+    final completer = Completer<Result<void>>();
+    pendingReceiptCompleters.add(completer);
+    return completer.future;
+  }
 
   @override
   Future<Result<void>> deleteChat(String chatId) async => const Success(null);
@@ -296,5 +409,7 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
-  }) async => const FailureResult(NetworkError());
+  }) async => uploadResults.isEmpty
+      ? const FailureResult(NetworkError())
+      : uploadResults.removeAt(0);
 }

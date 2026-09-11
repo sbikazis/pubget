@@ -52,6 +52,8 @@ Future<ChatMessageActionResult?> showChatMessageActions(
   required Rect bubbleRect,
   required bool canEdit,
   required bool canCopy,
+  bool canReply = true,
+  bool canForward = true,
   bool canDelete = false,
   bool canPin = false,
   bool canReport = false,
@@ -73,6 +75,8 @@ Future<ChatMessageActionResult?> showChatMessageActions(
         bubbleRect: bubbleRect,
         canEdit: canEdit,
         canCopy: canCopy,
+        canReply: canReply,
+        canForward: canForward,
         canDelete: canDelete,
         canPin: canPin,
         canReport: canReport,
@@ -103,6 +107,8 @@ class ReactionOverlay extends StatefulWidget {
     required this.bubbleRect,
     required this.canEdit,
     required this.canCopy,
+    required this.canReply,
+    required this.canForward,
     required this.canDelete,
     required this.canPin,
     required this.canReport,
@@ -117,6 +123,8 @@ class ReactionOverlay extends StatefulWidget {
   final Rect bubbleRect;
   final bool canEdit;
   final bool canCopy;
+  final bool canReply;
+  final bool canForward;
   final bool canDelete;
   final bool canPin;
   final bool canReport;
@@ -280,6 +288,8 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                   child: _SelectionAppBar(
                     isStarred: widget.isStarred,
                     canCopy: widget.canCopy,
+                    canReply: widget.canReply,
+                    canForward: widget.canForward,
                     canEdit: widget.canEdit,
                     canDelete: widget.canDelete,
                     canPin: widget.canPin,
@@ -362,6 +372,8 @@ class _SelectionAppBar extends StatelessWidget {
   const _SelectionAppBar({
     required this.isStarred,
     required this.canCopy,
+    required this.canReply,
+    required this.canForward,
     required this.canEdit,
     required this.canDelete,
     required this.canPin,
@@ -374,6 +386,8 @@ class _SelectionAppBar extends StatelessWidget {
 
   final bool isStarred;
   final bool canCopy;
+  final bool canReply;
+  final bool canForward;
   final bool canEdit;
   final bool canDelete;
   final bool canPin;
@@ -410,12 +424,13 @@ class _SelectionAppBar extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              IconButton(
-                key: const Key('chat-action-reply'),
-                tooltip: 'Reply',
-                onPressed: () => onSelect(ChatMessageAction.reply),
-                icon: const Icon(Icons.reply_rounded, color: Colors.white),
-              ),
+              if (canReply)
+                IconButton(
+                  key: const Key('chat-action-reply'),
+                  tooltip: 'Reply',
+                  onPressed: () => onSelect(ChatMessageAction.reply),
+                  icon: const Icon(Icons.reply_rounded, color: Colors.white),
+                ),
               IconButton(
                 key: const Key('chat-action-star'),
                 tooltip: 'Star',
@@ -432,12 +447,13 @@ class _SelectionAppBar extends StatelessWidget {
                   onPressed: () => onSelect(ChatMessageAction.delete),
                   icon: const Icon(Icons.delete_outline, color: Colors.white),
                 ),
-              IconButton(
-                key: const Key('chat-action-forward'),
-                tooltip: 'Forward',
-                onPressed: () => onSelect(ChatMessageAction.forward),
-                icon: const Icon(Icons.shortcut_rounded, color: Colors.white),
-              ),
+              if (canForward)
+                IconButton(
+                  key: const Key('chat-action-forward'),
+                  tooltip: 'Forward',
+                  onPressed: () => onSelect(ChatMessageAction.forward),
+                  icon: const Icon(Icons.shortcut_rounded, color: Colors.white),
+                ),
               IconButton(
                 key: const Key('chat-action-more'),
                 tooltip: 'More',

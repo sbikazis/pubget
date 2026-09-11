@@ -46,10 +46,10 @@ final class PrivateChatProvider extends ChangeNotifier {
   bool _loadingMore = false;
   bool _disposed = false;
   bool _pageActive = false;
-  bool _readInFlight = false;
   bool _receiptInFlight = false;
   Timer? _receiptRetryTimer;
   int _receiptRetryAttempt = 0;
+  int _sessionGeneration = 0;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   Map<String, double> get uploadProgress => Map.unmodifiable(_uploadProgress);
@@ -65,8 +65,14 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (_chatId == chatId && _currentUserId == currentUserId && _pageActive) {
       return;
     }
+    final generation = ++_sessionGeneration;
     await _subscription?.cancel();
+    if (_disposed || _sessionGeneration != generation) return;
     _cancelAllAutoRetries();
+    _pendingDeliveredIds.clear();
+    _pendingReadIds.clear();
+    _receiptInFlight = false;
+    _receiptRetryAttempt = 0;
     _chatId = chatId;
     _currentUserId = currentUserId;
     _pageActive = true;
@@ -75,14 +81,16 @@ final class PrivateChatProvider extends ChangeNotifier {
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
     _hasMore = true;
+    _loadingMore = false;
     _failure = null;
     _state = LoadingState.loading;
     notifyListeners();
-    _subscription = _repository
+    final subscription = _repository
         .watchMessages(chatId)
         .listen(
-          _receive,
+          (result) => _receive(result, chatId: chatId, generation: generation),
           onError: (Object error) {
+            if (!_isCurrent(chatId, generation)) return;
             _failure = NetworkError(error.toString());
             _state = _messages.isEmpty
                 ? LoadingState.offline
@@ -90,21 +98,28 @@ final class PrivateChatProvider extends ChangeNotifier {
             _safeNotify();
           },
         );
-    await _restoreOutbox(chatId);
+    _subscription = subscription;
+    await _restoreOutbox(chatId, generation);
   }
 
   /// Detaches the live page session while retaining durable pending sends.
   Future<void> leaveChat() async {
+    ++_sessionGeneration;
     _pageActive = false;
     _receiptRetryTimer?.cancel();
     _receiptRetryTimer = null;
     await _subscription?.cancel();
     _subscription = null;
     _cancelAllAutoRetries();
+    _pendingDeliveredIds.clear();
+    _pendingReadIds.clear();
+    _receiptInFlight = false;
+    _receiptRetryAttempt = 0;
   }
 
   Future<void> loadMore() async {
     final chatId = _chatId;
+    final generation = _sessionGeneration;
     if (chatId == null ||
         !_hasMore ||
         _loadingMore ||
@@ -119,7 +134,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       chatId: chatId,
       before: _messages.first,
     );
-    if (_disposed) return;
+    if (_disposed || !_isCurrent(chatId, generation)) return;
     result.fold(
       onSuccess: (older) {
         _merge(older);
@@ -147,6 +162,8 @@ final class PrivateChatProvider extends ChangeNotifier {
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    final generation = _sessionGeneration;
+    if (!_isCurrent(chatId, generation)) return;
     final pending = ChatMessage.optimistic(
       id: _newId(),
       senderId: senderId,
@@ -158,7 +175,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       replyToMessageId: replyToMessageId,
     );
     _upsert(pending);
-    unawaited(_persistPending(pending));
+    unawaited(_persistPending(chatId, pending));
     final result = await _repository.sendMessage(
       chatId: chatId,
       messageId: pending.id,
@@ -166,7 +183,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       text: trimmed,
       replyToMessageId: replyToMessageId,
     );
-    _finishSend(pending.id, result);
+    _finishSend(pending.id, result, chatId: chatId, generation: generation);
   }
 
   Future<void> sendMedia({
@@ -179,6 +196,8 @@ final class PrivateChatProvider extends ChangeNotifier {
     required String contentType,
   }) async {
     final mediaId = _newId();
+    final generation = _sessionGeneration;
+    if (!_isCurrent(chatId, generation)) return;
     final type = contentType.startsWith('video/')
         ? ChatMessageType.video
         : ChatMessageType.image;
@@ -200,14 +219,19 @@ final class PrivateChatProvider extends ChangeNotifier {
       senderId: senderId,
       senderName: senderName,
       senderAvatar: senderAvatar,
+      generation: generation,
     );
     _upsert(pending);
-    await _performMediaUpload(mediaId);
+    await _performMediaUpload(mediaId, generation: generation);
   }
 
-  Future<void> _performMediaUpload(String mediaId) async {
+  Future<void> _performMediaUpload(
+    String mediaId, {
+    required int generation,
+  }) async {
     final payload = _pendingUploads[mediaId];
     if (payload == null) return;
+    if (!_isCurrent(payload.chatId, generation)) return;
     _uploadProgress[mediaId] = 0;
     notifyListeners();
     final upload = await _repository.uploadMedia(
@@ -217,12 +241,13 @@ final class PrivateChatProvider extends ChangeNotifier {
       fileName: payload.fileName,
       contentType: payload.contentType,
       onProgress: (progress) {
+        if (!_isCurrent(payload.chatId, generation)) return;
         _uploadProgress[mediaId] = progress;
         _safeNotify();
       },
     );
     _uploadProgress.remove(mediaId);
-    if (_disposed) return;
+    if (_disposed || !_isCurrent(payload.chatId, generation)) return;
     upload.fold(
       onSuccess: (media) async {
         final pending = ChatMessage.optimistic(
@@ -238,7 +263,7 @@ final class PrivateChatProvider extends ChangeNotifier {
           mediaId: media.mediaId,
         );
         _upsert(pending);
-        unawaited(_persistPending(pending));
+        unawaited(_persistPending(payload.chatId, pending));
         final result = await _repository.sendMessage(
           chatId: payload.chatId,
           messageId: mediaId,
@@ -247,7 +272,12 @@ final class PrivateChatProvider extends ChangeNotifier {
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
         );
-        _finishSend(mediaId, result);
+        _finishSend(
+          mediaId,
+          result,
+          chatId: payload.chatId,
+          generation: generation,
+        );
         if (result.isSuccess) _pendingUploads.remove(mediaId);
       },
       onFailure: (failure) {
@@ -258,7 +288,15 @@ final class PrivateChatProvider extends ChangeNotifier {
               sendState: ChatSendState.pending,
               clearFailureMessage: true,
             );
-            _scheduleAutoRetry(mediaId);
+            if ((_autoRetryAttempt[mediaId] ?? 0) <
+                kChatSendMaxAggressiveRetries) {
+              _scheduleAutoRetry(mediaId);
+            } else {
+              _messages[index] = _messages[index].copyWith(
+                sendState: ChatSendState.failed,
+                failureMessage: chatFailureCode(failure),
+              );
+            }
           } else {
             _messages[index] = _messages[index].copyWith(
               sendState: ChatSendState.failed,
@@ -279,6 +317,9 @@ final class PrivateChatProvider extends ChangeNotifier {
         message.sendState != ChatSendState.pending) {
       return;
     }
+    final chatId = _chatId;
+    final generation = _sessionGeneration;
+    if (chatId == null || !_isCurrent(chatId, generation)) return;
     _autoRetryAttempt[message.id] = 0;
     if (_pendingUploads.containsKey(message.id) &&
         (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
@@ -288,7 +329,7 @@ final class PrivateChatProvider extends ChangeNotifier {
           clearFailureMessage: true,
         ),
       );
-      await _performMediaUpload(message.id);
+      await _performMediaUpload(message.id, generation: generation);
       return;
     }
     _upsert(
@@ -297,9 +338,9 @@ final class PrivateChatProvider extends ChangeNotifier {
         clearFailureMessage: true,
       ),
     );
-    unawaited(_persistPending(message));
+    unawaited(_persistPending(chatId, message));
     final result = await _repository.sendMessage(
-      chatId: _chatId ?? '',
+      chatId: chatId,
       messageId: message.id,
       type: message.type,
       text: message.text,
@@ -308,7 +349,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       mediaId: message.mediaId,
       replyToMessageId: message.replyToMessageId,
     );
-    _finishSend(message.id, result);
+    _finishSend(message.id, result, chatId: chatId, generation: generation);
   }
 
   void removeFailed(String messageId) {
@@ -330,12 +371,15 @@ final class PrivateChatProvider extends ChangeNotifier {
 
   Future<Result<void>> deleteMessage(String messageId) async {
     final chatId = _chatId;
+    final generation = _sessionGeneration;
     if (chatId == null) return const FailureResult(UnknownError());
     final result = await _repository.deleteMessage(
       chatId: chatId,
       messageId: messageId,
     );
-    if (result.isSuccess) _removeOrMarkDeleted(messageId);
+    if (result.isSuccess && _isCurrent(chatId, generation)) {
+      _removeOrMarkDeleted(messageId);
+    }
     return result;
   }
 
@@ -363,12 +407,20 @@ final class PrivateChatProvider extends ChangeNotifier {
     return _repository.deleteChat(chatId);
   }
 
-  void _receive(Result<List<ChatMessage>> result) {
-    if (_disposed) return;
+  void _receive(
+    Result<List<ChatMessage>> result, {
+    required String chatId,
+    required int generation,
+  }) {
+    if (_disposed || !_isCurrent(chatId, generation)) return;
     result.fold(
       onSuccess: (incoming) {
         _merge(incoming);
-        unawaited(_markDelivered(incoming));
+        unawaited(_markDeliveredForSession(
+          incoming,
+          chatId: chatId,
+          generation: generation,
+        ));
         _state = _messages.isEmpty ? LoadingState.empty : LoadingState.loaded;
         _failure = null;
         _kickPendingRetries();
@@ -468,16 +520,28 @@ final class PrivateChatProvider extends ChangeNotifier {
     }
   }
 
-  void _finishSend(String id, Result<ChatMessage> result) {
-    if (_disposed) return;
+  void _finishSend(
+    String id,
+    Result<ChatMessage> result, {
+    required String chatId,
+    required int generation,
+  }) {
+    if (_disposed || !_isCurrent(chatId, generation)) return;
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
-        final chatId = _chatId;
-        if (chatId != null) {
-          unawaited(_outbox.remove(chatId, id));
-        }
-        _upsert(message);
+        unawaited(_outbox.remove(chatId, id));
+        final index = _messageIndex[id];
+        final localCreatedAt =
+            index == null ? null : _messages[index].createdAt;
+        _upsert(
+          localCreatedAt == null
+              ? message
+              : message.copyWith(
+                  createdAt: localCreatedAt,
+                  sendState: ChatSendState.sent,
+                ),
+        );
       },
       onFailure: (failure) {
         final index = _messageIndex[id];
@@ -498,8 +562,8 @@ final class PrivateChatProvider extends ChangeNotifier {
             clearFailureMessage: true,
           );
           notifyListeners();
-          unawaited(_persistPending(_messages[index]));
-          _scheduleAutoRetry(id);
+           unawaited(_persistPending(chatId, _messages[index]));
+           _scheduleAutoRetry(id);
           return;
         }
         _cancelAutoRetry(id);
@@ -513,10 +577,10 @@ final class PrivateChatProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> _restoreOutbox(String chatId) async {
+  Future<void> _restoreOutbox(String chatId, int generation) async {
     try {
       final pending = await _outbox.load(chatId);
-      if (_disposed || _chatId != chatId) return;
+      if (_disposed || !_isCurrent(chatId, generation)) return;
       for (final message in pending) {
         if (_messageIndex.containsKey(message.id)) continue;
         _upsert(message.copyWith(sendState: ChatSendState.pending));
@@ -527,10 +591,8 @@ final class PrivateChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _persistPending(ChatMessage message) async {
+  Future<void> _persistPending(String chatId, ChatMessage message) async {
     try {
-      final chatId = _chatId;
-      if (chatId == null) return;
       await _outbox.upsert(chatId, message);
     } catch (_) {}
   }
@@ -547,9 +609,21 @@ final class PrivateChatProvider extends ChangeNotifier {
         continue;
       }
       if (forceImmediate) {
-        _autoRetryAttempt[message.id] = 0;
+        if ((_autoRetryAttempt[message.id] ?? 0) >=
+            kChatSendMaxAggressiveRetries) {
+          continue;
+        }
+        final attempt = _autoRetryAttempt[message.id] ?? 0;
         _cancelAutoRetry(message.id);
-        unawaited(_autoRetrySend(message.id));
+        _autoRetryAttempt[message.id] = attempt + 1;
+        final chatId = _chatId;
+        if (chatId != null) {
+          unawaited(_autoRetrySend(
+            message.id,
+            chatId: chatId,
+            generation: _sessionGeneration,
+          ));
+        }
       } else if (!_autoRetryTimers.containsKey(message.id) &&
           !_autoRetryInFlight.contains(message.id)) {
         _scheduleAutoRetry(message.id);
@@ -558,19 +632,32 @@ final class PrivateChatProvider extends ChangeNotifier {
   }
 
   void _scheduleAutoRetry(String id) {
-    if (_disposed) return;
+    if (_disposed || (_autoRetryAttempt[id] ?? 0) >= kChatSendMaxAggressiveRetries) {
+      return;
+    }
+    final generation = _sessionGeneration;
+    final chatId = _chatId;
+    if (chatId == null) return;
     _autoRetryTimers.remove(id)?.cancel();
     final attempt = _autoRetryAttempt[id] ?? 0;
     final delay = chatSendBackoffDelay(attempt);
     _autoRetryAttempt[id] = attempt + 1;
     _autoRetryTimers[id] = Timer(delay, () {
       _autoRetryTimers.remove(id);
-      unawaited(_autoRetrySend(id));
+      unawaited(_autoRetrySend(id, chatId: chatId, generation: generation));
     });
   }
 
-  Future<void> _autoRetrySend(String id) async {
-    if (_disposed || _autoRetryInFlight.contains(id)) return;
+  Future<void> _autoRetrySend(
+    String id, {
+    required String chatId,
+    required int generation,
+  }) async {
+    if (_disposed ||
+        !_isCurrent(chatId, generation) ||
+        _autoRetryInFlight.contains(id)) {
+      return;
+    }
     final index = _messageIndex[id];
     if (index == null) return;
     final message = _messages[index];
@@ -581,11 +668,11 @@ final class PrivateChatProvider extends ChangeNotifier {
     try {
       if (_pendingUploads.containsKey(id) &&
           (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
-        await _performMediaUpload(id);
+        await _performMediaUpload(id, generation: generation);
         return;
       }
       final result = await _repository.sendMessage(
-        chatId: _chatId ?? '',
+        chatId: chatId,
         messageId: message.id,
         type: message.type,
         text: message.text,
@@ -594,7 +681,7 @@ final class PrivateChatProvider extends ChangeNotifier {
         mediaId: message.mediaId,
         replyToMessageId: message.replyToMessageId,
       );
-      _finishSend(id, result);
+      _finishSend(id, result, chatId: chatId, generation: generation);
     } finally {
       _autoRetryInFlight.remove(id);
     }
@@ -633,11 +720,16 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> _markDelivered(List<ChatMessage> incoming) async {
-    if (!_pageActive) return;
-    final chatId = _chatId;
+  Future<void> _markDeliveredForSession(
+    List<ChatMessage> incoming, {
+    required String? chatId,
+    required int generation,
+  }) async {
+    if (!_pageActive || chatId == null || !_isCurrent(chatId, generation)) {
+      return;
+    }
     final uid = _currentUserId;
-    if (chatId == null || uid == null) return;
+    if (uid == null) return;
     _pendingDeliveredIds.addAll(
       incoming
           .where(
@@ -649,13 +741,19 @@ final class PrivateChatProvider extends ChangeNotifier {
           .map((message) => message.id)
           .toList(),
     );
-    _drainReceipts();
+    _drainReceipts(chatId: chatId, generation: generation);
   }
 
-  void _drainReceipts() {
-    if (!_pageActive || _receiptInFlight) return;
-    final chatId = _chatId;
-    if (chatId == null) return;
+  void _drainReceipts({String? chatId, int? generation}) {
+    final activeChatId = chatId ?? _chatId;
+    final activeGeneration = generation ?? _sessionGeneration;
+    if (!_pageActive ||
+        _receiptInFlight ||
+        activeChatId == null ||
+        !_isCurrent(activeChatId, activeGeneration)) {
+      return;
+    }
+    final receiptChatId = activeChatId;
     final readIds = _pendingReadIds
         .where((id) => !_readMessageIds.contains(id))
         .take(50)
@@ -669,7 +767,13 @@ final class PrivateChatProvider extends ChangeNotifier {
     unawaited(() async {
       final read = readIds.isEmpty
           ? const Success<void>(null)
-          : await _repository.markAsRead(chatId: chatId, messageIds: readIds);
+          : await _repository.markAsRead(
+              chatId: receiptChatId,
+              messageIds: readIds,
+            );
+      if (!_isCurrent(receiptChatId, activeGeneration)) {
+        return;
+      }
       if (read.isSuccess) {
         _readMessageIds.addAll(readIds);
         _deliveredMessageIds.addAll(readIds);
@@ -681,12 +785,15 @@ final class PrivateChatProvider extends ChangeNotifier {
       final delivered = deliveredIds.isEmpty
           ? const Success<void>(null)
           : await _repository.markAsDelivered(
-              chatId: chatId,
+              chatId: receiptChatId,
               messageIds: deliveredIds,
             );
       if (delivered.isSuccess) {
         _deliveredMessageIds.addAll(deliveredIds);
         _pendingDeliveredIds.removeAll(deliveredIds);
+      }
+      if (!_isCurrent(receiptChatId, activeGeneration)) {
+        return;
       }
       if (!read.isSuccess || !delivered.isSuccess) {
         _failure = (!read.isSuccess
@@ -696,7 +803,10 @@ final class PrivateChatProvider extends ChangeNotifier {
           _receiptRetryTimer?.cancel();
           _receiptRetryTimer = Timer(
             chatSendBackoffDelay(_receiptRetryAttempt),
-            _drainReceipts,
+            () => _drainReceipts(
+              chatId: receiptChatId,
+              generation: activeGeneration,
+            ),
           );
         }
         _safeNotify();
@@ -704,7 +814,12 @@ final class PrivateChatProvider extends ChangeNotifier {
         _receiptRetryAttempt = 0;
       }
       _receiptInFlight = false;
-      if (_pageActive) _drainReceipts();
+      if (_isCurrent(receiptChatId, activeGeneration)) {
+        _drainReceipts(
+          chatId: receiptChatId,
+          generation: activeGeneration,
+        );
+      }
     }());
   }
 
@@ -718,6 +833,12 @@ final class PrivateChatProvider extends ChangeNotifier {
     unawaited(_subscription?.cancel());
     super.dispose();
   }
+
+  bool _isCurrent(String chatId, int generation) =>
+      !_disposed &&
+      _pageActive &&
+      _chatId == chatId &&
+      _sessionGeneration == generation;
 }
 
 final class _PendingMediaUpload {
@@ -729,6 +850,7 @@ final class _PendingMediaUpload {
     required this.senderId,
     required this.senderName,
     required this.senderAvatar,
+    required this.generation,
   });
 
   final String chatId;
@@ -738,4 +860,5 @@ final class _PendingMediaUpload {
   final String senderId;
   final String senderName;
   final String senderAvatar;
+  final int generation;
 }

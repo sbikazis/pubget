@@ -6,7 +6,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
-import '../../../../app/app_router.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/widgets/pubget_bottom_sheet.dart';
 import '../../../games/models/game_type_registry.dart';
@@ -22,6 +21,7 @@ Future<void> showPremiumAttachmentSheet(
   required String groupId,
   required VoidCallback onCamera,
   required VoidCallback onGallery,
+  VoidCallback? onVideo,
   required VoidCallback onGames,
   required VoidCallback onCreateEvent,
 }) {
@@ -35,6 +35,7 @@ Future<void> showPremiumAttachmentSheet(
         groupId: groupId,
         onCamera: onCamera,
         onGallery: onGallery,
+        onVideo: onVideo,
         onGames: onGames,
         onCreateEvent: onCreateEvent,
       );
@@ -51,6 +52,7 @@ class WaAttachmentSheet {
     required String groupId,
     required VoidCallback onCamera,
     required VoidCallback onGallery,
+    VoidCallback? onVideo,
     required VoidCallback onGames,
     required VoidCallback onCreateEvent,
   }) {
@@ -59,6 +61,7 @@ class WaAttachmentSheet {
       groupId: groupId,
       onCamera: onCamera,
       onGallery: onGallery,
+      onVideo: onVideo,
       onGames: onGames,
       onCreateEvent: onCreateEvent,
     );
@@ -70,6 +73,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
     required this.groupId,
     required this.onCamera,
     required this.onGallery,
+    this.onVideo,
     required this.onGames,
     required this.onCreateEvent,
   });
@@ -77,6 +81,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
   final String groupId;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
+  final VoidCallback? onVideo;
   final VoidCallback onGames;
   final VoidCallback onCreateEvent;
 
@@ -173,6 +178,19 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (onVideo != null) ...[
+                      const SizedBox(height: 24),
+                      _PremiumAttachAction(
+                        delayMs: 200,
+                        label: 'فيديو',
+                        icon: PhosphorIconsDuotone.videoCamera,
+                        gradient: const LinearGradient(
+                          colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        ),
+                        glow: const Color(0xFF6366F1),
+                        onTap: onVideo!,
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: <Widget>[

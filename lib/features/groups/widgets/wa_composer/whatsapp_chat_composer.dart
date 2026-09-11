@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/gestures.dart';
@@ -199,6 +198,10 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
         Navigator.of(context).pop();
         unawaited(_openGalleryFlow());
       },
+      onVideo: () {
+        Navigator.of(context).pop();
+        unawaited(_openVideoFlow());
+      },
       onGames: () {
         // Sheet opens nested games sheet itself.
       },
@@ -257,6 +260,27 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           );
         }
       }
+    } finally {
+      _mediaFlowBusy = false;
+    }
+  }
+
+  Future<void> _openVideoFlow() async {
+    if (_mediaFlowBusy) return;
+    _mediaFlowBusy = true;
+    try {
+      final file = await ImagePicker().pickVideo(source: ImageSource.gallery);
+      if (file == null || !mounted) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      await _previewAndSend(
+        WaCapturedMedia(
+          bytes: bytes,
+          fileName: file.name,
+          contentType: 'video/${file.name.split('.').last.toLowerCase()}',
+          isVideo: true,
+        ),
+      );
     } finally {
       _mediaFlowBusy = false;
     }

@@ -6,8 +6,6 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../../core/media/image_crop_aspect.dart';
-import '../../../core/media/image_pick_and_crop.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';

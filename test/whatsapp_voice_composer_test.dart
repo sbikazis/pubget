@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/features/groups/services/voice_capture.dart';
@@ -73,10 +71,6 @@ WhatsAppChatComposer _composer({
     }) async {},
     onSendVoice: (clip) async => sent.add(clip),
   );
-}
-
-Future<void> _pressMic(WidgetTester tester) async {
-  // unused helper removed
 }
 
 void main() {

@@ -47,6 +47,7 @@ final class ChatProvider extends ChangeNotifier {
   bool _disposed = false;
   bool _readInFlight = false;
   ChatMessage? _replyTarget;
+  int _sessionGeneration = 0;
 
   /// Bumps only when the message list / chrome that GroupChatPage cares about
   /// changes — never on byte-upload progress ticks.
@@ -97,7 +98,11 @@ final class ChatProvider extends ChangeNotifier {
     required String currentUserId,
   }) async {
     if (_groupId == groupId && _currentUserId == currentUserId) return;
-    await leaveGroup();
+    final generation = ++_sessionGeneration;
+    final oldSubscription = _subscription;
+    _subscription = null;
+    unawaited(oldSubscription?.cancel());
+    _cancelAllAutoRetries();
     _groupId = groupId;
     _currentUserId = currentUserId;
     _messages.clear();
@@ -105,6 +110,8 @@ final class ChatProvider extends ChangeNotifier {
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
     _hasMore = true;
+    _loadingMore = false;
+    _readInFlight = false;
     _failure = null;
     _state = LoadingState.loading;
     _contentRevision++;
@@ -112,8 +119,9 @@ final class ChatProvider extends ChangeNotifier {
     _subscription = _repository
         .watchMessages(groupId)
         .listen(
-          _receive,
+          (result) => _receiveForSession(result, groupId, generation),
           onError: (Object error) {
+            if (!_isSession(groupId, generation)) return;
             _failure = NetworkError(error.toString());
             _state = _messages.isEmpty
                 ? LoadingState.offline
@@ -121,13 +129,16 @@ final class ChatProvider extends ChangeNotifier {
             _safeNotify();
           },
         );
-    await _restoreOutbox(groupId);
+    await _restoreOutbox(groupId, generation);
   }
 
   /// Detach the live session while durable uploads/outbox entries continue.
   Future<void> leaveGroup() async {
-    await _subscription?.cancel();
+    final generation = ++_sessionGeneration;
+    final subscription = _subscription;
     _subscription = null;
+    await subscription?.cancel();
+    if (generation != _sessionGeneration) return;
     _cancelAllAutoRetries();
     _groupId = null;
     _currentUserId = null;
@@ -136,6 +147,7 @@ final class ChatProvider extends ChangeNotifier {
 
   Future<void> loadMore() async {
     final groupId = _groupId;
+    final generation = _sessionGeneration;
     if (groupId == null ||
         !_hasMore ||
         _loadingMore ||
@@ -150,7 +162,7 @@ final class ChatProvider extends ChangeNotifier {
       groupId: groupId,
       before: _messages.first,
     );
-    if (_disposed) return;
+    if (_disposed || !_isSession(groupId, generation)) return;
     result.fold(
       onSuccess: (older) {
         _merge(older);
@@ -179,6 +191,7 @@ final class ChatProvider extends ChangeNotifier {
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    final generation = _sessionGeneration;
     final replyId = replyToMessageId ?? _replyTarget?.id;
     final replyPreview = _previewFor(_replyTarget);
     final pending = ChatMessage.optimistic(
@@ -194,8 +207,8 @@ final class ChatProvider extends ChangeNotifier {
     );
     // Drop reply chrome in the same notify as the optimistic bubble.
     _replyTarget = null;
-    _upsert(pending);
-    unawaited(_persistPending(pending));
+    if (_isSession(groupId, generation)) _upsert(pending);
+    unawaited(_persistPending(pending, groupId: groupId));
     final result = await _repository.sendMessage(
       groupId: groupId,
       messageId: pending.id,
@@ -203,7 +216,7 @@ final class ChatProvider extends ChangeNotifier {
       text: trimmed,
       replyToMessageId: replyId,
     );
-    _finishSend(pending.id, result);
+    _finishSendForGroup(pending.id, result, groupId, generation);
   }
 
   Future<void> sendSticker({
@@ -215,6 +228,7 @@ final class ChatProvider extends ChangeNotifier {
     required String stickerKey,
     String? replyToMessageId,
   }) async {
+    final generation = _sessionGeneration;
     final replyId = replyToMessageId ?? _replyTarget?.id;
     final replyPreview = _previewFor(_replyTarget);
     final pending = ChatMessage.optimistic(
@@ -232,8 +246,8 @@ final class ChatProvider extends ChangeNotifier {
       replyPreview: replyPreview,
     );
     _replyTarget = null;
-    _upsert(pending);
-    unawaited(_persistPending(pending));
+    if (_isSession(groupId, generation)) _upsert(pending);
+    unawaited(_persistPending(pending, groupId: groupId));
     final result = await _repository.sendMessage(
       groupId: groupId,
       messageId: pending.id,
@@ -243,7 +257,7 @@ final class ChatProvider extends ChangeNotifier {
       stickerCreatorName: 'Pubget',
       replyToMessageId: replyId,
     );
-    _finishSend(pending.id, result);
+    _finishSendForGroup(pending.id, result, groupId, generation);
   }
 
   Future<void> sendCustomSticker({
@@ -258,6 +272,7 @@ final class ChatProvider extends ChangeNotifier {
     required String stickerCreatorId,
     required String stickerCreatorName,
   }) async {
+    final generation = _sessionGeneration;
     final mediaId = _newId();
     final pending = ChatMessage.optimistic(
       id: mediaId,
@@ -282,14 +297,18 @@ final class ChatProvider extends ChangeNotifier {
       senderName: senderName,
       senderAvatar: senderAvatar,
       senderRole: senderRole,
+      replyToMessageId: _replyTarget?.id,
+      replyPreview: _previewFor(_replyTarget),
       forceType: ChatMessageType.sticker,
       stickerCreatorId: stickerCreatorId,
       stickerCreatorName: stickerCreatorName,
     );
-    _beginLocalMediaPreview(mediaId, bytes);
-    _upsert(pending);
+    if (_isSession(groupId, generation)) {
+      _beginLocalMediaPreview(mediaId, bytes);
+      _upsert(pending);
+    }
     unawaited(_persistPending(pending, groupId: groupId));
-    await _performMediaUpload(mediaId);
+    await _performMediaUpload(mediaId, generation: generation);
   }
 
   Future<void> sendMedia({
@@ -302,6 +321,7 @@ final class ChatProvider extends ChangeNotifier {
     required String fileName,
     required String contentType,
   }) async {
+    final generation = _sessionGeneration;
     final mediaId = _newId();
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final pending = ChatMessage.optimistic(
@@ -325,11 +345,15 @@ final class ChatProvider extends ChangeNotifier {
       senderName: senderName,
       senderAvatar: senderAvatar,
       senderRole: senderRole,
+      replyToMessageId: _replyTarget?.id,
+      replyPreview: _previewFor(_replyTarget),
     );
-    _beginLocalMediaPreview(mediaId, bytes);
-    _upsert(pending);
+    if (_isSession(groupId, generation)) {
+      _beginLocalMediaPreview(mediaId, bytes);
+      _upsert(pending);
+    }
     unawaited(_persistPending(pending, groupId: groupId));
-    await _performMediaUpload(mediaId);
+    await _performMediaUpload(mediaId, generation: generation);
   }
 
   void _beginLocalMediaPreview(String mediaId, Uint8List bytes) {
@@ -372,9 +396,13 @@ final class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _performMediaUpload(String mediaId) async {
+  Future<void> _performMediaUpload(
+    String mediaId, {
+    required int generation,
+  }) async {
     final payload = _pendingUploads[mediaId];
     if (payload == null) return;
+    if (!_isSession(payload.groupId, generation)) return;
     _setUploadProgress(mediaId, 0);
     final upload = await _repository.uploadMedia(
       groupId: payload.groupId,
@@ -382,8 +410,16 @@ final class ChatProvider extends ChangeNotifier {
       bytes: payload.bytes,
       fileName: payload.fileName,
       contentType: payload.contentType,
-      onProgress: (progress) => _setUploadProgress(mediaId, progress),
-      onBytesUploaded: () => _setUploadProcessing(mediaId),
+      onProgress: (progress) {
+        if (_isSession(payload.groupId, generation)) {
+          _setUploadProgress(mediaId, progress);
+        }
+      },
+      onBytesUploaded: () {
+        if (_isSession(payload.groupId, generation)) {
+          _setUploadProcessing(mediaId);
+        }
+      },
     );
     if (_disposed) return;
     upload.fold(
@@ -402,12 +438,12 @@ final class ChatProvider extends ChangeNotifier {
           mediaId: media.mediaId,
           stickerCreatorId: payload.stickerCreatorId,
           stickerCreatorName: payload.stickerCreatorName,
-          replyToMessageId: _replyTarget?.id,
-          replyPreview: _previewFor(_replyTarget),
+          replyToMessageId: payload.replyToMessageId,
+          replyPreview: payload.replyPreview,
         );
         // Drop progress overlay; keep local bytes as AppImageLoader placeholder
         // until the remote frame paints (avoids empty-bubble flicker).
-        final isActiveGroup = _groupId == payload.groupId;
+        final isActiveGroup = _isSession(payload.groupId, generation);
         _clearUploadUi(mediaId, clearPreview: false);
         if (isActiveGroup) _upsert(pending);
         unawaited(_persistPending(pending, groupId: payload.groupId));
@@ -423,13 +459,13 @@ final class ChatProvider extends ChangeNotifier {
           stickerCreatorName: payload.stickerCreatorName,
         );
         if (result.isSuccess) clearReplyTarget();
-        _finishSendForGroup(mediaId, result, payload.groupId);
+        _finishSendForGroup(mediaId, result, payload.groupId, generation);
         if (result.isSuccess) _pendingUploads.remove(mediaId);
       },
       onFailure: (failure) {
         // Keep local preview so failed/retry bubbles stay visible.
         _clearUploadUi(mediaId, clearPreview: false);
-        final index = _groupId == payload.groupId
+        final index = _isSession(payload.groupId, generation)
             ? _messages.indexWhere((item) => item.id == mediaId)
             : -1;
         if (index != -1) {
@@ -446,7 +482,7 @@ final class ChatProvider extends ChangeNotifier {
             );
           }
         }
-        if (_groupId == payload.groupId) {
+        if (_isSession(payload.groupId, generation)) {
           _failure = failure;
           _contentRevision++;
           _safeNotify();
@@ -461,6 +497,9 @@ final class ChatProvider extends ChangeNotifier {
         message.sendState != ChatSendState.pending) {
       return;
     }
+    final groupId = _groupId;
+    final generation = _sessionGeneration;
+    if (groupId == null) return;
     _autoRetryAttempt[message.id] = 0;
     if (_pendingUploads.containsKey(message.id) &&
         (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
@@ -474,7 +513,7 @@ final class ChatProvider extends ChangeNotifier {
           clearFailureMessage: true,
         ),
       );
-      await _performMediaUpload(message.id);
+      await _performMediaUpload(message.id, generation: generation);
       return;
     }
     _upsert(
@@ -483,7 +522,7 @@ final class ChatProvider extends ChangeNotifier {
         clearFailureMessage: true,
       ),
     );
-    unawaited(_persistPending(message));
+    unawaited(_persistPending(message, groupId: groupId));
     final result = await _repository.sendMessage(
       groupId: _groupId ?? '',
       messageId: message.id,
@@ -497,7 +536,7 @@ final class ChatProvider extends ChangeNotifier {
       stickerCreatorId: message.stickerCreatorId,
       stickerCreatorName: message.stickerCreatorName,
     );
-    _finishSend(message.id, result);
+    _finishSendForGroup(message.id, result, groupId, generation);
   }
 
   Future<Result<ChatMessage>> forwardMessage({
@@ -606,6 +645,7 @@ final class ChatProvider extends ChangeNotifier {
   Future<void> markAsRead(List<ChatMessage> visibleMessages) async {
     final groupId = _groupId;
     final uid = _currentUserId;
+    final generation = _sessionGeneration;
     if (groupId == null || uid == null || _readInFlight) return;
     final ids = visibleMessages
         .where(
@@ -623,6 +663,7 @@ final class ChatProvider extends ChangeNotifier {
       groupId: groupId,
       messageIds: ids,
     );
+    if (!_isSession(groupId, generation)) return;
     _readInFlight = false;
     if (result.isSuccess) {
       _readMessageIds.addAll(ids);
@@ -644,8 +685,12 @@ final class ChatProvider extends ChangeNotifier {
     );
   }
 
-  void _receive(Result<List<ChatMessage>> result) {
-    if (_disposed) return;
+  void _receiveForSession(
+    Result<List<ChatMessage>> result,
+    String groupId,
+    int generation,
+  ) {
+    if (_disposed || !_isSession(groupId, generation)) return;
     result.fold(
       onSuccess: (incoming) {
         _merge(incoming);
@@ -755,17 +800,14 @@ final class ChatProvider extends ChangeNotifier {
     }
   }
 
-  void _finishSend(String id, Result<ChatMessage> result) {
-    _finishSendForGroup(id, result, _groupId);
-  }
-
   void _finishSendForGroup(
     String id,
     Result<ChatMessage> result,
     String? targetGroupId,
+    int generation,
   ) {
     if (_disposed) return;
-    if (targetGroupId == null || targetGroupId != _groupId) {
+    if (targetGroupId == null || !_isSession(targetGroupId, generation)) {
       if (result.isSuccess && targetGroupId != null) {
         unawaited(_outbox.remove(targetGroupId, id));
       }
@@ -823,10 +865,10 @@ final class ChatProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> _restoreOutbox(String groupId) async {
+  Future<void> _restoreOutbox(String groupId, int generation) async {
     try {
       final pending = await _outbox.load(groupId);
-      if (_disposed || _groupId != groupId) return;
+      if (_disposed || !_isSession(groupId, generation)) return;
       for (final message in pending) {
         if (_messageIndex.containsKey(message.id)) continue;
         _upsert(message.copyWith(sendState: ChatSendState.pending));
@@ -857,8 +899,7 @@ final class ChatProvider extends ChangeNotifier {
         continue;
       }
       if (forceImmediate) {
-        _autoRetryAttempt[message.id] = 0;
-        _cancelAutoRetry(message.id);
+        _autoRetryTimers.remove(message.id)?.cancel();
         unawaited(_autoRetrySend(message.id));
       } else if (!_autoRetryTimers.containsKey(message.id) &&
           !_autoRetryInFlight.contains(message.id)) {
@@ -871,6 +912,18 @@ final class ChatProvider extends ChangeNotifier {
     if (_disposed) return;
     _autoRetryTimers.remove(id)?.cancel();
     final attempt = _autoRetryAttempt[id] ?? 0;
+    if (attempt >= kChatSendMaxAggressiveRetries) {
+      final index = _messageIndex[id];
+      if (index != null &&
+          _messages[index].sendState == ChatSendState.pending) {
+        _messages[index] = _messages[index].copyWith(
+          sendState: ChatSendState.failed,
+          failureMessage: ChatFailureCodes.network,
+        );
+        _safeNotify();
+      }
+      return;
+    }
     final delay = chatSendBackoffDelay(attempt);
     _autoRetryAttempt[id] = attempt + 1;
     _autoRetryTimers[id] = Timer(delay, () {
@@ -884,6 +937,19 @@ final class ChatProvider extends ChangeNotifier {
     final index = _messageIndex[id];
     if (index == null) return;
     final message = _messages[index];
+    final groupId = _groupId;
+    final generation = _sessionGeneration;
+    if (groupId == null) return;
+    if ((_autoRetryAttempt[id] ?? 0) >= kChatSendMaxAggressiveRetries) {
+      if (message.sendState == ChatSendState.pending) {
+        _messages[index] = message.copyWith(
+          sendState: ChatSendState.failed,
+          failureMessage: ChatFailureCodes.network,
+        );
+        _safeNotify();
+      }
+      return;
+    }
     if (message.sendState != ChatSendState.pending || message.isDeleted) {
       return;
     }
@@ -898,11 +964,11 @@ final class ChatProvider extends ChangeNotifier {
         if (payload != null) {
           _beginLocalMediaPreview(id, payload.bytes);
         }
-        await _performMediaUpload(id);
+        await _performMediaUpload(id, generation: generation);
         return;
       }
       final result = await _repository.sendMessage(
-        groupId: _groupId ?? '',
+        groupId: groupId,
         messageId: message.id,
         type: message.type,
         text: message.text,
@@ -914,7 +980,7 @@ final class ChatProvider extends ChangeNotifier {
         stickerCreatorId: message.stickerCreatorId,
         stickerCreatorName: message.stickerCreatorName,
       );
-      _finishSend(id, result);
+      _finishSendForGroup(id, result, groupId, generation);
     } finally {
       _autoRetryInFlight.remove(id);
     }
@@ -934,6 +1000,9 @@ final class ChatProvider extends ChangeNotifier {
     _autoRetryAttempt.clear();
     _autoRetryInFlight.clear();
   }
+
+  bool _isSession(String groupId, int generation) =>
+      !_disposed && _sessionGeneration == generation && _groupId == groupId;
 
   void _removeOrMarkDeleted(String messageId) {
     final index = _messageIndex[messageId];
@@ -967,6 +1036,7 @@ final class ChatProvider extends ChangeNotifier {
   Future<void> _markDelivered(List<ChatMessage> incoming) async {
     final groupId = _groupId;
     final uid = _currentUserId;
+    final generation = _sessionGeneration;
     if (groupId == null || uid == null) return;
     final ids = incoming
         .where(
@@ -983,7 +1053,9 @@ final class ChatProvider extends ChangeNotifier {
       groupId: groupId,
       messageIds: ids,
     );
-    if (result.isSuccess) _deliveredMessageIds.addAll(ids);
+    if (_isSession(groupId, generation) && result.isSuccess) {
+      _deliveredMessageIds.addAll(ids);
+    }
   }
 
   @override
@@ -1011,6 +1083,8 @@ final class _PendingMediaUpload {
     required this.senderName,
     required this.senderAvatar,
     required this.senderRole,
+    this.replyToMessageId,
+    this.replyPreview,
     this.forceType,
     this.stickerCreatorId,
     this.stickerCreatorName,
@@ -1024,6 +1098,8 @@ final class _PendingMediaUpload {
   final String senderName;
   final String senderAvatar;
   final String senderRole;
+  final String? replyToMessageId;
+  final String? replyPreview;
   final ChatMessageType? forceType;
   final String? stickerCreatorId;
   final String? stickerCreatorName;
