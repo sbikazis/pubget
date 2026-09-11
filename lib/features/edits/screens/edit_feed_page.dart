@@ -30,6 +30,7 @@ import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
 import '../widgets/edit_action_button.dart';
 import '../widgets/edit_comments_sheet.dart';
+import '../../reels/reels_brand.dart';
 
 class EditFeedPage extends StatefulWidget {
   const EditFeedPage({super.key});
@@ -100,7 +101,7 @@ class _EditFeedPageState extends State<EditFeedPage>
     if (delegate is! AppRouterDelegate) return;
     final config = delegate.currentConfiguration;
     if (config is! ParameterizedRoute) return;
-    if (config.path != '/edits') return;
+    if (config.path != ReelsBrand.route && config.path != '/edits') return;
     final highlight = config.parameters['highlight'];
     if (highlight == null || highlight.isEmpty) return;
     if (_pendingHighlight == highlight) return;
@@ -866,7 +867,7 @@ class _EditActionRail extends StatelessWidget {
   Future<void> _share(BuildContext context, EditsProvider provider) async {
     // Open the share sheet immediately (optimistic UX); signal in parallel.
     unawaited(provider.share(edit.id));
-    final url = PubgetLinks.canonical('/edits');
+    final url = PubgetLinks.canonical(ReelsBrand.route);
     final text = edit.caption.isEmpty
         ? url
         : '${edit.caption}\n$url';
