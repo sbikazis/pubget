@@ -27,6 +27,7 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
   String _category = 'Reactions';
   List<String> _recent = const <String>[];
   Set<String> _favorites = const <String>{};
+  var _selecting = false;
 
   @override
   void initState() {
@@ -115,12 +116,20 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                           children: [
                             InkWell(
                               key: Key('sticker-${sticker.key}'),
-                              onTap: () async {
-                                await _store.remember(sticker.key);
-                                if (context.mounted) {
-                                  Navigator.pop(context, sticker.key);
-                                }
-                              },
+                              onTap: _selecting
+                                  ? null
+                                  : () async {
+                                      if (_selecting) return;
+                                      setState(() => _selecting = true);
+                                      try {
+                                        await _store.remember(sticker.key);
+                                        if (context.mounted) {
+                                          Navigator.pop(context, sticker.key);
+                                        }
+                                      } finally {
+                                        _selecting = false;
+                                      }
+                                    },
                               onLongPress: () async {
                                 await _store.toggleFavorite(sticker.key);
                                 await _load();

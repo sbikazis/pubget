@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/core/network/network_service.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
@@ -42,6 +43,115 @@ void main() {
 
       expect(provider.messages.single.sendState, ChatSendState.sent);
       expect(provider.messages.single.isOptimistic, isFalse);
+    },
+  );
+
+  test(
+    'send completion from group A cannot mutate newly opened group B',
+    () async {
+      final repository = _FakeChatRepository();
+      final provider = ChatProvider(repository: repository);
+      addTearDown(provider.dispose);
+      await provider.open(groupId: 'group-a', currentUserId: 'alice');
+
+      final send = provider.sendText(
+        groupId: 'group-a',
+        senderId: 'alice',
+        senderName: 'Alice',
+        senderAvatar: '',
+        senderRole: 'member',
+        text: 'old session',
+      );
+      final oldMessageId = provider.messages.single.id;
+      await provider.open(groupId: 'group-b', currentUserId: 'alice');
+
+      repository.completeNext(Success(_serverMessage(oldMessageId)));
+      await send;
+      await pumpEventQueue();
+
+      expect(provider.groupId, 'group-b');
+      expect(provider.messages, isEmpty);
+    },
+  );
+
+  test('stale leave completion cannot detach a newly opened group', () async {
+    final repository = _FakeChatRepository(
+      cancelDelay: const Duration(milliseconds: 20),
+    );
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'group-a', currentUserId: 'alice');
+
+    final leaving = provider.leaveGroup();
+    await provider.open(groupId: 'group-b', currentUserId: 'alice');
+    await leaving;
+
+    expect(provider.groupId, 'group-b');
+  });
+
+  test(
+    'aggressive retries are capped while manual retry remains possible',
+    () async {
+      final repository = _FakeChatRepository();
+      final network = _TestNetworkService();
+      final provider = ChatProvider(repository: repository, network: network);
+      addTearDown(provider.dispose);
+      addTearDown(network.dispose);
+      await provider.open(groupId: 'g1', currentUserId: 'alice');
+
+      final send = provider.sendText(
+        groupId: 'g1',
+        senderId: 'alice',
+        senderName: 'Alice',
+        senderAvatar: '',
+        senderRole: 'member',
+        text: 'retry me',
+      );
+      repository.completeNext(
+        const FailureResult(NetworkError(ChatFailureCodes.network)),
+      );
+      await send;
+
+      for (
+        var attempt = 0;
+        attempt < kChatSendMaxAggressiveRetries;
+        attempt++
+      ) {
+        network.pulse();
+        for (
+          var tick = 0;
+          tick < 20 &&
+              repository.pendingCompleters.every(
+                (completer) => completer.isCompleted,
+              );
+          tick++
+        ) {
+          await pumpEventQueue();
+        }
+        if (repository.pendingCompleters.every(
+          (completer) => completer.isCompleted,
+        )) {
+          break;
+        }
+        repository.completeNext(
+          const FailureResult(NetworkError(ChatFailureCodes.network)),
+        );
+        await pumpEventQueue();
+      }
+
+      expect(repository.sendCalls, kChatSendMaxAggressiveRetries);
+      expect(provider.messages.single.sendState, ChatSendState.failed);
+
+      final manual = provider.retry(provider.messages.single);
+      expect(
+        repository.pendingCompleters.where((c) => !c.isCompleted),
+        isNotEmpty,
+      );
+      repository.completeNext(
+        Success(_serverMessage(provider.messages.single.id)),
+      );
+      await manual;
+      expect(provider.messages.single.sendState, ChatSendState.sent);
     },
   );
 
@@ -123,9 +233,7 @@ void main() {
       final pendingId = provider.messages.single.id;
 
       // Listener confirms write before callable returns.
-      repository.stream.add(
-        Success(<ChatMessage>[_serverMessage(pendingId)]),
-      );
+      repository.stream.add(Success(<ChatMessage>[_serverMessage(pendingId)]));
       await pumpEventQueue();
       expect(provider.messages.single.sendState, ChatSendState.sent);
 
@@ -472,7 +580,14 @@ ChatMessage _serverMessageAt(String id, DateTime createdAt) {
 }
 
 final class _FakeChatRepository implements ChatRepository {
-  final stream = StreamController<Result<List<ChatMessage>>>.broadcast();
+  _FakeChatRepository({this.cancelDelay = Duration.zero}) {
+    stream = StreamController<Result<List<ChatMessage>>>.broadcast(
+      onCancel: () => Future<void>.delayed(cancelDelay),
+    );
+  }
+
+  final Duration cancelDelay;
+  late final StreamController<Result<List<ChatMessage>>> stream;
   final pendingCompleters = <Completer<Result<ChatMessage>>>[];
   var sendCalls = 0;
 
@@ -620,4 +735,13 @@ final class _ProgressiveUploadRepository extends _FakeChatRepository {
     onProgress(0);
     return completer.future;
   }
+}
+
+final class _TestNetworkService extends NetworkService {
+  _TestNetworkService() : super(probe: () async => true);
+
+  @override
+  bool get isOnline => true;
+
+  void pulse() => notifyListeners();
 }

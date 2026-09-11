@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/features/groups/services/voice_capture.dart';
 import 'package:pubget/features/groups/widgets/wa_composer/whatsapp_chat_composer.dart';
+import 'package:pubget/features/groups/widgets/wa_composer/wa_emoji_panel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -32,13 +35,14 @@ void main() {
                   required contentType,
                 }) async {},
             onSendSticker: (_) async {},
-            onSendCustomSticker: ({
-              required bytes,
-              required fileName,
-              required contentType,
-              required stickerCreatorId,
-              required stickerCreatorName,
-            }) async {},
+            onSendCustomSticker:
+                ({
+                  required bytes,
+                  required fileName,
+                  required contentType,
+                  required stickerCreatorId,
+                  required stickerCreatorName,
+                }) async {},
             currentUserId: 'u1',
             currentUserName: 'Alice',
             onSendVoice: (_) async {},
@@ -59,12 +63,14 @@ void main() {
     expect(find.byIcon(Icons.send_rounded), findsOneWidget);
   });
 
-  testWidgets('emoji button opens empty stickers panel without GIF tab', (
+  testWidgets('emoji button opens catalog stickers without GIF tab', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final controller = TextEditingController();
     final focus = FocusNode();
+    final sends = <String>[];
+    final release = Completer<void>();
     addTearDown(controller.dispose);
     addTearDown(focus.dispose);
 
@@ -83,14 +89,18 @@ void main() {
                   required fileName,
                   required contentType,
                 }) async {},
-            onSendSticker: (_) async {},
-            onSendCustomSticker: ({
-              required bytes,
-              required fileName,
-              required contentType,
-              required stickerCreatorId,
-              required stickerCreatorName,
-            }) async {},
+            onSendSticker: (key) async {
+              sends.add(key);
+              await release.future;
+            },
+            onSendCustomSticker:
+                ({
+                  required bytes,
+                  required fileName,
+                  required contentType,
+                  required stickerCreatorId,
+                  required stickerCreatorName,
+                }) async {},
             currentUserId: 'u1',
             currentUserName: 'Alice',
             onSendVoice: (_) async {},
@@ -100,11 +110,25 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('stickers-empty-message')), findsOneWidget);
+    expect(
+      find.byKey(const Key('catalog-sticker-reactions/heart')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('composer-create-sticker')), findsOneWidget);
     expect(find.text('GIF'), findsNothing);
     expect(find.byKey(const Key('composer-gif')), findsNothing);
     expect(find.byIcon(Icons.keyboard_outlined), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('catalog-sticker-reactions/heart')));
+    await tester.tap(find.byKey(const Key('catalog-sticker-reactions/heart')));
+    expect(sends, <String>['reactions/heart']);
+    release.complete();
+    await tester.pumpAndSettle();
+    expect(sends, <String>['reactions/heart']);
+    expect(find.byType(WaEmojiPanel), findsOneWidget);
+    await tester.tap(find.byKey(const Key('composer-emoji')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WaEmojiPanel), findsNothing);
   });
 
   testWidgets('composer TextField supports multiline auto-grow props', (
@@ -132,13 +156,14 @@ void main() {
                   required contentType,
                 }) async {},
             onSendSticker: (_) async {},
-            onSendCustomSticker: ({
-              required bytes,
-              required fileName,
-              required contentType,
-              required stickerCreatorId,
-              required stickerCreatorName,
-            }) async {},
+            onSendCustomSticker:
+                ({
+                  required bytes,
+                  required fileName,
+                  required contentType,
+                  required stickerCreatorId,
+                  required stickerCreatorName,
+                }) async {},
             currentUserId: 'u1',
             currentUserName: 'Alice',
             onSendVoice: (_) async {},

@@ -70,6 +70,8 @@ void main() {
                       bubbleRect: const Rect.fromLTWH(40, 280, 180, 70),
                       canEdit: false,
                       canCopy: true,
+                      canDelete: true,
+                      canPin: true,
                       isStarred: false,
                     );
                   },

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/features/groups/models/group_authority.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_members_provider.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -161,6 +162,34 @@ final class _FakeMembersRepository implements GroupMembersRepository {
     _bans = _bans.where((ban) => ban.uid != uid).toList(growable: false);
     return const Success<void>(null);
   }
+
+  @override
+  Future<Result<void>> warnMember({
+    required String groupId,
+    required String uid,
+    required String type,
+    required String details,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<RankAuditEvent>>> getRankAudit(
+    String groupId, {
+    String? targetUid,
+    int limit = 40,
+  }) async => const Success<List<RankAuditEvent>>([]);
+
+  @override
+  Future<Result<List<MemberWarningRecord>>> getWarnings(
+    String groupId, {
+    required String targetUid,
+    int limit = 40,
+  }) async => const Success<List<MemberWarningRecord>>([]);
+
+  @override
+  Future<Result<List<GroupMember>>> lookupInviteCandidates({
+    required String query,
+    int limit = 12,
+  }) async => const Success<List<GroupMember>>([]);
 }
 
 final class _FakeGroupRepository implements GroupRepository {

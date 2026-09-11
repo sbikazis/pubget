@@ -6,7 +6,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 
-import '../../../../app/app_router.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/widgets/pubget_bottom_sheet.dart';
 import '../../../games/models/game_type_registry.dart';
@@ -22,6 +21,7 @@ Future<void> showPremiumAttachmentSheet(
   required String groupId,
   required VoidCallback onCamera,
   required VoidCallback onGallery,
+  VoidCallback? onVideo,
   required VoidCallback onGames,
   required VoidCallback onCreateEvent,
 }) {
@@ -35,6 +35,7 @@ Future<void> showPremiumAttachmentSheet(
         groupId: groupId,
         onCamera: onCamera,
         onGallery: onGallery,
+        onVideo: onVideo,
         onGames: onGames,
         onCreateEvent: onCreateEvent,
       );
@@ -51,6 +52,7 @@ class WaAttachmentSheet {
     required String groupId,
     required VoidCallback onCamera,
     required VoidCallback onGallery,
+    VoidCallback? onVideo,
     required VoidCallback onGames,
     required VoidCallback onCreateEvent,
   }) {
@@ -59,6 +61,7 @@ class WaAttachmentSheet {
       groupId: groupId,
       onCamera: onCamera,
       onGallery: onGallery,
+      onVideo: onVideo,
       onGames: onGames,
       onCreateEvent: onCreateEvent,
     );
@@ -70,6 +73,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
     required this.groupId,
     required this.onCamera,
     required this.onGallery,
+    this.onVideo,
     required this.onGames,
     required this.onCreateEvent,
   });
@@ -77,6 +81,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
   final String groupId;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
+  final VoidCallback? onVideo;
   final VoidCallback onGames;
   final VoidCallback onCreateEvent;
 
@@ -100,9 +105,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                   top: Radius.circular(28),
                 ),
                 border: Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
+                  top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
                 ),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -175,6 +178,19 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (onVideo != null) ...[
+                      const SizedBox(height: 24),
+                      _PremiumAttachAction(
+                        delayMs: 200,
+                        label: 'فيديو',
+                        icon: PhosphorIconsDuotone.videoCamera,
+                        gradient: const LinearGradient(
+                          colors: <Color>[Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        ),
+                        glow: const Color(0xFF6366F1),
+                        onTap: onVideo!,
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: <Widget>[
@@ -193,10 +209,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                             ),
                             glow: const Color(0xFFF59E0B),
                             onTap: () {
-                              AppNavigation.go(
-                                context,
-                                '/events/create?groupId=${Uri.encodeComponent(groupId)}',
-                              );
+                              Navigator.of(context).pop();
                               onCreateEvent();
                             },
                           ),
@@ -226,8 +239,7 @@ class _PremiumAttachmentSheet extends StatelessWidget {
                                     top: Radius.circular(28),
                                   ),
                                 ),
-                                builder: (_) =>
-                                    _WaGamesSheet(groupId: groupId),
+                                builder: (_) => _WaGamesSheet(groupId: groupId),
                               );
                               onGames();
                             },
@@ -281,75 +293,75 @@ class _PremiumAttachActionState extends State<_PremiumAttachAction> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTap: _handleTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          AnimatedScale(
-            scale: _pressed ? 0.92 : 1,
-            duration: const Duration(milliseconds: 120),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: widget.gradient,
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: widget.glow.withValues(
-                      alpha: _pressed ? 0.48 : 0.30,
-                    ),
-                    blurRadius: _pressed ? 22 : 16,
-                    spreadRadius: _pressed ? 1 : 0,
-                    offset: const Offset(0, 8),
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTap: _handleTap,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              AnimatedScale(
+                scale: _pressed ? 0.92 : 1,
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: widget.gradient,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: widget.glow.withValues(
+                          alpha: _pressed ? 0.48 : 0.30,
+                        ),
+                        blurRadius: _pressed ? 22 : 16,
+                        spreadRadius: _pressed ? 1 : 0,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        blurRadius: 10,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    blurRadius: 10,
-                    spreadRadius: -6,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: PhosphorIcon(
-                  widget.icon,
-                  size: 32,
-                  color: Colors.white,
-                  duotoneSecondaryOpacity: 0.35,
-                  duotoneSecondaryColor: Colors.white,
-                  shadows: const <Shadow>[
-                    Shadow(
-                      color: Color(0x66000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
+                  child: Center(
+                    child: PhosphorIcon(
+                      widget.icon,
+                      size: 32,
+                      color: Colors.white,
+                      duotoneSecondaryOpacity: 0.35,
+                      duotoneSecondaryColor: Colors.white,
+                      shadows: const <Shadow>[
+                        Shadow(
+                          color: Color(0x66000000),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 12),
+              Text(
+                widget.label,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.cairo(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: Colors.white.withValues(alpha: 0.85),
+                  height: 1.2,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            widget.label,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.cairo(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              color: Colors.white.withValues(alpha: 0.85),
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
-    )
+        )
         .animate(delay: Duration(milliseconds: widget.delayMs))
         .fadeIn(duration: 420.ms, curve: Curves.easeOutCubic)
         .scale(

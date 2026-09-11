@@ -352,3 +352,25 @@ test("report identity is server-derived and cannot target self", async () => {
   assert.equal(report.reason, "spam");
   assert.equal(report.status, "open");
 });
+
+test("edit enforces the server-side fifteen minute window", async () => {
+  const db = createFakeDb(seedChat());
+  db.store.get("groups/g1/messages/m-text").createdAt =
+    new Date(Date.now() - 14 * 60 * 1000).toISOString();
+  const ok = await chatHandlers(db).editMessage({
+    auth: { uid: "bob" },
+    data: { groupId: "g1", messageId: "m-text", text: "updated" },
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(db.store.get("groups/g1/messages/m-text").text, "updated");
+
+  db.store.get("groups/g1/messages/m-text").createdAt =
+    new Date(Date.now() - 16 * 60 * 1000).toISOString();
+  await assert.rejects(
+    chatHandlers(db).editMessage({
+      auth: { uid: "bob" },
+      data: { groupId: "g1", messageId: "m-text", text: "too late" },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});

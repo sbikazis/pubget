@@ -8,6 +8,8 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/emoji_library.dart';
+import '../../data/sticker_catalog.dart';
+import '../../data/sticker_store.dart';
 import '../../data/user_sticker_store.dart';
 import 'wa_colors.dart';
 import 'whatsapp_chat_composer.dart';
@@ -22,6 +24,8 @@ class WaEmojiPanel extends StatefulWidget {
     required this.tabPrefKey,
     required this.currentUserId,
     required this.currentUserName,
+    required this.onSendSticker,
+    this.stickerStore,
     this.userStickerStore,
     super.key,
   });
@@ -39,6 +43,8 @@ class WaEmojiPanel extends StatefulWidget {
   final String tabPrefKey;
   final String currentUserId;
   final String currentUserName;
+  final Future<void> Function(String stickerKey) onSendSticker;
+  final StickerStore? stickerStore;
   final UserStickerStore? userStickerStore;
 
   @override
@@ -52,13 +58,16 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   final _search = TextEditingController();
   var _emojiCategoryIndex = 0;
   late final UserStickerStore _store;
+  late final StickerStore _stickerStore;
   List<UserStickerEntry> _stickers = const <UserStickerEntry>[];
   var _loadingStickers = true;
+  var _sendingSticker = false;
 
   @override
   void initState() {
     super.initState();
     _store = widget.userStickerStore ?? UserStickerStore();
+    _stickerStore = widget.stickerStore ?? StickerStore();
     unawaited(_bootstrap());
   }
 
@@ -126,7 +135,9 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           (cat) => EmojiCategory(
             id: cat.id,
             labelAr: cat.labelAr,
-            emojis: cat.emojis.where((e) => e.contains(q)).toList(growable: false),
+            emojis: cat.emojis
+                .where((e) => e.contains(q))
+                .toList(growable: false),
           ),
         )
         .where((cat) => cat.emojis.isNotEmpty)
@@ -217,28 +228,34 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   }
 
   Future<void> _sendStickerEntry(UserStickerEntry entry) async {
+    if (_sendingSticker) return;
     final file = File(entry.path);
     if (!file.existsSync()) return;
-    final bytes = await file.readAsBytes();
-    final lower = entry.path.toLowerCase();
-    final contentType = lower.endsWith('.jpg') || lower.endsWith('.jpeg')
-        ? 'image/jpeg'
-        : lower.endsWith('.webp')
-        ? 'image/webp'
-        : 'image/png';
-    final creatorId = entry.creatorId.trim().isNotEmpty
-        ? entry.creatorId
-        : widget.currentUserId;
-    final creatorName = entry.creatorName.trim().isNotEmpty
-        ? entry.creatorName
-        : widget.currentUserName;
-    await widget.onSendCustomSticker(
-      bytes: bytes,
-      fileName: entry.path.split(Platform.pathSeparator).last,
-      contentType: contentType,
-      stickerCreatorId: creatorId,
-      stickerCreatorName: creatorName,
-    );
+    setState(() => _sendingSticker = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final lower = entry.path.toLowerCase();
+      final contentType = lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+          ? 'image/jpeg'
+          : lower.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/png';
+      final creatorId = entry.creatorId.trim().isNotEmpty
+          ? entry.creatorId
+          : widget.currentUserId;
+      final creatorName = entry.creatorName.trim().isNotEmpty
+          ? entry.creatorName
+          : widget.currentUserName;
+      await widget.onSendCustomSticker(
+        bytes: bytes,
+        fileName: entry.path.split(Platform.pathSeparator).last,
+        contentType: contentType,
+        stickerCreatorId: creatorId,
+        stickerCreatorName: creatorName,
+      );
+    } finally {
+      if (mounted) setState(() => _sendingSticker = false);
+    }
   }
 
   @override
@@ -270,7 +287,6 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
             ),
             Expanded(child: _body()),
             if (_tab == WaPanelTab.emoji) _emojiCategoriesBar(),
-            if (_tab == WaPanelTab.stickers) _stickerPacksBar(),
           ],
         ),
       ),
@@ -407,7 +423,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
       );
     }
     final items = _filteredStickers;
-    if (items.isEmpty) {
+    if (items.isEmpty && stickerCatalog.isEmpty) {
       return _emptyStickers();
     }
     return GridView.builder(
@@ -418,25 +434,45 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         crossAxisSpacing: 8,
         childAspectRatio: 1,
       ),
-      itemCount: items.length + 1,
+      itemCount: items.length + stickerCatalog.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) return _createStickerCell();
-        final entry = items[index - 1];
-        return InkWell(
-          key: Key('user-sticker-$index'),
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => _sendStickerEntry(entry),
-          child: ClipRRect(
+        if (index <= items.length) {
+          final entry = items[index - 1];
+          return InkWell(
+            key: Key('user-sticker-$index'),
             borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(entry.path),
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const ColoredBox(
-                color: WaColors.darkPill,
-                child: Icon(Icons.broken_image, color: WaColors.iconMuted),
+            onTap: _sendingSticker ? null : () => _sendStickerEntry(entry),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(entry.path),
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const ColoredBox(
+                  color: WaColors.darkPill,
+                  child: Icon(Icons.broken_image, color: WaColors.iconMuted),
+                ),
               ),
             ),
-          ),
+          );
+        }
+        final sticker = stickerCatalog[index - items.length - 1];
+        return InkWell(
+          key: Key('catalog-sticker-${sticker.key}'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: _sendingSticker
+              ? null
+              : () async {
+                  if (_sendingSticker) return;
+                  setState(() => _sendingSticker = true);
+                  try {
+                    await _stickerStore.remember(sticker.key);
+                    await widget.onSendSticker(sticker.key);
+                  } finally {
+                    if (mounted) setState(() => _sendingSticker = false);
+                  }
+                },
+          child: StickerMark(stickerKey: sticker.key),
         );
       },
     );
@@ -465,11 +501,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
             style: TextStyle(color: WaColors.iconMuted, fontSize: 13),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: 112,
-            height: 112,
-            child: _createStickerCell(),
-          ),
+          SizedBox(width: 112, height: 112, child: _createStickerCell()),
         ],
       ),
     );
@@ -574,78 +606,6 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           );
         },
       ),
-    );
-  }
-
-  Widget _stickerPacksBar() {
-    return SizedBox(
-      height: 72,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        children: <Widget>[
-          _packChip(
-            selected: true,
-            child: const Icon(Icons.sticky_note_2, color: Colors.white),
-            badge: Icons.star,
-            badgeColor: WaColors.cursorGreen,
-            onTap: () {},
-          ),
-          const SizedBox(width: 8),
-          _packChip(
-            selected: false,
-            child: const Icon(
-              Icons.add,
-              color: WaColors.iconMuted,
-            ),
-            badge: Icons.add,
-            badgeColor: WaColors.iconMuted,
-            onTap: _createSticker,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _packChip({
-    required bool selected,
-    required Widget child,
-    required IconData badge,
-    required Color badgeColor,
-    required VoidCallback onTap,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 56,
-            height: 56,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? WaColors.segmentActive : WaColors.darkPill,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: child,
-          ),
-        ),
-        Positioned(
-          right: -2,
-          top: -2,
-          child: Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: WaColors.darkPanel,
-              shape: BoxShape.circle,
-              border: Border.all(color: WaColors.darkPanel),
-            ),
-            child: Icon(badge, size: 12, color: badgeColor),
-          ),
-        ),
-      ],
     );
   }
 }
