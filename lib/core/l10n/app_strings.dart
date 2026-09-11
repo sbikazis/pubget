@@ -218,7 +218,7 @@ final class AppStrings {
   String get tabGroups => pick('Groups', 'المجموعات');
   String get tabJoined => pick('Joined', 'المنضم إليها');
   String get tabPrivate => pick('Private', 'الخاص');
-  String get tabEdits => pick('Edits', 'المقاطع');
+  String get tabEdits => pick('Reels', 'ريلز');
 
   String get drawerProfile => pick('My Profile', 'ملفي');
   String get drawerPrivate => pick('Private Chats', 'المحادثات الخاصة');
@@ -281,7 +281,7 @@ final class AppStrings {
     'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
   );
   String get nowJoinGroup => pick('Join a group', 'انضم لمجموعة');
-  String get nowWatchEdits => pick('Watch Edits', 'شاهد المقاطع');
+  String get nowWatchEdits => pick('Watch Reels', 'شاهد الريلز');
   String get nowPlay => pick('Play', 'العب');
   String get nowEvents => pick('Events', 'الفعاليات');
   String get nowPeople => pick('People', 'أشخاص');
@@ -299,7 +299,7 @@ final class AppStrings {
   String get sectionCommunity =>
       pick('Recent community activity', 'نشاط المجتمع الأخير');
   String get sectionPeople => pick('People to discover', 'أشخاص لاكتشافهم');
-  String get sectionEdits => pick('Trending Edits', 'مقاطع رائجة');
+  String get sectionEdits => pick('Trending Reels', 'ريلز رائجة');
   String get sectionEvents => pick('Events', 'الفعاليات');
   String get sectionGames => pick('Games', 'الألعاب');
   String get sectionFanWorks => pick('Fan Works', 'أعمال المعجبين');

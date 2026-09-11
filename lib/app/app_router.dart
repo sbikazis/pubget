@@ -273,6 +273,7 @@ final class AppRouter {
     '/splash',
     '/login',
     '/onboarding',
+    '/reels',
     ...shellPaths,
   };
 

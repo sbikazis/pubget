@@ -69,20 +69,35 @@ Failure _mapCode(String code, String? message) {
   );
 }
 
-final class FirebaseEditsRepository implements EditsRepository {
+class FirebaseEditsRepository implements EditsRepository {
   FirebaseEditsRepository({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
+    bool reels = false,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _storage = storage ?? FirebaseStorage.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _reels = reels;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+  final bool _reels;
   UploadTask? _activeUpload;
+
+  String get _collection => _reels ? 'reels' : 'edits';
+  String _callable(String editName) {
+    if (!_reels) return editName;
+    return editName
+        .replaceFirst('Edit', 'Reel')
+        .replaceFirst('edit', 'reel');
+  }
+
+  String _returnedId(Map<dynamic, dynamic> data) {
+    return (data['reelId'] ?? data['editId']) as String;
+  }
 
   Map<String, String> _uploadMetadata({String? fileName, int? sizeBytes}) {
     final metadata = <String, String>{};
@@ -103,7 +118,7 @@ final class FirebaseEditsRepository implements EditsRepository {
   }
 
   Future<Edit> _readEdit(String editId, {String? caption, String? animeTag}) async {
-    final snap = await _firestore.collection('edits').doc(editId).get();
+    final snap = await _firestore.collection(_collection).doc(editId).get();
     if (!snap.exists || snap.data() == null) {
       return Edit(
         id: editId,
@@ -155,10 +170,10 @@ final class FirebaseEditsRepository implements EditsRepository {
       final key = idempotencyKey;
       if (key != null) startPayload['idempotencyKey'] = key;
       final start = await _functions
-          .httpsCallable('startEditUpload')
+           .httpsCallable(_callable('startEditUpload'))
           .call(startPayload);
       path = start.data['videoPath'] as String;
-      editId = start.data['editId'] as String;
+       editId = _returnedId(start.data);
     }
     // Always force exact video/mp4 — Storage rules reject codec-suffixed types.
     final task = putEditVideo(
@@ -184,7 +199,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
-    final finalized = await finalizeEditUpload(editId);
+     final finalized = await finalizeEditUpload(editId);
     if (finalized.isSuccess) {
       return finalized.valueOrNull!;
     }
@@ -194,7 +209,7 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<Edit>> finalizeEditUpload(String editId) => _guard(() async {
-    await _functions.httpsCallable('finalizeEditUpload').call({
+     await _functions.httpsCallable(_callable('finalizeEditUpload')).call({
       'editId': editId,
     });
     return _readEdit(editId);
@@ -211,7 +226,7 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Stream<Result<Edit>> watchEdit(String editId) {
-    return _firestore.collection('edits').doc(editId).snapshots().map((snap) {
+    return _firestore.collection(_collection).doc(editId).snapshots().map((snap) {
       if (!snap.exists || snap.data() == null) {
         return const FailureResult<Edit>(NotFoundError('Edit not found.'));
       }
@@ -221,13 +236,13 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<void>> retryProcessing(String editId) =>
-      _call('retryEditProcessing', {'editId': editId});
+      _call(_callable('retryEditProcessing'), {'editId': editId});
 
   @override
   Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) =>
       _guard(() async {
         try {
-          final result = await _functions.httpsCallable('getEditFeed').call({
+          final result = await _functions.httpsCallable(_callable('getEditFeed')).call({
             'limit': limit,
             if (after != null) 'afterId': after.id,
           });
@@ -254,7 +269,7 @@ final class FirebaseEditsRepository implements EditsRepository {
           // Fall through to the published score query.
         }
         var query = _firestore
-            .collection('edits')
+             .collection(_collection)
             .where('status', isEqualTo: 'published')
             .orderBy('score', descending: true)
             .orderBy('createdAt', descending: true)
@@ -276,7 +291,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     int limit = 12,
   }) => _guard(() async {
     final snapshot = await _firestore
-        .collection('edits')
+        .collection(_collection)
         .where('creatorId', isEqualTo: creatorId)
         .where('status', isEqualTo: 'published')
         .orderBy('createdAt', descending: true)
@@ -290,7 +305,7 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {
-    final doc = await _firestore.collection('edits').doc(editId).get();
+    final doc = await _firestore.collection(_collection).doc(editId).get();
     if (!doc.exists || doc.data() == null) {
       throw const NotFoundError('Edit not found.');
     }
@@ -304,19 +319,19 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<Edit>> repostEdit(String editId) => _guard(() async {
-    final result = await _functions.httpsCallable('repostEdit').call({
+    final result = await _functions.httpsCallable(_callable('repostEdit')).call({
       'editId': editId,
     });
-    return (await getEdit(result.data['editId'] as String)).valueOrNull!;
+    return (await getEdit(_returnedId(result.data))).valueOrNull!;
   });
 
   @override
   Future<Result<void>> deleteEdit(String editId) =>
-      _call('deleteEdit', {'editId': editId});
+      _call(_callable('deleteEdit'), {'editId': editId});
 
   @override
   Future<Result<void>> likeEdit({required String editId, required bool like}) =>
-      _call('likeEdit', {'editId': editId, 'like': like});
+      _call(_callable('likeEdit'), {'editId': editId, 'like': like});
 
   @override
   Future<Result<void>> addComment({
@@ -325,7 +340,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     String? replyToCommentId,
     String kind = 'text',
     List<String> mentions = const <String>[],
-  }) => _call('addEditComment', {
+  }) => _call(_callable('addEditComment'), {
     'editId': editId,
     'text': text,
     'kind': kind,
@@ -341,7 +356,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     required double watchPercent,
     required double watchSeconds,
     String eventType = 'progress',
-  }) => _call('recordEditView', {
+  }) => _call(_callable('recordEditView'), {
     'editId': editId,
     'sessionId': sessionId,
     'watchPercent': watchPercent,
@@ -353,7 +368,7 @@ final class FirebaseEditsRepository implements EditsRepository {
   Future<Result<void>> recordImpression({
     required String editId,
     required String sessionId,
-  }) => _call('recordEditView', {
+  }) => _call(_callable('recordEditView'), {
     'editId': editId,
     'sessionId': sessionId,
     'eventType': 'impression',
@@ -363,7 +378,7 @@ final class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<String>> startPlayback(String editId) => _guard(() async {
-    final result = await _functions.httpsCallable('startEditPlayback').call({
+    final result = await _functions.httpsCallable(_callable('startEditPlayback')).call({
       'editId': editId,
     });
     return result.data['sessionId'] as String;
@@ -377,7 +392,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     EditCommentSort sort = EditCommentSort.newest,
   }) => _guard(() async {
     Query<Map<String, dynamic>> query = _firestore
-        .collection('edits')
+        .collection(_collection)
         .doc(editId)
         .collection('comments')
         .orderBy(
@@ -406,7 +421,7 @@ final class FirebaseEditsRepository implements EditsRepository {
     required String editId,
     required String commentId,
     required String action,
-  }) => _call('editCommentAction', {
+  }) => _call(_callable('editCommentAction'), {
     'editId': editId,
     'commentId': commentId,
     'action': action,
@@ -416,5 +431,5 @@ final class FirebaseEditsRepository implements EditsRepository {
   Future<Result<void>> recordSignal({
     required String editId,
     required String type,
-  }) => _call('recordEditSignal', {'editId': editId, 'type': type});
+  }) => _call(_callable('recordEditSignal'), {'editId': editId, 'type': type});
 }
