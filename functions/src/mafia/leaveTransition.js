@@ -1,4 +1,8 @@
-const ACTIVE_STATUSES = new Set(["night", "day", "discussion", "voting"]);
+const ACTIVE_STATUSES = new Set([
+  "NIGHT", "DAY", "DISCUSSION", "VOTING", "VOTE_RESULT", "RESOLUTION",
+  "ROLE_REVEAL",
+  "night", "day", "discussion", "voting",
+]);
 const MAX_GAME_ID_LENGTH = 128;
 
 function validGameId(value) {
@@ -8,7 +12,7 @@ function validGameId(value) {
 
 function leaveTransition(status, player, playersCount, minPlayers) {
   if (!player || player.hasLeft === true) return { kind: "already-left" };
-  if (status === "starting") {
+  if (status === "STARTING" || status === "starting") {
     const nextCount = Math.max(0, Number.isInteger(playersCount) ? playersCount - 1 : 0);
     return {
       kind: nextCount < minPlayers ? "cancelled" : "starting-left",

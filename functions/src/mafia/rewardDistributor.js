@@ -39,10 +39,8 @@ function achievementsService() {
 }
 
 /**
- * يوزّع الجائزة على كل الأعضاء الأحياء وغير الأحياء من الفريق
- * الفائز (كل من كان جزءاً من الفريق الفائز عند نهاية المباراة يُكافأ،
- * وليس فقط من نجا حتى النهاية — هذا يطابق روح "اللعب الجماعي" في
- * لعبة المافيا التقليدية).
+ * Winners receive 10 coins and other participants receive 2 coins.
+ * The shared economy ledger makes retries idempotent for this game.
  */
 async function distributeRewards(gameId, gameRef, winner, playersSnap) {
   const alreadyDistributedSnap = await gameRef.get();
@@ -55,6 +53,7 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
   );
 
   const winningUserIds = new Set();
+  const losingUserIds = new Set();
   playersSnap.docs.forEach((doc, index) => {
     const player = doc.data();
     if (player.hasLeft === true) return;
@@ -63,16 +62,23 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
       ? privateSnaps[index].data().team
       : "citizens";
 
-    if (team === winner) {
-      const userId = player.userId || doc.id;
-      if (typeof userId === "string" && userId.length > 0) winningUserIds.add(userId);
-    }
+    const userId = player.userId || doc.id;
+    if (typeof userId !== "string" || userId.length === 0) return;
+    if (team === winner) winningUserIds.add(userId);
+    else losingUserIds.add(userId);
   });
 
   await economyService().grantDomainRewards([...winningUserIds], {
     type: "earn_game",
     referenceId: gameId,
     source: "mafia",
+    metadata: { amountOverride: 10, result: "winner" },
+  });
+  await economyService().grantDomainRewards([...losingUserIds], {
+    type: "earn_game",
+    referenceId: `${gameId}:loss`,
+    source: "mafia",
+    metadata: { amountOverride: 2, result: "loser" },
   });
   await achievementsService().evaluate({
     type: "game_won",
