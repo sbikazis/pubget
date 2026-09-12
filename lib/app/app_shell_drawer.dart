@@ -13,24 +13,51 @@ import '../features/notifications/providers/unread_engine.dart';
 import '../features/notifications/widgets/unread_badge.dart';
 import 'app_router.dart';
 
-typedef AppShellDrawerItem = ({String id, String label, IconData icon, String path});
+typedef AppShellDrawerItem = ({
+  String id,
+  String label,
+  IconData icon,
+  String path,
+});
 
 /// Spec §9 minimum Drawer entries. Every path already exists in the app.
 abstract final class AppShellDrawerDestinations {
   static const items = <AppShellDrawerItem>[
-    (id: 'profile', label: 'My Profile', icon: Icons.person_outline, path: '/profile'),
+    (
+      id: 'profile',
+      label: 'My Profile',
+      icon: Icons.person_outline,
+      path: '/profile',
+    ),
     (
       id: 'private',
       label: 'Private Chats',
       icon: Icons.forum_outlined,
       path: '/private',
     ),
-    (id: 'groups', label: 'My Groups', icon: Icons.groups_outlined, path: '/groups'),
+    (
+      id: 'groups',
+      label: 'My Groups',
+      icon: Icons.groups_outlined,
+      path: '/groups',
+    ),
     (
       id: 'joined',
       label: 'Joined Groups',
       icon: Icons.group_outlined,
       path: '/joined',
+    ),
+    (
+      id: 'events',
+      label: 'Events',
+      icon: Icons.event_outlined,
+      path: '/events',
+    ),
+    (
+      id: 'games',
+      label: 'Games',
+      icon: Icons.sports_esports_outlined,
+      path: '/games',
     ),
     (
       id: 'suggested',
@@ -56,8 +83,18 @@ abstract final class AppShellDrawerDestinations {
       icon: Icons.people_outline,
       path: '/anime/characters',
     ),
-    (id: 'store', label: 'Dragon Store', icon: Icons.storefront_outlined, path: '/store'),
-    (id: 'premium', label: 'Premium', icon: Icons.workspace_premium_outlined, path: '/premium'),
+    (
+      id: 'store',
+      label: 'Dragon Store',
+      icon: Icons.storefront_outlined,
+      path: '/store',
+    ),
+    (
+      id: 'premium',
+      label: 'Premium',
+      icon: Icons.workspace_premium_outlined,
+      path: '/premium',
+    ),
     (
       id: 'achievements',
       label: 'Achievements',
@@ -70,7 +107,12 @@ abstract final class AppShellDrawerDestinations {
       icon: Icons.settings_outlined,
       path: '/settings',
     ),
-    (id: 'guide', label: 'Guide', icon: Icons.menu_book_outlined, path: '/guide'),
+    (
+      id: 'guide',
+      label: 'Guide',
+      icon: Icons.menu_book_outlined,
+      path: '/guide',
+    ),
   ];
 }
 
@@ -102,7 +144,8 @@ class AppShellDrawer extends StatelessWidget {
     }
     final profile = onboarding?.profile;
     final economy = maybeEconomy(context);
-    final name = profile?.displayName ??
+    final name =
+        profile?.displayName ??
         profile?.username ??
         auth?.currentUser?.displayName ??
         auth?.currentUser?.email;

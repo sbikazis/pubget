@@ -79,6 +79,7 @@ class _HomePageState extends State<HomePage> {
                 kind: HomeSectionKind.promotedGroups,
                 finish: HomeGroupFinish.gold,
               ),
+              const SliverToBoxAdapter(child: HomeProductHub()),
               const SliverToBoxAdapter(child: _EditsSection()),
               _peopleSliver(),
               if (economy != null)
@@ -121,6 +122,115 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+class HomeProductHub extends StatelessWidget {
+  const HomeProductHub({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        0,
+      ),
+      child: Column(
+        key: const Key('home-product-hub'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Pubget areas', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: <Widget>[
+              _ProductHubCard(
+                icon: Icons.forum_outlined,
+                label: 'Chat',
+                route: '/private',
+              ),
+              _ProductHubCard(
+                icon: Icons.event_outlined,
+                label: 'Events',
+                route: '/events',
+              ),
+              _ProductHubCard(
+                icon: Icons.sports_esports_outlined,
+                label: 'Games',
+                route: '/games',
+              ),
+              _ProductHubCard(
+                icon: Icons.local_fire_department_outlined,
+                label: 'Mafia',
+                route: '/games',
+              ),
+              _ProductHubCard(
+                icon: Icons.movie_filter_outlined,
+                label: 'Reels',
+                route: '/reels',
+              ),
+              _ProductHubCard(
+                icon: Icons.groups_outlined,
+                label: 'Groups',
+                route: '/groups',
+              ),
+              _ProductHubCard(
+                icon: Icons.person_outline,
+                label: 'Profile',
+                route: '/profile',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductHubCard extends StatelessWidget {
+  const _ProductHubCard({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
+
+  final IconData icon;
+  final String label;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 112,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => AppNavigation.go(context, route),
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.md,
+            ),
+            child: Column(
+              children: <Widget>[
+                Icon(icon, color: AppColors.gold),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   const HomeTopBar({
     required this.name,
@@ -147,9 +257,8 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   bool get _showCoins => coins != null;
 
   @override
-  Size get preferredSize => Size.fromHeight(
-    barHeight + (_showCoins ? coinStripHeight : 0),
-  );
+  Size get preferredSize =>
+      Size.fromHeight(barHeight + (_showCoins ? coinStripHeight : 0));
 
   @override
   Widget build(BuildContext context) {
@@ -234,10 +343,7 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       bottom: _showCoins
           ? PreferredSize(
               preferredSize: const Size.fromHeight(coinStripHeight),
-              child: _HomeCoinStrip(
-                balance: coins!,
-                tooltip: copy.store,
-              ),
+              child: _HomeCoinStrip(balance: coins!, tooltip: copy.store),
             )
           : null,
     );
@@ -399,10 +505,7 @@ class _EditsSection extends StatelessWidget {
         onRetry: () => edits.load(refresh: true, limit: 8),
       );
     } else {
-      child = PubgetEmptyState(
-        compact: true,
-        title: copy.nothingHereYet,
-      );
+      child = PubgetEmptyState(compact: true, title: copy.nothingHereYet);
     }
     return _SectionFrame(
       key: const Key('home-edits'),
@@ -413,23 +516,28 @@ class _EditsSection extends StatelessWidget {
 
   List<Edit> _editsForHome(HomeProvider home, EditsProvider edits) {
     if (edits.items.isNotEmpty) return edits.items.take(8).toList();
-    return home.feed.section('recommendedEdits').items.map((item) {
-      final meta = item.metadata;
-      return Edit(
-        id: item.targetId.isEmpty ? item.id : item.targetId,
-        creatorId: meta['creatorId'] as String? ?? '',
-        videoUrl: meta['videoUrl'] as String? ?? '',
-        thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
-        caption: meta['title'] as String? ?? meta['caption'] as String? ?? '',
-        animeTag: meta['animeTag'] as String? ?? '',
-        likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
-        commentsCount: 0,
-        viewsCount: 0,
-        score: item.score,
-        createdAt: item.createdAt,
-        status: 'published',
-      );
-    }).toList(growable: false);
+    return home.feed
+        .section('recommendedEdits')
+        .items
+        .map((item) {
+          final meta = item.metadata;
+          return Edit(
+            id: item.targetId.isEmpty ? item.id : item.targetId,
+            creatorId: meta['creatorId'] as String? ?? '',
+            videoUrl: meta['videoUrl'] as String? ?? '',
+            thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
+            caption:
+                meta['title'] as String? ?? meta['caption'] as String? ?? '',
+            animeTag: meta['animeTag'] as String? ?? '',
+            likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
+            commentsCount: 0,
+            viewsCount: 0,
+            score: item.score,
+            createdAt: item.createdAt,
+            status: 'published',
+          );
+        })
+        .toList(growable: false);
   }
 }
 
@@ -459,10 +567,11 @@ class _EventsSection extends StatelessWidget {
       final end = event.endAt;
       return end != null && now.difference(end) <= const Duration(hours: 24);
     });
-    final picked = HomeEventsSection.pickHome(
-      <PubgetEvent>[...list.active, ...list.upcoming, ...recent],
-      now,
-    );
+    final picked = HomeEventsSection.pickHome(<PubgetEvent>[
+      ...list.active,
+      ...list.upcoming,
+      ...recent,
+    ], now);
     if (picked.isEmpty) {
       return _SectionFrame(
         title: copy.sectionEvents,
@@ -653,10 +762,8 @@ class _SkeletonSection extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       itemCount: 2,
       separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-      itemBuilder: (_, _) => const SizedBox(
-        width: 168,
-        child: PubgetSkeleton.card(height: 200),
-      ),
+      itemBuilder: (_, _) =>
+          const SizedBox(width: 168, child: PubgetSkeleton.card(height: 200)),
     ),
   );
 }

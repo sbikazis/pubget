@@ -27,8 +27,7 @@ final class AppStrings {
 
   String pick(String en, String ar) => _ar ? ar : en;
 
-  String get brandTagline =>
-      pick('Premium Anime Community', 'مجتمع أنمي مميز');
+  String get brandTagline => pick('Premium Anime Community', 'مجتمع أنمي مميز');
   String get preparingExperience =>
       pick('Preparing your experience…', 'نجهّز تجربتك…');
   String get pubgetCouldNotStart =>
@@ -86,7 +85,8 @@ final class AppStrings {
   );
   String get alreadyHaveAccount =>
       pick('Already have an account? Sign in', 'لديك حساب؟ سجّل الدخول');
-  String get returnToSignIn => pick('Return to sign in', 'العودة لتسجيل الدخول');
+  String get returnToSignIn =>
+      pick('Return to sign in', 'العودة لتسجيل الدخول');
   String get reconnectBeforeRegister => pick(
     'Reconnect before creating an account.',
     'أعد الاتصال قبل إنشاء الحساب.',
@@ -94,7 +94,8 @@ final class AppStrings {
   String get registrationFailed =>
       pick('Registration failed', 'فشل إنشاء الحساب');
   String get confirmPassword => pick('Confirm password', 'تأكيد كلمة المرور');
-  String get passwordHint => pick('At least 6 characters.', '6 أحرف على الأقل.');
+  String get passwordHint =>
+      pick('At least 6 characters.', '6 أحرف على الأقل.');
   String get agreeToTerms => pick('I agree to the terms', 'أوافق على الشروط');
   String get readTheTerms => pick('Read the terms', 'اقرأ الشروط');
   String get createAccount => pick('Create account', 'إنشاء حساب');
@@ -119,9 +120,12 @@ final class AppStrings {
   String get backToSignIn => pick('Back to sign in', 'العودة لتسجيل الدخول');
   String get back => pick('Back', 'رجوع');
   String get close => pick('Close', 'إغلاق');
-  String get reconnectToReset =>
-      pick('Reconnect to send a reset link.', 'أعد الاتصال لإرسال رابط إعادة التعيين.');
-  String get sendResetLink => pick('Send reset link', 'إرسال رابط إعادة التعيين');
+  String get reconnectToReset => pick(
+    'Reconnect to send a reset link.',
+    'أعد الاتصال لإرسال رابط إعادة التعيين.',
+  );
+  String get sendResetLink =>
+      pick('Send reset link', 'إرسال رابط إعادة التعيين');
   String get sendPasswordResetEmail =>
       pick('Send password reset email', 'إرسال رسالة إعادة تعيين كلمة المرور');
 
@@ -134,43 +138,44 @@ final class AppStrings {
       pick('Back to registration', 'العودة للتسجيل');
   String get termsIntro => pick(
     'These are draft community terms. Final legal copy and a privacy '
-    'policy will replace this text before public launch.',
+        'policy will replace this text before public launch.',
     'هذه مسودة شروط المجتمع. ستُستبدل بنص قانوني وسياسة خصوصية قبل الإطلاق.',
   );
   String get termsAccountTitle => pick('Your account', 'حسابك');
   String get termsAccountBody => pick(
     'Keep your sign-in details private. You are responsible for '
-    'activity on your Pubget account. If you think someone else '
-    'used it, reset your password and contact support.',
+        'activity on your Pubget account. If you think someone else '
+        'used it, reset your password and contact support.',
     'احتفظ ببيانات الدخول لنفسك. أنت مسؤول عن النشاط على حسابك في Pubget. '
-    'إذا ظننت أن أحداً استخدمه، أعد تعيين كلمة المرور وتواصل مع الدعم.',
+        'إذا ظننت أن أحداً استخدمه، أعد تعيين كلمة المرور وتواصل مع الدعم.',
   );
   String get termsCommunityTitle => pick('The community', 'المجتمع');
   String get termsCommunityBody => pick(
     'Pubget is for respectful anime conversation, groups, and '
-    'events. Do not harass others, share illegal content, or '
-    'impersonate people or brands.',
+        'events. Do not harass others, share illegal content, or '
+        'impersonate people or brands.',
     'Pubget للحوار المحترم حول الأنمي والمجموعات والفعاليات. '
-    'لا تضايق الآخرين، ولا تنشر محتوى غير قانوني، ولا تنتحل شخصيات أو علامات.',
+        'لا تضايق الآخرين، ولا تنشر محتوى غير قانوني، ولا تنتحل شخصيات أو علامات.',
   );
   String get termsContentTitle => pick('Your content', 'محتواك');
   String get termsContentBody => pick(
     'You keep ownership of what you post. By posting, you let '
-    'Pubget display that content inside the product so other '
-    'members can see it according to your privacy settings.',
+        'Pubget display that content inside the product so other '
+        'members can see it according to your privacy settings.',
     'تحتفظ بملكية ما تنشره. بالنشر تسمح لـ Pubget بعرض هذا المحتوى '
-    'داخل التطبيق بحسب إعدادات خصوصيتك.',
+        'داخل التطبيق بحسب إعدادات خصوصيتك.',
   );
   String get termsPrivacyTitle => pick('Privacy', 'الخصوصية');
   String get termsPrivacyBody => pick(
     'We store the profile details you choose to share, plus the '
-    'minimum account data needed to sign you in. A complete '
-    'privacy policy will be published before launch.',
+        'minimum account data needed to sign you in. A complete '
+        'privacy policy will be published before launch.',
     'نحتفظ بتفاصيل الملف التي تختار مشاركتها، بالإضافة للحد الأدنى '
-    'من بيانات الحساب اللازمة لتسجيل الدخول. ستُنشر سياسة خصوصية كاملة قبل الإطلاق.',
+        'من بيانات الحساب اللازمة لتسجيل الدخول. ستُنشر سياسة خصوصية كاملة قبل الإطلاق.',
   );
   String get iAgree => pick('I agree', 'أوافق');
-  String get agreeToTheTerms => pick('Agree to the terms', 'الموافقة على الشروط');
+  String get agreeToTheTerms =>
+      pick('Agree to the terms', 'الموافقة على الشروط');
 
   String get emailInvalid =>
       pick('Enter a valid email.', 'أدخل بريداً إلكترونياً صالحاً.');
@@ -229,6 +234,8 @@ final class AppStrings {
   String get drawerPremium => pick('Premium', 'بريميوم');
   String get drawerSettings => pick('Settings', 'الإعدادات');
   String get drawerGuide => pick('Guide', 'الدليل');
+  String get drawerEvents => pick('Events', 'الفعاليات');
+  String get drawerGames => pick('Games', 'الألعاب');
   String get drawerAnime => pick('Anime List', 'قائمة الأنمي');
   String get drawerAnimeRatings => pick('Ratings', 'التقييمات');
   String get drawerAnimeCharacters =>
@@ -250,6 +257,8 @@ final class AppStrings {
     'achievements' => achievements,
     'settings' => drawerSettings,
     'guide' => drawerGuide,
+    'events' => drawerEvents,
+    'games' => drawerGames,
     'notifications' => notifications,
     _ => id,
   };
@@ -266,16 +275,15 @@ final class AppStrings {
   String get seeAll => pick('See all', 'عرض الكل');
   String get loadMore => pick('Load more', 'تحميل المزيد');
   String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
-  String get communityFallback => pick('A Pubget community', 'مجتمع على Pubget');
+  String get communityFallback =>
+      pick('A Pubget community', 'مجتمع على Pubget');
   String get pubgetUser => pick('Pubget user', 'مستخدم Pubget');
 
   String get homeGreeting => pick('Your anime world', 'عالمك في الأنمي');
   String welcomeUser(String name) =>
       pick('Welcome back, $name', 'مرحباً بعودتك يا $name');
-  String get homeWhatNow => pick(
-    'What should I do right now?',
-    'ماذا أفعل الآن؟',
-  );
+  String get homeWhatNow =>
+      pick('What should I do right now?', 'ماذا أفعل الآن؟');
   String get homeHeroSubtitle => pick(
     'Discover people, groups, edits, and games in one place.',
     'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
@@ -294,8 +302,7 @@ final class AppStrings {
 
   String get sectionPromoted => pick('Promoted groups', 'مجموعات مروّجة');
   String get sectionRising => pick('Rising groups', 'مجموعات صاعدة');
-  String get sectionRecommended =>
-      pick('Recommended groups', 'مجموعات مقترحة');
+  String get sectionRecommended => pick('Recommended groups', 'مجموعات مقترحة');
   String get sectionCommunity =>
       pick('Recent community activity', 'نشاط المجتمع الأخير');
   String get sectionPeople => pick('People to discover', 'أشخاص لاكتشافهم');
@@ -310,8 +317,10 @@ final class AppStrings {
   String get reasonForYou => pick('For you', 'لك');
 
   String get nothingHereYet => pick('Nothing here yet', 'لا شيء هنا بعد');
-  String get findPeopleHint =>
-      pick('Find people through search and Respect.', 'ابحث عن أشخاص عبر البحث والاحترام.');
+  String get findPeopleHint => pick(
+    'Find people through search and Respect.',
+    'ابحث عن أشخاص عبر البحث والاحترام.',
+  );
   String get discoverGroupsHint => pick(
     'Discover groups or start one of your own.',
     'اكتشف مجموعات أو أنشئ مجموعتك.',
@@ -325,18 +334,15 @@ final class AppStrings {
 
   String get groupsTitle => pick('My Groups', 'مجموعاتي');
   String get joinedTitle => pick('Joined', 'المنضم إليها');
-  String get joinedGroupsTab =>
-      pick('Joined groups', 'المجموعات المنضم إليها');
+  String get joinedGroupsTab => pick('Joined groups', 'المجموعات المنضم إليها');
   String get createdGroupsTab =>
       pick('Groups I created', 'المجموعات التي أنشأتها');
-  String get noCreatedGroups =>
-      pick('No created groups', 'لا مجموعات أنشأتها');
-  String get noCreatedMessage => pick(
-    'Create a group from the + button.',
-    'أنشئ مجموعة من زر +.',
-  );
+  String get noCreatedGroups => pick('No created groups', 'لا مجموعات أنشأتها');
+  String get noCreatedMessage =>
+      pick('Create a group from the + button.', 'أنشئ مجموعة من زر +.');
   String get shareInApp => pick('Share in the app', 'مشاركة داخل التطبيق');
-  String get shareOutside => pick('Share outside the app', 'مشاركة خارج التطبيق');
+  String get shareOutside =>
+      pick('Share outside the app', 'مشاركة خارج التطبيق');
   String get skip => pick('Skip', 'تخطي');
   String get selectAnime => pick('Choose anime', 'تحديد الأنمي');
   String get selectCharacter => pick('Choose your character', 'تحديد شخصيتك');
@@ -346,8 +352,10 @@ final class AppStrings {
   );
   String get invitedByOptional =>
       pick('Invited by (optional username)', 'مدعو من طرف (اختياري)');
-  String get acceptGroupRules =>
-      pick('I accept the group rules and terms', 'أوافق على شروط وأحكام المجموعة');
+  String get acceptGroupRules => pick(
+    'I accept the group rules and terms',
+    'أوافق على شروط وأحكام المجموعة',
+  );
   String get characterReason =>
       pick('Why this character?', 'سبب اختيارك لهذه الشخصية');
   String get useDefaultCharacterImage => pick(
@@ -356,12 +364,9 @@ final class AppStrings {
   );
   String get useCustomCharacterImage =>
       pick('Set another image', 'تعيين صورة أخرى');
-  String get requestPending =>
-      pick('Request pending', 'الطلب معلّق');
-  String get bannedFromGroup => pick(
-    'You cannot join this group',
-    'لا يمكنك الانضمام إلى هذه المجموعة',
-  );
+  String get requestPending => pick('Request pending', 'الطلب معلّق');
+  String get bannedFromGroup =>
+      pick('You cannot join this group', 'لا يمكنك الانضمام إلى هذه المجموعة');
   String get groupCapacityReached =>
       pick('This group is at capacity', 'المجموعة مكتملة العدد');
   String get joinPolicyClosed => pick(
@@ -370,8 +375,7 @@ final class AppStrings {
   );
   String get joinPolicyOpenEveryone =>
       pick('Open to everyone', 'مفتوحة للجميع');
-  String get groupCreatedTitle =>
-      pick('Group created', 'تم إنشاء المجموعة');
+  String get groupCreatedTitle => pick('Group created', 'تم إنشاء المجموعة');
   String get controlPanelTitle =>
       pick('Group control panel', 'لوحة تحكم المجموعة');
   String get growthOverview => pick('Growth', 'النمو');
@@ -382,7 +386,8 @@ final class AppStrings {
     'Try a different spelling or adjust the filters.',
     'جرّب صياغة أخرى أو عدّل عوامل التصفية.',
   );
-  String get noCharacterResults => pick('No characters found', 'لا توجد شخصيات');
+  String get noCharacterResults =>
+      pick('No characters found', 'لا توجد شخصيات');
   String get noCharacterResultsHint => pick(
     'Try another name or clear the filters.',
     'جرّب اسماً آخر أو امسح عوامل التصفية.',
@@ -395,15 +400,19 @@ final class AppStrings {
     'Discover a community or create the first group on Pubget.',
     'اكتشف مجتمعاً أو أنشئ أول مجموعة على Pubget.',
   );
-  String get groupsFailed => pick('Groups could not load.', 'تعذّر تحميل المجموعات.');
-  String get noJoinedGroups => pick('No joined groups', 'لا مجموعات منضم إليها');
+  String get groupsFailed =>
+      pick('Groups could not load.', 'تعذّر تحميل المجموعات.');
+  String get noJoinedGroups =>
+      pick('No joined groups', 'لا مجموعات منضم إليها');
   String get noJoinedMessage => pick(
     'Join a community from Groups or Discover.',
     'انضم لمجتمع من المجموعات أو الاستكشاف.',
   );
   String get findGroups => pick('Find groups', 'ابحث عن مجموعات');
-  String get joinedFailed =>
-      pick('Joined groups could not load.', 'تعذّر تحميل المجموعات المنضم إليها.');
+  String get joinedFailed => pick(
+    'Joined groups could not load.',
+    'تعذّر تحميل المجموعات المنضم إليها.',
+  );
 
   String groupTypeLabel(String type) => switch (type) {
     'public' => pick('Public', 'عامة'),
@@ -412,8 +421,7 @@ final class AppStrings {
     _ => type,
   };
 
-  String membersCount(int count) =>
-      pick('$count members', '$count أعضاء');
+  String membersCount(int count) => pick('$count members', '$count أعضاء');
 
   String membersCapacity(int count, int max) =>
       pick('$count/$max members', '$count/$max أعضاء');
@@ -426,7 +434,8 @@ final class AppStrings {
   String get uploadClip => pick('Upload a clip', 'رفع مقطع');
   String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
   String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
-  String get pickHostGroup => pick('Choose a host group', 'اختر المجموعة المضيفة');
+  String get pickHostGroup =>
+      pick('Choose a host group', 'اختر المجموعة المضيفة');
   String get joinGroupToCreateEvent => pick(
     'Join a group to create an event.',
     'انضم إلى مجموعة لإنشاء فعالية.',
@@ -450,8 +459,10 @@ final class AppStrings {
       pick('See the actual result', 'شاهد النتيجة الفعلية');
   String get startQuiz => pick('Start quiz', 'ابدأ الاختبار');
   String get seeYourScore => pick('See your score', 'شاهد نتيجتك');
-  String quizMeta(int questions, int minutes) =>
-      pick('$questions questions · $minutes min', '$questions أسئلة · $minutes دقائق');
+  String quizMeta(int questions, int minutes) => pick(
+    '$questions questions · $minutes min',
+    '$questions أسئلة · $minutes دقائق',
+  );
   String yourScore(int score, int total) =>
       pick('Your score: $score/$total', 'نتيجتك: $score/$total');
   String get shareOpinion => pick('Share your take', 'شارك برأيك');
@@ -481,8 +492,10 @@ final class AppStrings {
   String pagesCount(int count) => pick('$count pages', '$count صفحة');
   String readMinutes(int minutes) =>
       pick('$minutes min read', 'قراءة $minutes دقائق');
-  String worldDepth(int characters, int locations) =>
-      pick('$characters characters · $locations places', '$characters شخصية · $locations مواقع');
+  String worldDepth(int characters, int locations) => pick(
+    '$characters characters · $locations places',
+    '$characters شخصية · $locations مواقع',
+  );
 
   String get myProfile => pick('My profile', 'ملفي');
   String get profile => pick('Profile', 'الملف');
@@ -506,8 +519,10 @@ final class AppStrings {
 
   String get groupDetails => pick('Group details', 'تفاصيل المجموعة');
   String get shareGroup => pick('Share group', 'مشاركة المجموعة');
-  String get groupUnavailable => pick('Group unavailable', 'المجموعة غير متاحة');
-  String get groupFailed => pick('Group could not load.', 'تعذّر تحميل المجموعة.');
+  String get groupUnavailable =>
+      pick('Group unavailable', 'المجموعة غير متاحة');
+  String get groupFailed =>
+      pick('Group could not load.', 'تعذّر تحميل المجموعة.');
   String get rules => pick('Rules', 'القوانين');
   String get openChat => pick('Open chat', 'فتح الدردشة');
   String get groupEvents => pick('Group events', 'فعاليات المجموعة');
@@ -527,23 +542,20 @@ final class AppStrings {
     'Try again when a place becomes available.',
     'حاول لاحقاً عندما تتوفر مكان.',
   );
-  String get invitationRequired =>
-      pick('Invitation required', 'الدعوة مطلوبة');
+  String get invitationRequired => pick('Invitation required', 'الدعوة مطلوبة');
   String get invitationRequiredMessage => pick(
     'Use a valid group invitation to join.',
     'استخدم دعوة صالحة للانضمام.',
   );
   String get disbandGroup => pick('Disband group', 'تفكيك المجموعة');
-  String disbandTitle(String name) =>
-      pick('Disband $name?', 'تفكيك $name؟');
+  String disbandTitle(String name) => pick('Disband $name?', 'تفكيك $name؟');
   String get disbandMessage => pick(
     'This removes the group and cannot be undone.',
     'سيُحذف المجتمع ولا يمكن التراجع.',
   );
   String get continueLabel => pick('Continue', 'متابعة');
   String get cancel => pick('Cancel', 'إلغاء');
-  String get finalConfirmation =>
-      pick('Final confirmation', 'تأكيد أخير');
+  String get finalConfirmation => pick('Final confirmation', 'تأكيد أخير');
   String get disbandFinalMessage => pick(
     'All members will be notified. Disband this group now?',
     'سيُبلَّغ كل الأعضاء. هل تفكك المجموعة الآن؟',
@@ -602,7 +614,8 @@ final class AppStrings {
   String get reportMessage => pick('Report message', 'الإبلاغ عن الرسالة');
   String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
   String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
-  String get messageForwarded => pick('Message forwarded', 'أُعيد توجيه الرسالة');
+  String get messageForwarded =>
+      pick('Message forwarded', 'أُعيد توجيه الرسالة');
   String get forwardFailed => pick('Forward failed.', 'فشل إعادة التوجيه.');
   String get cannotReportOwn => pick(
     'You cannot report your own message.',
@@ -611,8 +624,7 @@ final class AppStrings {
   String get changeRole => pick('Change role', 'تغيير الرتبة');
   String get kick => pick('Kick', 'طرد');
   String get ban => pick('Ban', 'حظر');
-  String get transferOwnership =>
-      pick('Transfer ownership', 'نقل الملكية');
+  String get transferOwnership => pick('Transfer ownership', 'نقل الملكية');
 
   // —— Group chat chrome (Arabic-first messaging UI) ——
   String get messageDeleted =>
@@ -636,10 +648,8 @@ final class AppStrings {
   );
   String get messagesCouldNotLoad =>
       pick('Messages could not load.', 'تعذّر تحميل الرسائل.');
-  String get cachedMessagesUnavailable => pick(
-    'Cached messages are unavailable.',
-    'الرسائل المحفوظة غير متاحة.',
-  );
+  String get cachedMessagesUnavailable =>
+      pick('Cached messages are unavailable.', 'الرسائل المحفوظة غير متاحة.');
   String get offlineCachedBanner => pick(
     'No internet connection — some saved data is available.',
     'لا يوجد اتصال بالإنترنت — بعض البيانات المحفوظة متاحة حاليًا',
@@ -647,14 +657,10 @@ final class AppStrings {
   String get mediaMessage => pick('Media message', 'رسالة وسائط');
   String get messageNotSent =>
       pick('Message was not sent.', 'لم تُرسل الرسالة.');
-  String get messageWaitingConnection => pick(
-    'Waiting for connection…',
-    'بانتظار الاتصال…',
-  );
-  String get messageRetryingAutomatically => pick(
-    'Retrying automatically…',
-    'جارٍ إعادة المحاولة تلقائياً…',
-  );
+  String get messageWaitingConnection =>
+      pick('Waiting for connection…', 'بانتظار الاتصال…');
+  String get messageRetryingAutomatically =>
+      pick('Retrying automatically…', 'جارٍ إعادة المحاولة تلقائياً…');
   String get messageSendPermissionDenied => pick(
     'You do not have permission to send in this chat.',
     'ليست لديك صلاحية الإرسال في هذه المحادثة.',
@@ -663,10 +669,8 @@ final class AppStrings {
     'This chat or message is no longer available.',
     'هذه المحادثة أو الرسالة لم تعد متاحة.',
   );
-  String get messageSendInvalid => pick(
-    'This message could not be sent.',
-    'تعذّر إرسال هذه الرسالة.',
-  );
+  String get messageSendInvalid =>
+      pick('This message could not be sent.', 'تعذّر إرسال هذه الرسالة.');
   String chatSendFailureLabel(String? code) {
     switch (code) {
       case 'chat_network':
@@ -681,6 +685,7 @@ final class AppStrings {
         return messageNotSent;
     }
   }
+
   String get retry => pick('Retry', 'إعادة المحاولة');
   String get deleteFailedMessage =>
       pick('Delete failed message', 'حذف الرسالة الفاشلة');

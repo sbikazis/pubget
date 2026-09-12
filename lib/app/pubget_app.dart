@@ -108,6 +108,7 @@ import '../features/games/repositories/unavailable_games_repository_v2.dart';
 import '../features/games/screens/game_details_screen.dart';
 import '../features/games/screens/games_center_v2_screen.dart';
 import '../features/games/screens/game_create_v2_screen.dart';
+import '../features/games/screens/game_list_screen.dart';
 import '../features/games/screens/game_waiting_v2_screen.dart';
 import '../features/games/screens/game_room_v2_screen.dart';
 import '../features/games/screens/game_history_v2_screen.dart';
@@ -755,7 +756,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         return;
       }
       unawaited(
-                        AppNavigation.go(context, PubgetLinks.reelHighlightPath(editId)),
+        AppNavigation.go(context, PubgetLinks.reelHighlightPath(editId)),
       );
     };
 
@@ -993,7 +994,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           final groupId = parameters['groupId'];
           final userId = context.read<AuthProvider>().currentUser?.id ?? '';
           if (groupId == null || groupId.isEmpty) {
-            return const UnknownLinkPage();
+            return const GameListScreen();
           }
           return GamesCenterV2Screen(groupId: groupId, userId: userId);
         },
