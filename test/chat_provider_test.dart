@@ -523,6 +523,11 @@ void main() {
 
       expect(notifications, greaterThan(1));
       expect(provider.uploadUiListenable(messageId), isNull);
+      expect(
+        provider.localPreviewBytes(messageId),
+        isNotNull,
+        reason: 'keep the local frame until the remote snapshot paints',
+      );
     },
   );
 }

@@ -162,7 +162,9 @@ void main() {
 
       expect(find.text('مرحبا'), findsOneWidget);
       expect(find.text('أحمد'), findsOneWidget);
-      expect(find.text('المؤسس'), findsOneWidget);
+      // The current chat header renders the rank as a visual badge rather
+      // than repeating the rank label as text.
+      expect(find.text('المؤسس'), findsNothing);
 
       final bubbleText = tester.getRect(find.text('مرحبا'));
       expect(bubbleText.width, lessThan(screenW * 0.45));

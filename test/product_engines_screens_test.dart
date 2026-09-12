@@ -494,11 +494,6 @@ final class _FakeMafiaRepository implements MafiaRepository {
         const Success(<Map<String, dynamic>>[]),
       );
 
-  @override
-  Stream<Result<List<Map<String, dynamic>>>> watchMafiaChat(String gameId) =>
-      Stream<Result<List<Map<String, dynamic>>>>.value(
-        const Success(<Map<String, dynamic>>[]),
-      );
 }
 
 final class _LiveGameRepository implements GameRepository {
