@@ -412,6 +412,18 @@ class _WaGamesSheet extends StatelessWidget {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+                GameLinks.openCenter(context, groupId: groupId);
+              },
+              icon: const Icon(Icons.grid_view_rounded),
+              label: const Text('مركز الألعاب'),
+            ),
+          ),
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -440,7 +452,11 @@ class _WaGamesSheet extends StatelessWidget {
                     onPressed: () {
                       Navigator.pop(context);
                       Navigator.pop(context);
-                      GameLinks.openCenter(context, groupId: groupId);
+                      GameLinks.openCreate(
+                        context,
+                        groupId: groupId,
+                        fromChat: true,
+                      );
                     },
                     child: Text('لعب', style: GoogleFonts.cairo()),
                   ),

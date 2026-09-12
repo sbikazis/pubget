@@ -43,20 +43,32 @@ abstract final class GameLinks {
     AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
   }
 
-  static void openCreate(BuildContext context, {String? groupId}) {
-    if (groupId == null || groupId.isEmpty) return;
-    final suffix = '?groupId=${Uri.encodeComponent(groupId)}';
+  static void openCreate(
+    BuildContext context, {
+    String? groupId,
+    bool fromChat = false,
+  }) {
+    final query = <String, String>{
+      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
+      if (fromChat) 'source': 'group_chat',
+    };
+    final suffix = query.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: query).query}';
     AppNavigation.go(context, '/games/create$suffix');
   }
 
-  /// Opens the group-scoped v2 center. Games are intentionally not a global
-  /// destination; callers must always provide the owning group.
-  static void openCenter(BuildContext context, {required String groupId}) {
-    if (groupId.isEmpty) return;
-    AppNavigation.go(
-      context,
-      '/games/center?groupId=${Uri.encodeComponent(groupId)}',
-    );
+  static void openCenter(
+    BuildContext context, {
+    required String groupId,
+  }) {
+    final query = Uri(
+      queryParameters: <String, String>{
+        'groupId': groupId,
+        'source': 'group_chat',
+      },
+    ).query;
+    AppNavigation.go(context, '/games?$query');
   }
 }
 
@@ -86,7 +98,9 @@ class GameCard extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         leading: Icon(spec.icon),
         title: Text(game.title),
-        subtitle: Text('${spec.name} · ${game.participantsCount} players'),
+        subtitle: Text(
+          '${spec.name} · ${game.participantsCount} players',
+        ),
         trailing: GameStatusBadge(status: game.status),
       ),
     );
@@ -269,8 +283,8 @@ class GameHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionGames,
-            // Home has no group scope. Do not expose a global Games entry
-            // point; Games is entered from a group chat instead.
+            actionLabel: GameStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/games'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && games.isEmpty)
@@ -291,7 +305,10 @@ class GameHomeStrip extends StatelessWidget {
                     const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  return SizedBox(width: 220, child: GameCard(game: game));
+                  return SizedBox(
+                    width: 220,
+                    child: GameCard(game: game),
+                  );
                 },
               ),
             ),

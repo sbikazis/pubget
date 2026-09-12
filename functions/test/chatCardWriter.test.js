@@ -42,7 +42,7 @@ function createFakeDb(seed = {}) {
   };
 }
 
-test("activity contract maps created and completed cards only", () => {
+test("activity contract maps lobby, started, and completed cards", () => {
   const created = cardFromActivity({
     domain: "game",
     gameId: "g1",
@@ -66,12 +66,21 @@ test("activity contract maps created and completed cards only", () => {
   assert.equal(finished.extra.gameActivity.kind, "completed");
   assert.match(finished.text, /Town wins/);
 
-  assert.equal(cardFromActivity({
+  const started = cardFromActivity({
     domain: "game",
     gameId: "g1",
     groupId: "group-1",
     eventType: "game_started",
-  }), null);
+    metadata: {
+      title: "Guess",
+      currentPlayers: 2,
+      requiredPlayers: 2,
+      maxPlayers: 2,
+    },
+  });
+  assert.equal(started.extra.gameActivity.kind, "started");
+  assert.equal(started.extra.gameActivity.playerCount, 2);
+  assert.equal(started.extra.gameActivity.requiredPlayers, 2);
 });
 
 test("admin writer posts a system-owned game card clients cannot forge", async () => {
@@ -99,8 +108,9 @@ test("admin writer posts a system-owned game card clients cannot forge", async (
   assert.equal(typeof writeAdminChatCard, "function");
 });
 
-test("generic Games registry excludes dedicated Mafia", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia, undefined);
+test("registries agree: mafia is implemented but not genericCreate", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
+  assert.equal(GAME_TYPE_REGISTRY.mafia.genericCreate, false);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.genericCreate, true);
 });

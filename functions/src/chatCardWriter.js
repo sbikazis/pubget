@@ -8,6 +8,8 @@ const { writeAdminChatCard } = require("./groupChat");
 
 const CREATED_TYPES = new Set(["game_created", "GameCreated"]);
 const COMPLETED_TYPES = new Set(["game_completed", "GameFinished"]);
+const CANCELLED_TYPES = new Set(["game_cancelled", "GameCancelled"]);
+const STARTED_TYPES = new Set(["game_started", "GameStarted"]);
 
 function cardFromActivity(activity) {
   if (!activity || typeof activity.groupId !== "string" || !activity.groupId.trim()) {
@@ -17,7 +19,9 @@ function cardFromActivity(activity) {
   const isMafia = activity.domain === "mafia" || gameType === "mafia";
   const created = CREATED_TYPES.has(activity.eventType);
   const completed = COMPLETED_TYPES.has(activity.eventType);
-  if (!created && !completed) return null;
+  const cancelled = CANCELLED_TYPES.has(activity.eventType);
+  const started = STARTED_TYPES.has(activity.eventType);
+  if (!created && !completed && !cancelled && !started) return null;
   const title = typeof activity.metadata?.title === "string" ? activity.metadata.title : "";
   const typeName = isMafia ? "Mafia" : (title.trim() || "A game");
   const gameId = activity.gameId;
@@ -26,11 +30,29 @@ function cardFromActivity(activity) {
   let kind;
   let text;
   let winnerLabel = null;
+  const metadata = activity.metadata || {};
+  const playerCount = Number.isFinite(Number(metadata.currentPlayers))
+    ? Number(metadata.currentPlayers)
+    : Number.isFinite(Number(metadata.playerCount))
+      ? Number(metadata.playerCount)
+      : null;
+  const requiredPlayers = Number.isFinite(Number(metadata.requiredPlayers))
+    ? Number(metadata.requiredPlayers)
+    : null;
+  const maxPlayers = Number.isFinite(Number(metadata.maxPlayers))
+    ? Number(metadata.maxPlayers)
+    : requiredPlayers;
   if (created) {
     kind = "created";
     text = isMafia
       ? "A Mafia lobby is waiting. Tap to join."
       : `${typeName} is waiting. Tap to join.`;
+  } else if (started) {
+    kind = "started";
+    text = `${typeName} started. Tap to open the game.`;
+  } else if (cancelled) {
+    kind = "cancelled";
+    text = `${typeName} waiting room closed before the game started.`;
   } else {
     kind = "completed";
     const winner = activity.metadata && activity.metadata.winner;
@@ -55,13 +77,21 @@ function cardFromActivity(activity) {
     type: "game",
     text,
     mediaId: gameId.trim(),
-    messageId: `card-game-${gameId.trim()}-${kind}`,
+    // Reuse the waiting card id when a lobby expires/cancels so the
+    // actionable announcement is replaced instead of leaving a stale Join
+    // affordance in the chat history.
+    messageId: `card-game-${gameId.trim()}-${cancelled ? "created" : kind}`,
     extra: {
       gameActivity: {
         kind,
         gameType: isMafia ? "mafia" : gameType,
         title: title || null,
         winnerLabel,
+        hostName: metadata.creatorName || activity.actor || null,
+        playerCount,
+        requiredPlayers,
+        maxPlayers,
+        status: started ? "started" : cancelled ? "cancelled" : null,
       },
     },
   };

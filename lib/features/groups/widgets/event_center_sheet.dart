@@ -79,7 +79,7 @@ class EventCenterSheet extends StatelessWidget {
                   Navigator.pop(context);
                   AppNavigation.go(
                     context,
-                    '/games/create?groupId=${Uri.encodeComponent(groupId)}',
+                    '/games?groupId=${Uri.encodeComponent(groupId)}',
                   );
                 },
               ),

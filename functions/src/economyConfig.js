@@ -15,6 +15,11 @@ const HISTORY_LIMIT = 50;
 const REWARD_TYPES = Object.freeze([
   "earn_event",
   "earn_game",
+  "earn_game_win_easy",
+  "earn_game_win_normal",
+  "earn_game_win_hard",
+  "earn_game_draw",
+  "earn_game_loss",
   "earn_publish",
   "earn_achievement",
   "earn_referral_inviter",
@@ -27,6 +32,11 @@ const REWARD_TYPES = Object.freeze([
 const REWARD_AMOUNTS = Object.freeze({
   earn_event: 10,
   earn_game: 10,
+  earn_game_win_easy: 7,
+  earn_game_win_normal: 8,
+  earn_game_win_hard: 10,
+  earn_game_draw: 5,
+  earn_game_loss: 2,
   earn_publish: 10,
   earn_achievement: 5,
   earn_referral_inviter: 70,
@@ -36,6 +46,11 @@ const REWARD_AMOUNTS = Object.freeze({
 const DAILY_CAPS = Object.freeze({
   earn_event: 3,
   earn_game: 3,
+  earn_game_win_easy: 3,
+  earn_game_win_normal: 3,
+  earn_game_win_hard: 3,
+  earn_game_draw: 3,
+  earn_game_loss: 3,
   earn_publish: 1,
   earn_achievement: 9,
 });
@@ -43,6 +58,11 @@ const DAILY_CAPS = Object.freeze({
 const DAILY_BUCKET = Object.freeze({
   earn_event: "event",
   earn_game: "event",
+  earn_game_win_easy: "game",
+  earn_game_win_normal: "game",
+  earn_game_win_hard: "game",
+  earn_game_draw: "game",
+  earn_game_loss: "game",
   earn_publish: "publish",
   earn_achievement: "achievement",
 });

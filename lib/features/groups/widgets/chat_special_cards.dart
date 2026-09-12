@@ -37,12 +37,17 @@ class ChatGameLobbyCard extends StatelessWidget {
         : message.senderName;
     final current = activity?.playerCount ?? 1;
     final max = activity?.maxPlayers ?? (spec?.capabilities.maxPlayers ?? 8);
-    final status = activity?.isStarted == true
+    final required = activity?.requiredPlayers;
+    final status = activity?.isCancelled == true
+        ? 'أُغلقت'
+        : activity?.isStarted == true
         ? 'مباشر الآن'
         : activity?.isFull == true
             ? 'اكتمل العدد'
             : 'قاعة الانتظار';
-    final cta = activity?.isStarted == true
+    final cta = activity?.isCancelled == true
+        ? 'عرض التفاصيل'
+        : activity?.isStarted == true
         ? 'عرض اللعبة'
         : activity?.isFull == true
             ? 'اكتمل العدد'
@@ -178,6 +183,18 @@ class ChatGameLobbyCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (required != null && required > 0) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'يبدأ عند $required لاعبين',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: dark
+                              ? const Color(0xFFB8C4CC)
+                              : const Color(0xFF667781),
+                        ),
+                      ),
+                    ],
                     if (avatars.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       SizedBox(
@@ -215,7 +232,10 @@ class ChatGameLobbyCard extends StatelessWidget {
               ),
               const Divider(height: 1, color: Color(0x338696A0)),
               InkWell(
-                onTap: activity?.isFull == true && activity?.isStarted != true
+                onTap: activity?.isCancelled == true
+                    ? onJoin
+                    : activity?.isFull == true &&
+                            activity?.isStarted != true
                     ? null
                     : onJoin,
                 child: Container(
@@ -224,8 +244,9 @@ class ChatGameLobbyCard extends StatelessWidget {
                   child: Text(
                     cta,
                     style: TextStyle(
-                      color: activity?.isFull == true &&
-                              activity?.isStarted != true
+                      color: activity?.isCancelled == true ||
+                              activity?.isFull == true &&
+                                  activity?.isStarted != true
                           ? const Color(0xFF8696A0)
                           : _waGreen,
                       fontWeight: FontWeight.w800,
