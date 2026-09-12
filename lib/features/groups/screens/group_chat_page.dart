@@ -71,6 +71,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _loadingOlder = false;
   bool _readCheckQueued = false;
   String? _lastVisibleReadSignature;
+  String? _lastNewestMessageId;
+  int _newMessagesCount = 0;
   double? _olderPixels;
   double? _olderMaxExtent;
 
@@ -184,38 +186,89 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             chat.messages.isNotEmpty))
                       _OfflineBanner(message: slice.failureMessage),
                     Expanded(
-                      child: _MessageList(
-                        chat: chat,
-                        contrast: contrast,
-                        currentUserId:
-                            context.read<AuthProvider>().currentUser?.id ?? '',
-                        controller: _scrollController,
-                        stars: _stars,
-                        onAction: _showActions,
-                        onSwipeReply: (message) {
-                          context.read<ChatProvider>().setReplyTarget(message);
-                        },
-                        onAvatarTap: (message) {
-                          final uid = message.senderId.trim();
-                          if (uid.isEmpty || uid == 'system') return;
-                          AppNavigation.go(context, '/profile?uid=$uid');
-                        },
-                        onMediaTap: _openMedia,
-                        onStickerTap: (message) {
-                          unawaited(
-                            StickerDetailSheet.show(
-                              context,
-                              message: message,
-                              store: _userStickers,
+                      child: Stack(
+                        children: <Widget>[
+                          _MessageList(
+                            chat: chat,
+                            contrast: contrast,
+                            currentUserId: context
+                                    .read<AuthProvider>()
+                                    .currentUser
+                                    ?.id ??
+                                '',
+                            controller: _scrollController,
+                            stars: _stars,
+                            onAction: _showActions,
+                            onSwipeReply: (message) {
+                              context
+                                  .read<ChatProvider>()
+                                  .setReplyTarget(message);
+                            },
+                            onAvatarTap: (message) {
+                              final uid = message.senderId.trim();
+                              if (uid.isEmpty || uid == 'system') return;
+                              AppNavigation.go(context, '/profile?uid=$uid');
+                            },
+                            onMediaTap: _openMedia,
+                            onStickerTap: (message) {
+                              unawaited(
+                                StickerDetailSheet.show(
+                                  context,
+                                  message: message,
+                                  store: _userStickers,
+                                ),
+                              );
+                            },
+                            onAudioTap: _playAudio,
+                            onEventTap: (eventId) =>
+                                EventLinks.open(context, eventId),
+                            onGameTap: _openGameCard,
+                            onLoadMore: _loadMorePreservingAnchor,
+                            messageKeys: _messageKeys,
+                          ),
+                          if (_newMessagesCount > 0)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: AppSpacing.sm,
+                              child: Center(
+                                child: Material(
+                                  elevation: 4,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: InkWell(
+                                    key: const Key('new-messages-chip'),
+                                    borderRadius: BorderRadius.circular(22),
+                                    onTap: _jumpToLatest,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 9,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          const Icon(
+                                            Icons.keyboard_double_arrow_down,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            AppStrings.of(context).pick(
+                                              '$_newMessagesCount new messages',
+                                              '$_newMessagesCount رسائل جديدة',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          );
-                        },
-                        onAudioTap: _playAudio,
-                        onEventTap: (eventId) =>
-                            EventLinks.open(context, eventId),
-                        onGameTap: _openGameCard,
-                        onLoadMore: _loadMorePreservingAnchor,
-                        messageKeys: _messageKeys,
+                        ],
                       ),
                     ),
                     if (chat.replyTarget != null)
@@ -301,6 +354,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         final user = context.read<AuthProvider>().currentUser;
                         final member = context.read<GroupProvider>().membership;
                         if (user == null || member == null) return;
+                        _wasNearBottom = true;
                         await context.read<ChatProvider>().sendSticker(
                           groupId: widget.groupId,
                           senderId: user.id,
@@ -349,6 +403,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
         _scrollController.position.maxScrollExtent -
             _scrollController.position.pixels <
         180;
+    if (_wasNearBottom && _newMessagesCount > 0 && mounted) {
+      setState(() => _newMessagesCount = 0);
+    }
     if (_scrollController.position.pixels < 180) {
       unawaited(_loadMorePreservingAnchor());
     }
@@ -385,9 +442,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
   /// never from every Provider rebuild (that stacked 240ms animations = jitter).
   void _syncScrollAndReadReceipts(ChatProvider chat) {
     final count = chat.messages.length;
+    final newestId = chat.messages.isEmpty ? null : chat.messages.last.id;
+    final receivedNewerMessage =
+        _lastNewestMessageId != null &&
+        newestId != null &&
+        newestId != _lastNewestMessageId;
     final shouldScroll =
         _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
     _lastSeenMessageCount = count;
+    _lastNewestMessageId = newestId;
+    if (receivedNewerMessage && !_wasNearBottom && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _wasNearBottom) return;
+        setState(() => _newMessagesCount++);
+      });
+    }
     if (!shouldScroll && count == _lastMarkedReadCount) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -417,6 +486,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
       _lastMarkedReadCount = chat.messages.length;
       unawaited(chat.markAsRead(visible));
     });
+  }
+
+  void _jumpToLatest() {
+    if (!mounted) return;
+    setState(() {
+      _newMessagesCount = 0;
+      _wasNearBottom = true;
+    });
+    _scrollToLatest();
   }
 
   List<ChatMessage> _visibleMessages(ChatProvider chat) {
@@ -657,7 +735,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
         return;
       case ChatMessageAction.react:
         final emoji = result.reaction ?? '❤️';
-        await chat.addReaction(message.id, emoji);
+        final reactionResult = await chat.addReaction(message.id, emoji);
+        if (!mounted || reactionResult.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reactionResult.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to react', 'تعذر إضافة التفاعل'),
+            ),
+          ),
+        );
         return;
       case ChatMessageAction.report:
         await _reportMessage(message);
@@ -950,16 +1039,11 @@ class _MessageList extends StatelessWidget {
       final next = i + 1 < messages.length ? messages[i + 1] : null;
       final samePrev =
           prev != null &&
-          prev.senderId == message.senderId &&
-          prev.type == message.type &&
-          !message.isDeleted &&
-          prev.type != ChatMessageType.system &&
-          prev.type != ChatMessageType.game &&
-          prev.type != ChatMessageType.event;
+          _sameChatCluster(prev, message) &&
+          !message.isDeleted;
       final sameNext =
           next != null &&
-          next.senderId == message.senderId &&
-          next.type == message.type &&
+          _sameChatCluster(message, next) &&
           !next.isDeleted;
       rows.add(
         _ChatListRow.message(
@@ -981,9 +1065,16 @@ class _MessageList extends StatelessWidget {
           case _ChatListKind.encryption:
             return const ChatEncryptionBanner();
           case _ChatListKind.loadMore:
+            final loading = chat.state == LoadingState.loadingMore;
             return TextButton.icon(
-              onPressed: onLoadMore,
-              icon: const Icon(Icons.history),
+              onPressed: loading ? null : onLoadMore,
+              icon: loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.history),
               label: Text(AppStrings.of(context).loadOlderMessages),
             );
           case _ChatListKind.date:
@@ -1048,6 +1139,22 @@ class _MessageList extends StatelessWidget {
       },
     );
   }
+}
+
+bool _sameChatCluster(ChatMessage first, ChatMessage second) {
+  if (first.senderId != second.senderId || first.type != second.type) {
+    return false;
+  }
+  if (first.type == ChatMessageType.system ||
+      first.type == ChatMessageType.game ||
+      first.type == ChatMessageType.event) {
+    return false;
+  }
+  final firstCreatedAt = first.createdAt;
+  final secondCreatedAt = second.createdAt;
+  if (firstCreatedAt == null || secondCreatedAt == null) return true;
+  return secondCreatedAt.difference(firstCreatedAt).abs() <=
+      const Duration(minutes: 5);
 }
 
 enum _ChatListKind { encryption, loadMore, date, message }

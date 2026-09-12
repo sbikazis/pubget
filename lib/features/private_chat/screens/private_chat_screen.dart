@@ -16,6 +16,7 @@ import '../../groups/models/chat_models.dart';
 import '../../groups/screens/media_viewer_page.dart';
 import '../../groups/widgets/chat_contrast_theme.dart';
 import '../../groups/widgets/chat_message_bubble.dart';
+import '../../groups/widgets/chat_message_actions_overlay.dart';
 import '../providers/private_chat_list_provider.dart';
 import '../providers/private_chat_provider.dart';
 
@@ -37,6 +38,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   bool _wasNearBottom = true;
   int _lastSeenMessageCount = 0;
   int _lastMarkedReadCount = -1;
+  String? _lastNewestMessageId;
+  int _newMessagesCount = 0;
 
   @override
   void didChangeDependencies() {
@@ -68,11 +71,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final list = context.watch<PrivateChatListProvider>();
     final uid = context.watch<AuthProvider>().currentUser?.id ?? '';
     final summary = list.chats.where((item) => item.id == widget.chatId);
+    final copy = AppStrings.of(context);
     final title = summary.isNotEmpty
         ? summary.first.otherDisplayName(uid)
         : (widget.otherUserId?.trim().isNotEmpty == true
               ? widget.otherUserId!
-              : 'Private chat');
+              : copy.pick('Private chat', 'محادثة خاصة'));
     final avatarUrl = summary.isNotEmpty
         ? summary.first.otherAvatarUrl(uid)
         : null;
@@ -99,7 +103,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         ),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Hide conversation',
+            tooltip: copy.pick('Hide conversation', 'إخفاء المحادثة'),
             onPressed: () async {
               final result = await context
                   .read<PrivateChatProvider>()
@@ -125,17 +129,65 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     chat.failure != null && chat.messages.isNotEmpty)
                   _OfflineBanner(message: chat.failure?.message),
                 Expanded(
-                  child: _MessageList(
-                    chat: chat,
-                    contrast: contrast,
-                    currentUserId: uid,
-                    controller: _scrollController,
-                    onAction: _showActions,
-                    onSwipeReply: (message) {
-                      context.read<PrivateChatProvider>().setReplyTarget(message);
-                    },
-                    onMediaTap: _openMedia,
-                    messageKeys: _messageKeys,
+                  child: Stack(
+                    children: <Widget>[
+                      _MessageList(
+                        chat: chat,
+                        contrast: contrast,
+                        currentUserId: uid,
+                        controller: _scrollController,
+                        onAction: _showActions,
+                        onSwipeReply: (message) {
+                          context
+                              .read<PrivateChatProvider>()
+                              .setReplyTarget(message);
+                        },
+                        onMediaTap: _openMedia,
+                        messageKeys: _messageKeys,
+                      ),
+                      if (_newMessagesCount > 0)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: AppSpacing.sm,
+                          child: Center(
+                            child: Material(
+                              elevation: 4,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(22),
+                              child: InkWell(
+                                key: const Key('private-new-messages-chip'),
+                                borderRadius: BorderRadius.circular(22),
+                                onTap: _jumpToLatest,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 9,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      const Icon(
+                                        Icons.keyboard_double_arrow_down,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        AppStrings.of(context).pick(
+                                          '$_newMessagesCount new messages',
+                                          '$_newMessagesCount رسائل جديدة',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 if (chat.uploadProgress.isNotEmpty)
@@ -166,6 +218,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         _scrollController.position.maxScrollExtent -
             _scrollController.position.pixels <
         180;
+    if (_wasNearBottom && _newMessagesCount > 0 && mounted) {
+      setState(() => _newMessagesCount = 0);
+    }
     if (_scrollController.position.pixels < 180) {
       unawaited(context.read<PrivateChatProvider>().loadMore());
     }
@@ -174,9 +229,21 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   void _syncScrollAndReadReceipts(PrivateChatProvider chat) {
     final count = chat.messages.length;
+    final newestId = chat.messages.isEmpty ? null : chat.messages.last.id;
+    final receivedNewerMessage =
+        _lastNewestMessageId != null &&
+        newestId != null &&
+        newestId != _lastNewestMessageId;
     final shouldScroll =
         _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
     _lastSeenMessageCount = count;
+    _lastNewestMessageId = newestId;
+    if (receivedNewerMessage && !_wasNearBottom && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _wasNearBottom) return;
+        setState(() => _newMessagesCount++);
+      });
+    }
     if (!shouldScroll && count == _lastMarkedReadCount) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -233,6 +300,15 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final current = _scrollController.position.pixels;
     if ((target - current).abs() < 1) return;
     _scrollController.jumpTo(target);
+  }
+
+  void _jumpToLatest() {
+    if (!mounted) return;
+    setState(() {
+      _newMessagesCount = 0;
+      _wasNearBottom = true;
+    });
+    _scrollToLatest();
   }
 
   Future<void> _sendText() async {
@@ -298,33 +374,82 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 
-  Future<void> _showActions(ChatMessage message) async {
-    final action = await PubgetBottomSheet.present<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: <Widget>[
-            if (message.text?.isNotEmpty == true)
-              ListTile(
-                leading: const Icon(Icons.copy_outlined),
-                title: const Text('Copy'),
-                onTap: () => Navigator.pop(context, 'copy'),
-              ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete'),
-              onTap: () => Navigator.pop(context, 'delete'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _showActions(ChatMessage message, Rect bubbleRect) async {
+    final user = context.read<AuthProvider>().currentUser;
+    final isMine = user != null && message.senderId == user.id;
+    final copy = AppStrings.of(context);
+    final result = await showChatMessageActions(
+      context,
+      message: message,
+      isMine: isMine,
+      contrast: ChatContrastTheme.fromBackground(null),
+      bubbleRect: bubbleRect,
+      canEdit: false,
+      canCopy:
+          message.text?.trim().isNotEmpty == true &&
+          !message.isDeleted &&
+          !message.isMedia,
+      canReply: !message.isDeleted,
+      canForward: false,
+      canDelete: isMine && !message.isDeleted,
+      canPin: false,
+      canReport: false,
+      canReact: false,
+      isStarred: false,
     );
-    if (!mounted || action == null) return;
+    if (!mounted || result == null) return;
     final chat = context.read<PrivateChatProvider>();
-    if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: message.text ?? ''));
-    } else if (action == 'delete') {
-      await chat.deleteMessage(message.id);
+    switch (result.action) {
+      case ChatMessageAction.reply:
+        chat.setReplyTarget(message);
+        return;
+      case ChatMessageAction.copy:
+        await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+        return;
+      case ChatMessageAction.delete:
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(copy.pick('Delete message?', 'حذف الرسالة؟')),
+            content: Text(
+              copy.pick(
+                'This message will be removed from the conversation.',
+                'ستتم إزالة هذه الرسالة من المحادثة.',
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(copy.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(copy.delete),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+        final deleteResult = await chat.deleteMessage(message.id);
+        if (!mounted || deleteResult.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              deleteResult.failureOrNull?.message ??
+                  copy.pick('Unable to delete message', 'تعذر حذف الرسالة'),
+            ),
+          ),
+        );
+        return;
+      case ChatMessageAction.dismiss:
+      case ChatMessageAction.forward:
+      case ChatMessageAction.pin:
+      case ChatMessageAction.star:
+      case ChatMessageAction.edit:
+      case ChatMessageAction.info:
+      case ChatMessageAction.react:
+      case ChatMessageAction.report:
+        return;
     }
   }
 }
@@ -345,7 +470,7 @@ class _MessageList extends StatelessWidget {
   final ChatContrastTheme contrast;
   final String currentUserId;
   final ScrollController controller;
-  final ValueChanged<ChatMessage> onAction;
+    final void Function(ChatMessage message, Rect rect) onAction;
   final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onMediaTap;
   final Map<String, GlobalKey> messageKeys;
@@ -358,17 +483,23 @@ class _MessageList extends StatelessWidget {
       }
       if (chat.state == LoadingState.offline) {
         return PubgetOfflineState(
-          message: chat.failure?.message ?? 'Cached messages are unavailable.',
+          message: chat.failure?.message ??
+              AppStrings.of(context).cachedMessagesUnavailable,
         );
       }
       if (chat.state == LoadingState.error) {
         return PubgetErrorState(
-          message: chat.failure?.message ?? 'Messages could not load.',
+          message: chat.failure?.message ??
+              AppStrings.of(context).messagesCouldNotLoad,
         );
       }
-      return const PubgetEmptyState(
-        title: 'Start the conversation',
-        message: 'Messages in this private chat will appear here.',
+      final copy = AppStrings.of(context);
+      return PubgetEmptyState(
+        title: copy.startConversation,
+        message: copy.pick(
+          'Messages in this private chat will appear here.',
+          'ستظهر رسائل هذه المحادثة الخاصة هنا.',
+        ),
         icon: Icons.forum_outlined,
       );
     }
@@ -378,10 +509,17 @@ class _MessageList extends StatelessWidget {
       itemCount: chat.messages.length + (chat.hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == 0 && chat.hasMore) {
+          final loading = chat.state == LoadingState.loadingMore;
           return TextButton.icon(
-            onPressed: chat.loadMore,
-            icon: const Icon(Icons.history),
-            label: const Text('Load older messages'),
+            onPressed: loading ? null : chat.loadMore,
+            icon: loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.history),
+            label: Text(AppStrings.of(context).loadOlderMessages),
           );
         }
         final message = chat.messages[index - (chat.hasMore ? 1 : 0)];
@@ -394,7 +532,7 @@ class _MessageList extends StatelessWidget {
           isMine: message.senderId == currentUserId,
           contrast: contrast,
           showSenderRole: false,
-          onLongPress: (_) => onAction(message),
+           onLongPress: (rect) => onAction(message, rect),
           onSwipeReply: () => onSwipeReply(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
         );
@@ -452,6 +590,7 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Material(
       color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
       elevation: 8,
@@ -460,15 +599,21 @@ class _Composer extends StatelessWidget {
         child: Row(
           children: <Widget>[
             PopupMenuButton<String>(
-              tooltip: 'Attachments',
+               tooltip: copy.pick('Attachments', 'المرفقات'),
               icon: const Icon(Icons.add_circle_outline),
               onSelected: (value) {
                 if (value == 'image') onMedia(ImageSource.gallery, false);
                 if (value == 'video') onMedia(ImageSource.gallery, true);
               },
-              itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                PopupMenuItem(value: 'image', child: Text('Image')),
-                PopupMenuItem(value: 'video', child: Text('Video')),
+               itemBuilder: (_) => <PopupMenuEntry<String>>[
+                PopupMenuItem(
+                  value: 'image',
+                  child: Text(copy.pick('Image', 'صورة')),
+                ),
+                PopupMenuItem(
+                  value: 'video',
+                  child: Text(copy.pick('Video', 'فيديو')),
+                ),
               ],
             ),
             Expanded(
@@ -477,14 +622,14 @@ class _Composer extends StatelessWidget {
                 minLines: 1,
                 maxLines: 5,
                 textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
-                  hintText: 'Message privately',
+                 decoration: InputDecoration(
+                   hintText: copy.pick('Message privately', 'راسل بشكل خاص'),
                   isDense: true,
                 ),
               ),
             ),
             IconButton(
-              tooltip: 'Send message',
+               tooltip: copy.pick('Send message', 'إرسال الرسالة'),
               onPressed: onSend,
               icon: const Icon(Icons.send_rounded),
             ),
@@ -503,6 +648,7 @@ class _ReplyComposerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final preview = message.replyPreview ??
         message.text ??
         (message.isMedia ? 'Media message' : 'Message');
@@ -511,10 +657,10 @@ class _ReplyComposerBar extends StatelessWidget {
       child: ListTile(
         dense: true,
         leading: const Icon(Icons.reply_rounded),
-        title: const Text('Replying to message'),
+         title: Text(copy.pick('Replying to message', 'الرد على الرسالة')),
         subtitle: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: IconButton(
-          tooltip: 'Cancel reply',
+           tooltip: copy.pick('Cancel reply', 'إلغاء الرد'),
           onPressed: onClear,
           icon: const Icon(Icons.close),
         ),
@@ -530,11 +676,18 @@ class _OfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Material(
       color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Text(message ?? 'You are offline. Failed sends can be retried.'),
+         child: Text(
+           message ??
+               copy.pick(
+                 'You are offline. Failed sends can be retried.',
+                 'أنت غير متصل. يمكنك إعادة إرسال الرسائل الفاشلة.',
+               ),
+         ),
       ),
     );
   }

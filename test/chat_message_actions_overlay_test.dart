@@ -151,4 +151,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(captured, isNotNull);
   });
+
+  testWidgets('private-style overlay can hide unsupported reactions', (
+    tester,
+  ) async {
+    final contrast = ChatContrastTheme.fromBackground(null);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () {
+                showChatMessageActions(
+                  context,
+                  message: _msg(id: 'private-1', text: 'private'),
+                  isMine: true,
+                  contrast: contrast,
+                  bubbleRect: const Rect.fromLTWH(40, 280, 180, 70),
+                  canEdit: false,
+                  canCopy: true,
+                  canReply: true,
+                  canForward: false,
+                  canDelete: true,
+                  canPin: false,
+                  canReport: false,
+                  canReact: false,
+                  isStarred: false,
+                );
+              },
+              child: const Text('open private'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open private'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-reaction-bar')), findsNothing);
+    expect(find.byKey(const Key('chat-action-reply')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-delete')), findsOneWidget);
+  });
 }
