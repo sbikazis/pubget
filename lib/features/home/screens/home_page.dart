@@ -79,7 +79,6 @@ class _HomePageState extends State<HomePage> {
                 kind: HomeSectionKind.promotedGroups,
                 finish: HomeGroupFinish.gold,
               ),
-              const SliverToBoxAdapter(child: HomeProductHub()),
               const SliverToBoxAdapter(child: _EditsSection()),
               _peopleSliver(),
               if (economy != null)
@@ -119,115 +118,6 @@ class _HomePageState extends State<HomePage> {
 
   Widget _peopleSliver() {
     return const SliverToBoxAdapter(child: _PeopleSection());
-  }
-}
-
-class HomeProductHub extends StatelessWidget {
-  const HomeProductHub({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-        0,
-      ),
-      child: Column(
-        key: const Key('home-product-hub'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('Pubget areas', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              _ProductHubCard(
-                icon: Icons.forum_outlined,
-                label: 'Chat',
-                route: '/private',
-              ),
-              _ProductHubCard(
-                icon: Icons.event_outlined,
-                label: 'Events',
-                route: '/events',
-              ),
-              _ProductHubCard(
-                icon: Icons.sports_esports_outlined,
-                label: 'Games',
-                route: '/games',
-              ),
-              _ProductHubCard(
-                icon: Icons.local_fire_department_outlined,
-                label: 'Mafia',
-                route: '/games',
-              ),
-              _ProductHubCard(
-                icon: Icons.movie_filter_outlined,
-                label: 'Reels',
-                route: '/reels',
-              ),
-              _ProductHubCard(
-                icon: Icons.groups_outlined,
-                label: 'Groups',
-                route: '/groups',
-              ),
-              _ProductHubCard(
-                icon: Icons.person_outline,
-                label: 'Profile',
-                route: '/profile',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProductHubCard extends StatelessWidget {
-  const _ProductHubCard({
-    required this.icon,
-    required this.label,
-    required this.route,
-  });
-
-  final IconData icon;
-  final String label;
-  final String route;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 112,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => AppNavigation.go(context, route),
-        child: Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.md,
-            ),
-            child: Column(
-              children: <Widget>[
-                Icon(icon, color: AppColors.gold),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
