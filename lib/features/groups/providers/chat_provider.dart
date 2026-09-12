@@ -34,6 +34,7 @@ final class ChatProvider extends ChangeNotifier {
       <String, _PendingMediaUpload>{};
   final Set<String> _deliveredMessageIds = <String>{};
   final Set<String> _readMessageIds = <String>{};
+  final Set<String> _pendingReadIds = <String>{};
   final Map<String, int> _autoRetryAttempt = <String, int>{};
   final Map<String, Timer> _autoRetryTimers = <String, Timer>{};
   final Set<String> _autoRetryInFlight = <String>{};
@@ -109,6 +110,8 @@ final class ChatProvider extends ChangeNotifier {
     _messageIndex.clear();
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
+    _pendingReadIds.clear();
+    _pendingReadIds.clear();
     _hasMore = true;
     _loadingMore = false;
     _readInFlight = false;
@@ -140,6 +143,7 @@ final class ChatProvider extends ChangeNotifier {
     await subscription?.cancel();
     if (generation != _sessionGeneration) return;
     _cancelAllAutoRetries();
+    _pendingReadIds.clear();
     _groupId = null;
     _currentUserId = null;
     _replyTarget = null;
@@ -652,8 +656,9 @@ final class ChatProvider extends ChangeNotifier {
     final groupId = _groupId;
     final uid = _currentUserId;
     final generation = _sessionGeneration;
-    if (groupId == null || uid == null || _readInFlight) return;
-    final ids = visibleMessages
+    if (groupId == null || uid == null) return;
+    _pendingReadIds.addAll(
+      visibleMessages
         .where(
           (message) =>
               message.senderId != uid &&
@@ -661,6 +666,18 @@ final class ChatProvider extends ChangeNotifier {
               !_readMessageIds.contains(message.id),
         )
         .map((message) => message.id)
+        .toList(),
+    );
+    await _drainReadReceipts(groupId: groupId, generation: generation);
+  }
+
+  Future<void> _drainReadReceipts({
+    required String groupId,
+    required int generation,
+  }) async {
+    if (_readInFlight || !_isSession(groupId, generation)) return;
+    final ids = _pendingReadIds
+        .where((id) => !_readMessageIds.contains(id))
         .take(50)
         .toList(growable: false);
     if (ids.isEmpty) return;
@@ -674,9 +691,14 @@ final class ChatProvider extends ChangeNotifier {
     if (result.isSuccess) {
       _readMessageIds.addAll(ids);
       _deliveredMessageIds.addAll(ids);
+      _pendingReadIds.removeAll(ids);
     } else {
       _failure = result.failureOrNull;
       _safeNotify();
+      return;
+    }
+    if (_isSession(groupId, generation)) {
+      await _drainReadReceipts(groupId: groupId, generation: generation);
     }
   }
 
@@ -822,18 +844,13 @@ final class ChatProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
+        _clearUploadUi(id);
         final groupId = _groupId;
         if (groupId != null) {
           unawaited(_outbox.remove(groupId, id));
         }
         final index = _messageIndex[id];
         final local = index != null ? _messages[index] : null;
-        // Keep the local frame as the remote image placeholder until the
-        // Firestore snapshot confirms the sent message. Clearing it here can
-        // leave a blank frame while the generated medium/thumbnail loads.
-        final keepLocalPreview =
-            local?.isMedia == true && message.mediaUrl?.isNotEmpty == true;
-        _clearUploadUi(id, clearPreview: !keepLocalPreview);
         final reconciled = local?.createdAt != null
             ? message.copyWith(
                 createdAt: local!.createdAt,

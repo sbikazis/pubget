@@ -131,6 +131,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     currentUserId: uid,
                     controller: _scrollController,
                     onAction: _showActions,
+                    onSwipeReply: (message) {
+                      context.read<PrivateChatProvider>().setReplyTarget(message);
+                    },
                     onMediaTap: _openMedia,
                     messageKeys: _messageKeys,
                   ),
@@ -138,6 +141,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (chat.uploadProgress.isNotEmpty)
                   LinearProgressIndicator(
                     value: chat.uploadProgress.values.first,
+                  ),
+                if (chat.replyTarget != null)
+                  _ReplyComposerBar(
+                    message: chat.replyTarget!,
+                    onClear: chat.clearReplyTarget,
                   ),
                 _Composer(
                   controller: _controller,
@@ -161,15 +169,15 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (_scrollController.position.pixels < 180) {
       unawaited(context.read<PrivateChatProvider>().loadMore());
     }
+    _queueReadReceiptCheck(context.read<PrivateChatProvider>());
   }
 
   void _syncScrollAndReadReceipts(PrivateChatProvider chat) {
     final count = chat.messages.length;
     final shouldScroll =
         _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
-    final shouldMarkRead = count != _lastMarkedReadCount;
     _lastSeenMessageCount = count;
-    if (!shouldScroll && !shouldMarkRead) return;
+    if (!shouldScroll && count == _lastMarkedReadCount) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (shouldScroll && _wasNearBottom) {
@@ -179,10 +187,26 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           if (_wasNearBottom) _scrollToLatest();
         });
       }
-      if (shouldMarkRead) {
-        _lastMarkedReadCount = count;
-        unawaited(chat.markAsRead(_visibleMessages(chat)));
-      }
+      _queueReadReceiptCheck(chat);
+    });
+  }
+
+  bool _readCheckQueued = false;
+  String? _lastVisibleReadSignature;
+
+  void _queueReadReceiptCheck(PrivateChatProvider chat) {
+    if (_readCheckQueued) return;
+    _readCheckQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readCheckQueued = false;
+      if (!mounted) return;
+      final visible = _visibleMessages(chat);
+      if (visible.isEmpty) return;
+      final signature = visible.map((message) => message.id).join('|');
+      if (signature == _lastVisibleReadSignature) return;
+      _lastVisibleReadSignature = signature;
+      _lastMarkedReadCount = chat.messages.length;
+      unawaited(chat.markAsRead(visible));
     });
   }
 
@@ -312,6 +336,7 @@ class _MessageList extends StatelessWidget {
     required this.currentUserId,
     required this.controller,
     required this.onAction,
+    required this.onSwipeReply,
     required this.onMediaTap,
     required this.messageKeys,
   });
@@ -321,6 +346,7 @@ class _MessageList extends StatelessWidget {
   final String currentUserId;
   final ScrollController controller;
   final ValueChanged<ChatMessage> onAction;
+  final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onMediaTap;
   final Map<String, GlobalKey> messageKeys;
 
@@ -369,6 +395,7 @@ class _MessageList extends StatelessWidget {
           contrast: contrast,
           showSenderRole: false,
           onLongPress: (_) => onAction(message),
+          onSwipeReply: () => onSwipeReply(message),
           onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
         );
       },
@@ -462,6 +489,34 @@ class _Composer extends StatelessWidget {
               icon: const Icon(Icons.send_rounded),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplyComposerBar extends StatelessWidget {
+  const _ReplyComposerBar({required this.message, required this.onClear});
+
+  final ChatMessage message;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = message.replyPreview ??
+        message.text ??
+        (message.isMedia ? 'Media message' : 'Message');
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: ListTile(
+        dense: true,
+        leading: const Icon(Icons.reply_rounded),
+        title: const Text('Replying to message'),
+        subtitle: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: IconButton(
+          tooltip: 'Cancel reply',
+          onPressed: onClear,
+          icon: const Icon(Icons.close),
         ),
       ),
     );

@@ -69,6 +69,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   int _lastSeenMessageCount = 0;
   int _lastMarkedReadCount = -1;
   bool _loadingOlder = false;
+  bool _readCheckQueued = false;
+  String? _lastVisibleReadSignature;
   double? _olderPixels;
   double? _olderMaxExtent;
 
@@ -350,6 +352,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
     if (_scrollController.position.pixels < 180) {
       unawaited(_loadMorePreservingAnchor());
     }
+    final chat = _chatProvider;
+    if (chat != null) _queueReadReceiptCheck(chat);
   }
 
   Future<void> _loadMorePreservingAnchor() async {
@@ -383,9 +387,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final count = chat.messages.length;
     final shouldScroll =
         _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
-    final shouldMarkRead = count != _lastMarkedReadCount;
     _lastSeenMessageCount = count;
-    if (!shouldScroll && !shouldMarkRead) return;
+    if (!shouldScroll && count == _lastMarkedReadCount) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (shouldScroll && _wasNearBottom) {
@@ -396,10 +399,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
           if (_wasNearBottom) _scrollToLatest();
         });
       }
-      if (shouldMarkRead) {
-        _lastMarkedReadCount = count;
-        unawaited(chat.markAsRead(_visibleMessages(chat)));
-      }
+      _queueReadReceiptCheck(chat);
+    });
+  }
+
+  void _queueReadReceiptCheck(ChatProvider chat) {
+    if (_readCheckQueued) return;
+    _readCheckQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readCheckQueued = false;
+      if (!mounted) return;
+      final visible = _visibleMessages(chat);
+      if (visible.isEmpty) return;
+      final signature = visible.map((message) => message.id).join('|');
+      if (signature == _lastVisibleReadSignature) return;
+      _lastVisibleReadSignature = signature;
+      _lastMarkedReadCount = chat.messages.length;
+      unawaited(chat.markAsRead(visible));
     });
   }
 
