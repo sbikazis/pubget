@@ -32,8 +32,12 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('group-details-hero')), findsOneWidget);
+    expect(find.byKey(const Key('group-hero-badges')), findsOneWidget);
+    expect(find.text('MIKADO'), findsNothing);
     expect(find.text('Rising Crew'), findsOneWidget);
     expect(find.text('Anime Roleplay'), findsOneWidget);
+    expect(find.text('4'), findsWidgets);
+    expect(find.text('4 members'), findsNothing);
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Open chat'), findsOneWidget);
     expect(find.byKey(const Key('group-details-disband')), findsOneWidget);
@@ -74,6 +78,7 @@ void main() {
 
       expect(find.text('Open chat'), findsOneWidget, reason: role.name);
       expect(find.text('Join group'), findsNothing, reason: role.name);
+      expect(find.byKey(const Key('group-quick-stats')), findsOneWidget);
 
       if (role == PubgetRank.gokenin) {
         expect(find.text('Manage members'), findsNothing);

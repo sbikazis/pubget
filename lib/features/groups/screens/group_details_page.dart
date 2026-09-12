@@ -486,27 +486,36 @@ class _ControlHero extends StatelessWidget {
                   end: AppSpacing.lg,
                   bottom: AppSpacing.lg,
                   child: Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 76),
+                    padding: const EdgeInsetsDirectional.only(start: 96),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         SizedBox(
+                          key: const Key('group-hero-badges'),
                           height: 32,
                           child: ListView(
                             scrollDirection: Axis.horizontal,
                             children: <Widget>[
-                              PubgetBadge(
-                                label: pubgetRankDisplayName(resolvedRank),
-                                compact: true,
-                              ),
+                              if (group.type == GroupType.public)
+                                Semantics(
+                                  label: copy.groupTypeLabel(group.type.name),
+                                  child: PubgetBadge(
+                                    label: '',
+                                    icon: group.isSearchable
+                                        ? Icons.public_outlined
+                                        : Icons.lock_outline,
+                                    compact: true,
+                                  ),
+                                )
+                              else
+                                PubgetBadge(
+                                  label: copy.groupTypeLabel(group.type.name),
+                                  compact: true,
+                                ),
                               const SizedBox(width: AppSpacing.sm),
                               PubgetBadge(
-                                label: copy.groupTypeLabel(group.type.name),
-                                compact: true,
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              PubgetBadge(
-                                label: copy.membersCount(group.membersCount),
+                                label: '${group.membersCount}',
+                                icon: Icons.groups_outlined,
                                 compact: true,
                               ),
                               const SizedBox(width: AppSpacing.sm),
@@ -514,6 +523,8 @@ class _ControlHero extends StatelessWidget {
                                 label: copy.joinPolicyLabel(
                                   group.joinPolicy.name,
                                 ),
+                                backgroundColor: AppColors.goldPale,
+                                foregroundColor: AppColors.goldDark,
                                 compact: true,
                               ),
                             ],
@@ -595,47 +606,53 @@ class _QuickStatsStrip extends StatelessWidget {
         Icons.bolt_outlined,
       ),
     ];
-    return SizedBox(
-      height: 92,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: stats.length,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-        itemBuilder: (context, index) {
-          final stat = stats[index];
-          return SizedBox(
-            width: 132,
-            child: PubgetCard(
-              child: Row(
-                children: <Widget>[
-                  Icon(stat.$3, size: 18, color: AppColors.royalPurple),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          stat.$2,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+    return LayoutBuilder(
+      key: const Key('group-quick-stats'),
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 640 ? 3 : 2;
+        final gap = AppSpacing.sm;
+        final cardWidth =
+            (constraints.maxWidth - (columns - 1) * gap) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: <Widget>[
+            for (final stat in stats)
+              SizedBox(
+                width: cardWidth,
+                height: 92,
+                child: PubgetCard(
+                  child: Row(
+                    children: <Widget>[
+                      Icon(stat.$3, size: 18, color: AppColors.royalPurple),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              stat.$2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              stat.$1,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ),
-                        Text(
-                          stat.$1,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
+          ],
+        );
+      },
     );
   }
 }
