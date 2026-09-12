@@ -12,9 +12,17 @@ import '../providers/event_providers.dart';
 import '../widgets/event_widgets.dart';
 
 class EventBuilderPage extends StatefulWidget {
-  const EventBuilderPage({this.groupId, this.templateId, super.key});
+  const EventBuilderPage({
+    this.groupId,
+    this.groupIds = const <String>[],
+    this.scope = EventScope.group,
+    this.templateId,
+    super.key,
+  });
 
   final String? groupId;
+  final List<String> groupIds;
+  final EventScope scope;
   final String? templateId;
 
   @override
@@ -52,7 +60,12 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     final builder = context.read<EventBuilderProvider>();
     final uid = context.read<AuthProvider>().currentUser?.id;
     Future<void>.microtask(() async {
-      builder.start(groupId: widget.groupId, templateId: widget.templateId);
+      builder.start(
+        groupId: widget.groupId,
+        groupIds: widget.groupIds,
+        scope: widget.scope,
+        templateId: widget.templateId,
+      );
       if (!mounted) return;
       if (uid != null && widget.templateId == null) {
         await builder.restoreDraft(userId: uid, groupId: widget.groupId);
@@ -129,7 +142,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(EventStrings.create)),
+        title: const Text(EventStrings.create),
+      ),
       body: Stepper(
         currentStep: _step,
         onStepTapped: (value) => setState(() => _step = value),
@@ -224,13 +238,15 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 if (spec.usesOptions || spec.usesTextResponse)
                   PubgetTextField(
                     controller: _question,
-                    label: spec.type == EventType.characterComparison ||
+                    label:
+                        spec.type == EventType.characterComparison ||
                             spec.type == EventType.animeComparison ||
                             spec.type == EventType.imageComparison
                         ? 'Criterion'
                         : (spec.usesTextResponse ? 'Prompt' : 'Question'),
                   ),
-                if (spec.usesOptions && spec.type != EventType.imageComparison) ...[
+                if (spec.usesOptions &&
+                    spec.type != EventType.imageComparison) ...[
                   const SizedBox(height: AppSpacing.sm),
                   for (var i = 0; i < _options.length; i++) ...[
                     PubgetTextField(
@@ -239,7 +255,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                           ? 'Character ID ${i + 1}'
                           : spec.type == EventType.animeComparison
                           ? 'Anime ID ${i + 1}'
-                          : spec.type == EventType.versus
+                          : spec.type == EventType.comparison
                           ? 'Candidate ${i + 1}'
                           : 'Option ${i + 1}',
                     ),
@@ -253,7 +269,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                       child: const Text('Add option'),
                     ),
                   if (spec.type == EventType.poll ||
-                      spec.type == EventType.multipleChoice)
+                      spec.type == EventType.question)
                     SwitchListTile(
                       title: const Text('Allow multiple selections'),
                       value: _allowMultiple,
@@ -264,7 +280,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 if (spec.type == EventType.imageComparison) ...[
                   const SizedBox(height: AppSpacing.sm),
                   for (var i = 0; i < _images.length; i++) ...[
-                    Text('Image ${i + 1}', style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      'Image ${i + 1}',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     PubgetTextField(
                       controller: _images[i].url,
                       label: 'HTTPS image URL',
@@ -291,11 +310,14 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                       child: const Text('Add image candidate'),
                     ),
                 ],
-                if (spec.usesTextResponse && spec.type == EventType.challenge) ...[
+                if (spec.usesTextResponse &&
+                    spec.type == EventType.challenge) ...[
                   const SizedBox(height: AppSpacing.sm),
                   DropdownButtonFormField<String>(
                     value: _challengeKind,
-                    decoration: const InputDecoration(labelText: 'Challenge type'),
+                    decoration: const InputDecoration(
+                      labelText: 'Challenge type',
+                    ),
                     items: const [
                       DropdownMenuItem(
                         value: 'finish_game',
@@ -528,7 +550,9 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
         options: [
           for (var i = 0; i < _options.length; i++)
             EventOption(
-              id: _options[i].text.trim().isEmpty ? 'opt-${i + 1}' : _options[i].text.trim(),
+              id: _options[i].text.trim().isEmpty
+                  ? 'opt-${i + 1}'
+                  : _options[i].text.trim(),
               label: _options[i].text.trim(),
               characterId: spec.type == EventType.characterComparison
                   ? _options[i].text.trim()
@@ -679,7 +703,8 @@ class _QuizQuestionForm {
       for (var i = 0; i < options.length; i++)
         EventOption(id: 'opt-${i + 1}', label: options[i].text),
     ];
-    final correct = resolvedOptions.any((option) => option.id == correctOptionId)
+    final correct =
+        resolvedOptions.any((option) => option.id == correctOptionId)
         ? correctOptionId
         : (resolvedOptions.isEmpty ? '' : resolvedOptions.first.id);
     return EventQuizQuestion(
@@ -763,7 +788,10 @@ class _QuizQuestionCard extends StatelessWidget {
           ],
           DropdownButtonFormField<String>(
             key: ValueKey<String>('${form.id}-${form.correctOptionId}'),
-            value: form.options.asMap().keys
+            value:
+                form.options
+                    .asMap()
+                    .keys
                     .map((i) => 'opt-${i + 1}')
                     .contains(form.correctOptionId)
                 ? form.correctOptionId
@@ -803,7 +831,9 @@ class _QuizQuestionCard extends StatelessWidget {
                 PubgetTextButton(
                   onPressed: () {
                     form.options.removeLast().dispose();
-                    if (!form.options.asMap().keys
+                    if (!form.options
+                        .asMap()
+                        .keys
                         .map((i) => 'opt-${i + 1}')
                         .contains(form.correctOptionId)) {
                       form.correctOptionId = 'opt-1';

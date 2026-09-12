@@ -68,8 +68,26 @@ class _CreateEventEntryPageState extends State<CreateEventEntryPage> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: <Widget>[
-            Text(copy.pickHostGroup, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              copy.pickHostGroup,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: AppSpacing.md),
+            ListTile(
+              key: const Key('create-global-event'),
+              leading: const Icon(Icons.public_outlined),
+              title: const Text('Create a global Event'),
+              subtitle: const Text('Visible to the whole Pubget community'),
+              onTap: () {
+                final template = widget.templateId;
+                final path = template == null || template.isEmpty
+                    ? '/events/create?scope=global'
+                    : '/events/create?scope=global'
+                          '&templateId=${Uri.encodeComponent(template)}';
+                AppNavigation.go(context, path);
+              },
+            ),
+            const Divider(),
             for (final group in groups.joinedGroups)
               ListTile(
                 key: Key('create-event-group-${group.id}'),

@@ -822,13 +822,18 @@ final class ChatProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
-        _clearUploadUi(id);
         final groupId = _groupId;
         if (groupId != null) {
           unawaited(_outbox.remove(groupId, id));
         }
         final index = _messageIndex[id];
         final local = index != null ? _messages[index] : null;
+        // Keep the local frame as the remote image placeholder until the
+        // Firestore snapshot confirms the sent message. Clearing it here can
+        // leave a blank frame while the generated medium/thumbnail loads.
+        final keepLocalPreview =
+            local?.isMedia == true && message.mediaUrl?.isNotEmpty == true;
+        _clearUploadUi(id, clearPreview: !keepLocalPreview);
         final reconciled = local?.createdAt != null
             ? message.copyWith(
                 createdAt: local!.createdAt,

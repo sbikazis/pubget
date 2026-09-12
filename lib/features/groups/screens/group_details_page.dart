@@ -14,7 +14,6 @@ import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
 import '../providers/group_provider.dart';
-import '../widgets/group_entry_hub.dart';
 import 'group_join_sheet.dart';
 
 class GroupDetailsPage extends StatefulWidget {
@@ -86,8 +85,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           provider.isFounder
               ? GroupCopy.of(context).controlPanel
               : provider.hasEntryHub
-                  ? 'Entry Hub'
-                  : copy.groupDetails,
+              ? 'Entry Hub'
+              : copy.groupDetails,
         ),
         foregroundColor: rankAccent,
         actions: <Widget>[
@@ -125,11 +124,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             empty: PubgetEmptyState(title: copy.groupUnavailable),
             child: group == null
                 ? const SizedBox.shrink()
-                : provider.isFounder
-                    ? _FounderPanel(group: group)
-                    : provider.hasEntryHub
-                        ? GroupEntryHub(group: group)
-                        : _VisitorDetails(group: group),
+                : provider.hasEntryHub
+                ? _GroupControlPanel(group: group)
+                : _VisitorDetails(group: group),
           ),
         ),
       ),
@@ -243,7 +240,10 @@ class _VisitorDetails extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(copy.rules, style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    copy.rules,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: AppSpacing.sm),
                   for (final rule in group.ruleItems)
                     Padding(
@@ -266,7 +266,8 @@ class _VisitorDetails extends StatelessWidget {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: members.members.take(8).length,
-                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final member = members!.members[index];
                   return PubgetAvatar(
@@ -285,8 +286,8 @@ class _VisitorDetails extends StatelessWidget {
   }
 }
 
-class _FounderPanel extends StatelessWidget {
-  const _FounderPanel({required this.group});
+class _GroupControlPanel extends StatelessWidget {
+  const _GroupControlPanel({required this.group});
 
   final Group group;
 
@@ -302,185 +303,466 @@ class _FounderPanel extends StatelessWidget {
       members = null;
     }
     final pending = members?.requests.length ?? 0;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = rankColorResolver(PubgetRank.mikado, isDarkMode: isDark);
+    final isOwner = provider.isFounder;
+    final canSettings = provider.canManageSettings || isOwner;
+    final canRequests = provider.viewerPermissions.contains(
+      GroupPermission.manageRequests,
+    );
+    final canMembers = provider.canManageMembers || provider.canManageRoles;
+    final canEvents = provider.canManageEvents;
+    final canGames = provider.viewerPermissions.contains(
+      GroupPermission.manageGames,
+    );
+    final canBans = provider.canViewBannedMembers;
+    final actionTiles = <Widget>[
+      if (canRequests)
+        _AdminActionCard(
+          icon: Icons.inbox_outlined,
+          title: groupCopy.requestInbox,
+          subtitle: groupCopy.pendingCount(pending),
+          onTap: () =>
+              AppNavigation.go(context, '/group-requests?groupId=${group.id}'),
+        ),
+      if (canMembers)
+        _AdminActionCard(
+          icon: Icons.groups_outlined,
+          title: copy.manageMembers,
+          onTap: () =>
+              AppNavigation.go(context, '/group-members?groupId=${group.id}'),
+        ),
+      if (provider.canManageRoles)
+        _AdminActionCard(
+          icon: Icons.military_tech_outlined,
+          title: groupCopy.manageRules,
+          onTap: () =>
+              AppNavigation.go(context, '/group-settings?groupId=${group.id}'),
+        ),
+      if (canSettings)
+        _AdminActionCard(
+          icon: Icons.tune_outlined,
+          title: copy.groupSettings,
+          onTap: () =>
+              AppNavigation.go(context, '/group-settings?groupId=${group.id}'),
+        ),
+      if (canEvents)
+        _AdminActionCard(
+          icon: Icons.event_outlined,
+          title: copy.groupEvents,
+          subtitle: copy.createEvent,
+          onTap: () => AppNavigation.go(
+            context,
+            '/events?groupId=${Uri.encodeComponent(group.id)}',
+          ),
+          onSecondaryTap: () => AppNavigation.go(
+            context,
+            '/events/create?groupId=${Uri.encodeComponent(group.id)}',
+          ),
+        ),
+      if (canGames)
+        _AdminActionCard(
+          icon: Icons.sports_esports_outlined,
+          title: copy.groupGames,
+          subtitle: copy.createGame,
+          onTap: () => AppNavigation.go(
+            context,
+            '/games?groupId=${Uri.encodeComponent(group.id)}',
+          ),
+          onSecondaryTap: () => AppNavigation.go(
+            context,
+            '/games/create?groupId=${Uri.encodeComponent(group.id)}',
+          ),
+        ),
+      if (canBans)
+        _AdminActionCard(
+          icon: Icons.block_outlined,
+          title: copy.bannedUsers,
+          onTap: () =>
+              AppNavigation.go(context, '/group-bans?groupId=${group.id}'),
+        ),
+    ];
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.xxl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _IdentityHeader(group: group),
+          _ControlHero(group: group, rank: provider.viewerRank),
           const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              PubgetBadge(
-                label: copy.groupTypeLabel(group.type.name),
-                compact: true,
-              ),
-              PubgetBadge(
-                label: copy.membersCount(group.membersCount),
-                compact: true,
-              ),
-              PubgetBadge(
-                label: copy.joinPolicyLabel(group.joinPolicy.name),
-                compact: true,
-              ),
-              PubgetBadge(
-                label: pubgetRankDisplayName(PubgetRank.mikado),
-                compact: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _PromotionSection(group: group, provider: provider),
-          const SizedBox(height: AppSpacing.lg),
-          _PanelTile(
-            icon: Icons.inbox_outlined,
-            title: groupCopy.requestInbox,
-            subtitle: groupCopy.pendingCount(pending),
-            accent: accent,
-            onTap: () => AppNavigation.go(
-              context,
-              '/group-requests?groupId=${group.id}',
-            ),
-          ),
-          _PanelTile(
-            icon: Icons.groups_outlined,
-            title: copy.manageMembers,
-            accent: accent,
-            onTap: () => AppNavigation.go(
-              context,
-              '/group-members?groupId=${group.id}',
-            ),
-          ),
-          _PanelTile(
-            icon: Icons.gavel_outlined,
-            title: groupCopy.manageRules,
-            accent: accent,
-            onTap: () => AppNavigation.go(
-              context,
-              '/group-settings?groupId=${group.id}',
-            ),
-          ),
-          _PanelTile(
-            icon: Icons.tune_outlined,
-            title: copy.groupSettings,
-            accent: accent,
-            onTap: () => AppNavigation.go(
-              context,
-              '/group-settings?groupId=${group.id}',
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(groupCopy.growth, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _MetricCard(
-                  label: copy.members,
-                  value: '${group.membersCount}',
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _MetricCard(
-                  label: groupCopy.growth,
-                  value: '${group.activityScore}',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
           PubgetPrimaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/group-chat?groupId=${group.id}',
-            ),
+            key: const Key('group-details-open-chat'),
+            onPressed: () =>
+                AppNavigation.go(context, '/group-chat?groupId=${group.id}'),
             semanticLabel: copy.openChat,
             leadingIcon: Icons.forum_outlined,
             child: Text(copy.openChat),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/events?groupId=${Uri.encodeComponent(group.id)}',
+          const SizedBox(height: AppSpacing.md),
+          _QuickStatsStrip(group: group),
+          if (canSettings) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _PromotionSection(group: group, provider: provider),
+          ],
+          if (actionTiles.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              groupCopy.overview,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            semanticLabel: copy.groupEvents,
-            child: Text(copy.groupEvents),
+            const SizedBox(height: AppSpacing.sm),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: AppSpacing.sm,
+              crossAxisSpacing: AppSpacing.sm,
+              childAspectRatio: 1.18,
+              children: actionTiles,
+            ),
+          ],
+          if (isOwner) ...[
+            const SizedBox(height: AppSpacing.xl),
+            _DangerZone(group: group, provider: provider),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ControlHero extends StatelessWidget {
+  const _ControlHero({required this.group, required this.rank});
+
+  final Group group;
+  final PubgetRank? rank;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedRank = rank ?? PubgetRank.gokenin;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rankColor = rankColorResolver(resolvedRank, isDarkMode: isDark);
+    final copy = AppStrings.of(context);
+    return SizedBox(
+      key: const Key('group-details-hero'),
+      height: 220,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(28),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                const ColoredBox(color: AppColors.royalDusk),
+                if (group.coverUrl != null && group.coverUrl!.isNotEmpty)
+                  AppImageLoader(imageUrl: group.coverUrl!, fit: BoxFit.cover),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[Color(0x14140C22), Color(0xF2140C22)],
+                    ),
+                  ),
+                ),
+                PositionedDirectional(
+                  top: AppSpacing.md,
+                  start: AppSpacing.md,
+                  child: Icon(
+                    group.joinPolicy == JoinPolicy.inviteOnly
+                        ? Icons.lock_outline
+                        : Icons.lock_open_outlined,
+                    color: AppColors.white,
+                  ),
+                ),
+                PositionedDirectional(
+                  start: AppSpacing.lg,
+                  end: AppSpacing.lg,
+                  bottom: AppSpacing.lg,
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 96),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        SizedBox(
+                          key: const Key('group-hero-badges'),
+                          height: 32,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: <Widget>[
+                              if (group.type == GroupType.public)
+                                Semantics(
+                                  label: copy.groupTypeLabel(group.type.name),
+                                  child: PubgetBadge(
+                                    label: '',
+                                    icon: group.isSearchable
+                                        ? Icons.public_outlined
+                                        : Icons.lock_outline,
+                                    compact: true,
+                                  ),
+                                )
+                              else
+                                PubgetBadge(
+                                  label: copy.groupTypeLabel(group.type.name),
+                                  compact: true,
+                                ),
+                              const SizedBox(width: AppSpacing.sm),
+                              PubgetBadge(
+                                label: '${group.membersCount}',
+                                icon: Icons.groups_outlined,
+                                compact: true,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              PubgetBadge(
+                                label: copy.joinPolicyLabel(
+                                  group.joinPolicy.name,
+                                ),
+                                backgroundColor: AppColors.goldPale,
+                                foregroundColor: AppColors.goldDark,
+                                compact: true,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          group.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: AppColors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          if (provider.canCreateEvents) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(
-                context,
-                '/events/create?groupId=${Uri.encodeComponent(group.id)}',
+          PositionedDirectional(
+            start: AppSpacing.lg,
+            bottom: -AppSpacing.md,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  width: 4,
+                ),
               ),
-              semanticLabel: copy.createEvent,
-              child: Text(copy.createEvent),
+              child: PubgetAvatar(
+                imageUrl: group.imageUrl,
+                name: group.name,
+                size: PubgetAvatarSize.large,
+              ),
             ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/games?groupId=${Uri.encodeComponent(group.id)}',
-            ),
-            semanticLabel: copy.groupGames,
-            child: Text(copy.groupGames),
           ),
-          if (provider.membership?.canManageGames == true) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(
-                context,
-                '/games/create?groupId=${Uri.encodeComponent(group.id)}',
+          PositionedDirectional(
+            end: AppSpacing.lg,
+            bottom: AppSpacing.md,
+            child: Icon(Icons.shield_outlined, color: rankColor),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickStatsStrip extends StatelessWidget {
+  const _QuickStatsStrip({required this.group});
+
+  final Group group;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
+    final strings = AppStrings.of(context);
+    final metrics = group.activityMetrics;
+    final stats = <(String, String, IconData)>[
+      (copy.growth, '${group.activityScore}', Icons.trending_up_outlined),
+      (strings.members, '${group.membersCount}', Icons.groups_outlined),
+      (
+        copy.chatActivity,
+        '${metrics?.recentMessageCount ?? 0}',
+        Icons.forum_outlined,
+      ),
+      (
+        copy.newMembersWeek,
+        '${metrics?.joinsInWindow ?? 0}',
+        Icons.person_add_alt,
+      ),
+      (
+        copy.activeMembers,
+        '${metrics?.activeMemberCount ?? group.membersCount}',
+        Icons.bolt_outlined,
+      ),
+    ];
+    return LayoutBuilder(
+      key: const Key('group-quick-stats'),
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 640 ? 3 : 2;
+        final gap = AppSpacing.sm;
+        final cardWidth =
+            (constraints.maxWidth - (columns - 1) * gap) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: <Widget>[
+            for (final stat in stats)
+              SizedBox(
+                width: cardWidth,
+                height: 92,
+                child: PubgetCard(
+                  child: Row(
+                    children: <Widget>[
+                      Icon(stat.$3, size: 18, color: AppColors.royalPurple),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              stat.$2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              stat.$1,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              semanticLabel: copy.createGame,
-              child: Text(copy.createGame),
-            ),
           ],
-          if (provider.canManageMembers) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(
-                context,
-                '/group-bans?groupId=${group.id}',
+        );
+      },
+    );
+  }
+}
+
+class _AdminActionCard extends StatelessWidget {
+  const _AdminActionCard({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.onSecondaryTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final VoidCallback? onSecondaryTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PubgetCard(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: AppColors.royalPurple.withValues(alpha: 0.14),
+            child: Icon(icon, color: AppColors.royalPurple),
+          ),
+          const Spacer(),
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          if (subtitle != null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: GestureDetector(
+                onTap: onSecondaryTap,
+                child: Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: onSecondaryTap == null
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : AppColors.royalPurple,
+                    fontWeight: onSecondaryTap == null ? null : FontWeight.w700,
+                  ),
+                ),
               ),
-              semanticLabel: copy.bannedUsers,
-              child: Text(copy.bannedUsers),
             ),
-          ],
-          if (group.type != GroupType.public) ...[
-            const SizedBox(height: AppSpacing.sm),
-            PubgetSecondaryButton(
-              onPressed: () => AppNavigation.go(
-                context,
-                '/group-roleplay?groupId=${group.id}',
+        ],
+      ),
+    );
+  }
+}
+
+class _DangerZone extends StatelessWidget {
+  const _DangerZone({required this.group, required this.provider});
+
+  final Group group;
+  final GroupProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(Icons.warning_amber_rounded, color: AppColors.error),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  AppStrings.of(context).dangerZone,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.errorDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              semanticLabel: copy.roleplayCharacters,
-              child: Text(copy.roleplayCharacters),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.xl),
-          Text(groupCopy.danger, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/group-members?groupId=${group.id}',
-            ),
+            onPressed: () =>
+                AppNavigation.go(context, '/group-members?groupId=${group.id}'),
             semanticLabel: copy.transferOwnership,
+            leadingIcon: Icons.swap_horiz,
             child: Text(copy.transferOwnership),
           ),
           const SizedBox(height: AppSpacing.sm),
-          PubgetTextButton(
+          PubgetSecondaryButton(
             key: const Key('group-details-disband'),
-            onPressed: () => _disband(context, provider),
+            onPressed: () => _disband(context),
             semanticLabel: copy.disbandGroup,
+            leadingIcon: Icons.delete_outline,
             child: Text(copy.disbandGroup),
           ),
         ],
@@ -488,7 +770,7 @@ class _FounderPanel extends StatelessWidget {
     );
   }
 
-  Future<void> _disband(BuildContext context, GroupProvider provider) async {
+  Future<void> _disband(BuildContext context) async {
     final copy = AppStrings.of(context);
     final first = await PubgetConfirmationDialog.show(
       context,
@@ -518,16 +800,22 @@ class _PromotionSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final copy = GroupCopy.of(context);
-    final metrics = group.activityMetrics;
-    final promoted = group.isPromoted &&
+    final promoted =
+        group.isPromoted &&
         (group.promotionExpiresAt == null ||
             group.promotionExpiresAt!.isAfter(DateTime.now()));
+    final progress = group.risingEligible
+        ? 1.0
+        : (group.membersCount / 2).clamp(0.0, 1.0);
     return PubgetCard(
       key: const Key('group-promote-section'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(copy.promoteTitle, style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            copy.promoteTitle,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             group.risingEligible ? copy.risingEligible : copy.risingNotEligible,
@@ -545,81 +833,65 @@ class _PromotionSection extends StatelessWidget {
                   ],
                 ),
               ),
+            const SizedBox(height: AppSpacing.xs),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: AppColors.goldPale,
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
+              ),
+            ),
           ],
           if (promoted) ...[
             const SizedBox(height: AppSpacing.sm),
             PubgetBadge(label: copy.currentlyPromoted, compact: true),
           ],
           const SizedBox(height: AppSpacing.md),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _MetricCard(
-                  label: copy.newMembersWeek,
-                  value: '${metrics?.joinsInWindow ?? 0}',
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _MetricCard(
-                  label: copy.chatActivity,
-                  value: '${metrics?.recentMessageCount ?? 0}',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _MetricCard(
-                  label: copy.activeMembers,
-                  value: '${metrics?.activeMemberCount ?? group.membersCount}',
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _MetricCard(
-                  label: copy.growth,
-                  value: '${group.activityScore}',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
           PubgetPrimaryButton(
             key: const Key('group-promote-coins'),
-            onPressed: provider.promoting
+            onPressed: provider.promoting || !group.risingEligible
                 ? null
                 : () => provider.promote(group.id),
             semanticLabel: copy.promoteWithCoins,
             loading: provider.promoting,
-            child: Text(provider.promoting ? copy.promoting : copy.promoteWithCoins),
+            child: Text(
+              provider.promoting ? copy.promoting : copy.promoteWithCoins,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            key: const Key('group-promote-share'),
-            onPressed: () => PubgetLinks.share(
-              context,
-              url: PubgetLinks.group(group.id),
-              title: group.name,
-              type: 'group',
-            ),
-            semanticLabel: copy.shareGroupLink,
-            leadingIcon: Icons.share_outlined,
-            child: Text(copy.shareGroupLink),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          PubgetSecondaryButton(
-            key: const Key('group-promote-copy'),
-            onPressed: () => PubgetLinks.copy(
-              context,
-              PubgetLinks.group(group.id),
-              type: 'group',
-            ),
-            semanticLabel: copy.copyGroupLink,
-            leadingIcon: Icons.copy_outlined,
-            child: Text(copy.copyGroupLink),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: PubgetSecondaryButton(
+                  key: const Key('group-promote-share'),
+                  onPressed: () => PubgetLinks.share(
+                    context,
+                    url: PubgetLinks.group(group.id),
+                    title: group.name,
+                    type: 'group',
+                  ),
+                  semanticLabel: copy.shareGroupLink,
+                  leadingIcon: Icons.share_outlined,
+                  child: Text(copy.shareGroupLink),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: PubgetSecondaryButton(
+                  key: const Key('group-promote-copy'),
+                  onPressed: () => PubgetLinks.copy(
+                    context,
+                    PubgetLinks.group(group.id),
+                    type: 'group',
+                  ),
+                  semanticLabel: copy.copyGroupLink,
+                  leadingIcon: Icons.copy_outlined,
+                  child: Text(copy.copyGroupLink),
+                ),
+              ),
+            ],
           ),
           if (provider.failure != null) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -640,64 +912,6 @@ class _PromotionSection extends StatelessWidget {
     GroupRisingGap.rules => copy.risingNeedRules,
     GroupRisingGap.activity => copy.risingNeedActivity,
   };
-}
-
-class _PanelTile extends StatelessWidget {
-  const _PanelTile({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.subtitle,
-    this.accent,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback onTap;
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = accent ?? AppColors.royalPurple;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: PubgetCard(
-        onTap: onTap,
-        child: ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.16),
-            child: Icon(icon, color: AppColors.gold),
-          ),
-          title: Text(title),
-          subtitle: subtitle == null ? null : Text(subtitle!),
-          trailing: const Icon(Icons.chevron_left),
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return PubgetCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(value, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.xs),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    );
-  }
 }
 
 class _JoinAction extends StatelessWidget {

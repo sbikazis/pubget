@@ -493,6 +493,7 @@ final class _FakeMafiaRepository implements MafiaRepository {
       Stream<Result<List<Map<String, dynamic>>>>.value(
         const Success(<Map<String, dynamic>>[]),
       );
+
 }
 
 final class _LiveGameRepository implements GameRepository {

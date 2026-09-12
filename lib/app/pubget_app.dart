@@ -55,8 +55,9 @@ import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
 import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
-import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
+import '../features/reels/repositories/reels_repository.dart';
+import '../features/reels/screens/reels_upload_page.dart';
 import '../features/edits/screens/edit_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
@@ -83,6 +84,7 @@ import '../features/anime/repositories/firebase_anime_library_repository.dart';
 import '../features/anime/repositories/unavailable_anime_hub_social_repository.dart';
 import '../features/anime/repositories/unavailable_anime_library_repository.dart';
 import '../features/events/providers/event_providers.dart';
+import '../features/events/models/event_models.dart';
 import '../features/events/repositories/event_repository.dart';
 import '../features/events/repositories/firebase_event_repository.dart';
 import '../features/events/repositories/unavailable_event_repository.dart';
@@ -106,6 +108,7 @@ import '../features/games/repositories/unavailable_games_repository_v2.dart';
 import '../features/games/screens/game_details_screen.dart';
 import '../features/games/screens/games_center_v2_screen.dart';
 import '../features/games/screens/game_create_v2_screen.dart';
+import '../features/games/screens/game_list_screen.dart';
 import '../features/games/screens/game_waiting_v2_screen.dart';
 import '../features/games/screens/game_room_v2_screen.dart';
 import '../features/games/screens/game_history_v2_screen.dart';
@@ -658,7 +661,7 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
-      FirebaseEditsRepository(
+      FirebaseReelsRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
@@ -743,7 +746,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
                 unawaited(
                   AppNavigation.go(
                     context,
-                    PubgetLinks.editHighlightPath(editId),
+                    PubgetLinks.reelHighlightPath(editId),
                   ),
                 );
               },
@@ -753,7 +756,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         return;
       }
       unawaited(
-        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
+        AppNavigation.go(context, PubgetLinks.reelHighlightPath(editId)),
       );
     };
 
@@ -771,7 +774,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelHighlightPath(editId),
             ),
           ),
         ),
@@ -790,7 +793,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelHighlightPath(editId),
             ),
           ),
         ),
@@ -868,6 +871,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/profile/edit': const EditProfilePage(),
         '/friend-requests': const FriendRequestsPage(),
         '/notifications': const NotificationInboxPage(),
+        '/reels': const AppShell(),
+        '/reels/upload': const ReelsUploadPage(),
         '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
@@ -927,11 +932,21 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/events/create': (parameters) {
           final groupId = parameters['groupId'];
+          final scope = parameters['scope'] == 'global'
+              ? EventScope.global
+              : EventScope.group;
           if (groupId == null || groupId.isEmpty) {
+            if (scope == EventScope.global) {
+              return EventBuilderPage(
+                scope: scope,
+                templateId: parameters['templateId'],
+              );
+            }
             return CreateEventEntryPage(templateId: parameters['templateId']);
           }
           return EventBuilderPage(
             groupId: groupId,
+            scope: scope,
             templateId: parameters['templateId'],
           );
         },
@@ -979,7 +994,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           final groupId = parameters['groupId'];
           final userId = context.read<AuthProvider>().currentUser?.id ?? '';
           if (groupId == null || groupId.isEmpty) {
-            return const UnknownLinkPage();
+            return const GameListScreen();
           }
           return GamesCenterV2Screen(groupId: groupId, userId: userId);
         },

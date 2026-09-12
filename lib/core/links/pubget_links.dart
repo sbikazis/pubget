@@ -48,6 +48,15 @@ abstract final class PubgetLinks {
   static String editHighlight(String editId) =>
       canonical(editHighlightPath(editId));
 
+  static String reelHighlightPath(String reelId) {
+    final trimmed = reelId.trim();
+    if (trimmed.isEmpty) return '/reels';
+    return '/reels?highlight=${Uri.encodeQueryComponent(trimmed)}';
+  }
+
+  static String reelHighlight(String reelId) =>
+      canonical(reelHighlightPath(reelId));
+
   static String gamePath(String gameId) =>
       _encodedPath('/game', gameId) ?? '';
 

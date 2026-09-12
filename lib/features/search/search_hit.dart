@@ -33,7 +33,6 @@ final class SearchHit {
 
   static const _visibleEventStatuses = <EventStatus>{
     EventStatus.active,
-    EventStatus.scheduled,
     EventStatus.ended,
   };
 
