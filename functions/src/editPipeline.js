@@ -236,10 +236,21 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
   };
 }
 
-function createEditPipeline({ db, bucket, economy, achievements, notifications }) {
+function createEditPipeline({
+  db,
+  bucket,
+  economy,
+  achievements,
+  notifications,
+  collectionName = "edits",
+  storagePrefix = "edits",
+  processedPrefix = "edits-processed",
+  config = EDITS_CONFIG,
+  deepLinkPrefix = "/edits",
+}) {
   async function notifyCreator({ creatorId, editId, kind, reason }) {
     if (!notifications || typeof notifications.build !== "function") return;
-    const destination = `/edits?highlight=${encodeURIComponent(editId)}`;
+        const destination = `${deepLinkPrefix}?highlight=${encodeURIComponent(editId)}`;
     try {
       if (kind === "published") {
         await notifications.build({
@@ -297,16 +308,17 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
 
   return async function processEdit(event) {
     const object = event.data || {};
-    const match = /^edits\/([^/]+)\/([^/]+)\.mp4$/.exec(object.name || "");
+    const match = new RegExp(`^${storagePrefix}/([^/]+)/([^/]+)\\.mp4$`)
+      .exec(object.name || "");
     if (!match) return null;
     const [, creatorId, editId] = match;
-    const ref = db.collection("edits").doc(editId);
+    const ref = db.collection(collectionName).doc(editId);
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
     await ref.update({ status: "processing", processingStartedAt: new Date() });
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
-        Number(object.size || 0) > EDITS_CONFIG.maxBytes) {
+        Number(object.size || 0) > config.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
       await notifyCreator({
         creatorId,
@@ -325,7 +337,7 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
       const ffmpeg = ffmpegBinary();
       const probed = await probe(ffmpeg, source);
       const durationSeconds = probed.durationSeconds;
-      if (durationSeconds <= 0 || durationSeconds > EDITS_CONFIG.maxDurationSeconds) {
+      if (durationSeconds <= 0 || durationSeconds > config.maxDurationSeconds) {
         await ref.update({ status: "failed", failureReason: "duration" });
         await notifyCreator({
           creatorId,
@@ -338,7 +350,7 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
 
       const treatment = decideAspectTreatment(probed.width, probed.height);
       const filters = buildVideoFilters(treatment);
-      const encodeArgs = ["-i", source, "-t", String(EDITS_CONFIG.maxDurationSeconds)];
+      const encodeArgs = ["-i", source, "-t", String(config.maxDurationSeconds)];
       if (filters.filterComplex) {
         encodeArgs.push("-filter_complex", filters.filterComplex);
       } else {
@@ -359,7 +371,7 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
         });
         // Last-resort: never reject solely for aspect — plain scale.
         await run(ffmpeg, [
-          "-i", source, "-t", String(EDITS_CONFIG.maxDurationSeconds), "-vf",
+          "-i", source, "-t", String(config.maxDurationSeconds), "-vf",
           `scale='min(${TARGET_W},iw)':-2:force_original_aspect_ratio=decrease`,
           "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
@@ -379,8 +391,8 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
         "-vf", `scale='min(720,iw)':-2:force_original_aspect_ratio=decrease`,
         "-q:v", "4", "-y", thumbnail,
       ]);
-      const thumbnailPath = `edits/${creatorId}/t_${editId}.jpg`;
-      const processedPath = `edits-processed/${creatorId}/${editId}.mp4`;
+      const thumbnailPath = `${storagePrefix}/${creatorId}/t_${editId}.jpg`;
+      const processedPath = `${processedPrefix}/${creatorId}/${editId}.mp4`;
       await bucket.upload(thumbnail, {
         destination: thumbnailPath, resumable: false,
         metadata: { contentType: "image/jpeg", metadata: { generatedBy: "pubget-edit-v2" } },
@@ -394,7 +406,7 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
         0,
         Number(creator.data()?.totalRespect || 0) * 0.5,
       ));
-      const published = await db.collection("edits")
+      const published = await db.collection(collectionName)
         .where("creatorId", "==", creatorId)
         .where("status", "==", "published")
         .limit(6)
@@ -413,7 +425,7 @@ function createEditPipeline({ db, bucket, economy, achievements, notifications }
         score: 20 + creatorQuality,
         processedAt: new Date(),
         creatorQuality,
-        schemaVersion: EDITS_CONFIG.schemaVersion,
+        schemaVersion: config.schemaVersion,
       }, watermarkScan);
       if (decision.publish) {
         decision.update.publishedAt = new Date();

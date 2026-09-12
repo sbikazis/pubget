@@ -38,6 +38,8 @@ const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createReelsDomain } = require("./src/reelsDomain");
+const { REELS_CONFIG } = require("./src/reelsConfig");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
@@ -204,6 +206,26 @@ const editsDomain = createEditsDomain({
   processEdit: processEditVideo,
   bucket: getStorage().bucket(),
 });
+const processReelVideo = createEditPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+  economy: economyDomain,
+  achievements: achievementsDomain,
+  notifications: notificationBuilder,
+  collectionName: REELS_CONFIG.collectionName,
+  storagePrefix: REELS_CONFIG.storagePrefix,
+  processedPrefix: REELS_CONFIG.processedPrefix,
+  config: REELS_CONFIG,
+  deepLinkPrefix: "/reels",
+});
+const reelsDomain = createReelsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  achievements: achievementsDomain,
+  processEdit: processReelVideo,
+  bucket: getStorage().bucket(),
+});
 
 exports.refreshGroupActivityScores = onSchedule(
   { schedule: "every 1 hours", region: "us-central1" },
@@ -293,11 +315,63 @@ exports.finalizeEditUpload = onCall(
   { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
+exports.startReelUpload = onCall(
+  { region: "us-central1" },
+  reelsDomain.startUpload,
+);
+exports.repostReel = onCall(
+  { region: "us-central1" },
+  reelsDomain.repost,
+);
+exports.deleteReel = onCall(
+  { region: "us-central1" },
+  reelsDomain.deleteReel,
+);
+exports.likeReel = onCall(
+  { region: "us-central1" },
+  reelsDomain.likeReel,
+);
+exports.addReelComment = onCall(
+  { region: "us-central1" },
+  reelsDomain.comment,
+);
+exports.startReelPlayback = onCall(
+  { region: "us-central1" },
+  reelsDomain.startPlayback,
+);
+exports.recordReelView = onCall(
+  { region: "us-central1" },
+  reelsDomain.recordView,
+);
+exports.recordReelSignal = onCall(
+  { region: "us-central1" },
+  reelsDomain.signal,
+);
+exports.reelCommentAction = onCall(
+  { region: "us-central1" },
+  reelsDomain.commentAction,
+);
+exports.getReelFeed = onCall(
+  { region: "us-central1" },
+  reelsDomain.getFeed,
+);
+exports.retryReelProcessing = onCall(
+  { region: "us-central1" },
+  reelsDomain.retryProcessing,
+);
+exports.finalizeReelUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
+  reelsDomain.finalizeUpload,
+);
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
 // Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
   { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   processEditVideo,
+);
+exports.processReelVideo = onObjectFinalized(
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
+  processReelVideo,
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);

@@ -22,6 +22,7 @@ import '../l10n/edit_copy.dart';
 import '../models/edit_models.dart';
 import '../providers/edit_upload_manager.dart';
 import '../repositories/edits_repository.dart';
+import '../../reels/reels_brand.dart';
 
 enum _UploadPhase {
   idle,
@@ -315,7 +316,7 @@ class _EditUploadPageState extends State<EditUploadPage>
     if (_phase == _UploadPhase.published) {
       return <Widget>[
         PubgetPrimaryButton(
-          onPressed: () => AppNavigation.go(context, '/edits'),
+          onPressed: () => AppNavigation.go(context, ReelsBrand.route),
           semanticLabel: copy.openEdit,
           child: Text(copy.openEdit),
         ),
@@ -394,6 +395,7 @@ class _EditUploadPageState extends State<EditUploadPage>
       contentType: 'video/mp4',
       sizeBytes: size,
       duration: duration,
+      maxDurationSeconds: ReelsBrand.maxDurationSeconds,
     );
     if (rejection != null) {
       setState(() {

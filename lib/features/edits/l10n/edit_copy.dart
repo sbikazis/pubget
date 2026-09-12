@@ -10,8 +10,8 @@ final class EditCopy {
 
   static EditCopy of(BuildContext context) => EditCopy(AppStrings.of(context));
 
-  String get feedTitle => _s.pick('Edits', 'المقاطع');
-  String get uploadTitle => _s.pick('Create Edit', 'إنشاء مقطع');
+  String get feedTitle => _s.pick('Reels', 'ريلز');
+  String get uploadTitle => _s.pick('Create Reel', 'إنشاء ريل');
   String get chooseVideo => _s.pick('Choose video', 'اختيار فيديو');
   String get recordVideo => _s.pick('Camera', 'الكاميرا');
   String get recordVideoHint => _s.pick('Record video', 'تسجيل فيديو');
@@ -22,7 +22,7 @@ final class EditCopy {
   String get animeTag => _s.pick('Anime tag (optional)', 'وسم الأنمي (اختياري)');
   String get animeTagHint =>
       _s.pick('e.g. one_piece', 'مثال: one_piece');
-  String get publish => _s.pick('Publish Edit', 'نشر المقطع');
+  String get publish => _s.pick('Publish Reel', 'نشر الريل');
   String get continueUpload => _s.pick('Continue', 'متابعة');
   String get retry => _s.pick('Retry upload', 'إعادة محاولة الرفع');
   String get retryProcessing => _s.pick('Retry processing', 'إعادة المعالجة');
@@ -42,8 +42,8 @@ final class EditCopy {
     'قيد المراجعة الإشرافية',
   );
   String get publishedMessage => _s.pick(
-    'Your Edit is live. Open it in the feed.',
-    'مقطعك متاح الآن. افتحه من المقاطع.',
+    'Your Reel is live. Open it in the feed.',
+    'الريل متاح الآن. افتحه من الريلز.',
   );
   String get publishingInBackground => _s.pick(
     'Publishing in the background…',
@@ -55,22 +55,22 @@ final class EditCopy {
   String get readyStatus => _s.pick('Ready to publish', 'جاهز للنشر');
   String get failedStatus => _s.pick('Needs attention', 'يحتاج إجراءً');
   String get publishedNotificationTitle =>
-      _s.pick('Edit published', 'تم نشر المقطع');
+      _s.pick('Reel published', 'تم نشر الريل');
   String get publishedNotificationBody => _s.pick(
-    'Your Edit is live. Open Edits to watch it.',
-    'مقطعك متاح الآن. افتح المقاطع لمشاهدته.',
+    'Your Reel is live. Open Reels to watch it.',
+    'الريل متاح الآن. افتح الريلز لمشاهدته.',
   );
   String get failedNotificationBody => _s.pick(
-    'Edit processing failed. Open the app to retry or delete the draft.',
+    'Reel processing failed. Open the app to retry or delete the draft.',
     'فشلت معالجة المقطع. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
   );
   String get videoReadyOffer => _s.pick(
-    'Your Edit is ready — watch it now?',
+    'Your Reel is ready — watch it now?',
     'مقطعك جاهز — شاهده الآن؟',
   );
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit =>
-      _s.pick('Open published Edit', 'فتح المقطع المنشور');
+      _s.pick('Open published Reel', 'فتح الريل المنشور');
   String get noVideoYet => _s.pick(
     'Add an MP4 to begin — any aspect ratio works',
     'أضف فيديو MP4 للبدء — أي نسبة عرض مدعومة',
@@ -80,13 +80,13 @@ final class EditCopy {
     'المعاينة غير متاحة — الملف المحلي غير موجود. اختر الفيديو مرة أخرى.',
   );
   String get syncing => _s.pick('Syncing with server…', 'مزامنة مع الخادم…');
-  String get noEdits => _s.pick('No Edits yet', 'لا مقاطع بعد');
+  String get noEdits => _s.pick('No Reels yet', 'لا ريلز بعد');
   String get noEditsMessage => _s.pick(
     'Be the first creator to share a video.',
     'كن أول مبدع يشارك فيديو.',
   );
   String get failedLoad =>
-      _s.pick('Edits could not load.', 'تعذّر تحميل المقاطع.');
+      _s.pick('Reels could not load.', 'تعذّر تحميل الريلز.');
   String get brokenClip => _s.pick(
     'This clip could not be played.',
     'تعذّر تشغيل هذا المقطع.',

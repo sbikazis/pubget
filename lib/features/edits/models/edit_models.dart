@@ -98,6 +98,16 @@ final class Edit {
     this.failureReason,
     this.counters = const EditCounters(),
     this.schemaVersion = 1,
+    this.animeId = '',
+    this.hashtags = const <String>[],
+    this.characterIds = const <String>[],
+    this.mentions = const <String>[],
+    this.groupIds = const <String>[],
+    this.eventId = '',
+    this.audioId = '',
+    this.coverFrameMs = 0,
+    this.visibility = 'public',
+    this.allowRemix = true,
   });
 
   final String id;
@@ -122,6 +132,16 @@ final class Edit {
   final String? failureReason;
   final EditCounters counters;
   final int schemaVersion;
+  final String animeId;
+  final List<String> hashtags;
+  final List<String> characterIds;
+  final List<String> mentions;
+  final List<String> groupIds;
+  final String eventId;
+  final String audioId;
+  final int coverFrameMs;
+  final String visibility;
+  final bool allowRemix;
 
   EditStatus get statusEnum => EditStatus.parse(status);
   bool get isPublished => statusEnum == EditStatus.published;
@@ -166,7 +186,7 @@ final class Edit {
     return switch (failureReason) {
       'invalid-video' =>
         'This video is not a supported MP4, or it is too large.',
-      'duration' => 'Videos can be up to 3 minutes long.',
+      'duration' => 'Reels can be up to 60 seconds long.',
       'aspect-unrecoverable' =>
         'We could not prepare this video for full-screen display. Delete the draft or try another file.',
       _ => 'Processing failed. You can retry or delete this draft.',
@@ -203,6 +223,16 @@ final class Edit {
       failureReason: failureReason,
       counters: counters ?? this.counters,
       schemaVersion: schemaVersion,
+      animeId: animeId,
+      hashtags: hashtags,
+      characterIds: characterIds,
+      mentions: mentions,
+      groupIds: groupIds,
+      eventId: eventId,
+      audioId: audioId,
+      coverFrameMs: coverFrameMs,
+      visibility: visibility,
+      allowRemix: allowRemix,
     );
   }
 
@@ -237,6 +267,16 @@ final class Edit {
       failureReason: map['failureReason'] as String?,
       counters: counters,
       schemaVersion: _int(map['schemaVersion'] ?? 1),
+      animeId: map['animeId'] as String? ?? '',
+      hashtags: _strings(map['hashtags']),
+      characterIds: _strings(map['characterIds']),
+      mentions: _strings(map['mentions']),
+      groupIds: _strings(map['groupIds']),
+      eventId: map['eventId'] as String? ?? '',
+      audioId: map['audioId'] as String? ?? '',
+      coverFrameMs: _int(map['coverFrameMs']),
+      visibility: map['visibility'] as String? ?? 'public',
+      allowRemix: map['allowRemix'] != false,
     );
   }
 
@@ -261,6 +301,11 @@ final class Edit {
   }
 
   static int _int(Object? value) => value is num ? value.toInt() : 0;
+
+  static List<String> _strings(Object? value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().toList(growable: false);
+  }
 
   static DateTime? _date(Object? value) {
     if (value is Timestamp) return value.toDate();

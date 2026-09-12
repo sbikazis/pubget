@@ -55,8 +55,9 @@ import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
 import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
-import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
+import '../features/reels/repositories/reels_repository.dart';
+import '../features/reels/screens/reels_upload_page.dart';
 import '../features/edits/screens/edit_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
@@ -659,7 +660,7 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
-      FirebaseEditsRepository(
+      FirebaseReelsRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
@@ -744,7 +745,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
                 unawaited(
                   AppNavigation.go(
                     context,
-                    PubgetLinks.editHighlightPath(editId),
+                    PubgetLinks.reelHighlightPath(editId),
                   ),
                 );
               },
@@ -754,7 +755,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         return;
       }
       unawaited(
-        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
+                        AppNavigation.go(context, PubgetLinks.reelHighlightPath(editId)),
       );
     };
 
@@ -772,7 +773,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelHighlightPath(editId),
             ),
           ),
         ),
@@ -791,7 +792,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelHighlightPath(editId),
             ),
           ),
         ),
@@ -869,6 +870,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/profile/edit': const EditProfilePage(),
         '/friend-requests': const FriendRequestsPage(),
         '/notifications': const NotificationInboxPage(),
+        '/reels': const AppShell(),
+        '/reels/upload': const ReelsUploadPage(),
         '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),

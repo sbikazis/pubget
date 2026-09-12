@@ -908,7 +908,46 @@ service cloud.firestore {
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
+    match /reels/{reelId} {
+      function reelExists() {
+        return exists(/databases/$(database)/documents/reels/$(reelId));
+      }
+      function reelData() {
+        return get(/databases/$(database)/documents/reels/$(reelId)).data;
+      }
+      function reelVisible() {
+        return signedIn() && reelExists() &&
+          ((reelData().creatorId == request.auth.uid) ||
+           (reelData().status == 'published' &&
+            reelData().moderationStatus == 'approved'));
+      }
+      allow read: if reelVisible();
+      // All lifecycle transitions, counters, ranking inputs, and moderation
+      // decisions are server-authoritative.
+      allow create, update, delete: if false;
+      match /comments/{commentId} {
+        allow read: if reelVisible();
+        allow create, update, delete: if false;
+        match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
+      }
+      match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+      match /saves/{uid} { allow read: if self(uid); allow write: if false; }
+      match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
+      match /playbackSessions/{sessionId} {
+        allow read: if signedIn() && resource.data.viewerId == request.auth.uid;
+        allow write: if false;
+      }
+      match /signals/{signalId} { allow read: if signedIn(); allow write: if false; }
+      match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
+    }
+
     match /editUploadKeys/{keyId} {
+      allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /reelUploadKeys/{keyId} {
       allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
       allow create, update, delete: if false;
     }
