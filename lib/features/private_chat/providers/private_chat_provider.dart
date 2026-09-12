@@ -50,6 +50,7 @@ final class PrivateChatProvider extends ChangeNotifier {
   Timer? _receiptRetryTimer;
   int _receiptRetryAttempt = 0;
   int _sessionGeneration = 0;
+  ChatMessage? _replyTarget;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   Map<String, double> get uploadProgress => Map.unmodifiable(_uploadProgress);
@@ -57,6 +58,16 @@ final class PrivateChatProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
   String? get chatId => _chatId;
+  ChatMessage? get replyTarget => _replyTarget;
+
+  void setReplyTarget(ChatMessage? message) {
+    final next = message == null || message.isDeleted ? null : message;
+    if (_replyTarget?.id == next?.id) return;
+    _replyTarget = next;
+    notifyListeners();
+  }
+
+  void clearReplyTarget() => setReplyTarget(null);
 
   Future<void> open({
     required String chatId,
@@ -80,6 +91,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     _messageIndex.clear();
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
+    _replyTarget = null;
     _hasMore = true;
     _loadingMore = false;
     _failure = null;
@@ -116,6 +128,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     _pendingReadIds.clear();
     _receiptInFlight = false;
     _receiptRetryAttempt = 0;
+    _replyTarget = null;
   }
 
   Future<void> loadMore() async {
@@ -165,6 +178,8 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (trimmed.isEmpty) return;
     final generation = _sessionGeneration;
     if (!_isCurrent(chatId, generation)) return;
+    final replyId = replyToMessageId ?? _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final pending = ChatMessage.optimistic(
       id: _newId(),
       senderId: senderId,
@@ -173,8 +188,10 @@ final class PrivateChatProvider extends ChangeNotifier {
       senderRole: '',
       type: ChatMessageType.text,
       text: trimmed,
-      replyToMessageId: replyToMessageId,
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
+    _replyTarget = null;
     _upsert(pending);
     unawaited(_persistPending(chatId, pending));
     final result = await _repository.sendMessage(
@@ -182,7 +199,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       messageId: pending.id,
       type: ChatMessageType.text,
       text: trimmed,
-      replyToMessageId: replyToMessageId,
+        replyToMessageId: replyId,
     );
     _finishSend(pending.id, result, chatId: chatId, generation: generation);
   }
@@ -199,6 +216,8 @@ final class PrivateChatProvider extends ChangeNotifier {
     final mediaId = _newId();
     final generation = _sessionGeneration;
     if (!_isCurrent(chatId, generation)) return;
+    final replyId = _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final type = contentType.startsWith('video/')
         ? ChatMessageType.video
         : ChatMessageType.image;
@@ -211,6 +230,8 @@ final class PrivateChatProvider extends ChangeNotifier {
       type: type,
       text: null,
       mediaId: mediaId,
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
     _pendingUploads[mediaId] = _PendingMediaUpload(
       chatId: chatId,
@@ -221,7 +242,10 @@ final class PrivateChatProvider extends ChangeNotifier {
       senderName: senderName,
       senderAvatar: senderAvatar,
       generation: generation,
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
+    _replyTarget = null;
     _upsert(pending);
     await _performMediaUpload(mediaId, generation: generation);
   }
@@ -262,6 +286,8 @@ final class PrivateChatProvider extends ChangeNotifier {
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
+           replyToMessageId: payload.replyToMessageId,
+           replyPreview: payload.replyPreview,
         );
         _upsert(pending);
         unawaited(_persistPending(payload.chatId, pending));
@@ -272,6 +298,7 @@ final class PrivateChatProvider extends ChangeNotifier {
           mediaUrl: media.mediaUrl,
           thumbnailUrl: media.thumbnailUrl,
           mediaId: media.mediaId,
+           replyToMessageId: payload.replyToMessageId,
         );
         _finishSend(
           mediaId,
@@ -717,6 +744,15 @@ final class PrivateChatProvider extends ChangeNotifier {
   String _newId() =>
       '${DateTime.now().microsecondsSinceEpoch}_${_messages.length}';
 
+  String? _previewFor(ChatMessage? message) {
+    if (message == null) return null;
+    final text = message.text?.trim();
+    if (text != null && text.isNotEmpty) return text;
+    if (message.isDeleted) return 'Deleted message';
+    if (message.isMedia) return 'Media message';
+    return null;
+  }
+
   void _safeNotify() {
     if (!_disposed) notifyListeners();
   }
@@ -855,6 +891,8 @@ final class _PendingMediaUpload {
     required this.senderName,
     required this.senderAvatar,
     required this.generation,
+    required this.replyToMessageId,
+    required this.replyPreview,
   });
 
   final String chatId;
@@ -865,4 +903,6 @@ final class _PendingMediaUpload {
   final String senderName;
   final String senderAvatar;
   final int generation;
+  final String? replyToMessageId;
+  final String? replyPreview;
 }

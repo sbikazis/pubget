@@ -43,6 +43,32 @@ void main() {
     },
   );
 
+  test('reply target is attached once and cleared after private send', () async {
+    final repository = _FakePrivateChatRepository();
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+    final target = _serverMessage('target');
+    repository.stream.add(Success(<ChatMessage>[target]));
+    await pumpEventQueue();
+    provider.setReplyTarget(provider.messages.single);
+
+    final send = provider.sendText(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      text: 'reply',
+    );
+    expect(provider.replyTarget, isNull);
+    final pending = provider.messages.last;
+    expect(pending.replyToMessageId, 'target');
+    repository.completeNext(
+      Success(_serverMessage(pending.id)),
+    );
+    await send;
+  });
+
   test('completion from an old chat cannot mutate the newly opened chat',
       () async {
     final repository = _FakePrivateChatRepository();

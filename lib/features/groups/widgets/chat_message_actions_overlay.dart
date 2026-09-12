@@ -57,6 +57,7 @@ Future<ChatMessageActionResult?> showChatMessageActions(
   bool canDelete = false,
   bool canPin = false,
   bool canReport = false,
+  bool canReact = true,
   required bool isStarred,
 }) {
   HapticFeedback.lightImpact();
@@ -80,6 +81,7 @@ Future<ChatMessageActionResult?> showChatMessageActions(
         canDelete: canDelete,
         canPin: canPin,
         canReport: canReport,
+        canReact: canReact,
         isStarred: isStarred,
         onResult: (result) {
           if (dialogContext.mounted) {
@@ -112,6 +114,7 @@ class ReactionOverlay extends StatefulWidget {
     required this.canDelete,
     required this.canPin,
     required this.canReport,
+    this.canReact = true,
     required this.isStarred,
     required this.onResult,
     super.key,
@@ -128,6 +131,7 @@ class ReactionOverlay extends StatefulWidget {
   final bool canDelete;
   final bool canPin;
   final bool canReport;
+  final bool canReact;
   final bool isStarred;
   final ValueChanged<ChatMessageActionResult?> onResult;
 
@@ -332,21 +336,22 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                 ),
 
               // 5) Emoji reaction bar — LAST child = highest z-index.
-              Positioned(
-                key: const Key('chat-reaction-bar'),
-                left: barLeft,
-                top: barTop,
-                child: FadeTransition(
-                  opacity: _fade,
-                  child: ScaleTransition(
-                    scale: _scale,
-                    child: _ReactionPill(
-                      onPick: _react,
-                      onMore: _pickMoreEmoji,
+              if (widget.canReact)
+                Positioned(
+                  key: const Key('chat-reaction-bar'),
+                  left: barLeft,
+                  top: barTop,
+                  child: FadeTransition(
+                    opacity: _fade,
+                    child: ScaleTransition(
+                      scale: _scale,
+                      child: _ReactionPill(
+                        onPick: _react,
+                        onMore: _pickMoreEmoji,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           );
         },
