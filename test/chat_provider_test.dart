@@ -399,6 +399,41 @@ void main() {
     await send;
   });
 
+  test('media send consumes the reply target exactly once', () async {
+    final repository = _FakeChatRepository();
+    final provider = ChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(groupId: 'g1', currentUserId: 'alice');
+    repository.stream.add(Success(<ChatMessage>[_serverMessage('target')]));
+    await pumpEventQueue();
+    provider.setReplyTarget(provider.messages.single);
+
+    await provider.sendMedia(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      bytes: Uint8List.fromList(<int>[1, 2, 3]),
+      fileName: 'shot.jpg',
+      contentType: 'image/jpeg',
+    );
+
+    expect(provider.replyTarget, isNull);
+    final send = provider.sendText(
+      groupId: 'g1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      senderRole: 'member',
+      text: 'next',
+    );
+    final pending = provider.messages.last;
+    expect(pending.replyToMessageId, isNull);
+    repository.completeNext(Success(_serverMessage(pending.id, text: 'next')));
+    await send;
+  });
+
   test('manual retry still works for permanent failures', () async {
     final repository = _FakeChatRepository();
     final provider = ChatProvider(repository: repository);

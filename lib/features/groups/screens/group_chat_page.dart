@@ -60,6 +60,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   final _stars = ChatStarStore();
+  final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
   ChatProvider? _chatProvider;
   late final UserStickerStore _userStickers =
       widget.userStickerStore ?? UserStickerStore();
@@ -212,6 +213,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             EventLinks.open(context, eventId),
                         onGameTap: _openGameCard,
                         onLoadMore: _loadMorePreservingAnchor,
+                        messageKeys: _messageKeys,
                       ),
                     ),
                     if (chat.replyTarget != null)
@@ -396,9 +398,30 @@ class _GroupChatPageState extends State<GroupChatPage> {
       }
       if (shouldMarkRead) {
         _lastMarkedReadCount = count;
-        unawaited(chat.markAsRead(chat.messages));
+        unawaited(chat.markAsRead(_visibleMessages(chat)));
       }
     });
+  }
+
+  List<ChatMessage> _visibleMessages(ChatProvider chat) {
+    if (!_scrollController.hasClients) return const <ChatMessage>[];
+    final viewportObject = _scrollController.position.context.storageContext
+        .findRenderObject();
+    if (viewportObject is! RenderBox) return const <ChatMessage>[];
+    final viewportTop = viewportObject.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewportObject.size.height;
+    // Message rows are keyed by message id, so use their actual render bounds
+    // instead of estimating visibility from variable bubble heights.
+    return chat.messages.where((message) {
+      final context = _messageKeys[message.id]?.currentContext;
+      final renderObject = context?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+      final topLeft = renderObject.localToGlobal(Offset.zero);
+      final bottomRight = renderObject.localToGlobal(
+        renderObject.size.bottomRight(Offset.zero),
+      );
+      return bottomRight.dy >= viewportTop && topLeft.dy <= viewportBottom;
+    }).toList(growable: false);
   }
 
   void _scrollToLatest() {
@@ -845,6 +868,7 @@ class _MessageList extends StatelessWidget {
     required this.onEventTap,
     required this.onGameTap,
     required this.onLoadMore,
+    required this.messageKeys,
   });
 
   final ChatProvider chat;
@@ -861,6 +885,7 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<String> onEventTap;
   final ValueChanged<ChatMessage> onGameTap;
   final VoidCallback onLoadMore;
+  final Map<String, GlobalKey> messageKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -953,7 +978,7 @@ class _MessageList extends StatelessWidget {
               return _FailedMessage(message: message);
             }
             return ChatMessageBubble(
-              key: ValueKey<String>(message.id),
+              key: messageKeys.putIfAbsent(message.id, GlobalKey.new),
               message: message,
               isMine: message.senderId == currentUserId,
               contrast: contrast,
