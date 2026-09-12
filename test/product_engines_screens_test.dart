@@ -215,7 +215,7 @@ void main() {
     expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
-  testWidgets('game create exposes implemented options including Mafia', (
+  testWidgets('game create exposes the current Phase games without Mafia', (
     tester,
   ) async {
     final creator = GameCreateProvider(repository: _LiveGameRepository());
@@ -236,13 +236,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Guess the Character'), findsOneWidget);
-    expect(find.text('Mafia'), findsOneWidget);
+    expect(find.text('Mafia'), findsNothing);
     expect(find.text('Rules', skipOffstage: false), findsOneWidget);
-    await tester.ensureVisible(find.text('Mafia'));
-    await tester.tap(find.text('Mafia'));
-    await tester.pumpAndSettle();
-    expect(find.text('Minimum players', skipOffstage: false), findsOneWidget);
-    expect(find.text('Rules', skipOffstage: false), findsNothing);
   });
 
   testWidgets('expired events hide the submit control', (tester) async {
@@ -493,7 +488,6 @@ final class _FakeMafiaRepository implements MafiaRepository {
       Stream<Result<List<Map<String, dynamic>>>>.value(
         const Success(<Map<String, dynamic>>[]),
       );
-
 }
 
 final class _LiveGameRepository implements GameRepository {

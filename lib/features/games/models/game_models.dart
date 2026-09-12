@@ -533,6 +533,7 @@ final class GameDraft {
     this.description = '',
     this.asDraft = false,
     this.configuration = const GameConfiguration(),
+    this.creationSource = 'unknown',
   });
 
   final String? gameId;
@@ -542,6 +543,7 @@ final class GameDraft {
   final String description;
   final bool asDraft;
   final GameConfiguration configuration;
+  final String creationSource;
 
   GameDraft copyWith({
     String? gameId,
@@ -551,6 +553,7 @@ final class GameDraft {
     String? description,
     bool? asDraft,
     GameConfiguration? configuration,
+    String? creationSource,
   }) => GameDraft(
     gameId: gameId ?? this.gameId,
     groupId: groupId ?? this.groupId,
@@ -559,6 +562,7 @@ final class GameDraft {
     description: description ?? this.description,
     asDraft: asDraft ?? this.asDraft,
     configuration: configuration ?? this.configuration,
+    creationSource: creationSource ?? this.creationSource,
   );
 
   Map<String, dynamic> toCallableMap() => <String, dynamic>{
@@ -569,6 +573,7 @@ final class GameDraft {
     'description': description,
     'asDraft': asDraft,
     'configuration': configuration.toMap(),
+    'creationSource': creationSource,
   };
 }
 

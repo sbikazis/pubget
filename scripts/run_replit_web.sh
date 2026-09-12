@@ -13,4 +13,4 @@ flutter build web \
 rm -f "$firebase_defines"
 trap - EXIT
 
-exec python3 scripts/serve_flutter_web.py
+exec python3 scripts/flutter_web_server.py

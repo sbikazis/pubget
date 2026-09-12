@@ -19,8 +19,15 @@ const GAME_ID_MAX = 128;
 const ACTION_TYPE_MAX = 64;
 const PAYLOAD_JSON_MAX = 8192;
 const RECIPIENT_CAP = 200;
+const DAILY_CREATION_LIMIT = 2;
+const WAITING_ROOM_TIMEOUT_SECONDS = 15 * 60;
 
-const GAME_TYPES = ["guessCharacter", "animeChain", "emojiAnimeGuess"];
+const GAME_TYPES = [
+  "guessCharacter",
+  "animeChain",
+  "emojiAnimeGuess",
+  "mafia",
+];
 
 const GAME_TYPE_REGISTRY = {
   guessCharacter: {
@@ -53,22 +60,29 @@ const GAME_TYPE_REGISTRY = {
       defaultRounds: 1, defaultTimer: 25,
     },
   },
+  mafia: {
+    name: "Mafia",
+    version: 1,
+    implemented: true,
+    genericCreate: false,
+    capabilities: { usesRounds: true, usesScoring: false, minPlayers: 4, maxPlayers: 16 },
+  },
 };
 
 const STATUSES = [
-  "CREATED", "WAITING", "STARTING", "IN_PROGRESS", "COMPLETED", "CANCELLED",
+  "draft", "waiting", "active", "paused", "completed", "cancelled",
 ];
 
 const TRANSITIONS = {
-  CREATED: new Set(["WAITING", "CANCELLED"]),
-  WAITING: new Set(["STARTING", "CANCELLED"]),
-  STARTING: new Set(["IN_PROGRESS", "CANCELLED"]),
-  IN_PROGRESS: new Set(["COMPLETED", "CANCELLED"]),
-  COMPLETED: new Set(),
-  CANCELLED: new Set(),
+  draft: new Set(["waiting", "cancelled"]),
+  waiting: new Set(["active", "cancelled"]),
+  active: new Set(["paused", "completed", "cancelled"]),
+  paused: new Set(["active", "cancelled"]),
+  completed: new Set(),
+  cancelled: new Set(),
 };
 
-const TERMINAL = new Set(["COMPLETED", "CANCELLED"]);
+const TERMINAL = new Set(["completed", "cancelled"]);
 
 const EVENT_SCHEMA_VERSION = 1;
 
@@ -86,6 +100,14 @@ function requireAuth(request, HttpsError) {
 
 function gameRef(db, gameId) {
   return db.collection("games").doc(gameId);
+}
+
+function creationLimitRef(db, uid, dayKey) {
+  return db.collection("gameCreationLimits").doc(`${uid}_${dayKey}`);
+}
+
+function dayKeyOf(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function participantRef(db, gameId, uid) {
@@ -163,11 +185,8 @@ function normalizeConfiguration(raw, spec) {
     : {};
   const minCap = caps.minPlayers || 1;
   const maxCap = caps.maxPlayers || 16;
-  // Player cardinality is a property of the game, not a client preference.
-  // Keeping this server authoritative also prevents a creator from opening a
-  // game which its engine cannot actually play.
-  const minPlayers = minCap;
-  const maxPlayers = maxCap;
+  const minPlayers = clampInt(input.minPlayers, minCap, minCap, maxCap);
+  const maxPlayers = clampInt(input.maxPlayers, maxCap, minPlayers, maxCap);
   const difficultySource = input.difficulty || extra.difficulty;
   const difficulty = ["easy", "normal", "hard"].includes(difficultySource)
     ? difficultySource
@@ -357,16 +376,6 @@ function createGamesDomain({
     }
   }
 
-  async function retractAnnouncement(gameId, groupId) {
-    if (!validString(gameId, GAME_ID_MAX) || !validString(groupId, 128)) return;
-    try {
-      await groupRef(db, groupId).collection("messages")
-        .doc(`card-game-${gameId}-created`).delete();
-    } catch (_) {
-      // Retraction is best effort; the authoritative game is already cancelled.
-    }
-  }
-
   async function notifyGame({ kind, gameId, groupId, actorId, title, type }) {
     if (!validString(gameId, GAME_ID_MAX)) return;
     let recipientIds;
@@ -433,36 +442,44 @@ function createGamesDomain({
       : (Array.isArray(game.result && game.result.winnerIds) ? game.result.winnerIds : []);
     const participants = await activePlayerIds(gameId);
     if (economy && typeof economy.grantDomainRewards === "function") {
-      const playerIds = Array.isArray(game.playerOrder) && game.playerOrder.length
-        ? game.playerOrder : participants;
-      const draw = Boolean(result && (result.draw || result.kind === "draw")) ||
-        winnerIds.length === 0;
-      const winners = new Set(winnerIds);
-      const rewardType = draw ? "draw" : "win";
-      // The economy service owns the idempotent ledger.  Supplying the
-      // outcome in metadata lets deployments with outcome-specific rates
-      // apply 5 / 7..10 / 2 without ever issuing a second grant.
-      const winAmount = game.configuration &&
-          game.configuration.difficulty === "easy" ? 7 :
-        game.configuration &&
-          game.configuration.difficulty === "hard" ? 10 : 8;
-      for (const playerId of playerIds) {
-        const amount = draw ? 5 : (winners.has(playerId) ? winAmount : 2);
-        await economy.grantDomainRewards([playerId], {
-          type: "earn_game",
+      const winnerSet = new Set(winnerIds);
+      const participantSet = new Set(participants);
+      const losers = participants.filter((id) => !winnerSet.has(id));
+      const difficulty = game.configuration?.difficulty || "normal";
+      const winType = [
+        "easy",
+        "normal",
+        "hard",
+      ].includes(difficulty)
+        ? `earn_game_win_${difficulty}`
+        : "earn_game_win_normal";
+      const rewardMetadata = {
+        gameId,
+        gameType: game.type || "",
+        difficulty,
+      };
+      if (winnerIds.length === 0) {
+        await economy.grantDomainRewards([...participantSet], {
+          type: "earn_game_draw",
           referenceId: gameId,
           source: "game",
-          metadata: {
-            gameType: game.type || "",
-            outcome: draw ? "draw" : (winners.has(playerId) ? "win" : "loss"),
-            difficulty: (game.configuration && game.configuration.difficulty) || "normal",
-            winnerIds,
-            amountOverride: amount,
-            rewardAmount: winAmount,
-            lossAmount: 2,
-            winners: [...winners],
-          },
+          metadata: rewardMetadata,
         });
+      } else {
+        await economy.grantDomainRewards(winnerIds, {
+          type: winType,
+          referenceId: gameId,
+          source: "game",
+          metadata: rewardMetadata,
+        });
+        if (losers.length > 0) {
+          await economy.grantDomainRewards(losers, {
+            type: "earn_game_loss",
+            referenceId: gameId,
+            source: "game",
+            metadata: rewardMetadata,
+          });
+        }
       }
     }
     if (achievements && typeof achievements.evaluate === "function") {
@@ -504,7 +521,7 @@ function createGamesDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) return;
       const current = snapshot.data() || {};
-      if (current.status !== "IN_PROGRESS") return;
+      if (current.status !== "active") return;
       if (current.publicState && current.publicState.engine) return;
       const engine = engineFor(current.type);
       if (!engine || typeof engine.initialize !== "function") return;
@@ -533,8 +550,11 @@ function createGamesDomain({
       ]);
       if (!snapshot.exists) return;
       const current = snapshot.data() || {};
-      if (current.status !== "IN_PROGRESS") return;
-      if (!isExpired(current.deadlineAt, nowOf())) return;
+      if (current.status !== "active") return;
+      if (
+        !isExpired(current.deadlineAt, nowOf()) &&
+        !isExpired(current.globalDeadlineAt, nowOf())
+      ) return;
       const engine = engineFor(current.type);
       if (!engine || typeof engine.onTimeout !== "function") return;
       const result = engine.onTimeout({
@@ -562,6 +582,58 @@ function createGamesDomain({
     return outcome;
   }
 
+  async function resolveExpiredWaitingGame(gameId) {
+    let cancelledGame = null;
+    await db.runTransaction(async (transaction) => {
+      const ref = gameRef(db, gameId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() || {};
+      if (
+        current.status !== "waiting" ||
+        !isExpired(current.waitingDeadlineAt, nowOf())
+      ) {
+        return;
+      }
+      const now = FieldValue.serverTimestamp();
+      transaction.update(ref, {
+        status: "cancelled",
+        currentPhase: "cancelled",
+        waitingDeadlineAt: null,
+        endedAt: now,
+        updatedAt: now,
+        stateVersion: (Number(current.stateVersion) || 0) + 1,
+        result: {
+          kind: current.type,
+          winnerIds: [],
+          scores: {},
+          summary: { reason: "waiting_timeout" },
+        },
+      });
+      writeEvent(transaction, db, FieldValue, {
+        gameId,
+        eventId: `${gameId}_cancelled`,
+        type: "game_cancelled",
+        actorId: current.creatorId,
+        payload: { reason: "waiting_timeout" },
+      });
+      cancelledGame = { ...current, id: gameId };
+    });
+    if (cancelledGame) {
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${gameId}_cancelled`,
+          gameId,
+          type: "game_cancelled",
+          actorId: cancelledGame.creatorId,
+          payload: { reason: "waiting_timeout" },
+        }),
+        cancelledGame,
+      );
+    }
+    return Boolean(cancelledGame);
+  }
+
   async function createGame(request) {
     const uid = requireAuth(request, HttpsError);
     const input = request.data || {};
@@ -584,44 +656,63 @@ function createGamesDomain({
     if (!validString(input.groupId, 128)) {
       throw new HttpsError("invalid-argument", "groupId is required.");
     }
+    if (input.creationSource !== "group_chat") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Games can only be created from a group chat.",
+      );
+    }
     const configuration = normalizeConfiguration(input.configuration, spec);
     const asDraft = input.asDraft === true;
-    const status = asDraft ? "CREATED" : "WAITING";
+    const status = asDraft ? "draft" : "waiting";
     const ref = db.collection("games").doc();
     const title = input.title.trim();
-    const waitingDeadline = new Date(nowOf().getTime() + 2 * 60 * 1000);
-    const utcDay = new Date(nowOf()).toISOString().slice(0, 10);
-    const limitRef = db.collection("game_creation_limits").doc(`${uid}_${utcDay}`);
-    const requestKey = validString(input.requestId, GAME_ID_MAX) ? input.requestId.trim() : null;
-    const requestRef = requestKey
-      ? db.collection("game_request_idempotency").doc(`${uid}_${requestKey}`)
-      : null;
-    let replay = null;
+    const nowDate = nowOf();
+    const dayKey = dayKeyOf(nowDate);
+    const limitRef = creationLimitRef(db, uid, dayKey);
     await db.runTransaction(async (transaction) => {
-      if (requestRef) {
-        const priorRequest = await transaction.get(requestRef);
-        if (priorRequest.exists) {
-          replay = priorRequest.data() || null;
-          return;
-        }
-      }
       const access = await loadPermissions(transaction, db, input.groupId.trim(), uid);
       if (access.missingGroup) throw new HttpsError("not-found", "Group not found.");
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to create a game.");
       }
-      const limitSnap = await transaction.get(limitRef);
-      const limitData = limitSnap.exists ? (limitSnap.data() || {}) : {};
-      if ((limitData.count || 0) >= 2) {
+      if (!access.manageGames) {
+        throw new HttpsError("permission-denied", "You need Manage Games to create a game.");
+      }
+      const [user, limitSnapshot] = await Promise.all([
+        transaction.get(db.collection("users").doc(uid)),
+        transaction.get(limitRef),
+      ]);
+      const createdCount = limitSnapshot.exists
+        ? Number(limitSnapshot.data()?.createdCount || 0)
+        : 0;
+      if (createdCount >= DAILY_CREATION_LIMIT) {
         throw new HttpsError(
           "resource-exhausted",
-          "Daily game creation limit reached (2 games per UTC day).",
+          "You can create at most two games per day.",
         );
       }
-      const user = await transaction.get(db.collection("users").doc(uid));
       const now = FieldValue.serverTimestamp();
+      const waitingDeadlineAt = status === "waiting"
+        ? new Date(
+          nowDate.getTime() + WAITING_ROOM_TIMEOUT_SECONDS * 1000,
+        )
+        : null;
+      if (limitSnapshot.exists) {
+        transaction.update(limitRef, {
+          createdCount: createdCount + 1,
+          dayKey,
+          updatedAt: now,
+        });
+      } else {
+        transaction.create(limitRef, {
+          userId: uid,
+          dayKey,
+          createdCount: 1,
+          updatedAt: now,
+        });
+      }
       transaction.create(ref, {
-        schemaVersion: 2,
         type: input.type,
         title,
         description: typeof input.description === "string" ? input.description.trim() : "",
@@ -629,36 +720,22 @@ function createGamesDomain({
         status,
         creatorId: uid,
         groupId: input.groupId.trim(),
+        creationSource: "group_chat",
         configuration,
         participantsCount: asDraft ? 0 : 1,
-        playerOrder: asDraft ? [] : [uid],
-        joinLocked: false,
         result: null,
         currentRoundNumber: null,
         publicState: null,
-        currentPhase: status,
+        currentPhase: status === "waiting" ? "waiting_room" : "created",
         stateVersion: 0,
-         deadlineAt: asDraft ? null : waitingDeadline,
+        deadlineAt: null,
+        waitingDeadlineAt,
         createdAt: now,
         updatedAt: now,
         startedAt: null,
         endedAt: null,
         searchName: searchNameOf(title),
       });
-      if (limitSnap.exists) {
-        transaction.update(limitRef, { count: (limitData.count || 0) + 1, updatedAt: now });
-      } else {
-        transaction.create(limitRef, { userId: uid, utcDay, count: 1, updatedAt: now });
-      }
-      if (requestRef) {
-        transaction.create(requestRef, {
-          userId: uid,
-          requestId: requestKey,
-          gameId: ref.id,
-          status,
-          createdAt: now,
-        });
-      }
       if (!asDraft) {
         transaction.create(participantRef(db, ref.id, uid), {
           gameId: ref.id,
@@ -675,21 +752,15 @@ function createGamesDomain({
         eventId: `${ref.id}_created`,
         type: "game_created",
         actorId: uid,
-        payload: { status, type: input.type },
-      });
-      // This is an isolated hand-off to chat; chat never drives game state.
-      transaction.create(
-        db.collection("game_chat_outbox").doc(`${ref.id}_created`),
-        {
-          gameId: ref.id,
-          groupId: input.groupId.trim(),
-          kind: "created",
-          status: "pending",
-          createdAt: now,
+        payload: {
+          status,
+          type: input.type,
+          currentPlayers: asDraft ? 0 : 1,
+          requiredPlayers: configuration.minPlayers,
+          maxPlayers: configuration.maxPlayers,
         },
-      );
+      });
     });
-    if (replay && replay.gameId) return { gameId: replay.gameId, status: replay.status };
     if (!asDraft) {
       await notifyGame({
         kind: "invite",
@@ -705,7 +776,13 @@ function createGamesDomain({
           gameId: ref.id,
           type: "game_created",
           actorId: uid,
-          payload: { status, type: input.type },
+          payload: {
+            status,
+            type: input.type,
+            currentPlayers: asDraft ? 0 : 1,
+            requiredPlayers: configuration.minPlayers,
+            maxPlayers: configuration.maxPlayers,
+          },
         }),
         {
           id: ref.id,
@@ -729,17 +806,17 @@ function createGamesDomain({
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
       const current = snapshot.data() || {};
-      if (current.status === "WAITING") return;
+      if (current.status === "waiting") return;
       const access = await loadPermissions(transaction, db, current.groupId, uid);
       if (current.creatorId !== uid && !access.manageGames) {
         throw new HttpsError("permission-denied", "You cannot initialize this game.");
       }
-      assertTransition(current.status, "WAITING", HttpsError);
+      assertTransition(current.status, "waiting", HttpsError);
       const user = await transaction.get(db.collection("users").doc(uid));
       const person = await transaction.get(participantRef(db, ref.id, uid));
       const now = FieldValue.serverTimestamp();
       transaction.update(ref, {
-        status: "WAITING",
+        status: "waiting",
         updatedAt: now,
         participantsCount: person.exists && !person.data().leftAt
           ? current.participantsCount
@@ -768,6 +845,8 @@ function createGamesDomain({
     }
     const ref = gameRef(db, gameId.trim());
     const person = participantRef(db, gameId.trim(), uid);
+    let expiredGame = null;
+    let joinedGame = null;
     await db.runTransaction(async (transaction) => {
       const [snapshot, existing, user] = await Promise.all([
         transaction.get(ref),
@@ -776,14 +855,43 @@ function createGamesDomain({
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
       const current = snapshot.data() || {};
+      if (
+        current.status === "waiting" &&
+        isExpired(current.waitingDeadlineAt, nowOf())
+      ) {
+        const now = FieldValue.serverTimestamp();
+        transaction.update(ref, {
+          status: "cancelled",
+          currentPhase: "cancelled",
+          waitingDeadlineAt: null,
+          endedAt: now,
+          updatedAt: now,
+          stateVersion: (Number(current.stateVersion) || 0) + 1,
+          result: {
+            kind: current.type,
+            winnerIds: [],
+            scores: {},
+            summary: { reason: "waiting_timeout" },
+          },
+        });
+        writeEvent(transaction, db, FieldValue, {
+          gameId: ref.id,
+          eventId: `${ref.id}_cancelled`,
+          type: "game_cancelled",
+          actorId: current.creatorId,
+          payload: { reason: "waiting_timeout" },
+        });
+        expiredGame = { ...current, id: ref.id };
+        return;
+      }
       const access = await loadPermissions(transaction, db, current.groupId, uid);
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      if (current.joinLocked || current.status === "IN_PROGRESS" || current.status === "STARTING") {
+      if (current.status === "active" || current.status === "paused") {
         throw new HttpsError("failed-precondition", "This game has already started.");
       }
-      if (current.status !== "WAITING") {
+      if (current.status !== "waiting") {
         throw new HttpsError("failed-precondition", "This game is not open to join.");
       }
       if (existing.exists && existing.data().status !== "left" && !existing.data().leftAt) {
@@ -806,9 +914,13 @@ function createGamesDomain({
       });
       transaction.update(ref, {
         participantsCount: FieldValue.increment(1),
-        playerOrder: [...(current.playerOrder || []), uid],
         updatedAt: now,
       });
+      joinedGame = {
+        ...current,
+        id: ref.id,
+        participantsCount: (current.participantsCount || 0) + 1,
+      };
       writeEvent(transaction, db, FieldValue, {
         gameId: ref.id,
         type: "player_joined",
@@ -816,6 +928,40 @@ function createGamesDomain({
         payload: {},
       });
     });
+    if (expiredGame) {
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${expiredGame.id}_cancelled`,
+          gameId: expiredGame.id,
+          type: "game_cancelled",
+          actorId: expiredGame.creatorId,
+          payload: { reason: "waiting_timeout" },
+        }),
+        expiredGame,
+      );
+      throw new HttpsError(
+        "deadline-exceeded",
+        "This waiting room has expired.",
+      );
+    }
+    if (joinedGame) {
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${joinedGame.id}_created`,
+          gameId: joinedGame.id,
+          type: "game_created",
+          actorId: joinedGame.creatorId,
+          payload: {
+            status: joinedGame.status,
+            type: joinedGame.type,
+            currentPlayers: joinedGame.participantsCount,
+            requiredPlayers: joinedGame.configuration?.minPlayers || 1,
+            maxPlayers: joinedGame.configuration?.maxPlayers || 16,
+          },
+        }),
+        joinedGame,
+      );
+    }
     return { ok: true };
   }
 
@@ -836,9 +982,6 @@ function createGamesDomain({
       const current = snapshot.data() || {};
       if (TERMINAL.has(current.status)) {
         throw new HttpsError("failed-precondition", "This game is already finished.");
-      }
-      if (current.status === "STARTING" || current.status === "IN_PROGRESS") {
-        throw new HttpsError("failed-precondition", "Players are frozen after the game starts; resign explicitly.");
       }
       if (!existing.exists) {
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
@@ -883,13 +1026,6 @@ function createGamesDomain({
         skipped = true;
         return;
       }
-      // startGame is deliberately idempotent across the two internal
-      // transitions (WAITING -> STARTING -> IN_PROGRESS). A retried request
-      // may observe the final state after the first transaction committed.
-      if (target === "STARTING" && current.status === "IN_PROGRESS") {
-        skipped = true;
-        return;
-      }
       const access = await loadPermissions(transaction, db, current.groupId, uid);
       if (current.creatorId !== uid && !access.manageGames) {
         throw new HttpsError("permission-denied", "You cannot change this game.");
@@ -902,37 +1038,19 @@ function createGamesDomain({
         );
       }
       assertTransition(current.status, target, HttpsError);
-      if ((target === "STARTING" || target === "IN_PROGRESS") && current.status === "WAITING") {
+      if (target === "active" && current.status === "waiting") {
         const minPlayers = (current.configuration && current.configuration.minPlayers) || 1;
-        const maxPlayers = (current.configuration && current.configuration.maxPlayers) || 16;
         if ((current.participantsCount || 0) < minPlayers) {
           throw new HttpsError("failed-precondition", "Not enough players to start.");
-        }
-        if ((current.participantsCount || 0) > maxPlayers) {
-          throw new HttpsError("failed-precondition", "Too many players for this game.");
         }
       }
       const now = FieldValue.serverTimestamp();
       const update = {
         status: target,
-        currentPhase: target,
-        stateVersion: (current.stateVersion || 0) + 1,
         updatedAt: now,
         ...(typeof extra === "function" ? extra(current, now) : {}),
       };
       transaction.update(ref, update);
-      if (target === "CANCELLED") {
-        transaction.set(
-          db.collection("game_chat_outbox").doc(`${ref.id}_cancelled`),
-          {
-            gameId: ref.id,
-            groupId: current.groupId,
-            kind: "cancelled",
-            status: "pending",
-            createdAt: now,
-          },
-        );
-      }
       writeEvent(transaction, db, FieldValue, {
         gameId: ref.id,
         eventId: oneShotEvent ? `${ref.id}_${eventType}` : undefined,
@@ -946,28 +1064,14 @@ function createGamesDomain({
 
   async function startGame(request) {
     const result = await mutateStatus(request, {
-      target: "STARTING",
+      target: "active",
       eventType: "game_started",
-      fromStatuses: ["WAITING"],
+      fromStatuses: ["waiting"],
       extra: (current, now) => ({
         startedAt: current.startedAt || now,
       }),
     });
     if (!result.skipped && result.game) {
-      await db.runTransaction(async (transaction) => {
-        const ref = gameRef(db, request.data.gameId.trim());
-        const snap = await transaction.get(ref);
-        if (!snap.exists || snap.data().status !== "STARTING") return;
-        transaction.update(ref, {
-          status: "IN_PROGRESS",
-          currentPhase: "IN_PROGRESS",
-          joinLocked: true,
-          playerOrder: Array.isArray(snap.data().playerOrder)
-            ? [...snap.data().playerOrder] : [],
-          stateVersion: (snap.data().stateVersion || 0) + 1,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      });
       await notifyGame({
         kind: "started",
         gameId: request.data.gameId.trim(),
@@ -976,43 +1080,84 @@ function createGamesDomain({
         title: result.game.title,
         type: result.game.type,
       });
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${request.data.gameId.trim()}_started`,
+          gameId: request.data.gameId.trim(),
+          type: "game_started",
+          actorId: request.auth.uid,
+          payload: {
+            status: "started",
+            type: result.game.type,
+            currentPlayers: result.game.participantsCount || 0,
+            requiredPlayers: result.game.configuration?.minPlayers || 1,
+            maxPlayers: result.game.configuration?.maxPlayers || 16,
+          },
+        }),
+        {
+          ...result.game,
+          id: request.data.gameId.trim(),
+        },
+      );
     }
     await initializeEngine(request.data.gameId.trim());
     return { ok: true };
   }
 
   async function pauseGame(request) {
-    throw new HttpsError("failed-precondition", "Games cannot be paused.");
+    await mutateStatus(request, {
+      target: "paused",
+      eventType: "game_paused",
+      fromStatuses: ["active"],
+      oneShotEvent: false,
+      extra: () => ({}),
+    });
+    return { ok: true };
   }
 
   async function resumeGame(request) {
-    throw new HttpsError("failed-precondition", "Games cannot be resumed.");
+    await mutateStatus(request, {
+      target: "active",
+      eventType: "game_resumed",
+      fromStatuses: ["paused"],
+      oneShotEvent: false,
+      extra: () => ({}),
+    });
+    return { ok: true };
   }
 
   async function endGame(request) {
-    // Completion is exclusively a server/engine operation.  In particular,
-    // an administrator must not be able to manufacture a result or reward.
-    throw new HttpsError(
-      "failed-precondition",
-      "Games can only be completed by their engine.",
-    );
+    const result = await mutateStatus(request, {
+      target: "completed",
+      eventType: "game_completed",
+      fromStatuses: ["active", "paused"],
+      extra: (current, now) => ({
+        endedAt: now,
+        result: current.result || {
+          kind: current.type,
+          winnerIds: [],
+          scores: {},
+          summary: {},
+        },
+      }),
+    });
+    if (!result.skipped && result.game) {
+      await afterComplete(
+        request.data.gameId.trim(),
+        result.game,
+        result.game.result,
+      );
+    }
+    return { ok: true };
   }
 
   async function cancelGame(request) {
-    const result = await mutateStatus(request, {
-      target: "CANCELLED",
+    await mutateStatus(request, {
+      target: "cancelled",
       eventType: "game_cancelled",
-      fromStatuses: ["CREATED", "WAITING", "STARTING", "IN_PROGRESS"],
-       extra: (current, now) => ({
-         endedAt: now,
-         currentPhase: "CANCELLED",
-         joinLocked: true,
-         stateVersion: (current.stateVersion || 0) + 1,
-       }),
+      fromStatuses: ["draft", "waiting", "active", "paused"],
+      extra: (_, now) => ({ endedAt: now }),
     });
-    if (!result.skipped && result.game) {
-      await retractAnnouncement(request.data.gameId.trim(), result.game.groupId);
-    }
     return { ok: true };
   }
 
@@ -1034,8 +1179,6 @@ function createGamesDomain({
     const refSecret = secretRef(ref);
     let completed = null;
     let completedGame = null;
-    let replay = false;
-    let priorResult = null;
     await db.runTransaction(async (transaction) => {
       const [snapshot, existing, prior, secretSnap] = await Promise.all([
         transaction.get(ref),
@@ -1049,30 +1192,16 @@ function createGamesDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      // Idempotency is checked before terminal-state validation: a retried
-      // client request must receive the prior action result even if that
-      // action completed the game.
-      if (prior.exists) {
-        replay = true;
-        priorResult = (prior.data() || {}).result || null;
-        return;
-      }
-      if (current.status === "COMPLETED" || current.status === "CANCELLED") {
+      if (current.status === "completed" || current.status === "cancelled") {
         throw new HttpsError("failed-precondition", "This game is already finished.");
       }
-      if (current.status !== "IN_PROGRESS") {
+      if (current.status !== "active") {
         throw new HttpsError("failed-precondition", "Actions can only be submitted while the game is active.");
-      }
-      if (Number.isInteger(input.expectedVersion) &&
-          input.expectedVersion !== Number(current.stateVersion || 0)) {
-        throw new HttpsError(
-          "failed-precondition",
-          "The game changed; refresh before submitting another action.",
-        );
       }
       if (!existing.exists || existing.data().status === "left" || existing.data().leftAt) {
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
+      if (prior.exists) return;
       const now = FieldValue.serverTimestamp();
       transaction.create(stored, {
         actionId,
@@ -1090,37 +1219,8 @@ function createGamesDomain({
         actorId: uid,
         payload: { actionType: action.actionType, actionId },
       });
-      if (action.actionType === "resign") {
-        const scores = (current.publicState && current.publicState.scores) || {};
-        const winnerIds = Object.keys(scores).filter((id) => id !== uid);
-        const result = {
-          kind: current.type,
-          winnerIds,
-          scores,
-          summary: { reason: "resign", resignedPlayerId: uid },
-        };
-        transaction.update(ref, {
-          status: "COMPLETED",
-          currentPhase: "game_over",
-          result,
-          endedAt: nowOf(),
-          deadlineAt: null,
-          updatedAt: now,
-        });
-        transaction.set(db.collection("game_history").doc(gameId), {
-          gameId,
-          type: current.type,
-          groupId: current.groupId,
-          participants: Object.keys(scores),
-          result,
-          endedAt: nowOf(),
-          createdAt: now,
-        });
-        completed = result;
-        completedGame = current;
-      } else {
-        const engine = engineFor(current.type);
-        if (engine && typeof engine.applyAction === "function") {
+      const engine = engineFor(current.type);
+      if (engine && typeof engine.applyAction === "function") {
         const outcome = engine.applyAction({
           transaction,
           db,
@@ -1139,66 +1239,56 @@ function createGamesDomain({
           completed = outcome.result;
           completedGame = current;
         }
-        transaction.update(stored, { result: outcome.result || null });
-        } else {
-          transaction.update(ref, { updatedAt: now });
-        }
+      } else {
+        transaction.update(ref, { updatedAt: now });
       }
     });
     if (completed && completedGame) {
       await afterComplete(gameId, completedGame, completed);
     }
-    return { ok: true, actionId, replay, result: replay ? priorResult : (completed || null) };
+    return { ok: true, actionId };
   }
 
   async function processExpiredGames() {
     const now = nowOf();
-    const waitingSnapshot = await db.collection("games")
-      .where("status", "==", "WAITING")
+    const [activeSnapshot, globalSnapshot, waitingSnapshot] = await Promise.all([
+      db.collection("games")
+      .where("status", "==", "active")
       .where("deadlineAt", "<=", now)
       .orderBy("deadlineAt", "asc")
       .limit(50)
-      .get();
-    for (const doc of (waitingSnapshot.docs || [])) {
-      let cancelledGame = null;
-      await db.runTransaction(async (transaction) => {
-        const ref = gameRef(db, doc.id);
-        const snap = await transaction.get(ref);
-        if (!snap.exists || snap.data().status !== "WAITING") return;
-        cancelledGame = snap.data();
-        transaction.update(ref, {
-          status: "CANCELLED",
-          currentPhase: "CANCELLED",
-          joinLocked: true,
-          stateVersion: (snap.data().stateVersion || 0) + 1,
-          endedAt: now,
-          updatedAt: FieldValue.serverTimestamp(),
-          cancellationReason: "WAITING_TIMEOUT",
-        });
-        writeEvent(transaction, db, FieldValue, {
-          gameId: doc.id,
-          eventId: `${doc.id}_waiting_timeout`,
-          type: "game_cancelled",
-          actorId: null,
-          payload: { reason: "WAITING_TIMEOUT" },
-        });
-      });
-      if (cancelledGame) await retractAnnouncement(doc.id, cancelledGame.groupId);
-    }
-    const snapshot = await db.collection("games")
-      .where("status", "==", "IN_PROGRESS")
-      .where("deadlineAt", "<=", now)
-      .orderBy("deadlineAt", "asc")
-      .limit(50)
-      .get();
-    const docs = snapshot.docs || [];
-    for (const doc of docs) {
+      .get(),
+      db.collection("games")
+        .where("status", "==", "active")
+        .where("globalDeadlineAt", "<=", now)
+        .orderBy("globalDeadlineAt", "asc")
+        .limit(50)
+        .get(),
+      db.collection("games")
+        .where("status", "==", "waiting")
+        .where("waitingDeadlineAt", "<=", now)
+        .orderBy("waitingDeadlineAt", "asc")
+        .limit(50)
+        .get(),
+    ]);
+    const activeDocs = [
+      ...(activeSnapshot.docs || []),
+      ...(globalSnapshot.docs || []),
+    ].filter((doc, index, docs) =>
+      docs.findIndex((candidate) => candidate.id === doc.id) === index);
+    const waitingDocs = waitingSnapshot.docs || [];
+    for (const doc of activeDocs) {
       await resolveExpiredGame(doc.id);
+    }
+    let cancelled = 0;
+    for (const doc of waitingDocs) {
+      if (await resolveExpiredWaitingGame(doc.id)) cancelled += 1;
     }
     return {
       ok: true,
-      scanned: docs.length + (waitingSnapshot.docs || []).length,
-      expired: docs.length + (waitingSnapshot.docs || []).length,
+      scanned: activeDocs.length + waitingDocs.length,
+      expired: activeDocs.length,
+      cancelled,
       limit: 50,
     };
   }

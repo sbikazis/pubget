@@ -77,7 +77,7 @@ void main() {
       expect(GameTypeRegistry.of(GameType.mafia).implemented, isTrue);
       expect(GameTypeRegistry.of(GameType.mafia).genericCreate, isFalse);
       expect(GameTypeRegistry.of(GameType.animeChain).name, 'Anime Chain');
-      expect(GameTypeRegistry.implemented, hasLength(4));
+      expect(GameTypeRegistry.implemented, hasLength(3));
       expect(GameTypeRegistry.genericCreate, hasLength(3));
       expect(
         GameTypeRegistry.genericCreate.map((spec) => spec.type),

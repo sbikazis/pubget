@@ -13,9 +13,14 @@ import '../providers/game_providers.dart';
 import '../widgets/game_widgets.dart';
 
 class GameListScreen extends StatefulWidget {
-  const GameListScreen({this.groupId, super.key});
+  const GameListScreen({
+    this.groupId,
+    this.creationSource = 'unknown',
+    super.key,
+  });
 
   final String? groupId;
+  final String creationSource;
 
   @override
   State<GameListScreen> createState() => _GameListScreenState();
@@ -43,13 +48,14 @@ class _GameListScreenState extends State<GameListScreen> {
     final groupId = widget.groupId;
     final canManage =
         groupId != null &&
+        widget.creationSource == 'group_chat' &&
         context.watch<GroupProvider>().membership?.canManageGames == true;
     return DefaultTabController(
       length: groupId == null ? 3 : 1,
       child: Scaffold(
         appBar: AppBar(
           leading: AppBackButton.maybeOf(context),
-          title: Text(groupId == null ? 'Games' : GameStrings.groupGames),
+          title: Text(groupId == null ? 'Games' : 'Game Center'),
           bottom: groupId == null
               ? const TabBar(
                   isScrollable: true,
@@ -66,7 +72,7 @@ class _GameListScreenState extends State<GameListScreen> {
             : FloatingActionButton.extended(
                 onPressed: () => AppNavigation.go(
                   context,
-                  '/games/create?groupId=${Uri.encodeComponent(groupId)}',
+                  '/games/create?groupId=${Uri.encodeComponent(groupId)}&source=group_chat',
                 ),
                 label: const Text(GameStrings.create),
                 icon: const Icon(Icons.add),
@@ -81,7 +87,7 @@ class _GameListScreenState extends State<GameListScreen> {
                 ? PubgetPrimaryButton(
                     onPressed: () => AppNavigation.go(
                       context,
-                      '/games/create?groupId=${Uri.encodeComponent(groupId)}',
+                      '/games/create?groupId=${Uri.encodeComponent(groupId)}&source=group_chat',
                     ),
                     semanticLabel: GameStrings.create,
                     child: const Text(GameStrings.create),

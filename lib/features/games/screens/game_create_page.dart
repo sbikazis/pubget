@@ -12,9 +12,14 @@ import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
 
 class GameCreatePage extends StatefulWidget {
-  const GameCreatePage({this.groupId, super.key});
+  const GameCreatePage({
+    this.groupId,
+    this.creationSource = 'unknown',
+    super.key,
+  });
 
   final String? groupId;
+  final String creationSource;
 
   @override
   State<GameCreatePage> createState() => _GameCreatePageState();
@@ -34,7 +39,12 @@ class _GameCreatePageState extends State<GameCreatePage> {
     _started = true;
     final creator = context.read<GameCreateProvider>();
     final groupId = widget.groupId;
-    Future<void>.microtask(() => creator.start(groupId: groupId));
+    Future<void>.microtask(
+      () => creator.start(
+        groupId: groupId,
+        creationSource: widget.creationSource,
+      ),
+    );
   }
 
   @override

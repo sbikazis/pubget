@@ -322,6 +322,7 @@ final class ChatGameActivity {
     this.winnerLabel,
     this.hostName,
     this.playerCount,
+    this.requiredPlayers,
     this.maxPlayers,
     this.status,
     this.participantAvatars = const <String>[],
@@ -333,6 +334,7 @@ final class ChatGameActivity {
   final String? winnerLabel;
   final String? hostName;
   final int? playerCount;
+  final int? requiredPlayers;
   final int? maxPlayers;
   final String? status;
   final List<String> participantAvatars;
@@ -343,8 +345,11 @@ final class ChatGameActivity {
       playerCount != null &&
       maxPlayers != null &&
       playerCount! >= maxPlayers!;
-  bool get isStarted => status == 'started' || status == 'live' || kind == 'started';
+  bool get isStarted =>
+      status == 'started' || status == 'live' || kind == 'started';
+  bool get isCancelled => kind == 'cancelled' || status == 'cancelled';
   String get actionLabel {
+    if (isCancelled) return 'Closed';
     if (isStarted) return 'View';
     if (isFull) return 'Full';
     return isCreated ? 'Join' : 'View result';
@@ -369,6 +374,7 @@ final class ChatGameActivity {
       winnerLabel: raw['winnerLabel'] as String?,
       hostName: raw['hostName'] as String?,
       playerCount: (raw['playerCount'] as num?)?.toInt(),
+      requiredPlayers: (raw['requiredPlayers'] as num?)?.toInt(),
       maxPlayers: (raw['maxPlayers'] as num?)?.toInt(),
       status: raw['status'] as String?,
       participantAvatars: avatars,
