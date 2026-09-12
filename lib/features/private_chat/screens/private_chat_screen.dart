@@ -32,6 +32,7 @@ class PrivateChatScreen extends StatefulWidget {
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
   bool _initialized = false;
   bool _wasNearBottom = true;
   int _lastSeenMessageCount = 0;
@@ -131,6 +132,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     controller: _scrollController,
                     onAction: _showActions,
                     onMediaTap: _openMedia,
+                    messageKeys: _messageKeys,
                   ),
                 ),
                 if (chat.uploadProgress.isNotEmpty)
@@ -179,9 +181,26 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       }
       if (shouldMarkRead) {
         _lastMarkedReadCount = count;
-        unawaited(chat.markAsRead(chat.messages));
+        unawaited(chat.markAsRead(_visibleMessages(chat)));
       }
     });
+  }
+
+  List<ChatMessage> _visibleMessages(PrivateChatProvider chat) {
+    if (!_scrollController.hasClients) return const <ChatMessage>[];
+    final viewportObject = _scrollController.position.context.storageContext
+        .findRenderObject();
+    if (viewportObject is! RenderBox) return const <ChatMessage>[];
+    final viewportTop = viewportObject.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewportObject.size.height;
+    return chat.messages.where((message) {
+      final context = _messageKeys[message.id]?.currentContext;
+      final renderObject = context?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+      final top = renderObject.localToGlobal(Offset.zero).dy;
+      final bottom = top + renderObject.size.height;
+      return bottom >= viewportTop && top <= viewportBottom;
+    }).toList(growable: false);
   }
 
   void _scrollToLatest() {
@@ -294,6 +313,7 @@ class _MessageList extends StatelessWidget {
     required this.controller,
     required this.onAction,
     required this.onMediaTap,
+    required this.messageKeys,
   });
 
   final PrivateChatProvider chat;
@@ -302,6 +322,7 @@ class _MessageList extends StatelessWidget {
   final ScrollController controller;
   final ValueChanged<ChatMessage> onAction;
   final ValueChanged<ChatMessage> onMediaTap;
+  final Map<String, GlobalKey> messageKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -342,7 +363,7 @@ class _MessageList extends StatelessWidget {
           return _FailedMessage(message: message);
         }
         return ChatMessageBubble(
-          key: ValueKey<String>(message.id),
+          key: messageKeys.putIfAbsent(message.id, GlobalKey.new),
           message: message,
           isMine: message.senderId == currentUserId,
           contrast: contrast,

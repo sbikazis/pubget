@@ -273,6 +273,8 @@ final class ChatProvider extends ChangeNotifier {
     required String stickerCreatorName,
   }) async {
     final generation = _sessionGeneration;
+    final replyId = _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final mediaId = _newId();
     final pending = ChatMessage.optimistic(
       id: mediaId,
@@ -285,8 +287,8 @@ final class ChatProvider extends ChangeNotifier {
       mediaId: mediaId,
       stickerCreatorId: stickerCreatorId,
       stickerCreatorName: stickerCreatorName,
-      replyToMessageId: _replyTarget?.id,
-      replyPreview: _previewFor(_replyTarget),
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
     _pendingUploads[mediaId] = _PendingMediaUpload(
       groupId: groupId,
@@ -297,12 +299,13 @@ final class ChatProvider extends ChangeNotifier {
       senderName: senderName,
       senderAvatar: senderAvatar,
       senderRole: senderRole,
-      replyToMessageId: _replyTarget?.id,
-      replyPreview: _previewFor(_replyTarget),
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
       forceType: ChatMessageType.sticker,
       stickerCreatorId: stickerCreatorId,
       stickerCreatorName: stickerCreatorName,
     );
+    _replyTarget = null;
     if (_isSession(groupId, generation)) {
       _beginLocalMediaPreview(mediaId, bytes);
       _upsert(pending);
@@ -322,6 +325,8 @@ final class ChatProvider extends ChangeNotifier {
     required String contentType,
   }) async {
     final generation = _sessionGeneration;
+    final replyId = _replyTarget?.id;
+    final replyPreview = _previewFor(_replyTarget);
     final mediaId = _newId();
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final pending = ChatMessage.optimistic(
@@ -333,8 +338,8 @@ final class ChatProvider extends ChangeNotifier {
       type: type,
       text: null,
       mediaId: mediaId,
-      replyToMessageId: _replyTarget?.id,
-      replyPreview: _previewFor(_replyTarget),
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
     _pendingUploads[mediaId] = _PendingMediaUpload(
       groupId: groupId,
@@ -345,9 +350,10 @@ final class ChatProvider extends ChangeNotifier {
       senderName: senderName,
       senderAvatar: senderAvatar,
       senderRole: senderRole,
-      replyToMessageId: _replyTarget?.id,
-      replyPreview: _previewFor(_replyTarget),
+      replyToMessageId: replyId,
+      replyPreview: replyPreview,
     );
+    _replyTarget = null;
     if (_isSession(groupId, generation)) {
       _beginLocalMediaPreview(mediaId, bytes);
       _upsert(pending);

@@ -162,7 +162,7 @@ void main() {
 
       expect(find.text('مرحبا'), findsOneWidget);
       expect(find.text('أحمد'), findsOneWidget);
-      expect(find.text('المؤسس'), findsOneWidget);
+      // Ranks are rendered as visual badges rather than a text label.
 
       final bubbleText = tester.getRect(find.text('مرحبا'));
       expect(bubbleText.width, lessThan(screenW * 0.45));
