@@ -118,6 +118,87 @@ function createHistoryWriter(options = {}) {
         // يكون موجوداً بعد لهذا المستخدم في أول مباراة له.
         tx.set(statsRef, statsUpdate, { merge: true });
       });
+const db = admin.firestore();
+
+async function writeHistory(gameId, gameRef, winner, playersSnap) {
+  const gameSnap = await gameRef.get();
+  const gameData = gameSnap.data();
+
+  if (gameData?.historyWritten === true) {
+    return; // ✅ حماية idempotency: لا تكرار للسجل لنفس المباراة
+  }
+
+  const privateSnaps = await Promise.all(
+    playersSnap.docs.map((doc) => doc.ref.collection("private").doc("data").get())
+  );
+
+  const playerDetails = [];
+  const playerIds = [];
+
+  playersSnap.docs.forEach((doc, index) => {
+    const player = doc.data();
+    const privateData = privateSnaps[index].exists ? privateSnaps[index].data() : {};
+    const role = privateData.role || "citizen";
+    const team = privateData.team || "citizens";
+
+    playerIds.push(player.userId || doc.id);
+    playerDetails.push({
+      userId: player.userId || doc.id,
+      username: player.username || "",
+      role,
+      team,
+      won: winner != null && team === winner,
+    });
+  });
+
+  const startedAtMs = gameData && gameData.startedAt &&
+    typeof gameData.startedAt.toMillis === "function"
+    ? gameData.startedAt.toMillis() : null;
+  const durationSeconds = startedAtMs
+    ? Math.max(0, Math.round((Date.now() - startedAtMs) / 1000))
+    : 0;
+
+  const historyDoc = {
+    gameId,
+    groupId: gameData.groupId || null,
+    creatorId: gameData.createdBy || null,
+    winner: winner || null,
+    durationSeconds,
+    version: gameData.version || "classic",
+    players: playerIds,
+    playerDetails,
+    phaseHistory: gameData.phaseHistory || [],
+    eliminations: gameData.eliminations || [],
+    votingResults: gameData.votingResults || [],
+    rewards: gameData.rewards || null,
+    createdAt: gameData.createdAt || null,
+    startedAt: gameData.startedAt || null,
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const batch = db.batch();
+
+  batch.set(db.collection("mafia_history").doc(gameId), historyDoc);
+  batch.update(gameRef, { historyWritten: true });
+
+  // ✅ سجل شخصي مختصر لكل لاعب + تحديث إحصائياته المجمّعة بالـ increment.
+  // كل هذا في نفس الـ batch لضمان اتساق الكتابة (كل شيء ينجح معاً أو لا شيء).
+  playerDetails.forEach((entry) => {
+    if (!entry.userId) return;
+
+    const userHistoryRef = db
+      .collection("users")
+      .doc(entry.userId)
+      .collection("user_mafia_history")
+      .doc(gameId);
+
+    batch.set(userHistoryRef, {
+      gameId,
+      role: entry.role,
+      team: entry.team,
+      won: entry.won,
+      version: historyDoc.version,
+      endedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
 

@@ -4,18 +4,14 @@ import 'event_models.dart';
 /// authoritative; this only validates UI input and keeps tests aligned.
 abstract final class EventLifecycle {
   static const maxDuration = Duration(days: 7);
+  static const minDuration = Duration(minutes: 5);
 
   static const allowed = <EventStatus, Set<EventStatus>>{
-    EventStatus.draft: {
-      EventStatus.scheduled,
-      EventStatus.active,
-      EventStatus.cancelled,
-    },
-    EventStatus.scheduled: {EventStatus.active, EventStatus.cancelled},
-    EventStatus.active: {EventStatus.ended, EventStatus.cancelled},
+    EventStatus.draft: {EventStatus.active, EventStatus.deleted},
+    EventStatus.active: {EventStatus.ended},
     EventStatus.ended: {EventStatus.archived},
-    EventStatus.cancelled: {EventStatus.archived},
     EventStatus.archived: <EventStatus>{},
+    EventStatus.deleted: <EventStatus>{},
   };
 
   static bool canTransition(EventStatus from, EventStatus to) =>
@@ -24,6 +20,9 @@ abstract final class EventLifecycle {
   static String? validateWindow(DateTime start, DateTime end) {
     if (!end.isAfter(start)) {
       return 'End time must be after start time.';
+    }
+    if (end.difference(start) < minDuration) {
+      return 'Events must last at least 5 minutes.';
     }
     if (end.difference(start) > maxDuration) {
       return 'Events cannot last longer than 7 days.';
@@ -35,8 +34,12 @@ abstract final class EventLifecycle {
 abstract final class EventValidation {
   static String? draft(EventDraft draft) {
     if (draft.title.trim().isEmpty) return 'A title is required.';
-    if (draft.groupId == null || draft.groupId!.trim().isEmpty) {
-      return 'Events must belong to a group.';
+    if (draft.scope == EventScope.group &&
+        (draft.groupId == null || draft.groupId!.trim().isEmpty)) {
+      return 'Choose a group for this Event.';
+    }
+    if (draft.scope == EventScope.multiGroup && draft.groupIds.length < 2) {
+      return 'Choose at least two groups for a multi-group Event.';
     }
     final start = draft.startAt;
     final end = draft.endAt;
@@ -90,7 +93,8 @@ abstract final class EventValidation {
             ? 'self_report'
             : config.challengeKind.trim();
         if (!kinds.contains(kind)) return 'Choose a valid challenge type.';
-        if (kind == 'participate_event' && config.targetEventId.trim().isEmpty) {
+        if (kind == 'participate_event' &&
+            config.targetEventId.trim().isEmpty) {
           return 'A target event is required.';
         }
       }
@@ -102,7 +106,9 @@ abstract final class EventValidation {
       final criterion = config.criterion.trim().isNotEmpty
           ? config.criterion
           : config.question;
-      if (criterion.trim().isEmpty) return 'A comparison criterion is required.';
+      if (criterion.trim().isEmpty) {
+        return 'A comparison criterion is required.';
+      }
       if (config.options.length < 2 || config.options.length > 10) {
         return 'Provide between 2 and 10 candidates.';
       }
@@ -130,7 +136,9 @@ abstract final class EventValidation {
             ? option.imageUrl
             : (option.characterId.isNotEmpty
                   ? option.characterId
-                  : (option.animeId.isNotEmpty ? option.animeId : option.label));
+                  : (option.animeId.isNotEmpty
+                        ? option.animeId
+                        : option.label));
         if (ids.contains(key)) return 'Duplicate candidates are not allowed.';
         ids.add(key);
       }

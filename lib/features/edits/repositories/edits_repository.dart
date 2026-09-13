@@ -18,6 +18,10 @@ abstract interface class EditsRepository {
     UploadStarted? onStarted,
     UploadProgress? onProgress,
   });
+
+  /// After Storage upload succeeds — kicks server processing idempotently.
+  Future<Result<Edit>> finalizeEditUpload(String editId);
+
   Future<Result<void>> cancelUpload();
   Stream<Result<Edit>> watchEdit(String editId);
   Future<Result<void>> retryProcessing(String editId);

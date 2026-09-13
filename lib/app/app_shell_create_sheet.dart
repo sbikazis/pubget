@@ -37,7 +37,7 @@ abstract final class AppShellCreateSheet {
             title: Text(copy.createVideoClip),
             onTap: () {
               Navigator.pop(host);
-              AppNavigation.go(host, '/edits/upload');
+              AppNavigation.go(host, '/reels/upload');
             },
           ),
           ListTile(

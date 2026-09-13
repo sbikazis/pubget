@@ -42,33 +42,43 @@ class _GroupBansPageState extends State<GroupBansPage> {
     );
   }
 
+  String _formatBanDate(DateTime? value) {
+    if (value == null) return '';
+    final y = value.year.toString().padLeft(4, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    final d = value.day.toString().padLeft(2, '0');
+    return '$y/$m/$d';
+  }
+
   @override
   Widget build(BuildContext context) {
     final members = context.watch<GroupMembersProvider>();
     final groups = context.watch<GroupProvider>();
+    final groupReady = groups.group?.id == widget.groupId;
     final allowed =
-        groups.group?.id == widget.groupId && groups.canManageMembers;
+        groupReady && groups.canViewBannedMembers;
+    final canUnban = groupReady && groups.canUnban;
+
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Banned users')),
+        title: const Text('الأعضاء المحظورون'),
+      ),
       body: !allowed && groups.state == LoadingState.loaded
           ? const PubgetEmptyState(
-              title: 'You cannot manage bans',
+              title: 'لا يمكن عرض المحظورين',
               message:
-                  'Only the founder or a role with manageMembers can '
-                  'see and unban users.',
+                  'تحتاج صلاحية الطرد/الحظر أو رفع الحظر لعرض هذه القائمة.',
               icon: Icons.lock_outline,
             )
           : PubgetLoadingStateView(
               state: members.state,
               onRetry: () => members.loadBans(widget.groupId),
               empty: const PubgetEmptyState(
-                title: 'No banned users',
-                message: 'Banned members will appear here.',
+                title: 'لا يوجد أعضاء محظورون حاليًا.',
               ),
               error: PubgetErrorState(
-                message: members.failure?.message ?? 'Bans could not load.',
+                message: members.failure?.message ?? 'تعذّر تحميل المحظورين.',
                 onRetry: () => members.loadBans(widget.groupId),
               ),
               offline: PubgetOfflineState(
@@ -81,6 +91,16 @@ class _GroupBansPageState extends State<GroupBansPage> {
                     const SizedBox(height: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final ban = members.bans[index];
+                  final details = <String>[
+                    if (ban.lastRole != null)
+                      'آخر رتبة: ${groupRoleLabel(ban.lastRole!)}',
+                    if (ban.bannedByUid != null)
+                      'حُظر بواسطة ${ban.bannedByUid}',
+                    if (ban.createdAt != null)
+                      _formatBanDate(ban.createdAt),
+                    if (ban.reason != null && ban.reason!.trim().isNotEmpty)
+                      ban.reason!.trim(),
+                  ];
                   return PubgetCard(
                     child: Row(
                       children: <Widget>[
@@ -90,20 +110,26 @@ class _GroupBansPageState extends State<GroupBansPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Text(ban.uid),
-                              if (ban.bannedByUid != null)
-                                Text('Banned by ${ban.bannedByUid}'),
+                              Text(
+                                ban.uid,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (details.isNotEmpty)
+                                Text(details.join(' · ')),
                             ],
                           ),
                         ),
-                        PubgetSecondaryButton(
-                          key: Key('unban-${ban.uid}'),
-                          onPressed: members.state == LoadingState.refreshing
-                              ? null
-                              : () => _unban(context, members, ban),
-                          semanticLabel: 'Unban ${ban.uid}',
-                          child: const Text('Unban'),
-                        ),
+                        if (canUnban)
+                          PubgetSecondaryButton(
+                            key: Key('unban-${ban.uid}'),
+                            onPressed: members.state == LoadingState.refreshing
+                                ? null
+                                : () => _unban(context, members, ban),
+                            semanticLabel: 'إلغاء حظر ${ban.uid}',
+                            child: const Text('إلغاء الحظر'),
+                          ),
                       ],
                     ),
                   );
@@ -120,10 +146,10 @@ class _GroupBansPageState extends State<GroupBansPage> {
   ) async {
     final confirmed = await PubgetConfirmationDialog.show(
       context,
-      title: 'Unban ${ban.uid}?',
-      message: 'They will be able to join again under the group join policy.',
-      confirmLabel: 'Unban',
-      cancelLabel: 'Cancel',
+      title: 'إلغاء حظر ${ban.uid}؟',
+      message: 'سيتمكن من الانضمام مجدداً وفق سياسة دخول المجموعة.',
+      confirmLabel: 'إلغاء الحظر',
+      cancelLabel: 'إلغاء',
     );
     if (confirmed == true) await provider.unban(ban.uid);
   }

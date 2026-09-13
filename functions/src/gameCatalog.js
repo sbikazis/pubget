@@ -212,7 +212,13 @@ function characterById(id) {
 function animeByTitle(raw) {
   const needle = normalizeTitle(raw);
   if (!needle) return null;
-  return ANIME.find((item) => normalizeTitle(item.title) === needle) || null;
+  return ANIME.find((item) => {
+    if (normalizeTitle(item.title) === needle) return true;
+    const alternatives = Array.isArray(item.alternativeTitles)
+      ? item.alternativeTitles
+      : [];
+    return alternatives.some((title) => normalizeTitle(title) === needle);
+  }) || null;
 }
 
 function normalizeTitle(value) {

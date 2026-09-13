@@ -47,6 +47,10 @@ const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
 
+// Load Mafia actions after Admin initialization because the action domain
+// obtains its Firestore handle at module load time.
+const mafiaActions = require("./src/mafia/actionDomain");
+
 exports.syncAvatarPrivacy = onDocumentWritten(
   "users/{uid}",
   createAvatarPrivacySync({
@@ -86,13 +90,6 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   await publicRef.set(buildPublicProfile(data));
 });
 
-const groupChat = createGroupChat({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  bucket: getStorage().bucket(),
-  randomUUID,
-});
 const privateChat = createPrivateChat({
   db: getFirestore(),
   FieldValue,
@@ -115,6 +112,14 @@ const achievementsDomain = createAchievementsDomain({
   HttpsError,
   economy: economyDomain,
   notificationBuilder,
+});
+const groupChat = createGroupChat({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  bucket: getStorage().bucket(),
+  randomUUID,
+  achievements: achievementsDomain,
 });
 const socialGraph = createSocialGraph({
   db: getFirestore(),
@@ -193,6 +198,7 @@ const processEditVideo = createEditPipeline({
   bucket: getStorage().bucket(),
   economy: economyDomain,
   achievements: achievementsDomain,
+  notifications: notificationBuilder,
 });
 const editsDomain = createEditsDomain({
   db: getFirestore(),
@@ -200,6 +206,7 @@ const editsDomain = createEditsDomain({
   HttpsError,
   achievements: achievementsDomain,
   processEdit: processEditVideo,
+  bucket: getStorage().bucket(),
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -286,6 +293,12 @@ exports.retryEditProcessing = onCall(
   { region: "us-central1" },
   editsDomain.retryProcessing,
 );
+exports.finalizeEditUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
+  editsDomain.finalizeUpload,
+);
+// Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
+// Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
   { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   processEditVideo,
@@ -308,6 +321,7 @@ exports.rejectJoinRequest = onCall(
   groupsDomain.rejectJoinRequest,
 );
 exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.warnMember = onCall({ region: "us-central1" }, groupsDomain.warnMember);
 exports.updateGroupSettings = onCall(
   { region: "us-central1" },
   groupsDomain.updateGroupSettings,
@@ -492,6 +506,18 @@ exports.startMafiaGame = onCall(
   { region: "us-central1" },
   mafiaDomain.startMafiaGame,
 );
+exports.submitMafiaAction = onCall(
+  { region: "us-central1" },
+  mafiaActions.submitMafiaAction,
+);
+exports.sendMafiaChat = onCall(
+  { region: "us-central1" },
+  mafiaActions.sendMafiaChat,
+);
+exports.heartbeatMafia = onCall(
+  { region: "us-central1" },
+  mafiaActions.heartbeatMafia,
+);
 exports.getAchievements = onCall(
   { region: "us-central1" },
   achievementsDomain.getAchievements,
@@ -603,6 +629,13 @@ exports.processGroupChatMedia = onObjectFinalized(
 exports.recalculateInviteRanks = onDocumentUpdated(
   "groups/{groupId}/invites/{inviteId}",
   groupsDomain.recalculateInviteRanks,
+);
+
+// Seat recalculation on membership create/delete and invite/manual-role changes.
+// (Deploy retry hardening: keep this export so MIKADO seats ship with main.)
+exports.recalculateAutoSeatsOnMemberWrite = onDocumentWritten(
+  "groups/{groupId}/members/{memberId}",
+  groupsDomain.onMemberMembershipChanged,
 );
 
 exports.giveRespect = onCall(

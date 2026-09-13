@@ -333,9 +333,10 @@ final class GameCreateProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get saving => _saving;
 
-  void start({String? groupId}) {
+  void start({String? groupId, String creationSource = 'unknown'}) {
     _draft = GameDraft(
       groupId: groupId,
+      creationSource: creationSource,
       configuration: GameTypeRegistry.configurationFor(GameType.guessCharacter),
     );
     _state = LoadingState.loaded;

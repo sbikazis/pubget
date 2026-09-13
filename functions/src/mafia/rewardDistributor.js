@@ -55,6 +55,7 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
   );
 
   const winningUserIds = new Set();
+  const losingUserIds = new Set();
   playersSnap.docs.forEach((doc, index) => {
     const player = doc.data();
     if (player.hasLeft === true) return;
@@ -66,11 +67,19 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
     if (team === winner) {
       const userId = player.userId || doc.id;
       if (typeof userId === "string" && userId.length > 0) winningUserIds.add(userId);
+    } else if (winner && team !== winner) {
+      const userId = player.userId || doc.id;
+      if (typeof userId === "string" && userId.length > 0) losingUserIds.add(userId);
     }
   });
 
   await economyService().grantDomainRewards([...winningUserIds], {
-    type: "earn_game",
+    type: "earn_mafia_win",
+    referenceId: gameId,
+    source: "mafia",
+  });
+  await economyService().grantDomainRewards([...losingUserIds], {
+    type: "earn_mafia_loss",
     referenceId: gameId,
     source: "mafia",
   });
@@ -89,6 +98,7 @@ async function distributeRewards(gameId, gameRef, winner, playersSnap) {
   await gameRef.update({
     rewardsDistributed: true,
     rewardsDistributedAt: admin.firestore.FieldValue.serverTimestamp(),
+    rewards: { winner: 10, loser: 2, currency: "coins" },
   });
 }
 

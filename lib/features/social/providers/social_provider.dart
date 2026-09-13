@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
@@ -64,21 +66,79 @@ final class SocialProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<Result<void>> giveRespect({
+  /// Optimistic Respect grant — snapshot updates immediately; rolls back on failure.
+  /// Returns whether the grant newly crossed the fan threshold (≥5).
+  Future<Result<bool>> giveRespect({
     required String toUserId,
     required int value,
+    bool silentFailure = false,
   }) async {
     final userId = _userId;
-    if (userId == null) return _validation('Sign in to give Respect.');
+    if (userId == null) {
+      final failure = _validation('Sign in to give Respect.');
+      return FailureResult<bool>(failure.failure);
+    }
     if (userId == toUserId) {
-      return _validation('You cannot give Respect to yourself.');
+      final failure = _validation('You cannot give Respect to yourself.');
+      return FailureResult<bool>(failure.failure);
     }
     if (value < 0 || value > 7) {
-      return _validation('Respect must be between 0 and 7.');
+      final failure = _validation('Respect must be between 0 and 7.');
+      return FailureResult<bool>(failure.failure);
     }
-    return _runAction(
-      () => _repository.giveRespect(toUserId: toUserId, value: value),
+
+    final previous = _snapshot;
+    final priorValue = _snapshot.givenRespect
+        .where((item) => item.toUserId == toUserId)
+        .map((item) => item.value)
+        .fold<int>(0, (max, item) => item > max ? item : max);
+    final becameFan =
+        priorValue < SocialSnapshot.fanThreshold &&
+        value >= SocialSnapshot.fanThreshold;
+
+    final given = List<RespectRelation>.from(_snapshot.givenRespect);
+    final index = given.indexWhere((item) => item.toUserId == toUserId);
+    final next = RespectRelation(
+      fromUserId: userId,
+      toUserId: toUserId,
+      value: value,
     );
+    if (index >= 0) {
+      given[index] = next;
+    } else {
+      given.add(next);
+    }
+    _snapshot = SocialSnapshot(
+      givenRespect: given,
+      receivedRespect: _snapshot.receivedRespect,
+      friendships: _snapshot.friendships,
+    );
+    _failure = null;
+    _state = LoadingState.loaded;
+    notifyListeners();
+
+    final result = await _repository.giveRespect(
+      toUserId: toUserId,
+      value: value,
+    );
+    if (_disposed) {
+      return result.isSuccess
+          ? Success(becameFan)
+          : FailureResult<bool>(result.failureOrNull!);
+    }
+    if (!result.isSuccess) {
+      _snapshot = previous;
+      if (silentFailure) {
+        _failure = null;
+        _state = LoadingState.loaded;
+        notifyListeners();
+      } else {
+        _setFailure(result.failureOrNull!);
+      }
+      return FailureResult<bool>(result.failureOrNull!);
+    }
+    unawaited(load(userId));
+    return Success(becameFan);
   }
 
   Future<Result<void>> sendFriendRequest({required String toUserId}) async {

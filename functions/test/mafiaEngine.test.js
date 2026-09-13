@@ -30,17 +30,19 @@ function player(id, role, team, extras = {}) {
   };
 }
 
-test("mafia play loop returns to night after execution", () => {
+test("mafia state machine follows the server-owned lifecycle", () => {
   assert.equal(nextPhase("waiting"), "starting");
-  assert.equal(nextPhase("starting"), "night");
+  assert.equal(nextPhase("starting"), "role_reveal");
+  assert.equal(nextPhase("role_reveal"), "night");
   assert.equal(nextPhase("night"), "day");
   assert.equal(nextPhase("day"), "discussion");
   assert.equal(nextPhase("discussion"), "voting");
-  assert.equal(nextPhase("voting"), "execution");
-  assert.equal(nextPhase("execution"), "night");
-  assert.equal(nextPhase("finished"), "finished");
+  assert.equal(nextPhase("voting"), "vote_result");
+  assert.equal(nextPhase("vote_result"), "resolution");
+  assert.equal(nextPhase("resolution"), "night");
+  assert.equal(nextPhase("game_over"), "game_over");
   assert.ok(durationOf("night") > 0);
-  assert.deepEqual(PLAY_ORDER[PLAY_ORDER.length - 1], "execution");
+  assert.deepEqual(PLAY_ORDER[PLAY_ORDER.length - 1], "resolution");
 });
 
 test("classic four-player roles stay below mafia parity", () => {
@@ -49,7 +51,8 @@ test("classic four-player roles stay below mafia parity", () => {
   assert.ok(four.includes("doctor"));
   assert.ok(four.includes("detective"));
   const five = computeRoleDistribution(5, "classic");
-  assert.equal(five.filter((role) => role === "mafia").length, 2);
+  assert.equal(five.filter((role) => role === "mafia").length, 1);
+  assert.ok(five.includes("don"));
   assert.ok(five.includes("doctor"));
 });
 
@@ -75,7 +78,7 @@ test("night resolution kills, saves, investigates, and rejects invalid actions",
   assert.equal(kill.mafiaTargetId, "town");
   assert.deepEqual(kill.killedIds, ["town"]);
   assert.deepEqual(kill.savedIds, []);
-  assert.equal(kill.investigations[0].targetTeam, "mafias");
+  assert.equal(kill.investigations[0].result, "Mafia");
 
   const saved = planNightResolution({
     playersById,
@@ -135,7 +138,8 @@ test("voting majority executes, ties skip, dead votes are ignored", () => {
       { voterId: "b", targetId: "a", dayNumber: 1 },
     ],
   });
-  assert.equal(tie.kind, "tie");
+  assert.equal(tie.kind, "revote");
+  assert.deepEqual(tie.tiedIds.sort(), ["a", "b"]);
   assert.equal(tie.targetId, null);
 
   const skip = planVoteResolution({
@@ -153,21 +157,15 @@ test("win check uses private teams and mafia parity", () => {
   assert.equal(winnerFromAliveTeams([]), null);
 });
 
-test("good_boy is a citizen-aligned role assigned at eight players", () => {
-  const ability = getAbility("good_boy");
-  assert.equal(ability.team, "citizens");
-  assert.equal(ability.hasNightAction, false);
-  const sevenClassic = computeRoleDistribution(7, "classic");
-  const eightClassic = computeRoleDistribution(8, "classic");
-  const sevenAdvanced = computeRoleDistribution(7, "advanced");
-  const eightAdvanced = computeRoleDistribution(8, "advanced");
-  const nineAdvanced = computeRoleDistribution(9, "advanced");
-  assert.equal(sevenClassic.includes("good_boy"), false);
-  assert.equal(eightClassic.filter((role) => role === "good_boy").length, 1);
-  assert.equal(sevenAdvanced.includes("good_boy"), false);
-  assert.equal(eightAdvanced.includes("good_boy"), true);
-  assert.equal(eightAdvanced.includes("sniper"), false);
-  assert.equal(nineAdvanced.includes("sniper"), true);
+test("only the five approved Mafia roles are distributed deterministically", () => {
+  const roles = computeRoleDistribution(8);
+  assert.deepEqual(
+    [...new Set(roles)].sort(),
+    ["citizen", "detective", "doctor", "don", "mafia"].sort(),
+  );
+  assert.equal(computeRoleDistribution(3).length, 0);
+  assert.equal(computeRoleDistribution(9).length, 0);
+  assert.equal(getAbility("don").team, "mafias");
   assert.equal(
     winnerFromAliveTeams(["mafias", "citizens"]),
     "mafias",
@@ -178,13 +176,35 @@ test("good_boy is a citizen-aligned role assigned at eight players", () => {
   );
 });
 
-test("mafia lobby and role-assignment copy is English", () => {
+test("Mafia role assignment does not include legacy or prohibited roles", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const role = fs.readFileSync(path.join(__dirname, "../src/mafia/roleAssigner.js"), "utf8");
   const lobby = fs.readFileSync(path.join(__dirname, "../src/mafia/lobbyManager.js"), "utf8");
-  assert.match(role, /Roles have been assigned\. Night 1 has begun\./);
-  assert.match(lobby, /Mafia was cancelled because not enough players joined\./);
-  assert.equal(role.includes("تم توزيع"), false);
-  assert.equal(lobby.includes("تم إلغاء"), false);
+  assert.match(role, /Roles have been assigned privately/);
+  assert.equal(role.includes("good_boy"), false);
+  assert.equal(role.includes("sniper"), false);
+  assert.equal(role.includes("silencer"), false);
+  assert.equal(lobby.includes("Mafia was cancelled"), true);
+});
+
+test("doctor cannot protect the same target twice and Don gets a private detective result", () => {
+  const playersById = {
+    don: player("don", "don", "mafias"),
+    mafia: player("mafia", "mafia", "mafias"),
+    doctor: player("doctor", "doctor", "citizens", { lastDoctorTargetId: "town" }),
+    detective: player("detective", "detective", "citizens"),
+    town: player("town", "citizen", "citizens"),
+  };
+  const plan = require("../src/mafia/nightResolver").planNightResolution({
+    playersById,
+    nightNumber: 2,
+    actions: [
+      { playerId: "don", targetId: "detective", nightNumber: 2 },
+      { playerId: "doctor", targetId: "town", nightNumber: 2 },
+    ],
+  });
+  assert.equal(plan.doctorTargetWasRepeated, true);
+  assert.equal(plan.donInvestigations[0].result, "Detective");
+  assert.equal(plan.investigations.length, 0);
 });

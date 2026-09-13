@@ -6,112 +6,102 @@ const {
   clampInt,
   isExpired,
   deadlineAt,
-  shuffle,
   secretRef,
   emptyScores,
-  winnersFromScores,
-  rejectStale,
   bumpVersion,
   historyRef,
 } = require("./helpers");
 
+const GLOBAL_TIMEOUT_SECONDS = 10 * 60;
+const SELECTION_TIMEOUT_SECONDS = 45;
+
 function configOf(game) {
   const configuration = game.configuration || {};
   return {
-    roundCount: clampInt(configuration.roundCount, 5, 3, 8),
-    timerSeconds: clampInt(configuration.timerSeconds, 20, 10, 45),
+    questionTimerSeconds: clampInt(
+      configuration.timerSeconds,
+      30,
+      10,
+      60,
+    ),
   };
 }
 
-function publicChoices(character, distractors, random) {
-  const choices = shuffle(
-    [character, ...distractors].map((item) => ({
-      id: item.id,
-      name: item.name,
-    })),
-    random,
-  );
-  return choices;
+function playersOf(game, fallback) {
+  const players = game.publicState && game.publicState.playerIds;
+  return Array.isArray(players) && players.length === 2
+    ? players
+    : fallback;
 }
 
-function nextRound({ usedIds, random }) {
-  const pool = catalog.allCharacters().filter((item) => !usedIds.includes(item.id));
-  const source = pool.length >= 4 ? pool : catalog.allCharacters();
-  const ordered = shuffle(source, random);
-  const character = ordered[0];
-  const distractors = ordered
-    .filter((item) => item.id !== character.id)
-    .slice(0, 3);
-  return { character, distractors };
+function opponentOf(playerIds, uid) {
+  return playerIds.find((playerId) => playerId !== uid) || null;
 }
 
-function writeRound(transaction, {
-  gameRef, FieldValue, game, playerIds, usedIds, random, now, roundNumber, scores,
-}) {
-  const { character, distractors } = nextRound({ usedIds, random });
-  const cfg = configOf(game);
-  const nextUsed = usedIds.includes(character.id)
-    ? usedIds
-    : [...usedIds, character.id];
-  const artworkRaw = characterArt.publicArtwork(character.id);
-  const artwork = artworkRaw && characterArt.assertArtworkSafe(artworkRaw, character)
-    ? artworkRaw
-    : null;
-  const publicState = {
-    engine: "guessCharacter",
-    phase: "round",
-    roundNumber,
-    totalRounds: cfg.roundCount,
-    prompt: {
-      question: "Who is this character?",
-      clue: character.clue,
-      choices: publicChoices(character, distractors, random),
-      artwork,
-    },
-    scores,
-    answeredPlayerIds: [],
-    lastReveal: game.publicState && game.publicState.lastReveal
-      ? game.publicState.lastReveal
-      : null,
-  };
-  transaction.set(secretRef(gameRef), {
-    roundNumber,
-    correctId: character.id,
-    correctName: character.name,
-    usedCharacterIds: nextUsed,
-    answers: {},
-  });
-  transaction.update(gameRef, {
-    publicState,
-    currentPhase: "round",
-    currentRoundNumber: roundNumber,
-    stateVersion: bumpVersion(game),
-    deadlineAt: deadlineAt(now, cfg.timerSeconds),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+function characterOptions() {
+  return catalog.allCharacters().map((character) => ({
+    id: character.id,
+    name: character.name,
+    animeId: character.animeId,
+    animeTitle: character.animeTitle,
+  }));
+}
+
+function publicArtworkFor(characterId) {
+  const character = catalog.characterById(characterId);
+  if (!character) return null;
+  const raw = characterArt.publicArtwork(character.id);
+  return raw && characterArt.assertArtworkSafe(raw, character) ? raw : null;
+}
+
+function normalizeYesNo(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["yes", "y", "true", "نعم", "ن", "oui"].includes(normalized)) {
+    return "yes";
+  }
+  if (["no", "n", "false", "لا", "ل", "non"].includes(normalized)) {
+    return "no";
+  }
+  return null;
+}
+
+function scoreFor(playerIds, winnerId) {
+  const scores = emptyScores(playerIds);
+  if (winnerId && scores[winnerId] != null) scores[winnerId] = 1;
+  return scores;
 }
 
 function complete(transaction, {
-  db, gameRef, FieldValue, game, gameId, scores, now, lastReveal,
+  db,
+  gameRef,
+  FieldValue,
+  game,
+  gameId,
+  playerIds,
+  now,
+  winnerIds = [],
+  reason,
+  scores = scoreFor(playerIds, winnerIds[0]),
 }) {
-  const outcome = winnersFromScores(scores);
   const result = {
     kind: "guessCharacter",
-    winnerIds: outcome.winnerIds,
+    winnerIds,
     scores,
     summary: {
-      draw: outcome.draw,
-      rounds: (game.publicState && game.publicState.totalRounds) || 0,
+      draw: winnerIds.length === 0,
+      reason: reason || "completed",
+      globalTimeoutSeconds: GLOBAL_TIMEOUT_SECONDS,
     },
   };
   const publicState = {
     ...(game.publicState || {}),
     engine: "guessCharacter",
     phase: "game_over",
+    currentPlayerId: null,
+    pendingQuestion: null,
+    result,
     scores,
-    answeredPlayerIds: (game.publicState && game.publicState.answeredPlayerIds) || [],
-    lastReveal,
-    prompt: null,
   };
   transaction.update(gameRef, {
     status: "completed",
@@ -120,6 +110,7 @@ function complete(transaction, {
     publicState,
     currentPhase: "game_over",
     deadlineAt: null,
+    globalDeadlineAt: null,
     stateVersion: bumpVersion(game),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -127,7 +118,7 @@ function complete(transaction, {
     gameId,
     type: "guessCharacter",
     groupId: game.groupId || null,
-    participants: Object.keys(scores),
+    participants: playerIds,
     result,
     endedAt: now,
     createdAt: FieldValue.serverTimestamp(),
@@ -135,116 +126,302 @@ function complete(transaction, {
   return { completed: true, result };
 }
 
-function resolveRound(transaction, ctx) {
-  const {
-    db, gameRef, FieldValue, game, gameId, secret, now, random,
-  } = ctx;
-  const playerIds = Object.keys((game.publicState && game.publicState.scores) || {});
-  const scores = { ...(game.publicState && game.publicState.scores) || emptyScores(playerIds) };
-  const answers = (secret && secret.answers) || {};
-  const correctId = secret.correctId;
-  for (const uid of playerIds) {
-    if (answers[uid] && answers[uid] === correctId) {
-      scores[uid] = (scores[uid] || 0) + 1;
-    }
-  }
-  const lastReveal = {
-    roundNumber: secret.roundNumber,
-    correctId,
-    correctName: secret.correctName,
-  };
+function writeQuestionPhase(transaction, {
+  gameRef,
+  FieldValue,
+  game,
+  playerIds,
+  now,
+  scores,
+  currentPlayerId,
+  lastMove = null,
+  lastAnswer = null,
+}) {
   const cfg = configOf(game);
-  if (secret.roundNumber >= cfg.roundCount) {
-    return complete(transaction, {
-      db, gameRef, FieldValue, game, gameId, scores, now, lastReveal,
-    });
-  }
-  const usedIds = secret.usedCharacterIds || [];
-  game.publicState = { ...(game.publicState || {}), lastReveal, scores };
-  writeRound(transaction, {
-    gameRef, FieldValue, game, playerIds, usedIds, random, now,
-    roundNumber: secret.roundNumber + 1,
-    scores,
+  transaction.update(gameRef, {
+    publicState: {
+      engine: "guessCharacter",
+      phase: "question",
+      playerIds,
+      selectionStatus: Object.fromEntries(playerIds.map((id) => [id, true])),
+      characterOptions: characterOptions(),
+      currentPlayerId,
+      pendingQuestion: null,
+      lastAnswer,
+      lastMove,
+      scores,
+    },
+    currentPhase: "question",
+    stateVersion: bumpVersion(game),
+    deadlineAt: deadlineAt(now, cfg.questionTimerSeconds),
+    globalDeadlineAt: game.globalDeadlineAt ||
+      deadlineAt(now, GLOBAL_TIMEOUT_SECONDS),
+    updatedAt: FieldValue.serverTimestamp(),
   });
-  return { completed: false, result: null };
 }
 
 function initialize({
-  transaction, gameRef, FieldValue, game, playerIds, random, now,
+  transaction,
+  gameRef,
+  FieldValue,
+  playerIds,
+  game,
+  now,
 }) {
+  if (playerIds.length !== 2) {
+    throw new Error("Guess Character requires exactly two players.");
+  }
   if (game.publicState && game.publicState.engine === "guessCharacter") return;
-  const scores = emptyScores(playerIds);
-  writeRound(transaction, {
-    gameRef, FieldValue, game, playerIds, usedIds: [], random, now,
-    roundNumber: 1, scores,
+  const publicState = {
+    engine: "guessCharacter",
+    phase: "selection",
+    playerIds,
+    selectionStatus: Object.fromEntries(playerIds.map((id) => [id, false])),
+    characterOptions: characterOptions(),
+    currentPlayerId: null,
+    pendingQuestion: null,
+    lastAnswer: null,
+    lastMove: null,
+    scores: emptyScores(playerIds),
+  };
+  transaction.update(gameRef, {
+    publicState,
+    currentPhase: "character_selection",
+    stateVersion: bumpVersion(game),
+    deadlineAt: deadlineAt(now, SELECTION_TIMEOUT_SECONDS),
+    globalDeadlineAt: deadlineAt(now, GLOBAL_TIMEOUT_SECONDS),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 }
 
 function applyAction(ctx) {
   const {
-    transaction, gameRef, FieldValue, game, uid, action, now, HttpsError, secretSnap,
-    db, gameId, random,
+    transaction,
+    gameRef,
+    FieldValue,
+    game,
+    uid,
+    action,
+    now,
+    HttpsError,
+    secretSnap,
+    db,
+    gameId,
   } = ctx;
-  rejectStale(action.payload, game, HttpsError);
-  if (!game.publicState || game.publicState.phase !== "round") {
-    throw new HttpsError("failed-precondition", "This round is not accepting answers.");
+  const state = game.publicState || {};
+  const playerIds = playersOf(game, []);
+  if (!playerIds.includes(uid)) {
+    throw new HttpsError("permission-denied", "You are not a player in this match.");
   }
-  if (isExpired(game.deadlineAt, now)) {
-    throw new HttpsError("failed-precondition", "This round has already ended.");
-  }
-  const answered = game.publicState.answeredPlayerIds || [];
-  if (answered.includes(uid)) {
-    throw new HttpsError("already-exists", "You already answered this round.");
-  }
-  if (action.actionType !== "guess" && action.actionType !== "select") {
-    throw new HttpsError("invalid-argument", "Guess Character expects a guess.");
-  }
-  const choiceId = action.payload && (action.payload.choiceId || action.payload.value);
-  const validIds = (game.publicState.prompt && game.publicState.prompt.choices || [])
-    .map((item) => item.id);
-  if (typeof choiceId !== "string" || !validIds.includes(choiceId)) {
-    throw new HttpsError("invalid-argument", "Choose one of the listed characters.");
-  }
-  const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
-  if (!secret || secret.roundNumber !== game.publicState.roundNumber) {
-    throw new HttpsError("failed-precondition", "The round is still being prepared.");
-  }
-  const nextAnswered = [...answered, uid];
-  const answers = { ...(secret.answers || {}), [uid]: choiceId };
-  const playerIds = Object.keys(game.publicState.scores || {});
-  const publicState = {
-    ...game.publicState,
-    answeredPlayerIds: nextAnswered,
-  };
-  const nextSecret = { ...secret, answers };
-  transaction.set(secretRef(gameRef), nextSecret);
-  transaction.update(gameRef, {
-    publicState,
-    stateVersion: bumpVersion(game),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  game.publicState = publicState;
-  game.stateVersion = (Number(game.stateVersion) || 0) + 1;
-  if (nextAnswered.length >= playerIds.length) {
-    return resolveRound(transaction, {
-      db, gameRef, FieldValue, game, gameId, secret: nextSecret, now, random,
+  if (isExpired(game.globalDeadlineAt, now)) {
+    return complete(transaction, {
+      ...ctx,
+      playerIds,
+      now,
+      winnerIds: [],
+      reason: "global_timeout",
     });
   }
+  if (action.actionType === "resign" || action.actionType === "forfeit") {
+    return complete(transaction, {
+      ...ctx,
+      playerIds,
+      now,
+      winnerIds: [opponentOf(playerIds, uid)].filter(Boolean),
+      reason: "resigned",
+      scores: scoreFor(playerIds, opponentOf(playerIds, uid)),
+    });
+  }
+  if (isExpired(game.deadlineAt, now)) {
+    throw new HttpsError("failed-precondition", "This turn has expired.");
+  }
+
+  if (state.phase === "selection") {
+    if (action.actionType !== "select" && action.actionType !== "select_character") {
+      throw new HttpsError("invalid-argument", "Choose a secret character.");
+    }
+    const characterId = action.payload && (
+      action.payload.characterId || action.payload.value
+    );
+    const character = catalog.characterById(characterId);
+    if (!character) {
+      throw new HttpsError("invalid-argument", "Choose a valid catalog character.");
+    }
+    const secret = secretSnap && secretSnap.exists ? secretSnap.data() : {};
+    const selections = { ...(secret.selections || {}) };
+    const other = opponentOf(playerIds, uid);
+    if (selections[other] === character.id) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Both players must choose different secret characters.",
+      );
+    }
+    selections[uid] = character.id;
+    const selectionStatus = { ...(state.selectionStatus || {}), [uid]: true };
+    const allSelected = playerIds.every((playerId) => selectionStatus[playerId]);
+    transaction.set(secretRef(gameRef), { ...secret, selections });
+    const scores = state.scores || emptyScores(playerIds);
+    if (!allSelected) {
+      transaction.update(gameRef, {
+        publicState: { ...state, selectionStatus },
+        stateVersion: bumpVersion(game),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { completed: false, result: null };
+    }
+    writeQuestionPhase(transaction, {
+      gameRef,
+      FieldValue,
+      game,
+      playerIds,
+      now,
+      scores,
+      currentPlayerId: playerIds[0],
+    });
+    return { completed: false, result: null };
+  }
+
+  if (state.phase === "answer") {
+    if (action.actionType !== "answer") {
+      throw new HttpsError("failed-precondition", "Answer the current question first.");
+    }
+    if (state.currentPlayerId !== uid) {
+      throw new HttpsError("failed-precondition", "It is not your answer turn.");
+    }
+    const answer = normalizeYesNo(action.payload && (
+      action.payload.answer || action.payload.value
+    ));
+    if (!answer) {
+      throw new HttpsError("invalid-argument", "Answer yes or no.");
+    }
+    const nextPlayer = state.questionBy;
+    transaction.update(gameRef, {
+      publicState: {
+        ...state,
+        phase: "question",
+        currentPlayerId: nextPlayer,
+        pendingQuestion: null,
+        lastAnswer: { answer, by: uid, question: state.pendingQuestion },
+      },
+      currentPhase: "question",
+      stateVersion: bumpVersion(game),
+      deadlineAt: deadlineAt(now, configOf(game).questionTimerSeconds),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { completed: false, result: null };
+  }
+
+  if (state.phase !== "question" || state.currentPlayerId !== uid) {
+    throw new HttpsError("failed-precondition", "It is not your question turn.");
+  }
+  if (action.actionType === "question") {
+    const question = String(action.payload?.question || action.payload?.value || "").trim();
+    if (!question || question.length > 180) {
+      throw new HttpsError("invalid-argument", "Ask a short yes/no question.");
+    }
+    const answerer = opponentOf(playerIds, uid);
+    transaction.update(gameRef, {
+      publicState: {
+        ...state,
+        phase: "answer",
+        currentPlayerId: answerer,
+        questionBy: uid,
+        pendingQuestion: question,
+      },
+      currentPhase: "answer",
+      stateVersion: bumpVersion(game),
+      deadlineAt: deadlineAt(now, configOf(game).questionTimerSeconds),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { completed: false, result: null };
+  }
+  if (action.actionType !== "guess") {
+    throw new HttpsError("invalid-argument", "Ask a question or make a guess.");
+  }
+  const guessedId = action.payload && (
+    action.payload.characterId || action.payload.value
+  );
+  const guessed = catalog.characterById(guessedId);
+  if (!guessed) {
+    throw new HttpsError("invalid-argument", "Choose a valid catalog character.");
+  }
+  const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
+  const targetId = secret && secret.selections
+    ? secret.selections[opponentOf(playerIds, uid)]
+    : null;
+  if (guessed.id === targetId) {
+    return complete(transaction, {
+      ...ctx,
+      playerIds,
+      now,
+      winnerIds: [uid],
+      reason: "correct_guess",
+      scores: scoreFor(playerIds, uid),
+    });
+  }
+  const nextPlayer = opponentOf(playerIds, uid);
+  transaction.update(gameRef, {
+    publicState: {
+      ...state,
+      currentPlayerId: nextPlayer,
+      lastMove: { type: "wrong_guess", playerId: uid, characterId: guessed.id },
+      pendingQuestion: null,
+    },
+    currentPhase: "question",
+    stateVersion: bumpVersion(game),
+    deadlineAt: deadlineAt(now, configOf(game).questionTimerSeconds),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   return { completed: false, result: null };
 }
 
 function onTimeout(ctx) {
-  const { transaction, game, secretSnap } = ctx;
-  if (!game.publicState || game.publicState.phase !== "round") {
-    return { completed: false, result: null };
+  const { game, now, secretSnap, playerIds: fallback = [] } = ctx;
+  const state = game.publicState || {};
+  const playerIds = playersOf(game, fallback);
+  if (isExpired(game.globalDeadlineAt, now)) {
+    return complete(ctx.transaction, {
+      ...ctx,
+      playerIds,
+      now,
+      winnerIds: [],
+      reason: "global_timeout",
+    });
   }
-  const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
-  if (!secret) return { completed: false, result: null };
-  return resolveRound(transaction, { ...ctx, secret });
+  if (state.phase === "selection") {
+    const secret = secretSnap && secretSnap.exists ? secretSnap.data() : {};
+    const selected = secret.selections || {};
+    const missing = playerIds.filter((id) => !selected[id]);
+    if (missing.length === 1) {
+      return complete(ctx.transaction, {
+        ...ctx,
+        playerIds,
+        now,
+        winnerIds: [opponentOf(playerIds, missing[0])].filter(Boolean),
+        reason: "selection_forfeit",
+      });
+    }
+    return complete(ctx.transaction, {
+      ...ctx,
+      playerIds,
+      now,
+      winnerIds: [],
+      reason: "selection_timeout",
+    });
+  }
+  const winner = opponentOf(playerIds, state.currentPlayerId);
+  return complete(ctx.transaction, {
+    ...ctx,
+    playerIds,
+    now,
+    winnerIds: [winner].filter(Boolean),
+    reason: "turn_timeout",
+  });
 }
 
 module.exports = {
   initialize,
   applyAction,
   onTimeout,
+  normalizeYesNo,
 };

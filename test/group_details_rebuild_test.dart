@@ -18,22 +18,26 @@ void main() {
     expect(AppStrings.arabic.groupDetails, 'تفاصيل المجموعة');
     expect(AppStrings.english.openChat, 'Open chat');
     expect(AppStrings.arabic.addMembers, 'إضافة أعضاء');
-    expect(AppStrings.english.roleLabel('shogun'), 'Shogun');
+    expect(AppStrings.english.roleLabel('shogun'), 'SHŌGUN');
+    expect(AppStrings.english.roleLabel('founder'), 'MIKADO');
+    expect(AppStrings.english.roleLabel('ronin'), 'RŌNIN');
     expect(AppStrings.arabic.joinPolicyLabel('approval'), 'بطلب');
   });
 
   testWidgets('founder details show identity, type, and open chat', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      await _harness(role: GroupRole.founder),
-    );
+    await tester.pumpWidget(await _harness(role: PubgetRank.mikado));
     await tester.pump();
     await tester.pump();
 
     expect(find.byKey(const Key('group-details-hero')), findsOneWidget);
+    expect(find.byKey(const Key('group-hero-badges')), findsOneWidget);
+    expect(find.text('MIKADO'), findsNothing);
     expect(find.text('Rising Crew'), findsOneWidget);
     expect(find.text('Anime Roleplay'), findsOneWidget);
+    expect(find.text('4'), findsWidgets);
+    expect(find.text('4 members'), findsNothing);
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Open chat'), findsOneWidget);
     expect(find.byKey(const Key('group-details-disband')), findsOneWidget);
@@ -54,9 +58,58 @@ void main() {
     expect(find.text('Open chat'), findsNothing);
     expect(find.text('Disband group'), findsNothing);
   });
+
+  testWidgets('control panel follows live rank permissions', (tester) async {
+    for (final role in <PubgetRank>[
+      PubgetRank.gokenin,
+      PubgetRank.hatamoto,
+      PubgetRank.daimyo,
+      PubgetRank.shogun,
+      PubgetRank.mikado,
+    ]) {
+      await tester.pumpWidget(
+        KeyedSubtree(
+          key: ValueKey<PubgetRank>(role),
+          child: await _harness(role: role),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Open chat'), findsOneWidget, reason: role.name);
+      expect(find.text('Join group'), findsNothing, reason: role.name);
+      expect(find.byKey(const Key('group-quick-stats')), findsOneWidget);
+
+      if (role == PubgetRank.gokenin) {
+        expect(find.text('Manage members'), findsNothing);
+        expect(find.byKey(const Key('group-promote-section')), findsNothing);
+      } else {
+        expect(find.text('Join requests'), findsOneWidget, reason: role.name);
+      }
+
+      if (role.index >= PubgetRank.daimyo.index) {
+        expect(find.text('Manage members'), findsOneWidget, reason: role.name);
+        expect(find.text('Group games'), findsOneWidget, reason: role.name);
+      } else {
+        expect(find.text('Group games'), findsNothing, reason: role.name);
+      }
+
+      if (role.index >= PubgetRank.shogun.index) {
+        expect(find.text('Group settings'), findsOneWidget, reason: role.name);
+      } else {
+        expect(find.text('Group settings'), findsNothing, reason: role.name);
+      }
+
+      if (role == PubgetRank.mikado) {
+        expect(find.text('Disband group'), findsOneWidget);
+      } else {
+        expect(find.text('Disband group'), findsNothing);
+      }
+    }
+  });
 }
 
-Future<Widget> _harness({required GroupRole? role}) async {
+Future<Widget> _harness({required PubgetRank? role}) async {
   final authRepository = FakeAuthRepository(
     user: const AuthUser(id: 'alice', email: 'alice@example.com'),
   );
@@ -76,7 +129,7 @@ Future<Widget> _harness({required GroupRole? role}) async {
 final class _FakeGroupRepository implements GroupRepository {
   _FakeGroupRepository({required this.viewerRole});
 
-  final GroupRole? viewerRole;
+  final PubgetRank? viewerRole;
 
   static final group = Group(
     id: 'g1',
@@ -84,7 +137,7 @@ final class _FakeGroupRepository implements GroupRepository {
     description: 'A roleplay room',
     type: GroupType.animeRoleplay,
     animeId: 'a1',
-    founderId: 'alice',
+    founderId: 'founder',
     membersCount: 4,
     maxMembers: 40,
     joinPolicy: JoinPolicy.open,
@@ -126,8 +179,10 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
-      const Success<void>(null);
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
@@ -160,11 +215,11 @@ final class _FakeGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-

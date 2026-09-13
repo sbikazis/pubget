@@ -76,7 +76,7 @@ abstract final class GameTypeRegistry {
         usesRounds: true,
         usesScoring: true,
         minPlayers: 2,
-        maxPlayers: 8,
+        maxPlayers: 2,
       ),
     ),
     GameType.emojiAnimeGuess: GameTypeSpec(
@@ -127,7 +127,9 @@ abstract final class GameTypeRegistry {
   }
 
   static List<GameTypeSpec> get implemented =>
-      specs.values.where((spec) => spec.implemented).toList(growable: false);
+      specs.values
+          .where((spec) => spec.implemented && spec.genericCreate)
+          .toList(growable: false);
 
   static List<GameTypeSpec> get genericCreate => specs.values
       .where((spec) => spec.implemented && spec.genericCreate)

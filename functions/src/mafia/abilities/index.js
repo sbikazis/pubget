@@ -6,6 +6,7 @@
 // بدون الحاجة لتعديل roleAssigner.js أو أي منطق آخر
 
 const mafia = require('./mafia');
+const don = require('./don');
 const doctor = require('./doctor');
 const detective = require('./detective');
 const sniper = require('./sniper'); // تم تعديل الاسم من spiner
@@ -15,6 +16,7 @@ const citizen = require('./citizen');
 
 const ALL_ABILITIES = {
   [mafia.roleName]: mafia,
+  [don.roleName]: don,
   [doctor.roleName]: doctor,
   [detective.roleName]: detective,
   [sniper.roleName]: sniper, // تم تعديل الاسم

@@ -1,2 +1,6 @@
 - [Firebase CLI versus ADC](firebase-cli-vs-adc.md) — Firebase CLI login can deploy and call Firebase APIs, but does not provide ADC to standalone Admin SDK scripts.
 - [GitHub split history](github-split-history.md) — verify the live remote ref before publishing; local main may not contain API-created GitHub commits.
+- [Portable npm lockfiles](portable-npm-lockfiles.md) — package installs may record Replit-internal registry URLs; remove them before committing lockfiles used outside Replit.
+- [Chat receipt visibility](chat-receipt-visibility.md) — read receipts should be derived from rendered message bounds, not every message currently loaded.
+- [Flutter web preview routing](flutter-web-preview-routing.md) — static Flutter preview servers need history-API fallback for direct routed URLs.
+- [Mafia terminal locking](mafia-terminal-locking.md) — every scheduled transition path must treat game-over and cancelled states as terminal before and after resolution.

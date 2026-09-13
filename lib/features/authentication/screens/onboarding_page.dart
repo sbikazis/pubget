@@ -6,8 +6,6 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../../core/media/image_crop_aspect.dart';
-import '../../../core/media/image_pick_and_crop.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
@@ -295,6 +293,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           favoriteAnimes: _interests.toList(growable: false),
           isProfileCompleted: true,
         );
+        if (!mounted) return;
       }
       await AppNavigation.go(context, '/home');
     }

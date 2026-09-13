@@ -31,14 +31,14 @@ abstract final class EventTypeRegistry {
       usesRanking: false,
       hint: 'Question, options, and voting rules.',
     ),
-    EventType.multipleChoice: EventTypeSpec(
-      type: EventType.multipleChoice,
-      label: 'Multiple choice',
+    EventType.comparison: EventTypeSpec(
+      type: EventType.comparison,
+      label: 'Comparison',
       usesOptions: true,
       usesTextResponse: false,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'Question with one or more selectable choices.',
+      hint: 'Compare two or more candidates.',
     ),
     EventType.ranking: EventTypeSpec(
       type: EventType.ranking,
@@ -49,14 +49,14 @@ abstract final class EventTypeRegistry {
       usesRanking: true,
       hint: 'Participants rank the provided options.',
     ),
-    EventType.versus: EventTypeSpec(
-      type: EventType.versus,
-      label: 'Versus',
+    EventType.question: EventTypeSpec(
+      type: EventType.question,
+      label: 'Question',
       usesOptions: true,
       usesTextResponse: false,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'Two or more candidates compete.',
+      hint: 'Ask a question with one or more selectable answers.',
     ),
     EventType.theory: EventTypeSpec(
       type: EventType.theory,
@@ -128,12 +128,13 @@ abstract final class EventTypeRegistry {
       usesTextResponse: true,
       usesQuiz: false,
       usesRanking: false,
-      hint: 'A challenge verified from Pubget activity, or explicitly self-reported.',
+      hint:
+          'A challenge verified from Pubget activity, or explicitly self-reported.',
     ),
   };
 
   static const templates = <String, EventType>{
-    'animeBattle': EventType.versus,
+    'animeBattle': EventType.comparison,
     'bestCharacter': EventType.characterComparison,
     'theoryNight': EventType.theory,
     'emojiChallenge': EventType.challenge,
@@ -156,7 +157,7 @@ abstract final class EventStrings {
   static const noEventsMessage = 'Discover groups or create an event.';
   static const noParticipation = 'Join this event to take part.';
   static const ended = 'This event has ended.';
-  static const cancelled = 'This event was cancelled.';
+  static const deleted = 'This event is no longer available.';
   static const archived = 'This event is archived.';
   static const permission = "You don't have permission to manage events.";
   static const missing = 'This event no longer exists.';

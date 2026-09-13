@@ -34,6 +34,9 @@ final class UnavailableEditsRepository implements EditsRepository {
   Future<Result<void>> retryProcessing(String editId) async => _failure();
 
   @override
+  Future<Result<Edit>> finalizeEditUpload(String editId) async => _failure();
+
+  @override
   Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
       _failure();
 
