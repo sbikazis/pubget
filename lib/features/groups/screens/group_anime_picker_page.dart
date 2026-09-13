@@ -6,11 +6,11 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../anime/data/anime_search_ranker.dart';
 import '../../anime/l10n/anime_copy.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/providers/anime_providers.dart';
 import '../../anime/repositories/anime_repository.dart';
-import '../data/group_fuzzy.dart';
 import '../l10n/group_copy.dart';
 
 class GroupAnimePickerPage extends StatefulWidget {
@@ -204,21 +204,13 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
   List<Anime> _visible(AnimeListProvider? list) {
     if (list == null) return const <Anime>[];
     final query = _search.text;
-    if (query.trim().isEmpty) {
-      return list.items
-          .where((anime) => list.filter.matchesCatalog(anime))
-          .toList(growable: false);
-    }
-    return list.items
-        .where(
-          (anime) =>
-              list.filter.matchesCatalog(anime) &&
-              (GroupFuzzy.matches(query, anime.title) ||
-                  anime.alternativeTitles.any(
-                    (title) => GroupFuzzy.matches(query, title),
-                  )),
-        )
+    final catalog = list.items
+        .where((anime) => list.filter.matchesCatalog(anime))
         .toList(growable: false);
+    if (query.trim().isEmpty) return catalog;
+    // Rank by exact → prefix → contains (+ score/popularity). Never use
+    // loose subsequence fuzzy matching that surfaces unrelated titles.
+    return AnimeSearchRanker.rank(catalog, query);
   }
 
   Future<void> _openFilters(

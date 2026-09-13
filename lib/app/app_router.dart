@@ -75,8 +75,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
   @visibleForTesting
   AppRoute? get pendingRoute => _pendingRoute;
 
-  bool get canPop =>
-      _stack.length > 1 || !AppRouter.isRoot(_stack.last);
+  bool get canPop => _stack.length > 1 || !AppRouter.isRoot(_stack.last);
 
   @visibleForTesting
   List<AppRoute> get stack => List<AppRoute>.unmodifiable(_stack);
@@ -117,11 +116,19 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
 
   @override
   Future<bool> popRoute() async {
+    // 1) Sheets / dialogs / local MaterialPageRoutes on this navigator.
+    final navigator = navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      final handled = await navigator.maybePop();
+      if (handled) return true;
+    }
+    // 2) App route stack (one step only).
     if (canPop) {
       popStack();
       return true;
     }
-    return false;
+    // 3) Shell / login roots: absorb hardware back — never exit the app.
+    return true;
   }
 
   void clearPending() {
@@ -192,8 +199,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
           when designSystemPage != null &&
               (path == '/design-system' || path == '/design-system/') =>
         designSystemPage!,
-      ParameterizedRoute(:final path)
-          when path == '/' || path.isEmpty =>
+      ParameterizedRoute(:final path) when path == '/' || path.isEmpty =>
         homePage,
       FoundationRoute() => homePage,
       _ => domainPages['/unknown'] ?? homePage,
@@ -209,6 +215,31 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     return Navigator(
       key: navigatorKey,
       pages: <Page<void>>[MaterialPage<void>(key: pageKey, child: page)],
+      // v2 game screens use named navigation for secondary destinations
+      // (rules, for example). Keep those destinations on the same router
+      // registry instead of relying on an app-level MaterialApp route table.
+      onGenerateRoute: (settings) {
+        final uri = Uri.tryParse(settings.name ?? '');
+        if (uri == null) return null;
+        final route = AppRouter.routeFromUri(uri);
+        if (route case ParameterizedRoute(:final path, :final parameters)) {
+          final builder = parameterizedPages[path];
+          if (builder != null) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => builder(parameters),
+            );
+          }
+          final domain = domainPages[path];
+          if (domain != null) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => domain,
+            );
+          }
+        }
+        return null;
+      },
       onDidRemovePage: (page) {
         // Overlay routes (Drawer) share this Navigator. Ignore those pops.
         // In-app back is handled by [popStack]; do not reset to splash.
@@ -242,6 +273,7 @@ final class AppRouter {
     '/splash',
     '/login',
     '/onboarding',
+    '/reels',
     ...shellPaths,
   };
 
@@ -297,21 +329,31 @@ abstract final class AppNavigation {
     return delegate.navigate(AppRouter.routeFromString(path));
   }
 
-  static Future<void> back(BuildContext context) async {
-    final delegate = Router.maybeOf(context)?.routerDelegate;
-    if (delegate is AppRouterDelegate) {
-      delegate.popStack();
-      return;
-    }
+  /// Single-step dismiss: local navigator layer first, then app stack.
+  /// Never calls [SystemNavigator.pop] / never exits the app.
+  static Future<bool> popLayer(BuildContext context) async {
     final navigator = Navigator.maybeOf(context);
-    if (navigator != null && navigator.canPop()) navigator.pop();
+    if (navigator != null && navigator.canPop()) {
+      return navigator.maybePop();
+    }
+    final delegate = Router.maybeOf(context)?.routerDelegate;
+    if (delegate is AppRouterDelegate && delegate.canPop) {
+      delegate.popStack();
+      return true;
+    }
+    return false;
+  }
+
+  static Future<void> back(BuildContext context) async {
+    await popLayer(context);
   }
 
   static bool canPop(BuildContext context) {
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) return true;
     final delegate = Router.maybeOf(context)?.routerDelegate;
     if (delegate is AppRouterDelegate) return delegate.canPop;
-    final navigator = Navigator.maybeOf(context);
-    return navigator != null && navigator.canPop();
+    return false;
   }
 }
 
@@ -377,14 +419,14 @@ AppRoute _routeFromUri(Uri uri) {
   if (path == '/unknown') {
     return const ParameterizedRoute(path: '/unknown');
   }
-  return _requireEntityId(
-    ParameterizedRoute(path: path, parameters: query),
-  );
+  return _requireEntityId(ParameterizedRoute(path: path, parameters: query));
 }
 
 const _requiredEntityKeys = <String, String>{
   '/event': 'eventId',
   '/game': 'gameId',
+  '/games/waiting': 'gameId',
+  '/games/room': 'gameId',
   '/mafia': 'gameId',
   '/fan-work': 'workId',
   '/group': 'groupId',

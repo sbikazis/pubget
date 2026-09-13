@@ -7,7 +7,11 @@ enum MafiaPhase {
   day,
   discussion,
   voting,
-  execution,
+  revote,
+  voteResult,
+  resolution,
+  roleReveal,
+  gameOver,
   finished,
   cancelled,
 }
@@ -29,6 +33,8 @@ final class MafiaGame {
     this.phaseEndsAt,
     this.startedAt,
     this.endedAt,
+    this.currentSpeakerId,
+    this.revoteCandidates = const <String>[],
   });
 
   final String id;
@@ -46,15 +52,18 @@ final class MafiaGame {
   final DateTime? phaseEndsAt;
   final DateTime? startedAt;
   final DateTime? endedAt;
+  final String? currentSpeakerId;
+  final List<String> revoteCandidates;
 
-  bool get isLobby => status == 'waiting';
-  bool get isFinished => status == 'finished' || status == 'cancelled';
+  bool get isLobby => status == 'waiting' || status == 'starting';
+  bool get isFinished =>
+      status == 'finished' || status == 'game_over' || status == 'cancelled';
   bool get canLeaveViaServer =>
       status == 'starting' ||
       status == 'night' ||
       status == 'day' ||
       status == 'discussion' ||
-      status == 'voting';
+      status == 'voting' || status == 'revote';
 
   factory MafiaGame.fromMap(Map<String, dynamic> map, {required String id}) {
     return MafiaGame(
@@ -73,6 +82,10 @@ final class MafiaGame {
       phaseEndsAt: _date(map['phaseEndsAt']),
       startedAt: _date(map['startedAt']),
       endedAt: _date(map['endedAt']),
+      currentSpeakerId: map['currentSpeakerId'] as String?,
+      revoteCandidates: (map['revoteCandidates'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 }
@@ -123,11 +136,17 @@ final class MafiaPrivateState {
     this.role = '',
     this.team = '',
     this.assigned = false,
+    this.mafiaTeammateIds = const <String>[],
+    this.lastInvestigationResult,
+    this.lastDonInvestigationResult,
   });
 
   final String role;
   final String team;
   final bool assigned;
+  final List<String> mafiaTeammateIds;
+  final Map<String, dynamic>? lastInvestigationResult;
+  final Map<String, dynamic>? lastDonInvestigationResult;
 
   factory MafiaPrivateState.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const MafiaPrivateState();
@@ -136,6 +155,13 @@ final class MafiaPrivateState {
       role: role,
       team: map['team'] as String? ?? '',
       assigned: role.isNotEmpty,
+      mafiaTeammateIds: (map['mafiaTeammateIds'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
+      lastInvestigationResult: (map['lastInvestigationResult'] as Map?)
+          ?.cast<String, dynamic>(),
+      lastDonInvestigationResult: (map['lastDonInvestigationResult'] as Map?)
+          ?.cast<String, dynamic>(),
     );
   }
 }

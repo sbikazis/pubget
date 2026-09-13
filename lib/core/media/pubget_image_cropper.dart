@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../l10n/app_strings.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
@@ -64,16 +65,17 @@ class _PubgetImageCropperState extends State<PubgetImageCropper> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final copy = AppStrings.of(context);
     final ratio = widget.aspect.ratio ?? 1;
     return Scaffold(
       backgroundColor: AppColors.royalNight,
       appBar: AppBar(
         backgroundColor: AppColors.royalNight,
         foregroundColor: AppColors.white,
-        title: const Text('Crop & edit'),
+        title: Text(copy.pick('Crop & edit', 'قص وتعديل')),
         leading: IconButton(
           key: const Key('image-crop-cancel'),
-          tooltip: 'Cancel',
+          tooltip: copy.pick('Cancel', 'إلغاء'),
           onPressed: _busy ? null : () => Navigator.pop(context),
           icon: const Icon(Icons.close),
         ),
@@ -89,9 +91,7 @@ class _PubgetImageCropperState extends State<PubgetImageCropper> {
                     decoration: BoxDecoration(
                       color: AppColors.royalDusk,
                       borderRadius: BorderRadius.circular(
-                        widget.aspect.circularPreview
-                            ? 999
-                            : AppRadius.lg,
+                        widget.aspect.circularPreview ? 999 : AppRadius.lg,
                       ),
                       border: Border.all(
                         color: AppColors.gold.withValues(alpha: 0.7),
@@ -133,7 +133,10 @@ class _PubgetImageCropperState extends State<PubgetImageCropper> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Text(
-                    'Pinch to zoom, drag to frame. Confirm when it looks right.',
+                    copy.pick(
+                      'Pinch to zoom, drag to frame. Confirm when it looks right.',
+                      'قرّب بالأصابع واسحب للإطار. أكّد عندما يبدو مناسبًا.',
+                    ),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: AppColors.darkTextMuted,
@@ -143,16 +146,19 @@ class _PubgetImageCropperState extends State<PubgetImageCropper> {
                   PubgetPrimaryButton(
                     key: const Key('image-crop-confirm'),
                     onPressed: _busy ? null : _confirm,
-                    semanticLabel: 'Confirm cropped image',
+                    semanticLabel: copy.pick(
+                      'Confirm cropped image',
+                      'تأكيد الصورة المقصوصة',
+                    ),
                     loading: _busy,
                     leadingIcon: Icons.check_rounded,
-                    child: const Text('Confirm'),
+                    child: Text(copy.pick('Confirm', 'تأكيد')),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetSecondaryButton(
                     onPressed: _busy ? null : () => Navigator.pop(context),
-                    semanticLabel: 'Cancel crop',
-                    child: const Text('Cancel'),
+                    semanticLabel: copy.pick('Cancel crop', 'إلغاء القص'),
+                    child: Text(copy.pick('Cancel', 'إلغاء')),
                   ),
                 ],
               ),

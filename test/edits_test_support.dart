@@ -54,6 +54,8 @@ final class FakeEditsRepository implements EditsRepository {
   List<EditComment> comments;
   Failure? uploadFailure;
   Failure? likeFailure;
+  Failure? signalFailure;
+  Future<Result<void>> Function(bool like)? likeHandler;
   var likeCalls = 0;
   var commentCalls = 0;
   var uploadCalls = 0;
@@ -98,6 +100,10 @@ final class FakeEditsRepository implements EditsRepository {
       const Success<void>(null);
 
   @override
+  Future<Result<Edit>> finalizeEditUpload(String editId) async =>
+      Success(testEdit(id: editId, status: 'processing'));
+
+  @override
   Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
       Success(EditPage(feed, hasMore: false));
 
@@ -127,6 +133,8 @@ final class FakeEditsRepository implements EditsRepository {
   }) async {
     likeCalls += 1;
     lastLike = like;
+    final handler = likeHandler;
+    if (handler != null) return handler(like);
     if (likeFailure != null) return FailureResult(likeFailure!);
     return const Success<void>(null);
   }
@@ -181,7 +189,10 @@ final class FakeEditsRepository implements EditsRepository {
   Future<Result<void>> recordSignal({
     required String editId,
     required String type,
-  }) async => const Success<void>(null);
+  }) async {
+    if (signalFailure != null) return FailureResult(signalFailure!);
+    return const Success<void>(null);
+  }
 
   Future<void> close() async => _editController.close();
 }

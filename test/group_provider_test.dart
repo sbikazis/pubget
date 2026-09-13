@@ -115,7 +115,7 @@ void main() {
     final repository = _FakeGroupRepository(
       membershipAfterJoin: const GroupMember(
         uid: 'alice',
-        role: GroupRole.commander,
+        role: PubgetRank.daimyo,
       ),
     );
     final provider = GroupProvider(repository: repository);
@@ -126,7 +126,7 @@ void main() {
     expect(result.isSuccess, isTrue);
     expect(provider.membership?.uid, 'alice');
     expect(provider.membership?.uid, isNotEmpty);
-    expect(provider.membership?.role, GroupRole.commander);
+    expect(provider.membership?.role, PubgetRank.daimyo);
     expect(provider.isMember, isTrue);
     expect(provider.isFounder, isFalse);
     expect(provider.canManageMembers, isTrue);
@@ -138,7 +138,7 @@ void main() {
     final repository = _FakeGroupRepository(
       membershipAfterJoin: const GroupMember(
         uid: 'alice',
-        role: GroupRole.member,
+        role: PubgetRank.ronin,
       ),
     );
     final provider = GroupProvider(repository: repository);
@@ -146,9 +146,10 @@ void main() {
 
     await provider.join('g1', userId: 'alice');
 
-    // GroupDetailsPage redirects to chat when isMember && !isFounder.
+    // GroupDetailsPage redirects to chat when isMember && !hasEntryHub (ronin).
     expect(provider.isMember, isTrue);
     expect(provider.isFounder, isFalse);
+    expect(provider.hasEntryHub, isFalse);
     expect(provider.membership?.uid, 'alice');
   });
 
@@ -261,7 +262,7 @@ final class _FakeGroupRepository implements GroupRepository {
     }
     return Success(
       membershipAfterJoin ??
-          GroupMember(uid: userId, role: GroupRole.member),
+          GroupMember(uid: userId, role: PubgetRank.ronin),
     );
   }
 

@@ -28,18 +28,18 @@ void main() {
 
   test('plain members can create events; visitors cannot', () {
     expect(
-      memberCanCreateEvents(const GroupMember(uid: 'm1', role: GroupRole.member)),
+      memberCanCreateEvents(const GroupMember(uid: 'm1', role: PubgetRank.ronin)),
       isTrue,
     );
     expect(
       memberCanCreateEvents(
-        const GroupMember(uid: 'c1', role: GroupRole.captain),
+        const GroupMember(uid: 'c1', role: PubgetRank.hatamoto),
       ),
       isTrue,
     );
     expect(memberCanCreateEvents(null), isFalse);
     expect(
-      const GroupMember(uid: 'm1', role: GroupRole.member).canManageEvents,
+      const GroupMember(uid: 'm1', role: PubgetRank.ronin).canManageEvents,
       isFalse,
     );
   });
@@ -180,7 +180,7 @@ final class _MemberGroupRepository implements GroupRepository {
   Future<Result<GroupMember?>> getMembership(
     String groupId,
     String userId,
-  ) async => Success(GroupMember(uid: userId, role: GroupRole.member));
+  ) async => Success(GroupMember(uid: userId, role: PubgetRank.ronin));
 
   @override
   Future<Result<void>> joinGroup({

@@ -147,9 +147,8 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   bool get _showCoins => coins != null;
 
   @override
-  Size get preferredSize => Size.fromHeight(
-    barHeight + (_showCoins ? coinStripHeight : 0),
-  );
+  Size get preferredSize =>
+      Size.fromHeight(barHeight + (_showCoins ? coinStripHeight : 0));
 
   @override
   Widget build(BuildContext context) {
@@ -234,10 +233,7 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       bottom: _showCoins
           ? PreferredSize(
               preferredSize: const Size.fromHeight(coinStripHeight),
-              child: _HomeCoinStrip(
-                balance: coins!,
-                tooltip: copy.store,
-              ),
+              child: _HomeCoinStrip(balance: coins!, tooltip: copy.store),
             )
           : null,
     );
@@ -399,10 +395,7 @@ class _EditsSection extends StatelessWidget {
         onRetry: () => edits.load(refresh: true, limit: 8),
       );
     } else {
-      child = PubgetEmptyState(
-        compact: true,
-        title: copy.nothingHereYet,
-      );
+      child = PubgetEmptyState(compact: true, title: copy.nothingHereYet);
     }
     return _SectionFrame(
       key: const Key('home-edits'),
@@ -413,23 +406,28 @@ class _EditsSection extends StatelessWidget {
 
   List<Edit> _editsForHome(HomeProvider home, EditsProvider edits) {
     if (edits.items.isNotEmpty) return edits.items.take(8).toList();
-    return home.feed.section('recommendedEdits').items.map((item) {
-      final meta = item.metadata;
-      return Edit(
-        id: item.targetId.isEmpty ? item.id : item.targetId,
-        creatorId: meta['creatorId'] as String? ?? '',
-        videoUrl: meta['videoUrl'] as String? ?? '',
-        thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
-        caption: meta['title'] as String? ?? meta['caption'] as String? ?? '',
-        animeTag: meta['animeTag'] as String? ?? '',
-        likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
-        commentsCount: 0,
-        viewsCount: 0,
-        score: item.score,
-        createdAt: item.createdAt,
-        status: 'published',
-      );
-    }).toList(growable: false);
+    return home.feed
+        .section('recommendedEdits')
+        .items
+        .map((item) {
+          final meta = item.metadata;
+          return Edit(
+            id: item.targetId.isEmpty ? item.id : item.targetId,
+            creatorId: meta['creatorId'] as String? ?? '',
+            videoUrl: meta['videoUrl'] as String? ?? '',
+            thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
+            caption:
+                meta['title'] as String? ?? meta['caption'] as String? ?? '',
+            animeTag: meta['animeTag'] as String? ?? '',
+            likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
+            commentsCount: 0,
+            viewsCount: 0,
+            score: item.score,
+            createdAt: item.createdAt,
+            status: 'published',
+          );
+        })
+        .toList(growable: false);
   }
 }
 
@@ -459,10 +457,11 @@ class _EventsSection extends StatelessWidget {
       final end = event.endAt;
       return end != null && now.difference(end) <= const Duration(hours: 24);
     });
-    final picked = HomeEventsSection.pickHome(
-      <PubgetEvent>[...list.active, ...list.upcoming, ...recent],
-      now,
-    );
+    final picked = HomeEventsSection.pickHome(<PubgetEvent>[
+      ...list.active,
+      ...list.upcoming,
+      ...recent,
+    ], now);
     if (picked.isEmpty) {
       return _SectionFrame(
         title: copy.sectionEvents,
@@ -653,10 +652,8 @@ class _SkeletonSection extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       itemCount: 2,
       separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-      itemBuilder: (_, _) => const SizedBox(
-        width: 168,
-        child: PubgetSkeleton.card(height: 200),
-      ),
+      itemBuilder: (_, _) =>
+          const SizedBox(width: 168, child: PubgetSkeleton.card(height: 200)),
     ),
   );
 }

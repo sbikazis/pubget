@@ -67,11 +67,19 @@ function createHistoryWriter(options = {}) {
 
       const historyDoc = {
         gameId,
+        groupId: gameData.groupId || null,
+        creatorId: gameData.createdBy || null,
         winner: winner || null,
         durationSeconds,
         version: gameData.version || "classic",
         players: playerIds,
         playerDetails,
+        phaseHistory: gameData.phaseHistory || [],
+        eliminations: gameData.eliminations || [],
+        votingResults: gameData.votingResults || [],
+        rewards: gameData.rewards || null,
+        createdAt: gameData.createdAt || null,
+        startedAt: gameData.startedAt || null,
         endedAt: FieldValue.serverTimestamp(),
       };
 

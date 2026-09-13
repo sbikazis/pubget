@@ -10,6 +10,13 @@ function string(value, max) {
     : null;
 }
 
+function boundedList(value, maxItems, maxItemLength) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const normalized = value.map((item) => string(item, maxItemLength));
+  return normalized.every(Boolean) ? normalized : null;
+}
+
 function emptyCounters() {
   return {
     likes: 0,
@@ -43,14 +50,25 @@ function serializeEdit(id, data) {
   };
 }
 
-function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEdit }) {
+function createEditsDomain({
+  db,
+  FieldValue,
+  HttpsError,
+  achievements,
+  processEdit,
+  bucket,
+  collectionName = "edits",
+  uploadKeyCollection = "editUploadKeys",
+  storagePrefix = "edits",
+  config = EDITS_CONFIG,
+}) {
   function uid(request) {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
     return request.auth.uid;
   }
 
   function editRef(editId) {
-    return db.collection("edits").doc(editId);
+    return db.collection(collectionName).doc(editId);
   }
 
   function bump(changes, flatKey, nestedKey, amount) {
@@ -60,22 +78,42 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
 
   async function startUpload(request) {
     const creatorId = uid(request);
-    const caption = string(request.data?.caption || "", EDITS_CONFIG.captionMax);
+    const caption = string(request.data?.caption || "", config.captionMax);
     const animeTag = string(request.data?.animeTag || "", 128);
-    if (caption === null || animeTag === null) {
+    const hashtags = boundedList(request.data?.hashtags, 12, 64);
+    const characterIds = boundedList(request.data?.characterIds, 8, 128);
+    const mentions = boundedList(request.data?.mentions, config.mentionMax, 128);
+    const groupIds = boundedList(request.data?.groupIds, 8, 128);
+    const animeId = string(request.data?.animeId || "", 128);
+    const audioId = string(request.data?.audioId || "", 128);
+    const eventId = string(request.data?.eventId || "", 128);
+    const coverFrameMs = request.data?.coverFrameMs == null
+      ? 0
+      : Number(request.data.coverFrameMs);
+    const visibility = string(request.data?.visibility || "public", 16);
+    const allowRemix = request.data?.allowRemix !== false;
+    if (caption === null || animeTag === null || animeId === null ||
+        audioId === null || eventId === null || visibility === null ||
+        !["public", "followers", "private"].includes(visibility) ||
+        hashtags === null || characterIds === null || mentions === null ||
+        groupIds === null || !Number.isInteger(coverFrameMs) ||
+        coverFrameMs < 0 || coverFrameMs > 60000) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
     }
     const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
     if (idempotencyKey) {
-      const keySnap = await db.collection("editUploadKeys")
+      const keySnap = await db.collection(uploadKeyCollection)
         .doc(`${creatorId}_${idempotencyKey}`).get();
       if (keySnap.exists && keySnap.data()?.editId) {
         const existingId = keySnap.data().editId;
-        return { editId: existingId, videoPath: `edits/${creatorId}/${existingId}.mp4` };
+        return {
+          editId: existingId,
+          videoPath: `${storagePrefix}/${creatorId}/${existingId}.mp4`,
+        };
       }
     }
-    const editId = db.collection("edits").doc().id;
-    const videoPath = `edits/${creatorId}/${editId}.mp4`;
+    const editId = db.collection(collectionName).doc().id;
+    const videoPath = `${storagePrefix}/${creatorId}/${editId}.mp4`;
     const payload = {
       creatorId,
       videoUrl: "",
@@ -86,6 +124,16 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       thumbnailStoragePath: "",
       caption,
       animeTag,
+      animeId,
+      hashtags,
+      characterIds,
+      mentions,
+      groupIds,
+      eventId,
+      audioId,
+      coverFrameMs,
+      visibility,
+      allowRemix,
       likesCount: 0,
       commentsCount: 0,
       viewsCount: 0,
@@ -109,11 +157,11 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       status: "uploading",
       moderationStatus: "pending",
       moderationReason: null,
-      schemaVersion: EDITS_CONFIG.schemaVersion,
+      schemaVersion: config.schemaVersion,
     };
     const writes = [editRef(editId).create(payload)];
     if (idempotencyKey) {
-      writes.push(db.collection("editUploadKeys").doc(`${creatorId}_${idempotencyKey}`).create({
+      writes.push(db.collection(uploadKeyCollection).doc(`${creatorId}_${idempotencyKey}`).create({
         creatorId, editId, createdAt: FieldValue.serverTimestamp(),
       }));
     }
@@ -140,14 +188,14 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       );
     }
     const originMs = millis(source.publishedAt) || millis(source.createdAt);
-    if (!originMs || Date.now() - originMs > EDITS_CONFIG.repostWindowMs) {
+    if (!originMs || Date.now() - originMs > config.repostWindowMs) {
       throw new HttpsError("failed-precondition", "Reposts are available for 30 days.");
     }
     if (source.creatorId === creatorId) {
       throw new HttpsError("failed-precondition", "You cannot repost your own Edit.");
     }
     const originalCreatorId = source.originalCreatorId || source.creatorId;
-    const ref = db.collection("edits").doc();
+    const ref = db.collection(collectionName).doc();
     await ref.create({
       ...source,
       creatorId,
@@ -174,7 +222,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       counters: emptyCounters(),
       moderationStatus: "approved",
       moderationReason: null,
-      schemaVersion: EDITS_CONFIG.schemaVersion,
+      schemaVersion: config.schemaVersion,
     });
     if (achievements && typeof achievements.evaluate === "function") {
       await achievements.evaluate({
@@ -235,7 +283,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     const authorId = uid(request);
     const editId = string(request.data?.editId, 128);
     const kind = request.data?.kind === "sticker" ? "sticker" : "text";
-    const max = kind === "sticker" ? EDITS_CONFIG.stickerMax : EDITS_CONFIG.commentMax;
+    const max = kind === "sticker" ? config.stickerMax : config.commentMax;
     const text = string(request.data?.text, max);
     const replyRaw = request.data?.replyToCommentId;
     const replyToCommentId = replyRaw == null || replyRaw === ""
@@ -245,7 +293,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       ? request.data.mentions
         .filter((item) => typeof item === "string" && item.trim().length <= 32)
         .map((item) => item.trim())
-        .slice(0, EDITS_CONFIG.mentionMax)
+        .slice(0, config.mentionMax)
       : [];
     if (replyRaw && !replyToCommentId) {
       throw new HttpsError("invalid-argument", "Reply target is invalid.");
@@ -281,7 +329,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     const impressionRef = ref.collection("impressions").doc(viewerId);
     const existing = await tx.get(impressionRef);
     const last = existing.data()?.lastAt?.toDate?.()?.getTime?.() || 0;
-    if (existing.exists && Date.now() - last < EDITS_CONFIG.viewabilityMs) {
+    if (existing.exists && Date.now() - last < config.viewabilityMs) {
       return { ok: true, counted: false };
     }
     if (existing.exists && Date.now() - last < 60 * 1000) {
@@ -381,10 +429,10 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       const previous = viewer.data() || {};
       const last = previous.lastQualifiedAt?.toDate?.()?.getTime?.() || 0;
       const qualified = !isSelf &&
-        verifiedPercent >= EDITS_CONFIG.qualifiedViewPercent &&
+        verifiedPercent >= config.qualifiedViewPercent &&
         Date.now() - last >= 24 * 60 * 60 * 1000;
       const completed = !isSelf &&
-        verifiedPercent >= EDITS_CONFIG.completionPercent &&
+        verifiedPercent >= config.completionPercent &&
         previous.completed !== true;
       const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
       const watchCredit = increment;
@@ -398,7 +446,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
       tx.update(sessionRef, {
         creditedSeconds: verifiedSeconds,
         lastHeartbeatAt: FieldValue.serverTimestamp(),
-        consumed: verifiedPercent >= EDITS_CONFIG.completionPercent,
+        consumed: verifiedPercent >= config.completionPercent,
       });
       const changes = { totalWatchSeconds: FieldValue.increment(watchCredit) };
       if (qualified) {
@@ -525,13 +573,13 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
 
   async function getEditFeed(request) {
     const viewerId = uid(request);
-    const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || EDITS_CONFIG.feedPageSize));
+    const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || config.feedPageSize));
     const afterId = string(request.data?.afterId || "", 128);
     const [userSnap, respectsSnap, listsSnap, published] = await Promise.all([
       db.collection("users").doc(viewerId).get(),
       db.collection("respects").where("fromUserId", "==", viewerId).get().catch(() => ({ docs: [] })),
       db.collection("users").doc(viewerId).collection("animeList").get().catch(() => ({ docs: [] })),
-      db.collection("edits")
+      db.collection(collectionName)
         .where("status", "==", "published")
         .orderBy("score", "desc")
         .orderBy("createdAt", "desc")
@@ -543,7 +591,7 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     (respectsSnap.docs || []).forEach((doc) => {
       const value = Number(doc.data()?.value) || 0;
       const toUserId = doc.data()?.toUserId;
-      if (toUserId && value >= EDITS_CONFIG.fanThreshold) creatorIds.add(toUserId);
+      if (toUserId && value >= config.fanThreshold) creatorIds.add(toUserId);
     });
     const animeIds = [
       ...((user.favoriteAnimeIds || []).filter(Boolean)),
@@ -579,6 +627,104 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     };
   }
 
+  async function resolveSourceObject(videoPath) {
+    if (!bucket || !videoPath) {
+      return { contentType: "video/mp4", size: config.maxBytes, exists: true };
+    }
+    const file = bucket.file(videoPath);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return { contentType: "video/mp4", size: 0, exists: false };
+    }
+    const [meta] = await file.getMetadata();
+    return {
+      contentType: meta.contentType || "video/mp4",
+      size: Number(meta.size || 0),
+      exists: true,
+    };
+  }
+
+  async function kickProcessing(ref, data, videoPath, { awaitProcessing = false } = {}) {
+    const source = await resolveSourceObject(videoPath);
+    if (!source.exists) {
+      throw new HttpsError(
+        "failed-precondition",
+        "The original video is missing. Re-upload the video, then try again.",
+      );
+    }
+    if (source.size <= 0 || source.size > config.maxBytes) {
+      await ref.update({
+        status: "failed",
+        failureReason: "invalid-video",
+        processingStartedAt: FieldValue.serverTimestamp(),
+      });
+      throw new HttpsError(
+        "failed-precondition",
+        "This video is not a supported MP4, or it is too large.",
+      );
+    }
+    await ref.update({
+      status: "processing",
+      failureReason: null,
+      moderationReason: null,
+      processingStartedAt: FieldValue.serverTimestamp(),
+    });
+    if (typeof processEdit === "function") {
+      const job = processEdit({
+        data: {
+          name: videoPath,
+          contentType: "video/mp4",
+          size: source.size,
+        },
+      });
+      if (awaitProcessing) {
+        await job;
+      } else {
+        // Return immediately so the client is never blocked in the publish UI.
+        // Storage onObjectFinalized is the durable processor; this kick is best-effort.
+        Promise.resolve(job).catch((error) => {
+          console.error("Edit processing kick failed", {
+            videoPath,
+            error: error && error.message ? error.message : String(error),
+          });
+        });
+      }
+    }
+    return { ok: true, videoPath, status: "processing" };
+  }
+
+  /**
+   * Client calls this after Storage upload succeeds. Idempotent for
+   * published / already-processing edits. Recovers when the Storage
+   * finalize trigger never fires (region mismatch, delay, etc.).
+   */
+  async function finalizeUpload(request) {
+    const creatorId = uid(request);
+    const editId = string(request.data?.editId, 128);
+    if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
+    const ref = editRef(editId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    const data = snap.data() || {};
+    if (data.creatorId !== creatorId) {
+      throw new HttpsError("permission-denied", "Only the creator can finalize this Edit.");
+    }
+    if (data.status === "published") {
+      return { ok: true, status: "published", videoPath: data.processedStoragePath || null };
+    }
+    if (data.status === "rejected") {
+      return { ok: true, status: "rejected", reason: data.moderationReason || null };
+    }
+    if (!["uploading", "processing", "failed"].includes(data.status)) {
+      throw new HttpsError("failed-precondition", "This Edit cannot be finalized.");
+    }
+    const videoPath = data.originalStoragePath || data.videoPath;
+    if (!videoPath) {
+      throw new HttpsError("failed-precondition", "The original video is missing.");
+    }
+    return kickProcessing(ref, data, videoPath, { awaitProcessing: false });
+  }
+
   async function retryProcessing(request) {
     const creatorId = uid(request);
     const editId = string(request.data?.editId, 128);
@@ -590,29 +736,23 @@ function createEditsDomain({ db, FieldValue, HttpsError, achievements, processEd
     if (data.creatorId !== creatorId) {
       throw new HttpsError("permission-denied", "Only the creator can retry this Edit.");
     }
-    if (!["failed", "rejected", "uploading"].includes(data.status)) {
+    // Allow stuck "processing" retries — never leave an Edit permanently dead.
+    if (!["failed", "rejected", "uploading", "processing", "needs_review"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Edit is not waiting for a retry.");
+    }
+    if (data.status === "published") {
+      return { ok: true, videoPath: data.processedStoragePath || null, status: "published" };
     }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    await ref.update({
-      status: "processing",
-      failureReason: null,
-      processingStartedAt: FieldValue.serverTimestamp(),
-    });
-    if (typeof processEdit === "function") {
-      await processEdit({
-        data: { name: videoPath, contentType: "video/mp4", size: EDITS_CONFIG.maxBytes },
-      });
-    }
-    return { ok: true, videoPath };
+    return kickProcessing(ref, data, videoPath, { awaitProcessing: true });
   }
 
   return {
     startUpload, repost, deleteEdit, like, comment, startPlayback, recordView, signal,
-    commentAction, getEditFeed, retryProcessing,
+    commentAction, getEditFeed, retryProcessing, finalizeUpload,
   };
 }
 
