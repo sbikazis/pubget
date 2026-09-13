@@ -394,6 +394,12 @@ final class _FakeChatRepository implements ChatRepository {
       ),
     );
   }
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => const Success(null);
 }
 
 final class _FakeGroupRepository implements GroupRepository {

@@ -245,8 +245,12 @@ final class FirebaseChatRepository implements ChatRepository {
     await task;
     onProgress(1);
     onBytesUploaded?.call();
-    // Client wait for Cloud Function processing. 1 minute is enough for typical
-    // image/voice pipelines; large videos may time out and surface retry UI.
+    // Client wait for Cloud Function processing. Images/voice usually finish
+    // within a minute, but transcoding videos (ffmpeg) can take longer — give
+    // videos a 3-minute window before surfacing retry UI.
+    final processingDeadline = contentType.startsWith('video/')
+        ? const Duration(minutes: 3)
+        : const Duration(minutes: 1);
     final mediaSnapshot = await _firestore
         .collection('groups')
         .doc(groupId)
@@ -258,7 +262,7 @@ final class FirebaseChatRepository implements ChatRepository {
               snapshot.data()?['status'] == 'ready' ||
               snapshot.data()?['status'] == 'failed',
         )
-        .timeout(const Duration(minutes: 1));
+        .timeout(processingDeadline);
     final data = mediaSnapshot.data() ?? const <String, dynamic>{};
     if (data['status'] != 'ready') {
       throw StateError('Media processing failed.');
@@ -268,6 +272,31 @@ final class FirebaseChatRepository implements ChatRepository {
       thumbnailUrl: data['thumbnailPath'] as String?,
       mediaId: mediaId,
       type: type,
+    );
+  });
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('media')
+        .doc(mediaId)
+        .get();
+    final data = snapshot.data();
+    if (data == null || data['status'] != 'ready') return null;
+    return ChatMediaUpload(
+      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
+      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaId: mediaId,
+      type: switch (data['mediaType']) {
+        'video' => ChatMessageType.video,
+        'audio' => ChatMessageType.audio,
+        _ => ChatMessageType.image,
+      },
     );
   });
 

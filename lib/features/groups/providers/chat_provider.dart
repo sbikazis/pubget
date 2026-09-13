@@ -136,7 +136,12 @@ final class ChatProvider extends ChangeNotifier {
   }
 
   /// Detach the live session while durable uploads/outbox entries continue.
-  Future<void> leaveGroup() async {
+  ///
+  /// When [groupId] is provided this only detaches if the caller still owns the
+  /// active session. This prevents a stacked/hidden chat page (whose dispose
+  /// runs on pop) from tearing down another page's session.
+  Future<void> leaveGroup({String? groupId}) async {
+    if (groupId != null && _groupId != groupId) return;
     final generation = ++_sessionGeneration;
     final subscription = _subscription;
     _subscription = null;
@@ -147,6 +152,7 @@ final class ChatProvider extends ChangeNotifier {
     _groupId = null;
     _currentUserId = null;
     _replyTarget = null;
+    _failure = null;
   }
 
   Future<void> loadMore() async {
@@ -413,6 +419,18 @@ final class ChatProvider extends ChangeNotifier {
     final payload = _pendingUploads[mediaId];
     if (payload == null) return;
     if (!_isSession(payload.groupId, generation)) return;
+    // A previous attempt may already have produced a ready media doc (e.g. the
+    // client timed out inside uploadMedia while the server kept processing).
+    // Reuse it instead of re-uploading the raw bytes.
+    final existing = await _repository.findReadyMedia(
+      groupId: payload.groupId,
+      mediaId: mediaId,
+    );
+    if (_disposed) return;
+    if (existing.isSuccess && existing.valueOrNull != null) {
+      await _completeMediaSend(mediaId, existing.valueOrNull!, payload, generation);
+      return;
+    }
     _setUploadProgress(mediaId, 0);
     final upload = await _repository.uploadMedia(
       groupId: payload.groupId,
@@ -434,43 +452,7 @@ final class ChatProvider extends ChangeNotifier {
     if (_disposed) return;
     upload.fold(
       onSuccess: (media) async {
-        final type = payload.forceType ?? media.type;
-        final pending = ChatMessage.optimistic(
-          id: mediaId,
-          senderId: payload.senderId,
-          senderName: payload.senderName,
-          senderAvatar: payload.senderAvatar,
-          senderRole: payload.senderRole,
-          type: type,
-          text: null,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-          stickerCreatorId: payload.stickerCreatorId,
-          stickerCreatorName: payload.stickerCreatorName,
-          replyToMessageId: payload.replyToMessageId,
-          replyPreview: payload.replyPreview,
-        );
-        // Drop progress overlay; keep local bytes as AppImageLoader placeholder
-        // until the remote frame paints (avoids empty-bubble flicker).
-        final isActiveGroup = _isSession(payload.groupId, generation);
-        _clearUploadUi(mediaId, clearPreview: false);
-        if (isActiveGroup) _upsert(pending);
-        unawaited(_persistPending(pending, groupId: payload.groupId));
-        final result = await _repository.sendMessage(
-          groupId: payload.groupId,
-          messageId: mediaId,
-          type: type,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-          replyToMessageId: pending.replyToMessageId,
-          stickerCreatorId: payload.stickerCreatorId,
-          stickerCreatorName: payload.stickerCreatorName,
-        );
-        if (result.isSuccess) clearReplyTarget();
-        _finishSendForGroup(mediaId, result, payload.groupId, generation);
-        if (result.isSuccess) _pendingUploads.remove(mediaId);
+        await _completeMediaSend(mediaId, media, payload, generation);
       },
       onFailure: (failure) {
         // Keep local preview so failed/retry bubbles stay visible.
@@ -501,12 +483,60 @@ final class ChatProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> _completeMediaSend(
+    String mediaId,
+    ChatMediaUpload media,
+    _PendingMediaUpload payload,
+    int generation,
+  ) async {
+    final type = payload.forceType ?? media.type;
+    final pending = ChatMessage.optimistic(
+      id: mediaId,
+      senderId: payload.senderId,
+      senderName: payload.senderName,
+      senderAvatar: payload.senderAvatar,
+      senderRole: payload.senderRole,
+      type: type,
+      text: null,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      stickerCreatorId: payload.stickerCreatorId,
+      stickerCreatorName: payload.stickerCreatorName,
+      replyToMessageId: payload.replyToMessageId,
+      replyPreview: payload.replyPreview,
+    );
+    // Drop progress overlay; keep local bytes as AppImageLoader placeholder
+    // until the remote frame paints (avoids empty-bubble flicker).
+    final isActiveGroup = _isSession(payload.groupId, generation);
+    _clearUploadUi(mediaId, clearPreview: false);
+    if (isActiveGroup) _upsert(pending);
+    unawaited(_persistPending(pending, groupId: payload.groupId));
+    final result = await _repository.sendMessage(
+      groupId: payload.groupId,
+      messageId: mediaId,
+      type: type,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      replyToMessageId: pending.replyToMessageId,
+      stickerCreatorId: payload.stickerCreatorId,
+      stickerCreatorName: payload.stickerCreatorName,
+    );
+    if (result.isSuccess) clearReplyTarget();
+    _finishSendForGroup(mediaId, result, payload.groupId, generation);
+    if (result.isSuccess) _pendingUploads.remove(mediaId);
+  }
+
   Future<void> retry(ChatMessage message) async {
     if (message.isDeleted) return;
     if (message.sendState != ChatSendState.failed &&
         message.sendState != ChatSendState.pending) {
       return;
     }
+    // Never race an in-flight automatic retry for the same messageId —
+    // both would send the same id and duplicate the server write.
+    if (_autoRetryInFlight.contains(message.id)) return;
     final groupId = _groupId;
     final generation = _sessionGeneration;
     if (groupId == null) return;
@@ -659,14 +689,14 @@ final class ChatProvider extends ChangeNotifier {
     if (groupId == null || uid == null) return;
     _pendingReadIds.addAll(
       visibleMessages
-        .where(
-          (message) =>
-              message.senderId != uid &&
-              !message.isOptimistic &&
-              !_readMessageIds.contains(message.id),
-        )
-        .map((message) => message.id)
-        .toList(),
+          .where(
+            (message) =>
+                message.senderId != uid &&
+                !message.isOptimistic &&
+                !_readMessageIds.contains(message.id),
+          )
+          .map((message) => message.id)
+          .toList(),
     );
     await _drainReadReceipts(groupId: groupId, generation: generation);
   }
@@ -844,7 +874,10 @@ final class ChatProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
-        _clearUploadUi(id);
+        // Keep the local preview bytes until the watching stream reconciles the
+        // server document (that paint already has the remote frame). Clearing
+        // them here caused a white flash on successful media sends.
+        _clearUploadUi(id, clearPreview: false);
         final groupId = _groupId;
         if (groupId != null) {
           unawaited(_outbox.remove(groupId, id));
@@ -948,6 +981,9 @@ final class ChatProvider extends ChangeNotifier {
           sendState: ChatSendState.failed,
           failureMessage: ChatFailureCodes.network,
         );
+        // Bump the chrome revision so the Selector slice changes and the
+        // pending->failed flip actually repaints (previously it didn't).
+        _contentRevision++;
         _safeNotify();
       }
       return;
@@ -974,6 +1010,7 @@ final class ChatProvider extends ChangeNotifier {
           sendState: ChatSendState.failed,
           failureMessage: ChatFailureCodes.network,
         );
+        _contentRevision++;
         _safeNotify();
       }
       return;

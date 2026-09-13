@@ -111,4 +111,10 @@ final class UnavailableChatRepository implements ChatRepository {
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
   }) async => _fail();
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => _fail();
 }

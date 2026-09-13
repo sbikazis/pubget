@@ -90,4 +90,12 @@ abstract interface class ChatRepository {
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
   });
+
+  /// Returns the already-prepared media doc when a previous attempt produced
+  /// ready output (e.g. the client timed out waiting in [uploadMedia]), so
+  /// retries skip re-uploading bytes. Returns null when no ready doc exists.
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  });
 }
