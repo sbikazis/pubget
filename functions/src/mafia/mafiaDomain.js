@@ -6,6 +6,8 @@ const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
 const TITLE_MAX = 80;
+// This project already shipped a 4–8 Mafia contract. Keep it canonical until
+// the product explicitly migrates existing lobbies to a larger table.
 const DEFAULT_MIN = 4;
 const DEFAULT_MAX = 8;
 const LOBBY_SECONDS = 120;
@@ -124,8 +126,8 @@ function createMafiaDomain({
       throw new HttpsError("invalid-argument", "groupId is required.");
     }
     const groupId = input.groupId.trim();
-    const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, 4, 16);
-    const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, 16);
+  const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, DEFAULT_MIN, DEFAULT_MAX);
+  const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, DEFAULT_MAX);
     const ref = db.collection("mafia_games").doc();
     const now = Timestamp ? Timestamp.now() : new Date();
     const countdownEndsAt = Timestamp

@@ -8,7 +8,9 @@ abstract final class MafiaLeaveCopy {
   static const stay = 'Stay';
   static const title = 'Leave Mafia?';
 
-  static const _active = <String>{'night', 'day', 'discussion', 'voting'};
+  static const _active = <String>{
+    'night', 'day', 'discussion', 'voting', 'revote', 'resolution',
+  };
 
   static bool canLeave(String status) {
     return status == 'starting' || _active.contains(status);

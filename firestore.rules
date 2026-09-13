@@ -772,15 +772,9 @@ service cloud.firestore {
       function eventVisible() {
         return signedIn() && eventExists() &&
           (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'DRAFT' &&
-            eventData().status != 'DELETED' &&
-            (eventData().scope == 'global' ||
-             (eventData().scope == 'group' &&
-              eventData().groupId is string &&
-              groupMember(eventData().groupId)) ||
-             (eventData().scope == 'multiGroup' &&
-              eventData().audienceMemberIds is list &&
-              eventData().audienceMemberIds.hasAny([request.auth.uid])))));
+           (eventData().status != 'draft' &&
+            eventData().groupId is string &&
+            groupMember(eventData().groupId)));
       }
       allow read: if eventVisible();
       allow create, update, delete: if false;
@@ -791,16 +785,7 @@ service cloud.firestore {
       match /responses/{uid} {
         allow read: if eventVisible() &&
           (request.auth.uid == uid ||
-           (eventData().creatorId == request.auth.uid &&
-            eventData().status in ['ENDED', 'ARCHIVED']));
-        allow create, update, delete: if false;
-      }
-      match /comments/{commentId} {
-        allow read: if eventVisible();
-        allow create, update, delete: if false;
-      }
-      match /reactions/{uid} {
-        allow read: if eventVisible();
+           eventData().status in ['ended', 'archived']);
         allow create, update, delete: if false;
       }
     }
@@ -815,7 +800,7 @@ service cloud.firestore {
       function gameVisible() {
         return signedIn() && gameExists() &&
           (gameData().creatorId == request.auth.uid ||
-            (gameData().status != 'CREATED' &&
+           (gameData().status != 'draft' &&
             gameData().groupId is string &&
             groupMember(gameData().groupId)));
       }
@@ -847,12 +832,9 @@ service cloud.firestore {
     }
 
     match /game_history/{gameId} {
-      allow read: if signedIn() &&
-        resource.data.groupId is string && groupMember(resource.data.groupId);
+      allow read: if signedIn();
       allow write: if false;
     }
-    match /game_creation_limits/{limitId} { allow read, write: if false; }
-    match /game_request_idempotency/{requestId} { allow read, write: if false; }
     match /achievements/{achievementId} {
       allow read: if signedIn();
       allow write: if false;
@@ -908,46 +890,7 @@ service cloud.firestore {
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
-    match /reels/{reelId} {
-      function reelExists() {
-        return exists(/databases/$(database)/documents/reels/$(reelId));
-      }
-      function reelData() {
-        return get(/databases/$(database)/documents/reels/$(reelId)).data;
-      }
-      function reelVisible() {
-        return signedIn() && reelExists() &&
-          ((reelData().creatorId == request.auth.uid) ||
-           (reelData().status == 'published' &&
-            reelData().moderationStatus == 'approved'));
-      }
-      allow read: if reelVisible();
-      // All lifecycle transitions, counters, ranking inputs, and moderation
-      // decisions are server-authoritative.
-      allow create, update, delete: if false;
-      match /comments/{commentId} {
-        allow read: if reelVisible();
-        allow create, update, delete: if false;
-        match /likes/{uid} { allow read: if self(uid); allow write: if false; }
-        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
-      }
-      match /likes/{uid} { allow read: if self(uid); allow write: if false; }
-      match /saves/{uid} { allow read: if self(uid); allow write: if false; }
-      match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
-      match /playbackSessions/{sessionId} {
-        allow read: if signedIn() && resource.data.viewerId == request.auth.uid;
-        allow write: if false;
-      }
-      match /signals/{signalId} { allow read: if signedIn(); allow write: if false; }
-      match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
-    }
-
     match /editUploadKeys/{keyId} {
-      allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
-      allow create, update, delete: if false;
-    }
-
-    match /reelUploadKeys/{keyId} {
       allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
       allow create, update, delete: if false;
     }
@@ -1065,72 +1008,24 @@ service cloud.firestore {
       }
       match /night_actions/{actionId} {
         allow read: if false;
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status == 'night' &&
-          mafiaGame(gameId).data.currentPhase == 'night' &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-           (!get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.keys().hasAny(['canUseAbility']) ||
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canUseAbility == true) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
-            in ['mafia','doctor','detective','sniper','silencer'] &&
-          actionId == request.auth.uid + '_n' + string(request.resource.data.nightNumber) &&
-          request.resource.data.playerId == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['playerId','targetId','nightNumber','submittedAt']) &&
-          request.resource.data.keys().hasAll(['playerId','targetId','nightNumber','submittedAt']) &&
-          request.resource.data.nightNumber is int &&
-          request.resource.data.nightNumber == mafiaGame(gameId).data.currentNight &&
-          request.resource.data.submittedAt is timestamp &&
-          mafiaPhaseOpen(gameId) &&
-          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true &&
-          (
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role != 'mafia' ||
-            (
-              request.resource.data.targetId != request.auth.uid &&
-              get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)/private/data).data.role != 'mafia'
-            )
-          );
-        allow update, delete: if false;
+        // Action intents are written only by submitMafiaAction so the server
+        // can enforce role privacy, timeouts, and idempotency.
+        allow create, update, delete: if false;
       }
       match /votes/{voteId} {
-        allow read: if mafiaGroupMember(gameId);
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status == 'voting' &&
-          mafiaGame(gameId).data.currentPhase == 'voting' &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canVote == true &&
-          voteId == request.auth.uid + '_d' + string(request.resource.data.dayNumber) &&
-          request.resource.data.voterId == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['voterId','targetId','dayNumber','time']) &&
-          request.resource.data.dayNumber is int &&
-          request.resource.data.dayNumber == mafiaGame(gameId).data.currentDay &&
-          request.resource.data.time is timestamp &&
-          mafiaPhaseOpen(gameId) &&
-          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
-        allow update, delete: if false;
+        allow read, write: if false;
       }
       match /events/{eventId} { allow read: if mafiaGroupMember(gameId); allow write: if false; }
+      match /action_receipts/{receiptId} { allow read, write: if false; }
+      match /mafia_messages/{messageId} {
+        allow read: if mafiaPlayer(gameId) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
+            in ['mafia', 'don'];
+        allow write: if false;
+      }
       match /chat/{messageId} {
         allow read: if mafiaGroupMember(gameId);
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status in ['day','discussion','voting'] &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canSpeak == true &&
-          request.resource.data.keys().hasOnly(['senderId','sender','senderAvatar','text','time','type']) &&
-          request.resource.data.senderId == request.auth.uid &&
-          request.resource.data.sender ==
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.username &&
-          request.resource.data.senderAvatar ==
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.avatar &&
-          request.resource.data.type == 'player' &&
-          request.resource.data.text is string &&
-          request.resource.data.text.size() > 0 &&
-          request.resource.data.text.size() <= 1000;
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
     match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }

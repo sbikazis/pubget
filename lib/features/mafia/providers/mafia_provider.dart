@@ -18,12 +18,15 @@ final class MafiaProvider extends ChangeNotifier {
   StreamSubscription<Result<MafiaPrivateState>>? _privateSub;
   StreamSubscription<Result<List<Map<String, dynamic>>>>? _eventsSub;
   StreamSubscription<Result<List<Map<String, dynamic>>>>? _chatSub;
+  StreamSubscription<Result<List<Map<String, dynamic>>>>? _mafiaChatSub;
   Timer? _heartbeat;
   MafiaGame? _game;
   List<MafiaPlayer> _players = const <MafiaPlayer>[];
   MafiaPrivateState _private = const MafiaPrivateState();
   List<Map<String, dynamic>> _events = const <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _chat = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _mafiaChat =
+      const <Map<String, dynamic>>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _busy = false;
@@ -36,6 +39,7 @@ final class MafiaProvider extends ChangeNotifier {
   MafiaPrivateState get privateState => _private;
   List<Map<String, dynamic>> get events => _events;
   List<Map<String, dynamic>> get chat => _chat;
+  List<Map<String, dynamic>> get mafiaChat => _mafiaChat;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get busy => _busy;
@@ -91,6 +95,11 @@ final class MafiaProvider extends ChangeNotifier {
       result.fold(onSuccess: (value) => _chat = value, onFailure: (_) {});
       notifyListeners();
     });
+    _mafiaChatSub = _repository.watchMafiaMessages(gameId).listen((result) {
+      if (_disposed) return;
+      result.fold(onSuccess: (value) => _mafiaChat = value, onFailure: (_) {});
+      notifyListeners();
+    });
     _heartbeat = Timer.periodic(const Duration(seconds: 25), (_) {
       unawaited(_repository.heartbeat(gameId));
     });
@@ -136,6 +145,12 @@ final class MafiaProvider extends ChangeNotifier {
     );
   }
 
+  Future<Result<void>> endTurn() =>
+      _run(() => _repository.endTurn(_gameId!));
+
+  Future<Result<void>> submitLastWords(String text) =>
+      _run(() => _repository.submitLastWords(_gameId!, text));
+
   Future<Result<void>> sendChat(String text) {
     final me = self;
     if (me == null) {
@@ -147,6 +162,9 @@ final class MafiaProvider extends ChangeNotifier {
       () => _repository.sendChat(gameId: _gameId!, text: text, self: me),
     );
   }
+
+  Future<Result<void>> sendMafiaMessage(String text) =>
+      _run(() => _repository.sendMafiaMessage(_gameId!, text));
 
   void bindUser(String? userId) {
     if (_userId == userId) return;
@@ -161,6 +179,7 @@ final class MafiaProvider extends ChangeNotifier {
     _private = const MafiaPrivateState();
     _events = const <Map<String, dynamic>>[];
     _chat = const <Map<String, dynamic>>[];
+    _mafiaChat = const <Map<String, dynamic>>[];
     _failure = null;
     _busy = false;
     _gameId = null;
@@ -193,6 +212,7 @@ final class MafiaProvider extends ChangeNotifier {
     await _privateSub?.cancel();
     await _eventsSub?.cancel();
     await _chatSub?.cancel();
+    await _mafiaChatSub?.cancel();
   }
 
   @override

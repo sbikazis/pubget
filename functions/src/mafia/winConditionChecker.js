@@ -25,7 +25,7 @@ function winnerFromAliveTeams(teams) {
 async function checkWinCondition(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
 
-  if (gameData.status === "finished" || gameData.status === "cancelled") {
+  if (["game_over", "finished", "cancelled"].includes(gameData.status)) {
     return;
   }
 
@@ -58,8 +58,8 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
     const snap = await tx.get(gameRef);
     if (!snap.exists || ["finished", "cancelled"].includes(snap.data().status)) return false;
     tx.update(gameRef, {
-      status: "finished",
-      currentPhase: "finished",
+       status: "game_over",
+       currentPhase: "game_over",
       winner,
       endedAt: admin.firestore.FieldValue.serverTimestamp(),
       phaseEndsAt: admin.firestore.FieldValue.delete(),
@@ -98,6 +98,18 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
       admin.firestore(),
       admin.firestore.FieldValue,
       toMafiaActivity(
+        {
+          type: winner === "mafias" ? "MafiaWon" : "TownWon",
+          actorId: "system",
+          payload: { winner },
+        },
+        { id: gameId, groupId, type: "mafia" },
+      ),
+    );
+    await postFromActivity(
+      admin.firestore(),
+      admin.firestore.FieldValue,
+      toMafiaActivity(
         { type: "GameFinished", actorId: "system", payload: { winner } },
         { id: gameId, groupId, type: "mafia" },
       ),
@@ -110,6 +122,18 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
 
   if (winner) {
     await distributeRewards(gameId, gameRef, winner, playersSnap);
+    try {
+      await postFromActivity(
+        admin.firestore(),
+        admin.firestore.FieldValue,
+        toMafiaActivity(
+          { type: "Rewards", actorId: "system", payload: { winner } },
+          { id: gameId, groupId, type: "mafia" },
+        ),
+      );
+    } catch (_) {
+      // Rewards are authoritative; the chat projection is best effort.
+    }
   }
   return true;
 }
