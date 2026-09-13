@@ -340,6 +340,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
     final bytes = await selected.readAsBytes();
+    // The picker can take seconds; never attach media to a chat screen that
+    // has been covered (media viewer), popped, or otherwise stopped being
+    // the current route while we were away.
+    if (!mounted || !ModalRoute.of(context)!.isCurrent) return;
     final extension = selected.name.split('.').last.toLowerCase();
     final contentType = video
         ? (extension == 'webm' ? 'video/webm' : 'video/mp4')

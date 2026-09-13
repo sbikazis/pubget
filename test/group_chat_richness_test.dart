@@ -604,4 +604,10 @@ final class _FakePrivateRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) async => const FailureResult(UnknownError());
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  }) async => const Success<ChatMediaUpload?>(null);
 }

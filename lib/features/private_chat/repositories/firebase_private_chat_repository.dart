@@ -250,6 +250,30 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     );
   });
 
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  }) => _guard(() async {
+    final snapshot = await _chats
+        .doc(chatId)
+        .collection('media')
+        .doc(mediaId)
+        .get();
+    final data = snapshot.data();
+    if (data == null || data['status'] != 'ready') return null;
+    return ChatMediaUpload(
+      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
+      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaId: mediaId,
+      type: switch (data['mediaType']) {
+        'video' => ChatMessageType.video,
+        'audio' => ChatMessageType.audio,
+        _ => ChatMessageType.image,
+      },
+    );
+  });
+
   String _extension(String fileName, String contentType) {
     final candidate = fileName.split('.').last.toLowerCase();
     if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {

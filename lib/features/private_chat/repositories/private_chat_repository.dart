@@ -61,4 +61,11 @@ abstract interface class PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   });
+
+  /// Returns the ready media doc for [mediaId] if one already exists, without
+  /// re-uploading bytes — lets a retry reuse a doc the server kept processing.
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  });
 }
