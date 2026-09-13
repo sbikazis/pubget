@@ -1,6 +1,12 @@
 # PUBGET — CURRENT STATE MASTER DOCUMENT
 
-Inspection target: production `main` at commit `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e`.
+## Git baseline revision (2026-09-13)
+
+Production `main` converged: `cursor/profile-life-report-48` (142 commits of rebuild work) merged into `main` at `95eec93` via `Merge cursor/profile-life-report-48 into main (converge 142 commits of rebuild work)`. Pushed to `origin/main` (`4bc83d4..95eec93`). Working branch is now `main`.
+
+2026-09-13 note: `origin/main` was fast-forwarded from `4bc83d4` to `95eec93`. The CR-suffixed/checkout-unsafe filenames are dropped from the merged tree (commit `15899e2`), so the tree is checkout-safe on Windows.
+
+Original inspection target (historical): production `main` at commit `8f34d212fc22940cdc004e8f0a5fdd94eeb7662e`.
 
 This document describes what exists and what happens in the repository at that commit. Claims are taken from source that was opened and read. Runtime of live Firebase in Google Cloud is not exercised here except where unit/emulator tests ran locally.
 
