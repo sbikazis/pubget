@@ -87,10 +87,12 @@ void main() {
       find.byKey(const Key('group-create-confirm')),
     ).onPressed, isNull);
 
+    await tester.ensureVisible(find.byKey(const Key('group-create-image-url')));
     await tester.enterText(
       find.byKey(const Key('group-create-image-url')),
       'https://example.test/a.png',
     );
+    await tester.ensureVisible(find.byKey(const Key('group-create-name')));
     await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
     await tester.pump();
 
@@ -110,10 +112,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const Key('group-create-name')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('group-create-image-url')));
     await tester.enterText(
       find.byKey(const Key('group-create-image-url')),
       'https://example.test/a.png',
     );
+    await tester.ensureVisible(find.byKey(const Key('group-create-name')));
     await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
     await tester.pump();
     expect(find.byKey(const Key('group-create-pick-anime')), findsOneWidget);

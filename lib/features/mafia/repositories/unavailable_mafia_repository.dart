@@ -31,6 +31,7 @@ final class UnavailableMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int nightNumber,
+    String? actionId,
   }) async => _fail();
 
   @override
@@ -38,6 +39,24 @@ final class UnavailableMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int dayNumber,
+    String? actionId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> endTurn(String gameId, {String? actionId}) async => _fail();
+
+  @override
+  Future<Result<void>> submitLastWords(
+    String gameId,
+    String text, {
+    String? actionId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> sendMafiaMessage(
+    String gameId,
+    String text, {
+    String? actionId,
   }) async => _fail();
 
   @override
@@ -70,5 +89,9 @@ final class UnavailableMafiaRepository implements MafiaRepository {
 
   @override
   Stream<Result<List<Map<String, dynamic>>>> watchChat(String gameId) =>
+      Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
+
+  @override
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId) =>
       Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
 }

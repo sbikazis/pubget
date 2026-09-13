@@ -52,10 +52,10 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
               child: ListTile(
                 title: Text(groupRoleLabel(role.name)),
                 subtitle: Text('${role.permissions.length} permissions'),
-                trailing: role.name == GroupRole.founder
+                trailing: role.name == PubgetRank.mikado
                     ? const PubgetBadge(label: 'Immutable')
                     : const Icon(Icons.edit_outlined),
-                onTap: role.name == GroupRole.founder
+                onTap: role.name == PubgetRank.mikado
                     ? null
                     : () => _edit(context, provider, role),
               ),

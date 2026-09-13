@@ -43,9 +43,32 @@ abstract final class GameLinks {
     AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
   }
 
-  static void openCreate(BuildContext context, {String? groupId}) {
-    final suffix = groupId == null || groupId.isEmpty ? '' : '?groupId=$groupId';
+  static void openCreate(
+    BuildContext context, {
+    String? groupId,
+    bool fromChat = false,
+  }) {
+    final query = <String, String>{
+      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
+      if (fromChat) 'source': 'group_chat',
+    };
+    final suffix = query.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: query).query}';
     AppNavigation.go(context, '/games/create$suffix');
+  }
+
+  static void openCenter(
+    BuildContext context, {
+    required String groupId,
+  }) {
+    final query = Uri(
+      queryParameters: <String, String>{
+        'groupId': groupId,
+        'source': 'group_chat',
+      },
+    ).query;
+    AppNavigation.go(context, '/games?$query');
   }
 }
 

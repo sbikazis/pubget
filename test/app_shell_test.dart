@@ -125,7 +125,7 @@ void main() {
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(12));
+    expect(AppShellDrawerDestinations.items, hasLength(14));
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {

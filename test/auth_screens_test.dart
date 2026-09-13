@@ -124,6 +124,17 @@ void main() {
     expect(find.textContaining('before public launch'), findsWidgets);
   });
 
+  testWidgets('onboarding continue requires a username', (tester) async {
+    await pumpAuthScreen(tester, child: const OnboardingPage());
+
+    await tester.ensureVisible(find.byKey(const Key('onboarding-continue')));
+    await tester.tap(find.byKey(const Key('onboarding-continue')));
+    await tester.pump();
+
+    expect(find.text('Username is required.'), findsOneWidget);
+    expect(find.text('A little about you'), findsNothing);
+  });
+
   testWidgets('onboarding continue validates a short username', (tester) async {
     await pumpAuthScreen(tester, child: const OnboardingPage());
 
@@ -133,20 +144,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Use at least 3 characters.'), findsOneWidget);
-    expect(find.text('What do you love?'), findsNothing);
-  });
-
-  testWidgets('onboarding continue opens interests without a username', (
-    tester,
-  ) async {
-    await pumpAuthScreen(tester, child: const OnboardingPage());
-
-    await tester.ensureVisible(find.byKey(const Key('onboarding-continue')));
-    await tester.tap(find.byKey(const Key('onboarding-continue')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('What do you love?'), findsOneWidget);
-    expect(find.byKey(const Key('onboarding-save')), findsOneWidget);
+    expect(find.text('A little about you'), findsNothing);
   });
 
   testWidgets('login and register show the torii brand mark', (tester) async {

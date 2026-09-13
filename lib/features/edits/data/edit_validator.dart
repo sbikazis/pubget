@@ -11,6 +11,7 @@ final class EditValidation {
     required String contentType,
     required int sizeBytes,
     Duration? duration,
+    int maxDurationSeconds = Limits.editMaxDurationSeconds,
   }) {
     final type = contentType.trim().toLowerCase();
     final name = fileName.trim().toLowerCase();
@@ -28,10 +29,9 @@ final class EditValidation {
         'This video is too large. Choose a file under 100 MB.',
       );
     }
-    if (duration != null &&
-        duration.inSeconds > Limits.editMaxDurationSeconds) {
+    if (duration != null && duration.inSeconds > maxDurationSeconds) {
       return const ValidationError(
-        'Videos can be up to 3 minutes long.',
+        'Reels can be up to 60 seconds long.',
       );
     }
     return null;

@@ -25,6 +25,8 @@ abstract interface class ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   });
 
   Future<Result<ChatMessage>> forwardMessage({
@@ -86,5 +88,6 @@ abstract interface class ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   });
 }

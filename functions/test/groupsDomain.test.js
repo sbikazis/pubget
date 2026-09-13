@@ -6,8 +6,9 @@ const {
   ROLE_PERMISSIONS,
   createGroupsDomain,
   entitledMaxMembers,
-  inviteRankForCount,
+  normalizeRole,
 } = require("../src/groupsDomain");
+const { computeAutoSeatAssignments } = require("../src/pubgetRanks");
 
 class TestHttpsError extends Error {
   constructor(code, message) {
@@ -55,18 +56,24 @@ test("anime roleplay requires a trusted anime identifier", async () => {
   );
 });
 
-test("invite ranks are delta-based thresholds", () => {
-  assert.equal(inviteRankForCount(0), "member");
-  assert.equal(inviteRankForCount(5), "senpai");
-  assert.equal(inviteRankForCount(20), "sensei");
-  assert.equal(inviteRankForCount(50), "captain");
+test("auto seats replace legacy invite thresholds", () => {
+  assert.equal(normalizeRole("member"), "ronin");
+  assert.equal(normalizeRole("senpai"), "gokenin");
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const result = computeAutoSeatAssignments([
+    { uid: "owner", role: "mikado", isManualRole: true, joinedAt: now - day * 10 },
+    { uid: "inviter", role: "ronin", joinedAt: now - day * 10 },
+    { uid: "a", role: "ronin", invitedBy: "inviter", joinedAt: now - day * 2 },
+  ], new Set(), now);
+  assert.equal(result.assignments.inviter, "daimyo");
 });
 
-test("founder permissions include all sensitive group actions", () => {
-  assert.ok(ROLE_PERMISSIONS.founder.includes("manageMembers"));
-  assert.ok(ROLE_PERMISSIONS.founder.includes("manageRoles"));
-  assert.ok(ROLE_PERMISSIONS.founder.includes("manageSettings"));
-  assert.deepEqual(ROLE_PERMISSIONS.member, []);
+test("mikado permissions include all sensitive group actions", () => {
+  assert.ok(ROLE_PERMISSIONS.mikado.includes("kickBan"));
+  assert.ok(ROLE_PERMISSIONS.mikado.includes("manageRoles"));
+  assert.ok(ROLE_PERMISSIONS.mikado.includes("manageSettings"));
+  assert.deepEqual(ROLE_PERMISSIONS.ronin, []);
 });
 
 test("group capacity is server-entitled, not client-chosen", () => {

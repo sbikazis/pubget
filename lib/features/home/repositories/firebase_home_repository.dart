@@ -81,7 +81,8 @@ final class FirebaseHomeRepository implements HomeRepository {
   }) {
     return rankedOrFallback(
       ranked: _recommendedGroupsFromCallable(limit: limit, after: after),
-      fallback: () => _recommendedGroupsFromFirestore(limit: limit, after: after),
+      fallback: () =>
+          _recommendedGroupsFromFirestore(limit: limit, after: after),
     );
   }
 
@@ -242,7 +243,7 @@ final class FirebaseHomeRepository implements HomeRepository {
           .get();
       final eventsFuture = _firestore
           .collection('events')
-          .where('status', whereIn: <String>['active', 'scheduled', 'ended'])
+          .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: end)
           .limit(20)
@@ -317,4 +318,3 @@ List<T> _uniqueBy<T>(Iterable<T> items, String Function(T value) idOf) {
   }
   return List<T>.unmodifiable(unique);
 }
-

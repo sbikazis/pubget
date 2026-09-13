@@ -205,6 +205,29 @@ test("catalog sticker send stores stickerKey without media", async () => {
   assert.equal(stored.stickerKey, "reactions/heart");
   assert.equal(stored.mediaId, null);
   assert.equal(stored.type, "sticker");
+  assert.equal(stored.stickerCreatorId, "pubget");
+  assert.equal(stored.stickerCreatorName, "Pubget");
+});
+
+test("custom sticker preserves original creator across resend", async () => {
+  const db = createFakeDb(seedChat());
+  const result = await chatHandlers(db).sendMessage({
+    auth: { uid: "alice" },
+    data: {
+      groupId: "g1",
+      messageId: "m-custom-sticker",
+      type: "sticker",
+      mediaId: "ready-gif",
+      stickerCreatorId: "original-creator",
+      stickerCreatorName: "Original Creator",
+    },
+  });
+  assert.equal(result.ok, true);
+  const stored = db.store.get("groups/g1/messages/m-custom-sticker");
+  assert.equal(stored.type, "sticker");
+  assert.equal(stored.stickerKey, null);
+  assert.equal(stored.stickerCreatorId, "original-creator");
+  assert.equal(stored.stickerCreatorName, "Original Creator");
 });
 
 test("audio and gif sends require matching ready media types", async () => {
@@ -328,4 +351,26 @@ test("report identity is server-derived and cannot target self", async () => {
   assert.equal(report.reporterId, "alice");
   assert.equal(report.reason, "spam");
   assert.equal(report.status, "open");
+});
+
+test("edit enforces the server-side fifteen minute window", async () => {
+  const db = createFakeDb(seedChat());
+  db.store.get("groups/g1/messages/m-text").createdAt =
+    new Date(Date.now() - 14 * 60 * 1000).toISOString();
+  const ok = await chatHandlers(db).editMessage({
+    auth: { uid: "bob" },
+    data: { groupId: "g1", messageId: "m-text", text: "updated" },
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(db.store.get("groups/g1/messages/m-text").text, "updated");
+
+  db.store.get("groups/g1/messages/m-text").createdAt =
+    new Date(Date.now() - 16 * 60 * 1000).toISOString();
+  await assert.rejects(
+    chatHandlers(db).editMessage({
+      auth: { uid: "bob" },
+      data: { groupId: "g1", messageId: "m-text", text: "too late" },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
 });

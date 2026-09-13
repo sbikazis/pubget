@@ -109,7 +109,12 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   const domain = games();
   const created = await domain.createGame({
     ...auth("alice"),
-    data: { type: "guessCharacter", title: "Guess E2E", groupId: "g-e2e" },
+    data: {
+      type: "guessCharacter",
+      title: "Guess E2E",
+      groupId: "g-e2e",
+      creationSource: "group_chat",
+    },
   });
   await domain.joinGame({ ...auth("bob"), data: { gameId: created.gameId } });
   await domain.startGame({ ...auth("alice"), data: { gameId: created.gameId } });
@@ -158,7 +163,12 @@ test("emoji anime guess turn progression and invalid answers", async () => {
   const domain = games();
   const created = await domain.createGame({
     ...auth("alice"),
-    data: { type: "emojiAnimeGuess", title: "Emoji E2E", groupId: "g-e2e" },
+    data: {
+      type: "emojiAnimeGuess",
+      title: "Emoji E2E",
+      groupId: "g-e2e",
+      creationSource: "group_chat",
+    },
   });
   await domain.joinGame({ ...auth("bob"), data: { gameId: created.gameId } });
   await domain.startGame({ ...auth("alice"), data: { gameId: created.gameId } });

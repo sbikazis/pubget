@@ -17,7 +17,8 @@ class ChatBackgroundPickerPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Chat background')),
+        title: const Text('Chat background'),
+      ),
       body: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.lg),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -29,7 +30,12 @@ class ChatBackgroundPickerPage extends StatelessWidget {
         itemCount: pubgetChatBackgrounds.length,
         itemBuilder: (context, index) {
           final option = pubgetChatBackgrounds[index];
-          final selected = option.$1 == current;
+          final selected = option.$1 == current ||
+              (option.$1 == null &&
+                  (current == null ||
+                      current!.isEmpty ||
+                      current == kPubgetDefaultChatBackgroundId));
+          final theme = ChatContrastTheme.fromBackground(option.$1);
           return Semantics(
             selected: selected,
             button: true,
@@ -45,8 +51,7 @@ class ChatBackgroundPickerPage extends StatelessWidget {
                 }
               },
               child: Ink(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: option.$3),
+                decoration: theme.background.copyWith(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(
                     color: selected
@@ -55,23 +60,29 @@ class ChatBackgroundPickerPage extends StatelessWidget {
                     width: selected ? 4 : 1,
                   ),
                 ),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: const BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.vertical(
-                        bottom: Radius.circular(AppRadius.lg),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    ColoredBox(color: theme.scrim),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(AppSpacing.sm),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.vertical(
+                            bottom: Radius.circular(AppRadius.lg),
+                          ),
+                        ),
+                        child: Text(
+                          option.$2,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      option.$2,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ),

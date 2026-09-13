@@ -76,7 +76,36 @@ final class ProfileProvider extends ChangeNotifier {
       contentType: contentType,
     );
     result.fold(
-      onSuccess: (_) => _setState(LoadingState.loaded),
+      onSuccess: (url) {
+        if (_ownProfile != null) {
+          _ownProfile = _ownProfile!.copyWith(avatarUrl: url);
+        }
+        _setState(LoadingState.loaded);
+      },
+      onFailure: _setFailure,
+    );
+    return result;
+  }
+
+  Future<Result<String>> uploadCover({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    _failure = null;
+    _setState(LoadingState.loading);
+    final result = await _repository.uploadCover(
+      userId: userId,
+      bytes: bytes,
+      contentType: contentType,
+    );
+    result.fold(
+      onSuccess: (url) {
+        if (_ownProfile != null) {
+          _ownProfile = _ownProfile!.copyWith(coverUrl: url);
+        }
+        _setState(LoadingState.loaded);
+      },
       onFailure: _setFailure,
     );
     return result;

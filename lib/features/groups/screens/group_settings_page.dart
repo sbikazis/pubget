@@ -84,7 +84,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
             ? const PubgetEmptyState(
                 title: 'You cannot manage group settings',
                 message:
-                    'Only the founder or a role with manageSettings can '
+                    'Only MIKADO or a role with manageSettings can '
                     'edit these fields.',
                 icon: Icons.lock_outline,
               )

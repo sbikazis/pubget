@@ -195,6 +195,12 @@ test("edit video resumable updates are allowed for the owner", async () => {
   const alice = env.authenticatedContext("alice");
   await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 32));
   await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 64));
+  await assertSucceeds(upload(
+    alice,
+    "edits/alice/editId123.mp4",
+    "video/mp4; codecs=avc1.42E01E",
+    96,
+  ));
   await assertFails(upload(
     env.authenticatedContext("bob"),
     "edits/alice/editId123.mp4",

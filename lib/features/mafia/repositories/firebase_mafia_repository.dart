@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -53,17 +52,12 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int nightNumber,
-  }) => _guard(() async {
-    await _games
-        .doc(gameId)
-        .collection('night_actions')
-        .doc('${_uid()}_n$nightNumber')
-        .set({
-          'playerId': _uid(),
-          'targetId': targetId,
-          'nightNumber': nightNumber,
-          'submittedAt': FieldValue.serverTimestamp(),
-        });
+    String? actionId,
+  }) => _call('submitMafiaAction', {
+    'gameId': gameId,
+    'type': 'night_action',
+    'targetId': targetId,
+    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-night-$targetId',
   });
 
   @override
@@ -71,13 +65,44 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int dayNumber,
-  }) => _guard(() async {
-    await _games.doc(gameId).collection('votes').doc('${_uid()}_d$dayNumber').set({
-      'voterId': _uid(),
-      'targetId': targetId,
-      'dayNumber': dayNumber,
-      'time': FieldValue.serverTimestamp(),
-    });
+    String? actionId,
+  }) => _call('submitMafiaAction', {
+    'gameId': gameId,
+    'type': 'vote',
+    'targetId': targetId,
+    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-vote-$targetId',
+  });
+
+  @override
+  Future<Result<void>> endTurn(String gameId, {String? actionId}) =>
+      _call('submitMafiaAction', {
+        'gameId': gameId,
+        'type': 'end_turn',
+        'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-turn',
+      });
+
+  @override
+  Future<Result<void>> submitLastWords(
+    String gameId,
+    String text, {
+    String? actionId,
+  }) => _call('submitMafiaAction', {
+    'gameId': gameId,
+    'type': 'last_words',
+    'text': text.trim(),
+    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-last-words',
+  });
+
+  @override
+  Future<Result<void>> sendMafiaMessage(
+    String gameId,
+    String text, {
+    String? actionId,
+  }) => _call('submitMafiaAction', {
+    'gameId': gameId,
+    'type': 'mafia_message',
+    'text': text.trim(),
+    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-mafia-chat',
   });
 
   @override
@@ -85,24 +110,11 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     required String gameId,
     required String text,
     required MafiaPlayer self,
-  }) => _guard(() async {
-    await _games.doc(gameId).collection('chat').add({
-      'senderId': self.userId,
-      'sender': self.username,
-      'senderAvatar': self.avatar,
-      'text': text.trim(),
-      'time': FieldValue.serverTimestamp(),
-      'type': 'player',
-    });
-  });
+  }) => _call('sendMafiaChat', {'gameId': gameId, 'text': text.trim()});
 
   @override
-  Future<Result<void>> heartbeat(String gameId) => _guard(() async {
-    await _games.doc(gameId).collection('players').doc(_uid()).update({
-      'lastSeenAt': FieldValue.serverTimestamp(),
-      'isDisconnected': false,
-    });
-  });
+  Future<Result<void>> heartbeat(String gameId) =>
+      _call('heartbeatMafia', {'gameId': gameId});
 
   @override
   Stream<Result<MafiaGame>> watchGame(String gameId) {
@@ -198,12 +210,21 @@ final class FirebaseMafiaRepository implements MafiaRepository {
         );
   }
 
-  String _uid() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
-      throw StateError('Sign in to play Mafia.');
-    }
-    return uid;
+  @override
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId) {
+    return _games
+        .doc(gameId)
+        .collection('mafia_messages')
+        .orderBy('createdAt')
+        .limit(80)
+        .snapshots()
+        .map((snapshot) => Success(
+              snapshot.docs.map((doc) => doc.data()).toList(growable: false),
+            ))
+        .handleError(
+          (Object error) =>
+              FailureResult<List<Map<String, dynamic>>>(_fail(error)),
+        );
   }
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>

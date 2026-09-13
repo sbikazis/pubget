@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
@@ -10,6 +9,7 @@ import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -17,6 +17,7 @@ import '../../events/widgets/event_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
 import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../data/sticker_store.dart';
+import '../data/user_sticker_store.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
 import '../providers/chat_provider.dart';
@@ -25,9 +26,12 @@ import '../services/chat_audio_player.dart';
 import '../services/default_voice_capture.dart';
 import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
+import '../widgets/chat_message_actions_overlay.dart';
 import '../widgets/chat_message_bubble.dart';
-import '../widgets/sticker_picker_sheet.dart';
-import '../widgets/voice_recorder_sheet.dart';
+import '../widgets/chat_special_cards.dart';
+import '../widgets/event_center_sheet.dart';
+import '../widgets/sticker_detail_sheet.dart';
+import '../widgets/wa_composer/whatsapp_chat_composer.dart';
 import 'chat_background_picker_page.dart';
 import 'media_viewer_page.dart';
 
@@ -37,6 +41,7 @@ class GroupChatPage extends StatefulWidget {
     this.voiceCapture,
     this.audioPlayer,
     this.stickerStore,
+    this.userStickerStore,
     super.key,
   });
 
@@ -44,6 +49,7 @@ class GroupChatPage extends StatefulWidget {
   final VoiceCapture? voiceCapture;
   final ChatAudioPlayer? audioPlayer;
   final StickerStore? stickerStore;
+  final UserStickerStore? userStickerStore;
 
   @override
   State<GroupChatPage> createState() => _GroupChatPageState();
@@ -51,13 +57,29 @@ class GroupChatPage extends StatefulWidget {
 
 class _GroupChatPageState extends State<GroupChatPage> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   final _scrollController = ScrollController();
+  final _stars = ChatStarStore();
+  final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+  ChatProvider? _chatProvider;
+  late final UserStickerStore _userStickers =
+      widget.userStickerStore ?? UserStickerStore();
   bool _initialized = false;
   bool _wasNearBottom = true;
+  int _lastSeenMessageCount = 0;
+  int _lastMarkedReadCount = -1;
+  bool _loadingOlder = false;
+  bool _readCheckQueued = false;
+  String? _lastVisibleReadSignature;
+  String? _lastNewestMessageId;
+  int _newMessagesCount = 0;
+  double? _olderPixels;
+  double? _olderMaxExtent;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _chatProvider ??= context.read<ChatProvider>();
     if (_initialized) return;
     _initialized = true;
     _scrollController.addListener(_onScroll);
@@ -80,22 +102,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   void dispose() {
+    unawaited(_chatProvider?.leaveGroup());
+    _scrollController.removeListener(_onScroll);
     _controller.dispose();
+    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
     final groupProvider = context.watch<GroupProvider>();
     final group = groupProvider.group;
     final contrast = ChatContrastTheme.fromBackground(group?.chatBackgroundUrl);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_wasNearBottom) _scrollToLatest();
-      unawaited(chat.markAsRead(chat.messages));
-    });
     return Scaffold(
       endDrawer: _GroupMenu(
         groupId: widget.groupId,
@@ -105,34 +124,39 @@ class _GroupChatPageState extends State<GroupChatPage> {
         canManageMembers: groupProvider.canManageMembers,
       ),
       appBar: AppBar(
-        leading: AppBackButton.maybeOf(context) ??
-            AppBackButton(onPressed: () => AppNavigation.go(context, '/groups')),
-        titleSpacing: 0,
-        title: Row(
-          children: <Widget>[
-            PubgetAvatar(
-              imageUrl: group?.imageUrl,
-              name: group?.name ?? AppStrings.of(context).groupChat,
-              size: PubgetAvatarSize.small,
-              onTap: () => AppNavigation.go(
-                context,
-                '/group?groupId=${widget.groupId}',
-              ),
+        automaticallyImplyLeading: false,
+        leading:
+            AppBackButton.maybeOf(context) ??
+            AppBackButton(
+              onPressed: () => AppNavigation.go(context, '/groups'),
             ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: _MarqueeTitle(
-                group?.name ?? AppStrings.of(context).groupChat,
+        titleSpacing: 4,
+        title: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: () =>
+              AppNavigation.go(context, '/group?groupId=${widget.groupId}'),
+          child: Row(
+            children: <Widget>[
+              PubgetAvatar(
+                imageUrl: group?.imageUrl,
+                name: group?.name ?? AppStrings.of(context).groupChat,
+                size: PubgetAvatarSize.small,
               ),
-            ),
-          ],
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _MarqueeTitle(
+                  group?.name ?? AppStrings.of(context).groupChat,
+                ),
+              ),
+            ],
+          ),
         ),
         actions: <Widget>[
           Builder(
             builder: (context) => IconButton(
               key: const Key('group-chat-menu'),
               tooltip: AppStrings.of(context).groupMenu,
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(Icons.menu),
               onPressed: () => Scaffold.of(context).openEndDrawer(),
             ),
           ),
@@ -144,52 +168,228 @@ class _GroupChatPageState extends State<GroupChatPage> {
           color: contrast.scrim,
           child: SafeArea(
             top: false,
-            child: Column(
-              children: <Widget>[
-                if (chat.state == LoadingState.offline ||
-                    chat.failure != null && chat.messages.isNotEmpty)
-                  _OfflineBanner(message: chat.failure?.message),
-                Expanded(
-                  child: _MessageList(
-                    chat: chat,
-                    contrast: contrast,
-                    currentUserId:
-                        context.read<AuthProvider>().currentUser?.id ?? '',
-                    controller: _scrollController,
-                    onAction: _showActions,
-                    onAvatarTap: (message) {
-                      final uid = message.senderId.trim();
-                      if (uid.isEmpty || uid == 'system') return;
-                      AppNavigation.go(context, '/profile?uid=$uid');
-                    },
-                    onMediaTap: _openMedia,
-                    onAudioTap: _playAudio,
-                    onEventTap: (eventId) => EventLinks.open(context, eventId),
-                    onGameTap: _openGameCard,
-                  ),
-                ),
-                if (chat.uploadProgress.isNotEmpty)
-                  LinearProgressIndicator(
-                    value: chat.uploadProgress.values.first,
-                  ),
-                if (chat.replyTarget != null)
-                  _ReplyComposerBar(
-                    message: chat.replyTarget!,
-                    onClear: chat.clearReplyTarget,
-                  ),
-                _Composer(
-                  controller: _controller,
-                  onSend: _sendText,
-                  onMedia: _pickMedia,
-                  onGif: _pickGif,
-                  onSticker: _pickSticker,
-                  onVoice: _recordVoice,
-                  onEvents: () => AppNavigation.go(
-                    context,
-                    '/events?groupId=${Uri.encodeComponent(widget.groupId)}',
-                  ),
-                ),
-              ],
+            child: Selector<ChatProvider, _ChatChromeSlice>(
+              selector: (_, chat) => _ChatChromeSlice(
+                revision: chat.contentRevision,
+                state: chat.state,
+                hasMore: chat.hasMore,
+                failureMessage: chat.failure?.message,
+                replyId: chat.replyTarget?.id,
+              ),
+              builder: (context, slice, _) {
+                final chat = context.read<ChatProvider>();
+                _syncScrollAndReadReceipts(chat);
+                return Column(
+                  children: <Widget>[
+                    if (slice.state == LoadingState.offline ||
+                        (slice.failureMessage != null &&
+                            chat.messages.isNotEmpty))
+                      _OfflineBanner(message: slice.failureMessage),
+                    Expanded(
+                      child: Stack(
+                        children: <Widget>[
+                          _MessageList(
+                            chat: chat,
+                            contrast: contrast,
+                            currentUserId: context
+                                    .read<AuthProvider>()
+                                    .currentUser
+                                    ?.id ??
+                                '',
+                            controller: _scrollController,
+                            stars: _stars,
+                            onAction: _showActions,
+                            onSwipeReply: (message) {
+                              context
+                                  .read<ChatProvider>()
+                                  .setReplyTarget(message);
+                            },
+                            onAvatarTap: (message) {
+                              final uid = message.senderId.trim();
+                              if (uid.isEmpty || uid == 'system') return;
+                              AppNavigation.go(context, '/profile?uid=$uid');
+                            },
+                            onMediaTap: _openMedia,
+                            onStickerTap: (message) {
+                              unawaited(
+                                StickerDetailSheet.show(
+                                  context,
+                                  message: message,
+                                  store: _userStickers,
+                                ),
+                              );
+                            },
+                            onAudioTap: _playAudio,
+                            onEventTap: (eventId) =>
+                                EventLinks.open(context, eventId),
+                            onGameTap: _openGameCard,
+                            onLoadMore: _loadMorePreservingAnchor,
+                            messageKeys: _messageKeys,
+                          ),
+                          if (_newMessagesCount > 0)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: AppSpacing.sm,
+                              child: Center(
+                                child: Material(
+                                  elevation: 4,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: InkWell(
+                                    key: const Key('new-messages-chip'),
+                                    borderRadius: BorderRadius.circular(22),
+                                    onTap: _jumpToLatest,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 9,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          const Icon(
+                                            Icons.keyboard_double_arrow_down,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            AppStrings.of(context).pick(
+                                              '$_newMessagesCount new messages',
+                                              '$_newMessagesCount رسائل جديدة',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (chat.replyTarget != null)
+                      _ReplyComposerBar(
+                        message: chat.replyTarget!,
+                        onClear: chat.clearReplyTarget,
+                      ),
+                    WhatsAppChatComposer(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      groupId: widget.groupId,
+                      stickerStore: widget.stickerStore,
+                      userStickerStore: _userStickers,
+                      currentUserId:
+                          context.read<AuthProvider>().currentUser?.id ?? '',
+                      currentUserName: () {
+                        final user = context.read<AuthProvider>().currentUser;
+                        final member = context.read<GroupProvider>().membership;
+                        if (user == null) return 'Pubget user';
+                        if (member == null) {
+                          return (user.displayName ?? '').trim().isNotEmpty
+                              ? user.displayName!.trim()
+                              : 'Pubget user';
+                        }
+                        return _senderName(
+                          user.displayName,
+                          user.email,
+                          member,
+                        );
+                      }(),
+                      voiceCapture:
+                          widget.voiceCapture ?? createDeviceVoiceCapture(),
+                      hintText: AppStrings.of(
+                        context,
+                      ).pick('Message', 'مراسلة'),
+                      onSendText: _sendText,
+                      onSendMedia:
+                          ({
+                            required Uint8List bytes,
+                            required String fileName,
+                            required String contentType,
+                          }) => _sendPickedBytes(
+                            bytes: bytes,
+                            fileName: fileName,
+                            contentType: contentType,
+                          ),
+                      onSendCustomSticker:
+                          ({
+                            required Uint8List bytes,
+                            required String fileName,
+                            required String contentType,
+                            required String stickerCreatorId,
+                            required String stickerCreatorName,
+                          }) async {
+                            final user = context
+                                .read<AuthProvider>()
+                                .currentUser;
+                            final member = context
+                                .read<GroupProvider>()
+                                .membership;
+                            if (user == null || member == null) return;
+                            _wasNearBottom = true;
+                            await context
+                                .read<ChatProvider>()
+                                .sendCustomSticker(
+                                  groupId: widget.groupId,
+                                  senderId: user.id,
+                                  senderName: _senderName(
+                                    user.displayName,
+                                    user.email,
+                                    member,
+                                  ),
+                                  senderAvatar: user.avatarUrl ?? '',
+                                  senderRole: member.role.name,
+                                  bytes: bytes,
+                                  fileName: fileName,
+                                  contentType: contentType,
+                                  stickerCreatorId: stickerCreatorId,
+                                  stickerCreatorName: stickerCreatorName,
+                                );
+                          },
+                      onSendSticker: (key) async {
+                        final user = context.read<AuthProvider>().currentUser;
+                        final member = context.read<GroupProvider>().membership;
+                        if (user == null || member == null) return;
+                        _wasNearBottom = true;
+                        await context.read<ChatProvider>().sendSticker(
+                          groupId: widget.groupId,
+                          senderId: user.id,
+                          senderName: _senderName(
+                            user.displayName,
+                            user.email,
+                            member,
+                          ),
+                          senderAvatar: user.avatarUrl ?? '',
+                          senderRole: member.role.name,
+                          stickerKey: key,
+                        );
+                      },
+                      onSendVoice: (clip) async {
+                        if (clip.exceedsLimits) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                AppStrings.of(context).voiceNoteLimits,
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        await _sendPickedBytes(
+                          bytes: clip.bytes,
+                          fileName: clip.fileName,
+                          contentType: clip.contentType,
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -203,18 +403,128 @@ class _GroupChatPageState extends State<GroupChatPage> {
         _scrollController.position.maxScrollExtent -
             _scrollController.position.pixels <
         180;
-    if (_scrollController.position.pixels < 180) {
-      unawaited(context.read<ChatProvider>().loadMore());
+    if (_wasNearBottom && _newMessagesCount > 0 && mounted) {
+      setState(() => _newMessagesCount = 0);
     }
+    if (_scrollController.position.pixels < 180) {
+      unawaited(_loadMorePreservingAnchor());
+    }
+    final chat = _chatProvider;
+    if (chat != null) _queueReadReceiptCheck(chat);
+  }
+
+  Future<void> _loadMorePreservingAnchor() async {
+    if (_loadingOlder || !_scrollController.hasClients) return;
+    _loadingOlder = true;
+    _olderPixels = _scrollController.position.pixels;
+    _olderMaxExtent = _scrollController.position.maxScrollExtent;
+    try {
+      await context.read<ChatProvider>().loadMore();
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final oldPixels = _olderPixels;
+        final oldExtent = _olderMaxExtent;
+        if (oldPixels == null || oldExtent == null) return;
+        final delta = _scrollController.position.maxScrollExtent - oldExtent;
+        final target = (oldPixels + delta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.jumpTo(target);
+      });
+    } finally {
+      _loadingOlder = false;
+    }
+  }
+
+  /// Scroll/read only when the message list actually changes while pinned —
+  /// never from every Provider rebuild (that stacked 240ms animations = jitter).
+  void _syncScrollAndReadReceipts(ChatProvider chat) {
+    final count = chat.messages.length;
+    final newestId = chat.messages.isEmpty ? null : chat.messages.last.id;
+    final receivedNewerMessage =
+        _lastNewestMessageId != null &&
+        newestId != null &&
+        newestId != _lastNewestMessageId;
+    final shouldScroll =
+        _wasNearBottom && count > 0 && count != _lastSeenMessageCount;
+    _lastSeenMessageCount = count;
+    _lastNewestMessageId = newestId;
+    if (receivedNewerMessage && !_wasNearBottom && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _wasNearBottom) return;
+        setState(() => _newMessagesCount++);
+      });
+    }
+    if (!shouldScroll && count == _lastMarkedReadCount) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (shouldScroll && _wasNearBottom) {
+        _scrollToLatest();
+        // List extent often settles one frame later after the new bubble layouts.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_wasNearBottom) _scrollToLatest();
+        });
+      }
+      _queueReadReceiptCheck(chat);
+    });
+  }
+
+  void _queueReadReceiptCheck(ChatProvider chat) {
+    if (_readCheckQueued) return;
+    _readCheckQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readCheckQueued = false;
+      if (!mounted) return;
+      final visible = _visibleMessages(chat);
+      if (visible.isEmpty) return;
+      final signature = visible.map((message) => message.id).join('|');
+      if (signature == _lastVisibleReadSignature) return;
+      _lastVisibleReadSignature = signature;
+      _lastMarkedReadCount = chat.messages.length;
+      unawaited(chat.markAsRead(visible));
+    });
+  }
+
+  void _jumpToLatest() {
+    if (!mounted) return;
+    setState(() {
+      _newMessagesCount = 0;
+      _wasNearBottom = true;
+    });
+    _scrollToLatest();
+  }
+
+  List<ChatMessage> _visibleMessages(ChatProvider chat) {
+    if (!_scrollController.hasClients) return const <ChatMessage>[];
+    final viewportObject = _scrollController.position.context.storageContext
+        .findRenderObject();
+    if (viewportObject is! RenderBox) return const <ChatMessage>[];
+    final viewportTop = viewportObject.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewportObject.size.height;
+    // Message rows are keyed by message id, so use their actual render bounds
+    // instead of estimating visibility from variable bubble heights.
+    return chat.messages.where((message) {
+      final context = _messageKeys[message.id]?.currentContext;
+      final renderObject = context?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+      final topLeft = renderObject.localToGlobal(Offset.zero);
+      final bottomRight = renderObject.localToGlobal(
+        renderObject.size.bottomRight(Offset.zero),
+      );
+      return bottomRight.dy >= viewportTop && topLeft.dy <= viewportBottom;
+    }).toList(growable: false);
   }
 
   void _scrollToLatest() {
     if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOut,
-    );
+    final target = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if ((target - current).abs() < 1) return;
+    // Instant jump — avoids overlapping easeOut animations fighting layout growth.
+    _scrollController.jumpTo(target);
   }
 
   Future<void> _sendText() async {
@@ -225,111 +535,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final member = context.read<GroupProvider>().membership;
     if (user == null || member == null) return;
     _wasNearBottom = true;
-    await context.read<ChatProvider>().sendText(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      text: text,
-      replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
-    );
-  }
-
-  Future<void> _pickMedia(ImageSource source, bool video) async {
-    final picker = ImagePicker();
-    final selected = video
-        ? await picker.pickVideo(source: source)
-        : await picker.pickImage(source: source);
-    if (selected == null || !mounted) return;
-    final user = context.read<AuthProvider>().currentUser;
-    final member = context.read<GroupProvider>().membership;
-    if (user == null || member == null) return;
-    final bytes = await selected.readAsBytes();
-    final extension = selected.name.split('.').last.toLowerCase();
-    final contentType = video
-        ? (extension == 'webm' ? 'video/webm' : 'video/mp4')
-        : (extension == 'gif'
-              ? 'image/gif'
-              : extension == 'png'
-              ? 'image/png'
-              : 'image/jpeg');
-    if (!mounted) return;
-    await context.read<ChatProvider>().sendMedia(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      bytes: bytes,
-      fileName: selected.name,
-      contentType: contentType,
-    );
-  }
-
-  Future<void> _pickGif() async {
-    final picker = ImagePicker();
-    final selected = await picker.pickImage(source: ImageSource.gallery);
-    if (selected == null || !mounted) return;
-    final bytes = await selected.readAsBytes();
-    final type = chatMediaTypeFor(
-      contentType: selected.mimeType ?? 'image/gif',
-      fileName: selected.name,
-    );
-    if (type != ChatMessageType.gif) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a .gif file to send a GIF.')),
-      );
-      return;
-    }
-    await _sendPickedBytes(
-      bytes: bytes,
-      fileName: selected.name,
-      contentType: 'image/gif',
-    );
-  }
-
-  Future<void> _pickSticker() async {
-    final key = await StickerPickerSheet.show(
-      context,
-      store: widget.stickerStore,
-    );
-    if (key == null || !mounted) return;
-    final user = context.read<AuthProvider>().currentUser;
-    final member = context.read<GroupProvider>().membership;
-    if (user == null || member == null) return;
-    await context.read<ChatProvider>().sendSticker(
-      groupId: widget.groupId,
-      senderId: user.id,
-      senderName: _senderName(user.displayName, user.email, member),
-      senderAvatar: user.avatarUrl ?? '',
-      senderRole: member.role.name,
-      stickerKey: key,
-    );
-  }
-
-  Future<void> _recordVoice() async {
-    final capture = widget.voiceCapture ?? createDeviceVoiceCapture();
-    final player = widget.audioPlayer ?? StorageChatAudioPlayer();
-    final clip = await VoiceRecorderSheet.show(
-      context,
-      capture: capture,
-      onPreview: (voice) => player.playBytes(voice.bytes),
-    );
-    if (clip == null || !mounted) return;
-    if (clip.exceedsLimits) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Voice notes are limited to 60 seconds and 10 MB.'),
-        ),
-      );
-      return;
-    }
-    await _sendPickedBytes(
-      bytes: clip.bytes,
-      fileName: clip.fileName,
-      contentType: clip.contentType,
+    unawaited(
+      context.read<ChatProvider>().sendText(
+        groupId: widget.groupId,
+        senderId: user.id,
+        senderName: _senderName(user.displayName, user.email, member),
+        senderAvatar: user.avatarUrl ?? '',
+        senderRole: member.role.name,
+        text: text,
+        replyToMessageId: context.read<ChatProvider>().replyTarget?.id,
+      ),
     );
   }
 
@@ -341,6 +556,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final user = context.read<AuthProvider>().currentUser;
     final member = context.read<GroupProvider>().membership;
     if (user == null || member == null) return;
+    _wasNearBottom = true;
     await context.read<ChatProvider>().sendMedia(
       groupId: widget.groupId,
       senderId: user.id,
@@ -362,7 +578,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Voice message could not be played.')),
+        SnackBar(content: Text(AppStrings.of(context).voicePlayFailed)),
       );
     }
   }
@@ -401,86 +617,307 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Future<void> _showActions(ChatMessage message) async {
-    final action = await showModalBottomSheet<String>(
+  Future<void> _showActions(ChatMessage message, Rect bubbleRect) async {
+    final user = context.read<AuthProvider>().currentUser;
+    final isMine = user != null && message.senderId == user.id;
+    final permissions = context.read<GroupProvider>().viewerPermissions;
+    final canDelete =
+        isMine || permissions.contains(GroupPermission.deleteMessages);
+    final canPin = permissions.contains(GroupPermission.pinOwnMessages);
+    final canEdit =
+        isMine &&
+        !message.isDeleted &&
+        message.type == ChatMessageType.text &&
+        !message.isOptimistic &&
+        message.createdAt != null &&
+        DateTime.now().difference(message.createdAt!) <=
+            const Duration(minutes: 15);
+    final canCopy =
+        message.text?.trim().isNotEmpty == true &&
+        !message.isDeleted &&
+        !message.isMedia &&
+        message.type != ChatMessageType.sticker &&
+        message.type != ChatMessageType.audio;
+    await _stars.ensureLoaded();
+    if (!mounted) return;
+    final contrast = ChatContrastTheme.fromBackground(
+      context.read<GroupProvider>().group?.chatBackgroundUrl,
+    );
+    final result = await showChatMessageActions(
+      context,
+      message: message,
+      isMine: isMine,
+      contrast: contrast,
+      bubbleRect: bubbleRect == Rect.zero
+          ? Rect.fromCenter(
+              center: Offset(
+                MediaQuery.sizeOf(context).width / 2,
+                MediaQuery.sizeOf(context).height / 2,
+              ),
+              width: 220,
+              height: 80,
+            )
+          : bubbleRect,
+      canEdit: canEdit,
+      canCopy: canCopy,
+      canReply: !message.isDeleted,
+      canForward: !message.isDeleted,
+      canDelete: canDelete && !message.isDeleted,
+      canPin: canPin && !message.isDeleted,
+      canReport: !isMine && !message.isDeleted,
+      isStarred: _stars.isStarred(message.id),
+    );
+    if (!mounted || result == null) return;
+    if (result.action == ChatMessageAction.dismiss) return;
+    if (message.isDeleted &&
+        (result.action == ChatMessageAction.reply ||
+            result.action == ChatMessageAction.forward ||
+            result.action == ChatMessageAction.copy ||
+            result.action == ChatMessageAction.pin ||
+            result.action == ChatMessageAction.edit ||
+            result.action == ChatMessageAction.delete ||
+            result.action == ChatMessageAction.react ||
+            result.action == ChatMessageAction.report)) {
+      return;
+    }
+
+    final chat = context.read<ChatProvider>();
+    switch (result.action) {
+      case ChatMessageAction.reply:
+        chat.setReplyTarget(message);
+        return;
+      case ChatMessageAction.copy:
+        await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+        return;
+      case ChatMessageAction.forward:
+        await _forwardMessage(message);
+        return;
+      case ChatMessageAction.pin:
+        final result = await chat.pinMessage(
+          message.id,
+          message.pinnedAt == null,
+        );
+        if (!mounted || result.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to update pin', 'تعذر تحديث التثبيت'),
+            ),
+          ),
+        );
+        return;
+      case ChatMessageAction.star:
+        await _stars.toggle(message.id);
+        setState(() {});
+        return;
+      case ChatMessageAction.edit:
+        await _editMessage(message);
+        return;
+      case ChatMessageAction.info:
+        await _showMessageInfo(message);
+        return;
+      case ChatMessageAction.delete:
+        final result = await chat.deleteMessage(message.id);
+        if (!mounted || result.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to delete message', 'تعذر حذف الرسالة'),
+            ),
+          ),
+        );
+        return;
+      case ChatMessageAction.react:
+        final emoji = result.reaction ?? '❤️';
+        final reactionResult = await chat.addReaction(message.id, emoji);
+        if (!mounted || reactionResult.isSuccess) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reactionResult.failureOrNull?.message ??
+                  AppStrings.of(
+                    context,
+                  ).pick('Unable to react', 'تعذر إضافة التفاعل'),
+            ),
+          ),
+        );
+        return;
+      case ChatMessageAction.report:
+        await _reportMessage(message);
+        return;
+      case ChatMessageAction.dismiss:
+        return;
+    }
+  }
+
+  Future<void> _reportMessage(ChatMessage message) async {
+    final reason = await showDialog<String>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        final copy = AppStrings.of(context);
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: <Widget>[
-              if (message.text?.isNotEmpty == true)
-                ListTile(
-                  key: const Key('chat-action-copy'),
-                  leading: const Icon(Icons.copy_outlined),
-                  title: Text(copy.copy),
-                  onTap: () => Navigator.pop(context, 'copy'),
-                ),
-              ListTile(
-                key: const Key('chat-action-reply'),
-                leading: const Icon(Icons.reply),
-                title: Text(copy.reply),
-                onTap: () => Navigator.pop(context, 'reply'),
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Report message'),
+        children: reportReasons
+            .map(
+              (value) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, value),
+                child: Text(value),
               ),
-              ListTile(
-                key: const Key('chat-action-react'),
-                leading: const Icon(Icons.favorite_outline),
-                title: Text(copy.react),
-                onTap: () => Navigator.pop(context, 'react'),
+            )
+            .toList(growable: false),
+      ),
+    );
+    if (reason == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        var submitting = false;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Confirm report'),
+            content: Text('Submit this message report for “$reason”?'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: submitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
               ),
-              ListTile(
-                key: const Key('chat-action-pin'),
-                leading: Icon(
-                  message.pinnedAt == null
-                      ? Icons.push_pin_outlined
-                      : Icons.push_pin,
-                ),
-                title: Text(message.pinnedAt == null ? copy.pin : copy.unpin),
-                onTap: () => Navigator.pop(context, 'pin'),
-              ),
-              ListTile(
-                key: const Key('chat-action-delete'),
-                leading: const Icon(Icons.delete_outline),
-                title: Text(copy.delete),
-                onTap: () => Navigator.pop(context, 'delete'),
-              ),
-              ListTile(
-                key: const Key('chat-action-forward'),
-                leading: const Icon(Icons.forward_outlined),
-                title: Text(copy.forwardShare),
-                onTap: () => Navigator.pop(context, 'forward'),
-              ),
-              ListTile(
-                key: const Key('chat-action-report'),
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(copy.report),
-                onTap: () => Navigator.pop(context, 'report'),
+              FilledButton(
+                key: const Key('confirm-report'),
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        setState(() => submitting = true);
+                        final result = await context
+                            .read<ChatProvider>()
+                            .reportMessage(
+                              messageId: message.id,
+                              reason: reason,
+                            );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, result.isSuccess);
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Submit report'),
               ),
             ],
           ),
         );
       },
     );
-    if (!mounted || action == null) return;
-    final chat = context.read<ChatProvider>();
-    if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: message.text ?? ''));
-    } else if (action == 'delete') {
-      await chat.deleteMessage(message.id);
-    } else if (action == 'pin') {
-      await chat.pinMessage(message.id, message.pinnedAt == null);
-    } else if (action == 'react') {
-      await chat.addReaction(message.id, '❤️');
-    } else if (action == 'reply') {
-      chat.setReplyTarget(message);
-    } else if (action == 'forward') {
-      await _forwardMessage(message);
-    } else if (action == 'report') {
-      await _reportMessage(message);
-    }
+    if (confirmed == null || !mounted) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          confirmed ? 'Report submitted' : 'Unable to submit report',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMessageInfo(ChatMessage message) async {
+    final copy = AppStrings.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('chat-message-info'),
+        title: Text(copy.pick('Message info', 'معلومات الرسالة')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('${copy.pick('From', 'من')}: ${message.senderName}'),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.pick('Sent', 'أُرسلت')}: ${message.createdAt?.toLocal() ?? '-'}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.delivered}: ${message.deliveredCount}/${message.recipientCount}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${copy.read}: ${message.readCount}/${message.recipientCount}',
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(copy.pick('Close', 'إغلاق')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editMessage(ChatMessage message) async {
+    final controller = TextEditingController(text: message.text ?? '');
+    final next = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        var saving = false;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Edit message'),
+            content: TextField(
+              key: const Key('chat-edit-field'),
+              controller: controller,
+              autofocus: true,
+              maxLines: 4,
+              enabled: !saving,
+              decoration: const InputDecoration(
+                hintText: 'Update your message',
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final value = controller.text.trim();
+                  if (value.isEmpty || value == message.text?.trim()) return;
+                  setState(() => saving = true);
+                  final result = await context.read<ChatProvider>().editMessage(
+                    messageId: message.id,
+                    text: value,
+                  );
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, result.isSuccess);
+                  }
+                },
+                child: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (next == null || !mounted || next) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Unable to edit message')));
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
@@ -490,9 +927,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final chats = context.read<PrivateChatListProvider>();
     await Future.wait<void>([groups.loadJoined(user.id), chats.open(user.id)]);
     if (!mounted) return;
-    final destination = await showModalBottomSheet<_ForwardTarget>(
+    final destination = await PubgetBottomSheet.present<_ForwardTarget>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => _ForwardSheet(
         currentGroupId: widget.groupId,
@@ -519,51 +955,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
       ),
     );
   }
-
-  Future<void> _reportMessage(ChatMessage message) async {
-    final user = context.read<AuthProvider>().currentUser;
-    if (user != null && message.senderId == user.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.of(context).cannotReportOwn)),
-      );
-      return;
-    }
-    final reason = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(title: Text(AppStrings.of(context).reportMessage)),
-            for (final item in reportReasons)
-              ListTile(
-                key: Key('report-reason-$item'),
-                title: Text(item),
-                onTap: () => Navigator.pop(context, item),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (reason == null || !mounted) return;
-    final result = await context.read<ChatProvider>().reportMessage(
-      messageId: message.id,
-      reason: reason,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.isSuccess
-              ? AppStrings.of(context).reportSubmitted
-              : result.failureOrNull?.message ??
-                    AppStrings.of(context).reportFailed,
-        ),
-      ),
-    );
-  }
 }
 
 class _MessageList extends StatelessWidget {
@@ -572,88 +963,240 @@ class _MessageList extends StatelessWidget {
     required this.contrast,
     required this.currentUserId,
     required this.controller,
+    required this.stars,
     required this.onAction,
+    required this.onSwipeReply,
     required this.onAvatarTap,
     required this.onMediaTap,
+    required this.onStickerTap,
     required this.onAudioTap,
     required this.onEventTap,
     required this.onGameTap,
+    required this.onLoadMore,
+    required this.messageKeys,
   });
 
   final ChatProvider chat;
   final ChatContrastTheme contrast;
   final String currentUserId;
   final ScrollController controller;
-  final ValueChanged<ChatMessage> onAction;
+  final ChatStarStore stars;
+  final void Function(ChatMessage message, Rect rect) onAction;
+  final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onAvatarTap;
   final ValueChanged<ChatMessage> onMediaTap;
+  final ValueChanged<ChatMessage> onStickerTap;
   final ValueChanged<ChatMessage> onAudioTap;
   final ValueChanged<String> onEventTap;
   final ValueChanged<ChatMessage> onGameTap;
+  final VoidCallback onLoadMore;
+  final Map<String, GlobalKey> messageKeys;
 
   @override
   Widget build(BuildContext context) {
     if (chat.messages.isEmpty) {
+      final copy = AppStrings.of(context);
       if (chat.state == LoadingState.loading) {
         return const Center(child: CircularProgressIndicator());
       }
       if (chat.state == LoadingState.offline) {
         return PubgetOfflineState(
-          message: chat.failure?.message ?? 'Cached messages are unavailable.',
+          message: chat.failure?.message ?? copy.cachedMessagesUnavailable,
         );
       }
       if (chat.state == LoadingState.error) {
         return PubgetErrorState(
-          message: chat.failure?.message ?? 'Messages could not load.',
+          message: chat.failure?.message ?? copy.messagesCouldNotLoad,
         );
       }
-      return const PubgetEmptyState(
-        title: 'Start the conversation',
-        message: 'Messages from group members will appear here.',
+      return PubgetEmptyState(
+        title: copy.startConversation,
+        message: copy.messagesWillAppear,
         icon: Icons.forum_outlined,
       );
     }
+    final messages = chat.messages;
+    final now = DateTime.now();
+    // item slots: [encryption?] + optional load-more + (date? + message)*
+    final rows = <_ChatListRow>[];
+    rows.add(const _ChatListRow.encryption());
+    if (chat.hasMore) rows.add(const _ChatListRow.loadMore());
+    DateTime? lastDay;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      final day = message.createdAt == null
+          ? null
+          : DateTime(
+              message.createdAt!.year,
+              message.createdAt!.month,
+              message.createdAt!.day,
+            );
+      if (day != null && (lastDay == null || day != lastDay)) {
+        rows.add(_ChatListRow.date(chatDayLabel(message.createdAt, now: now)));
+        lastDay = day;
+      }
+      final prev = i > 0 ? messages[i - 1] : null;
+      final next = i + 1 < messages.length ? messages[i + 1] : null;
+      final samePrev =
+          prev != null &&
+          _sameChatCluster(prev, message) &&
+          !message.isDeleted;
+      final sameNext =
+          next != null &&
+          _sameChatCluster(message, next) &&
+          !next.isDeleted;
+      rows.add(
+        _ChatListRow.message(
+          message,
+          showAvatar: !sameNext,
+          showHeader: !samePrev,
+          showTail: !sameNext,
+        ),
+      );
+    }
+
     return ListView.builder(
       controller: controller,
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: chat.messages.length + (chat.hasMore ? 1 : 0),
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        if (index == 0 && chat.hasMore) {
-          return TextButton.icon(
-            onPressed: chat.loadMore,
-            icon: const Icon(Icons.history),
-            label: const Text('Load older messages'),
-          );
+        final row = rows[index];
+        switch (row.kind) {
+          case _ChatListKind.encryption:
+            return const ChatEncryptionBanner();
+          case _ChatListKind.loadMore:
+            final loading = chat.state == LoadingState.loadingMore;
+            return TextButton.icon(
+              onPressed: loading ? null : onLoadMore,
+              icon: loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.history),
+              label: Text(AppStrings.of(context).loadOlderMessages),
+            );
+          case _ChatListKind.date:
+            return ChatDateDivider(label: row.dateLabel!);
+          case _ChatListKind.message:
+            final message = row.message!;
+            if (message.sendState == ChatSendState.failed) {
+              return _FailedMessage(message: message);
+            }
+            return ChatMessageBubble(
+              key: messageKeys.putIfAbsent(message.id, GlobalKey.new),
+              message: message,
+              isMine: message.senderId == currentUserId,
+              contrast: contrast,
+              showAvatar: row.showAvatar,
+              showHeader: row.showHeader,
+              showTail: row.showTail,
+              isStarred: stars.isStarred(message.id),
+              onLongPress: (rect) => onAction(message, rect),
+              onSwipeReply: () => onSwipeReply(message),
+              onAvatarTap: () => onAvatarTap(message),
+              onMediaTap:
+                  message.isMedia && message.type != ChatMessageType.sticker
+                  ? () => onMediaTap(message)
+                  : null,
+              onStickerTap: message.type == ChatMessageType.sticker
+                  ? () => onStickerTap(message)
+                  : null,
+              onAudioTap: message.type == ChatMessageType.audio
+                  ? () => onAudioTap(message)
+                  : null,
+              onWelcomeMember: message.isMemberJoinedCard
+                  ? () async {
+                      final user = context.read<AuthProvider>().currentUser;
+                      final member = context.read<GroupProvider>().membership;
+                      final groupId = chat.groupId;
+                      if (user == null || member == null || groupId == null) {
+                        return;
+                      }
+                      await context.read<ChatProvider>().sendSticker(
+                        groupId: groupId,
+                        senderId: user.id,
+                        senderName: user.displayName ?? user.email,
+                        senderAvatar: user.avatarUrl ?? '',
+                        senderRole: member.role.name,
+                        stickerKey: 'gestures/wave',
+                      );
+                    }
+                  : null,
+              onEventTap:
+                  message.type == ChatMessageType.event &&
+                      (message.mediaId ?? '').isNotEmpty
+                  ? () => onEventTap(message.mediaId!)
+                  : null,
+              onGameTap:
+                  message.type == ChatMessageType.game &&
+                      (message.mediaId ?? '').isNotEmpty
+                  ? () => onGameTap(message)
+                  : null,
+            );
         }
-        final message = chat.messages[index - (chat.hasMore ? 1 : 0)];
-        if (message.sendState == ChatSendState.failed) {
-          return _FailedMessage(message: message);
-        }
-        return ChatMessageBubble(
-          key: ValueKey<String>(message.id),
-          message: message,
-          isMine: message.senderId == currentUserId,
-          contrast: contrast,
-          onLongPress: () => onAction(message),
-          onAvatarTap: () => onAvatarTap(message),
-          onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
-          onAudioTap: message.type == ChatMessageType.audio
-              ? () => onAudioTap(message)
-              : null,
-          onEventTap:
-              message.type == ChatMessageType.event &&
-                  (message.mediaId ?? '').isNotEmpty
-              ? () => onEventTap(message.mediaId!)
-              : null,
-          onGameTap:
-              message.type == ChatMessageType.game &&
-                  (message.mediaId ?? '').isNotEmpty
-              ? () => onGameTap(message)
-              : null,
-        );
       },
     );
   }
+}
+
+bool _sameChatCluster(ChatMessage first, ChatMessage second) {
+  if (first.senderId != second.senderId || first.type != second.type) {
+    return false;
+  }
+  if (first.type == ChatMessageType.system ||
+      first.type == ChatMessageType.game ||
+      first.type == ChatMessageType.event) {
+    return false;
+  }
+  final firstCreatedAt = first.createdAt;
+  final secondCreatedAt = second.createdAt;
+  if (firstCreatedAt == null || secondCreatedAt == null) return true;
+  return secondCreatedAt.difference(firstCreatedAt).abs() <=
+      const Duration(minutes: 5);
+}
+
+enum _ChatListKind { encryption, loadMore, date, message }
+
+final class _ChatListRow {
+  const _ChatListRow.encryption()
+    : kind = _ChatListKind.encryption,
+      message = null,
+      dateLabel = null,
+      showAvatar = true,
+      showHeader = true,
+      showTail = true;
+
+  const _ChatListRow.loadMore()
+    : kind = _ChatListKind.loadMore,
+      message = null,
+      dateLabel = null,
+      showAvatar = true,
+      showHeader = true,
+      showTail = true;
+
+  const _ChatListRow.date(this.dateLabel)
+    : kind = _ChatListKind.date,
+      message = null,
+      showAvatar = true,
+      showHeader = true,
+      showTail = true;
+
+  const _ChatListRow.message(
+    this.message, {
+    required this.showAvatar,
+    required this.showHeader,
+    required this.showTail,
+  }) : kind = _ChatListKind.message,
+       dateLabel = null;
+
+  final _ChatListKind kind;
+  final ChatMessage? message;
+  final String? dateLabel;
+  final bool showAvatar;
+  final bool showHeader;
+  final bool showTail;
 }
 
 class _FailedMessage extends StatelessWidget {
@@ -664,120 +1207,62 @@ class _FailedMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chat = context.read<ChatProvider>();
-    return Card(
-      key: ValueKey<String>('failed-${message.id}'),
-      color: Theme.of(context).colorScheme.errorContainer,
-      margin: const EdgeInsets.all(AppSpacing.sm),
-      child: ListTile(
-        leading: const Icon(Icons.error_outline),
-        title: Text(message.text ?? 'Media message'),
-        subtitle: Text(message.failureMessage ?? 'Message was not sent.'),
-        trailing: Wrap(
-          children: <Widget>[
-            IconButton(
-              tooltip: 'Retry',
-              onPressed: () => chat.retry(message),
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Delete failed message',
-              onPressed: () => chat.removeFailed(message.id),
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ],
+    final copy = AppStrings.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
         ),
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.controller,
-    required this.onSend,
-    required this.onMedia,
-    required this.onGif,
-    required this.onSticker,
-    required this.onVoice,
-    required this.onEvents,
-  });
-
-  final TextEditingController controller;
-  final VoidCallback onSend;
-  final void Function(ImageSource source, bool video) onMedia;
-  final VoidCallback onGif;
-  final VoidCallback onSticker;
-  final VoidCallback onVoice;
-  final VoidCallback onEvents;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
-      elevation: 8,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          children: <Widget>[
-            PopupMenuButton<String>(
-              key: const Key('composer-attach'),
-              tooltip: AppStrings.of(context).attachments,
-              icon: const Icon(Icons.add_circle_outline),
-              onSelected: (value) {
-                if (value == 'image') onMedia(ImageSource.gallery, false);
-                if (value == 'video') onMedia(ImageSource.gallery, true);
-                if (value == 'gif') onGif();
-                if (value == 'sticker') onSticker();
-                if (value == 'audio') onVoice();
-              },
-              itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                PopupMenuItem(value: 'image', child: Text('Image')),
-                PopupMenuItem(value: 'video', child: Text('Video')),
-                PopupMenuItem(
-                  key: Key('composer-gif'),
-                  value: 'gif',
-                  child: Text('GIF'),
-                ),
-                PopupMenuItem(
-                  key: Key('composer-sticker'),
-                  value: 'sticker',
-                  child: Text('Sticker'),
-                ),
-                PopupMenuItem(
-                  key: Key('composer-audio'),
-                  value: 'audio',
-                  child: Text('Voice message'),
-                ),
-              ],
-            ),
-            IconButton(
-              tooltip: 'Emoji',
-              onPressed: () => controller.text += ' 😊',
-              icon: const Icon(Icons.emoji_emotions_outlined),
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: AppStrings.of(context).messageHint,
-                  isDense: true,
+        child: Container(
+          key: ValueKey<String>('failed-${message.id}'),
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: scheme.error.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                message.text ?? copy.mediaMessage,
+                textWidthBasis: TextWidthBasis.longestLine,
+                style: TextStyle(color: scheme.onErrorContainer, fontSize: 14),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                copy.chatSendFailureLabel(message.failureMessage),
+                style: TextStyle(
+                  color: scheme.onErrorContainer.withValues(alpha: 0.8),
+                  fontSize: 11.5,
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: AppStrings.of(context).groupEvents,
-              onPressed: onEvents,
-              icon: const Icon(Icons.celebration_outlined),
-            ),
-            IconButton(
-              tooltip: AppStrings.of(context).sendMessage,
-              onPressed: onSend,
-              icon: const Icon(Icons.send_rounded),
-            ),
-          ],
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    tooltip: copy.retry,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => chat.retry(message),
+                    icon: const Icon(Icons.refresh, size: 20),
+                  ),
+                  IconButton(
+                    tooltip: copy.deleteFailedMessage,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => chat.removeFailed(message.id),
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -829,8 +1314,10 @@ class _GroupMenu extends StatelessWidget {
               _MenuTile(
                 icon: Icons.person_add_alt,
                 label: copy.addMembers,
-                onTap: () =>
-                    AppNavigation.go(context, '/group-members?groupId=$groupId'),
+                onTap: () => AppNavigation.go(
+                  context,
+                  '/group-members?groupId=$groupId&invite=1',
+                ),
               ),
               _MenuTile(
                 icon: Icons.link,
@@ -848,22 +1335,6 @@ class _GroupMenu extends StatelessWidget {
                     AppNavigation.go(context, '/group?groupId=$groupId'),
               ),
               _MenuTile(
-                icon: Icons.celebration_outlined,
-                label: copy.groupEvents,
-                onTap: () => AppNavigation.go(
-                  context,
-                  '/events?groupId=${Uri.encodeComponent(groupId)}',
-                ),
-              ),
-              _MenuTile(
-                icon: Icons.sports_esports_outlined,
-                label: copy.groupGames,
-                onTap: () => AppNavigation.go(
-                  context,
-                  '/games?groupId=${Uri.encodeComponent(groupId)}',
-                ),
-              ),
-              _MenuTile(
                 icon: Icons.perm_media_outlined,
                 label: copy.groupMedia,
                 onTap: () =>
@@ -872,18 +1343,40 @@ class _GroupMenu extends StatelessWidget {
               _MenuTile(
                 icon: Icons.groups_outlined,
                 label: copy.members,
-                onTap: () =>
-                    AppNavigation.go(context, '/group-members?groupId=$groupId'),
+                onTap: () => AppNavigation.go(
+                  context,
+                  '/group-members?groupId=$groupId',
+                ),
               ),
-              if (canManageSettings)
+              _MenuTile(
+                icon: Icons.auto_awesome_mosaic_outlined,
+                label: copy.eventCenter,
+                onTap: () {
+                  Navigator.pop(context);
+                  EventCenterSheet.show(context, groupId: groupId);
+                },
+              ),
+              if (canManageSettings || isFounder) ...[
                 _MenuTile(
-                  icon: Icons.settings_outlined,
-                  label: copy.groupSettings,
+                  icon: Icons.edit_outlined,
+                  label: copy.editGroup,
                   onTap: () => AppNavigation.go(
                     context,
                     '/group-settings?groupId=$groupId',
                   ),
                 ),
+                _MenuTile(
+                  icon: Icons.wallpaper_outlined,
+                  label: copy.chatBackground,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ChatBackgroundPickerPage(
+                        current: current?.chatBackgroundUrl,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (canManageMembers)
                 _MenuTile(
                   icon: Icons.block_outlined,
@@ -891,24 +1384,6 @@ class _GroupMenu extends StatelessWidget {
                   onTap: () =>
                       AppNavigation.go(context, '/group-bans?groupId=$groupId'),
                 ),
-              if (isFounder)
-                _MenuTile(
-                  icon: Icons.edit_outlined,
-                  label: copy.editGroup,
-                  onTap: () =>
-                      AppNavigation.go(context, '/group?groupId=$groupId'),
-                ),
-              _MenuTile(
-                icon: Icons.wallpaper_outlined,
-                label: copy.chatBackground,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ChatBackgroundPickerPage(
-                      current: current?.chatBackgroundUrl,
-                    ),
-                  ),
-                ),
-              ),
               if (!isFounder)
                 _MenuTile(
                   icon: Icons.exit_to_app,
@@ -988,40 +1463,81 @@ class _MarqueeTitle extends StatefulWidget {
   State<_MarqueeTitle> createState() => _MarqueeTitleState();
 }
 
-class _MarqueeTitleState extends State<_MarqueeTitle> {
+class _MarqueeTitleState extends State<_MarqueeTitle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
   final _scroll = ScrollController();
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _animate());
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..addListener(_onTick);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scroll.hasClients && _scroll.position.maxScrollExtent > 0) {
+        _controller.repeat(reverse: true);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _MarqueeTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_scroll.hasClients && _scroll.position.maxScrollExtent > 0) {
+          _controller
+            ..duration = Duration(
+              milliseconds: (2400 + _scroll.position.maxScrollExtent * 18)
+                  .round(),
+            )
+            ..repeat(reverse: true);
+        } else {
+          _controller.stop();
+        }
+      });
+    }
+  }
+
+  void _onTick() {
+    if (!_scroll.hasClients) return;
+    final max = _scroll.position.maxScrollExtent;
+    if (max <= 0) return;
+    _scroll.jumpTo(max * _controller.value);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _animate() {
-    if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
-    final target = _scroll.offset == 0 ? _scroll.position.maxScrollExtent : 0.0;
-    _scroll.animateTo(
-      target,
-      duration: const Duration(seconds: 2),
-      curve: Curves.easeInOut,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _scroll,
-      scrollDirection: Axis.horizontal,
-      physics: const NeverScrollableScrollPhysics(),
-      child: Text(widget.text, maxLines: 1),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Text(
+              widget.text,
+              maxLines: 1,
+              softWrap: false,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1124,6 +1640,35 @@ class _ForwardSheet extends StatelessWidget {
   }
 }
 
+class _ChatChromeSlice {
+  const _ChatChromeSlice({
+    required this.revision,
+    required this.state,
+    required this.hasMore,
+    required this.failureMessage,
+    required this.replyId,
+  });
+
+  final int revision;
+  final LoadingState state;
+  final bool hasMore;
+  final String? failureMessage;
+  final String? replyId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ChatChromeSlice &&
+      revision == other.revision &&
+      state == other.state &&
+      hasMore == other.hasMore &&
+      failureMessage == other.failureMessage &&
+      replyId == other.replyId;
+
+  @override
+  int get hashCode =>
+      Object.hash(revision, state, hasMore, failureMessage, replyId);
+}
+
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner({this.message});
 
@@ -1136,7 +1681,7 @@ class _OfflineBanner extends StatelessWidget {
       child: ListTile(
         dense: true,
         leading: const Icon(Icons.cloud_off_outlined),
-        title: const Text('Offline · showing cached messages'),
+        title: Text(AppStrings.of(context).offlineCachedBanner),
         subtitle: message == null ? null : Text(message!),
       ),
     );

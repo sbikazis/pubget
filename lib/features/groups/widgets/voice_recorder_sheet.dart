@@ -18,9 +18,8 @@ class VoiceRecorderSheet extends StatefulWidget {
     required VoiceCapture capture,
     Future<void> Function(VoiceClip clip)? onPreview,
   }) {
-    return showModalBottomSheet<VoiceClip>(
+    return PubgetBottomSheet.present<VoiceClip>(
       context: context,
-      showDragHandle: true,
       builder: (_) =>
           VoiceRecorderSheet(capture: capture, onPreview: onPreview),
     );

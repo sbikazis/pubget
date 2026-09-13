@@ -173,7 +173,10 @@ function createEconomyDomain({
     source,
     metadata = {},
   }) {
-    const amount = REWARD_AMOUNTS[type];
+    const requestedAmount = metadata && Number.isInteger(metadata.amountOverride)
+      ? metadata.amountOverride
+      : REWARD_AMOUNTS[type];
+    const amount = requestedAmount;
     if (!validId(userId) || !validId(referenceId) || !Number.isInteger(amount)) {
       return { applied: false, reason: "invalid" };
     }

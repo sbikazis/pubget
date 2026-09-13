@@ -1,5 +1,6 @@
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import 'group_members_repository.dart';
 import 'group_repository.dart';
@@ -94,14 +95,14 @@ final class UnavailableGroupMembersRepository
   @override
   Future<Result<void>> updateRolePermissions({
     required String groupId,
-    required GroupRole role,
+    required PubgetRank role,
     required Set<GroupPermission> permissions,
   }) async => _fail();
   @override
   Future<Result<void>> changeRole({
     required String groupId,
     required String uid,
-    required GroupRole role,
+    required PubgetRank role,
   }) async => _fail();
   @override
   Future<Result<void>> kickMember({
@@ -140,6 +141,30 @@ final class UnavailableGroupMembersRepository
   Future<Result<void>> unbanMember({
     required String groupId,
     required String uid,
+  }) async => _fail();
+  @override
+  Future<Result<void>> warnMember({
+    required String groupId,
+    required String uid,
+    required String type,
+    required String details,
+  }) async => _fail();
+  @override
+  Future<Result<List<RankAuditEvent>>> getRankAudit(
+    String groupId, {
+    String? targetUid,
+    int limit = 40,
+  }) async => _fail();
+  @override
+  Future<Result<List<MemberWarningRecord>>> getWarnings(
+    String groupId, {
+    required String targetUid,
+    int limit = 40,
+  }) async => _fail();
+  @override
+  Future<Result<List<GroupMember>>> lookupInviteCandidates({
+    required String query,
+    int limit = 12,
   }) async => _fail();
 }
 

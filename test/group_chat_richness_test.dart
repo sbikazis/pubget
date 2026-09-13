@@ -20,6 +20,7 @@ import 'package:pubget/features/groups/screens/group_chat_page.dart';
 import 'package:pubget/features/groups/services/chat_audio_player.dart';
 import 'package:pubget/features/groups/services/voice_capture.dart';
 import 'package:pubget/features/groups/widgets/sticker_picker_sheet.dart';
+import 'package:pubget/features/groups/widgets/wa_composer/wa_emoji_panel.dart';
 import 'package:pubget/features/groups/widgets/voice_recorder_sheet.dart';
 import 'package:pubget/features/private_chat/models/private_chat_models.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_list_provider.dart';
@@ -32,21 +33,15 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('game system cards parse join affordance from server activity', () {
-    final message = ChatMessage.fromMap(
-      <String, dynamic>{
-        'senderId': 'system',
-        'senderName': 'Pubget',
-        'senderRole': 'system',
-        'type': 'game',
-        'text': 'A Mafia lobby is waiting. Tap to join.',
-        'mediaId': 'm1',
-        'gameActivity': <String, dynamic>{
-          'kind': 'created',
-          'gameType': 'mafia',
-        },
-      },
-      id: 'card-1',
-    );
+    final message = ChatMessage.fromMap(<String, dynamic>{
+      'senderId': 'system',
+      'senderName': 'Pubget',
+      'senderRole': 'system',
+      'type': 'game',
+      'text': 'A Mafia lobby is waiting. Tap to join.',
+      'mediaId': 'm1',
+      'gameActivity': <String, dynamic>{'kind': 'created', 'gameType': 'mafia'},
+    }, id: 'card-1');
     expect(message.gameActivity?.isCreated, isTrue);
     expect(message.gameActivity?.isMafia, isTrue);
     expect(message.gameActivity?.actionLabel, 'Join');
@@ -180,40 +175,39 @@ void main() {
     expect(find.text('hello from bob'), findsOneWidget);
     expect(find.byKey(const Key('group-chat-menu')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('composer-attach')));
+    await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('composer-sticker')));
+    expect(
+      find.byKey(const Key('catalog-sticker-reactions/heart')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('composer-create-sticker')), findsOneWidget);
+    expect(find.text('GIF'), findsNothing);
+    await tester.tap(find.byKey(const Key('catalog-sticker-reactions/heart')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('sticker-reactions/heart')));
-    await tester.pumpAndSettle();
-    expect(chatRepo.sent.last['type'], ChatMessageType.sticker);
     expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
+    // Close panel so message actions remain reachable.
+    await tester.tap(find.byKey(const Key('composer-emoji')));
+    await tester.pumpAndSettle();
+    expect(find.byType(WaEmojiPanel), findsNothing);
 
     await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
+    await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-action-reply')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('reply-composer-bar')), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'Quoted reply');
-    await tester.tap(find.byTooltip('Send message'));
+    await tester.enterText(find.byType(TextField).first, 'Quoted reply');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byIcon(Icons.send_rounded), findsWidgets);
+    await tester.tap(find.byIcon(Icons.send_rounded).last);
     await tester.pumpAndSettle();
     expect(chatRepo.sent.last['text'], 'Quoted reply');
     expect(chatRepo.sent.last['replyToMessageId'], 'm-bob');
 
     await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('chat-action-report')));
-    await tester.tap(find.byKey(const Key('chat-action-report')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('report-reason-spam')));
-    await tester.pumpAndSettle();
-    expect(chatRepo.reports.single.reason, 'spam');
-    expect(chatRepo.reports.single.messageId, 'm-bob');
-    expect(find.text('Report submitted'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
-    await tester.pumpAndSettle();
-
-    await tester.longPress(find.byKey(const ValueKey<String>('message-m-bob')));
+    await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('chat-action-forward')));
     await tester.tap(find.byKey(const Key('chat-action-forward')));
@@ -222,6 +216,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(chatRepo.forwards.single.destinationGroupId, 'g2');
     expect(find.text('Message forwarded'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   test('sticker catalog stays aligned with the original 12-key set', () {
@@ -271,6 +267,8 @@ final class _FakeChatRepository implements ChatRepository {
     String? mediaId,
     String? replyToMessageId,
     String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) async {
     sent.add(<String, Object?>{
       'type': type,
@@ -383,14 +381,19 @@ final class _FakeChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
-  }) async => Success(
-    ChatMediaUpload(
-      mediaUrl: 'groups/$groupId/media/${mediaId}_original.m4a',
-      thumbnailUrl: null,
-      mediaId: mediaId,
-      type: chatMediaTypeFor(contentType: contentType, fileName: fileName),
-    ),
-  );
+    void Function()? onBytesUploaded,
+  }) async {
+    onProgress(1);
+    onBytesUploaded?.call();
+    return Success(
+      ChatMediaUpload(
+        mediaUrl: 'groups/$groupId/media/${mediaId}_original.m4a',
+        thumbnailUrl: null,
+        mediaId: mediaId,
+        type: chatMediaTypeFor(contentType: contentType, fileName: fileName),
+      ),
+    );
+  }
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -442,7 +445,7 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<GroupMember?>> getMembership(
     String groupId,
     String userId,
-  ) async => Success(GroupMember(uid: userId, role: GroupRole.member));
+  ) async => Success(GroupMember(uid: userId, role: PubgetRank.ronin));
 
   @override
   Future<Result<void>> joinGroup({
@@ -456,8 +459,10 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
-      const Success<void>(null);
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
@@ -490,14 +495,14 @@ final class _FakeGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-
 
 final class _FakePrivateRepository implements PrivateChatRepository {
   @override

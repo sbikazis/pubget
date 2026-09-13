@@ -65,6 +65,14 @@ test.beforeEach(async () => {
     });
     await admin.doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" });
     await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
+    await admin.doc("mafia_history/h1").set({
+      gameId: "h1", winner: "citizens", durationSeconds: 60, version: "classic",
+      players: ["alice", "bob"],
+      playerDetails: [
+        { userId: "alice", role: "citizen", team: "citizens", won: true },
+        { userId: "bob", role: "mafia", team: "mafias", won: false },
+      ],
+    });
     await admin.doc("privateChats/c1").set({
       userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
       lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
@@ -295,9 +303,17 @@ test("games are readable by group members and never client-writable", async () =
     result: { winnerIds: ["alice"], scores: { alice: 99 } },
   }));
   await assertSucceeds(db("alice").doc("user_achievements/alice/items/first_game_win").get());
-  await assertFails(db("bob").doc("user_achievements/alice/items/first_game_win").get());
+  // Unlocked badges are readable by any signed-in visitor (profile strip).
+  await assertSucceeds(db("bob").doc("user_achievements/alice/items/first_game_win").get());
   await assertFails(db("alice").doc("user_achievements/alice/items/forged").set({
     achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("user_achievements/alice/unlocked/forged").set({
+    achievementId: "forged",
+  }));
+  await assertFails(db("alice").doc("user_achievement_progress/alice/progress/the_threshold").set({
+    currentValue: 99,
+    targetValue: 1,
   }));
   await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
 });
@@ -1168,6 +1184,19 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   }));
   await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
     lastAt: new Date(),
+  }));
+});
+
+test("mafia history is participant-read only and never client-writable (SEC-H-01)", async () => {
+  await assertSucceeds(db("alice").doc("mafia_history/h1").get());
+  await assertSucceeds(db("bob").doc("mafia_history/h1").get());
+  await assertFails(db("charlie").doc("mafia_history/h1").get());
+  await assertFails(db("alice").doc("mafia_history/h1").set({
+    gameId: "h1", winner: "mafias", players: ["alice"],
+  }));
+  await assertFails(db("alice").doc("mafia_history/other").get());
+  await assertFails(db("alice").doc("mafia_history/h1").update({
+    winner: "mafias",
   }));
 });
 

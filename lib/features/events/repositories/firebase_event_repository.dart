@@ -42,6 +42,7 @@ final class FirebaseEventRepository implements EventRepository {
       'eventId': eventId,
       'startAt': startAt.toUtc().toIso8601String(),
       'endAt': endAt.toUtc().toIso8601String(),
+      'previewConfirmed': true,
     });
     final snapshot = await _events.doc(eventId).get();
     return PubgetEvent.fromMap(snapshot.data() ?? const {}, id: eventId);
@@ -99,7 +100,8 @@ final class FirebaseEventRepository implements EventRepository {
   @override
   Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) => _query(
     _events
-        .where('status', isEqualTo: 'active')
+        .where('scope', isEqualTo: 'global')
+        .where('status', isEqualTo: 'ACTIVE')
         .orderBy('participantsCount', descending: true)
         .orderBy('endAt')
         .limit(limit),
@@ -109,7 +111,9 @@ final class FirebaseEventRepository implements EventRepository {
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) =>
       _query(
         _events
-            .where('status', isEqualTo: 'scheduled')
+            .where('scope', isEqualTo: 'global')
+            .where('status', isEqualTo: 'ACTIVE')
+            .where('startAt', isGreaterThan: Timestamp.now())
             .orderBy('startAt')
             .limit(limit),
       );
@@ -117,7 +121,8 @@ final class FirebaseEventRepository implements EventRepository {
   @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) => _query(
     _events
-        .where('status', whereIn: <String>['ended', 'archived'])
+        .where('scope', isEqualTo: 'global')
+        .where('status', whereIn: <String>['ENDED', 'ARCHIVED'])
         .orderBy('endAt', descending: true)
         .limit(limit),
   );
@@ -129,7 +134,7 @@ final class FirebaseEventRepository implements EventRepository {
   }) => _query(
     _events
         .where('groupId', isEqualTo: groupId)
-        .where('status', whereIn: <String>['active', 'scheduled', 'ended'])
+        .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
         .orderBy('startAt', descending: true)
         .limit(limit),
   );
@@ -141,7 +146,7 @@ final class FirebaseEventRepository implements EventRepository {
   }) => _query(
     _events
         .where('creatorId', isEqualTo: userId)
-        .where('status', isNotEqualTo: 'draft')
+        .where('status', isNotEqualTo: 'DRAFT')
         .orderBy('status')
         .orderBy('updatedAt', descending: true)
         .limit(limit),
@@ -152,7 +157,7 @@ final class FirebaseEventRepository implements EventRepository {
       _query(
         _events
             .where('creatorId', isEqualTo: userId)
-            .where('status', isEqualTo: 'draft')
+            .where('status', isEqualTo: 'DRAFT')
             .orderBy('updatedAt', descending: true)
             .limit(20),
       );
@@ -163,7 +168,8 @@ final class FirebaseEventRepository implements EventRepository {
     if (normalized.isEmpty) return const Success(<PubgetEvent>[]);
     return _query(
       _events
-          .where('status', whereIn: <String>['active', 'scheduled', 'ended'])
+          .where('scope', isEqualTo: 'global')
+          .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: '$normalized\uf8ff')
           .limit(20),

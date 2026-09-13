@@ -68,7 +68,10 @@ File _androidGeneratedCodec() {
   final roots = <String>[
     if (Platform.environment['PUB_CACHE'] != null)
       '${Platform.environment['PUB_CACHE']}/hosted/pub.dev',
-    '${Platform.environment['HOME']}/.pub-cache/hosted/pub.dev',
+    if (Platform.environment['HOME'] != null)
+      '${Platform.environment['HOME']}/.pub-cache/hosted/pub.dev',
+    if (Platform.isWindows && Platform.environment['LOCALAPPDATA'] != null)
+      '${Platform.environment['LOCALAPPDATA']}/Pub/Cache/hosted/pub.dev',
   ];
   for (final root in roots) {
     final directory = Directory(root);

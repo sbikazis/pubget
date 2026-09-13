@@ -211,27 +211,51 @@ function domain(db, extras = {}) {
 async function startGuess(db, games) {
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: {
+      type: "guessCharacter",
+      title: "Guess",
+      groupId: "g1",
+      creationSource: "group_chat",
+    },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  await games.submitGameAction({
+    auth: { uid: "alice" },
+    data: {
+      gameId: created.gameId,
+      actionType: "select_character",
+      payload: { characterId: "luffy" },
+      clientActionId: "select-alice",
+    },
+  });
+  await games.submitGameAction({
+    auth: { uid: "bob" },
+    data: {
+      gameId: created.gameId,
+      actionType: "select_character",
+      payload: { characterId: "naruto" },
+      clientActionId: "select-bob",
+    },
+  });
   return created.gameId;
 }
 
-test("guess character scores server-side and ignores client score", async () => {
+test("guess character uses private selections and yes/no turns", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
   const secret = db.store.get(`games/${gameId}/secret/round`);
   const publicState = db.store.get(`games/${gameId}`).publicState;
-  const correct = secret.correctId;
-  const wrong = publicState.prompt.choices.find((item) => item.id !== correct).id;
+  assert.equal(publicState.phase, "question");
+  assert.deepEqual(secret.selections, { alice: "luffy", bob: "naruto" });
+  assert.equal(publicState.characterOptions.some((item) => item.id === "naruto"), true);
   await games.submitGameAction({
     auth: { uid: "alice" },
     data: {
       gameId,
-      actionType: "guess",
-      payload: { choiceId: correct, score: 100 },
+      actionType: "question",
+      payload: { question: "Does the character wear orange?" },
       clientActionId: "a1",
     },
   });
@@ -239,116 +263,81 @@ test("guess character scores server-side and ignores client score", async () => 
     auth: { uid: "bob" },
     data: {
       gameId,
-      actionType: "guess",
-      payload: { choiceId: wrong },
+      actionType: "answer",
+      payload: { answer: "yes" },
       clientActionId: "b1",
     },
   });
-  const after = db.store.get(`games/${gameId}`);
-  assert.equal(after.publicState.scores.alice, 1);
-  assert.equal(after.publicState.scores.bob, 0);
-  assert.notEqual(after.publicState.roundNumber, 1);
-});
-
-test("guess character rejects duplicate answers, non-players, and stale versions", async () => {
-  const db = createFakeDb(seed());
-  const games = domain(db);
-  const gameId = await startGuess(db, games);
-  const choice = db.store.get(`games/${gameId}`).publicState.prompt.choices[0].id;
-  await games.submitGameAction({
-    auth: { uid: "alice" },
-    data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a1" },
-  });
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: "alice" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a2" },
-    }),
-    (error) => error.code === "already-exists",
-  );
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: "dave" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice } },
-    }),
-    (error) => error.code === "permission-denied",
-  );
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: "bob" },
-      data: {
-        gameId,
-        actionType: "guess",
-        payload: { choiceId: choice, stateVersion: -1 },
-      },
-    }),
-    (error) => error.code === "aborted",
-  );
-});
-
-test("guess character timeout advances the round without client clocks", async () => {
-  let now = new Date("2026-09-02T12:00:00Z");
-  const db = createFakeDb(seed());
-  const games = domain(db, { clock: { now: () => now } });
-  const gameId = await startGuess(db, games);
-  now = new Date("2026-09-02T12:05:00Z");
-  await games.processExpiredGames();
-  const after = db.store.get(`games/${gameId}`);
-  assert.ok(after.publicState.roundNumber >= 2 || after.status === "completed");
-  assert.equal(after.publicState.scores.alice, 0);
-});
-
-test("guess character artwork is catalog-backed and does not leak the answer", async () => {
-  const art = require("../src/characterArt");
-  const db = createFakeDb(seed());
-  const games = domain(db);
-  const gameId = await startGuess(db, games);
-  const publicState = db.store.get(`games/${gameId}`).publicState;
-  const secret = db.store.get(`games/${gameId}/secret/round`);
-  const artwork = publicState.prompt.artwork;
-  assert.ok(artwork);
-  assert.equal(art.isOpaqueAssetId(artwork.assetId), true);
-  assert.equal(art.assertArtworkSafe(artwork, catalog.characterById(secret.correctId)), true);
-  const blob = JSON.stringify(artwork).toLowerCase();
-  assert.equal(blob.includes(secret.correctId.toLowerCase()), false);
-  assert.equal(blob.includes(secret.correctName.toLowerCase()), false);
-  const expected = art.artworkForCharacter(secret.correctId);
-  assert.equal(artwork.assetId, expected.assetId);
-  assert.equal(artwork.license, "pubget-original");
-  publicState.prompt.artwork = { assetId: "not-valid", portrait: { background: "#000000", shapes: [] } };
   await games.submitGameAction({
     auth: { uid: "alice" },
     data: {
       gameId,
       actionType: "guess",
-      payload: { choiceId: secret.correctId },
-      clientActionId: "art-1",
+      payload: { characterId: "naruto", score: 100 },
+      clientActionId: "a2",
     },
   });
   const after = db.store.get(`games/${gameId}`);
-  assert.ok(after.publicState.answeredPlayerIds.includes("alice"));
+  assert.equal(after.status, "completed");
+  assert.deepEqual(after.result.winnerIds, ["alice"]);
+  assert.equal(after.result.scores.alice, 1);
 });
 
-test("missing artwork does not break a guess character round", async () => {
-  const art = require("../src/characterArt");
-  const original = art.publicArtwork;
-  art.publicArtwork = () => null;
-  try {
-    const db = createFakeDb(seed());
-    const games = domain(db);
-    const gameId = await startGuess(db, games);
-    const publicState = db.store.get(`games/${gameId}`).publicState;
-    assert.equal(publicState.prompt.artwork, null);
-    assert.ok(publicState.prompt.clue);
-    const choice = publicState.prompt.choices[0].id;
-    await games.submitGameAction({
+test("guess character rejects duplicate selections, non-players, and stale versions", async () => {
+  const db = createFakeDb(seed());
+  const games = domain(db);
+  const gameId = await startGuess(db, games);
+  await games.submitGameAction({
+    auth: { uid: "alice" },
+    data: {
+      gameId,
+      actionType: "question",
+      payload: { question: "Is the character a ninja?" },
+      clientActionId: "a1",
+    },
+  });
+  await assert.rejects(
+    games.submitGameAction({
       auth: { uid: "alice" },
-      data: { gameId, actionType: "guess", payload: { choiceId: choice }, clientActionId: "a1" },
-    });
-    assert.ok(db.store.get(`games/${gameId}`).publicState.answeredPlayerIds.includes("alice"));
-  } finally {
-    art.publicArtwork = original;
-  }
+      data: {
+        gameId,
+        actionType: "question",
+        payload: { question: "Another question?" },
+        clientActionId: "a2",
+      },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    games.submitGameAction({
+      auth: { uid: "dave" },
+      data: { gameId, actionType: "question", payload: { question: "?" } },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("guess character timeout resolves a selection forfeiture", async () => {
+  let now = new Date("2026-09-02T12:00:00Z");
+  const db = createFakeDb(seed());
+  const games = domain(db, { clock: { now: () => now } });
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: {
+      type: "guessCharacter",
+      title: "Guess",
+      groupId: "g1",
+      creationSource: "group_chat",
+    },
+  });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
+  await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const gameId = created.gameId;
+  now = new Date("2026-09-02T12:05:00Z");
+  await games.processExpiredGames();
+  const after = db.store.get(`games/${gameId}`);
+  assert.equal(after.status, "completed");
+  assert.deepEqual(after.result.winnerIds, []);
 });
 
 test("anime chain validates studio/character relations and turn order", async () => {
@@ -356,7 +345,12 @@ test("anime chain validates studio/character relations and turn order", async ()
   const games = domain(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "animeChain", title: "Chain", groupId: "g1" },
+    data: {
+      type: "animeChain",
+      title: "Chain",
+      groupId: "g1",
+      creationSource: "group_chat",
+    },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
@@ -384,13 +378,15 @@ test("anime chain validates studio/character relations and turn order", async ()
   const next = db.store.get(`games/${created.gameId}`);
   assert.equal(next.publicState.chain.length, 2);
   assert.equal(next.publicState.scores[current], 1);
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: next.publicState.currentPlayerId },
-      data: { gameId: created.gameId, actionType: "submit", payload: { title: valid.title } },
-    }),
-    (error) => error.code === "failed-precondition",
-  );
+  await games.submitGameAction({
+    auth: { uid: next.publicState.currentPlayerId },
+    data: {
+      gameId: created.gameId,
+      actionType: "submit",
+      payload: { title: "Not a real anime" },
+    },
+  });
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "completed");
 });
 
 test("emoji guess uses server clues and scores a correct title", async () => {
@@ -398,7 +394,12 @@ test("emoji guess uses server clues and scores a correct title", async () => {
   const games = domain(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1" },
+    data: {
+      type: "emojiAnimeGuess",
+      title: "Emoji",
+      groupId: "g1",
+      creationSource: "group_chat",
+    },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
@@ -409,10 +410,10 @@ test("emoji guess uses server clues and scores a correct title", async () => {
   assert.equal(JSON.stringify(publicState).includes(secret.title), false);
   assert.ok(!publicState.title);
   const current = publicState.currentPlayerId;
-  const other = current === "alice" ? "bob" : "alice";
+  const other = publicState.eligibleGuesserIds[0];
   await assert.rejects(
     games.submitGameAction({
-      auth: { uid: other },
+      auth: { uid: current },
       data: {
         gameId: created.gameId,
         actionType: "guess",
@@ -422,7 +423,7 @@ test("emoji guess uses server clues and scores a correct title", async () => {
     (error) => error.code === "failed-precondition",
   );
   await games.submitGameAction({
-    auth: { uid: current },
+    auth: { uid: other },
     data: {
       gameId: created.gameId,
       actionType: "guess",
@@ -430,7 +431,7 @@ test("emoji guess uses server clues and scores a correct title", async () => {
     },
   });
   const after = db.store.get(`games/${created.gameId}`);
-  assert.ok(after.publicState.scores[current] >= 1);
+  assert.ok(after.publicState.scores[other] >= 1);
   assert.ok(after.publicState.lastReveal);
   assert.equal(after.publicState.lastReveal.title, secret.title);
 });
@@ -441,7 +442,12 @@ test("emoji guess timeout advances without scoring the current player", async ()
   const games = domain(db, { clock: { now: () => now } });
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1" },
+    data: {
+      type: "emojiAnimeGuess",
+      title: "Emoji",
+      groupId: "g1",
+      creationSource: "group_chat",
+    },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });

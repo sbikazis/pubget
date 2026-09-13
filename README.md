@@ -1,21 +1,47 @@
-<<<<<<< HEAD
-# pubget
+# Pubget
 
-A new Flutter project.
+Pubget is a Flutter anime community application built on Firebase
+(Authentication, Firestore, Storage, Cloud Functions, Cloud Messaging, and
+Hosting). It supports Arabic and English, with a mobile-first Android target
+and a web release.
 
-## Getting Started
+See [replit.md](replit.md) for the Replit development setup, required Firebase
+Web values, validation commands, and deployment boundaries.
 
-This project is a starting point for a Flutter application.
+## Structure
 
-A few resources to get you started if this is your first Flutter project:
+- `lib/` — Flutter client (features, providers, repositories, design system)
+- `functions/` — Cloud Functions backend (domain modules, game engines, Mafia)
+- `firestore.rules` / `storage.rules` — security rules
+- `firestore.indexes.json` — composite index definitions
+- `test/` — Flutter tests
+- `functions/test/` — backend unit and emulator rule/E2E tests
+- `docs/` — product spec, rebuild matrix, state master, and domain docs
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Documentation
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-# pubget
->>>>>>> 7f36238c147b5dfcc6fdf7d2934bced94b43b204
+- `docs/PUBGET_1_0_SPEC.md` — locked product specification for 1.0
+- `docs/PUBGET_1_0_REBUILD_MATRIX.md` — live fix/rebuild/delete/keep list
+- `docs/CURRENT_STATE_MASTER.md` — working-baseline state and traceability
+
+## Development
+
+```bash
+flutter pub get
+flutter analyze
+flutter test
+```
+
+```bash
+cd functions
+npm install
+npm run check
+npm test
+```
+
+Firestore/Storage rules and emulator E2E tests:
+
+```bash
+npm install
+npm test
+```
