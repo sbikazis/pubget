@@ -18,13 +18,21 @@ abstract interface class MafiaRepository {
     required String gameId,
     required String targetId,
     required int nightNumber,
+    String? actionId,
   });
 
   Future<Result<void>> submitVote({
     required String gameId,
     required String targetId,
     required int dayNumber,
+    String? actionId,
   });
+
+  Future<Result<void>> endTurn(String gameId, {String? actionId});
+
+  Future<Result<void>> submitLastWords(String gameId, String text, {String? actionId});
+
+  Future<Result<void>> sendMafiaMessage(String gameId, String text, {String? actionId});
 
   Future<Result<void>> sendChat({
     required String gameId,
@@ -46,4 +54,6 @@ abstract interface class MafiaRepository {
   Stream<Result<List<Map<String, dynamic>>>> watchEvents(String gameId);
 
   Stream<Result<List<Map<String, dynamic>>>> watchChat(String gameId);
+
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId);
 }

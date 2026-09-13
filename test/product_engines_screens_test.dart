@@ -96,12 +96,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Need 4 players to start. 1 joined.'), findsOneWidget);
+    expect(find.text('تحتاج اللعبة إلى 4 لاعبين. المنضم الآن: 1.'), findsOneWidget);
     final start = tester.widget<PubgetPrimaryButton>(
-      find.widgetWithText(PubgetPrimaryButton, GameStrings.start),
+      find.byType(PubgetPrimaryButton).last,
     );
     expect(start.onPressed, isNull);
-    expect(find.textContaining('Your role:'), findsNothing);
+    expect(find.textContaining('دورك:'), findsNothing);
     expect(find.text(MafiaLeaveCopy.leave), findsNothing);
     mafia.dispose();
   });
@@ -424,6 +424,7 @@ final class _FakeMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int nightNumber,
+    String? actionId,
   }) async => const Success<void>(null);
 
   @override
@@ -431,6 +432,25 @@ final class _FakeMafiaRepository implements MafiaRepository {
     required String gameId,
     required String targetId,
     required int dayNumber,
+    String? actionId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> endTurn(String gameId, {String? actionId}) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> submitLastWords(
+    String gameId,
+    String text, {
+    String? actionId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> sendMafiaMessage(
+    String gameId,
+    String text, {
+    String? actionId,
   }) async => const Success<void>(null);
 
   @override
@@ -485,6 +505,12 @@ final class _FakeMafiaRepository implements MafiaRepository {
 
   @override
   Stream<Result<List<Map<String, dynamic>>>> watchChat(String gameId) =>
+      Stream<Result<List<Map<String, dynamic>>>>.value(
+        const Success(<Map<String, dynamic>>[]),
+      );
+
+  @override
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId) =>
       Stream<Result<List<Map<String, dynamic>>>>.value(
         const Success(<Map<String, dynamic>>[]),
       );

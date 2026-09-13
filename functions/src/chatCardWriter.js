@@ -10,6 +10,10 @@ const CREATED_TYPES = new Set(["game_created", "GameCreated"]);
 const COMPLETED_TYPES = new Set(["game_completed", "GameFinished"]);
 const CANCELLED_TYPES = new Set(["game_cancelled", "GameCancelled"]);
 const STARTED_TYPES = new Set(["game_started", "GameStarted"]);
+const PHASE_TYPES = new Set([
+  "MafiaStarted", "NightStarted", "DayStarted", "PlayerEliminated",
+  "Rewards", "MafiaWon", "TownWon",
+]);
 
 function cardFromActivity(activity) {
   if (!activity || typeof activity.groupId !== "string" || !activity.groupId.trim()) {
@@ -21,7 +25,8 @@ function cardFromActivity(activity) {
   const completed = COMPLETED_TYPES.has(activity.eventType);
   const cancelled = CANCELLED_TYPES.has(activity.eventType);
   const started = STARTED_TYPES.has(activity.eventType);
-  if (!created && !completed && !cancelled && !started) return null;
+  const phase = PHASE_TYPES.has(activity.eventType);
+  if (!created && !completed && !cancelled && !started && !phase) return null;
   const title = typeof activity.metadata?.title === "string" ? activity.metadata.title : "";
   const typeName = isMafia ? "Mafia" : (title.trim() || "A game");
   const gameId = activity.gameId;
@@ -42,7 +47,19 @@ function cardFromActivity(activity) {
   const maxPlayers = Number.isFinite(Number(metadata.maxPlayers))
     ? Number(metadata.maxPlayers)
     : requiredPlayers;
-  if (created) {
+  if (phase) {
+    kind = "phase";
+    const phaseText = {
+      MafiaStarted: "بدأت لعبة المافيا. افتح الغرفة لمعرفة دورك.",
+      NightStarted: "بدأ الليل.",
+      DayStarted: "بدأ النهار. راجعوا ما حدث الليلة الماضية.",
+      PlayerEliminated: "تم إقصاء لاعب من اللعبة.",
+      Rewards: "تم توزيع مكافآت المافيا.",
+      MafiaWon: "فازت المافيا.",
+      TownWon: "فازت المدينة.",
+    };
+    text = phaseText[activity.eventType] || "تحديث من لعبة المافيا.";
+  } else if (created) {
     kind = "created";
     text = isMafia
       ? "A Mafia lobby is waiting. Tap to join."
@@ -91,7 +108,8 @@ function cardFromActivity(activity) {
         playerCount,
         requiredPlayers,
         maxPlayers,
-        status: started ? "started" : cancelled ? "cancelled" : null,
+        status: started ? "started" : cancelled ? "cancelled" : phase ? "active" : null,
+        phase: phase ? activity.eventType : null,
       },
     },
   };

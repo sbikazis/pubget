@@ -37,6 +37,8 @@ const REWARD_AMOUNTS = Object.freeze({
   earn_game_win_hard: 10,
   earn_game_draw: 5,
   earn_game_loss: 2,
+  earn_mafia_win: 10,
+  earn_mafia_loss: 2,
   earn_publish: 10,
   earn_achievement: 5,
   earn_referral_inviter: 70,
@@ -51,6 +53,8 @@ const DAILY_CAPS = Object.freeze({
   earn_game_win_hard: 3,
   earn_game_draw: 3,
   earn_game_loss: 3,
+  earn_mafia_win: 3,
+  earn_mafia_loss: 3,
   earn_publish: 1,
   earn_achievement: 9,
 });
@@ -63,6 +67,8 @@ const DAILY_BUCKET = Object.freeze({
   earn_game_win_hard: "game",
   earn_game_draw: "game",
   earn_game_loss: "game",
+  earn_mafia_win: "game",
+  earn_mafia_loss: "game",
   earn_publish: "publish",
   earn_achievement: "achievement",
 });
