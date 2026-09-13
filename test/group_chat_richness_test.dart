@@ -186,6 +186,13 @@ void main() {
     await tester.tap(find.byKey(const Key('catalog-sticker-reactions/heart')));
     await tester.pumpAndSettle();
     expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
+    // The sent sticker surfaces in the recently-used strip with the favorites
+    // toggle; the strip stays reachable when toggling favorites mode.
+    expect(find.byKey(const Key('recent-sticker-reactions/heart')), findsOneWidget);
+    expect(find.byKey(const Key('sticker-favorites-toggle')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sticker-favorites-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('Favorites'), findsOneWidget);
     // Close panel so message actions remain reachable.
     await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();

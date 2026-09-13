@@ -735,4 +735,16 @@ final class AppStrings {
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
   );
+  String get voiceMicPermissionDenied => pick(
+    'Microphone access is required to record a voice message.',
+    'يلزم السماح بالوصول إلى الميكروفون لتسجيل رسالة صوتية.',
+  );
+  String get voicePreviewUnavailable => pick(
+    'Preview is not available on this device.',
+    'المعاينة غير متاحة على هذا الجهاز.',
+  );
+  String get voiceSlideToCancel => pick('Slide to cancel', 'اسحب للإلغاء');
+  String get resume => pick('Resume', 'استئناف');
+  String get pause => pick('Pause', 'إيقاف مؤقت');
+  String get preview => pick('Preview', 'معاينة');
 }

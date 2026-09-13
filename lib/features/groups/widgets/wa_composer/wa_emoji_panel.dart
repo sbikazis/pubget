@@ -7,6 +7,7 @@ import 'package:pubget/core/widgets/pubget_bottom_sheet.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/l10n/app_strings.dart';
 import '../../data/emoji_library.dart';
 import '../../data/sticker_catalog.dart';
 import '../../data/sticker_store.dart';
@@ -20,7 +21,6 @@ class WaEmojiPanel extends StatefulWidget {
   const WaEmojiPanel({
     required this.onInsertEmoji,
     required this.onSendCustomSticker,
-    required this.onClose,
     required this.tabPrefKey,
     required this.currentUserId,
     required this.currentUserName,
@@ -39,7 +39,6 @@ class WaEmojiPanel extends StatefulWidget {
     required String stickerCreatorName,
   })
   onSendCustomSticker;
-  final VoidCallback onClose;
   final String tabPrefKey;
   final String currentUserId;
   final String currentUserName;
@@ -62,6 +61,9 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   List<UserStickerEntry> _stickers = const <UserStickerEntry>[];
   var _loadingStickers = true;
   var _sendingSticker = false;
+  List<String> _recent = const <String>[];
+  Set<String> _favorites = const <String>{};
+  var _showFavorites = false;
 
   @override
   void initState() {
@@ -81,10 +83,14 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         _ => WaPanelTab.stickers,
       };
       final stickers = await _store.entries();
+      final recent = await _stickerStore.recent();
+      final favorites = await _stickerStore.favorites();
       if (!mounted) return;
       setState(() {
         _tab = tab;
         _stickers = stickers;
+        _recent = recent;
+        _favorites = favorites;
         _loadingStickers = false;
       });
     } catch (_) {
@@ -423,58 +429,145 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
       );
     }
     final items = _filteredStickers;
-    if (items.isEmpty && stickerCatalog.isEmpty) {
-      return _emptyStickers();
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 1,
-      ),
-      itemCount: items.length + stickerCatalog.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) return _createStickerCell();
-        if (index <= items.length) {
-          final entry = items[index - 1];
-          return InkWell(
-            key: Key('user-sticker-$index'),
-            borderRadius: BorderRadius.circular(12),
-            onTap: _sendingSticker ? null : () => _sendStickerEntry(entry),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                File(entry.path),
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const ColoredBox(
-                  color: WaColors.darkPill,
-                  child: Icon(Icons.broken_image, color: WaColors.iconMuted),
+    final catalog = _showFavorites
+        ? stickerCatalog
+            .where((item) => _favorites.contains(item.key))
+            .toList(growable: false)
+        : stickerCatalog;
+    final isEmpty = items.isEmpty && catalog.isEmpty;
+    return Column(
+      children: <Widget>[
+        if (_showFavorites || _recent.isNotEmpty) _recentStrip(),
+        Expanded(
+          child: isEmpty
+              ? _emptyStickers()
+              : GridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            itemCount: items.length + catalog.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) return _createStickerCell();
+              if (index <= items.length) {
+                final entry = items[index - 1];
+                return InkWell(
+                  key: Key('user-sticker-$index'),
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _sendingSticker ? null : () => _sendStickerEntry(entry),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(entry.path),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: WaColors.darkPill,
+                        child: Icon(
+                          Icons.broken_image,
+                          color: WaColors.iconMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              final sticker = catalog[index - items.length - 1];
+              final favored = _favorites.contains(sticker.key);
+              return Stack(
+                children: <Widget>[
+                  InkWell(
+                    key: Key('catalog-sticker-${sticker.key}'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _sendingSticker
+                        ? null
+                        : () async {
+                            if (_sendingSticker) return;
+                            setState(() => _sendingSticker = true);
+                            try {
+                              await _stickerStore.remember(sticker.key);
+                              final recent = await _stickerStore.recent();
+                              if (mounted) setState(() => _recent = recent);
+                              await widget.onSendSticker(sticker.key);
+                            } finally {
+                              if (mounted) setState(() => _sendingSticker = false);
+                            }
+                          },
+                    onLongPress: () async {
+                      await _stickerStore.toggleFavorite(sticker.key);
+                      final favorites = await _stickerStore.favorites();
+                      if (mounted) setState(() => _favorites = favorites);
+                    },
+                    child: StickerMark(stickerKey: sticker.key),
+                  ),
+                  if (favored)
+                    const Align(
+                      alignment: Alignment.topRight,
+                      child: Icon(Icons.star, size: 16),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+    Widget _recentStrip() {
+    final strings = AppStrings.of(context);
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(4, 4, 8, 0),
+        children: <Widget>[
+          IconButton(
+            key: const Key('sticker-favorites-toggle'),
+            tooltip: strings.pick('Favorite stickers', 'الملصقات المفضلة'),
+            onPressed: () => setState(() => _showFavorites = !_showFavorites),
+            icon: Icon(
+              Icons.star_border,
+              color: _favorites.isEmpty
+                  ? WaColors.iconMuted
+                  : WaColors.cursorGreen,
+              size: 26,
+            ),
+          ),
+          if (_showFavorites)
+            Center(
+              child: Text(
+                strings.pick('Favorites', 'المفضلة'),
+                style: const TextStyle(
+                  color: WaColors.iconMuted,
+                  fontSize: 12,
                 ),
               ),
             ),
-          );
-        }
-        final sticker = stickerCatalog[index - items.length - 1];
-        return InkWell(
-          key: Key('catalog-sticker-${sticker.key}'),
-          borderRadius: BorderRadius.circular(12),
-          onTap: _sendingSticker
-              ? null
-              : () async {
-                  if (_sendingSticker) return;
-                  setState(() => _sendingSticker = true);
-                  try {
-                    await _stickerStore.remember(sticker.key);
-                    await widget.onSendSticker(sticker.key);
-                  } finally {
-                    if (mounted) setState(() => _sendingSticker = false);
-                  }
-                },
-          child: StickerMark(stickerKey: sticker.key),
-        );
-      },
+          for (final key in _recent)
+            if (!_showFavorites && stickerByKey(key) != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: InkWell(
+                  key: Key('recent-sticker-$key'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _sendingSticker
+                      ? null
+                      : () async {
+                          if (_sendingSticker) return;
+                          setState(() => _sendingSticker = true);
+                          try {
+                            await widget.onSendSticker(key);
+                          } finally {
+                            if (mounted) setState(() => _sendingSticker = false);
+                          }
+                        },
+                  child: StickerMark(stickerKey: key, size: 44),
+                ),
+              ),
+        ],
+      ),
     );
   }
 

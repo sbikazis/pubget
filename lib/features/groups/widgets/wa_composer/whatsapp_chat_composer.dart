@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../app/app_router.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../data/sticker_store.dart';
 import '../../data/user_sticker_store.dart';
 import '../../models/chat_models.dart';
@@ -91,6 +92,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   StreamSubscription<double>? _ampSub;
   final _levels = List<double>.filled(30, 0.18);
   AudioPlayer? _previewPlayer;
+  StreamSubscription<void>? _previewCompleteSub;
 
   /// True while [voiceCapture.start] is in flight after long-press arm.
   var _holdStarting = false;
@@ -98,6 +100,10 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   var _cancelAfterStart = false;
   var _sending = false;
   var _mediaFlowBusy = false;
+
+  /// Guards panel/attach transitions so rapid taps cannot double-toggle the
+  /// keyboard↔panel swap or open two attachment sheets.
+  var _panelTransition = false;
 
   late final AnimationController _micSendFlip;
   late final AnimationController _cameraFade;
@@ -134,6 +140,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     widget.controller.removeListener(_onText);
     _tick?.cancel();
     _armHoldTimer?.cancel();
+    unawaited(_previewCompleteSub?.cancel());
     if (_activePointer != null) {
       _detachPointerRoute(_activePointer!);
       _activePointer = null;
@@ -161,57 +168,61 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   }
 
   Future<void> _togglePanel() async {
-    if (_panelOpen) {
-      setState(() => _panelOpen = false);
-      await Future<void>.delayed(const Duration(milliseconds: 40));
-      if (!mounted) return;
-      widget.focusNode.requestFocus();
-      await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-      return;
+    if (_panelTransition) return;
+    _panelTransition = true;
+    try {
+      if (_panelOpen) {
+        setState(() => _panelOpen = false);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        if (!mounted) return;
+        widget.focusNode.requestFocus();
+        await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+        return;
+      }
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      widget.focusNode.unfocus();
+      // Keep selection; reopen focus soft without keyboard when panel closes.
+      setState(() => _panelOpen = true);
+    } finally {
+      _panelTransition = false;
     }
-    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-    widget.focusNode.unfocus();
-    // Keep selection; reopen focus soft without keyboard when panel closes.
-    setState(() => _panelOpen = true);
-  }
-
-  Future<void> _closePanelToKeyboard() async {
-    if (!_panelOpen) return;
-    setState(() => _panelOpen = false);
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    if (!mounted) return;
-    widget.focusNode.requestFocus();
   }
 
   Future<void> _openAttach() async {
-    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-    if (!mounted) return;
-    setState(() => _panelOpen = false);
-    await WaAttachmentSheet.show(
-      context,
-      groupId: widget.groupId,
-      onCamera: () {
-        Navigator.of(context).pop();
-        unawaited(_openCamera());
-      },
-      onGallery: () {
-        Navigator.of(context).pop();
-        unawaited(_openGalleryFlow());
-      },
-      onVideo: () {
-        Navigator.of(context).pop();
-        unawaited(_openVideoFlow());
-      },
-      onGames: () {
-        // Sheet opens nested games sheet itself.
-      },
-      onCreateEvent: () {
-        AppNavigation.go(
-          context,
-          '/events/create?groupId=${Uri.encodeComponent(widget.groupId)}',
-        );
-      },
-    );
+    if (_panelTransition) return;
+    _panelTransition = true;
+    try {
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      if (!mounted) return;
+      setState(() => _panelOpen = false);
+      await WaAttachmentSheet.show(
+        context,
+        groupId: widget.groupId,
+        onCamera: () {
+          Navigator.of(context).pop();
+          unawaited(_openCamera());
+        },
+        onGallery: () {
+          Navigator.of(context).pop();
+          unawaited(_openGalleryFlow());
+        },
+        onVideo: () {
+          Navigator.of(context).pop();
+          unawaited(_openVideoFlow());
+        },
+        onGames: () {
+          // Sheet opens nested games sheet itself.
+        },
+        onCreateEvent: () {
+          AppNavigation.go(
+            context,
+            '/events/create?groupId=${Uri.encodeComponent(widget.groupId)}',
+          );
+        },
+      );
+    } finally {
+      _panelTransition = false;
+    }
   }
 
   Future<void> _openCamera() async {
@@ -233,7 +244,6 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
       final picker = ImagePicker();
       final files = await picker.pickMultiImage(imageQuality: 100);
       if (files.isEmpty || !mounted) {
-        // Allow video via single pick if multi returned empty after cancel.
         return;
       }
       for (final file in files.take(30)) {
@@ -315,10 +325,8 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
       _holdStarting = false;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'يلزم السماح بالوصول إلى الميكروفون لتسجيل رسالة صوتية.',
-          ),
+        SnackBar(
+          content: Text(AppStrings.of(context).voiceMicPermissionDenied),
         ),
       );
       return;
@@ -493,9 +501,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     if (clip == null) return;
     if (clip.exceedsLimits) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('الرسائل الصوتية محدودة بـ 60 ثانية و 10 ميجابايت.'),
-        ),
+        SnackBar(content: Text(AppStrings.of(context).voiceNoteLimits)),
       );
       return;
     }
@@ -526,7 +532,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     if (path == null || path.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('المعاينة غير متاحة على هذا الجهاز.')),
+        SnackBar(content: Text(AppStrings.of(context).voicePreviewUnavailable)),
       );
       return;
     }
@@ -537,18 +543,19 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     }
     try {
       await _previewPlayer!.stop();
-      await _previewPlayer!.play(DeviceFileSource(path));
-      if (!mounted) return;
-      setState(() => _previewPlaying = true);
-      _previewPlayer!.onPlayerComplete.listen((_) {
+      await _previewCompleteSub?.cancel();
+      _previewCompleteSub = _previewPlayer!.onPlayerComplete.listen((_) {
         if (!mounted) return;
         setState(() => _previewPlaying = false);
       });
+      await _previewPlayer!.play(DeviceFileSource(path));
+      if (!mounted) return;
+      setState(() => _previewPlaying = true);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('تعذر تشغيل المعاينة.')));
+      ).showSnackBar(SnackBar(content: Text(AppStrings.of(context).voicePlayFailed)));
     }
   }
 
@@ -638,7 +645,6 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                         );
                         if (mounted) setState(() => _panelOpen = false);
                       },
-                  onClose: _closePanelToKeyboard,
                   tabPrefKey: _tabPrefKey,
                 )
               : const SizedBox.shrink(),
@@ -796,7 +802,8 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
   }
 
   Widget _idlePill(bool dark) {
-    final hint = widget.hintText ?? 'مراسلة';
+    final hint = widget.hintText ??
+        AppStrings.of(context).pick('Message', 'مراسلة');
     return Container(
       constraints: const BoxConstraints(minHeight: 46),
       decoration: BoxDecoration(
@@ -878,7 +885,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
           ),
           IconButton(
             key: const Key('composer-attach'),
-            tooltip: 'Attachments',
+            tooltip: AppStrings.of(context).attachments,
             onPressed: _openAttach,
             icon: Transform.rotate(
               angle: -math.pi / 4,
@@ -949,15 +956,19 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 120),
               child: _slideCancel
-                  ? const Row(
-                      key: ValueKey('cancel'),
+                  ? Row(
+                      key: const ValueKey('cancel'),
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(Icons.delete, color: WaColors.recordRed, size: 18),
-                        SizedBox(width: 4),
+                        const Icon(
+                          Icons.delete,
+                          color: WaColors.recordRed,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          'إلغاء',
-                          style: TextStyle(
+                          AppStrings.of(context).cancel,
+                          style: const TextStyle(
                             fontSize: 14,
                             color: WaColors.recordRed,
                             fontWeight: FontWeight.w600,
@@ -965,19 +976,19 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                         ),
                       ],
                     )
-                  : const Row(
-                      key: ValueKey('hint'),
+                  : Row(
+                      key: const ValueKey('hint'),
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(
+                        const Icon(
                           Icons.chevron_left,
                           color: WaColors.iconMuted,
                           size: 18,
                         ),
-                        SizedBox(width: 2),
+                        const SizedBox(width: 2),
                         Text(
-                          'اسحب للإلغاء',
-                          style: TextStyle(
+                          AppStrings.of(context).voiceSlideToCancel,
+                          style: const TextStyle(
                             fontSize: 13,
                             color: WaColors.iconMuted,
                           ),
@@ -1015,7 +1026,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
               children: <Widget>[
                 IconButton(
                   key: const Key('composer-voice-delete'),
-                  tooltip: 'Delete',
+                  tooltip: AppStrings.of(context).delete,
                   padding: EdgeInsets.zero,
                   constraints: btnConstraints,
                   onPressed: () => unawaited(_cancelRecord(animated: true)),
@@ -1023,7 +1034,9 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                 ),
                 IconButton(
                   key: const Key('composer-voice-pause'),
-                  tooltip: _lockedPaused ? 'Resume' : 'Pause',
+                  tooltip: _lockedPaused
+                      ? AppStrings.of(context).resume
+                      : AppStrings.of(context).pause,
                   padding: EdgeInsets.zero,
                   constraints: btnConstraints,
                   onPressed: () => unawaited(_toggleLockedPause()),
@@ -1035,7 +1048,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                 if (_lockedPaused)
                   IconButton(
                     key: const Key('composer-voice-preview'),
-                    tooltip: 'Preview',
+                    tooltip: AppStrings.of(context).preview,
                     padding: EdgeInsets.zero,
                     constraints: btnConstraints,
                     onPressed: () => unawaited(_togglePreviewPlayback()),
