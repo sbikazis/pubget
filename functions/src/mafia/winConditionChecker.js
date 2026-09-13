@@ -2,11 +2,12 @@
 
 const admin = require("firebase-admin");
 const { distributeRewards } = require("./rewardDistributor");
-const { writeHistory } = require("./historyWriter");
+const { createHistoryWriter } = require("./historyWriter");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
 const db = admin.firestore();
+const { writeHistory } = createHistoryWriter({ db });
 
 function winnerFromAliveTeams(teams) {
   const list = Array.isArray(teams) ? teams : [];

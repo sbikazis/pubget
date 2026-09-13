@@ -34,27 +34,27 @@ Direct client writes to currency, premium/subscription state, moderation fields,
 
 ### SEC-H-01 — Cross-group Mafia history disclosure
 
-**Status:** Open, verified by source inspection.  
+**Status:** Fixed 2026-09-13 by `firestore.rules` (participants-only reads).  
 **Resource:** `mafia_history/{gameId}`.  
 **Evidence:** `firestore.rules`; `functions/src/mafia/historyWriter.js`.
 
-The rule allows every authenticated user to read Mafia history. The server writer stores complete player details including role/team/outcome. A user who is not a participant or group member can therefore request another game's history.
+The rule allowed every authenticated user to read Mafia history. The server writer stores complete player details including role/team/outcome. A user who is not a participant or group member can therefore request another game's history.
 
 **Risk:** Cross-tenant privacy disclosure and post-game role/history enumeration.
 
-**Required remediation:** Restrict reads to authorized participants/group members, or create a sanitized public projection that excludes private role/team details. Add a negative emulator test for an unrelated authenticated user.
+**Resolution:** `mafia_history/{gameId}` reads are now restricted to `signedIn()` callers whose `request.auth.uid` is listed in `resource.data.players`; writes remain server-only. The rule keeps storing the full post-game record (roles are revealed after a game ends), but only participants can read it. Covered by a negative emulator test for an unrelated authenticated user in `functions/test/firestore.rules.test.js`.
 
 ### SEC-H-02 — Non-transactional Mafia history idempotency
 
-**Status:** Open, verified race by source inspection.  
+**Status:** Fixed 2026-09-13 by `functions/src/mafia/historyWriter.js`.  
 **Resource:** History writing and per-user game statistics.  
 **Evidence:** `functions/src/mafia/historyWriter.js`.
 
-The writer reads `historyWritten` before constructing a batch that increments user statistics. Concurrent or retried invocations can both pass the initial check and both apply increments.
+The writer read `historyWritten` before constructing a batch that increments user statistics. Concurrent or retried invocations can both pass the initial check and both apply increments.
 
 **Risk:** Inflated games/wins/losses and inconsistent completion markers.
 
-**Required remediation:** Claim history writing transactionally or use a per-game, per-user idempotency ledger checked in the same transaction as each increment. Add a concurrent invocation test.
+**Resolution:** `writeHistory` now claims history writing transactionally: it reads `historyWritten` and applies the stats increments inside the same `runTransaction`, which also stamps `historyWritten` on the game document. Concurrent/retried invocations conflict on the game document, retry, re-read the completed flag, and skip without applying increments. Covered by a concurrent-invocation unit test in `functions/test/mafiaHistory.test.js`.
 
 ## Medium
 

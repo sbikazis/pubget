@@ -65,6 +65,14 @@ test.beforeEach(async () => {
     });
     await admin.doc("mafia_games/m1/players/alice/private/data").set({ role: "mafia" });
     await admin.doc("mafia_games/m1/players/bob/private/data").set({ role: "citizen" });
+    await admin.doc("mafia_history/h1").set({
+      gameId: "h1", winner: "citizens", durationSeconds: 60, version: "classic",
+      players: ["alice", "bob"],
+      playerDetails: [
+        { userId: "alice", role: "citizen", team: "citizens", won: true },
+        { userId: "bob", role: "mafia", team: "mafias", won: false },
+      ],
+    });
     await admin.doc("privateChats/c1").set({
       userA: "alice", userB: "bob", participantIds: ["alice", "bob"],
       lastMessageAt: new Date(), lastMessageText: "", lastMessageSenderId: "",
@@ -1168,6 +1176,19 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   }));
   await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
     lastAt: new Date(),
+  }));
+});
+
+test("mafia history is participant-read only and never client-writable (SEC-H-01)", async () => {
+  await assertSucceeds(db("alice").doc("mafia_history/h1").get());
+  await assertSucceeds(db("bob").doc("mafia_history/h1").get());
+  await assertFails(db("charlie").doc("mafia_history/h1").get());
+  await assertFails(db("alice").doc("mafia_history/h1").set({
+    gameId: "h1", winner: "mafias", players: ["alice"],
+  }));
+  await assertFails(db("alice").doc("mafia_history/other").get());
+  await assertFails(db("alice").doc("mafia_history/h1").update({
+    winner: "mafias",
   }));
 });
 
