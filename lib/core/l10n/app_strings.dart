@@ -699,6 +699,13 @@ final class AppStrings {
   );
   String get messageSendInvalid =>
       pick('This message could not be sent.', 'تعذّر إرسال هذه الرسالة.');
+  String get chatSecurityNote => pick(
+    'Messages are stored securely with Firebase and protected during transit. '
+    'Pubget and community moderators can access content for safety, moderation, '
+    'and abuse reporting.',
+    'تُخزَّن الرسائل بأمان عبر Firebase وتُحمى أثناء النقل. يمكن لبُبجت ومشرفي '
+    'المجتمع الاطلاع على المحتوى لأغراض السلامة والرقابة والإبلاغ عن الإساءة.',
+  );
   String chatSendFailureLabel(String? code) {
     switch (code) {
       case 'chat_network':

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../games/models/game_type_registry.dart';
@@ -752,10 +753,10 @@ class ChatEncryptionBanner extends StatelessWidget {
           color: const Color(0x33F2C94C),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Text(
-          'الرسائل والمكالمات محمية بتشفير بين الطرفين. لا يمكن لأحد خارج هذه المحادثة قراءتها أو الاستماع إليها، ولا حتى Pubget.',
+        child: Text(
+          AppStrings.of(context).chatSecurityNote,
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             height: 1.35,
             color: Color(0xFFE6C35C),

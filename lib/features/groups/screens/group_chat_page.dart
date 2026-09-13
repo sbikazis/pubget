@@ -688,6 +688,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
       canDelete: canDelete && !message.isDeleted,
       canPin: canPin && !message.isDeleted,
       canReport: !isMine && !message.isDeleted,
+      canReact: message.sendState == ChatSendState.sent,
       isStarred: _stars.isStarred(message.id),
     );
     if (!mounted || result == null) return;
