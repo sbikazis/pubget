@@ -381,6 +381,15 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       if (!message.exists || message.data().deletedAt) {
         throw new HttpsError("not-found", "Message not found.");
       }
+      // pinOwnMessages also gates moderator pinning: moderators (deleteMessages)
+      // may pin any member's message, regular members only their own.
+      if (message.data().senderId !== uid &&
+          !can(context.member, context.role, PERMISSIONS.delete)) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only pin messages you sent.",
+        );
+      }
       transaction.update(ref, {
         pinnedAt: pinned ? FieldValue.serverTimestamp() : null,
       });
@@ -685,6 +694,12 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
     }
     const message = await messageRef(db, groupId, messageId).get();
     if (!message.exists) throw new HttpsError("not-found", "Message not found.");
+    if (message.data().deletedAt) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Deleted messages cannot be reported.",
+      );
+    }
     if (message.data().senderId === reporterId) {
       throw new HttpsError("failed-precondition", "You cannot report your own message.");
     }

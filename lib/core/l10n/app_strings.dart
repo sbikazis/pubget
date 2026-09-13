@@ -614,6 +614,34 @@ final class AppStrings {
   String get reportMessage => pick('Report message', 'الإبلاغ عن الرسالة');
   String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
   String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
+  String get confirmReport => pick('Confirm report', 'تأكيد الإبلاغ');
+  String confirmReportContent(String reason) => pick(
+    'Submit this message report for “$reason”?',
+    'إرسال بلاغ عن هذه الرسالة بسبب «$reason»؟',
+  );
+  String get submitReport => pick('Submit report', 'إرسال البلاغ');
+  String reportReasonLabel(String key) => switch (key) {
+    'inappropriate' => pick('Inappropriate content', 'محتوى غير مناسب'),
+    'spam' => pick('Spam', 'سبام'),
+    'copyright' => pick('Copyright', 'حقوق الطبع'),
+    'harassment' => pick('Harassment', 'تحرّش أو إزعاج'),
+    'other' => pick('Other', 'أخرى'),
+    _ => key,
+  };
+  String get editMessage => pick('Edit message', 'تعديل الرسالة');
+  String get updateYourMessage => pick('Update your message', 'حدّث رسالتك');
+  String get save => pick('Save', 'حفظ');
+  String get messageEditFailed =>
+      pick('Unable to edit message.', 'تعذّر تعديل الرسالة.');
+  String get copyFailed => pick('Could not copy message', 'تعذّر نسخ الرسالة');
+  String get forwardTo => pick('Forward to', 'إعادة توجيه إلى');
+  String get noForwardTargets => pick(
+    'No other groups or chats available',
+    'لا توجد مجموعات أو محادثات أخرى متاحة',
+  );
+  String replyingToLabel(String name) =>
+      pick('Replying to $name', 'الرد على $name');
+  String get cancelReply => pick('Cancel reply', 'إلغاء الرد');
   String get messageForwarded =>
       pick('Message forwarded', 'أُعيد توجيه الرسالة');
   String get forwardFailed => pick('Forward failed.', 'فشل إعادة التوجيه.');
