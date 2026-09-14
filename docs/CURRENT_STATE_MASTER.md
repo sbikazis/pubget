@@ -457,15 +457,15 @@ Path: UI → `GroupProvider` → `httpsCallable('createGroup')`. Admin SDK write
 
 ### 5.3 Group Details (`group_details_page.dart`)
 
-If loaded, `isMember`, and `!isFounder` → post-frame redirect to `/group-chat?groupId=…` (40–49).
+Single unified `_GroupControlPanel` for anyone with `hasEntryHub` (rank ≥ GOKENIN, incl. founder). Strict 7-section order: AppBar (back + title + share + copy) → Hero Header (cover, gradient, privacy lock overlay, overlapping avatar, name/category, `group-hero-badges` horizontal row incl. gold rank badge with rank display name) → full-width "Open chat" primary button (first interactive element, red unread dot when `group.hasUnread`) → Quick Stats Strip (`group-quick-stats`, one horizontal row of uniform mini-cards: growth, members, chat activity 7d, new members this week, active members) → Promotion section (only `canManageSettings || isOwner`, promote + share + copy small buttons, eligibility gaps + gold progress bar, `currentlyPromoted`) → Quick Actions grid (2-col uniform cards, each shown only when the viewer holds the matching permission: requests=`manageRequests`, members=`kickBan`, rules=`manageRoles`→`/group-settings`, settings=`canManageSettings||isOwner`, events=`canManageEvents`, games=`manageGames`, bans=`kickBan||unban`; empty grid hidden) → Danger Zone (owner only: red-bordered card, transfer ownership + disband with existing double-confirm).
 
-If `isMember`: Group events, Group games; Create event if `canManageEvents`; Create game if `membership?.canManageGames == true`.
+If loaded, `isMember`, and `!isFounder` && `!hasEntryHub` → post-frame redirect to `/group-chat?groupId=…` (Rōnin rule, 40–49).
 
-If `!isMember`: `_JoinAction` — full → `Group is full`; `inviteOnly` → `Invitation required`; `approval` → `requestToJoin`; else `join`.
+If `!isMember`: `_VisitorDetails` + `_JoinAction` — full → `Group is full`; `inviteOnly` → `Invitation required`; `approval` → `requestToJoin`; else `join`.
 
-If `isFounder`: Manage members, Join requests, Roleplay characters when `group.type != GroupType.public`, Disband (two confirm dialogs).
+`hasEntryHub` = rank ≥ GOKENIN (via `rankHasAdminEntryHub`, `pubget_rank.dart`); `isFounder` is `membership?.role == GroupRole.founder` (`group_provider.dart` 34–36).
 
-`isFounder` is `membership?.role == GroupRole.founder` (`group_provider.dart` 34–36).
+After join success, provider sets `_membership = GroupMember(uid: '', role: member)` (`group_provider.dart` 97–101). **INCOMPLETE/MOCK** membership uid.
 
 After join success, provider sets `_membership = GroupMember(uid: '', role: member)` (`group_provider.dart` 97–101). **INCOMPLETE/MOCK** membership uid.
 

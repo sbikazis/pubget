@@ -33,7 +33,7 @@ void main() {
 
     expect(find.byKey(const Key('group-details-hero')), findsOneWidget);
     expect(find.byKey(const Key('group-hero-badges')), findsOneWidget);
-    expect(find.text('MIKADO'), findsNothing);
+    expect(find.text('MIKADO'), findsOneWidget);
     expect(find.text('Rising Crew'), findsOneWidget);
     expect(find.text('Anime Roleplay'), findsOneWidget);
     expect(find.text('4'), findsWidgets);
