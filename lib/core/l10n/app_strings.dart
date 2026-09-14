@@ -614,6 +614,34 @@ final class AppStrings {
   String get reportMessage => pick('Report message', 'الإبلاغ عن الرسالة');
   String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
   String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
+  String get confirmReport => pick('Confirm report', 'تأكيد الإبلاغ');
+  String confirmReportContent(String reason) => pick(
+    'Submit this message report for “$reason”?',
+    'إرسال بلاغ عن هذه الرسالة بسبب «$reason»؟',
+  );
+  String get submitReport => pick('Submit report', 'إرسال البلاغ');
+  String reportReasonLabel(String key) => switch (key) {
+    'inappropriate' => pick('Inappropriate content', 'محتوى غير مناسب'),
+    'spam' => pick('Spam', 'سبام'),
+    'copyright' => pick('Copyright', 'حقوق الطبع'),
+    'harassment' => pick('Harassment', 'تحرّش أو إزعاج'),
+    'other' => pick('Other', 'أخرى'),
+    _ => key,
+  };
+  String get editMessage => pick('Edit message', 'تعديل الرسالة');
+  String get updateYourMessage => pick('Update your message', 'حدّث رسالتك');
+  String get save => pick('Save', 'حفظ');
+  String get messageEditFailed =>
+      pick('Unable to edit message.', 'تعذّر تعديل الرسالة.');
+  String get copyFailed => pick('Could not copy message', 'تعذّر نسخ الرسالة');
+  String get forwardTo => pick('Forward to', 'إعادة توجيه إلى');
+  String get noForwardTargets => pick(
+    'No other groups or chats available',
+    'لا توجد مجموعات أو محادثات أخرى متاحة',
+  );
+  String replyingToLabel(String name) =>
+      pick('Replying to $name', 'الرد على $name');
+  String get cancelReply => pick('Cancel reply', 'إلغاء الرد');
   String get messageForwarded =>
       pick('Message forwarded', 'أُعيد توجيه الرسالة');
   String get forwardFailed => pick('Forward failed.', 'فشل إعادة التوجيه.');
@@ -671,6 +699,13 @@ final class AppStrings {
   );
   String get messageSendInvalid =>
       pick('This message could not be sent.', 'تعذّر إرسال هذه الرسالة.');
+  String get chatSecurityNote => pick(
+    'Messages are stored securely with Firebase and protected during transit. '
+    'Pubget and community moderators can access content for safety, moderation, '
+    'and abuse reporting.',
+    'تُخزَّن الرسائل بأمان عبر Firebase وتُحمى أثناء النقل. يمكن لبُبجت ومشرفي '
+    'المجتمع الاطلاع على المحتوى لأغراض السلامة والرقابة والإبلاغ عن الإساءة.',
+  );
   String chatSendFailureLabel(String? code) {
     switch (code) {
       case 'chat_network':
@@ -707,4 +742,16 @@ final class AppStrings {
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
   );
+  String get voiceMicPermissionDenied => pick(
+    'Microphone access is required to record a voice message.',
+    'يلزم السماح بالوصول إلى الميكروفون لتسجيل رسالة صوتية.',
+  );
+  String get voicePreviewUnavailable => pick(
+    'Preview is not available on this device.',
+    'المعاينة غير متاحة على هذا الجهاز.',
+  );
+  String get voiceSlideToCancel => pick('Slide to cancel', 'اسحب للإلغاء');
+  String get resume => pick('Resume', 'استئناف');
+  String get pause => pick('Pause', 'إيقاف مؤقت');
+  String get preview => pick('Preview', 'معاينة');
 }

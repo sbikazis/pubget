@@ -186,6 +186,13 @@ void main() {
     await tester.tap(find.byKey(const Key('catalog-sticker-reactions/heart')));
     await tester.pumpAndSettle();
     expect(chatRepo.sent.last['stickerKey'], 'reactions/heart');
+    // The sent sticker surfaces in the recently-used strip with the favorites
+    // toggle; the strip stays reachable when toggling favorites mode.
+    expect(find.byKey(const Key('recent-sticker-reactions/heart')), findsOneWidget);
+    expect(find.byKey(const Key('sticker-favorites-toggle')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sticker-favorites-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('Favorites'), findsOneWidget);
     // Close panel so message actions remain reachable.
     await tester.tap(find.byKey(const Key('composer-emoji')));
     await tester.pumpAndSettle();
@@ -394,6 +401,12 @@ final class _FakeChatRepository implements ChatRepository {
       ),
     );
   }
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => const Success(null);
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -591,4 +604,10 @@ final class _FakePrivateRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) async => const FailureResult(UnknownError());
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  }) async => const Success<ChatMediaUpload?>(null);
 }

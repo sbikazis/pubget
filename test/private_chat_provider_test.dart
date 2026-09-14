@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/network/network_service.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
 import 'package:pubget/features/private_chat/models/private_chat_models.dart';
 import 'package:pubget/features/private_chat/providers/private_chat_list_provider.dart';
@@ -197,6 +198,104 @@ void main() {
     expect(provider.messages.single.sendState, ChatSendState.sent);
   });
 
+  test('ready media doc from a prior attempt is reused without re-upload',
+      () async {
+    final repository = _FakePrivateChatRepository();
+    repository.readyMedia = const Success<ChatMediaUpload>(
+      ChatMediaUpload(
+        mediaUrl: 'https://cdn.example/video.mp4',
+        thumbnailUrl: null,
+        mediaId: 'media-1',
+        type: ChatMessageType.video,
+      ),
+    );
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final send = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1]),
+      fileName: 'clip.mp4',
+      contentType: 'video/mp4',
+    );
+    await pumpEventQueue();
+    final mediaId = provider.messages.single.id;
+    repository.completeNext(
+      Success(
+        ChatMessage.fromMap(<String, dynamic>{
+          'senderId': 'alice',
+          'senderName': 'Alice',
+          'senderAvatar': '',
+          'senderRole': '',
+          'type': 'video',
+          'text': null,
+          'mediaUrl': 'https://cdn.example/video.mp4',
+          'thumbnailUrl': null,
+          'mediaId': mediaId,
+          'createdAt': DateTime(2026, 1, 1),
+          'recipientCount': 1,
+          'deliveredCount': 1,
+          'readCount': 0,
+          'reactions': <String, int>{},
+        }, id: mediaId),
+      ),
+    );
+    await send;
+
+    expect(repository.uploadCalls, 0);
+    expect(provider.messages.single.sendState, ChatSendState.sent);
+    expect(provider.messages.single.mediaUrl, 'https://cdn.example/video.mp4');
+    expect(provider.messages.single.type, ChatMessageType.video);
+  });
+
+  test('manual retry never races an in-flight automatic retry', () async {
+    final repository = _FakePrivateChatRepository();
+    final network = _TestNetworkService();
+    final provider = PrivateChatProvider(
+      repository: repository,
+      network: network,
+    );
+    addTearDown(provider.dispose);
+    addTearDown(network.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final send = provider.sendText(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      text: 'retry me',
+    );
+    repository.completeNext(const FailureResult(NetworkError('chat_network')));
+    await send;
+    expect(provider.messages.single.sendState, ChatSendState.pending);
+
+    // Force an immediate automatic retry into flight.
+    network.pulse();
+    await pumpEventQueue();
+    final inFlight = repository.pendingCompleters
+        .where((completer) => !completer.isCompleted)
+        .length;
+    expect(inFlight, greaterThan(0));
+
+    final manual = provider.retry(provider.messages.single);
+    await pumpEventQueue();
+    // The overlap guard skipped the manual send — no duplicate callable.
+    expect(
+      repository.pendingCompleters
+          .where((completer) => !completer.isCompleted)
+          .length,
+      inFlight,
+    );
+    repository.completeNext(Success(_serverMessage(provider.messages.single.id)));
+    await manual;
+    expect(provider.messages.single.sendState, ChatSendState.sent);
+  });
+
   test('network failure stays pending; permanent failure can be deleted', () async {
     final repository = _FakePrivateChatRepository();
     final provider = PrivateChatProvider(repository: repository);
@@ -379,6 +478,8 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
   final pendingReceiptCompleters = <Completer<Result<void>>>[];
   final uploadResults = <Result<ChatMediaUpload>>[];
   final receiptChatIds = <String>[];
+  Result<ChatMediaUpload?> readyMedia = const Success<ChatMediaUpload?>(null);
+  int uploadCalls = 0;
   bool holdReceipts = false;
   bool delayCancel = false;
 
@@ -476,7 +577,25 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
-  }) async => uploadResults.isEmpty
-      ? const FailureResult(NetworkError())
-      : uploadResults.removeAt(0);
+  }) async {
+    uploadCalls++;
+    return uploadResults.isEmpty
+        ? const FailureResult(NetworkError())
+        : uploadResults.removeAt(0);
+  }
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  }) async => readyMedia;
+}
+
+final class _TestNetworkService extends NetworkService {
+  _TestNetworkService() : super(probe: () async => true);
+
+  @override
+  bool get isOnline => true;
+
+  void pulse() => notifyListeners();
 }

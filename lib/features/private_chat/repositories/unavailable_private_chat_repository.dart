@@ -81,4 +81,10 @@ final class UnavailablePrivateChatRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) async => _fail();
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String chatId,
+    required String mediaId,
+  }) async => _fail();
 }
