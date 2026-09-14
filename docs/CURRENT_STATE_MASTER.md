@@ -12,6 +12,36 @@ This document describes what exists and what happens in the repository at that c
 
 ---
 
+## Chat Phase B — branch state at close (2026-09-14)
+
+Branch `cursor/chat-phase-b` on top of converged `main` (`95eec93`). Phase scope: prompt-driven chat system repair (24-part Arabic-PROMPT master task), delivered in pragmatic commits, then independently verified.
+
+New commits on the branch (`95eec93..HEAD`):
+
+| Commit | Subject |
+|--------|---------|
+| `08f7651` | docs: update CURRENT_STATE_MASTER git baseline to converged main |
+| `6b4f26e` | fix(chat): harden group chat lifecycle, retry safety, and media pipeline |
+| `6f015ef` | fix(chat): gate pinning, close drawers cleanly, and localize actions |
+| `113dc43` | feat(chat): render live video frame and file info in the send preview |
+| `aca8d51` | fix(chat): surface recent/favorite stickers and localize composer actions |
+| `1f434ee` | fix(chat): harden private chat retry, media re-upload, and send guards |
+| `7133c80` | fix(chat): correct security banner copy and gate reaction bar |
+| `67fdcf7` | test(chat): fix composer widget tests broken by localized strings |
+
+Client/app changes touch: `chat_provider`, group/private chat repositories, `group_chat_page`, `chat_special_cards`, `wa_composer` (composer, emoji/sticker panel, media preview), `private_chat_*`, `app_strings` (additive only), and chat tests. Server changes in `functions/src/groupChat.js` (edit-window permission gate + media requirements hardening) verified by `node --check` and the regression suite below. `firebase deploy --only functions` is still a separate manual step.
+
+Verification performed:
+
+- `flutter analyze` (full project): 0 errors, 0 warnings (23 pre-existing `info` deprecation notices only).
+- Chat-scope batch (7 files, 46 tests): all passed — covers provider lifecycle/retry/media, media-retry widget, actions overlay, chat rebuild, chat richness (stickers/recent/favorites, voice, previews), and the two WhatsApp composer suites.
+- Full `flutter test`: 538 passed / 11 failed. The 3 composer failures were live phase-B regressions (localization of hint/slide-to-cancel) and are fixed at `67fdcf7`. The remaining 8 failures were proven pre-existing by running the exact same 5 files against base `95eec93` in a temp worktree: identical failures (shell drawer stale destination, chat-message-bubble golden @3.85% pixel diff, edits×2 copy drift, bans×2, details×2). See `docs/PUBGET_PROJECT_STATE.md` → Known Issues.
+- `flutter build apk --debug` was **not** completed (interrupted); the APK build must be part of manual verification.
+
+See also `docs/PUBGET_PROJECT_STATE.md` (Known Issues / Follow-up checklist for the pre-existing failures) and the PR description for the full phase report.
+
+---
+
 ## 0. Repository & Build State
 
 ### 0.1 Git identity at inspection
