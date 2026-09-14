@@ -99,8 +99,10 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -126,12 +128,45 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async => const Success('comment-1');
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      const Stream<Result<List<EventComment>>>.empty();
 
   @override
   Future<Result<void>> join(String eventId) async => const Success<void>(null);

@@ -64,6 +64,18 @@ Rebuilds Mafia as the exact spec-conformant server-authoritative domain. PR #97.
 - **Bugfix on main**: `functions/src/mafia/historyWriter.js` on `origin/main` was a corrupted merge (two `writeHistory` bodies + unmatched brace → SyntaxError). Restored the clean single-transaction idempotent writer.
 - **Docs**: `PRODUCT_ENGINES.md` (4–8, 5 roles, uppercase machine, revote rules, rewards), `CURRENT_STATE_MASTER.md` §11 + security table + callable list + unit-file list. No deploy performed — user runs `firebase deploy --only functions` manually, then `flutter build apk --debug` + on-device test.
 
+## PROMPT 3 — Events Rebirth (branch `cursor/events-rebirth-prompt-3`, 2026-09-14)
+
+Rebuilds Events as the exact spec-conformant social/community domain on top of the (already ~80% spec-compliant) engine. **Not deployed** — run `firebase deploy --only functions` manually.
+
+- **Server (`eventsDomain.js`)**: exact 12-type set (poll, comparison, theory, challenge, ranking, question, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion); `group`/`multiGroup`/`global` scopes; canonical `DRAFT`/`ACTIVE`/`ENDED`/`ARCHIVED`/`DELETED` (legacy lowercase preserved for old callers); 2/day race-safe creation limit; 7-day max duration. Ended notifications now type **`event_result_available`** (pushWorthy true, title "Results are ready"). Added **`resolveEvent`** (prediction/challenge creator locks the result → ENDED, `resultLockedAt`, immutable; validates `winnerIds` against stored responses via transaction; then result chat card + ended notification + `earn_event` rewards). Exported `previewEvent`, `resolveEvent`, `getEventAnalytics`, `addEventComment`, `reactToEvent` in `index.js`.
+- **Notifications (`notificationBuilder.js`)**: `event_starting` / `event_result_available` in `PUSH_TYPES`.
+- **Rules + indexes**: scope-aware visibility helpers (`eventVisibleOrGlobal` = creator OR public-status AND scope member incl. any multiGroup id); `comments`/`reactions` readable under the same visibility; `responses` readable for author or ENDED/ARCHIVED; new composite indexes for `scope+status+participantsCount+endAt` / `startAt` / `endAt` / `searchName`.
+- **Server tests**: `eventsDomain.test.js` now 35 tests (ended notification type + resolveEvent happy path + rejects invalid winners/non-creators); full `npm test` 216/216 pass. `firestore.rules.test.js` updated (emulator-only, source-consistent).
+- **Client**: `EventRepository` + `FirebaseEventRepository` + `UnavailableEventRepository` extended with `preview/resolve/getAnalytics/addComment/react/watchComments` and cursor pagination on active/recent (`after`); `EventProvider` wires comments watch + resolve/analytics/comment/reaction actions; `EventListProvider.loadMoreActive()` = infinite-scroll discovery; `EventDetailsScreen` adds like, comments, creator resolve dialog (prediction picker / challenge response picker), analytics sheet, action-manager buttons; `home_event_card.dart` Home strip shows exactly 3; Profile owner quick action "My Events"; test fakes in 5 test files updated + 3 new provider tests. `flutter analyze` clean (info-only); 35 event/social Dart tests pass.
+- **Docs**: `CURRENT_STATE_MASTER.md` §12 Events, §23.3 callables, notification table; `PUBGET_PROJECT_STATE.md` this entry.
+- **Known limitations (follow-up)**: quiz per-question timer UI not implemented (server has no `timePerQuestionMs` enforcement; details screen shows overall countdown); event-level "report" has no server callable (only reaction/comments); `firestore.rules.test.js` scope-visibility test not executed locally (emulator required).
+
 ## Older entries (pre-phase-B)
 
 None retained in this log at the time of creation. Start appending from here.

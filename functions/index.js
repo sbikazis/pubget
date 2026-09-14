@@ -450,6 +450,26 @@ exports.submitEventResponse = onCall(
   { region: "us-central1" },
   eventsDomain.submitEventResponse,
 );
+exports.previewEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.previewEvent,
+);
+exports.resolveEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.resolveEvent,
+);
+exports.getEventAnalytics = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventAnalytics,
+);
+exports.addEventComment = onCall(
+  { region: "us-central1" },
+  eventsDomain.addEventComment,
+);
+exports.reactToEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reactToEvent,
+);
 exports.createGame = onCall(
   { region: "us-central1" },
   gamesDomain.createGame,

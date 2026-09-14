@@ -715,21 +715,27 @@ Rewards: `rewardDistributor.js` `earn_mafia_win` 10 / `earn_mafia_loss` 2, idemp
 
 ## 12. Events
 
-Types with code paths (`eventsDomain.js` 20–24): poll, multipleChoice, ranking, versus, theory, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion, challenge.
+Types with code paths (`eventsDomain.js` 20–24): poll, comparison, theory, challenge, ranking, question, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion — an exact, strictly validated set of 12 types.
 
-Statuses: draft, scheduled, active, ended, cancelled, archived (`26–37`).
+Statuses: DRAFT, ACTIVE, ENDED, ARCHIVED, DELETED (canonical uppercase for new callers; legacy lowercase when a caller omits `scope`).
 
-Max duration: `MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000` (`12`, 135–137) message `Events cannot last longer than 7 days.` Client `EventLifecycle.maxDuration` is 7 days.
+Scopes: `group`, `multiGroup` (member of any `groupIds` entry), `global` (whole community, no group membership required). Global + multi-group creation is reachable from `CreateEventEntryPage`.
 
-Group required on create. Callables: saveEventDraft, publishEvent, cancelEvent, endEvent, archiveEvent, deleteEventDraft, joinEvent, leaveEvent, submitEventResponse. Cron `processEventLifecycle` every 1 minute: scheduled→active at `startAt`; active→finalize `endedReason: "expired"` at `endAt`.
+Max duration: `MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000` (`12`, 135–137) message `Events cannot last longer than 7 days.` Daily creation limit is 2 per user (`event_creation_limits`), enforced race-safe in the save transaction. Client `EventLifecycle.maxDuration` is 7 days.
 
-Results: votes / Borda ranking / quiz correctCounts (no winnerIds) / theory submissions / comparison winners / challenge verified vs self_report. Rewards `earn_event` for `winnerIds` when present.
+Callables: saveEventDraft, previewEvent, publishEvent, cancelEvent, endEvent, archiveEvent, deleteEventDraft, joinEvent, leaveEvent, submitEventResponse, resolveEvent, getEventAnalytics, addEventComment, reactToEvent. Cron `processEventLifecycle` every 1 minute: scheduled→active at `startAt`; active→finalize `endedReason: "expired"` at `endAt`.
 
-Chat cards: `postEventChatActivity` as type `event`. Notifications `event_starting` (pushWorthy true) / `event_ended` (pushWorthy not set true in `notifyEventLifecycle`).
+Results: votes / Borda ranking / quiz correctCounts (no winnerIds) / theory submissions / comparison winners / challenge verified vs self_report. `resolveEvent` lets the prediction/challenge creator lock a result with `winnerOptionId` / validated `winnerIds`; the result is immutable afterwards (status ENDED, `resultLockedAt` set) and triggers an ended notification + result chat card + `earn_event` rewards for winners. Rewards `earn_event` for `winnerIds` when present.
 
-Trigger: `/events/create?groupId=` from group details when `canManageEvents`.
+Chat cards: `postEventChatActivity` as type `event` for lifecycle (`started`/`ended`) and resolution (`kind: "result"`). Notifications `event_starting` (pushWorthy true) / `event_result_available` (pushWorthy true) via `notifyEventLifecycle`.
 
-**Traceability:** `eventsDomain.js`, `event_models.dart`, `event_type_registry.dart`, `event_lifecycle.dart`, `event_builder_page.dart`, `event_details_screen.dart`, `event_list_screen.dart`, `firebase_event_repository.dart`, `index.js` 364–398, 552–555, `firestore.rules` 678–704
+Visibility in `firestore.rules`: scope-aware helpers `eventVisibleOrGlobal()` — a signed-in user sees the event if they are the creator, or the event is in a public status (`ACTIVE`/`active`/`ENDED`/`ended`/`ARCHIVED`/`archived`) and they are a member of its scope (group, any multi-group, or global). `comments`/`reactions` subcollections honor the same visibility. `responses` readable for the author's own doc or after ENDED/ARCHIVED.
+
+Trigger: `/events/create` (optional `groupId`) — global events from the community entry, group/multi-group events from `CreateEventEntryPage` when `canManageEvents`.
+
+Client: `EventDetailsScreen` shows live participation, like/react, comments (for visible events), creator resolve (prediction/challenge), and creator/manageEvents analytics sheet from `getEventAnalytics`. `EventListScreen` Active tab paginates discovery with `loadMoreActive()` (cursor-based `startAfterDocument`); search + type filter remain client-side. Profile owner quick actions include "My Events". Home strip keeps to 3 events (`HomeEventsSection.pickHome` → `take(3)`).
+
+**Traceability:** `eventsDomain.js` (resolveEvent ~1774, exports 1922–1938), `index.js` new exports (~449+), `notificationBuilder.js`, `firestore.rules` (~767+), `firestore.indexes.json` (scope composite indexes), `event_models.dart` (`EventComment`, `EventAnalytics`, `EventPreview`), `event_providers.dart` (EventProvider actions + EventListProvider `loadMoreActive`), `event_repository.dart` / `firebase_event_repository.dart` / `unavailable_event_repository.dart`, `event_details_screen.dart`, `event_list_screen.dart`, `home_event_card.dart`
 
 ---
 
@@ -841,7 +847,7 @@ Placements: `homeFeed`, `groupEntry`, `storeFooter` (`economy_types.dart` 22). D
 | achievement_unlocked | achievementsDomain | `/achievements?id=` | false |
 | game_invite / game_started / game_completed | gamesDomain | `/game/{id}` | invite/started pushWorthy true |
 | game_invite (mafia) | mafiaDomain create | `/mafia/{id}` | true |
-| event_starting / event_ended | eventsDomain `notifyEventLifecycle` | `/event/{id}` | starting true |
+| event_starting / event_result_available | eventsDomain `notifyEventLifecycle` | `/event/{id}` | pushWorthy true |
 | group_disbanded | `disbandGroup` inline write | not via notificationBuilder; type `group_disbanded`, `refId` groupId | FCM not in that write |
 
 Creation: `notificationBuilder.build` (idempotent per recipient+id) except disband which writes notification docs directly (`index.js` 768–778). Clients cannot create notifications (`firestore.rules` 418–421).
@@ -1038,7 +1044,7 @@ Authenticated-only named paths. Avatars 5MB images; group image/background owner
 
 ### 23.3 Callables (exports in `functions/index.js`)
 
-HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/publish/cancel/end/archive/delete/join/leave/submit; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia, submitMafiaAction, sendMafiaChat, heartbeatMafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
+HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/preview/publish/cancel/end/archive/delete/join/leave/submit/resolve/analytics/comment/react; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia, submitMafiaAction, sendMafiaChat, heartbeatMafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
 
 Triggers: syncAvatarPrivacy, syncPublicProfile, processEditVideo (europe-west3), processGroupChatMedia (europe-west3), recalculateInviteRanks, onNewGroupMessage, onJoinRequest, onJoinRequestDecision, onFriendRequest, onRespectReceived, onNewPrivateMessage, refreshGroupActivityScores, processExpiredGames, processEventLifecycle, processExpiredLobbies, processPhaseTransitions, markDisconnectedPlayers.
 

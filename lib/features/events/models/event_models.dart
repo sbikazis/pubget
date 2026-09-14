@@ -500,6 +500,121 @@ final class EventParticipant {
   }
 }
 
+final class EventComment {
+  const EventComment({
+    required this.id,
+    required this.userId,
+    required this.text,
+    this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String text;
+  final DateTime? createdAt;
+
+  factory EventComment.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+  }) {
+    return EventComment(
+      id: id,
+      userId: map['userId'] as String? ?? '',
+      text: map['text'] as String? ?? '',
+      createdAt: _date(map['createdAt']),
+    );
+  }
+}
+
+final class EventAnalytics {
+  const EventAnalytics({
+    required this.eventId,
+    required this.status,
+    this.participants = const <EventParticipant>[],
+    this.responses = const <EventResponse>[],
+    this.tally = const EventTally(),
+    this.result,
+  });
+
+  final String eventId;
+  final String status;
+  final List<EventParticipant> participants;
+  final List<EventResponse> responses;
+  final EventTally tally;
+  final EventResult? result;
+
+  factory EventAnalytics.fromMap(Map<String, dynamic> map) {
+    final participantsRaw = (map['participants'] as List<Object?>?);
+    final responsesRaw = (map['responses'] as List<Object?>?);
+    return EventAnalytics(
+      eventId: map['eventId'] as String? ?? '',
+      status: map['status'] as String? ?? '',
+      participants: participantsRaw == null
+          ? const <EventParticipant>[]
+          : [
+              for (final item in participantsRaw)
+                if (item is Map)
+                  EventParticipant.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      responses: responsesRaw == null
+          ? const <EventResponse>[]
+          : [
+              for (final item in responsesRaw)
+                if (item is Map)
+                  EventResponse.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      tally: EventTally.fromMap(
+        map['tally'] is Map
+            ? Map<String, dynamic>.from(map['tally'] as Map)
+            : null,
+      ),
+      result: map['result'] is Map
+          ? EventResult.fromMap(Map<String, dynamic>.from(map['result'] as Map))
+          : null,
+    );
+  }
+}
+
+final class EventPreview {
+  const EventPreview({
+    required this.eventId,
+    this.type = EventType.poll,
+    this.scope = EventScope.group,
+    this.title = '',
+    this.description = '',
+    this.configuration = const EventConfiguration(),
+  });
+
+  final String eventId;
+  final EventType type;
+  final EventScope scope;
+  final String title;
+  final String description;
+  final EventConfiguration configuration;
+
+  factory EventPreview.fromMap(Map<String, dynamic> map) {
+    final type = _eventType(map['type']);
+    return EventPreview(
+      eventId: map['eventId'] as String? ?? '',
+      type: type,
+      scope: _eventScope(map['scope'], map['groupId']),
+      title: map['title'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      configuration: EventConfiguration.fromMap(
+        map['configuration'] is Map
+            ? Map<String, dynamic>.from(map['configuration'] as Map)
+            : null,
+      ),
+    );
+  }
+}
+
 final class EventDraft {
   const EventDraft({
     this.eventId,

@@ -771,23 +771,57 @@ service cloud.firestore {
       function eventExists() {
         return exists(/databases/$(database)/documents/events/$(eventId));
       }
-      function eventVisible() {
+      function isPublicStatus() {
+        let status = eventData().status;
+        return status != 'DRAFT' && status != 'draft' &&
+          status != 'DELETED' && status != 'deleted';
+      }
+      function isGlobal() {
+        let scope = eventData().get('scope', 'group');
+        return scope == 'global';
+      }
+      function isGroupMember() {
+        let data = eventData();
+        return data.keys().hasAny(['groupId']) &&
+          data.groupId is string &&
+          groupMember(data.groupId);
+      }
+      function isMultiGroupMember() {
+        let data = eventData();
+        if (!data.keys().hasAny(['groupIds'])) return false;
+        let ids = data.groupIds;
+        if (!(ids is list)) return false;
+        for (let id in ids) {
+          if (id is string && groupMember(id)) return true;
+        }
+        return false;
+      }
+      function isMember() {
+        return isGlobal() || isGroupMember() || isMultiGroupMember();
+      }
+      function eventVisibleOrGlobal() {
         return signedIn() && eventExists() &&
           (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'draft' &&
-            eventData().groupId is string &&
-            groupMember(eventData().groupId)));
+           (isPublicStatus() && isMember()));
       }
-      allow read: if eventVisible();
+      allow read: if eventVisibleOrGlobal();
       allow create, update, delete: if false;
       match /participants/{uid} {
-        allow read: if eventVisible();
+        allow read: if eventVisibleOrGlobal();
         allow create, update, delete: if false;
       }
       match /responses/{uid} {
-        allow read: if eventVisible() &&
+        allow read: if eventVisibleOrGlobal() &&
           (request.auth.uid == uid ||
-           eventData().status in ['ended', 'archived']);
+           (eventData().status in ['ended', 'archived', 'ENDED', 'ARCHIVED']));
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if eventVisibleOrGlobal();
+        allow create, update, delete: if false;
+      }
+      match /reactions/{reactionId} {
+        allow read: if eventVisibleOrGlobal();
         allow create, update, delete: if false;
       }
     }

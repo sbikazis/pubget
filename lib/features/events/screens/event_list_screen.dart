@@ -168,7 +168,12 @@ class _EventListScreenState extends State<EventListScreen> {
                 child: groupId == null
                     ? TabBarView(
                         children: <Widget>[
-                          _EventTiles(events: _filter(list.active)),
+                          _EventTiles(
+                            events: _filter(list.active),
+                            onLoadMore: list.loadMoreActive,
+                            loadingMore: list.loadingMore,
+                            hasMore: list.hasMoreActive,
+                          ),
                           _EventTiles(events: _filter(list.upcoming)),
                           _EventTiles(events: _filter(list.recent)),
                           _EventTiles(events: _filter(list.mine)),
@@ -185,13 +190,21 @@ class _EventListScreenState extends State<EventListScreen> {
 }
 
 class _EventTiles extends StatelessWidget {
-  const _EventTiles({required this.events});
+  const _EventTiles({
+    required this.events,
+    this.onLoadMore,
+    this.loadingMore = false,
+    this.hasMore = true,
+  });
 
   final List<PubgetEvent> events;
+  final Future<void> Function()? onLoadMore;
+  final bool loadingMore;
+  final bool hasMore;
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) {
+    if (events.isEmpty && !loadingMore) {
       return const PubgetEmptyState(
         title: EventStrings.noEventsTitle,
         message: EventStrings.noEventsMessage,
@@ -199,9 +212,22 @@ class _EventTiles extends StatelessWidget {
     }
     return ListView.separated(
       padding: const EdgeInsets.all(AppSpacing.md),
-      itemCount: events.length,
+      itemCount: events.length + (onLoadMore == null || !hasMore ? 0 : 1),
       separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
+        if (index >= events.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Center(
+              child: loadingMore
+                  ? const CircularProgressIndicator()
+                  : OutlinedButton(
+                      onPressed: onLoadMore,
+                      child: const Text('Load more'),
+                    ),
+            ),
+          );
+        }
         final event = events[index];
         return PubgetCard(
           key: ValueKey<String>('event-${event.id}'),

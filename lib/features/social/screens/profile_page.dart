@@ -783,6 +783,11 @@ class _OwnerQuickActions extends StatelessWidget {
           label: '${copy.friendRequests} (${social.incomingRequests.length})',
           onTap: () => AppNavigation.go(context, '/friend-requests'),
         ),
+        _ActionChipButton(
+          icon: Icons.event_note_outlined,
+          label: 'My Events',
+          onTap: () => AppNavigation.go(context, '/events'),
+        ),
         if (economy != null) ...[
           _ActionChipButton(
             icon: Icons.storefront_outlined,
