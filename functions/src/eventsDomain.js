@@ -871,19 +871,19 @@ function createEventsDomain({
     await notifySafe(notificationBuilder, {
       id: started ? `event-start-${eventId}` : `event-end-${eventId}`,
       recipientIds,
-      type: started ? "event_starting" : "event_ended",
+      type: started ? "event_starting" : "event_result_available",
       actorId: creatorId || null,
       targetId: eventId,
-      action: started ? "started" : "ended",
+      action: started ? "started" : "result_available",
       destination: `/event/${eventId}`,
        metadata: {
          groupId: groupId || "",
          groupIds: targetGroups,
          scope,
        },
-      title: started ? "Event started" : "Event ended",
-      body: title || (started ? "An event just started." : "Results are ready."),
-      pushWorthy: started,
+      title: started ? "Event started" : "Results are ready",
+      body: title || (started ? "An event just started." : "Event ended — tap to see results."),
+      pushWorthy: true,
     });
   }
 
@@ -1771,6 +1771,132 @@ function createEventsDomain({
     return { ok: true, eventId: ref.id };
   }
 
+  async function resolveEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const winnerOptionId = request.data && request.data.winnerOptionId;
+    const winnerIds = request.data && request.data.winnerIds;
+    const ref = eventRef(db, eventId.trim());
+    let resolved;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const current = snapshot.data() || {};
+      const status = normalizeEventStatus(current.status);
+      if (status === "ENDED" || status === "ARCHIVED" || status === "DELETED") {
+        throw new HttpsError("failed-precondition", "This Event result is already locked.");
+      }
+      const type = normalizeEventType(current.type);
+      if (!["prediction", "challenge"].includes(type)) {
+        throw new HttpsError("failed-precondition", "This Event type cannot be resolved manually.");
+      }
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (current.creatorId !== uid && !access.manageEvents) {
+        throw new HttpsError("permission-denied", "Only the creator can resolve this Event.");
+      }
+      const configuration = current.configuration || {};
+      const tally = current.tally || {};
+      const submissions = current.responsesCount || 0;
+      let result;
+      if (type === "prediction") {
+        if (!validString(winnerOptionId, 64)) {
+          throw new HttpsError("invalid-argument", "winnerOptionId is required.");
+        }
+        const option = (configuration.options || []).find((item) => item.id === winnerOptionId);
+        if (!option) {
+          throw new HttpsError("invalid-argument", "winnerOptionId must match an option.");
+        }
+        const votes = tally.votes || {};
+        result = {
+          kind: type,
+          submissions,
+          votes,
+          winnerOptionId,
+          winnerIds: [winnerOptionId],
+          winners: [{ id: option.id, label: option.label || option.id }],
+        };
+      } else {
+        const picked = Array.isArray(winnerIds) ? winnerIds : [];
+        if (picked.length === 0) {
+          throw new HttpsError("invalid-argument", "winnerIds is required.");
+        }
+        for (const id of picked) {
+          const snap = await transaction.get(responseRef(db, ref.id, id));
+          if (!snap.exists) {
+            throw new HttpsError("invalid-argument", `Winner ${String(id)} has no valid submission.`);
+          }
+        }
+        result = {
+          kind: type,
+          challengeKind: configuration.challengeKind || "self_report",
+          verification: configuration.verification || "server",
+          submissions,
+          verifiedCompletions: tally.verifiedCompletions || 0,
+          selfReported: tally.selfReported || 0,
+          winnerIds: picked,
+        };
+      }
+      const resolveStatus = typeof current.status === "string" &&
+        current.status === current.status.toLowerCase()
+        ? "ended"
+        : "ENDED";
+      transaction.update(snapshot.ref, {
+        status: resolveStatus,
+        result,
+        resolvedBy: uid,
+        resolvedAt: FieldValue.serverTimestamp(),
+        resultLockedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      resolved = {
+        groupId: current.groupId || null,
+        groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+        title: current.title || "",
+        status: resolveStatus,
+        result,
+      };
+    });
+    if (resolved) {
+      await postEventChatActivity(db, FieldValue, {
+        groupId: resolved.groupId,
+        groupIds: resolved.groupIds,
+        scope: resolved.scope,
+        eventId: ref.id,
+        kind: "result",
+        text: `Event resolved: ${resolved.title}`,
+      });
+      await notifyEventLifecycle({
+        kind: "ended",
+        eventId: ref.id,
+        groupId: resolved.groupId,
+        groupIds: resolved.groupIds,
+        scope: resolved.scope,
+        creatorId: uid,
+        title: resolved.title,
+      });
+      await grantEventRewards(ref.id, resolved);
+    }
+    return {
+      ok: true,
+      eventId: ref.id,
+      status: "ENDED",
+      result: resolved ? resolved.result : null,
+    };
+  }
+
   async function grantEventRewards(eventId, event) {
     if (!economy || typeof economy.grantDomainRewards !== "function") return;
     const winners = Array.isArray(event && event.result && event.result.winnerIds)
@@ -1804,6 +1930,7 @@ function createEventsDomain({
     joinEvent,
     leaveEvent,
     submitEventResponse,
+    resolveEvent,
     processEventLifecycle,
     getEventAnalytics,
     addEventComment,

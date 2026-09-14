@@ -603,16 +603,21 @@ test("event end notifies participants who joined", async () => {
   const recorder = recordingBuilder();
   const events = handlers(db, recorder);
   await events.processEventLifecycle();
-  const ended = recorder.sent.find((item) => item.type === "event_ended");
+  const ended = recorder.sent.find(
+    (item) => item.type === "event_result_available",
+  );
   assert.ok(ended);
   assert.ok(ended.recipientIds.includes("bob"));
   assert.ok(ended.recipientIds.includes("alice"));
   assert.equal(ended.recipientIds.includes("gone"), false);
-  assert.equal(ended.pushWorthy, false);
+  assert.equal(ended.pushWorthy, true);
   assert.equal(ended.destination, "/event/old");
   assert.equal(ended.id, "event-end-old");
   await events.processEventLifecycle();
-  assert.equal(recorder.sent.filter((item) => item.type === "event_ended").length, 1);
+  assert.equal(
+    recorder.sent.filter((item) => item.type === "event_result_available").length,
+    1,
+  );
 });
 
 async function publishPoll(events, { allowUpdate = false, extraOptions } = {}) {
@@ -1017,6 +1022,103 @@ test("wrong user, expired challenge, and self-report stay honest", async () => {
     events.submitEventResponse({
       auth: { uid: "bob" },
       data: { eventId: other.eventId, responseData: {} },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});
+
+test("resolveEvent locks a prediction with the creator's winner option", async () => {
+  const db = createFakeDb(seedGroup());
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "prediction",
+      title: "Who reaches the finals?",
+      groupId: "g1",
+      question: "Who wins?",
+      options: ["A", "B"],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "opt-2" } },
+  });
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerOptionId: "opt-2" },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.status, "ended");
+  assert.equal(stored.result.winnerOptionId, "opt-2");
+  assert.deepEqual(stored.result.winnerIds, ["opt-2"]);
+  assert.ok(stored.resultLockedAt);
+  assert.equal(stored.resolvedBy, "alice");
+  const card = recorder.sent.find((item) => item.type === "event_result_available");
+  assert.ok(card);
+  assert.ok(card.recipientIds.includes("bob"));
+});
+
+test("resolveEvent rejects invalid winners and non-creators", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Best fan art",
+      groupId: "g1",
+      prompt: "Submit your fan art.",
+      challengeKind: "self_report",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { text: "Artwork" } },
+  });
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "charlie" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["ghost"] },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerIds: ["bob"] },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.result.winnerIds, ["bob"]);
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
     }),
     (error) => error.code === "failed-precondition",
   );

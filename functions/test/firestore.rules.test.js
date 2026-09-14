@@ -88,6 +88,32 @@ test.beforeEach(async () => {
     await admin.doc("events/e1/responses/bob").set({
       userId: "bob", eventId: "e1", responseData: { optionId: "opt-1" },
     });
+    await admin.doc("events/e-global").set({
+      creatorId: "alice", scope: "global", groupId: null, type: "poll",
+      title: "Global", status: "ACTIVE", participantsCount: 1, responsesCount: 0,
+    });
+    await admin.doc("events/e-global/responses/bob").set({
+      userId: "bob", eventId: "e-global", responseData: { optionId: "opt-1" },
+    });
+    await admin.doc("events/e-ended").set({
+      creatorId: "alice", scope: "global", groupId: null, type: "poll",
+      title: "Ended global", status: "ENDED", participantsCount: 1, responsesCount: 1,
+    });
+    await admin.doc("events/e-ended/responses/bob").set({
+      userId: "bob", eventId: "e-ended", responseData: { optionId: "opt-1" },
+    });
+    await admin.doc("events/e-multi").set({
+      creatorId: "alice", scope: "multiGroup", groupId: null,
+      groupIds: ["g1", "g2"], type: "poll", title: "Multi",
+      status: "ACTIVE", participantsCount: 1, responsesCount: 0,
+    });
+    await admin.doc("groups/g2").set({ founderId: "charlie", name: "G2" });
+    await admin.doc("groups/g2/members/charlie").set({
+      role: "founder", userId: "charlie",
+    });
+    await admin.doc("events/e-ended/comments/c1").set({
+      userId: "bob", text: "Nice", createdAt: new Date(),
+    });
     await admin.doc("games/game1").set({
       creatorId: "alice", groupId: "g1", type: "guessCharacter", title: "Guess",
       status: "waiting", participantsCount: 1,
@@ -277,6 +303,15 @@ test("events are readable by group members and never client-writable", async () 
   await assertFails(db("bob").doc("events/e1/responses/bob").update({
     responseData: { optionId: "opt-2" },
   }));
+});
+test("global and multi-group events honor scope-aware visibility", async () => {
+  await assertSucceeds(db("mallory").doc("events/e-global").get());
+  await assertSucceeds(db("charlie").doc("events/e-global").get());
+  await assertSucceeds(db("bob").doc("events/e-multi").get());
+  await assertSucceeds(db("charlie").doc("events/e-multi").get());
+  await assertFails(db("mallory").doc("events/e-global/responses/bob").get());
+  await assertSucceeds(db("bob").doc("events/e-global/responses/bob").get());
+  await assertSucceeds(db("charlie").doc("events/e-ended/responses/bob").get());
 });
 test("games are readable by group members and never client-writable", async () => {
   await assertSucceeds(db("bob").doc("games/game1").get());

@@ -43,11 +43,15 @@ History is written after completion without exposing live private roles.
 
 ## Event lifecycle
 
-`functions/src/eventsDomain.js` owns create, participate, expire, and finalize. Maximum lifetime is 7 days. Participation is idempotent and rejected after `endAt`. `processEventLifecycle` finalizes expired events, writes results, and notifies. UI hides submit when `isInteractable()` is false; the backend still enforces expiry.
+`functions/src/eventsDomain.js` owns create, participate, resolve, expire, and finalize. Exactly 12 types (poll, comparison, theory, challenge, ranking, question, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion), three scopes (group / multiGroup / global), statuses `DRAFT/ACTIVE/ENDED/ARCHIVED/DELETED`. Maximum lifetime is 7 days; daily creation limit is 2, enforced race-safe. Participation is idempotent and rejected after `endAt`. `processEventLifecycle` finalizes expired events, writes results, and notifies. UI hides submit when `isInteractable()` is false; the backend still enforces expiry.
+
+Ending is server-driven; on end, result notifications are type `event_result_available` (pushWorthy true). Prediction and challenge events expose `resolveEvent`: the creator locks a `winnerOptionId` / validated `winnerIds`, which writes an immutable result (`resultLockedAt`), posts a result chat card, notifies participants, and grants `earn_event` rewards to winners.
 
 Comparison events (`characterComparison`, `animeComparison`, `imageComparison`) validate canonical catalog or licensed image candidates. Results include the criterion and winner references, not generic option labels alone.
 
 Challenge completion is server-verified for Pubget-observable kinds (`finish_game`, `publish_edit`, `create_group`, `participate_event`). Client `completed=true` is ignored. `self_report` is stored as unverified.
+
+Comments (`addEventComment`, open for ACTIVE/ENDED/ARCHIVED), reactions (`reactToEvent`), and creator-only analytics (`getEventAnalytics`) are callables; `firestore.rules` gates read visibility per scope (`eventVisibleOrGlobal`) and keeps all event writes admin-only.
 
 ## Achievement architecture
 
