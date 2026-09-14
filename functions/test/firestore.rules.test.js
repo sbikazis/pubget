@@ -52,7 +52,7 @@ test.beforeEach(async () => {
       realUserName: "Bob", realUserImageUrl: "", isPremium: false,
     });
     await admin.doc("mafia_games/m1").set({
-      groupId: "g1", status: "night", currentPhase: "night", currentNight: 1,
+      groupId: "g1", status: "NIGHT", currentPhase: "NIGHT", currentNight: 1,
       currentDay: 1, playersCount: 2, maxPlayers: 8,
     });
     await admin.doc("mafia_games/m1/players/alice").set({
@@ -384,8 +384,8 @@ test("legacy fan identity documents are not client-readable", async () => {
   await assertFails(db("bob").doc("fans/alice_bob").get());
   await assertFails(db("charlie").doc("fans/alice_bob").get());
 });
-test("night actions are player intent only, never role or resolver state", async () => {
-  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+test("night actions are server-authoritative and clients cannot forge them", async () => {
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
     playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
   await assertFails(db("bob").doc("mafia_games/m1/night_actions/bob_n1").set({
@@ -400,10 +400,12 @@ test("members atomically create a waiting lobby and their own default player", a
   });
   const game = {
     groupId: "g2", createdBy: "alice", createdAt: new Date(), version: "classic",
-    status: "waiting", currentPhase: "waiting", currentDay: 0, currentNight: 0,
+    status: "WAITING", currentPhase: "WAITING", currentDay: 0, currentNight: 0,
     playersCount: 1, minPlayers: 2, maxPlayers: 8, winner: null,
-    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null, isLocked: false, startedAt: null,
-    endedAt: null, rewardsDistributed: false, historyWritten: false,
+    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null,
+    serverStartedAt: null, serverEndsAt: null,
+    isLocked: false, startedAt: null, endedAt: null, rewardsDistributed: false,
+    historyWritten: false,
   };
   const player = {
     userId: "alice", username: "Alice", avatar: "", isAlive: true,
@@ -416,7 +418,7 @@ test("members atomically create a waiting lobby and their own default player", a
   batch.set(firestore.doc("mafia_games/g2game"), game);
   batch.set(firestore.doc("mafia_games/g2game/players/alice"), player);
   batch.update(firestore.doc("groups/g2"), {
-    activeGameId: "g2game", gameStatus: "waiting", hasRunningGame: true,
+    activeGameId: "g2game", gameStatus: "WAITING", hasRunningGame: true,
   });
   await assertSucceeds(batch.commit());
   await assertFails(db("bob").doc("mafia_games/g2game/players/alice").set(player));
@@ -426,7 +428,7 @@ test("members atomically create a waiting lobby and their own default player", a
   second.set(firestore.doc("mafia_games/g2game2"), game);
   second.set(firestore.doc("mafia_games/g2game2/players/alice"), player);
   second.update(firestore.doc("groups/g2"), {
-    activeGameId: "g2game2", gameStatus: "waiting", hasRunningGame: true,
+    activeGameId: "g2game2", gameStatus: "WAITING", hasRunningGame: true,
   });
   await assertFails(second.commit());
 });
@@ -444,10 +446,12 @@ test("lobby bounds reject invalid player limits and expiry windows", async () =>
   };
   const baseGame = {
     groupId: "g3", createdBy: "alice", createdAt: new Date(), version: "classic",
-    status: "waiting", currentPhase: "waiting", currentDay: 0, currentNight: 0,
+    status: "WAITING", currentPhase: "WAITING", currentDay: 0, currentNight: 0,
     playersCount: 1, minPlayers: 2, maxPlayers: 8, winner: null,
-    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null, isLocked: false,
-    startedAt: null, endedAt: null, rewardsDistributed: false, historyWritten: false,
+    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null,
+    serverStartedAt: null, serverEndsAt: null,
+    isLocked: false, startedAt: null, endedAt: null, rewardsDistributed: false,
+    historyWritten: false,
   };
   async function attempt(id, game) {
     const firestore = db("alice");
@@ -455,7 +459,7 @@ test("lobby bounds reject invalid player limits and expiry windows", async () =>
     batch.set(firestore.doc(`mafia_games/${id}`), game);
     batch.set(firestore.doc(`mafia_games/${id}/players/alice`), player);
     batch.update(firestore.doc("groups/g3"), {
-      activeGameId: id, gameStatus: "waiting", hasRunningGame: true,
+      activeGameId: id, gameStatus: "WAITING", hasRunningGame: true,
     });
     await assertFails(batch.commit());
   }
@@ -470,7 +474,7 @@ test("join, leave, and heartbeat require the caller's paired player mutation", a
   await env.withSecurityRulesDisabled(async (context) => {
     const admin = context.firestore();
     await admin.doc("mafia_games/lobby").set({
-      groupId: "g1", status: "waiting", currentPhase: "waiting",
+      groupId: "g1", status: "WAITING", currentPhase: "WAITING",
       playersCount: 1, maxPlayers: 8,
     });
     await admin.doc("mafia_games/lobby/players/alice").set({ userId: "alice" });
@@ -510,21 +514,21 @@ test("votes, chat, and actions reject wrong phase, number, and targets", async (
     time: new Date(), type: "player",
   }));
 });
-test("a living player can submit canonical vote and chat intent in its phase", async () => {
+test("anti-cheat: clients cannot forge votes or chat in any phase", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "voting", currentPhase: "voting", currentDay: 1,
+      status: "VOTING", currentPhase: "VOTING", currentDay: 1,
     });
   });
-  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
     voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
   }));
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "discussion", currentPhase: "discussion",
+      status: "DISCUSSION", currentPhase: "DISCUSSION",
     });
   });
-  await assertSucceeds(db("alice").doc("mafia_games/m1/chat/c1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/chat/c1").set({
     senderId: "alice", sender: "Alice", senderAvatar: "", text: "hello",
     time: new Date(), type: "player",
   }));
@@ -561,7 +565,7 @@ test("mafia night and vote attacks are rejected", async () => {
   await assertFails(db("eve").doc("mafia_games/m1/night_actions/eve_n1").set({
     playerId: "eve", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
     playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
   await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
@@ -578,7 +582,7 @@ test("mafia night and vote attacks are rejected", async () => {
   }));
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "voting", currentPhase: "voting", currentDay: 1,
+      status: "VOTING", currentPhase: "VOTING", currentDay: 1,
       phaseEndsAt: new Date(Date.now() - 60 * 1000),
     });
     await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: true });
@@ -592,8 +596,8 @@ test("mafia night and vote attacks are rejected", async () => {
   await assertFails(db("alice").doc("mafia_games/m1/votes/bob_d1").set({
     voterId: "bob", targetId: "alice", dayNumber: 1, time: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
-    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  await assertFails(db("alice").doc("mafia_games/m1/votes/mallory_probe").set({
+    voterId: "mallory", targetId: "bob", dayNumber: 1, time: new Date(),
   }));
   await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
     voterId: "alice", targetId: "alice", dayNumber: 1, time: new Date(),

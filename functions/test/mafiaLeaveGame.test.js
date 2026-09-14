@@ -14,27 +14,31 @@ test("mafia leave transition validates bounded identifiers", () => {
 
 test("mafia leave transition decrements once and cancels undersized starts", () => {
   assert.deepEqual(
-    leaveTransition("starting", { hasLeft: false }, 3, 3),
+    leaveTransition("STARTING", { hasLeft: false }, 3, 3),
     { kind: "cancelled", nextCount: 2 },
   );
   assert.deepEqual(
-    leaveTransition("starting", { hasLeft: false }, 5, 4),
+    leaveTransition("STARTING", { hasLeft: false }, 5, 4),
     { kind: "starting-left", nextCount: 4 },
   );
   assert.deepEqual(
-    leaveTransition("night", { hasLeft: false }, 8, 3),
+    leaveTransition("NIGHT", { hasLeft: false }, 8, 3),
     { kind: "active-left" },
   );
   assert.deepEqual(
-    leaveTransition("voting", { hasLeft: true }, 8, 3),
+    leaveTransition("VOTING", { hasLeft: true }, 8, 3),
     { kind: "already-left" },
   );
   assert.deepEqual(
-    leaveTransition("waiting", { hasLeft: false }, 3, 4),
+    leaveTransition("WAITING", { hasLeft: false }, 3, 4),
     { kind: "unsupported" },
   );
   assert.deepEqual(
-    leaveTransition("execution", { hasLeft: false }, 6, 4),
+    leaveTransition("GAME_OVER", { hasLeft: false }, 6, 4),
+    { kind: "unsupported" },
+  );
+  assert.deepEqual(
+    leaveTransition("CANCELLED", { hasLeft: false }, 6, 4),
     { kind: "unsupported" },
   );
 });

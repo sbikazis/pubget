@@ -1,14 +1,4 @@
-// functions/src/mafia/disconnectHandler.js
-//
-// يفحص كل دقيقة كل اللاعبين ضمن المباريات النشطة (غير finished/
-// cancelled)، ويعلّم أي لاعب توقفت نبضته منذ أكثر من 90 ثانية
-// كـ isDisconnected=true. لا يقتله ولا يمس بياناته الأخرى — فقط
-// علامة بصرية يمكن استخدامها لاحقاً في الواجهة (Stage 9).
-//
-// ⚠️ هذا حل تقريبي (heartbeat-based) وليس presence فورياً حقيقياً
-// مثل Firebase Realtime Database's onDisconnect(). التأخير النموذجي
-// لاكتشاف الانقطاع هنا: حتى دقيقتين تقريباً (90 ثانية عتبة + حتى
-// دقيقة انتظار الجدولة القادمة).
+"use strict";
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -19,13 +9,15 @@ const db = admin.firestore();
 const DISCONNECT_THRESHOLD_SECONDS = 90;
 const RECONNECT_WINDOW_SECONDS = 60;
 const ACTIVE_STATUSES = [
-  "waiting",
-  "starting",
-  "night",
-  "day",
-  "discussion",
-  "voting",
-  "execution",
+  "WAITING",
+  "STARTING",
+  "ROLE_REVEAL",
+  "NIGHT",
+  "DAY",
+  "DISCUSSION",
+  "VOTING",
+  "VOTE_RESULT",
+  "RESOLUTION",
 ];
 
 exports.markDisconnectedPlayers = onSchedule("every 1 minutes", async () => {

@@ -9,13 +9,10 @@ const ROLE_LABELS = {
   don: "Don",
   doctor: "the Doctor",
   detective: "the Detective",
-  sniper: "the Sniper",
-  silencer: "the Silencer",
-  good_boy: "the Good Boy",
   citizen: "a Citizen",
 };
 
-function planVoteResolution({ playersById, votes, dayNumber, revote = false, tiedIds = [] }) {
+function planVoteResolution({ playersById, votes, dayNumber, voteRound = 1, tiedIds = [] }) {
   const validVotes = (votes || []).filter((vote) => {
     if (!vote || typeof vote !== "object" || typeof vote.voterId !== "string" ||
         typeof vote.targetId !== "string" || !Number.isInteger(vote.dayNumber)) {
@@ -27,7 +24,7 @@ function planVoteResolution({ playersById, votes, dayNumber, revote = false, tie
       voter.isAlive === true && voter.hasLeft !== true && voter.canVote !== false &&
       target.isAlive === true && target.hasLeft !== true &&
       vote.voterId !== vote.targetId &&
-      (!revote || tiedIds.includes(vote.targetId));
+      (tiedIds.length === 0 || tiedIds.includes(vote.targetId));
   });
   const tally = {};
   for (const vote of validVotes) {
@@ -52,13 +49,11 @@ function planVoteResolution({ playersById, votes, dayNumber, revote = false, tie
     const candidates = Object.entries(tally)
       .filter(([, count]) => count === topCount)
       .map(([targetId]) => targetId);
-    return {
-      kind: revote ? "no_elimination" : "revote",
-      reason: revote ? "second_tie" : "tie",
-      tally,
-      targetId: null,
-      tiedIds: candidates,
-    };
+    // First round tie → re-vote within VOTING. Second round tie → skip.
+    if (voteRound >= 2) {
+      return { kind: "skip", reason: "second_tie", tally, targetId: null };
+    }
+    return { kind: "revote", reason: "tie", tally, targetId: null, tiedIds: candidates };
   }
   return { kind: "execute", reason: "majority", tally, targetId: topTargetId };
 }
@@ -70,9 +65,8 @@ async function resolveVotes(gameId, gameData) {
   const currentGame = await gameRef.get();
   const current = currentGame.exists ? currentGame.data() : {};
   const phase = current.currentPhase || current.status;
-  if (!currentGame.exists || !["voting", "revote"].includes(phase) ||
-      current.currentDay !== dayNumber) return false;
-  const isRevote = phase === "revote";
+  if (!currentGame.exists || phase !== "VOTING" || current.currentDay !== dayNumber) return false;
+  const voteRound = current.voteRound || 1;
 
   const [playersSnap, votesSnap] = await Promise.all([
     playersRef.get(),
@@ -87,29 +81,31 @@ async function resolveVotes(gameId, gameData) {
   const plan = planVoteResolution({
     playersById,
     votes: votesSnap.docs.map((doc) => doc.data()),
-    revote: isRevote,
+    voteRound,
     tiedIds: current.revoteCandidates || [],
     dayNumber,
   });
   const eventsRef = gameRef.collection("events");
 
-  if (plan.kind === "skip" || plan.kind === "no_elimination") {
+  if (plan.kind === "skip") {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(gameRef);
       if (!snap.exists || snap.data().currentPhase !== phase) return;
       tx.update(gameRef, {
-        status: "resolution",
-        currentPhase: "resolution",
+        status: "VOTE_RESULT",
+        currentPhase: "VOTE_RESULT",
         revoteCandidates: admin.firestore.FieldValue.delete(),
-        phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 4_000),
+        voteRound: admin.firestore.FieldValue.delete(),
+        phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6_000),
+        serverEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6_000),
       });
-      tx.set(eventsRef.doc(`vote-${dayNumber}-${isRevote ? "revote" : "resolved"}`), {
+      tx.set(eventsRef.doc(`vote-${dayNumber}-${voteRound > 1 ? "revote-" : ""}resolved`), {
         type: "VoteResolved",
-        message: isRevote
+        message: plan.reason === "second_tie"
           ? "The re-vote was tied. Nobody is eliminated."
           : "Nobody voted. Nobody is eliminated.",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        payload: { dayNumber, revote: isRevote, tally: plan.tally },
+        payload: { dayNumber, voteRound, tally: plan.tally },
       });
     });
     return true;
@@ -120,27 +116,17 @@ async function resolveVotes(gameId, gameData) {
       const snap = await tx.get(gameRef);
       if (!snap.exists || snap.data().currentPhase !== phase) return;
       tx.update(gameRef, {
-        status: "revote",
-        currentPhase: "revote",
         revoteCandidates: plan.tiedIds,
+        voteRound: voteRound + 1,
         phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 30_000),
+        serverEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 30_000),
       });
       tx.set(eventsRef.doc(`vote-${dayNumber}-tie`), {
         type: "VoteTie",
         message: "The vote tied. A re-vote is open between the tied players.",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        payload: { dayNumber, tiedIds: plan.tiedIds },
+        payload: { dayNumber, voteRound, tiedIds: plan.tiedIds },
       });
-    });
-    return true;
-  }
-
-  if (plan.kind === "skip") {
-    await eventsRef.doc(`vote-${dayNumber}-resolved`).set({
-      type: "ExecutionSkipped",
-      message: "Nobody voted. Nobody is eliminated.",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      payload: { dayNumber },
     });
     return true;
   }
@@ -167,16 +153,18 @@ async function resolveVotes(gameId, gameData) {
     type: "PlayerExecuted",
     message: `The village eliminated ${name}. They were ${roleLabel}.`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    payload: { playerId: plan.targetId, role, dayNumber },
+    payload: { playerId: plan.targetId, role, dayNumber, voteRound },
   });
   batch.update(gameRef, {
-    status: "resolution",
-    currentPhase: "resolution",
+    status: "VOTE_RESULT",
+    currentPhase: "VOTE_RESULT",
     revoteCandidates: admin.firestore.FieldValue.delete(),
-    phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 4_000),
+    voteRound: admin.firestore.FieldValue.delete(),
+    phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6_000),
+    serverEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6_000),
     votingResults: admin.firestore.FieldValue.arrayUnion({
       dayNumber,
-      revote: isRevote,
+      voteRound,
       tally: plan.tally,
       eliminatedPlayerId: plan.targetId,
       at: new Date(),

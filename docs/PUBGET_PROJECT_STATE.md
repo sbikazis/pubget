@@ -52,6 +52,18 @@ Each is in a feature area outside the chat scope (shell, edits, group bans/detai
 - [ ] K1 sweep: fix or refresh the 8 pre-existing failures above (separate branch/PR recommended).
 - [ ] Manual chat testing checklist (see PR/report): recent/favorite sticker strip, voice slide-to-cancel + lock, composer send freeze while offline, failed-media reuse on retry, private-chat retry no double-send, long-press overlay reaction gating, truthful security banner locale.
 
+## PROMPT 2 — Mafia Rebirth (branch `cursor/mafia-rebirth-prompt-2`, 2026-09-14)
+
+Rebuilds Mafia as the exact spec-conformant server-authoritative domain. PR #97.
+
+- **State machine** (`phaseFlow.js`, `mafiaDomain.js`, `phaseScheduler.js`, `actionDomain.js`, `roleAssigner.js`, `winConditionChecker.js`, `lobbyManager.js`, `leaveTransition.js`, `disconnectHandler.js`): exact uppercase string set `WAITING → STARTING → ROLE_REVEAL → NIGHT → DAY → DISCUSSION → VOTING → VOTE_RESULT → RESOLUTION` + `GAME_OVER`/`CANCELLED`. Removed legacy lowercase aliases and the `revote`/`finished`/`execution` states. Revote now stays inside `VOTING` (`voteRound` 1→2, `revoteCandidates` = tied players, 30s timer); terminal states are only `GAME_OVER`/`CANCELLED`.
+- **Timers**: server-owned `serverStartedAt`/`serverEndsAt` on every transition (Mafia), `phaseEndsAt` kept as compatibility alias; countdown renders `serverEndsAt ?? phaseEndsAt ?? countdownEndsAt`.
+- **Roles**: registry and `ROLE_LABELS` reduced to exactly Mafia/Don/Doctor/Detective/Citizen (Good Boy/Sniper/Silencer removed); `computeRoleDistribution` 4 = mafia+doctor+detective+citizen, ≥5 adds Don. Doctor no-same-target-two-nights enforced; Don private Detective probe wired; vote idle revote resolution.
+- **Anti-cheat rules** (`firestore.rules`): uppercase `WAITING`/`STARTING` markers on `mafiaGameCreate`/join/leave counters/players, group marker `gameStatus == 'WAITING'`, `serverStartedAt`/`serverEndsAt` fields added to the create allow-list. Client writes to `night_actions`, `votes`, `chat`, `mafia_messages`, `action_receipts` remain denied (callables only). `productEngines.e2e.test.js` + `firestore.rules.test.js` mafia sections updated to assert the anti-cheat contract (emulator-only, not run locally).
+- **Client**: `mafia_models.dart` (MafiaPhase enum dropped `revote`/`finished`; `MafiaGame` adds `serverStartedAt`, `serverEndsAt`, `voteRound`, `revoteCandidates`; `isFinished` = `GAME_OVER`/`CANCELLED`), `mafia_leave_copy.dart` uppercase status list, `mafia_game_screen.dart` phase labels/actions/countdown.
+- **Bugfix on main**: `functions/src/mafia/historyWriter.js` on `origin/main` was a corrupted merge (two `writeHistory` bodies + unmatched brace → SyntaxError). Restored the clean single-transaction idempotent writer.
+- **Docs**: `PRODUCT_ENGINES.md` (4–8, 5 roles, uppercase machine, revote rules, rewards), `CURRENT_STATE_MASTER.md` §11 + security table + callable list + unit-file list. No deploy performed — user runs `firebase deploy --only functions` manually, then `flutter build apk --debug` + on-device test.
+
 ## Older entries (pre-phase-B)
 
 None retained in this log at the time of creation. Start appending from here.

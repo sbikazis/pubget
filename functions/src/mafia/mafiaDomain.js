@@ -6,8 +6,6 @@ const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
 const TITLE_MAX = 80;
-// This project already shipped a 4–8 Mafia contract. Keep it canonical until
-// the product explicitly migrates existing lobbies to a larger table.
 const DEFAULT_MIN = 4;
 const DEFAULT_MAX = 8;
 const LOBBY_SECONDS = 120;
@@ -126,8 +124,8 @@ function createMafiaDomain({
       throw new HttpsError("invalid-argument", "groupId is required.");
     }
     const groupId = input.groupId.trim();
-  const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, DEFAULT_MIN, DEFAULT_MAX);
-  const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, DEFAULT_MAX);
+    const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, DEFAULT_MIN, DEFAULT_MAX);
+    const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, DEFAULT_MAX);
     const ref = db.collection("mafia_games").doc();
     const now = Timestamp ? Timestamp.now() : new Date();
     const countdownEndsAt = Timestamp
@@ -153,8 +151,8 @@ function createMafiaDomain({
         createdBy: uid,
         createdAt: FieldValue.serverTimestamp(),
         version: 1,
-        status: "waiting",
-        currentPhase: "waiting",
+        status: "WAITING",
+        currentPhase: "WAITING",
         currentDay: 0,
         currentNight: 0,
         playersCount: 1,
@@ -163,6 +161,8 @@ function createMafiaDomain({
         winner: null,
         countdownEndsAt,
         phaseEndsAt: null,
+        serverStartedAt: null,
+        serverEndsAt: null,
         isLocked: false,
         startedAt: null,
         endedAt: null,
@@ -175,7 +175,7 @@ function createMafiaDomain({
       });
       transaction.update(db.collection("groups").doc(groupId), {
         activeGameId: ref.id,
-        gameStatus: "waiting",
+        gameStatus: "WAITING",
         hasRunningGame: true,
       });
       transaction.create(ref.collection("events").doc(`${ref.id}_created`), {
@@ -209,7 +209,7 @@ function createMafiaDomain({
       },
       { id: ref.id, groupId, type: "mafia" },
     );
-    return { gameId: ref.id, status: "waiting" };
+    return { gameId: ref.id, status: "WAITING" };
   }
 
   async function joinMafiaGame(request) {
@@ -227,7 +227,7 @@ function createMafiaDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      if (current.status !== "waiting") {
+      if (current.status !== "WAITING") {
         throw new HttpsError("failed-precondition", "This lobby is not open.");
       }
       const person = await transaction.get(ref.collection("players").doc(uid));
@@ -250,8 +250,8 @@ function createMafiaDomain({
       };
       if (fills) {
         update.isLocked = true;
-        update.status = "starting";
-        update.currentPhase = "starting";
+        update.status = "STARTING";
+        update.currentPhase = "STARTING";
         update.countdownEndsAt = Timestamp
           ? Timestamp.fromMillis(now.toMillis ? now.toMillis() : Date.now() + STARTING_SECONDS * 1000)
           : new Date(Date.now() + STARTING_SECONDS * 1000);
@@ -275,8 +275,8 @@ function createMafiaDomain({
       if (current.createdBy !== uid) {
         throw new HttpsError("permission-denied", "Only the host can start Mafia.");
       }
-      if (current.status === "starting") return;
-      if (current.status !== "waiting") {
+      if (current.status === "STARTING") return;
+      if (current.status !== "WAITING") {
         throw new HttpsError("failed-precondition", "This lobby cannot start.");
       }
       if ((current.playersCount || 0) < (current.minPlayers || DEFAULT_MIN)) {
@@ -284,8 +284,8 @@ function createMafiaDomain({
       }
       const now = Timestamp ? Timestamp.now() : new Date();
       transaction.update(ref, {
-        status: "starting",
-        currentPhase: "starting",
+        status: "STARTING",
+        currentPhase: "STARTING",
         isLocked: true,
         countdownEndsAt: Timestamp
           ? Timestamp.fromMillis((now.toMillis ? now.toMillis() : Date.now()) + STARTING_SECONDS * 1000)

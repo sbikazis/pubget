@@ -115,8 +115,8 @@ async function resolveNight(gameId, gameData) {
   const playersRef = gameRef.collection("players");
   const nightNumber = gameData.currentNight || 0;
   const currentGame = await gameRef.get();
-  if (!currentGame.exists || currentGame.data().status !== "night" ||
-      currentGame.data().currentPhase !== "night" ||
+  if (!currentGame.exists || currentGame.data().status !== "NIGHT" ||
+      currentGame.data().currentPhase !== "NIGHT" ||
       currentGame.data().currentNight !== nightNumber) return false;
 
   const [playersSnap, actionsSnap] = await Promise.all([
