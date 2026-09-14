@@ -24,6 +24,7 @@ const {
 } = require("@firebase/rules-unit-testing");
 const { serverTimestamp } = require("firebase/firestore");
 const { createGamesDomain } = require("../src/gamesDomain");
+const catalog = require("../src/gameCatalog");
 const { createEventsDomain } = require("../src/eventsDomain");
 const { createAchievementsDomain } = require("../src/achievementsDomain");
 const { createMafiaDomain } = require("../src/mafia/mafiaDomain");
@@ -120,36 +121,38 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   await domain.startGame({ ...auth("alice"), data: { gameId: created.gameId } });
   const snap = await db.doc(`games/${created.gameId}`).get();
   const game = snap.data();
-  assert.equal(game.status, "active");
-  assert.ok(game.publicState.prompt.artwork);
-  assert.ok(game.publicState.prompt.choices.length >= 2);
+  assert.equal(game.status, "IN_PROGRESS");
+  assert.ok(game.publicState.phase === "selection");
   const secretSnap = await db.doc(`games/${created.gameId}/secret/round`).get();
   assert.equal(secretSnap.exists, true);
   await assertFails(client("alice").doc(`games/${created.gameId}/secret/round`).get());
   await assertFails(client("bob").doc(`games/${created.gameId}/secret/round`).get());
-  const correct = secretSnap.data().correctId;
-  const wrong = game.publicState.prompt.choices.find((item) => item.id !== correct).id;
   await domain.submitGameAction({
     ...auth("alice"),
-    data: {
-      gameId: created.gameId,
-      actionType: "guess",
-      payload: { choiceId: correct },
-      clientActionId: "alice-e2e",
-    },
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "luffy" } },
   });
   await domain.submitGameAction({
     ...auth("bob"),
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "naruto" } },
+  });
+  const selected = (await db.doc(`games/${created.gameId}`).get()).data();
+  assert.equal(selected.publicState.phase, "ask");
+  const asker = selected.publicState.currentPlayerId;
+  const opponent = asker === "alice" ? "bob" : "alice";
+  const secretData = secretSnap.data();
+  await domain.submitGameAction({
+    ...auth(asker),
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { choiceId: wrong },
-      clientActionId: "bob-e2e",
+      payload: { characterId: secretData.selections[opponent] },
+      clientActionId: "asker-e2e",
     },
   });
   const after = (await db.doc(`games/${created.gameId}`).get()).data();
-  assert.equal(after.publicState.scores.alice, 1);
-  assert.equal(after.publicState.scores.bob, 0);
+  assert.equal(after.status, "COMPLETED");
+  assert.ok(after.result.scores[asker] >= 1);
+  assert.equal(after.result.scores[opponent] || 0, 0);
   await assert.rejects(
     domain.submitGameAction({
       ...auth("charlie"),
@@ -178,26 +181,39 @@ test("emoji anime guess turn progression and invalid answers", async () => {
   const other = current === "alice" ? "bob" : "alice";
   await assert.rejects(
     domain.submitGameAction({
-      ...auth(other),
-      data: { gameId: created.gameId, actionType: "guess", payload: { title: "Nope" } },
+      ...auth(current),
+      data: { gameId: created.gameId, actionType: "guess", payload: { title: "Naruto" } },
     }),
     (error) => error.code === "failed-precondition",
   );
+  const secretRound = (await db.doc(`games/${created.gameId}/secret/round`).get()).data();
+  assert.ok(Array.isArray(game.publicState.emojis) && game.publicState.emojis.length >= 3);
+  assert.equal(JSON.stringify(game.publicState).includes(secretRound.title), false);
   const before = (await db.doc(`games/${created.gameId}`).get()).data();
-  const beforeScore = before.publicState.scores[current] || 0;
+  const beforeScore = before.publicState.scores[other] || 0;
+  const wrongTitle = catalog.ANIME.find((item) => item.id !== secretRound.targetAnimeId).title;
   await domain.submitGameAction({
-    ...auth(current),
+    ...auth(other),
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { title: "Definitely Not An Anime" },
-      clientActionId: `${current}-wrong`,
+      payload: { title: wrongTitle },
+      clientActionId: `${other}-wrong`,
     },
   });
   const afterWrong = (await db.doc(`games/${created.gameId}`).get()).data();
-  assert.equal(afterWrong.publicState.scores[current] || 0, beforeScore);
+  assert.ok(
+    afterWrong.status === "COMPLETED" ||
+    (afterWrong.publicState && (afterWrong.publicState.scores[other] || 0) === beforeScore),
+  );
   const secret = (await db.doc(`games/${created.gameId}/secret/round`).get()).data();
-  const guesser = afterWrong.publicState.currentPlayerId;
+  const nextRound = afterWrong.status === "COMPLETED"
+    ? null
+    : afterWrong.publicState;
+  const guesser = nextRound
+    ? (nextRound.playerOrder || Object.keys(nextRound.scores || {}))
+      .find((id) => id !== nextRound.currentPlayerId)
+    : other;
   await domain.submitGameAction({
     ...auth(guesser),
     data: {
@@ -211,7 +227,7 @@ test("emoji anime guess turn progression and invalid answers", async () => {
   const scored = after.publicState && after.publicState.scores
     ? (after.publicState.scores[guesser] || 0)
     : 0;
-  assert.ok(scored >= 1 || after.status === "completed");
+  assert.ok(scored >= 1 || after.status === "COMPLETED");
 });
 
 test("comparison event, expiry, and server-verified challenge", async () => {

@@ -629,41 +629,41 @@ Firestore: `privateChats` and subcollections read if participant; all client wri
 
 ### 10.1 Shared infrastructure
 
-Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Both registries mark all four `implemented: true`. Mafia is `genericCreate: false` on server and client — `createGame` rejects it; the dedicated `createMafiaGame` / `MafiaProvider.create` path is the only creator. `GameTypeRegistry.implemented` still lists Mafia on the create hub because that page branches; `genericCreate` is the list that would call `createGame`.
+Types in `GAME_TYPES` (`gamesDomain.js`): `guessCharacter`, `animeChain`, `emojiAnimeGuess`. `GAME_TYPE_REGISTRY` lists exactly three games. Mafia is excluded from the generic registry and has no `implemented` entry.
 
-Statuses: draft, waiting, active, paused, completed, cancelled (`gamesDomain.js` 64–77).
+Statuses: `CREATED`, `WAITING`, `STARTING`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` (uppercase). Transitions enforced via `TRANSITIONS` + `assertTransition`.
 
-Engines (`gameEngines/index.js`): only the three trivia games.
+Engines (`gameEngines/index.js`): only the three trivia games. Engines read `players`/`playerOrder` arrays and `deadlineAt`; no `globalDeadlineAt`.
 
-Create requires `groupId` and `manageGames`. No auto-matchmaking. Join while `waiting`. Start when `participantsCount >= minPlayers`. Callables: `createGame`, `initializeGame`, `joinGame`, `leaveGame`, `startGame`, `pauseGame`, `resumeGame`, `submitGameAction`, `endGame`, `cancelGame`. Scheduler `processExpiredGames` every 1 minute.
+Create requires `groupId`, group membership (`isMember`), and `creationSource === "group_chat"`. `gameCreationLimits` enforces daily cap (2 per creator per day). `requestRef` idempotency via `game_request_idempotency`. No auto-matchmaking. Join while `WAITING`; 15-min `waitingDeadlineAt` expires to `CANCELLED` with reason `waiting-timeout`. Start requires `participantsCount >= minPlayers`. Two-phase start: `WAITING` → `STARTING` → `IN_PROGRESS`. `startGame` emits no chat card (only createGame emits a chat card via `chatCardWriter.postFromActivity`).
 
-Rewards (`afterComplete`, 393–431): `economy.grantDomainRewards` type `earn_game` for `winnerIds`; achievements `game_won` / `game_completed`. Server-authoritative. Daily cap bucket `"event"` amount 10, cap 3 (`economyConfig.js`).
+Callables: `createGame`, `initializeGame`, `joinGame`, `leaveGame`, `startGame`, `pauseGame`, `resumeGame`, `submitGameAction`, `endGame`, `cancelGame`. `pauseGame`/`resumeGame`/`endGame` throw (no client screens call them). Scheduler `processExpiredGames` every 1 minute, 50-per-query batch (two queries: `WAITING`+`waitingDeadlineAt` → `CANCELLED`, `IN_PROGRESS`+`deadlineAt` → resolve via engine).
 
-`configuration.difficulty` is stored and shown in create UI; engines do not read it. **INCOMPLETE/MOCK**
+Rewards (`afterComplete`, gamesDomain.js): outcome-specific types `earn_game_win_easy`/`earn_game_win_normal`/`earn_game_win_hard`/`earn_game_draw`/`earn_game_loss` via `economy.grantDomainRewards(userIds, spec)`. `game_history` written by engine on game end or player resignation.
 
 Client `ScoringStrategyRegistry` returns `NoOpScoringStrategy` (`scoring.dart` 41–44). Scores live in server `publicState`.
 
-Catalog: `gameCatalog.js` 16 anime entries (characters, emoji clues, studio/character relations).
+Catalog: `gameCatalog.js` 16 anime entries (characters, emoji clues, studio/character relations). Shares relation via `sharesRelation`. Titles normalized by `normalizeTitle`.
 
 Trigger: Group details / chat menu → `/games?groupId=` → `/games/create?groupId=` → type chips. Mafia branches to `MafiaProvider.create` → `/mafia/{id}` instead of `createGame`.
 
 Reconnect: Firestore snapshots on `GameProvider.open`. `GameStrings.reconnecting` is unused. **INCOMPLETE/MOCK** dedicated reconnect UI.
 
-Anti-abuse: auth, membership, `status === active`, idempotent `clientActionId`, `stateVersion` stale reject, deadline expiry.
+Anti-abuse: auth, membership, `creationSource`, idempotent `clientActionId` + `requestId`, `stateVersion` stale reject, deadline expiry, resign writes to `game_history`.
 
 ### 10.2 Guess Character
 
-Phases `publicState.phase`: `round` | `game_over`. 2 players. +1 per correct guess. Timer per round (`deadlineAt`). Default rounds 5, timer 20s (engine clamps rounds 3–8, timer 10–45s; domain normalize 3–10 / 10–60). Answer in `games/{id}/secret/round` (rules read false). Artwork via `characterArt.publicArtwork`.
+Phases `publicState.phase`: `selection` | `ask` | `answer` | `game_over`. 2 players (`playerIds.length === 2`). In selection phase, each player picks a character (`select` action). Once both selected, phase advances to `ask`. Asker = `currentPlayerId` (first in `playerOrder`); opponent = the other. Asker asks a question or guesses opponent's character. A correct guess ends the game immediately with the guesser winning. Wrong guess passes the turn. +1 per correct guess. Timer per phase (`deadlineAt`). Default timer 20s (engine clamps 10–45s; domain normalize 10–60). Secret stored in `games/{id}/secret/round` (rules read false). Artwork via `characterArt.publicArtwork`.
 
 ### 10.3 Anime Chain
 
-Phases `turn` | `game_over`. 2–8 players. Next title must share character or studio and not already appear. +1 per valid submit. Ends at `maxChain` (`roundCount` 5–16, default 8) or consecutive skips covering the table. Timeout skips current player.
+Phases `publicState.phase`: `turn` | `game_over`. 2–8 players. Next title must share character or studio (`sharesRelation`) and not already appear. `roundCount` tracks total chain length. +1 per valid submit. Ends at `roundCount` reaching `maxChain` (5–16, default 8) or consecutive skips covering the table. Timeout skips current player.
 
 ### 10.4 Emoji Anime Guess
 
-Phases `guess` | `game_over`. 2–4 players. Turns = players × `roundsPerPlayer` (1–3). +1 if normalized title matches secret. Timeout advances with no score.
+Phases `publicState.phase`: `guess` | `game_over`. 2–4 players (`cardinality.min=2, max=4`). Turns = `playerIds.length × roundsPerPlayer` (totalTurns). `currentPlayerId` is the turn owner who sets the emoji clue; other players guess. +1 if canonical title matches secret (`resolveAnime`). Timeout advances with no score.
 
-**Traceability:** `gamesDomain.js`, `gameEngines/*.js`, `gameCatalog.js`, `game_create_page.dart`, `game_details_screen.dart`, `game_play_panels.dart`, `game_providers.dart`, `firebase_game_repository.dart`, `game_type_registry.dart`, `firestore.rules` 706–745, `index.js` 400–443
+**Traceability:** `gamesDomain.js`, `gameEngines/*.js`, `gameCatalog.js`, `game_create_v2_screen.dart`, `game_details_screen.dart`, `game_play_panels.dart`, `game_room_v2_screen.dart`, `games_center_v2_screen.dart`, `game_providers.dart`, `game_type_registry.dart`, `games_schema_v2.dart`, `firebase_game_repository.dart`, `firestore.rules` 706–745, `index.js` 400–443
 
 ---
 
@@ -777,7 +777,11 @@ Client screens: feed, details, manga viewer, story reader, editor (`fan_work_scr
 | Type | Amount | Daily cap | Sources in code |
 |------|--------|-----------|-----------------|
 | earn_event | 10 | 3 | `eventsDomain.js` grant on winners |
-| earn_game | 10 | 3 (bucket `event`) | trivia `afterComplete`; mafia `rewardDistributor` |
+| earn_game_win_easy | 7 | 10 (bucket `game`) | trivia `afterComplete` (easy difficulty) |
+| earn_game_win_normal | 8 | 10 (bucket `game`) | trivia `afterComplete` (normal difficulty) |
+| earn_game_win_hard | 10 | 10 (bucket `game`) | trivia `afterComplete` (hard difficulty) |
+| earn_game_draw | 5 | 10 (bucket `game`) | trivia `afterComplete` (draw) |
+| earn_game_loss | 2 | 10 (bucket `game`) | trivia `afterComplete` (loss) |
 | earn_publish | 10 | 1 | edit pipeline; fan work publish |
 | earn_achievement | 5 | 9 | `achievementsDomain.js` |
 | earn_referral_inviter | 70 | none in DAILY_CAPS | `economyDomain.js` |

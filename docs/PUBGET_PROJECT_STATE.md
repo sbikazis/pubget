@@ -2,14 +2,29 @@
 
 Living document for the current branch state, unblocked issues, and follow-up items. Append, do not rewrite history blithely.
 
-## Branch: cursor/chat-phase-b (Chat Phase B close, 2026-09-14)
+## Branch: cursor/chat-phase-b (Games Rebirth close, 2026-09-14)
 
-### Phased change summary (`95eec93..67fdcf7`)
+### Phased change summary (`d28b44a..HEAD`)
 
-Phase B (chat system repair) is implemented and verified. Scope-of-commit summary lives in `docs/CURRENT_STATE_MASTER.md`; deployment and testing notes below.
+**Prompt 1 — Decoupled Games domain** is implemented and verified. Merge `95eec93` reverted game engines to the legacy contract; this patch restores the e3273cd engine byte-exact and merges the rebirth domain into `gamesDomain.js`.
 
-- `functions/src/groupChat.js` — edit-window permission gate + media-requirements hardening verified locally via `node --check` and `node --test test/groupsDomain.test.js test/groupChat.test.js` (26/26 pass). **NOT deployed** — run `firebase deploy --only functions` manually.
-- Client chat code + chat tests: `flutter analyze` clean (0 err / 0 warn). Chat-scope test batch 46/46 pass.
+- **Engines restored** (`functions/src/gameEngines/guessCharacter.js`, `animeChain.js`, `emojiAnimeGuess.js`): byte-identical via `git cat-file blob e3273cd:<path>` + verified `git hash-object`. Player/turn model: guessCharacter uses `players`/`playerOrder`/`answeredPlayerIds`; animeChain validates `payload.targetId` against `state.selections[opponent]`; emojiAnimeGuess uses `currentPlayerId` as turn owner.
+- **Domain rewritten** (`functions/src/gamesDomain.js`): uppercase `STATUSES` (`CREATED`/`WAITING`/`STARTING`/`IN_PROGRESS`/`COMPLETED`/`CANCELLED`), 3-game registry (mafia excluded), `normalizeConfiguration` server-authoritative, two-phase `startGame` (`WAITING`→`STARTING`→`IN_PROGRESS`), `submitGameAction` with replay-before-terminal + resign, `processExpiredGames` 50-limit batch, HEAD-style outcome-specific rewards (`earn_game_win_{difficulty}`, `earn_game_draw`, `earn_game_loss`), `creationSource:"group_chat"` enforced, 15-min waiting room (`waitingDeadlineAt`), `requestRef` idempotency. `pauseGame`/`resumeGame`/`endGame` throw (no screens).
+- **Function tests** (`functions/test/gamesDomain.test.js`, `gameEngines.test.js`): replaced with patched e3273cd suites (`creationSource:"group_chat"` added to all `createGame` calls).
+- **ChatCardWriter registry test** (`functions/test/chatCardWriter.test.js` lines 111–115): flipped mafia assertion to `GAME_TYPE_REGISTRY.mafia === undefined` (rebirth contract).
+- **Emulator E2E** (`functions/test/productEngines.e2e.test.js`): updated game blocks to rebirth engine protocol (selection→ask→guess flow for guessCharacter; round-1 correct-guess path for emojiAnimeGuess).
+
+**Targeted test results**
+
+| Suite | Result |
+|-------|--------|
+| `functions/test/gamesDomain.test.js` + `gameEngines.test.js` + `chatCardWriter.test.js` + rebirth contract files | 28/28 pass |
+| `functions/test/guessCharacterRebirth.test.js` + `animeChainRebirth.test.js` + `emojiAnimeGuessRebirth.test.js` | 6/6 pass |
+| `npm test` full function suite | 217/217 pass |
+| Dart game tests (`game_engine_test.dart` + `games_schema_v2_test.dart` + `game_providers_test.dart` + `game_screens_test.dart` + `features/games/games_v2_screens_test.dart`) | 33/33 pass |
+| `flutter analyze lib/features/games` | 0 errors, 7 pre-existing info-level deprecation warnings |
+
+**NOT deployed** — run `firebase deploy --only functions` manually.
 
 ## Known Issues
 
