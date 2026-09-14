@@ -669,44 +669,47 @@ Phases `publicState.phase`: `guess` | `game_over`. 2–4 players (`cardinality.m
 
 ## 11. Mafia
 
-Separate collection `mafia_games`, not `gamesDomain` engines.
+Separate collection `mafia_games`, not `gamesDomain` engines. The whole game is **server-authoritative**: every phase transition, timer, role assignment, night/vote resolution, win check, reward, and history write happens in Cloud Functions/Admin SDK; clients can only call the callables (`createMafiaGame`, `joinMafiaGame`, `startMafiaGame`, `leaveMafiaGame`, `submitMafiaAction`, `sendMafiaChat`, `heartbeatMafia`).
 
-### 11.1 Phases (`phaseFlow.js` 6–27)
+### 11.1 Phases (`phaseFlow.js`)
 
-Lobby order: `waiting` (120s), `starting` (10s).  
-Play order: `night` (45s), `day` (20s), `discussion` (90s), `voting` (45s), `execution` (15s), then wrap.  
-`nextPhase`: waiting→starting→night; finished/cancelled stay; unknown play phase → night.
+Exact server-owned strings (no aliases, no legacy `execution`/`finished`/`revote`):
 
-Client enum matches (`mafia_models.dart` 3–13). Terminal: `finished`, `cancelled`.
+```
+WAITING → STARTING → ROLE_REVEAL → NIGHT → DAY → DISCUSSION → VOTING → VOTE_RESULT → RESOLUTION → (NIGHT …)
+CANCELLED  (valid cancel / undersized start)
+GAME_OVER  (win check)
+```
+
+Durations (`DURATIONS_SECONDS`): WAITING 120, STARTING 10, ROLE_REVEAL 8, NIGHT 45, DAY 20, DISCUSSION 90, VOTING 45, VOTE_RESULT 8, RESOLUTION 3. Revote stays inside the same `VOTING` phase (`voteRound` 1→2, `revoteCandidates` = tied players, 30s timer). Terminal states: `GAME_OVER`, `CANCELLED`. `nextPhase` maps to `ROLE_REVEAL` and then wraps the play loop. Client enum matches (`mafia_models.dart`).
 
 ### 11.2 Lobby
 
-One running game per group (`mafiaDomain.js` 125–127, 156–160). Defaults min 4 max 8 (clamped 4–16). Auto-start when full → `starting`. Manual `startMafiaGame`. Expired waiting lobby cancelled (`lobbyManager.js`). Expired starting assigns roles (`roleAssigner.js`).
+One running game per group (`mafiaDomain.js`). Defaults min 4 max 8 (hard-clamped 4–8, both server and rules). Auto-start when full → `STARTING`. Manual `startMafiaGame`. Expired waiting lobby cancelled (`lobbyManager.js`). Expired `STARTING` with a live claim assigns roles (`roleAssigner.js`).
 
-Client create/join/start/leave: callables. Rules also allow a constrained client `mafiaGameCreate` path (`firestore.rules` 102–141); the Flutter repository uses callables for those four actions.
+Client create/join/start/leave: callables. `firestore.rules` also allow a constrained client `mafiaGameCreate` path (uppercase `WAITING` marker on the group) that the Flutter repository does not use.
 
 ### 11.3 Roles (`abilities/index.js`, `roleAssigner.js`)
 
-Assigned: mafia, doctor, detective, citizen filler; `good_boy` at ≥8 (classic and advanced); sniper if advanced ≥9; silencer if advanced ≥10.  
-`good_boy` is a citizen-aligned named villager (`abilities/good_boy.js`): no night action, town win condition. Live `createMafiaGame` stores `version: 1` (classic), so the classic ≥8 gate is what actually assigns it.
+Exactly five roles: `mafia`, `don`, `doctor`, `detective`, `citizen`. No Good Boy / Sniper / Silencer. `computeRoleDistribution`: 4 players = mafia, doctor, detective, citizen; ≥5 = don + mafia + doctor + detective + citizen fill. Deterministic FNV-1a assignment seeded by `gameId` (no Roleplay export needed).
 
-Night resolution (`nightResolver.js`): mafia majority kill vs doctor save; sniper one bullet; silencer `canSpeak: false` (reset next night); detective writes `lastInvestigationResult` on private doc.
+Night resolution (`nightResolver.js`): mafia majority (incl. don) kill vs doctor save; tie → no kill; doctor cannot target the same player on two consecutive nights; detective writes `lastInvestigationResult` (Mafia/Not Mafia) on private doc; don writes `lastDonInvestigationResult` (Detective/Not Detective).
 
-Votes (`voteResolver.js`): majority executes; tie/none skip.
+Votes (`voteResolver.js`): majority executes immediately; first tie → revote restricted to the tied players (same `VOTING`, 30s); second tie (or non-tied targets) → skip with reason `second_tie` (no elimination, no day freeze).
 
-Win (`winConditionChecker.js`): mafia count ≥ others → mafias; mafia 0 → citizens.
+Win (`winConditionChecker.js`): mafia alive ≥ others → mafias; mafia 0 → citizens; checked after any player-count change.
 
-Roles live under `players/{uid}/private/data` (client read self only).
+Roles live under `players/{uid}/private/data` (client read self only, write false).
 
 ### 11.4 Server vs client
 
-Night action, vote, and mafia chat are **client Firestore writes** gated by rules (`firebase_mafia_repository.dart` 52–97; `firestore.rules` 888–955). Phase advance, role assignment, night/vote resolution, rewards: schedulers / Admin SDK.
+Night actions, votes, chat, and mafia messages are written **only by the `submitMafiaAction` / `sendMafiaChat` callables**. `firestore.rules` deny all client writes to `night_actions`, `votes`, `chat`, `mafia_messages`, `action_receipts`, and `players/{uid}/private`. Phase advance, role assignment, night/vote resolution, rewards, history: schedulers / Admin SDK.
 
-Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable: starting (cancel if below min, else decrement) or active night/day/discussion/voting (mark eliminated, then win check). Waiting and execution are `unsupported`. `MafiaGameScreen` leave + confirmation matches that server behavior.
+Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute; server transitions never stall on a missing client. `leaveMafiaGame` callable: during `ROLE_REVEAL`/`NIGHT`/`DAY`/`DISCUSSION`/`VOTING`/`VOTE_RESULT`/`RESOLUTION` → mark eliminated + win check + 60s reconnect window; `WAITING`/`STARTING` → decrement/cancel; `GAME_OVER`/`CANCELLED` → unsupported. `MafiaGameScreen` leave + confirmation matches that server behavior.
 
-Rewards: `rewardDistributor.js` `earn_game` source `mafia`, idempotent `rewardsDistributed`. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history`.
+Rewards: `rewardDistributor.js` `earn_mafia_win` 10 / `earn_mafia_loss` 2, idempotent `rewardsDistributed`, no draw reward, no reward on cancellation. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history` (+ aggregated `stats`), written transactionally and claimed via `historyWritten` (SEC-H-02).
 
-**Traceability:** `mafiaDomain.js`, `phaseFlow.js`, `phaseScheduler.js`, `lobbyManager.js`, `disconnectHandler.js`, `leaveGame.js`, `roleAssigner.js`, `nightResolver.js`, `voteResolver.js`, `winConditionChecker.js`, `rewardDistributor.js`, `abilities/*`, `firebase_mafia_repository.dart`, `mafia_provider.dart`, `mafia_game_screen.dart`, `firestore.rules` 57–167, 861–958, `index.js` 444–455, 960–963
+**Traceability:** `mafiaDomain.js`, `phaseFlow.js`, `phaseScheduler.js`, `lobbyManager.js`, `disconnectHandler.js`, `leaveGame.js`, `leaveTransition.js`, `actionDomain.js`, `roleAssigner.js`, `nightResolver.js`, `voteResolver.js`, `winConditionChecker.js`, `rewardDistributor.js`, `historyWriter.js`, `abilities/index.js`, `firebase_mafia_repository.dart`, `mafia_provider.dart`, `mafia_game_screen.dart`, `mafia_models.dart`, `firestore.rules`, `index.js`
 
 ---
 
@@ -1027,7 +1030,7 @@ Sensitive fields on `users` (coinsBalance, subscriptionType, totalRespect, fansC
 
 `lastMessageAt`/`lastMessageText` remain member-writable.
 
-Mafia night/vote/chat are client-trusted as **intent documents**; resolution is server-side.
+Mafia night actions, votes, chat, mafia messages, and action receipts are **server-written only**; the rules deny every client write (`submitMafiaAction` / `sendMafiaChat` callables do the writes with the Admin SDK). Resolution, phase advance, rewards, and history remain server-side.
 
 ### 23.2 Storage rules
 
@@ -1035,7 +1038,7 @@ Authenticated-only named paths. Avatars 5MB images; group image/background owner
 
 ### 23.3 Callables (exports in `functions/index.js`)
 
-HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/publish/cancel/end/archive/delete/join/leave/submit; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
+HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/publish/cancel/end/archive/delete/join/leave/submit; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia, submitMafiaAction, sendMafiaChat, heartbeatMafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
 
 Triggers: syncAvatarPrivacy, syncPublicProfile, processEditVideo (europe-west3), processGroupChatMedia (europe-west3), recalculateInviteRanks, onNewGroupMessage, onJoinRequest, onJoinRequestDecision, onFriendRequest, onRespectReceived, onNewPrivateMessage, refreshGroupActivityScores, processExpiredGames, processEventLifecycle, processExpiredLobbies, processPhaseTransitions, markDisconnectedPlayers.
 
@@ -1085,7 +1088,7 @@ Flutter `test/` files (68 dart files) cover: auth (screens, provider, validators
 
 No Flutter widget tests named for: mafia play screen, group chat composer, edits feed playback, notification inbox `hasMore`/retry, roleplay reservation UI.
 
-Functions unit files (22): socialGraph, avatarPrivacy, groupsDomain, groupChat, privateChat, eventsDomain, gamesDomain, gameEngines, characterArt, achievementsDomain, mafiaDomain, mafiaEngine, fanWorksDomain, groupMediaPipeline, notificationBuilder, discoveryEngine, editsDomain, economyDomain, mafiaLeaveGame, ranking, recommendationEngine, animeListsDomain.
+Functions unit files (26): socialGraph, avatarPrivacy, groupsDomain, groupChat, privateChat, eventsDomain, gamesDomain, gameEngines, characterArt, achievementsDomain, mafiaDomain, mafiaEngine, fanWorksDomain, groupMediaPipeline, notificationBuilder, discoveryEngine, editsDomain, economyDomain, mafiaLeaveGame, chatCardWriter, contentFilter, ranking, recommendationEngine, animeListsDomain, animeHubDomain, mafiaHistory.
 
 **Traceability:** `/tmp/flutter-test.log`, `/tmp/functions-test.log`, `/tmp/rules-test.log`, `package.json`, `functions/package.json`, `test/**`, `functions/test/**`
 
@@ -1138,7 +1141,7 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | Observed | notification inbox | Retry re-fetches; `hasMore` follows page size |
 | INCOMPLETE/MOCK | Home section names `*Placeholder` | Real strips, still named placeholder in enum |
 | INCOMPLETE/MOCK | `ScoringStrategyRegistry` | No-op client scoring |
-| Observed | Mafia waiting/execution leave | Server `leaveTransition` returns `unsupported`; UI hides leave in those phases |
+| Observed | Mafia leave in terminal states | Server `leaveTransition` returns `unsupported` for `GAME_OVER`/`CANCELLED`; UI hides leave when `isFinished` |
 | Observed | `UnreadEngine` | Shared shell/Drawer unread; no visual/audio vendor; inbox types still a subset |
 | Observed | `firestore.rules` vs `PubgetUser.toMap` | create/update keys vs `displayName` / `whoCanMessageMe` |
 | Unexported | `index.js` 814–950 | `legacyOnNewGroupMessage`, `legacyOnJoinRequest` not in `exports` |

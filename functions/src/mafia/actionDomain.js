@@ -41,8 +41,8 @@ async function submitMafiaAction(request) {
     const gameSnap = await tx.get(gameRef);
     if (!gameSnap.exists) throw new HttpsError("not-found", "Mafia game not found.");
     const game = gameSnap.data() || {};
-    if (["game_over", "finished", "cancelled"].includes(game.status) ||
-        ["game_over", "finished", "cancelled"].includes(game.currentPhase)) {
+    if (["GAME_OVER", "CANCELLED"].includes(game.status) ||
+        ["GAME_OVER", "CANCELLED"].includes(game.currentPhase)) {
       throw new HttpsError("failed-precondition", "This Mafia game is over.");
     }
     const playerRef = gameRef.collection("players").doc(uid);
@@ -83,7 +83,7 @@ async function submitMafiaAction(request) {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else if (type === "night_action") {
-      if (phase !== "night" || !NIGHT_ROLES.has(privateData.role)) {
+      if (phase !== "NIGHT" || !NIGHT_ROLES.has(privateData.role)) {
         throw new HttpsError("failed-precondition", "This role cannot act now.");
       }
       if (!string(targetId)) throw new HttpsError("invalid-argument", "A target is required.");
@@ -102,13 +102,12 @@ async function submitMafiaAction(request) {
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       if (privateData.role === "doctor") {
-        // A repeated target is rejected before it reaches the resolver.
         if (privateData.lastDoctorTargetId === targetId) {
           throw new HttpsError("invalid-argument", "Doctor cannot protect the same player twice.");
         }
       }
     } else if (type === "vote") {
-      if (!["voting", "revote"].includes(phase) || player.canVote === false) {
+      if (phase !== "VOTING" || player.canVote === false) {
         throw new HttpsError("failed-precondition", "Voting is not open.");
       }
       if (!string(targetId) || targetId === uid) {
@@ -119,17 +118,17 @@ async function submitMafiaAction(request) {
         throw new HttpsError("invalid-argument", "Choose a living player.");
       }
       const candidates = Array.isArray(game.revoteCandidates) ? game.revoteCandidates : [];
-      if (phase === "revote" && !candidates.includes(targetId)) {
+      if (candidates.length > 0 && !candidates.includes(targetId)) {
         throw new HttpsError("invalid-argument", "The re-vote is only between tied players.");
       }
       const voteRef = gameRef.collection("votes").doc(`${uid}_d${game.currentDay}`);
       tx.set(voteRef, {
         actionId: actionId.trim(), voterId: uid, targetId: targetId.trim(),
-        dayNumber: game.currentDay, revote: phase === "revote",
+        dayNumber: game.currentDay, voteRound: game.voteRound || 1,
         time: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else if (type === "end_turn") {
-      if (phase !== "discussion" || game.currentSpeakerId !== uid) {
+      if (phase !== "DISCUSSION" || game.currentSpeakerId !== uid) {
         throw new HttpsError("failed-precondition", "It is not your speaking turn.");
       }
       const order = Array.isArray(game.speakingOrder) ? game.speakingOrder : [];
@@ -143,9 +142,13 @@ async function submitMafiaAction(request) {
         });
       } else {
         tx.update(gameRef, {
-          status: "voting", currentPhase: "voting",
+          status: "VOTING", currentPhase: "VOTING",
+          voteRound: 1,
+          revoteCandidates: null,
           phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
           phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 45_000),
+          serverStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+          serverEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 45_000),
           currentSpeakerId: null,
         });
       }
@@ -159,7 +162,6 @@ async function submitMafiaAction(request) {
     return { duplicate: false, result: resultName };
   });
   if (result.result === "accepted" && type === "night_action") {
-    // This is deliberately best effort: win checks only read server state.
     const fresh = await gameRef.get();
     if (fresh.exists) await checkWinCondition(gameId, fresh.data());
   }
@@ -180,7 +182,7 @@ async function sendMafiaChat(request) {
     const game = gameSnap.data() || {};
     const player = playerSnap.data() || {};
     if (!playerSnap.exists || player.isAlive !== true || player.canSpeak === false ||
-        !["day", "discussion", "voting"].includes(game.currentPhase)) {
+        !["DAY", "DISCUSSION", "VOTING"].includes(game.currentPhase)) {
       throw new HttpsError("failed-precondition", "Chat is not open for you.");
     }
     tx.create(gameRef.collection("chat").doc(), {

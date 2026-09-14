@@ -141,7 +141,7 @@ test("mafia lobby create is server-side and join is idempotent", async () => {
     data: { groupId: "g1", minPlayers: 4, maxPlayers: 8 },
   });
   const game = db.store.get(`mafia_games/${created.gameId}`);
-  assert.equal(game.status, "waiting");
+  assert.equal(game.status, "WAITING");
   assert.equal(game.createdBy, "alice");
   assert.equal(game.playersCount, 1);
   assert.ok(db.store.get(`mafia_games/${created.gameId}/players/alice`));
@@ -156,6 +156,13 @@ test("mafia lobby create is server-side and join is idempotent", async () => {
   assert.equal(card.senderId, "system");
   assert.equal(card.gameActivity.kind, "created");
   assert.equal(card.gameActivity.gameType, "mafia");
+// Mafia create/join/start only write uppercase status strings.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/mafia/mafiaDomain.js"), "utf8");
+  assert.equal(source.includes('"waiting"'), false);
+  assert.equal(source.includes('"starting"'), false);
+  assert.equal(source.includes('"WAITING"'), true);
 });
 
 test("mafia start requires the host, min players, and cannot be forced by a client role", async () => {

@@ -332,8 +332,8 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
   });
   if (!assigned) {
     await db.doc(`mafia_games/${created.gameId}`).update({
-      status: "starting",
-      currentPhase: "starting",
+      status: "STARTING",
+      currentPhase: "STARTING",
       playersCount: 4,
       minPlayers: 4,
       maxPlayers: 8,
@@ -368,9 +368,17 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
   assert.ok(mafiaUid);
   assert.ok(citizenUid);
   const nightGame = (await db.doc(`mafia_games/${created.gameId}`).get()).data();
-  assert.equal(nightGame.status, "night");
+  assert.equal(nightGame.status, "ROLE_REVEAL");
+  assert.equal(nightGame.currentPhase, "ROLE_REVEAL");
   const doctorUid = Object.keys(roles).find((uid) => roles[uid].role === "doctor");
-  await assertSucceeds(client(mafiaUid).doc(
+  // The scheduler advances ROLE_REVEAL -> NIGHT on its 8s timer; the harness
+  // drives the transition explicitly.
+  await db.doc(`mafia_games/${created.gameId}`).update({
+    status: "NIGHT", currentPhase: "NIGHT", currentNight: 1,
+  });
+  // Direct client writes to night_actions are rejected by the security rules
+  // (anti-cheat): actions flow only through the submitMafiaAction callable.
+  await assertFails(client(mafiaUid).doc(
     `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n1`,
   ).set({
     playerId: mafiaUid,
@@ -379,7 +387,7 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     submittedAt: serverTimestamp(),
   }));
   if (doctorUid && doctorUid !== mafiaUid) {
-    await assertSucceeds(client(doctorUid).doc(
+    await assertFails(client(doctorUid).doc(
       `mafia_games/${created.gameId}/night_actions/${doctorUid}_n1`,
     ).set({
       playerId: doctorUid,
@@ -389,14 +397,6 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     }));
   }
   await assertFails(client(mafiaUid).doc(
-    `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n1`,
-  ).set({
-    playerId: mafiaUid,
-    targetId: citizenUid,
-    nightNumber: 1,
-    submittedAt: serverTimestamp(),
-  }));
-  await assertFails(client(mafiaUid).doc(
     `mafia_games/${created.gameId}/night_actions/${mafiaUid}_n0`,
   ).set({
     playerId: mafiaUid,
@@ -404,12 +404,27 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     nightNumber: 0,
     submittedAt: serverTimestamp(),
   }));
+  // The callable backend writes the actions with the admin SDK.
+  await db.doc(`mafia_games/${created.gameId}/night_actions/${mafiaUid}_n1`).set({
+    playerId: mafiaUid,
+    targetId: citizenUid,
+    nightNumber: 1,
+    submittedAt: serverTimestamp(),
+  });
+  if (doctorUid && doctorUid !== mafiaUid) {
+    await db.doc(`mafia_games/${created.gameId}/night_actions/${doctorUid}_n1`).set({
+      playerId: doctorUid,
+      targetId: mafiaUid,
+      nightNumber: 1,
+      submittedAt: serverTimestamp(),
+    });
+  }
   const resolved = await resolveNight(created.gameId, {
-    currentNight: 1, status: "night", currentPhase: "night",
+    currentNight: 1, status: "NIGHT", currentPhase: "NIGHT",
   });
   assert.equal(resolved, true);
   await db.doc(`mafia_games/${created.gameId}`).update({
-    status: "voting", currentPhase: "voting", currentDay: 1, phaseEndsAt: null,
+    status: "VOTING", currentPhase: "VOTING", currentDay: 1, phaseEndsAt: null,
   });
   const alive = [];
   for (const uid of ["alice", "bob", "charlie", "dave"]) {
@@ -418,13 +433,18 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
   }
   const voter = alive[0];
   const target = alive.find((uid) => uid !== voter) || alive[0];
-  await assertSucceeds(client(voter).doc(
+  // Direct client writes to votes are rejected by the security rules
+  // (anti-cheat): votes flow only through the submitMafiaAction callable.
+  await assertFails(client(voter).doc(
     `mafia_games/${created.gameId}/votes/${voter}_d1`,
   ).set({
     voterId: voter, targetId: target, dayNumber: 1, time: serverTimestamp(),
   }));
+  await db.doc(`mafia_games/${created.gameId}/votes/${voter}_d1`).set({
+    voterId: voter, targetId: target, dayNumber: 1, time: serverTimestamp(),
+  });
   await resolveVotes(created.gameId, {
-    currentDay: 1, status: "voting", currentPhase: "voting",
+    currentDay: 1, status: "VOTING", currentPhase: "VOTING",
   });
   await assertFails(client("mallory").doc(
     `mafia_games/${created.gameId}/votes/mallory_d1`,
