@@ -939,10 +939,10 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/fanWorks/$(workId));
       }
       function fanWorkVisible() {
-        return signedIn() && fanWorkExists() &&
-          (fanWorkData().creatorId == request.auth.uid ||
-           (fanWorkData().status == 'published' &&
-            fanWorkData().moderationStatus == 'approved'));
+        return signedIn() &&
+          (resource.data.creatorId == request.auth.uid ||
+           (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved'));
       }
       allow read: if fanWorkVisible();
       allow create, update, delete: if false;
@@ -965,11 +965,17 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /revisions/{revisionId} {
-        allow read: if fanWorkVisible();
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
         allow create, update, delete: if false;
       }
       match /comments/{commentId} {
-        allow read: if fanWorkVisible();
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
         allow create, update, delete: if false;
         match /likes/{uid} {
           allow read: if self(uid);

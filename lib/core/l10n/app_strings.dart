@@ -499,6 +499,7 @@ final class AppStrings {
 
   String get myProfile => pick('My profile', 'ملفي');
   String get profile => pick('Profile', 'الملف');
+  String get manageProfile => pick('Manage profile', 'إدارة الملف');
   String get editProfile => pick('Edit profile', 'تعديل الملف');
   String get shareProfile => pick('Share profile', 'مشاركة الملف');
   String get copyLink => pick('Copy link', 'نسخ الرابط');

@@ -124,32 +124,32 @@ class ProfileStatPill extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: <Color>[
-              AppColors.royalPurplePale,
-              AppColors.goldPale,
+              AppColors.darkSurfaceMuted,
+              AppColors.darkSurface,
             ],
           ),
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
-            color: AppColors.gold.withValues(alpha: 0.35),
+            color: AppColors.darkOutline.withValues(alpha: 0.4),
           ),
         ),
         child: Column(
           children: <Widget>[
             if (icon != null) ...[
-              Icon(icon, color: AppColors.royalPurple, size: 18),
+              Icon(icon, color: AppColors.royalPurpleLight, size: 18),
               const SizedBox(height: 4),
             ],
             Text(
               '$value',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: AppColors.royalPurpleDark,
+                color: AppColors.darkText,
               ),
             ),
             Text(
               label,
               style: theme.textTheme.labelMedium?.copyWith(
-                color: AppColors.lightTextMuted,
+                color: AppColors.darkTextMuted,
               ),
             ),
           ],
