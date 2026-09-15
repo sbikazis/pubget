@@ -409,11 +409,11 @@ These four paths share navigator key `app-shell` (`app_router.dart` 180–185).
 
 ### 4.2 Domain routes (`pubget_app.dart` 659–685)
 
-`/splash`, `/login`, `/register`, `/forgot-password`, `/terms`, `/onboarding`, `/home`, `/search`, `/settings`, `/guide`, `/unknown`, `/profile/edit`, `/friend-requests`, `/notifications`, `/edits`, `/edits/upload`, `/groups`, `/groups/create`, `/private`, `/anime`, `/anime/library`, `/fan-works`, `/store`, `/inventory`, `/premium`, `/economy/history`.
+`/splash`, `/login`, `/register`, `/forgot-password`, `/terms`, `/onboarding`, `/home`, `/search`, `/settings`, `/guide`, `/unknown`, `/profile/edit`, `/profile-groups`, `/fan-works-creator`, `/friend-requests`, `/notifications`, `/edits`, `/edits/upload`, `/groups`, `/groups/create`, `/private`, `/anime`, `/anime/library`, `/fan-works`, `/store`, `/inventory`, `/premium`, `/economy/history`.
 
 ### 4.3 Parameterized routes (`pubget_app.dart` 687–764)
 
-`/profile` (`uid`), `/group`, `/group-invite` (`groupId`,`inviteId`), `/group-chat`, `/group-media`, `/group-members`, `/group-requests`, `/group-roleplay`, `/private-chat` (`chatId`,`uid`), `/event`, `/events` (optional `groupId`), `/events/create`, `/anime/details`, `/anime/browse`, `/anime/genre`, `/anime/season`, `/anime/library`, `/game`, `/mafia`, `/achievements` (`id`), `/games`, `/games/create`, `/fan-work` (`workId`, `view=manga|story`), `/fan-works/create`, `/store/item`.
+`/profile` (`uid`), `/group`, `/group-invite` (`groupId`,`inviteId`), `/group-chat`, `/group-media`, `/group-members`, `/group-requests`, `/group-roleplay`, `/private-chat` (`chatId`,`uid`), `/event`, `/events` (optional `groupId`), `/events/create`, `/anime/details`, `/anime/browse`, `/anime/genre`, `/anime/season`, `/anime/library`, `/game`, `/mafia`, `/achievements` (`id`), `/games`, `/games/create`, `/fan-work` (`workId`, `view=manga|story`), `/fan-works/create`, `/fan-works-creator` (`uid`), `/profile-groups` (`uid`), `/store/item`.
 
 URI segment forms (`app_router.dart` 256–286): `/event/{id}`, `/anime/{id}` (or browse/genre/season/library), `/game/{id}`, `/mafia/{id}`, `/fan-work/{id}`, `/group/{id}`, `/profile/{uid}`. Missing required ids → `/unknown`.
 
