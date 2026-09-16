@@ -13,7 +13,7 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { randomUUID } = require("node:crypto");
 const {
@@ -32,17 +32,24 @@ const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
 const { createNotificationTriggers } = require("./src/notificationTriggers");
-const {
-  createDiscoveryScheduler,
-  onSchedule,
-} = require("./src/discoveryEngine");
+const { createDiscoveryScheduler, onSchedule } = require("./src/discoveryEngine");
+const { createRecommendationEngine } = require("./src/recommendationEngine");
+const { createAnimeListsDomain } = require("./src/animeListsDomain");
+const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
-const { createMafiaDomain } = require("./src/mafiaDomain");
+const { createFanWorksDomain } = require("./src/fanWorksDomain");
+const { createEconomyDomain } = require("./src/economyDomain");
+const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
+
+// Load Mafia actions after Admin initialization because the action domain
+// obtains its Firestore handle at module load time.
+const mafiaActions = require("./src/mafia/actionDomain");
 
 exports.syncAvatarPrivacy = onDocumentWritten(
   "users/{uid}",
@@ -83,22 +90,6 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
   await publicRef.set(buildPublicProfile(data));
 });
 
-const socialGraph = createSocialGraph({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-});
-const groupsDomain = createGroupsDomain({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  randomUUID,
-});
-const groupChat = createGroupChat({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-});
 const privateChat = createPrivateChat({
   db: getFirestore(),
   FieldValue,
@@ -109,11 +100,47 @@ const notificationBuilder = createNotificationBuilder({
   messaging: getMessaging(),
   FieldValue,
 });
+const economyDomain = createEconomyDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+});
+const achievementsDomain = createAchievementsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  economy: economyDomain,
+  notificationBuilder,
+});
+const groupChat = createGroupChat({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  bucket: getStorage().bucket(),
+  randomUUID,
+  achievements: achievementsDomain,
+});
+const socialGraph = createSocialGraph({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  achievements: achievementsDomain,
+});
+const groupsDomain = createGroupsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  randomUUID,
+  achievements: achievementsDomain,
+});
 const eventsDomain = createEventsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
+  economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const mafiaDomain = createMafiaDomain({
   db: getFirestore(),
@@ -126,7 +153,24 @@ const gamesDomain = createGamesDomain({
   FieldValue,
   HttpsError,
   notificationBuilder,
-  mafia: mafiaDomain,
+  economy: economyDomain,
+  achievements: achievementsDomain,
+});
+const mafiaDomain = createMafiaDomain({
+  db: getFirestore(),
+  FieldValue,
+  Timestamp,
+  HttpsError,
+  notificationBuilder,
+});
+const fanWorksDomain = createFanWorksDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+  storage: getStorage().bucket(),
+  economy: economyDomain,
+  achievements: achievementsDomain,
 });
 const notificationCallables = createNotificationCallables({
   db: getFirestore(),
@@ -141,15 +185,75 @@ const discoveryScheduler = createDiscoveryScheduler({
   db: getFirestore(),
   FieldValue,
 });
+const recommendationEngine = createRecommendationEngine({
+  db: getFirestore(),
+  HttpsError,
+});
+const animeListsDomain = createAnimeListsDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
+const animeHubDomain = createAnimeHubDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+});
+const processEditVideo = createEditPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+  economy: economyDomain,
+  achievements: achievementsDomain,
+  notifications: notificationBuilder,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
+  achievements: achievementsDomain,
+  processEdit: processEditVideo,
+  bucket: getStorage().bucket(),
 });
 
 exports.refreshGroupActivityScores = onSchedule(
   { schedule: "every 1 hours", region: "us-central1" },
   discoveryScheduler.updateScores,
+);
+exports.getDiscoveryFeed = onCall(
+  { region: "us-central1" },
+  recommendationEngine.getDiscoveryFeed,
+);
+exports.setAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setAnimeListEntry,
+);
+exports.removeAnimeListEntry = onCall(
+  { region: "us-central1" },
+  animeListsDomain.removeAnimeListEntry,
+);
+exports.getAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getAnimeList,
+);
+exports.setCharacterFavorite = onCall(
+  { region: "us-central1" },
+  animeListsDomain.setCharacterFavorite,
+);
+exports.getCharacterFavorites = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCharacterFavorites,
+);
+exports.upsertAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.upsertAnimeRating,
+);
+exports.deleteAnimeRating = onCall(
+  { region: "us-central1" },
+  animeHubDomain.deleteAnimeRating,
+);
+exports.reportAnimeReview = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnimeReview,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },
@@ -187,9 +291,23 @@ exports.editCommentAction = onCall(
   { region: "us-central1" },
   editsDomain.commentAction,
 );
+exports.getEditFeed = onCall(
+  { region: "us-central1" },
+  editsDomain.getEditFeed,
+);
+exports.retryEditProcessing = onCall(
+  { region: "us-central1" },
+  editsDomain.retryProcessing,
+);
+exports.finalizeEditUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
+  editsDomain.finalizeUpload,
+);
+// Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
+// Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
-  createEditPipeline({ db: getFirestore(), bucket: getStorage().bucket() }),
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
+  processEditVideo,
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
@@ -209,6 +327,13 @@ exports.rejectJoinRequest = onCall(
   groupsDomain.rejectJoinRequest,
 );
 exports.changeRole = onCall({ region: "us-central1" }, groupsDomain.changeRole);
+exports.warnMember = onCall({ region: "us-central1" }, groupsDomain.warnMember);
+exports.updateGroupSettings = onCall(
+  { region: "us-central1" },
+  groupsDomain.updateGroupSettings,
+);
+exports.promoteGroup = onCall({ region: "us-central1" }, groupsDomain.promoteGroup);
+exports.unbanMember = onCall({ region: "us-central1" }, groupsDomain.unbanMember);
 exports.updateRolePermissions = onCall(
   { region: "us-central1" },
   groupsDomain.updateRolePermissions,
@@ -262,6 +387,14 @@ exports.markGroupMessagesDelivered = onCall(
 exports.updateGroupChatBackground = onCall(
   { region: "us-central1" },
   groupChat.updateBackground,
+);
+exports.forwardGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.forwardMessage,
+);
+exports.reportGroupMessage = onCall(
+  { region: "us-central1" },
+  groupChat.reportMessage,
 );
 exports.startPrivateChat = onCall(
   { region: "us-central1" },
@@ -323,6 +456,26 @@ exports.submitEventResponse = onCall(
   { region: "us-central1" },
   eventsDomain.submitEventResponse,
 );
+exports.previewEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.previewEvent,
+);
+exports.resolveEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.resolveEvent,
+);
+exports.getEventAnalytics = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventAnalytics,
+);
+exports.addEventComment = onCall(
+  { region: "us-central1" },
+  eventsDomain.addEventComment,
+);
+exports.reactToEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reactToEvent,
+);
 exports.createGame = onCall(
   { region: "us-central1" },
   gamesDomain.createGame,
@@ -363,20 +516,136 @@ exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
 );
-exports.advanceMafiaPhase = onCall(
-  { region: "us-central1" },
-  mafiaDomain.advanceMafiaPhase,
-);
-exports.processMafiaLifecycle = onSchedule(
+exports.processExpiredGames = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
-  mafiaDomain.processMafiaLifecycle,
+  gamesDomain.processExpiredGames,
+);
+exports.createMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.createMafiaGame,
+);
+exports.joinMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.joinMafiaGame,
+);
+exports.startMafiaGame = onCall(
+  { region: "us-central1" },
+  mafiaDomain.startMafiaGame,
+);
+exports.submitMafiaAction = onCall(
+  { region: "us-central1" },
+  mafiaActions.submitMafiaAction,
+);
+exports.sendMafiaChat = onCall(
+  { region: "us-central1" },
+  mafiaActions.sendMafiaChat,
+);
+exports.heartbeatMafia = onCall(
+  { region: "us-central1" },
+  mafiaActions.heartbeatMafia,
+);
+exports.getAchievements = onCall(
+  { region: "us-central1" },
+  achievementsDomain.getAchievements,
+);
+exports.saveFanWorkDraft = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.saveFanWorkDraft,
+);
+exports.publishFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.publishFanWork,
+);
+exports.revisePublishedFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.revisePublishedFanWork,
+);
+exports.requestFanWorkRemoval = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.requestFanWorkRemoval,
+);
+exports.archiveFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.archiveFanWork,
+);
+exports.deleteFanWorkDraft = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.deleteFanWorkDraft,
+);
+exports.startFanWorkMediaUpload = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.startFanWorkMediaUpload,
+);
+exports.confirmFanWorkMedia = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.confirmFanWorkMedia,
+);
+exports.likeFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.likeFanWork,
+);
+exports.bookmarkFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.bookmarkFanWork,
+);
+exports.reportFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.reportFanWork,
+);
+exports.rateFanWork = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.rateFanWork,
+);
+exports.addFanWorkComment = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.commentFanWork,
+);
+exports.fanWorkCommentAction = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.fanWorkCommentAction,
+);
+exports.getEconomy = onCall(
+  { region: "us-central1" },
+  economyDomain.getEconomy,
+);
+exports.getInventory = onCall(
+  { region: "us-central1" },
+  economyDomain.getInventory,
+);
+exports.getEconomyTransactions = onCall(
+  { region: "us-central1" },
+  economyDomain.getEconomyTransactions,
+);
+exports.getPremiumEntitlement = onCall(
+  { region: "us-central1" },
+  economyDomain.getPremiumEntitlement,
+);
+exports.restorePremiumPurchases = onCall(
+  { region: "us-central1" },
+  economyDomain.restorePremiumPurchases,
+);
+exports.claimEconomyReward = onCall(
+  { region: "us-central1" },
+  economyDomain.claimEconomyReward,
+);
+exports.purchaseStoreItem = onCall(
+  { region: "us-central1" },
+  economyDomain.purchaseStoreItem,
+);
+exports.equipCosmetic = onCall(
+  { region: "us-central1" },
+  economyDomain.equipCosmetic,
+);
+exports.unequipCosmetic = onCall(
+  { region: "us-central1" },
+  economyDomain.unequipCosmetic,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
   eventsDomain.processEventLifecycle,
 );
 exports.processGroupChatMedia = onObjectFinalized(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   createGroupMediaPipeline({
     db: getFirestore(),
     bucket: getStorage().bucket(),
@@ -386,6 +655,13 @@ exports.processGroupChatMedia = onObjectFinalized(
 exports.recalculateInviteRanks = onDocumentUpdated(
   "groups/{groupId}/invites/{inviteId}",
   groupsDomain.recalculateInviteRanks,
+);
+
+// Seat recalculation on membership create/delete and invite/manual-role changes.
+// (Deploy retry hardening: keep this export so MIKADO seats ship with main.)
+exports.recalculateAutoSeatsOnMemberWrite = onDocumentWritten(
+  "groups/{groupId}/members/{memberId}",
+  groupsDomain.onMemberMembershipChanged,
 );
 
 exports.giveRespect = onCall(
@@ -550,6 +826,7 @@ exports.disbandGroup = onCall({ region: "us-central1" }, async (request) => {
       if (current.deletionPending !== true) {
         transaction.update(groupRef, {
           deletionPending: true,
+          isSearchable: false,
           deletionRequestedBy: uid,
           deletionMode: mode,
           deletionMarkedAt: FieldValue.serverTimestamp(),

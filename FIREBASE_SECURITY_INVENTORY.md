@@ -35,7 +35,7 @@ Primary evidence:
 | `promotions/{id}` | None | Rules-defined surface |
 | `physical_products/{id}` | None | Read-only client surface |
 | `mafia_games/{gameId}` | `players`, player-private role data, `night_actions`, `votes`, `events`, `chat` | Membership/player/phase checks; authoritative state is server-only |
-| `mafia_history/{gameId}` | None | Currently readable by every authenticated user; see High finding SEC-H-01 |
+| `mafia_history/{gameId}` | None | Readable by the game's participants only (SEC-H-01 fixed); server-only writes |
 
 Central path constants do not fully represent every path used by services and rules. In particular, `user_interactions`, `user_seen`, `physical_products`, `rewards`, `mafia_history`, and several Mafia subcollections are referenced directly.
 
@@ -83,9 +83,11 @@ Mafia roles and teams are written under player-private data and are server-contr
 | `edits/{uid}/v_*.mp4` | Owner write/delete; authenticated read |
 | `edits/{uid}/t_*.jpg` | Owner write/delete; authenticated read |
 
-There is no catch-all Storage allow rule. Unsupported paths are denied.
-
-Known mismatch: `StoragePaths.privateChatBackground()` documents `privateChats/{chatId}/backgrounds/{uid}.jpg`, but no Storage rule grants that path. A client attempt is expected to be denied until the contract is aligned.
+There is no catch-all Storage allow rule. Unsupported paths are denied. The
+retired `StoragePaths.privateChatBackground()` constant
+(`privateChats/{chatId}/backgrounds/{uid}.jpg`, never granted by a rule and
+unused by the client) was removed; no private-chat background path is
+documented anymore.
 
 ## Cloud Functions
 

@@ -10,8 +10,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: 4.9.0
+  firebase_core: 4.11.0
   provider: ^6.1.5+1
+  flutter_localizations:
+    sdk: flutter
   web: ^1.1.1
   firebase_auth: 6.5.1
   cloud_firestore: 6.4.1
@@ -21,6 +23,17 @@ dependencies:
   cloud_functions: 6.3.1
   firebase_messaging: ^16.2.2
   video_player: ^2.10.0
+  http: ^1.6.0
+  share_plus: ^12.0.2
+  shared_preferences: ^2.5.3
+  record: ^6.2.1
+  audioplayers: ^6.6.0
+  camera: ^0.11.2+1
+  image_cropper: ^12.2.1
+  path_provider: ^2.1.5
+  google_fonts: ^6.3.2
+  flutter_animate: ^4.5.2
+  phosphor_icons: ^3.0.1
 
 dev_dependencies:
   flutter_test:
@@ -29,3 +42,20 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/pubget_torii.png
+    - assets/branding/pubget_settings.png
+    - assets/branding/pubget_coin.png
+    - assets/chat/pubget_default_wallpaper.png
+    - assets/ranks/
+    - assets/images/ranks/
+    - assets/achievements/the_threshold/badge.png
+    - assets/achievements/keeper_of_time/badge.png
+    - assets/achievements/shogun_of_the_realm/badge.png
+    - assets/achievements/thread_of_souls/badge.png
+    - assets/achievements/worldsmith/badge.png
+    - assets/achievements/arena_sovereign/badge.png
+    - assets/achievements/master_of_festivities/badge.png
+    - assets/achievements/crownbearer/badge.png
+    - assets/achievements/legend_of_the_gate/badge.png
+    - assets/achievements/dragon_of_legacy/badge.png

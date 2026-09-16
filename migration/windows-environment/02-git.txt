@@ -1,0 +1,23 @@
+﻿git version 2.52.0.windows.1
+
+Repository:
+C:/Users/admin/develop/flutter-apps/pubget
+
+Branch:
+cursor/reels-rebirth-1
+
+Commit:
+16e266c88d4cee3fb8fe49cc2cb18c54689ed691
+
+Remote:
+origin	https://github.com/sbikazis/pubget.git (fetch)
+origin	https://github.com/sbikazis/pubget.git (push)
+
+Status:
+## cursor/reels-rebirth-1...origin/cursor/reels-rebirth-1
+?? $null).Trim()
+?? migration/
+
+Git user:
+Zakaria Sbika
+zakariasbika253@gmail.com

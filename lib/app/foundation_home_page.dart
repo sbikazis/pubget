@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'app_back_button.dart';
 import '../core/examples/dummy_provider.dart';
 import '../core/loading/loading_state.dart';
 import '../core/network/network_service.dart';
@@ -22,7 +23,9 @@ class FoundationHomePage extends StatelessWidget {
     final firebase = firebaseState;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pubget')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Pubget')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),

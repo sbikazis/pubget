@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/app_notification.dart';
@@ -15,6 +19,7 @@ class NotificationInboxPage extends StatelessWidget {
     final provider = context.watch<NotificationProvider>();
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: const Text('Notifications'),
         actions: <Widget>[
           TextButton(
@@ -25,16 +30,20 @@ class NotificationInboxPage extends StatelessWidget {
       ),
       body: PubgetLoadingStateView(
         state: provider.state,
-        onRetry: () {},
+        onRetry: () => unawaited(provider.retry()),
         empty: const PubgetEmptyState(
           title: 'No notifications',
           message: 'Important activity will appear here.',
         ),
         error: PubgetErrorState(
+          key: const Key('notification-inbox-retry'),
           message: provider.failure?.message ?? 'Notifications could not load.',
-          onRetry: () {},
+          onRetry: () => unawaited(provider.retry()),
         ),
-        offline: const PubgetOfflineState(),
+        offline: PubgetOfflineState(
+          key: const Key('notification-inbox-retry-offline'),
+          onRetry: () => unawaited(provider.retry()),
+        ),
         child: NotificationListener<ScrollNotification>(
           onNotification: (event) {
             if (event.metrics.extentAfter < 240) provider.loadMore();
@@ -59,7 +68,9 @@ class NotificationInboxPage extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: provider.state == LoadingState.loaded ||
+              provider.state == LoadingState.loadingMore
+          ? FloatingActionButton.extended(
         onPressed: () async {
           final result = await provider.enablePush();
           if (!context.mounted) return;
@@ -77,7 +88,8 @@ class NotificationInboxPage extends StatelessWidget {
         },
         icon: const Icon(Icons.notifications_active_outlined),
         label: const Text('Enable push'),
-      ),
+      )
+          : null,
     );
   }
 }
@@ -106,14 +118,14 @@ class _NotificationTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  _title(item.type),
+                  _title(item),
                   style: TextStyle(
                     fontWeight: item.isUnread
                         ? FontWeight.w800
                         : FontWeight.w500,
                   ),
                 ),
-                Text(item.action),
+                Text(_body(item)),
               ],
             ),
           ),
@@ -129,15 +141,61 @@ class _NotificationTile extends StatelessWidget {
     'join_request' => Icons.group_add_outlined,
     'friend_request' => Icons.person_add_outlined,
     'respect_received' => Icons.favorite_outline,
+    'game_invite' || 'game_started' || 'game_completed' =>
+      Icons.sports_esports_outlined,
+    'achievement_unlocked' => Icons.emoji_events_outlined,
+    'edit_published' => Icons.movie_filter_outlined,
+    'edit_failed' => Icons.error_outline,
+    'edit_needs_review' => Icons.hourglass_top_outlined,
+    'rank_promoted' => Icons.trending_up,
+    'rank_demoted' => Icons.trending_down,
+    'member_warning' => Icons.warning_amber_outlined,
     _ => Icons.notifications_none,
   };
 
-  String _title(String type) => switch (type) {
-    'group_message' => 'New group message',
-    'join_request' => 'Join request',
-    'request_accepted' => 'Request accepted',
-    'friend_request' => 'Friend request',
-    'respect_received' => 'Respect received',
-    _ => 'Notification',
-  };
+  String _metadataText(AppNotification item, String key) {
+    final value = item.metadata[key];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return '';
+  }
+
+  String _title(AppNotification item) {
+    final fromMeta = _metadataText(item, 'title');
+    if (fromMeta.isNotEmpty &&
+        (item.type == 'rank_promoted' ||
+            item.type == 'rank_demoted' ||
+            item.type == 'member_warning')) {
+      return fromMeta;
+    }
+    return switch (item.type) {
+      'group_message' => 'New group message',
+      'join_request' => 'Join request',
+      'request_accepted' => 'Request accepted',
+      'friend_request' => 'Friend request',
+      'respect_received' => 'Respect received',
+      'game_invite' => 'Game invite',
+      'game_started' => 'Game starting',
+      'game_completed' => 'Game result',
+      'achievement_unlocked' => 'Achievement unlocked',
+      'edit_published' => 'Edit published',
+      'edit_failed' => 'Edit processing failed',
+      'edit_needs_review' => 'Edit held for review',
+      'rank_promoted' => 'Rank promoted',
+      'rank_demoted' => 'Rank demoted',
+      'member_warning' => 'Member warning',
+      _ => fromMeta.isNotEmpty ? fromMeta : 'Notification',
+    };
+  }
+
+  String _body(AppNotification item) {
+    final fromMeta = _metadataText(item, 'body');
+    if (fromMeta.isNotEmpty &&
+        (item.type == 'rank_promoted' ||
+            item.type == 'rank_demoted' ||
+            item.type == 'member_warning')) {
+      return fromMeta;
+    }
+    if (fromMeta.isNotEmpty && item.action.trim().isEmpty) return fromMeta;
+    return item.action;
+  }
 }

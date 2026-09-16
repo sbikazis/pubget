@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -21,6 +22,23 @@ class EventListScreen extends StatefulWidget {
 }
 
 class _EventListScreenState extends State<EventListScreen> {
+  String _query = '';
+  EventType? _typeFilter;
+
+  List<PubgetEvent> _filter(List<PubgetEvent> events) {
+    final query = _query.trim().toLowerCase();
+    return events
+        .where((event) {
+          final matchesQuery =
+              query.isEmpty ||
+              event.title.toLowerCase().contains(query) ||
+              event.description.toLowerCase().contains(query);
+          final matchesType = _typeFilter == null || event.type == _typeFilter;
+          return matchesQuery && matchesType;
+        })
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +62,7 @@ class _EventListScreenState extends State<EventListScreen> {
       length: groupId == null ? 4 : 1,
       child: Scaffold(
         appBar: AppBar(
+          leading: AppBackButton.maybeOf(context),
           title: Text(groupId == null ? 'Events' : 'Group events'),
           bottom: groupId == null
               ? const TabBar(
@@ -59,8 +78,7 @@ class _EventListScreenState extends State<EventListScreen> {
         ),
         floatingActionButton:
             groupId == null ||
-                context.watch<GroupProvider>().membership?.canManageEvents !=
-                    true
+                context.watch<GroupProvider>().canCreateEvents != true
             ? null
             : FloatingActionButton.extended(
                 onPressed: () => AppNavigation.go(
@@ -81,11 +99,7 @@ class _EventListScreenState extends State<EventListScreen> {
             icon: Icons.celebration_outlined,
             action:
                 groupId != null &&
-                    context
-                            .watch<GroupProvider>()
-                            .membership
-                            ?.canManageEvents ==
-                        true
+                    context.watch<GroupProvider>().canCreateEvents == true
                 ? PubgetPrimaryButton(
                     onPressed: () => AppNavigation.go(
                       context,
@@ -107,16 +121,68 @@ class _EventListScreenState extends State<EventListScreen> {
                 ? list.loadHome()
                 : list.loadGroup(widget.groupId!),
           ),
-          child: groupId == null
-              ? TabBarView(
-                  children: <Widget>[
-                    _EventTiles(events: list.active),
-                    _EventTiles(events: list.upcoming),
-                    _EventTiles(events: list.recent),
-                    _EventTiles(events: list.mine),
-                  ],
-                )
-              : _EventTiles(events: list.groupEvents),
+          child: Column(
+            children: <Widget>[
+              if (groupId == null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                    0,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(
+                            hintText: 'Search Events',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onChanged: (value) => setState(() => _query = value),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      DropdownButton<EventType?>(
+                        value: _typeFilter,
+                        hint: const Text('Type'),
+                        items: <DropdownMenuItem<EventType?>>[
+                          const DropdownMenuItem<EventType?>(
+                            value: null,
+                            child: Text('All'),
+                          ),
+                          ...EventType.values.map(
+                            (type) => DropdownMenuItem<EventType?>(
+                              value: type,
+                              child: Text(EventTypeRegistry.of(type).label),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _typeFilter = value),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: groupId == null
+                    ? TabBarView(
+                        children: <Widget>[
+                          _EventTiles(
+                            events: _filter(list.active),
+                            onLoadMore: list.loadMoreActive,
+                            loadingMore: list.loadingMore,
+                            hasMore: list.hasMoreActive,
+                          ),
+                          _EventTiles(events: _filter(list.upcoming)),
+                          _EventTiles(events: _filter(list.recent)),
+                          _EventTiles(events: _filter(list.mine)),
+                        ],
+                      )
+                    : _EventTiles(events: _filter(list.groupEvents)),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -124,13 +190,21 @@ class _EventListScreenState extends State<EventListScreen> {
 }
 
 class _EventTiles extends StatelessWidget {
-  const _EventTiles({required this.events});
+  const _EventTiles({
+    required this.events,
+    this.onLoadMore,
+    this.loadingMore = false,
+    this.hasMore = true,
+  });
 
   final List<PubgetEvent> events;
+  final Future<void> Function()? onLoadMore;
+  final bool loadingMore;
+  final bool hasMore;
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) {
+    if (events.isEmpty && !loadingMore) {
       return const PubgetEmptyState(
         title: EventStrings.noEventsTitle,
         message: EventStrings.noEventsMessage,
@@ -138,9 +212,22 @@ class _EventTiles extends StatelessWidget {
     }
     return ListView.separated(
       padding: const EdgeInsets.all(AppSpacing.md),
-      itemCount: events.length,
+      itemCount: events.length + (onLoadMore == null || !hasMore ? 0 : 1),
       separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
+        if (index >= events.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Center(
+              child: loadingMore
+                  ? const CircularProgressIndicator()
+                  : OutlinedButton(
+                      onPressed: onLoadMore,
+                      child: const Text('Load more'),
+                    ),
+            ),
+          );
+        }
         final event = events[index];
         return PubgetCard(
           key: ValueKey<String>('event-${event.id}'),

@@ -22,11 +22,6 @@ class StoragePaths {
   static String groupChatBackground(String groupId) =>
       'groups/$groupId/chat_background.jpg';
 
-  // ✅ جديد: خلفية الدردشة الخاصة (تُحفظ محلياً فقط، لكن المسار احتياطي)
-  /// privateChats/{chatId}/backgrounds/{userId}.jpg
-  static String privateChatBackground(String chatId, String userId) =>
-      'privateChats/$chatId/backgrounds/$userId.jpg';
-
   // ROLEPLAY CHARACTER STORAGE
 
   /// groups/{groupId}/characters/{userId}.jpg

@@ -54,6 +54,12 @@ final class UnavailableGameRepository implements GameRepository {
       Stream<Result<List<GameParticipant>>>.value(_fail());
 
   @override
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  }) => Stream<Result<Map<String, dynamic>>>.value(_fail());
+
+  @override
   Future<Result<List<PubgetGame>>> getActiveGames({int limit = 20}) async =>
       _fail();
 

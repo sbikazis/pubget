@@ -25,6 +25,28 @@ const FieldValue = {
   increment: (value) => ({ _increment: value }),
 };
 
+function millisOf(value) {
+  if (value == null) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function matchesFilter(data, filter) {
+  const val = data[filter.field];
+  if (filter.op === "==") return val === filter.value;
+  const left = millisOf(val);
+  const right = millisOf(filter.value);
+  if (left == null || right == null) return false;
+  if (filter.op === "<=") return left <= right;
+  if (filter.op === "<") return left < right;
+  if (filter.op === ">=") return left >= right;
+  if (filter.op === ">") return left > right;
+  return false;
+}
+
 function clone(value) {
   if (value === null || typeof value !== "object") return value;
   if (value instanceof Date) return new Date(value.getTime());
@@ -67,7 +89,7 @@ function createFakeDb(seed = {}) {
           return {
             exists: data !== undefined,
             id: resolvedId,
-            ref: makeCollection(base).doc(resolvedId),
+            path: resolvedPath,
             data: () => (data === undefined ? undefined : clone(data)),
           };
         },
@@ -86,11 +108,14 @@ function createFakeDb(seed = {}) {
       return query(base, []).get();
     },
   });
-  function query(base, filters) {
+  function query(base, filters, orders = []) {
     const chainQuery = {
       _limit: 25,
       where(field, op, value) {
-        return query(base, [...filters, { field, op, value }]);
+        return query(base, [...filters, { field, op, value }], orders);
+      },
+      orderBy(field, direction = "asc") {
+        return query(base, filters, [...orders, { field, direction }]);
       },
       limit(n) {
         chainQuery._limit = n;
@@ -103,18 +128,25 @@ function createFakeDb(seed = {}) {
           if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) {
             continue;
           }
-          let ok = true;
-          for (const filter of filters) {
-            if (filter.op === "==" && data[filter.field] !== filter.value) ok = false;
-          }
-          if (ok) {
-            const id = path.slice(prefix.length);
-            docs.push({
-              id,
-              ref: makeCollection(base).doc(id),
-              data: () => clone(data),
-            });
-          }
+          if (!filters.every((filter) => matchesFilter(data, filter))) continue;
+          const id = path.slice(prefix.length);
+          docs.push({
+            id,
+            ref: makeCollection(base).doc(id),
+            data: () => clone(data),
+            _data: data,
+          });
+        }
+        if (orders.length > 0) {
+          docs.sort((a, b) => {
+            for (const order of orders) {
+              const av = millisOf(a._data[order.field]) ?? 0;
+              const bv = millisOf(b._data[order.field]) ?? 0;
+              if (av === bv) continue;
+              return order.direction === "desc" ? bv - av : av - bv;
+            }
+            return 0;
+          });
         }
         return { docs: docs.slice(0, chainQuery._limit) };
       },
@@ -168,9 +200,11 @@ function seedGroup({ role = "founder" } = {}) {
     "users/alice": { username: "Alice" },
     "users/bob": { username: "Bob" },
     "users/charlie": { username: "Charlie" },
+    "users/dave": { username: "Dave" },
     "groups/g1": { founderId: "alice", name: "G" },
     "groups/g1/members/alice": { role, userId: "alice" },
     "groups/g1/members/bob": { role: "member", userId: "bob" },
+    "groups/g1/members/dave": { role: "member", userId: "dave" },
     "groups/g1/roles/founder": { permissions: ["manageGames", "manageEvents"] },
     "groups/g1/roles/member": { permissions: [] },
   };
@@ -205,23 +239,23 @@ function recordingBuilder() {
 }
 
 test("state machine allows documented transitions and rejects the rest", () => {
-  assert.equal(canTransition("draft", "waiting"), true);
-  assert.equal(canTransition("waiting", "active"), true);
-  assert.equal(canTransition("active", "paused"), true);
-  assert.equal(canTransition("paused", "active"), true);
-  assert.equal(canTransition("active", "completed"), true);
-  assert.equal(canTransition("completed", "active"), false);
-  assert.equal(TRANSITIONS.cancelled.size, 0);
+  assert.equal(canTransition("CREATED", "WAITING"), true);
+  assert.equal(canTransition("WAITING", "STARTING"), true);
+  assert.equal(canTransition("STARTING", "IN_PROGRESS"), true);
+  assert.equal(canTransition("IN_PROGRESS", "COMPLETED"), true);
+  assert.equal(canTransition("IN_PROGRESS", "CANCELLED"), true);
+  assert.equal(canTransition("COMPLETED", "IN_PROGRESS"), false);
+  assert.equal(TRANSITIONS.CANCELLED.size, 0);
   assert.throws(
-    () => assertTransition("completed", "active", TestHttpsError),
+    () => assertTransition("COMPLETED", "IN_PROGRESS", TestHttpsError),
     (error) => error.code === "failed-precondition",
   );
 });
 
-test("mafia is registered and implemented through the Games registry", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
+test("mafia is implemented only on the dedicated create path", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia, undefined);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
-  assert.equal(GAME_TYPE_REGISTRY.mafia.capabilities.minPlayers, 4);
+  assert.equal(GAME_TYPE_REGISTRY.guessCharacter.genericCreate, true);
 });
 
 test("action shape validation rejects empty types and oversized payloads", () => {
@@ -243,7 +277,7 @@ test("events are versioned and map to a chat activity contract", () => {
     gameId: "game-1",
     type: "game_started",
     actorId: "alice",
-    payload: { from: "waiting", to: "active" },
+    payload: { from: "WAITING", to: "STARTING" },
     createdAt: new Date("2026-09-01T00:00:00Z"),
   });
   assert.equal(event.schemaVersion, 1);
@@ -265,29 +299,28 @@ test("unauthenticated mutations are rejected", async () => {
   );
 });
 
-test("members without manageGames cannot create a game", async () => {
+test("ordinary group members can create a game", async () => {
   const games = handlers(createFakeDb(seedGroup()));
-  await assert.rejects(
-    games.createGame({
-      auth: { uid: "bob" },
-      data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
-    }),
-    (error) => error.code === "permission-denied",
-  );
+  const created = await games.createGame({
+    auth: { uid: "bob" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
+  });
+  assert.equal(created.status, "WAITING");
 });
 
 test("mafia can be created and unknown types are rejected", async () => {
   const games = handlers(createFakeDb(seedGroup()));
-  const created = await games.createGame({
-    auth: { uid: "alice" },
-    data: { type: "mafia", title: "Night", groupId: "g1" },
-  });
-  assert.equal(created.status, "waiting");
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
   await assert.rejects(
     games.createGame({
       auth: { uid: "alice" },
-      data: { type: "unknown", title: "X", groupId: "g1" },
+      data: { type: "mafia", title: "Night", groupId: "g1", creationSource: "group_chat" },
+    }),
+    (error) => ["invalid-argument", "failed-precondition"].includes(error.code),
+  );
+  await assert.rejects(
+    games.createGame({
+      auth: { uid: "alice" },
+      data: { type: "unknown", title: "X", groupId: "g1", creationSource: "group_chat" },
     }),
     (error) => error.code === "invalid-argument",
   );
@@ -299,21 +332,32 @@ test("founder can create, members can join once, and start is idempotent", async
   const games = handlers(db, notifications);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
-  assert.equal(created.status, "waiting");
+  assert.equal(created.status, "WAITING");
   assert.equal(db.store.get(`games/${created.gameId}`).participantsCount, 1);
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   assert.equal(db.store.get(`games/${created.gameId}`).participantsCount, 2);
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "active");
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "IN_PROGRESS");
+  assert.equal(db.store.get(`games/${created.gameId}`).publicState.engine, "guessCharacter");
   const startedEvents = [...db.store.entries()]
     .filter(([path, data]) => path.includes("/events/") && data.type === "game_started");
   assert.equal(startedEvents.length, 1);
   assert.ok(notifications.sent.some((item) => item.type === "game_invite"));
   assert.ok(notifications.sent.some((item) => item.type === "game_started"));
+  const createdCard = db.store.get(
+    `groups/g1/messages/card-game-${created.gameId}-created`,
+  );
+  assert.equal(createdCard.type, "game");
+  assert.equal(createdCard.senderId, "system");
+  assert.equal(createdCard.gameActivity.kind, "created");
+  await assert.rejects(
+    games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
+    (error) => error.code === "failed-precondition",
+  );
 });
 
 test("join after start and actions from non-participants are rejected", async () => {
@@ -321,16 +365,17 @@ test("join after start and actions from non-participants are rejected", async ()
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "animeChain", title: "Chain", groupId: "g1" },
+    data: { type: "animeChain", title: "Chain", groupId: "g1", creationSource: "group_chat" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await assert.rejects(
-    games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } }),
+    games.joinGame({ auth: { uid: "dave" }, data: { gameId: created.gameId } }),
     (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
-      auth: { uid: "bob" },
+      auth: { uid: "dave" },
       data: { gameId: created.gameId, actionType: "submit" },
     }),
     (error) => error.code === "permission-denied",
@@ -342,31 +387,35 @@ test("submitAction is idempotent and rejects impersonation", async () => {
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1" },
+    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1", creationSource: "group_chat" },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  const secret = db.store.get(`games/${created.gameId}/secret/round`);
+  const current = db.store.get(`games/${created.gameId}`).publicState.currentPlayerId;
+  const guesser = current === "alice" ? "bob" : "alice";
   await games.submitGameAction({
-    auth: { uid: "bob" },
+    auth: { uid: guesser },
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { value: "Naruto" },
+      payload: { animeId: secret.targetAnimeId },
       clientActionId: "act-1",
     },
   });
-  await games.submitGameAction({
-    auth: { uid: "bob" },
-    data: {
-      gameId: created.gameId,
-      actionType: "guess",
-      payload: { value: "Sasuke" },
-      clientActionId: "act-1",
-    },
-  });
+  const replay = await games.submitGameAction({
+      auth: { uid: guesser },
+      data: {
+        gameId: created.gameId,
+        actionType: "guess",
+        payload: { animeId: "naruto" },
+        clientActionId: "act-1",
+      },
+    });
+  assert.equal(replay.actionId, "act-1");
   const actions = [...db.store.entries()].filter(([path]) => path.includes("/actions/"));
   assert.equal(actions.length, 1);
-  assert.equal(actions[0][1].payload.value, "Naruto");
+  assert.equal(actions[0][1].payload.animeId, secret.targetAnimeId);
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "bob" },
@@ -381,7 +430,7 @@ test("non-members cannot join and cannot force completion", async () => {
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
   await assert.rejects(
     games.joinGame({ auth: { uid: "charlie" }, data: { gameId: created.gameId } }),
@@ -389,7 +438,7 @@ test("non-members cannot join and cannot force completion", async () => {
   );
   await assert.rejects(
     games.endGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } }),
-    (error) => error.code === "permission-denied",
+    (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
@@ -397,25 +446,23 @@ test("non-members cannot join and cannot force completion", async () => {
   );
 });
 
-test("pause, resume, end, and cancel follow the state machine", async () => {
+test("pause, resume, and admin end are rejected; cancellation is authoritative", async () => {
   const db = createFakeDb(seedGroup());
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  await games.pauseGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "paused");
-  await games.resumeGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "active");
-  await games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  await games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "completed");
-  await assert.rejects(
-    games.cancelGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
-    (error) => error.code === "failed-precondition",
-  );
+  await assert.rejects(games.pauseGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
+    (error) => error.code === "failed-precondition");
+  await assert.rejects(games.resumeGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
+    (error) => error.code === "failed-precondition");
+  await assert.rejects(games.endGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
+    (error) => error.code === "failed-precondition");
+  await games.cancelGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "CANCELLED");
 });
 
 test("leave is idempotent and concurrent joins do not duplicate participants", async () => {
@@ -423,7 +470,7 @@ test("leave is idempotent and concurrent joins do not duplicate participants", a
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
   await Promise.all([
     games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } }),
@@ -437,26 +484,82 @@ test("leave is idempotent and concurrent joins do not duplicate participants", a
   assert.equal(bob.status, "left");
 });
 
-test("initialize moves a draft to waiting", async () => {
+test("initialize moves a created game to waiting", async () => {
   const db = createFakeDb(seedGroup());
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Draft", groupId: "g1", asDraft: true },
+    data: { type: "guessCharacter", title: "Draft", groupId: "g1", asDraft: true, creationSource: "group_chat" },
   });
-  assert.equal(created.status, "draft");
+  assert.equal(created.status, "CREATED");
   await games.initializeGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "waiting");
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "WAITING");
 });
 
-test("games never write group chat messages", async () => {
+test("games post chat cards through the activity contract, not groupChat internals", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/gamesDomain.js"), "utf8");
+  assert.equal(source.includes('require("./groupChat")'), false);
+  assert.equal(source.includes('require("./chatCardWriter")'), true);
+
   const db = createFakeDb(seedGroup());
   const games = handlers(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: { type: "guessCharacter", title: "Guess", groupId: "g1" },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  const chatWrites = [...db.store.keys()].filter((path) => path.includes("/messages/"));
-  assert.equal(chatWrites.length, 0);
+  const chatWrites = [...db.store.entries()].filter(([key]) => key.includes("/messages/"));
+  assert.equal(chatWrites.length, 1);
+  assert.equal(chatWrites[0][1].type, "game");
+  assert.equal(chatWrites[0][1].senderId, "system");
+  assert.equal(chatWrites[0][1].gameActivity.kind, "created");
+});
+
+test("processExpiredGames queries eligible deadlines and stays bounded", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const seed = seedGroup();
+  for (let index = 0; index < 60; index += 1) {
+    seed[`games/old-${index}`] = {
+      status: "IN_PROGRESS",
+      type: "guessCharacter",
+      deadlineAt: new Date("2026-09-03T11:00:00Z"),
+      publicState: { engine: "guessCharacter", phase: "selection" },
+    };
+  }
+  seed["games/future"] = {
+      status: "IN_PROGRESS",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T13:00:00Z"),
+    publicState: { engine: "guessCharacter", phase: "round" },
+  };
+  seed["games/done"] = {
+      status: "COMPLETED",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  seed["games/cancel"] = {
+      status: "CANCELLED",
+    type: "guessCharacter",
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  };
+  const db = createFakeDb(seed);
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+  });
+  const first = await games.processExpiredGames();
+  assert.equal(first.limit, 50);
+  assert.equal(first.scanned, 50);
+  assert.equal(first.expired, 50);
+  const future = db.store.get("games/future");
+  assert.equal(future.status, "IN_PROGRESS");
+  assert.equal(db.store.get("games/done").status, "COMPLETED");
+  assert.equal(db.store.get("games/cancel").status, "CANCELLED");
+  const second = await games.processExpiredGames();
+  assert.ok(second.scanned <= 50);
 });

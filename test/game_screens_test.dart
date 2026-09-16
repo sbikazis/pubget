@@ -153,6 +153,14 @@ final class _FakeGameRepository implements GameRepository {
       Stream<Result<List<GameParticipant>>>.value(
         const Success(<GameParticipant>[]),
       );
+
+  @override
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  }) => Stream<Result<Map<String, dynamic>>>.value(
+    const Success(<String, dynamic>{}),
+  );
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -178,6 +186,7 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => const Success<void>(null);
 
   @override
@@ -185,10 +194,45 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
       const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
       const Success(<Group>[]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }
+

@@ -1,0 +1,14 @@
+﻿JAVA_HOME=C:\Program Files\Java\jdk-17
+ANDROID_HOME=
+ANDROID_SDK_ROOT=
+FLUTTER_ROOT=
+PUB_CACHE=
+DART_SDK=
+NVM_HOME=C:\Users\admin\AppData\Local\nvm
+NVM_SYMLINK=C:\nvm4w\nodejs
+
+===== USER PATH =====
+C:\Users\admin\AppData\Local\Microsoft\WindowsApps;C:\Program Files\JetBrains\PyCharm 2024.3.1.1\bin;;C:\Users\admin\AppData\Local\Muse Hub\lib;C:\Program Files\java\jdk-17.0.18+8;C:\Users\admin\AppData\Local\Programs\Python\Launcher\;C:\Users\admin\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Users\admin\AppData\Roaming\npm;C:\Users\admin\AppData\Local\Kingsoft\WPS Office\12.1.0.27458\clitool
+
+===== MACHINE PATH =====
+C:\Program Files\Java\jdk-17\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\dotnet\;C:\Users\admin\AppData\Local\Programs\Python\Python313\;C:\Users\admin\AppData\Local\Programs\Python\Python313\Scripts\;C:\Program Files\Git\cmd;C:\Users\admin\develop\flutter\bin;C:\Users\admin\AppData\Local\Pub\Cache\bin;C:\ProgramData\chocolatey\bin;C:\Users\admin\SDK pt\platform-tools;C:\Users\admin\Desktop\APK_Fix;C:\Program Files\Microsoft VS Code\bin;C:\Users\admin\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;C:\Program Files\cursor\resources\app\bin;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/group_models.dart';
@@ -27,7 +28,9 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Role permissions')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Role permissions')),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => provider.loadRoles(widget.groupId),
@@ -49,10 +52,10 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
               child: ListTile(
                 title: Text(groupRoleLabel(role.name)),
                 subtitle: Text('${role.permissions.length} permissions'),
-                trailing: role.name == GroupRole.founder
+                trailing: role.name == PubgetRank.mikado
                     ? const PubgetBadge(label: 'Immutable')
                     : const Icon(Icons.edit_outlined),
-                onTap: role.name == GroupRole.founder
+                onTap: role.name == PubgetRank.mikado
                     ? null
                     : () => _edit(context, provider, role),
               ),

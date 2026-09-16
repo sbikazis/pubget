@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -11,9 +12,17 @@ import '../providers/event_providers.dart';
 import '../widgets/event_widgets.dart';
 
 class EventBuilderPage extends StatefulWidget {
-  const EventBuilderPage({this.groupId, this.templateId, super.key});
+  const EventBuilderPage({
+    this.groupId,
+    this.groupIds = const <String>[],
+    this.scope = EventScope.group,
+    this.templateId,
+    super.key,
+  });
 
   final String? groupId;
+  final List<String> groupIds;
+  final EventScope scope;
   final String? templateId;
 
   @override
@@ -25,14 +34,20 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
   final _description = TextEditingController();
   final _question = TextEditingController();
   final _completionRule = TextEditingController();
-  final _quizPrompt = TextEditingController();
+  final _targetEventId = TextEditingController();
+  String _challengeKind = 'finish_game';
   final List<TextEditingController> _options = <TextEditingController>[
     TextEditingController(text: 'Option A'),
     TextEditingController(text: 'Option B'),
   ];
-  final _quizA = TextEditingController(text: 'A');
-  final _quizB = TextEditingController(text: 'B');
-  String _correctOptionId = 'opt-1';
+  final List<_ImageCandidateForm> _images = <_ImageCandidateForm>[
+    _ImageCandidateForm(),
+    _ImageCandidateForm(),
+  ];
+  final List<_QuizQuestionForm> _quizQuestions = <_QuizQuestionForm>[
+    _QuizQuestionForm(id: 'q-1'),
+  ];
+  int _quizSeq = 1;
   int _step = 0;
   bool _started = false;
   bool _allowMultiple = false;
@@ -43,15 +58,21 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     if (_started) return;
     _started = true;
     final builder = context.read<EventBuilderProvider>();
-    builder.start(groupId: widget.groupId, templateId: widget.templateId);
     final uid = context.read<AuthProvider>().currentUser?.id;
-    if (uid != null && widget.templateId == null) {
-      Future<void>.microtask(() async {
+    Future<void>.microtask(() async {
+      builder.start(
+        groupId: widget.groupId,
+        groupIds: widget.groupIds,
+        scope: widget.scope,
+        templateId: widget.templateId,
+      );
+      if (!mounted) return;
+      if (uid != null && widget.templateId == null) {
         await builder.restoreDraft(userId: uid, groupId: widget.groupId);
         if (!mounted) return;
         _hydrate(builder.draft);
-      });
-    }
+      }
+    });
   }
 
   void _hydrate(EventDraft draft) {
@@ -61,6 +82,13 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
         ? draft.configuration.question
         : draft.configuration.prompt;
     _completionRule.text = draft.configuration.completionRule;
+    _challengeKind = draft.configuration.challengeKind.isEmpty
+        ? 'finish_game'
+        : draft.configuration.challengeKind;
+    _targetEventId.text = draft.configuration.targetEventId;
+    if (draft.configuration.criterion.isNotEmpty) {
+      _question.text = draft.configuration.criterion;
+    }
     _allowMultiple = draft.configuration.allowMultiple;
     if (draft.configuration.options.isNotEmpty) {
       for (final controller in _options) {
@@ -75,13 +103,15 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
         );
     }
     if (draft.configuration.questions.isNotEmpty) {
-      final question = draft.configuration.questions.first;
-      _quizPrompt.text = question.prompt;
-      if (question.options.length >= 2) {
-        _quizA.text = question.options[0].label;
-        _quizB.text = question.options[1].label;
-        _correctOptionId = question.correctOptionId;
+      for (final form in _quizQuestions) {
+        form.dispose();
       }
+      _quizQuestions
+        ..clear()
+        ..addAll(
+          draft.configuration.questions.map(_QuizQuestionForm.fromQuestion),
+        );
+      _quizSeq = _quizQuestions.length;
     }
     setState(() {});
   }
@@ -92,11 +122,15 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     _description.dispose();
     _question.dispose();
     _completionRule.dispose();
-    _quizPrompt.dispose();
-    _quizA.dispose();
-    _quizB.dispose();
+    _targetEventId.dispose();
     for (final controller in _options) {
       controller.dispose();
+    }
+    for (final form in _images) {
+      form.dispose();
+    }
+    for (final form in _quizQuestions) {
+      form.dispose();
     }
     super.dispose();
   }
@@ -106,7 +140,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     final builder = context.watch<EventBuilderProvider>();
     final spec = EventTypeRegistry.of(builder.draft.type);
     return Scaffold(
-      appBar: AppBar(title: const Text(EventStrings.create)),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text(EventStrings.create),
+      ),
       body: Stepper(
         currentStep: _step,
         onStepTapped: (value) => setState(() => _step = value),
@@ -201,14 +238,24 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 if (spec.usesOptions || spec.usesTextResponse)
                   PubgetTextField(
                     controller: _question,
-                    label: spec.usesTextResponse ? 'Prompt' : 'Question',
+                    label:
+                        spec.type == EventType.characterComparison ||
+                            spec.type == EventType.animeComparison ||
+                            spec.type == EventType.imageComparison
+                        ? 'Criterion'
+                        : (spec.usesTextResponse ? 'Prompt' : 'Question'),
                   ),
-                if (spec.usesOptions) ...[
+                if (spec.usesOptions &&
+                    spec.type != EventType.imageComparison) ...[
                   const SizedBox(height: AppSpacing.sm),
                   for (var i = 0; i < _options.length; i++) ...[
                     PubgetTextField(
                       controller: _options[i],
-                      label: spec.type == EventType.versus
+                      label: spec.type == EventType.characterComparison
+                          ? 'Character ID ${i + 1}'
+                          : spec.type == EventType.animeComparison
+                          ? 'Anime ID ${i + 1}'
+                          : spec.type == EventType.comparison
                           ? 'Candidate ${i + 1}'
                           : 'Option ${i + 1}',
                     ),
@@ -222,7 +269,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                       child: const Text('Add option'),
                     ),
                   if (spec.type == EventType.poll ||
-                      spec.type == EventType.multipleChoice)
+                      spec.type == EventType.question)
                     SwitchListTile(
                       title: const Text('Allow multiple selections'),
                       value: _allowMultiple,
@@ -230,32 +277,85 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                           setState(() => _allowMultiple = value),
                     ),
                 ],
-                if (spec.usesTextResponse && spec.type == EventType.challenge)
-                  PubgetTextField(
-                    controller: _completionRule,
-                    label: 'Completion rule',
-                  ),
-                if (spec.usesQuiz) ...[
-                  PubgetTextField(controller: _quizPrompt, label: 'Question'),
+                if (spec.type == EventType.imageComparison) ...[
                   const SizedBox(height: AppSpacing.sm),
-                  PubgetTextField(controller: _quizA, label: 'Answer A'),
-                  const SizedBox(height: AppSpacing.sm),
-                  PubgetTextField(controller: _quizB, label: 'Answer B'),
-                  DropdownButtonFormField<String>(
-                    value: _correctOptionId,
-                    decoration: const InputDecoration(
-                      labelText: 'Correct answer',
+                  for (var i = 0; i < _images.length; i++) ...[
+                    Text(
+                      'Image ${i + 1}',
+                      style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    items: const <DropdownMenuItem<String>>[
-                      DropdownMenuItem(value: 'opt-1', child: Text('A')),
-                      DropdownMenuItem(value: 'opt-2', child: Text('B')),
+                    PubgetTextField(
+                      controller: _images[i].url,
+                      label: 'HTTPS image URL',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].mimeType,
+                      label: 'MIME type (image/jpeg)',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].license,
+                      label: 'License',
+                    ),
+                    PubgetTextField(
+                      controller: _images[i].attribution,
+                      label: 'Attribution',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (_images.length < 10)
+                    PubgetTextButton(
+                      onPressed: () =>
+                          setState(() => _images.add(_ImageCandidateForm())),
+                      semanticLabel: 'Add image candidate',
+                      child: const Text('Add image candidate'),
+                    ),
+                ],
+                if (spec.usesTextResponse &&
+                    spec.type == EventType.challenge) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  DropdownButtonFormField<String>(
+                    value: _challengeKind,
+                    decoration: const InputDecoration(
+                      labelText: 'Challenge type',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'finish_game',
+                        child: Text('Finish a game'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'publish_edit',
+                        child: Text('Publish an edit'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'create_group',
+                        child: Text('Create a group'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'participate_event',
+                        child: Text('Participate in another event'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'self_report',
+                        child: Text('Self-reported (not server-verified)'),
+                      ),
                     ],
                     onChanged: (value) {
                       if (value == null) return;
-                      setState(() => _correctOptionId = value);
+                      setState(() => _challengeKind = value);
                     },
                   ),
+                  if (_challengeKind == 'participate_event')
+                    PubgetTextField(
+                      controller: _targetEventId,
+                      label: 'Target event ID',
+                    ),
+                  PubgetTextField(
+                    controller: _completionRule,
+                    label: 'Display rule (not used as authority)',
+                  ),
                 ],
+                if (spec.usesQuiz) _quizEditor(),
               ],
             ),
           ),
@@ -324,6 +424,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 Text(spec.label),
                 Text(_title.text),
                 Text(_description.text),
+                if (spec.usesQuiz)
+                  Text('${_quizQuestions.length} quiz question(s)'),
                 if (builder.draft.startAt != null &&
                     builder.draft.endAt != null)
                   Text(
@@ -333,10 +435,70 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                         ) ??
                         'Duration is valid.',
                   ),
+                const SizedBox(height: AppSpacing.md),
+                PubgetSecondaryButton(
+                  onPressed: builder.saving ? null : () => _saveDraft(builder),
+                  semanticLabel: EventStrings.saveDraft,
+                  child: const Text(EventStrings.saveDraft),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _quizEditor() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (var i = 0; i < _quizQuestions.length; i++) ...[
+          _QuizQuestionCard(
+            index: i,
+            form: _quizQuestions[i],
+            canRemove: _quizQuestions.length > 1,
+            canMoveUp: i > 0,
+            canMoveDown: i < _quizQuestions.length - 1,
+            onChanged: () => setState(() {}),
+            onRemove: () => setState(() {
+              _quizQuestions.removeAt(i).dispose();
+            }),
+            onMoveUp: () => setState(() {
+              final form = _quizQuestions.removeAt(i);
+              _quizQuestions.insert(i - 1, form);
+            }),
+            onMoveDown: () => setState(() {
+              final form = _quizQuestions.removeAt(i);
+              _quizQuestions.insert(i + 1, form);
+            }),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        if (_quizQuestions.length < 20)
+          PubgetTextButton(
+            onPressed: () => setState(() {
+              _quizSeq += 1;
+              _quizQuestions.add(_QuizQuestionForm(id: 'q-$_quizSeq'));
+            }),
+            semanticLabel: EventStrings.addQuestion,
+            child: const Text(EventStrings.addQuestion),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _saveDraft(EventBuilderProvider builder) async {
+    _syncDraft(builder);
+    final result = await builder.saveDraft();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.isSuccess
+              ? 'Draft saved'
+              : (result.failureOrNull?.message ?? 'Could not save draft.'),
+        ),
       ),
     );
   }
@@ -364,7 +526,44 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
   void _syncDraft(EventBuilderProvider builder) {
     final spec = EventTypeRegistry.of(builder.draft.type);
     var configuration = builder.draft.configuration;
-    if (spec.usesOptions) {
+    if (spec.type == EventType.imageComparison) {
+      configuration = EventConfiguration(
+        question: _question.text,
+        criterion: _question.text,
+        options: [
+          for (var i = 0; i < _images.length; i++)
+            EventOption(
+              id: 'img-${i + 1}',
+              label: 'Image ${i + 1}',
+              imageUrl: _images[i].url.text.trim(),
+              mimeType: _images[i].mimeType.text.trim(),
+              license: _images[i].license.text.trim(),
+              attribution: _images[i].attribution.text.trim(),
+            ),
+        ],
+      );
+    } else if (spec.type == EventType.characterComparison ||
+        spec.type == EventType.animeComparison) {
+      configuration = EventConfiguration(
+        question: _question.text,
+        criterion: _question.text,
+        options: [
+          for (var i = 0; i < _options.length; i++)
+            EventOption(
+              id: _options[i].text.trim().isEmpty
+                  ? 'opt-${i + 1}'
+                  : _options[i].text.trim(),
+              label: _options[i].text.trim(),
+              characterId: spec.type == EventType.characterComparison
+                  ? _options[i].text.trim()
+                  : '',
+              animeId: spec.type == EventType.animeComparison
+                  ? _options[i].text.trim()
+                  : '',
+            ),
+        ],
+      );
+    } else if (spec.usesOptions) {
       configuration = EventConfiguration(
         question: _question.text,
         allowMultiple: _allowMultiple,
@@ -378,19 +577,14 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
       configuration = EventConfiguration(
         prompt: _question.text,
         completionRule: _completionRule.text,
+        challengeKind: spec.type == EventType.challenge ? _challengeKind : '',
+        targetEventId: _targetEventId.text.trim(),
       );
     } else if (spec.usesQuiz) {
       configuration = EventConfiguration(
-        questions: <EventQuizQuestion>[
-          EventQuizQuestion(
-            id: 'q-1',
-            prompt: _quizPrompt.text.isEmpty ? _title.text : _quizPrompt.text,
-            options: <EventOption>[
-              EventOption(id: 'opt-1', label: _quizA.text),
-              EventOption(id: 'opt-2', label: _quizB.text),
-            ],
-            correctOptionId: _correctOptionId,
-          ),
+        questions: [
+          for (var i = 0; i < _quizQuestions.length; i++)
+            _quizQuestions[i].toQuestion(index: i),
         ],
       );
     }
@@ -476,6 +670,187 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
   }
 }
 
+class _QuizQuestionForm {
+  _QuizQuestionForm({
+    required this.id,
+    String prompt = '',
+    List<String>? optionLabels,
+    this.correctOptionId = 'opt-1',
+  }) : prompt = TextEditingController(text: prompt),
+       options = [
+         for (var i = 0; i < (optionLabels?.length ?? 2); i++)
+           TextEditingController(
+             text: optionLabels?[i] ?? (i == 0 ? 'A' : 'B'),
+           ),
+       ];
+
+  factory _QuizQuestionForm.fromQuestion(EventQuizQuestion question) {
+    return _QuizQuestionForm(
+      id: question.id,
+      prompt: question.prompt,
+      optionLabels: question.options.map((option) => option.label).toList(),
+      correctOptionId: question.correctOptionId,
+    );
+  }
+
+  final String id;
+  final TextEditingController prompt;
+  final List<TextEditingController> options;
+  String correctOptionId;
+
+  EventQuizQuestion toQuestion({required int index}) {
+    final resolvedOptions = [
+      for (var i = 0; i < options.length; i++)
+        EventOption(id: 'opt-${i + 1}', label: options[i].text),
+    ];
+    final correct =
+        resolvedOptions.any((option) => option.id == correctOptionId)
+        ? correctOptionId
+        : (resolvedOptions.isEmpty ? '' : resolvedOptions.first.id);
+    return EventQuizQuestion(
+      id: id.isEmpty ? 'q-${index + 1}' : id,
+      prompt: prompt.text,
+      options: resolvedOptions,
+      correctOptionId: correct,
+    );
+  }
+
+  void dispose() {
+    prompt.dispose();
+    for (final controller in options) {
+      controller.dispose();
+    }
+  }
+}
+
+class _QuizQuestionCard extends StatelessWidget {
+  const _QuizQuestionCard({
+    required this.index,
+    required this.form,
+    required this.canRemove,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onChanged,
+    required this.onRemove,
+    required this.onMoveUp,
+    required this.onMoveDown,
+  });
+
+  final int index;
+  final _QuizQuestionForm form;
+  final bool canRemove;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback onChanged;
+  final VoidCallback onRemove;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+
+  @override
+  Widget build(BuildContext context) {
+    return PubgetCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Question ${index + 1}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Move up',
+                onPressed: canMoveUp ? onMoveUp : null,
+                icon: const Icon(Icons.arrow_upward),
+              ),
+              IconButton(
+                tooltip: 'Move down',
+                onPressed: canMoveDown ? onMoveDown : null,
+                icon: const Icon(Icons.arrow_downward),
+              ),
+              IconButton(
+                tooltip: EventStrings.removeQuestion,
+                onPressed: canRemove ? onRemove : null,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          PubgetTextField(controller: form.prompt, label: 'Question'),
+          const SizedBox(height: AppSpacing.sm),
+          for (var i = 0; i < form.options.length; i++) ...[
+            PubgetTextField(
+              controller: form.options[i],
+              label: 'Answer ${i + 1}',
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          DropdownButtonFormField<String>(
+            key: ValueKey<String>('${form.id}-${form.correctOptionId}'),
+            value:
+                form.options
+                    .asMap()
+                    .keys
+                    .map((i) => 'opt-${i + 1}')
+                    .contains(form.correctOptionId)
+                ? form.correctOptionId
+                : 'opt-1',
+            decoration: const InputDecoration(
+              labelText: EventStrings.correctAnswer,
+            ),
+            items: [
+              for (var i = 0; i < form.options.length; i++)
+                DropdownMenuItem(
+                  value: 'opt-${i + 1}',
+                  child: Text(
+                    form.options[i].text.trim().isEmpty
+                        ? 'Answer ${i + 1}'
+                        : form.options[i].text,
+                  ),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              form.correctOptionId = value;
+              onChanged();
+            },
+          ),
+          Row(
+            children: <Widget>[
+              if (form.options.length < 6)
+                PubgetTextButton(
+                  onPressed: () {
+                    form.options.add(TextEditingController());
+                    onChanged();
+                  },
+                  semanticLabel: EventStrings.addAnswer,
+                  child: const Text(EventStrings.addAnswer),
+                ),
+              if (form.options.length > 2)
+                PubgetTextButton(
+                  onPressed: () {
+                    form.options.removeLast().dispose();
+                    if (!form.options
+                        .asMap()
+                        .keys
+                        .map((i) => 'opt-${i + 1}')
+                        .contains(form.correctOptionId)) {
+                      form.correctOptionId = 'opt-1';
+                    }
+                    onChanged();
+                  },
+                  semanticLabel: 'Remove answer',
+                  child: const Text('Remove answer'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DurationChip extends StatelessWidget {
   const _DurationChip({
     required this.label,
@@ -494,5 +869,25 @@ class _DurationChip extends StatelessWidget {
       selected: selected,
       onSelected: (_) => onSelected(),
     );
+  }
+}
+
+class _ImageCandidateForm {
+  _ImageCandidateForm()
+    : url = TextEditingController(),
+      mimeType = TextEditingController(text: 'image/jpeg'),
+      license = TextEditingController(),
+      attribution = TextEditingController();
+
+  final TextEditingController url;
+  final TextEditingController mimeType;
+  final TextEditingController license;
+  final TextEditingController attribution;
+
+  void dispose() {
+    url.dispose();
+    mimeType.dispose();
+    license.dispose();
+    attribution.dispose();
   }
 }

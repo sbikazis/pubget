@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -30,7 +31,9 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
   Widget build(BuildContext context) {
     final social = context.watch<SocialProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Friend requests')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Friend requests')),
       body: PubgetLoadingStateView(
         state: social.state == LoadingState.empty
             ? LoadingState.loaded

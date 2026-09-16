@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -9,6 +10,7 @@ import '../mafia/mafia_game_screen.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
+import '../widgets/game_play_panels.dart';
 import '../widgets/game_widgets.dart';
 
 class GameDetailsScreen extends StatefulWidget {
@@ -22,16 +24,18 @@ class GameDetailsScreen extends StatefulWidget {
 
 class _GameDetailsScreenState extends State<GameDetailsScreen> {
   bool _opened = false;
+  String? _openedForUser;
   String? _loadedGroupId;
-  String _actionType = GameActionTypes.submit;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_opened) return;
+    final uid = context.read<AuthProvider>().currentUser?.id;
+    if (_opened && _openedForUser == uid) return;
     _opened = true;
+    _openedForUser = uid;
     final messenger = context.read<GameProvider>();
-    Future<void>.microtask(() => messenger.open(widget.gameId));
+    Future<void>.microtask(() => messenger.open(widget.gameId, userId: uid));
   }
 
   void _maybeLoadGroup(PubgetGame game) {
@@ -50,6 +54,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     final game = state.game;
     if (game != null) _maybeLoadGroup(game);
     final uid = context.watch<AuthProvider>().currentUser?.id;
+    final spec = game == null ? null : GameTypeRegistry.of(game.type);
     final canManage =
         uid != null &&
         game != null &&
@@ -60,8 +65,18 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     }
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(game?.title ?? 'Game'),
         actions: [
+          IconButton(
+            tooltip: GameStrings.share,
+            onPressed: () => GameLinks.share(
+              context,
+              widget.gameId,
+              title: game?.title,
+            ),
+            icon: const Icon(Icons.share_outlined),
+          ),
           IconButton(
             tooltip: GameStrings.copyLink,
             onPressed: () => GameLinks.copy(context, widget.gameId),
@@ -71,17 +86,26 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
       ),
       body: PubgetLoadingStateView(
         state: state.state,
-        onRetry: () => context.read<GameProvider>().open(widget.gameId),
+        onRetry: () => context.read<GameProvider>().open(
+          widget.gameId,
+          userId: uid,
+        ),
         empty: const PubgetEmptyState(
           title: GameStrings.missing,
           message: GameStrings.missing,
         ),
         error: GameErrorState(
           message: state.failure?.message,
-          onRetry: () => context.read<GameProvider>().open(widget.gameId),
+          onRetry: () => context.read<GameProvider>().open(
+            widget.gameId,
+            userId: uid,
+          ),
         ),
         offline: PubgetOfflineState(
-          onRetry: () => context.read<GameProvider>().open(widget.gameId),
+          onRetry: () => context.read<GameProvider>().open(
+            widget.gameId,
+            userId: uid,
+          ),
         ),
         child: game == null
             ? const SizedBox.shrink()
@@ -89,13 +113,19 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
                 padding: const EdgeInsets.all(AppSpacing.md),
                 children: <Widget>[
                   GameHeader(game: game),
-                  const SizedBox(height: AppSpacing.md),
-                  GameResultCard(game: game),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (spec != null)
+                    Text(
+                      '${spec.name} · ${game.participantsCount}/${game.configuration.maxPlayers} players'
+                      ' · ${game.configuration.timerSeconds}s'
+                      '${game.configuration.usesRounds ? ' · ${game.configuration.roundCount} rounds' : ''}',
+                    ),
                   const SizedBox(height: AppSpacing.md),
                   ParticipantList(participants: state.participants),
                   const SizedBox(height: AppSpacing.md),
-                  if (uid != null) ..._actions(context, game, uid, canManage),
-                  GameActionFeedback(message: state.actionFeedback),
+                  if (uid != null) ..._lobbyActions(context, game, uid, canManage),
+                  if (uid != null && (game.isPlayable || game.isTerminal))
+                    GamePlayArea(game: game, userId: uid),
                   if (state.failure != null)
                     Padding(
                       padding: const EdgeInsets.only(top: AppSpacing.sm),
@@ -107,7 +137,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     );
   }
 
-  List<Widget> _actions(
+  List<Widget> _lobbyActions(
     BuildContext context,
     PubgetGame game,
     String uid,
@@ -115,6 +145,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
   ) {
     final provider = context.read<GameProvider>();
     final joined = provider.isParticipant(uid);
+    final spec = GameTypeRegistry.of(game.type);
     final widgets = <Widget>[];
     if (game.isJoinable && !joined) {
       widgets.add(
@@ -139,86 +170,55 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
       );
     }
     if (canManage && game.status == GameStatus.waiting) {
+      final canStart =
+          game.participantsCount >= game.configuration.minPlayers;
       widgets.add(
         PubgetPrimaryButton(
-          onPressed: provider.busy
+          onPressed: provider.busy || !canStart
               ? null
               : () => provider.start(widget.gameId),
           semanticLabel: GameStrings.start,
           child: const Text(GameStrings.start),
         ),
       );
-    }
-    if (canManage && game.status == GameStatus.active) {
-      widgets.add(
-        PubgetSecondaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.pause(widget.gameId),
-          semanticLabel: GameStrings.pause,
-          child: const Text(GameStrings.pause),
-        ),
-      );
-    }
-    if (canManage && game.status == GameStatus.paused) {
-      widgets.add(
-        PubgetPrimaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.resume(widget.gameId),
-          semanticLabel: GameStrings.resume,
-          child: const Text(GameStrings.resume),
-        ),
-      );
-    }
-    if (game.isPlayable && joined) {
-      widgets.add(const SizedBox(height: AppSpacing.md));
-      widgets.add(
-        DropdownButton<String>(
-          value: _actionType,
-          items: const <DropdownMenuItem<String>>[
-            DropdownMenuItem(value: GameActionTypes.submit, child: Text('submit')),
-            DropdownMenuItem(value: GameActionTypes.guess, child: Text('guess')),
-            DropdownMenuItem(value: GameActionTypes.select, child: Text('select')),
-            DropdownMenuItem(value: GameActionTypes.vote, child: Text('vote')),
-            DropdownMenuItem(value: GameActionTypes.choose, child: Text('choose')),
-            DropdownMenuItem(value: GameActionTypes.pass, child: Text('pass')),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => _actionType = value);
-          },
-        ),
-      );
-      widgets.add(
-        PubgetSecondaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.submitAction(
-                  gameId: widget.gameId,
-                  actionType: _actionType,
-                ),
-          semanticLabel: GameStrings.submit,
-          child: const Text(GameStrings.submit),
-        ),
-      );
-    }
-    if (canManage &&
-        (game.status == GameStatus.active || game.status == GameStatus.paused)) {
-      widgets.add(
-        PubgetSecondaryButton(
-          onPressed: provider.busy ? null : () => provider.end(widget.gameId),
-          semanticLabel: GameStrings.end,
-          child: const Text(GameStrings.end),
-        ),
-      );
+      if (!canStart) {
+        widgets.add(
+          Text(
+            'Need ${spec.capabilities.minPlayers} players to start. '
+            '${game.participantsCount} joined.',
+          ),
+        );
+      }
     }
     if (canManage && !game.isTerminal) {
       widgets.add(
         PubgetTextButton(
           onPressed: provider.busy
               ? null
-              : () => provider.cancel(widget.gameId),
+              : () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Cancel this game?'),
+                      content: const Text(
+                        'Players will be returned to the lobby list. This cannot be undone.',
+                      ),
+                      actions: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Keep playing'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text(GameStrings.cancel),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true && context.mounted) {
+                    await provider.cancel(widget.gameId);
+                  }
+                },
           semanticLabel: GameStrings.cancel,
           child: const Text(GameStrings.cancel),
         ),

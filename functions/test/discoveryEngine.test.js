@@ -49,3 +49,18 @@ test("old messages do not raise the current activity score", () => {
   });
   assert.equal(score, 0);
 });
+
+test("rising score is not member count", () => {
+  const { calculateRisingScore } = require("../src/discoveryEngine");
+  const small = calculateRisingScore({
+    activityScore: 60, uniqueActors: 5, memberCount: 7, joinsInWindow: 3,
+    ageDays: 10, messagesInWindow: 24, qualifyingActors: 5,
+    completeness: 90, replyRate: 0.3, regularity: 0.5,
+  });
+  const huge = calculateRisingScore({
+    activityScore: 5, uniqueActors: 1, memberCount: 250, joinsInWindow: 0,
+    ageDays: 200, messagesInWindow: 1, qualifyingActors: 1,
+    completeness: 10, replyRate: 0, regularity: 0,
+  });
+  assert.ok(small > huge);
+});

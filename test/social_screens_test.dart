@@ -43,7 +43,9 @@ void main() {
 
     expect(find.text('other_fan'), findsOneWidget);
     expect(find.byKey(const Key('profile-give-respect')), findsOneWidget);
+    await _scrollProfileTo(tester, const Key('profile-add-friend'));
     expect(find.byKey(const Key('profile-add-friend')), findsOneWidget);
+    await _scrollProfileTo(tester, const Key('profile-block-user'));
     expect(find.byKey(const Key('profile-block-user')), findsOneWidget);
     expect(find.byKey(const Key('profile-start-chat')), findsNothing);
 
@@ -139,6 +141,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _scrollProfileTo(tester, const Key('profile-start-chat'));
     expect(find.byKey(const Key('profile-start-chat')), findsOneWidget);
   });
+}
+
+Future<void> _scrollProfileTo(WidgetTester tester, Key key) async {
+  final finder = find.byKey(key);
+  for (var i = 0; i < 10; i++) {
+    if (finder.evaluate().isNotEmpty) {
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      return;
+    }
+    await tester.drag(find.byType(ListView).first, const Offset(0, -280));
+    await tester.pumpAndSettle();
+  }
 }

@@ -191,9 +191,104 @@ test("enforces MIME and size ceilings", async () => {
   await assertSucceeds(upload(alice, "edits/alice/v_ok.mp4", "video/mp4", 32));
 });
 
+test("edit video resumable updates are allowed for the owner", async () => {
+  const alice = env.authenticatedContext("alice");
+  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 32));
+  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 64));
+  await assertSucceeds(upload(
+    alice,
+    "edits/alice/editId123.mp4",
+    "video/mp4; codecs=avc1.42E01E",
+    96,
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    "edits/alice/editId123.mp4",
+    "video/mp4",
+    32,
+  ));
+});
+
+test("group staging images are owner-writable before a group exists", async () => {
+  const alice = env.authenticatedContext("alice");
+  await assertSucceeds(upload(
+    alice,
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(upload(
+    alice,
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+    48,
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    "users/alice/group_staging/avatar_1.jpg",
+    "image/jpeg",
+  ));
+});
+
 test("denies paths not explicitly supported", async () => {
   await assertFails(upload(env.authenticatedContext("alice"), "unreviewed/alice/file.jpg", "image/jpeg"));
   // The old groups/{groupId}.jpg form cannot safely recover groupId from a
   // filename in Storage Rules, so clients must use groups/{groupId}/group_image.jpg.
   await assertFails(upload(env.authenticatedContext("owner"), "groups/group-owner.jpg", "image/jpeg"));
+});
+
+test("fan work media is owner-writable and public only when the work is published", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("fanWorks/w-public").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await db.doc("fanWorks/w-draft").set({
+      creatorId: "alice", status: "draft", moderationStatus: "pending",
+    });
+  });
+  const alice = env.authenticatedContext("alice");
+  const bob = env.authenticatedContext("bob");
+  await assertSucceeds(upload(
+    alice,
+    "fan_works/alice/w-draft/cover.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("alice"),
+  ));
+  await assertFails(upload(
+    bob,
+    "fan_works/alice/w-draft/cover2.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("bob"),
+  ));
+  await assertFails(upload(
+    alice,
+    "fan_works/alice/w-draft/cover.gif",
+    "application/pdf",
+    32,
+    uploaderMetadata("alice"),
+  ));
+  await assertSucceeds(
+    alice.storage().ref("fan_works/alice/w-draft/cover.jpg").getDownloadURL(),
+  );
+  await assertFails(
+    bob.storage().ref("fan_works/alice/w-draft/cover.jpg").getDownloadURL(),
+  );
+  await assertFails(upload(
+    alice,
+    "fan_works/alice/w-public/page.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("alice"),
+  ));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref("fan_works/alice/w-public/page.jpg").put(
+      bytes(32),
+      { contentType: "image/jpeg" },
+    );
+  });
+  await assertSucceeds(
+    bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
+  );
 });

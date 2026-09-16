@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -11,19 +12,63 @@ import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
 
 abstract final class GameLinks {
-  static String path(String gameId) =>
-      '/game/${Uri.encodeComponent(gameId)}';
+  static String path(String gameId) => PubgetLinks.gamePath(gameId);
 
-  static Future<void> copy(BuildContext context, String gameId) async {
-    await Clipboard.setData(ClipboardData(text: path(gameId)));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text(GameStrings.copied)));
-  }
+  static String canonical(String gameId) => PubgetLinks.game(gameId);
+
+  static Future<void> copy(BuildContext context, String gameId) =>
+      PubgetLinks.copy(
+        context,
+        canonical(gameId),
+        type: 'game',
+        message: GameStrings.copied,
+      );
+
+  static Future<void> share(
+    BuildContext context,
+    String gameId, {
+    String? title,
+  }) => PubgetLinks.share(
+    context,
+    url: canonical(gameId),
+    title: title ?? GameStrings.share,
+    type: 'game',
+  );
 
   static void open(BuildContext context, String gameId) {
     AppNavigation.go(context, path(gameId));
+  }
+
+  static void openMafia(BuildContext context, String gameId) {
+    AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
+  }
+
+  static void openCreate(
+    BuildContext context, {
+    String? groupId,
+    bool fromChat = false,
+  }) {
+    final query = <String, String>{
+      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
+      if (fromChat) 'source': 'group_chat',
+    };
+    final suffix = query.isEmpty
+        ? ''
+        : '?${Uri(queryParameters: query).query}';
+    AppNavigation.go(context, '/games/create$suffix');
+  }
+
+  static void openCenter(
+    BuildContext context, {
+    required String groupId,
+  }) {
+    final query = Uri(
+      queryParameters: <String, String>{
+        'groupId': groupId,
+        'source': 'group_chat',
+      },
+    ).query;
+    AppNavigation.go(context, '/games?$query');
   }
 }
 
@@ -242,23 +287,10 @@ class GameHomeStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Games',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/games'),
-                  semanticLabel: GameStrings.seeAll,
-                  child: const Text(GameStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionGames,
+            actionLabel: GameStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/games'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && games.isEmpty)

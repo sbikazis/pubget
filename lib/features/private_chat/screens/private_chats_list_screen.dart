@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../app/app_shell_scope.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -57,11 +58,7 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
     final uid = context.watch<AuthProvider>().currentUser?.id ?? '';
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: () => AppNavigation.go(context, '/home'),
-          icon: const Icon(Icons.arrow_back),
-        ),
+        leading: const AppShellMenuButton(),
         title: UnreadBadge(
           count: context.watch<UnreadEngine>().privateChats,
           child: const Text('Private'),
@@ -73,11 +70,16 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
           if (uid.isEmpty) return;
           context.read<PrivateChatListProvider>().open(uid);
         },
-        empty: const PubgetEmptyState(
+        empty: PubgetEmptyState(
           title: 'No private chats yet',
           message:
               'Start a conversation from a Friend or Fan profile.',
           icon: Icons.chat_bubble_outline,
+          action: PubgetSecondaryButton(
+            onPressed: () => AppNavigation.go(context, '/search'),
+            semanticLabel: 'Find people',
+            child: const Text('Find people'),
+          ),
         ),
         error: PubgetErrorState(
           message: list.failure?.message ?? 'Private chats could not load.',

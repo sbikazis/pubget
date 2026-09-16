@@ -1,0 +1,86 @@
+# Pubget product engines
+
+Games, Events, and Achievements are separate domains. They share Economy and Notifications through integration services. Games and Mafia do not import chat internals; they emit an activity contract and `chatCardWriter` posts Admin system cards.
+
+Discovery ranking for Home, Rising Groups, Edits, Fan Works, Anime Hub, and people is documented in `docs/DISCOVERY.md`.
+
+## Game engine architecture
+
+Generic lobby state lives in `games/{gameId}`. Specialized rules live in Cloud Functions (`functions/src/gameEngines/`). Flutter renders `publicState` and a self-only `private/{uid}` projection. Secret answers live in `games/{id}/secret` and are not client-readable.
+
+| Type | Collection | Min–max | Engine |
+|---|---|---|---|
+| Guess Character | `games` | 2–2 | `guessCharacter.js` |
+| Anime Chain | `games` | 2–8 | `animeChain.js` |
+| Emoji Anime Guess | `games` | 2–4 | `emojiAnimeGuess.js` — server-owned catalog emoji clues, one guesser per turn |
+| Mafia | `mafia_games` | 4–8 | `mafia/` |
+
+Mafia is not created through `createGame` (`genericCreate: false` on both registries). The Flutter create hub still lists it because that page branches to `/mafia/{id}` via `createMafiaGame`.
+
+## State machine
+
+Generic games: `draft → waiting → active ⇄ paused → completed | cancelled`.
+
+Server phases for quiz/chain/emoji engines are stored in `currentPhase` (`waiting`, `round`, `resolution`, `game_over`). Invalid transitions are rejected. `stateVersion` plus optional `payload.stateVersion` reject stale clients.
+
+Mafia phases (server-owned, exact uppercase strings): `WAITING → STARTING → ROLE_REVEAL → NIGHT → DAY → DISCUSSION → VOTING → VOTE_RESULT → RESOLUTION`, with `CANCELLED` from a valid cancel and `GAME_OVER` after WIN_CHECK. `phaseFlow.js` is the single source of the order, durations, and transition guards. Four-player classic games assign one Mafia plus Doctor and Detective so the match does not start at parity. Night majority kills; a tie spares everyone. Vote ties request a revote among the tied players only (within the same `VOTING` phase via `voteRound`); a second tie spares everyone. Town wins when no Mafia remain. Mafia wins at parity/majority. Rewards are `earn_mafia_win` 10 / `earn_mafia_loss` 2; there is no draw reward and no reward on cancellation.
+
+## Server authority
+
+The client may request join, start, submit, vote, or leave. Cloud Functions decide validity, score, winner, role, timer expiry, rewards, and achievement grants. Clients never write `score`, `winner`, `role`, `deadlineAt`, or economy balances.
+
+Timers use server `deadlineAt` / `phaseEndsAt` for generic games; Mafia uses `serverStartedAt` / `serverEndsAt` (with `phaseEndsAt` kept as an alias for compatibility). Clients only render countdowns. Recovery uses the same persisted timers via `processExpiredGames` and the Mafia `phaseScheduler`.
+
+## Mafia architecture
+
+Components: `lobbyManager`, `roleAssigner`, `phaseFlow`, `phaseScheduler`, `actionDomain`, `nightResolver`, `voteResolver`, `winConditionChecker`, `rewardDistributor`, `historyWriter`, `disconnectHandler`.
+
+Roles (5, server-assigned, private under `mafia_games/{id}/players/{uid}/private/data`): Mafia, Citizen, Detective, Doctor, Don (Don at ≥5 players). No Good Boy/Sniper/Silencer. The Doctor cannot protect the same target on two consecutive nights. The Don is Mafia and privately learns whether a probed player is the Detective. The Detective privately learns Mafia/Not Mafia.
+
+Night actions and votes are idempotent document IDs (`uid_n{n}`, `uid_d{d}`) and are written only by the `submitMafiaAction` callable (clients cannot write `night_actions`, `votes`, or `chat`). Vote ties request a revote among the tied players only; a second tie spares everyone. Town wins when no Mafia remain. Mafia wins at parity/majority. Disconnects set `isDisconnected`; the scheduler does not freeze the game on a missing client.
+
+History is written after completion without exposing live private roles.
+
+## Event lifecycle
+
+`functions/src/eventsDomain.js` owns create, participate, resolve, expire, and finalize. Exactly 12 types (poll, comparison, theory, challenge, ranking, question, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion), three scopes (group / multiGroup / global), statuses `DRAFT/ACTIVE/ENDED/ARCHIVED/DELETED`. Maximum lifetime is 7 days; daily creation limit is 2, enforced race-safe. Participation is idempotent and rejected after `endAt`. `processEventLifecycle` finalizes expired events, writes results, and notifies. UI hides submit when `isInteractable()` is false; the backend still enforces expiry.
+
+Ending is server-driven; on end, result notifications are type `event_result_available` (pushWorthy true). Prediction and challenge events expose `resolveEvent`: the creator locks a `winnerOptionId` / validated `winnerIds`, which writes an immutable result (`resultLockedAt`), posts a result chat card, notifies participants, and grants `earn_event` rewards to winners.
+
+Comparison events (`characterComparison`, `animeComparison`, `imageComparison`) validate canonical catalog or licensed image candidates. Results include the criterion and winner references, not generic option labels alone.
+
+Challenge completion is server-verified for Pubget-observable kinds (`finish_game`, `publish_edit`, `create_group`, `participate_event`). Client `completed=true` is ignored. `self_report` is stored as unverified.
+
+Comments (`addEventComment`, open for ACTIVE/ENDED/ARCHIVED), reactions (`reactToEvent`), and creator-only analytics (`getEventAnalytics`) are callables; `firestore.rules` gates read visibility per scope (`eventVisibleOrGlobal`) and keeps all event writes admin-only.
+
+## Achievement architecture
+
+Catalog and unlocks are server-side (`achievementsDomain.js`). Triggers: first group, first edit, first friend, first fan, first event participation/win, first game win, creator milestone (fan work), community milestone (finish a game), and seasonal `autumn_2026_rally` (win a game during Autumn 2026). Grants are idempotent on `user_achievements/{uid}/items/{id}`. Seasonal unlocks use server time and cannot newly unlock outside the season window.
+
+## Guess Character artwork
+
+Public round state includes a Pubget-owned geometric silhouette (`prompt.artwork`) with an opaque `assetId`. The mapping from character → asset stays server-side. Failed or missing artwork falls back to the text clue.
+
+## Recovery
+
+Interrupted transitions resume from persisted `status`, `currentPhase`, `stateVersion`, and deadlines. `processExpiredGames` queries `status == active AND deadlineAt <= now` (indexed, batches of 50). Mafia `phaseScheduler` advances expired phases. A vanished client cannot leave a game stuck.
+
+## Reward integration
+
+Coins go through the existing economy ledger. Game wins use `earn_game`. Achievement coins use `earn_achievement` (5 coins, daily cap). Deterministic `transactionId(type, userId, referenceId)` prevents duplicate payouts. Clients never mutate `users/{uid}.coinsBalance`.
+
+## Idempotency
+
+Game actions use `clientActionId`. Mafia night/vote docs overwrite the same id. Achievement unlocks create-if-missing. Economy rewards use deterministic transaction ids. Duplicate scheduler ticks no-op when the phase/version already advanced.
+
+## Security
+
+- `games/{id}/secret`: no client access
+- `games/{id}/private/{uid}`: self-read only
+- Mafia private role docs: self-read only
+- `user_achievements/{uid}`: self-read, no client write
+- Scores, winners, phases, timers, rewards: Functions-only writes
+
+## Chat isolation
+
+Games and events emit domain events / compact notifications. They do not write `groups/{id}/messages`.

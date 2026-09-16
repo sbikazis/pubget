@@ -8,6 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../models/chat_models.dart';
+import '../services/chat_send_reliability.dart';
 import 'chat_repository.dart';
 
 final class FirebaseChatRepository implements ChatRepository {
@@ -79,6 +80,9 @@ final class FirebaseChatRepository implements ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
   }) => _guard(() async {
     final result = await _functions
         .httpsCallable('sendGroupMessage')
@@ -89,6 +93,9 @@ final class FirebaseChatRepository implements ChatRepository {
           'text': ?text,
           'mediaId': ?mediaId,
           'replyToMessageId': ?replyToMessageId,
+          'stickerKey': ?stickerKey,
+          'stickerCreatorId': ?stickerCreatorId,
+          'stickerCreatorName': ?stickerCreatorName,
         });
     return ChatMessage.fromMap(
       Map<String, dynamic>.from(result.data['message'] as Map),
@@ -163,6 +170,40 @@ final class FirebaseChatRepository implements ChatRepository {
   });
 
   @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('forwardGroupMessage')
+        .call(<String, dynamic>{
+          'sourceGroupId': sourceGroupId,
+          'messageId': messageId,
+          'destinationGroupId': ?destinationGroupId,
+          'destinationChatId': ?destinationChatId,
+        });
+    return ChatMessage.fromMap(
+      Map<String, dynamic>.from(result.data['message'] as Map),
+      id: result.data['messageId'] as String,
+    );
+  });
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) => _call('reportGroupMessage', {
+    'groupId': groupId,
+    'messageId': messageId,
+    'reason': reason,
+    'details': details,
+  });
+
+  @override
   Future<Result<void>> updateChatBackground({
     required String groupId,
     required String? backgroundUrl,
@@ -179,11 +220,10 @@ final class FirebaseChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) => _guard(() async {
     final extension = _extension(fileName, contentType);
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
+    final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final path = 'groups/$groupId/media/${mediaId}_original.$extension';
     final reference = _storage.ref(path);
     final task = reference.putData(
@@ -204,6 +244,13 @@ final class FirebaseChatRepository implements ChatRepository {
     });
     await task;
     onProgress(1);
+    onBytesUploaded?.call();
+    // Client wait for Cloud Function processing. Images/voice usually finish
+    // within a minute, but transcoding videos (ffmpeg) can take longer — give
+    // videos a 3-minute window before surfacing retry UI.
+    final processingDeadline = contentType.startsWith('video/')
+        ? const Duration(minutes: 3)
+        : const Duration(minutes: 1);
     final mediaSnapshot = await _firestore
         .collection('groups')
         .doc(groupId)
@@ -215,7 +262,7 @@ final class FirebaseChatRepository implements ChatRepository {
               snapshot.data()?['status'] == 'ready' ||
               snapshot.data()?['status'] == 'failed',
         )
-        .timeout(const Duration(minutes: 3));
+        .timeout(processingDeadline);
     final data = mediaSnapshot.data() ?? const <String, dynamic>{};
     if (data['status'] != 'ready') {
       throw StateError('Media processing failed.');
@@ -228,12 +275,40 @@ final class FirebaseChatRepository implements ChatRepository {
     );
   });
 
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) => _guard(() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('media')
+        .doc(mediaId)
+        .get();
+    final data = snapshot.data();
+    if (data == null || data['status'] != 'ready') return null;
+    return ChatMediaUpload(
+      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
+      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaId: mediaId,
+      type: switch (data['mediaType']) {
+        'video' => ChatMessageType.video,
+        'audio' => ChatMessageType.audio,
+        _ => ChatMessageType.image,
+      },
+    );
+  });
+
   String _extension(String fileName, String contentType) {
     final candidate = fileName.split('.').last.toLowerCase();
     if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {
       return candidate;
     }
-    return contentType == 'image/png' ? 'png' : 'jpg';
+    if (contentType.startsWith('audio/')) return 'm4a';
+    if (contentType == 'image/gif') return 'gif';
+    if (contentType == 'image/png') return 'png';
+    return 'jpg';
   }
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
@@ -253,20 +328,20 @@ final class FirebaseChatRepository implements ChatRepository {
 Failure _chatFailure(Object error) {
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => PermissionError(
-        error.message ?? 'This chat action is not allowed.',
+      'unauthenticated' || 'permission-denied' => const PermissionError(
+        ChatFailureCodes.permission,
       ),
-      'not-found' => NotFoundError(error.message ?? 'Message not found.'),
+      'not-found' => const NotFoundError(ChatFailureCodes.notFound),
       'unavailable' || 'deadline-exceeded' || 'resource-exhausted' =>
-        NetworkError(error.message ?? 'Check your connection and try again.'),
-      _ => ValidationError(error.message ?? 'Chat action failed.'),
+        const NetworkError(ChatFailureCodes.network),
+      'invalid-argument' || 'failed-precondition' || 'already-exists' =>
+        const ValidationError(ChatFailureCodes.validation),
+      _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
     };
   }
   if (error is FirebaseException &&
       (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return NetworkError(
-      error.message ?? 'Check your connection and try again.',
-    );
+    return const NetworkError(ChatFailureCodes.network);
   }
   return UnknownError(error.toString());
 }

@@ -17,6 +17,7 @@ final class ProfileProvider extends ChangeNotifier {
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _isOwner = false;
+  String? _boundUserId;
   bool _disposed = false;
 
   PubgetUser? get ownProfile => _ownProfile;
@@ -75,7 +76,36 @@ final class ProfileProvider extends ChangeNotifier {
       contentType: contentType,
     );
     result.fold(
-      onSuccess: (_) => _setState(LoadingState.loaded),
+      onSuccess: (url) {
+        if (_ownProfile != null) {
+          _ownProfile = _ownProfile!.copyWith(avatarUrl: url);
+        }
+        _setState(LoadingState.loaded);
+      },
+      onFailure: _setFailure,
+    );
+    return result;
+  }
+
+  Future<Result<String>> uploadCover({
+    required String userId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    _failure = null;
+    _setState(LoadingState.loading);
+    final result = await _repository.uploadCover(
+      userId: userId,
+      bytes: bytes,
+      contentType: contentType,
+    );
+    result.fold(
+      onSuccess: (url) {
+        if (_ownProfile != null) {
+          _ownProfile = _ownProfile!.copyWith(coverUrl: url);
+        }
+        _setState(LoadingState.loaded);
+      },
       onFailure: _setFailure,
     );
     return result;
@@ -85,6 +115,21 @@ final class ProfileProvider extends ChangeNotifier {
     if (_failure == null) return;
     _failure = null;
     notifyListeners();
+  }
+
+  void resetSession() {
+    _ownProfile = null;
+    _publicProfile = null;
+    _failure = null;
+    _isOwner = false;
+    _state = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  void bindUser(String? userId) {
+    if (_boundUserId == userId) return;
+    _boundUserId = userId;
+    resetSession();
   }
 
   void _setFailure(Failure failure) {

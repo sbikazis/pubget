@@ -58,6 +58,40 @@ final class EventListProvider extends ChangeNotifier {
     _safeNotify();
   }
 
+  bool _loadingMore = false;
+  bool _hasMoreActive = true;
+
+  bool get hasMoreActive => _hasMoreActive;
+  bool get loadingMore => _loadingMore;
+
+  Future<void> loadMoreActive() async {
+    if (_loadingMore || !_hasMoreActive) return;
+    final last = _active.isEmpty ? null : _active.last;
+    if (last == null) return;
+    _loadingMore = true;
+    notifyListeners();
+    final result = await _repository.getActiveEvents(
+      limit: 20,
+      after: last,
+    );
+    result.fold(
+      onSuccess: (more) {
+        if (more.isEmpty) {
+          _hasMoreActive = false;
+        } else {
+          final merged = <PubgetEvent>[..._active];
+          for (final event in more) {
+            if (!merged.any((item) => item.id == event.id)) merged.add(event);
+          }
+          _active = merged;
+        }
+      },
+      onFailure: (_) => _hasMoreActive = false,
+    );
+    _loadingMore = false;
+    _safeNotify();
+  }
+
   Future<void> loadGroup(String groupId) async {
     _state = LoadingState.loading;
     notifyListeners();
@@ -105,8 +139,11 @@ final class EventProvider extends ChangeNotifier {
   final EventRepository _repository;
   final Analytics _analytics;
   StreamSubscription<Result<PubgetEvent>>? _subscription;
+  StreamSubscription<Result<List<EventComment>>>? _commentsSubscription;
   PubgetEvent? _event;
   EventResponse? _myResponse;
+  List<EventComment> _comments = const <EventComment>[];
+  EventAnalytics? _analyticsData;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _submitting = false;
@@ -116,6 +153,8 @@ final class EventProvider extends ChangeNotifier {
 
   PubgetEvent? get event => _event;
   EventResponse? get myResponse => _myResponse;
+  List<EventComment> get comments => _comments;
+  EventAnalytics? get analyticsData => _analyticsData;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get submitting => _submitting;
@@ -159,12 +198,86 @@ final class EventProvider extends ChangeNotifier {
       );
       notifyListeners();
     });
+    _watchComments(eventId);
     final response = await _repository.getMyResponse(
       eventId: eventId,
       userId: userId,
     );
     _myResponse = response.valueOrNull;
     _safeNotify();
+  }
+
+  void _watchComments(String eventId) {
+    unawaited(_commentsSubscription?.cancel());
+    _commentsSubscription = _repository.watchComments(eventId).listen((result) {
+      if (_disposed) return;
+      result.fold(
+        onSuccess: (comments) => _comments = comments,
+        onFailure: (failure) => _failure = failure,
+      );
+      _safeNotify();
+    });
+  }
+
+  Future<Result<void>> addComment(String eventId, String text) async {
+    if (_submitting) {
+      return const FailureResult(
+        ValidationError('An event action is already in progress.'),
+      );
+    }
+    _submitting = true;
+    notifyListeners();
+    final result = await _repository.addComment(
+      eventId: eventId,
+      text: text,
+    );
+    if (result.isSuccess) {
+      _analytics.logEvent('event_comment', parameters: {'eventId': eventId});
+    } else {
+      _failure = result.failureOrNull;
+    }
+    _submitting = false;
+    _safeNotify();
+    return result;
+  }
+
+  Future<Result<void>> react(String eventId, String reaction) async {
+    final result = await _repository.react(
+      eventId: eventId,
+      reaction: reaction,
+    );
+    if (result.isSuccess) {
+      _analytics.logEvent('event_reacted', parameters: {'eventId': eventId});
+    } else {
+      _failure = result.failureOrNull;
+    }
+    _safeNotify();
+    return result;
+  }
+
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async {
+    return _repository.resolve(
+      eventId: eventId,
+      winnerOptionId: winnerOptionId,
+      winnerIds: winnerIds,
+    );
+  }
+
+  Future<Result<EventAnalytics>> openAnalytics(String eventId) async {
+    final result = await _repository.getAnalytics(eventId);
+    if (result.isSuccess) {
+      _analyticsData = result.valueOrNull;
+      _analytics.logEvent(
+        'event_analytics_viewed',
+        parameters: {'eventId': eventId},
+      );
+    }
+    _safeNotify();
+    return result;
   }
 
   Future<Result<void>> join(String eventId) async {
@@ -260,6 +373,7 @@ final class EventProvider extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(_subscription?.cancel());
+    unawaited(_commentsSubscription?.cancel());
     super.dispose();
   }
 }
@@ -283,8 +397,18 @@ final class EventBuilderProvider extends ChangeNotifier {
   Failure? get failure => _failure;
   bool get saving => _saving;
 
-  void start({String? groupId, String? templateId}) {
-    var next = EventDraft(groupId: groupId, templateId: templateId);
+  void start({
+    String? groupId,
+    String? templateId,
+    EventScope scope = EventScope.group,
+    List<String> groupIds = const <String>[],
+  }) {
+    var next = EventDraft(
+      groupId: groupId,
+      groupIds: groupIds,
+      scope: scope,
+      templateId: templateId,
+    );
     if (templateId != null) {
       final type = EventTypeRegistry.templates[templateId];
       if (type != null) {
@@ -322,6 +446,12 @@ final class EventBuilderProvider extends ChangeNotifier {
   }
 
   Future<Result<String>> saveDraft() async {
+    final validation = EventValidation.draft(_draft);
+    if (validation != null) {
+      _failure = ValidationError(validation);
+      notifyListeners();
+      return FailureResult(ValidationError(validation));
+    }
     _saving = true;
     notifyListeners();
     final result = await _repository.saveDraft(_draft);

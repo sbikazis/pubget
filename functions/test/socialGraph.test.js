@@ -70,7 +70,7 @@ test("legacy collision fallback requires exact stored participants", () => {
   );
 });
 
-test("public profile contains only the five approved projection fields", () => {
+test("public profile contains only the approved projection fields", () => {
   const profile = buildPublicProfile({
     username: "Alice",
     avatarUrl: "https://example.test/a.jpg",
@@ -80,12 +80,14 @@ test("public profile contains only the five approved projection fields", () => {
     email: "private@example.test",
     coinsBalance: 999,
     subscriptionType: "premium",
+    equippedFrameId: "frame_sakura",
   });
 
   assert.deepEqual(Object.keys(profile), DISPLAY_FIELDS);
   assert.equal(profile.email, undefined);
   assert.equal(profile.coinsBalance, undefined);
   assert.equal(profile.subscriptionType, undefined);
+  assert.equal(profile.equippedFrameId, "frame_sakura");
   assert.equal(shouldPublishProfile({ profileVisibility: "private" }), false);
   assert.equal(shouldPublishProfile({ profileVisibility: "public" }), true);
 });

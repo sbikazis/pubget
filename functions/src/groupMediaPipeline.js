@@ -30,7 +30,8 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
     const contentType = object.contentType || "";
     const isImage = contentType.startsWith("image/");
     const isVideo = contentType.startsWith("video/");
-    if (!isImage && !isVideo) return null;
+    const isAudio = contentType.startsWith("audio/");
+    if (!isImage && !isVideo && !isAudio) return null;
 
     const sourcePath = object.name;
     const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "pubget-chat-"));
@@ -45,11 +46,33 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
     await mediaRef.set({
       mediaId,
       uploaderId: object.metadata && object.metadata.uploadedBy || null,
-      mediaType: isImage ? "image" : "video",
+      mediaType: isImage ? "image" : isVideo ? "video" : "audio",
       originalPath: sourcePath,
       status: "processing",
       createdAt: new Date(),
     }, { merge: true });
+
+    // Voice notes: 60s / 10MB client contract. Storage allows 25MB; reject
+    // oversized originals here so sendGroupMessage never sees them as ready.
+    if (isAudio) {
+      const size = Number(object.size) || 0;
+      if (size > 10 * 1024 * 1024) {
+        await mediaRef.set({
+          status: "failed",
+          errorCode: "audio-too-large",
+          failedAt: new Date(),
+        }, { merge: true });
+        return null;
+      }
+      await mediaRef.set({
+        status: "ready",
+        thumbnailPath: null,
+        mediumPath: null,
+        processedAt: new Date(),
+        maxDurationSeconds: 60,
+      }, { merge: true });
+      return null;
+    }
 
     try {
       await bucket.file(sourcePath).download({ destination: sourceFile });

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import '../repositories/group_repository.dart';
 
@@ -18,31 +19,86 @@ final class GroupProvider extends ChangeNotifier {
   Group? _group;
   GroupMember? _membership;
   List<Group> _searchResults = const <Group>[];
+  List<Group> _joinedGroups = const <Group>[];
+  StreamSubscription<Result<List<Group>>>? _joinedSubscription;
+  String? _joinedUserId;
   LoadingState _state = LoadingState.initial;
+  LoadingState _joinedState = LoadingState.initial;
   Failure? _failure;
+  Failure? _joinedFailure;
   LeaveState _leaveState = LeaveState.idle;
   Future<void>? _leaveOperation;
+  bool _viewerBanned = false;
+  bool _pendingRequest = false;
+  bool _creating = false;
   bool _disposed = false;
 
   Group? get group => _group;
   GroupMember? get membership => _membership;
   List<Group> get searchResults => _searchResults;
+  List<Group> get joinedGroups => _joinedGroups;
   LoadingState get state => _state;
+  LoadingState get joinedState => _joinedState;
   Failure? get failure => _failure;
+  Failure? get joinedFailure => _joinedFailure;
   LeaveState get leaveState => _leaveState;
   Future<void>? get leaveOperation => _leaveOperation;
   bool get isMember => _membership != null;
-  bool get isFounder => _membership?.role == GroupRole.founder;
+  /// Mikado rank or document founder id match (ownership fallback).
+  bool get isFounder =>
+      _membership?.role == PubgetRank.mikado ||
+      (_group != null &&
+          _membership != null &&
+          _group!.founderId == _membership!.uid);
+  PubgetRank? get viewerRank => _membership?.role;
+  Set<GroupPermission> get viewerPermissions => memberPermissions(_membership);
+  bool get hasEntryHub =>
+      viewerRank != null && rankHasAdminEntryHub(viewerRank!);
+  bool get usesFullDashboard =>
+      viewerRank != null && rankUsesFullDashboard(viewerRank!);
+  bool get canManageEvents => memberCanManageEvents(_membership);
+  bool get canCreateEvents => memberCanCreateEvents(_membership);
+  bool get canManageSettings => memberCanManageSettings(_membership);
+  bool get canManageMembers => memberCanManageMembers(_membership);
+  bool get canInvite => GroupAuthority.canInvite(_membership);
+  bool get canUnban => GroupAuthority.canUnban(_membership);
+  bool get canManageRoles => GroupAuthority.canManageRoles(_membership);
+  bool get canWarn => GroupAuthority.canWarn(_membership);
+  bool get canViewBannedMembers =>
+      GroupAuthority.canViewBannedMembers(_membership);
+  int get unreadCount =>
+      _joinedGroups.where((group) => group.hasUnread).length;
+  bool get viewerBanned => _viewerBanned;
+  bool get pendingRequest => _pendingRequest;
+  bool get creating => _creating;
+  List<Group> foundedGroups(String userId) => _joinedGroups
+      .where((group) => group.founderId == userId)
+      .toList(growable: false);
+  List<Group> memberGroups(String userId) => _joinedGroups
+      .where((group) => group.founderId != userId)
+      .toList(growable: false);
+
+  Future<List<RoleplayCharacter>> loadReserved(String groupId) async {
+    final result = await _repository.reservedCharacters(groupId);
+    return result.valueOrNull ?? const <RoleplayCharacter>[];
+  }
 
   Future<Result<Group>> create(GroupDraft draft) async {
+    if (_creating) {
+      return const FailureResult<Group>(
+        ValidationError('Group creation is already in progress.'),
+      );
+    }
+    _creating = true;
     _start();
     final result = await _repository.createGroup(draft);
+    _creating = false;
     result.fold(
       onSuccess: (group) {
         _group = group;
         _membership = GroupMember(
           uid: group.founderId,
-          role: GroupRole.founder,
+          role: PubgetRank.mikado,
         );
         _state = LoadingState.loaded;
         notifyListeners();
@@ -57,9 +113,13 @@ final class GroupProvider extends ChangeNotifier {
     final results = await Future.wait<Object>([
       _repository.getGroup(groupId),
       _repository.getMembership(groupId, userId),
+      _repository.isBanned(groupId: groupId, userId: userId),
+      _repository.hasPendingRequest(groupId: groupId, userId: userId),
     ]);
     final groupResult = results[0] as Result<Group>;
     final membershipResult = results[1] as Result<GroupMember?>;
+    final bannedResult = results[2] as Result<bool>;
+    final pendingResult = results[3] as Result<bool>;
     if (!groupResult.isSuccess) {
       _setFailure(groupResult.failureOrNull!);
       return;
@@ -70,6 +130,8 @@ final class GroupProvider extends ChangeNotifier {
     }
     _group = groupResult.valueOrNull;
     _membership = membershipResult.valueOrNull;
+    _viewerBanned = bannedResult.valueOrNull ?? false;
+    _pendingRequest = pendingResult.valueOrNull ?? false;
     _state = LoadingState.loaded;
     notifyListeners();
   }
@@ -87,15 +149,102 @@ final class GroupProvider extends ChangeNotifier {
     );
   }
 
-  Future<Result<void>> join(String groupId, {String? inviteId}) async {
+  Future<void> loadJoined(String userId) => openJoined(userId);
+
+  Future<void> openJoined(String userId) async {
+    if (_joinedUserId == userId && _joinedSubscription != null) return;
+    await _joinedSubscription?.cancel();
+    _joinedUserId = userId;
+    _joinedFailure = null;
+    _joinedState = LoadingState.loading;
+    notifyListeners();
+    final first = Completer<void>();
+    _joinedSubscription = _repository.watchJoinedGroups(userId).listen(
+      (result) {
+        if (_disposed) return;
+        result.fold(
+          onSuccess: (groups) {
+            _joinedGroups = groups;
+            _joinedFailure = null;
+            _joinedState =
+                groups.isEmpty ? LoadingState.empty : LoadingState.loaded;
+          },
+          onFailure: (failure) {
+            _joinedFailure = failure;
+            _joinedState = failure is NetworkError
+                ? LoadingState.offline
+                : LoadingState.error;
+          },
+        );
+        if (!first.isCompleted) first.complete();
+        notifyListeners();
+      },
+      onError: (_) {
+        if (!first.isCompleted) first.complete();
+      },
+    );
+    await first.future;
+  }
+
+  Future<void> closeJoined() async {
+    await _joinedSubscription?.cancel();
+    _joinedSubscription = null;
+    _joinedUserId = null;
+    _joinedGroups = const <Group>[];
+    _joinedFailure = null;
+    _joinedState = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<Result<void>> join(
+    String groupId, {
+    required String userId,
+    String? inviteId,
+    GroupJoinPayload? join,
+  }) async {
     _start();
     final result = await _repository.joinGroup(
       groupId: groupId,
       inviteId: inviteId,
+      join: join,
     );
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    // joinGroup returns {ok: true} only. Read the real membership document.
+    final membershipResult = await _repository.getMembership(groupId, userId);
+    if (!membershipResult.isSuccess) {
+      _setFailure(membershipResult.failureOrNull!);
+      return FailureResult<void>(membershipResult.failureOrNull!);
+    }
+    final membership = membershipResult.valueOrNull;
+    if (membership == null) {
+      const failure = UnknownError(
+        'Membership was not available after joining.',
+      );
+      _setFailure(failure);
+      return const FailureResult<void>(failure);
+    }
+    _membership = membership;
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess) {
+      _group = groupResult.valueOrNull;
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
+    return result;
+  }
+
+  Future<Result<void>> requestToJoin(
+    String groupId, {
+    GroupJoinPayload? join,
+  }) async {
+    _start();
+    final result = await _repository.requestToJoin(groupId: groupId, join: join);
     result.fold(
       onSuccess: (_) {
-        _membership = const GroupMember(uid: '', role: GroupRole.member);
+        _pendingRequest = true;
         _state = LoadingState.loaded;
         notifyListeners();
       },
@@ -104,16 +253,65 @@ final class GroupProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<Result<void>> requestToJoin(String groupId) async {
-    _start();
-    final result = await _repository.requestToJoin(groupId: groupId);
-    result.fold(
-      onSuccess: (_) {
-        _state = LoadingState.loaded;
-        notifyListeners();
-      },
-      onFailure: _setFailure,
+  Future<Result<void>> updateSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async {
+    _failure = null;
+    _state = LoadingState.refreshing;
+    notifyListeners();
+    final result = await _repository.updateGroupSettings(
+      groupId: groupId,
+      settings: settings,
     );
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess && groupResult.valueOrNull != null) {
+      _group = groupResult.valueOrNull;
+    } else {
+      final current = _group;
+      if (current != null && current.id == groupId) {
+        _group = current.copyWith(
+          name: settings.name,
+          description: settings.description,
+          rules: settings.rules,
+          joinPolicy: settings.joinPolicy,
+          isSearchable: settings.isSearchable,
+        );
+      }
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
+    return result;
+  }
+
+  bool _promoting = false;
+  bool get promoting => _promoting;
+
+  Future<Result<void>> promote(String groupId) async {
+    if (_promoting) {
+      return const FailureResult<void>(
+        ValidationError('Promotion is already in progress.'),
+      );
+    }
+    _promoting = true;
+    _failure = null;
+    notifyListeners();
+    final result = await _repository.promoteGroup(groupId);
+    _promoting = false;
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    final groupResult = await _repository.getGroup(groupId);
+    if (groupResult.isSuccess && groupResult.valueOrNull != null) {
+      _group = groupResult.valueOrNull;
+    }
+    _state = LoadingState.loaded;
+    notifyListeners();
     return result;
   }
 
@@ -182,6 +380,7 @@ final class GroupProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_joinedSubscription?.cancel());
     super.dispose();
   }
 }

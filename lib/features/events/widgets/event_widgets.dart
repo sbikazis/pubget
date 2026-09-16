@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -11,20 +12,30 @@ import '../models/event_type_registry.dart';
 import '../providers/event_providers.dart';
 
 abstract final class EventLinks {
-  static String path(String eventId) =>
-      '/event/${Uri.encodeComponent(eventId)}';
+  static const host = PubgetLinks.host;
 
-  static Future<void> copy(BuildContext context, String eventId) async {
-    await Clipboard.setData(ClipboardData(text: path(eventId)));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text(EventStrings.copied)));
-  }
+  static String path(String eventId) => PubgetLinks.eventPath(eventId);
 
-  static Future<void> share(BuildContext context, String eventId) {
-    return copy(context, eventId);
-  }
+  static String canonical(String eventId) => PubgetLinks.event(eventId);
+
+  static Future<void> copy(BuildContext context, String eventId) =>
+      PubgetLinks.copy(
+        context,
+        canonical(eventId),
+        type: 'event',
+        message: EventStrings.copied,
+      );
+
+  static Future<void> share(
+    BuildContext context,
+    String eventId, {
+    String? title,
+  }) => PubgetLinks.share(
+    context,
+    url: canonical(eventId),
+    title: title ?? EventStrings.share,
+    type: 'event',
+  );
 
   static void open(BuildContext context, String eventId) {
     AppNavigation.go(context, path(eventId));
@@ -71,29 +82,19 @@ class EventHomeStrip extends StatelessWidget {
     if (list.state == LoadingState.initial) {
       Future<void>.microtask(list.loadHome);
     }
-    final events = <PubgetEvent>[...list.active, ...list.upcoming];
+    final events = <PubgetEvent>[
+      ...list.active,
+      ...list.upcoming,
+    ].take(3).toList(growable: false);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Events',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                PubgetTextButton(
-                  onPressed: () => AppNavigation.go(context, '/events'),
-                  semanticLabel: EventStrings.seeAll,
-                  child: const Text(EventStrings.seeAll),
-                ),
-              ],
-            ),
+          PubgetSectionHeader(
+            title: AppStrings.of(context).sectionEvents,
+            actionLabel: EventStrings.seeAll,
+            onAction: () => AppNavigation.go(context, '/events'),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (list.state == LoadingState.loading && events.isEmpty)

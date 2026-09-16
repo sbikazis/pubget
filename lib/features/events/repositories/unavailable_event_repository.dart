@@ -49,16 +49,20 @@ final class UnavailableEventRepository implements EventRepository {
       Stream<Result<PubgetEvent>>.value(_fail());
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      _fail();
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => _fail();
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
       _fail();
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      _fail();
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => _fail();
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -85,4 +89,34 @@ final class UnavailableEventRepository implements EventRepository {
     required String eventId,
     required String userId,
   }) async => _fail();
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      _fail();
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async => _fail();
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async => _fail();
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => _fail();
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      Stream<Result<List<EventComment>>>.value(_fail());
 }

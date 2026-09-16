@@ -99,8 +99,10 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -126,12 +128,45 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async => const Success('comment-1');
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      const Stream<Result<List<EventComment>>>.empty();
 
   @override
   Future<Result<void>> join(String eventId) async => const Success<void>(null);
@@ -190,6 +225,7 @@ final class _FakeGroupRepository implements GroupRepository {
   Future<Result<void>> joinGroup({
     required String groupId,
     String? inviteId,
+    GroupJoinPayload? join,
   }) async => const Success<void>(null);
 
   @override
@@ -197,10 +233,45 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId}) async =>
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
       const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
       const Success(<Group>[]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      const Success(<Group>[]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }
+

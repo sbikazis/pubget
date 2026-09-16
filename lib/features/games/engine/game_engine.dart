@@ -65,7 +65,7 @@ abstract final class GameEngine {
         'Unknown game type.',
       );
     }
-    if (!spec.implemented) {
+    if (!spec.implemented || !spec.genericCreate) {
       throw const GameException(
         GameErrorCode.unimplementedType,
         GameStrings.comingSoon,

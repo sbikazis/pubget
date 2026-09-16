@@ -26,4 +26,14 @@ abstract final class AppShadows {
       spreadRadius: 3,
     ),
   ];
+
+  static List<BoxShadow> goldGlow(Brightness brightness) => <BoxShadow>[
+    BoxShadow(
+      color: AppColors.gold.withValues(
+        alpha: brightness == Brightness.dark ? 0.22 : 0.16,
+      ),
+      blurRadius: 18,
+      offset: const Offset(0, 8),
+    ),
+  ];
 }

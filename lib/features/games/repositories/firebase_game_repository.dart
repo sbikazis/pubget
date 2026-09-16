@@ -121,6 +121,28 @@ final class FirebaseGameRepository implements GameRepository {
   }
 
   @override
+  Stream<Result<Map<String, dynamic>>> watchPrivate({
+    required String gameId,
+    required String userId,
+  }) {
+    return _games
+        .doc(gameId)
+        .collection('private')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+          if (!snapshot.exists || snapshot.data() == null) {
+            return const Success(<String, dynamic>{});
+          }
+          return Success(snapshot.data()!);
+        })
+        .handleError(
+          (Object error) =>
+              FailureResult<Map<String, dynamic>>(_gameFailure(error)),
+        );
+  }
+
+  @override
   Future<Result<List<PubgetGame>>> getActiveGames({int limit = 20}) => _query(
     _games
         .where('status', isEqualTo: 'active')

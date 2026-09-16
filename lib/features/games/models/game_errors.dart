@@ -12,6 +12,7 @@ enum GameErrorCode {
   alreadyCompleted,
   duplicateAction,
   unimplementedType,
+  dailyCreationLimit,
 }
 
 final class GameException implements Exception {
@@ -25,6 +26,11 @@ final class GameException implements Exception {
     return switch (code) {
       GameErrorCode.notFound => NotFoundError(text),
       GameErrorCode.notParticipant => PermissionError(text),
+      GameErrorCode.dailyCreationLimit => ValidationError(
+        message.isEmpty
+            ? 'Daily game creation limit reached (2 games per day).'
+            : message,
+      ),
       _ => ValidationError(text),
     };
   }

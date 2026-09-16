@@ -1,4 +1,8 @@
 # Caching boundary
 
-Caching policies will be added with the first domain that needs persisted or
-memory-cached data. The foundation does not cache domain data.
+`TtlCache` is an in-memory, TTL-aware cache. The first consumer is Anime Hub.
+
+- Fresh entries are returned without hitting the remote source.
+- Expired entries are ignored when online and may still be served when offline.
+- The implementation is swappable (`MemoryTtlCache` today) so a persisted
+  cache can be added later without changing domain repositories.

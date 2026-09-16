@@ -49,10 +49,36 @@ service cloud.firestore {
     function groupMember(groupId) {
       return signedIn() && groupExists(groupId) && member(groupId, request.auth.uid);
     }
+    function memberRoleName(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role;
+    }
+    function memberRankV2(groupId) {
+      let data = get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data;
+      return data.keys().hasAny(['rankV2']) && data.rankV2 is string
+        ? data.rankV2
+        : memberRoleName(groupId);
+    }
+    // Moderators: HATAMOTO+ (and legacy founder/sensei/senpai during migration).
     function groupModerator(groupId) {
       return signedIn() && groupExists(groupId) && groupMember(groupId) &&
-        get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role
-          in ['founder', 'sensei', 'hakusho', 'senpai'];
+        memberRankV2(groupId) in [
+          'mikado', 'shogun', 'daimyo', 'hatamoto',
+          'founder', 'commander', 'captain', 'sensei', 'senpai'
+        ];
+    }
+    function canManageGroupMembers(groupId) {
+      return groupMember(groupId) && (
+        memberRankV2(groupId) in [
+          'mikado', 'shogun', 'daimyo',
+          'founder', 'commander'
+        ] ||
+        (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRankV2(groupId))) &&
+         get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRankV2(groupId)))
+           .data.permissions.hasAny(['kickBan', 'manageMembers'])) ||
+        (exists(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId))) &&
+         get(/databases/$(database)/documents/groups/$(groupId)/roles/$(memberRoleName(groupId)))
+           .data.permissions.hasAny(['kickBan', 'manageMembers']))
+      );
     }
     function mafiaGroupMember(gameId) {
       return signedIn() && groupMember(
@@ -65,6 +91,11 @@ service cloud.firestore {
     }
     function mafiaGame(gameId) {
       return get(/databases/$(database)/documents/mafia_games/$(gameId));
+    }
+    function mafiaPhaseOpen(gameId) {
+      return !mafiaGame(gameId).data.keys().hasAny(['phaseEndsAt']) ||
+        mafiaGame(gameId).data.phaseEndsAt == null ||
+        request.time < mafiaGame(gameId).data.phaseEndsAt;
     }
     function mafiaPublicPlayerDefaults(gameId, uid) {
       return request.resource.data.keys().hasOnly([
@@ -101,11 +132,11 @@ service cloud.firestore {
         request.resource.data.keys().hasOnly([
           'groupId','createdBy','createdAt','version','status','currentPhase',
           'currentDay','currentNight','playersCount','maxPlayers','minPlayers',
-          'winner','countdownEndsAt','phaseEndsAt','isLocked','startedAt',
-          'endedAt','rewardsDistributed','historyWritten'
+          'winner','countdownEndsAt','phaseEndsAt','serverStartedAt','serverEndsAt',
+          'isLocked','startedAt','endedAt','rewardsDistributed','historyWritten'
         ]) &&
-        request.resource.data.status == 'waiting' &&
-        request.resource.data.currentPhase == 'waiting' &&
+        request.resource.data.status == 'WAITING' &&
+        request.resource.data.currentPhase == 'WAITING' &&
         request.resource.data.currentDay == 0 &&
         request.resource.data.currentNight == 0 &&
         request.resource.data.playersCount == 1 &&
@@ -124,6 +155,8 @@ service cloud.firestore {
         request.resource.data.isLocked == false &&
         request.resource.data.winner == null &&
         request.resource.data.phaseEndsAt == null &&
+        request.resource.data.serverStartedAt == null &&
+        request.resource.data.serverEndsAt == null &&
         request.resource.data.startedAt == null &&
         request.resource.data.endedAt == null &&
         request.resource.data.rewardsDistributed == false &&
@@ -131,11 +164,11 @@ service cloud.firestore {
         existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
         getAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.userId == request.auth.uid &&
         getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.activeGameId == gameId &&
-        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.gameStatus == 'waiting' &&
+        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.gameStatus == 'WAITING' &&
         getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.hasRunningGame == true;
     }
     function mafiaJoinCounterUpdate(gameId) {
-      return resource.data.status == 'waiting' &&
+      return resource.data.status == 'WAITING' &&
         request.resource.data.playersCount == resource.data.playersCount + 1 &&
         !exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
         existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
@@ -143,8 +176,8 @@ service cloud.firestore {
           changedOnly(['playersCount'])) ||
          (request.resource.data.playersCount == resource.data.maxPlayers &&
           request.resource.data.isLocked == true &&
-          request.resource.data.status == 'starting' &&
-          request.resource.data.currentPhase == 'starting' &&
+          request.resource.data.status == 'STARTING' &&
+          request.resource.data.currentPhase == 'STARTING' &&
           request.resource.data.countdownEndsAt is timestamp &&
           request.resource.data.countdownEndsAt >= request.time &&
           request.resource.data.countdownEndsAt <= request.time + duration.value(60, 's') &&
@@ -152,7 +185,7 @@ service cloud.firestore {
             ['playersCount','isLocked','status','currentPhase','countdownEndsAt'])));
     }
     function mafiaLeaveCounterUpdate(gameId) {
-      return resource.data.status == 'waiting' &&
+      return resource.data.status == 'WAITING' &&
         request.resource.data.playersCount == resource.data.playersCount - 1 &&
         request.resource.data.playersCount >= 0 &&
         exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
@@ -191,7 +224,7 @@ service cloud.firestore {
         !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
         newMember.data.userId == uid &&
         newMember.data.groupId == groupId &&
-        newMember.data.role == 'member' &&
+        newMember.data.role in ['member', 'ronin'] &&
         consumesJoinRequest(groupId, uid) &&
         validReservationAfter(groupId, uid, newMember.data.characterKey);
     }
@@ -361,7 +394,7 @@ service cloud.firestore {
       allow list: if false;
       allow create: if self(uid) &&
         request.resource.data.keys().hasOnly([
-          'email','username','nickname','avatarUrl','bio','favoriteAnimes','age',
+          'email','username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age',
           'country','isProfileCompleted','createdAt','updatedAt','invitedBy',
           'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
           'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
@@ -387,13 +420,17 @@ service cloud.firestore {
         request.resource.data.get('hasClaimedReferral', false) == false &&
         request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('activityVisibility', 'public') in ['public','private'] &&
-        request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'];
+        request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'] &&
+        (!request.resource.data.keys().hasAny(['displayName']) ||
+         request.resource.data.displayName == null ||
+         (request.resource.data.displayName is string &&
+          request.resource.data.displayName.size() <= 80));
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
         ((changedOnly([
-          'username','nickname','avatarUrl','bio','favoriteAnimes','age','country',
-          'favoriteAnimeIds','activityVisibility',
+          'username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age','country',
+          'favoriteAnimeIds','activityVisibility','whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt'
         ]) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
@@ -403,10 +440,16 @@ service cloud.firestore {
           (!request.resource.data.keys().hasAny(['favoriteAnimeIds']) ||
            (request.resource.data.favoriteAnimeIds is list &&
             request.resource.data.favoriteAnimeIds.size() <= 50)) &&
+          (!request.resource.data.keys().hasAny(['displayName']) ||
+           request.resource.data.displayName == null ||
+           (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() <= 80)) &&
           request.resource.data.get('profileVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('activityVisibility', 'public')
-            in ['public','private']) ||
+            in ['public','private'] &&
+          request.resource.data.get('whoCanMessageMe', 'related')
+            in ['related','friends']) ||
          false);
       allow delete: if false;
 
@@ -440,20 +483,76 @@ service cloud.firestore {
       match /daily_rewards/{id} { allow read: if self(uid); allow write: if false; }
       match /transactions/{id} { allow read: if self(uid); allow write: if false; }
       match /rewards/{id} { allow read: if self(uid); allow write: if false; }
+      match /inventory/{itemId} { allow read: if self(uid); allow write: if false; }
+      match /economyRate/{id} { allow read, write: if false; }
       match /user_mafia_history/{id} { allow read: if self(uid); allow write: if false; }
+      match /anime_lists/{animeId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+      match /character_favorites/{characterId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+      match /anime_ratings/{animeId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+      match /animeHubRate/{id} { allow read, write: if false; }
+    }
+
+    match /storeCatalog/{itemId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /anime_stats/{animeId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /reviews/{reviewUid} {
+        allow read: if signedIn();
+        allow write: if false;
+        match /reports/{reportId} {
+          allow read: if isAdmin();
+          allow create: if signedIn() &&
+            request.auth.uid == request.resource.data.reporterId &&
+            reportId == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+    }
+    match /character_stats/{characterId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /economyTransactions/{transactionId} {
+      allow get: if signedIn() && resource.data.userId == request.auth.uid;
+      allow list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
     match /public_profiles/{uid} {
-      allow read: if signedIn() &&
+      // GET still honors users/{uid}.profileVisibility so a stale projection
+      // cannot be opened after the owner goes private.
+      // LIST must not call get(users/{uid}): a missing user doc or one private
+      // leftover poisons the entire Home/search query (permission-denied).
+      // This collection is a server projection; private profiles are deleted
+      // by syncPublicProfile.
+      allow get: if signedIn() &&
+        exists(/databases/$(database)/documents/users/$(uid)) &&
         get(/databases/$(database)/documents/users/$(uid))
           .data.get('profileVisibility', 'public') == 'public';
+      allow list: if signedIn();
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
       allow create, update, delete: if false;
     }
 
     match /groups/{groupId} {
-      allow read: if signedIn() && groupExists(groupId);
+      allow get: if signedIn() && groupExists(groupId);
+      // LIST must not use groupExists()/get(): one deletionPending document
+      // in a discovery query fails the whole list (Home promoted/rising).
+      // Direct get of a pending-deletion group remains denied above.
+      allow list: if signedIn();
       // New Groups domain records are created by createGroup only. The
       // legacy-compatible create branch below intentionally does not accept
       // the new joinPolicy/search/rules/activity fields.
@@ -484,19 +583,14 @@ service cloud.firestore {
         ]) ||
         membershipIncrement(groupId) ||
         membershipDecrement(groupId) ||
-        // Message sends update this preview in a separate write. It cannot
-        // alter membership or any other group authority.
-        (groupMember(groupId) &&
-         changedOnly(['lastMessageAt','lastMessageText']) &&
-         request.resource.data.lastMessageAt is timestamp &&
-         request.resource.data.lastMessageText is string &&
-         request.resource.data.lastMessageText.size() <= 80) ||
+        // lastMessageAt / lastMessageText are written only by sendGroupMessage
+        // (Admin SDK). Direct client preview spoofing is rejected.
         // A lobby creator may only claim the group's active-game marker in
         // the same atomic write that creates their waiting game.
         signedIn() && groupMember(groupId) && changedOnly([
           'activeGameId','gameStatus','hasRunningGame'
         ]) && request.resource.data.activeGameId is string &&
-        request.resource.data.gameStatus == 'waiting' &&
+        request.resource.data.gameStatus == 'WAITING' &&
         request.resource.data.hasRunningGame == true &&
         existsAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)) &&
         getAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)).data.groupId == groupId &&
@@ -511,9 +605,9 @@ service cloud.firestore {
         // limited to an unprivileged member document for the caller.
         allow create: if
           ((self(uid) && isFounderAfter(groupId) &&
-             request.resource.data.role == 'founder') ||
+             request.resource.data.role in ['founder', 'mikado']) ||
            (groupModerator(groupId) && consumesJoinRequest(groupId, uid) &&
-             request.resource.data.role == 'member' &&
+             request.resource.data.role in ['member', 'ronin'] &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.operation == 'accept' &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membershipMutation.userId == uid &&
              getAfter(/databases/$(database)/documents/groups/$(groupId)).data.membersCount ==
@@ -544,7 +638,7 @@ service cloud.firestore {
         allow create: if groupExists(groupId) && self(uid) && request.resource.data.userId == uid &&
           request.resource.data.groupId == groupId &&
           !exists(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)) &&
-          request.resource.data.role == 'member' &&
+          request.resource.data.role in ['member', 'ronin'] &&
           request.resource.data.keys().hasOnly([
             'userId','groupId','role','displayName','characterName',
              'characterKey','characterImageUrl','characterReason','realUserName',
@@ -582,7 +676,25 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /bans/{uid} {
-        allow read: if self(uid) || groupModerator(groupId);
+        allow read: if self(uid) || canManageGroupMembers(groupId);
+        allow create, update, delete: if false;
+      }
+      match /rankAudit/{auditId} {
+        // Managers with roles/kick may inspect hierarchy history.
+        allow read: if groupMember(groupId) &&
+          (canManageGroupMembers(groupId) || groupModerator(groupId));
+        allow create, update, delete: if false;
+      }
+      match /warnings/{warningId} {
+        allow read: if groupMember(groupId) &&
+          (resource.data.targetUid == request.auth.uid ||
+           groupModerator(groupId) ||
+           canManageGroupMembers(groupId));
+        allow create, update, delete: if false;
+      }
+      match /messageReports/{reportId} {
+        allow read: if signedIn() &&
+          resource.data.reporterId == request.auth.uid;
         allow create, update, delete: if false;
       }
       match /transferConfirmations/{uid} {
@@ -601,10 +713,12 @@ service cloud.firestore {
       }
       match /games/{gameId} {
         allow read: if groupMember(groupId);
-        allow create, update, delete: if groupModerator(groupId);
+        // Product games live at top-level games/{gameId} (client writes false).
+        // Nothing in lib/ writes this nested path; keep it non-writable.
+        allow create, update, delete: if false;
       }
       match /characters/{characterId} {
-        allow read: if groupMember(groupId);
+        allow read: if signedIn();
         allow create: if groupExists(groupId) &&
           request.resource.data.keys().hasOnly(
             ['userId','characterName','imageUrl','reservedAt']) &&
@@ -650,30 +764,62 @@ service cloud.firestore {
       }
     }
 
+    // ---- Events (posts) — root-scoped helpers, passed eventId explicitly ----
+    function eventDoc(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data;
+    }
+    function eventRecordExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+    function eventNotDraft(eventId) {
+      let status = eventDoc(eventId).get('status', '');
+      let s = status is string ? status.lower() : '';
+      return s != 'draft' && s != 'deleted' && s != 'archived';
+    }
+    function eventGlobalScope(eventId) {
+      return eventDoc(eventId).get('scope', 'group') == 'global';
+    }
+    function eventInSingleGroup(eventId) {
+      let data = eventDoc(eventId);
+      return data.keys().hasAny(['groupId']) &&
+        data.get('groupId') is string &&
+        groupMember(data.get('groupId'));
+    }
+        function eventInMultiGroup(eventId) {
+      // Rules functions cannot loop. Multi-group membership is enforced through
+      // the loop-free participants subcollection: the app writes a
+      // participants/{uid} record only after groupMember() passes (same gate
+      // as the green single-group path). Creator/global/single-group members
+      // are already readable via eventVisibleToUser's other branches.
+      return signedIn() &&
+        exists(/databases/$(database)/documents/events/$(eventId)/participants/$(request.auth.uid));
+    }
+    function eventVisibleToUser(eventId) {
+      return signedIn() && eventRecordExists(eventId) &&
+        (eventDoc(eventId).get('creatorId', '') == request.auth.uid ||
+         (eventNotDraft(eventId) &&
+          (eventGlobalScope(eventId) ||
+           eventInSingleGroup(eventId) ||
+           eventInMultiGroup(eventId))));
+    }
+    // ---- /events top-level: reads follow the root helpers; writes locked ----
     match /events/{eventId} {
-      function eventData() {
-        return get(/databases/$(database)/documents/events/$(eventId)).data;
-      }
-      function eventExists() {
-        return exists(/databases/$(database)/documents/events/$(eventId));
-      }
-      function eventVisible() {
-        return signedIn() && eventExists() &&
-          (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'draft' &&
-            eventData().groupId is string &&
-            groupMember(eventData().groupId)));
-      }
-      allow read: if eventVisible();
+      allow read: if eventVisibleToUser(eventId);
       allow create, update, delete: if false;
       match /participants/{uid} {
-        allow read: if eventVisible();
+        allow read: if eventVisibleToUser(eventId);
         allow create, update, delete: if false;
       }
       match /responses/{uid} {
-        allow read: if eventVisible() &&
-          (request.auth.uid == uid ||
-           eventData().status in ['ended', 'archived']);
+        allow read: if eventVisibleToUser(eventId);
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if eventVisibleToUser(eventId);
+        allow create, update, delete: if false;
+      }
+      match /reactions/{reactionId} {
+        allow read: if eventVisibleToUser(eventId);
         allow create, update, delete: if false;
       }
     }
@@ -726,10 +872,80 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if signedIn();
         allow create, update, delete: if false;
+        match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
       match /viewers/{uid} { allow read: if self(uid); allow write: if false; }
+      match /playbackSessions/{sessionId} {
+        allow read: if signedIn() && resource.data.viewerId == request.auth.uid;
+        allow write: if false;
+      }
+      match /signals/{signalId} { allow read: if signedIn(); allow write: if false; }
+      match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
+    }
+
+    match /editUploadKeys/{keyId} {
+      allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /fanWorks/{workId} {
+      function fanWorkData() {
+        return get(/databases/$(database)/documents/fanWorks/$(workId)).data;
+      }
+      function fanWorkExists() {
+        return exists(/databases/$(database)/documents/fanWorks/$(workId));
+      }
+      function fanWorkVisible() {
+        return signedIn() &&
+          (resource.data.creatorId == request.auth.uid ||
+           (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved'));
+      }
+      allow read: if fanWorkVisible();
+      allow create, update, delete: if false;
+      match /likes/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /bookmarks/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /ratings/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      match /reports/{reportId} {
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           resource.data.reporterId == request.auth.uid);
+        allow create, update, delete: if false;
+      }
+      match /revisions/{revisionId} {
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
+        allow create, update, delete: if false;
+        match /likes/{uid} {
+          allow read: if self(uid);
+          allow create, update, delete: if false;
+        }
+        match /reports/{uid} {
+          allow read: if self(uid);
+          allow create, update, delete: if false;
+        }
+      }
     }
 
     match /user_interactions/{uid}/interactions/{interactionId} {
@@ -777,12 +993,12 @@ service cloud.firestore {
         allow create: if self(uid) && mafiaPublicPlayerDefaults(gameId, uid) &&
           ((!exists(/databases/$(database)/documents/mafia_games/$(gameId)) &&
              getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.createdBy == request.auth.uid) ||
-           (mafiaGame(gameId).data.status == 'waiting' &&
+           (mafiaGame(gameId).data.status == 'WAITING' &&
              mafiaGame(gameId).data.playersCount < mafiaGame(gameId).data.maxPlayers &&
              getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
                mafiaGame(gameId).data.playersCount + 1));
         allow delete: if self(uid) &&
-          mafiaGame(gameId).data.status == 'waiting' &&
+          mafiaGame(gameId).data.status == 'WAITING' &&
           getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
             mafiaGame(gameId).data.playersCount - 1 &&
           getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount >= 0 &&
@@ -794,62 +1010,37 @@ service cloud.firestore {
       }
       match /night_actions/{actionId} {
         allow read: if false;
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status == 'night' &&
-          mafiaGame(gameId).data.currentPhase == 'night' &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-           (!get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.keys().hasAny(['canUseAbility']) ||
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canUseAbility == true) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
-            in ['mafia','doctor','detective','sniper','silencer'] &&
-          actionId == request.auth.uid + '_n' + string(request.resource.data.nightNumber) &&
-          request.resource.data.playerId == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['playerId','targetId','nightNumber','submittedAt']) &&
-          request.resource.data.keys().hasAll(['playerId','targetId','nightNumber','submittedAt']) &&
-          request.resource.data.nightNumber is int &&
-          request.resource.data.nightNumber == mafiaGame(gameId).data.currentNight &&
-          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
-        allow update, delete: if false;
+        // Action intents are written only by submitMafiaAction so the server
+        // can enforce role privacy, timeouts, and idempotency.
+        allow create, update, delete: if false;
       }
       match /votes/{voteId} {
-        allow read: if mafiaGroupMember(gameId);
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status == 'voting' &&
-          mafiaGame(gameId).data.currentPhase == 'voting' &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canVote == true &&
-          voteId == request.auth.uid + '_d' + string(request.resource.data.dayNumber) &&
-          request.resource.data.voterId == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['voterId','targetId','dayNumber','time']) &&
-          request.resource.data.dayNumber == mafiaGame(gameId).data.currentDay &&
-          exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)) &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.resource.data.targetId)).data.isAlive == true;
-        allow update, delete: if false;
+        allow read, write: if false;
       }
       match /events/{eventId} { allow read: if mafiaGroupMember(gameId); allow write: if false; }
+      match /action_receipts/{receiptId} { allow read, write: if false; }
+      match /mafia_messages/{messageId} {
+        allow read: if mafiaPlayer(gameId) &&
+          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)/private/data).data.role
+            in ['mafia', 'don'];
+        allow write: if false;
+      }
       match /chat/{messageId} {
         allow read: if mafiaGroupMember(gameId);
-        allow create: if mafiaPlayer(gameId) &&
-          mafiaGame(gameId).data.status in ['day','discussion','voting'] &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.isAlive == true &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.hasLeft == false &&
-          get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.canSpeak == true &&
-          request.resource.data.keys().hasOnly(['senderId','sender','senderAvatar','text','time','type']) &&
-          request.resource.data.senderId == request.auth.uid &&
-          request.resource.data.sender ==
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.username &&
-          request.resource.data.senderAvatar ==
-            get(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.avatar &&
-          request.resource.data.type == 'player' &&
-          request.resource.data.text is string &&
-          request.resource.data.text.size() > 0 &&
-          request.resource.data.text.size() <= 1000;
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
-    match /mafia_history/{gameId} { allow read: if signedIn(); allow write: if false; }
+    match /mafia_history/{gameId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.players;
+      allow write: if false;
+    }
+
+    // Joined tab: collection-group *list* of `members` is own-uid only.
+    // `get` stays on nested groups/{groupId}/members/{uid} so a
+    // deletionPending group still closes direct member reads (spec of
+    // Prompt 02). `read` here would OR with nested gets and reopen that.
+    match /{path=**}/members/{memberId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }

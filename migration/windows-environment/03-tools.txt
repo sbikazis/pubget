@@ -1,0 +1,45 @@
+﻿===== Git =====
+git version 2.52.0.windows.1
+
+===== Flutter =====
+Flutter 3.41.6 ÔÇó channel stable ÔÇó https://github.com/flutter/flutter.git
+Framework ÔÇó revision db50e20168 (6 months ago) ÔÇó 2026-03-25 16:21:00 -0700
+Engine ÔÇó hash 5cdd32777948fa7a648fac915f8da7120ac7e97a (revision 425cfb54d0) (5 months ago) ÔÇó 2026-03-25 20:14:42.000Z
+Tools ÔÇó Dart 3.11.4 ÔÇó DevTools 2.54.2
+
+===== Dart =====
+Dart SDK version: 3.11.4 (stable) (Tue Mar 24 01:02:20 2026 -0700) on "windows_x64"
+
+===== Node =====
+v20.19.0
+
+===== NPM =====
+10.8.2
+
+===== Python =====
+Python 3.13.7
+
+===== Java =====
+java : java version "17.0.12" 2024-07-16 LTS
+Au caractère Ligne:56 : 5
++     java -version
++     ~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (java version "17.0.12" 2024-07-16 LTS:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Java(TM) SE Runtime Environment (build 17.0.12+8-LTS-286)
+Java HotSpot(TM) 64-Bit Server VM (build 17.0.12+8-LTS-286, mixed mode, sharing)
+
+===== ADB =====
+Android Debug Bridge version 1.0.41
+Version 36.0.2-14143358
+Installed as C:\Users\admin\SDK pt\platform-tools\adb.exe
+Running on Windows 10.0.19045
+
+===== Firebase =====
+15.24.0
+
+===== VS Code =====
+1.135.0
+08d4889f9ec4a1685d257b9b95de036c8e1ce1e5
+x64

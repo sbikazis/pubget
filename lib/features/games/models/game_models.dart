@@ -45,30 +45,49 @@ final class GameConfiguration {
     this.minPlayers = 1,
     this.maxPlayers = 16,
     this.usesRounds = false,
+    this.roundCount = 5,
+    this.timerSeconds = 20,
+    this.difficulty = 'normal',
     this.extra = const <String, dynamic>{},
   });
 
   final int minPlayers;
   final int maxPlayers;
   final bool usesRounds;
+  final int roundCount;
+  final int timerSeconds;
+  final String difficulty;
   final Map<String, dynamic> extra;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'minPlayers': minPlayers,
     'maxPlayers': maxPlayers,
     'usesRounds': usesRounds,
+    'roundCount': roundCount,
+    'timerSeconds': timerSeconds,
+    'difficulty': difficulty,
     'extra': extra,
   };
 
   factory GameConfiguration.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const GameConfiguration();
+    final extra = map['extra'] is Map
+        ? Map<String, dynamic>.from(map['extra'] as Map)
+        : const <String, dynamic>{};
     return GameConfiguration(
       minPlayers: (map['minPlayers'] as num?)?.toInt() ?? 1,
       maxPlayers: (map['maxPlayers'] as num?)?.toInt() ?? 16,
       usesRounds: map['usesRounds'] == true,
-      extra: map['extra'] is Map
-          ? Map<String, dynamic>.from(map['extra'] as Map)
-          : const <String, dynamic>{},
+      roundCount: (map['roundCount'] as num?)?.toInt() ??
+          (extra['roundCount'] as num?)?.toInt() ??
+          5,
+      timerSeconds: (map['timerSeconds'] as num?)?.toInt() ??
+          (extra['timerSeconds'] as num?)?.toInt() ??
+          20,
+      difficulty: map['difficulty'] as String? ??
+          extra['difficulty'] as String? ??
+          'normal',
+      extra: extra,
     );
   }
 }
@@ -130,7 +149,10 @@ final class PubgetGame {
     this.endedAt,
     this.result,
     this.currentRoundNumber,
-    this.mafia,
+    this.publicState = const <String, dynamic>{},
+    this.currentPhase,
+    this.stateVersion = 0,
+    this.deadlineAt,
   });
 
   final String id;
@@ -149,6 +171,10 @@ final class PubgetGame {
   final DateTime? endedAt;
   final GameResult? result;
   final int? currentRoundNumber;
+  final Map<String, dynamic> publicState;
+  final String? currentPhase;
+  final int stateVersion;
+  final DateTime? deadlineAt;
 
   /// Public Mafia slice. Hidden roles never live here.
   final Map<String, dynamic>? mafia;
@@ -175,7 +201,10 @@ final class PubgetGame {
     'endedAt': endedAt?.toUtc().toIso8601String(),
     'result': result?.toMap(),
     'currentRoundNumber': currentRoundNumber,
-    if (mafia != null) 'mafia': mafia,
+    'publicState': publicState,
+    'currentPhase': currentPhase,
+    'stateVersion': stateVersion,
+    'deadlineAt': deadlineAt?.toUtc().toIso8601String(),
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -209,9 +238,12 @@ final class PubgetGame {
           ? GameResult.fromMap(Map<String, dynamic>.from(map['result'] as Map))
           : null,
       currentRoundNumber: (map['currentRoundNumber'] as num?)?.toInt(),
-      mafia: map['mafia'] is Map
-          ? Map<String, dynamic>.from(map['mafia'] as Map)
-          : null,
+      publicState: map['publicState'] is Map
+          ? Map<String, dynamic>.from(map['publicState'] as Map)
+          : const <String, dynamic>{},
+      currentPhase: map['currentPhase'] as String?,
+      stateVersion: (map['stateVersion'] as num?)?.toInt() ?? 0,
+      deadlineAt: _date(map['deadlineAt']),
     );
   }
 }
@@ -518,6 +550,7 @@ final class GameDraft {
     this.description = '',
     this.asDraft = false,
     this.configuration = const GameConfiguration(),
+    this.creationSource = 'unknown',
   });
 
   final String? gameId;
@@ -527,6 +560,7 @@ final class GameDraft {
   final String description;
   final bool asDraft;
   final GameConfiguration configuration;
+  final String creationSource;
 
   GameDraft copyWith({
     String? gameId,
@@ -536,6 +570,7 @@ final class GameDraft {
     String? description,
     bool? asDraft,
     GameConfiguration? configuration,
+    String? creationSource,
   }) => GameDraft(
     gameId: gameId ?? this.gameId,
     groupId: groupId ?? this.groupId,
@@ -544,6 +579,7 @@ final class GameDraft {
     description: description ?? this.description,
     asDraft: asDraft ?? this.asDraft,
     configuration: configuration ?? this.configuration,
+    creationSource: creationSource ?? this.creationSource,
   );
 
   Map<String, dynamic> toCallableMap() => <String, dynamic>{
@@ -554,6 +590,7 @@ final class GameDraft {
     'description': description,
     'asDraft': asDraft,
     'configuration': configuration.toMap(),
+    'creationSource': creationSource,
   };
 }
 

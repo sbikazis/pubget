@@ -2,36 +2,68 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum EventType {
   poll,
-  multipleChoice,
-  ranking,
-  versus,
+  comparison,
   theory,
+  challenge,
+  ranking,
+  question,
   prediction,
   quiz,
   imageComparison,
   characterComparison,
   animeComparison,
-  openDiscussion,
-  challenge,
+  openDiscussion;
+
+  // Source compatibility for older widgets/tests; these are not additional
+  // persisted Event types.
+  static const multipleChoice = EventType.question;
+  static const versus = EventType.comparison;
 }
 
-enum EventStatus { draft, scheduled, active, ended, cancelled, archived }
+enum EventScope { group, multiGroup, global }
+
+enum EventStatus {
+  draft,
+  active,
+  ended,
+  archived,
+  deleted;
+
+  // Legacy aliases remain compile-time aliases, never persisted states.
+  static const scheduled = EventStatus.active;
+  static const cancelled = EventStatus.deleted;
+}
 
 final class EventOption {
   const EventOption({
     required this.id,
     required this.label,
     this.imageUrl = '',
+    this.characterId = '',
+    this.animeId = '',
+    this.mimeType = '',
+    this.license = '',
+    this.attribution = '',
   });
 
   final String id;
   final String label;
   final String imageUrl;
+  final String characterId;
+  final String animeId;
+  final String mimeType;
+  final String license;
+  final String attribution;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'id': id,
     'label': label,
-    'imageUrl': imageUrl,
+    if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+    if (characterId.isNotEmpty) 'characterId': characterId,
+    if (animeId.isNotEmpty) 'animeId': animeId,
+    if (mimeType.isNotEmpty) 'mimeType': mimeType,
+    if (license.isNotEmpty) 'license': license,
+    if (attribution.isNotEmpty) 'attribution': attribution,
   };
 
   factory EventOption.fromMap(Map<String, dynamic> map, {required int index}) {
@@ -39,6 +71,11 @@ final class EventOption {
       id: map['id'] as String? ?? 'opt-${index + 1}',
       label: map['label'] as String? ?? map['name'] as String? ?? '',
       imageUrl: map['imageUrl'] as String? ?? '',
+      characterId: map['characterId'] as String? ?? '',
+      animeId: map['animeId'] as String? ?? '',
+      mimeType: map['mimeType'] as String? ?? '',
+      license: map['license'] as String? ?? '',
+      attribution: map['attribution'] as String? ?? '',
     );
   }
 }
@@ -77,6 +114,18 @@ final class EventQuizQuestion {
           (options.isEmpty ? '' : options.first.id),
     );
   }
+
+  EventQuizQuestion copyWith({
+    String? id,
+    String? prompt,
+    List<EventOption>? options,
+    String? correctOptionId,
+  }) => EventQuizQuestion(
+    id: id ?? this.id,
+    prompt: prompt ?? this.prompt,
+    options: options ?? this.options,
+    correctOptionId: correctOptionId ?? this.correctOptionId,
+  );
 }
 
 final class EventConfiguration {
@@ -90,6 +139,9 @@ final class EventConfiguration {
     this.allowUpdate = false,
     this.allowVoting = false,
     this.completionRule = '',
+    this.criterion = '',
+    this.challengeKind = '',
+    this.targetEventId = '',
   });
 
   final String question;
@@ -101,6 +153,9 @@ final class EventConfiguration {
   final bool allowUpdate;
   final bool allowVoting;
   final String completionRule;
+  final String criterion;
+  final String challengeKind;
+  final String targetEventId;
 
   EventConfiguration copyWith({
     String? question,
@@ -112,6 +167,9 @@ final class EventConfiguration {
     bool? allowUpdate,
     bool? allowVoting,
     String? completionRule,
+    String? criterion,
+    String? challengeKind,
+    String? targetEventId,
   }) => EventConfiguration(
     question: question ?? this.question,
     prompt: prompt ?? this.prompt,
@@ -122,6 +180,9 @@ final class EventConfiguration {
     allowUpdate: allowUpdate ?? this.allowUpdate,
     allowVoting: allowVoting ?? this.allowVoting,
     completionRule: completionRule ?? this.completionRule,
+    criterion: criterion ?? this.criterion,
+    challengeKind: challengeKind ?? this.challengeKind,
+    targetEventId: targetEventId ?? this.targetEventId,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -134,6 +195,9 @@ final class EventConfiguration {
     'allowUpdate': allowUpdate,
     'allowVoting': allowVoting,
     'completionRule': completionRule,
+    if (criterion.isNotEmpty) 'criterion': criterion,
+    if (challengeKind.isNotEmpty) 'challengeKind': challengeKind,
+    if (targetEventId.isNotEmpty) 'targetEventId': targetEventId,
   };
 
   factory EventConfiguration.fromMap(Map<String, dynamic>? map) {
@@ -159,6 +223,10 @@ final class EventConfiguration {
       allowUpdate: map['allowUpdate'] == true,
       allowVoting: map['allowVoting'] == true,
       completionRule: map['completionRule'] as String? ?? '',
+      criterion:
+          map['criterion'] as String? ?? map['question'] as String? ?? '',
+      challengeKind: map['challengeKind'] as String? ?? '',
+      targetEventId: map['targetEventId'] as String? ?? '',
     );
   }
 }
@@ -243,6 +311,8 @@ final class PubgetEvent {
     required this.updatedAt,
     this.coverUrl = '',
     this.templateId,
+    this.scope = EventScope.group,
+    this.groupIds = const <String>[],
     this.version = 1,
   });
 
@@ -264,16 +334,27 @@ final class PubgetEvent {
   final DateTime? updatedAt;
   final String coverUrl;
   final String? templateId;
+  final EventScope scope;
+  final List<String> groupIds;
   final int version;
 
-  bool get isOpen =>
-      status == EventStatus.active || status == EventStatus.scheduled;
+  bool get isOpen => status == EventStatus.active;
   bool get isHistorical =>
       status == EventStatus.ended || status == EventStatus.archived;
   bool get isReadOnly =>
       status == EventStatus.ended ||
       status == EventStatus.archived ||
-      status == EventStatus.cancelled;
+      status == EventStatus.deleted;
+
+  /// UI hint. The backend still rejects expired participation.
+  bool isExpired([DateTime? now]) {
+    final end = endAt;
+    if (end == null) return false;
+    return !end.isAfter(now ?? DateTime.now());
+  }
+
+  bool isInteractable([DateTime? now]) =>
+      status == EventStatus.active && !isExpired(now);
 
   Duration? remaining(DateTime now) {
     if (endAt == null) return null;
@@ -285,6 +366,8 @@ final class PubgetEvent {
     'type': type.name,
     'creatorId': creatorId,
     'groupId': groupId,
+    'scope': scope.name,
+    'groupIds': groupIds,
     'title': title,
     'description': description,
     'configuration': configuration.toMap(),
@@ -320,10 +403,7 @@ final class PubgetEvent {
   factory PubgetEvent.fromMap(Map<String, dynamic> map, {required String id}) {
     return PubgetEvent(
       id: id,
-      type: EventType.values.firstWhere(
-        (value) => value.name == map['type'],
-        orElse: () => EventType.poll,
-      ),
+      type: _eventType(map['type']),
       creatorId: map['creatorId'] as String? ?? '',
       groupId: map['groupId'] as String?,
       title: map['title'] as String? ?? '',
@@ -333,10 +413,7 @@ final class PubgetEvent {
             ? Map<String, dynamic>.from(map['configuration'] as Map)
             : null,
       ),
-      status: EventStatus.values.firstWhere(
-        (value) => value.name == map['status'],
-        orElse: () => EventStatus.draft,
-      ),
+      status: _eventStatus(map['status']),
       startAt: _date(map['startAt']),
       endAt: _date(map['endAt']),
       participantsCount: (map['participantsCount'] as num?)?.toInt() ?? 0,
@@ -353,6 +430,12 @@ final class PubgetEvent {
       updatedAt: _date(map['updatedAt']),
       coverUrl: map['coverUrl'] as String? ?? '',
       templateId: map['templateId'] as String?,
+      scope: _eventScope(map['scope'], map['groupId']),
+      groupIds:
+          (map['groupIds'] as List<Object?>?)?.whereType<String>().toList(
+            growable: false,
+          ) ??
+          const <String>[],
       version: (map['version'] as num?)?.toInt() ?? 1,
     );
   }
@@ -417,10 +500,127 @@ final class EventParticipant {
   }
 }
 
+final class EventComment {
+  const EventComment({
+    required this.id,
+    required this.userId,
+    required this.text,
+    this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String text;
+  final DateTime? createdAt;
+
+  factory EventComment.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+  }) {
+    return EventComment(
+      id: id,
+      userId: map['userId'] as String? ?? '',
+      text: map['text'] as String? ?? '',
+      createdAt: _date(map['createdAt']),
+    );
+  }
+}
+
+final class EventAnalytics {
+  const EventAnalytics({
+    required this.eventId,
+    required this.status,
+    this.participants = const <EventParticipant>[],
+    this.responses = const <EventResponse>[],
+    this.tally = const EventTally(),
+    this.result,
+  });
+
+  final String eventId;
+  final String status;
+  final List<EventParticipant> participants;
+  final List<EventResponse> responses;
+  final EventTally tally;
+  final EventResult? result;
+
+  factory EventAnalytics.fromMap(Map<String, dynamic> map) {
+    final participantsRaw = (map['participants'] as List<Object?>?);
+    final responsesRaw = (map['responses'] as List<Object?>?);
+    return EventAnalytics(
+      eventId: map['eventId'] as String? ?? '',
+      status: map['status'] as String? ?? '',
+      participants: participantsRaw == null
+          ? const <EventParticipant>[]
+          : [
+              for (final item in participantsRaw)
+                if (item is Map)
+                  EventParticipant.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      responses: responsesRaw == null
+          ? const <EventResponse>[]
+          : [
+              for (final item in responsesRaw)
+                if (item is Map)
+                  EventResponse.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      tally: EventTally.fromMap(
+        map['tally'] is Map
+            ? Map<String, dynamic>.from(map['tally'] as Map)
+            : null,
+      ),
+      result: map['result'] is Map
+          ? EventResult.fromMap(Map<String, dynamic>.from(map['result'] as Map))
+          : null,
+    );
+  }
+}
+
+final class EventPreview {
+  const EventPreview({
+    required this.eventId,
+    this.type = EventType.poll,
+    this.scope = EventScope.group,
+    this.title = '',
+    this.description = '',
+    this.configuration = const EventConfiguration(),
+  });
+
+  final String eventId;
+  final EventType type;
+  final EventScope scope;
+  final String title;
+  final String description;
+  final EventConfiguration configuration;
+
+  factory EventPreview.fromMap(Map<String, dynamic> map) {
+    final type = _eventType(map['type']);
+    return EventPreview(
+      eventId: map['eventId'] as String? ?? '',
+      type: type,
+      scope: _eventScope(map['scope'], map['groupId']),
+      title: map['title'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      configuration: EventConfiguration.fromMap(
+        map['configuration'] is Map
+            ? Map<String, dynamic>.from(map['configuration'] as Map)
+            : null,
+      ),
+    );
+  }
+}
+
 final class EventDraft {
   const EventDraft({
     this.eventId,
     this.groupId,
+    this.scope = EventScope.group,
+    this.groupIds = const <String>[],
     this.type = EventType.poll,
     this.title = '',
     this.description = '',
@@ -432,6 +632,8 @@ final class EventDraft {
 
   final String? eventId;
   final String? groupId;
+  final EventScope scope;
+  final List<String> groupIds;
   final EventType type;
   final String title;
   final String description;
@@ -443,6 +645,8 @@ final class EventDraft {
   factory EventDraft.fromEvent(PubgetEvent event) => EventDraft(
     eventId: event.id,
     groupId: event.groupId,
+    scope: event.scope,
+    groupIds: event.groupIds,
     type: event.type,
     title: event.title,
     description: event.description,
@@ -455,6 +659,8 @@ final class EventDraft {
   EventDraft copyWith({
     String? eventId,
     String? groupId,
+    EventScope? scope,
+    List<String>? groupIds,
     EventType? type,
     String? title,
     String? description,
@@ -466,6 +672,8 @@ final class EventDraft {
   }) => EventDraft(
     eventId: eventId ?? this.eventId,
     groupId: groupId ?? this.groupId,
+    scope: scope ?? this.scope,
+    groupIds: groupIds ?? this.groupIds,
     type: type ?? this.type,
     title: title ?? this.title,
     description: description ?? this.description,
@@ -479,6 +687,8 @@ final class EventDraft {
     return <String, dynamic>{
       if (eventId != null) 'eventId': eventId,
       if (groupId != null) 'groupId': groupId,
+      'scope': scope.name,
+      if (groupIds.isNotEmpty) 'groupIds': groupIds,
       'type': type.name,
       'title': title,
       'description': description,
@@ -490,6 +700,12 @@ final class EventDraft {
       'candidates': configuration.options.map((item) => item.toMap()).toList(),
       'items': configuration.options.map((item) => item.toMap()).toList(),
       'questions': configuration.questions.map((item) => item.toMap()).toList(),
+      if (configuration.criterion.isNotEmpty)
+        'criterion': configuration.criterion,
+      if (configuration.challengeKind.isNotEmpty)
+        'challengeKind': configuration.challengeKind,
+      if (configuration.targetEventId.isNotEmpty)
+        'targetEventId': configuration.targetEventId,
     };
   }
 }
@@ -525,4 +741,46 @@ DateTime? _date(dynamic value) {
   } catch (_) {
     return null;
   }
+}
+
+EventType _eventType(dynamic raw) {
+  final value = raw is String ? raw : '';
+  final normalized = switch (value) {
+    'multipleChoice' => 'question',
+    'versus' => 'comparison',
+    _ => value,
+  };
+  return EventType.values.firstWhere(
+    (item) => item.name == normalized,
+    orElse: () => EventType.poll,
+  );
+}
+
+EventStatus _eventStatus(dynamic raw) {
+  final value = raw is String ? raw : '';
+  final normalized = switch (value) {
+    'DRAFT' || 'draft' || 'scheduled' => 'draft',
+    'ACTIVE' || 'active' => 'active',
+    'ENDED' || 'ended' => 'ended',
+    'ARCHIVED' || 'archived' => 'archived',
+    'DELETED' || 'deleted' || 'cancelled' => 'deleted',
+    _ => value,
+  };
+  return EventStatus.values.firstWhere(
+    (item) => item.name == normalized,
+    orElse: () => EventStatus.draft,
+  );
+}
+
+EventScope _eventScope(dynamic raw, dynamic groupId) {
+  final value = raw is String ? raw : '';
+  return switch (value) {
+    'multiGroup' || 'MULTI_GROUP' || 'multi_group' => EventScope.multiGroup,
+    'global' || 'GLOBAL' => EventScope.global,
+    'group' || 'GROUP' => EventScope.group,
+    _ =>
+      groupId is String && groupId.isNotEmpty
+          ? EventScope.group
+          : EventScope.global,
+  };
 }

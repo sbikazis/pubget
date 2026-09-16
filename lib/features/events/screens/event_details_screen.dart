@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -65,6 +66,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     if (event != null) _maybeLoadGroup(event);
     return Scaffold(
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         title: Text(event?.title ?? 'Event'),
         actions: [
           IconButton(
@@ -79,7 +81,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             tooltip: EventStrings.share,
             onPressed: () {
               context.read<EventProvider>().share(widget.eventId);
-              EventLinks.share(context, widget.eventId);
+              EventLinks.share(context, widget.eventId, title: event?.title);
             },
             icon: const Icon(Icons.ios_share),
           ),
@@ -130,17 +132,20 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   const SizedBox(height: AppSpacing.md),
                   EventCountdown(event: event),
                   Text('${event.participantsCount} participating'),
-                  if (event.status == EventStatus.cancelled)
-                    const Text(EventStrings.cancelled),
+                  if (event.status == EventStatus.deleted)
+                    const Text(EventStrings.deleted),
                   if (event.status == EventStatus.archived)
                     const Text(EventStrings.archived),
                   if (event.status == EventStatus.ended)
                     const Text(EventStrings.ended),
                   const SizedBox(height: AppSpacing.lg),
-                  if (!event.isReadOnly) _Participation(event: event),
-                  if (event.isHistorical && event.result != null)
+                  _SocialActionsRow(event: event),
+                  if (event.isOpen && !event.isExpired())
+                    _Participation(event: event),
+                  if ((event.isHistorical || event.isExpired()) &&
+                      event.result != null)
                     _ResultCard(event: event),
-                  if (!event.isReadOnly) ...[
+                  if (event.isInteractable()) ...[
                     const SizedBox(height: AppSpacing.lg),
                     _ResponseForm(
                       event: event,
@@ -171,6 +176,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                     ),
                   ],
                   _ManageActions(event: event),
+                  const SizedBox(height: AppSpacing.lg),
+                  _CommentsSection(event: event, text: _text),
                 ],
               ),
       ),
@@ -251,6 +258,13 @@ class _ResponseForm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        if (event.configuration.criterion.isNotEmpty) ...[
+          Text(
+            event.configuration.criterion,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         if (spec.usesRanking) ...[
           const Text('Tap options in the order you want to rank them.'),
           ...event.configuration.options.map((option) {
@@ -278,6 +292,26 @@ class _ResponseForm extends StatelessWidget {
           ...event.configuration.options.map(
             (option) => RadioListTile<String>(
               title: Text(option.label),
+              subtitle: option.characterId.isNotEmpty
+                  ? Text(option.characterId)
+                  : option.animeId.isNotEmpty
+                  ? Text(option.animeId)
+                  : option.license.isNotEmpty
+                  ? Text('${option.license} · ${option.attribution}')
+                  : null,
+              secondary: option.imageUrl.startsWith('https://')
+                  ? SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: AppImageLoader(
+                        imageUrl: option.imageUrl,
+                        width: 56,
+                        height: 56,
+                        memCacheWidth: 112,
+                        memCacheHeight: 112,
+                      ),
+                    )
+                  : null,
               value: option.id,
               groupValue: selectedOptionId,
               onChanged: (value) {
@@ -336,7 +370,9 @@ class _ResponseForm extends StatelessWidget {
       if (rankedIds.length != event.configuration.options.length) return;
       data = <String, dynamic>{'rankedIds': rankedIds};
     } else if (spec.usesTextResponse) {
-      data = <String, dynamic>{'text': text.text, 'completed': true};
+      data = <String, dynamic>{
+        if (text.text.trim().isNotEmpty) 'text': text.text.trim(),
+      };
     } else if (spec.usesQuiz) {
       if (quizAnswers.length != event.configuration.questions.length) return;
       data = <String, dynamic>{'answers': quizAnswers};
@@ -403,9 +439,10 @@ class _ManageActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final member = context.watch<GroupProvider>().membership;
     final uid = context.watch<AuthProvider>().currentUser?.id;
-    final canManage = member?.canManageEvents == true || event.creatorId == uid;
+    final canManage =
+        context.watch<GroupProvider>().canManageEvents ||
+        event.creatorId == uid;
     if (!canManage) return const SizedBox.shrink();
     final provider = context.read<EventProvider>();
     return Padding(
@@ -413,6 +450,45 @@ class _ManageActions extends StatelessWidget {
       child: Wrap(
         spacing: AppSpacing.sm,
         children: <Widget>[
+          if ((event.type == EventType.prediction ||
+                  event.type == EventType.challenge) &&
+              event.status == EventStatus.active &&
+              event.creatorId == uid)
+            PubgetSecondaryButton(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (_) => _ResolveEventDialog(event: event),
+                );
+              },
+              semanticLabel: 'Resolve result',
+              child: const Text('Resolve result'),
+            ),
+          if (event.status == EventStatus.active ||
+              event.status == EventStatus.ended)
+            PubgetSecondaryButton(
+              onPressed: () async {
+                final result = await provider.openAnalytics(event.id);
+                if (!context.mounted) return;
+                if (!result.isSuccess) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        result.failureOrNull?.message ?? EventStrings.missing,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                await showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (_) => _AnalyticsSheet(event: event),
+                );
+              },
+              semanticLabel: 'Analytics',
+              child: const Text('Analytics'),
+            ),
           if (event.status == EventStatus.active)
             PubgetSecondaryButton(
               onPressed: () => provider.end(event.id),
@@ -426,13 +502,349 @@ class _ManageActions extends StatelessWidget {
               child: const Text(EventStrings.archiveEvent),
             ),
           if (event.status != EventStatus.archived &&
-              event.status != EventStatus.cancelled)
+              event.status != EventStatus.deleted)
             PubgetTextButton(
               onPressed: () => provider.cancel(event.id),
               semanticLabel: EventStrings.cancelEvent,
               child: const Text(EventStrings.cancelEvent),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _SocialActionsRow extends StatelessWidget {
+  const _SocialActionsRow({required this.event});
+
+  final PubgetEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    if (event.status == EventStatus.deleted ||
+        event.status == EventStatus.draft) {
+      return const SizedBox.shrink();
+    }
+    final provider = context.read<EventProvider>();
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        PubgetTextButton(
+          onPressed: () async {
+            final result = await provider.react(event.id, 'like');
+            if (!context.mounted) return;
+            if (!result.isSuccess) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(result.failureOrNull?.message ?? '')));
+            }
+          },
+          semanticLabel: 'Like',
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.favorite_border, size: 18),
+              SizedBox(width: 4),
+              Text('Like'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CommentsSection extends StatelessWidget {
+  const _CommentsSection({
+    required this.event,
+    required this.text,
+  });
+
+  final PubgetEvent event;
+  final TextEditingController text;
+
+  @override
+  Widget build(BuildContext context) {
+    if (event.status == EventStatus.deleted ||
+        event.status == EventStatus.draft) {
+      return const SizedBox.shrink();
+    }
+    final provider = context.watch<EventProvider>();
+    final comments = provider.comments;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Comments (${comments.length})',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (comments.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text('No comments yet. Start the conversation.'),
+          )
+        else
+          for (final comment in comments)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: CircleAvatar(
+                radius: 16,
+                child: Text(comment.userId.isEmpty ? '?' : comment.userId[0]),
+              ),
+              title: Text(comment.text),
+              subtitle: Text(comment.userId),
+            ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: TextField(
+                controller: text,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  hintText: 'Add a comment…',
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            PubgetPrimaryButton(
+              loading: provider.submitting,
+              onPressed: (provider.submitting || text.text.trim().isEmpty)
+                  ? null
+                  : () async {
+                      final message = text.text.trim();
+                      text.clear();
+                      final result = await provider.addComment(
+                        event.id,
+                        message,
+                      );
+                      if (!context.mounted) return;
+                      if (!result.isSuccess) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              result.failureOrNull?.message ?? '',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+              semanticLabel: 'Post comment',
+              child: const Text('Post'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ResolveEventDialog extends StatefulWidget {
+  const _ResolveEventDialog({required this.event});
+
+  final PubgetEvent event;
+
+  @override
+  State<_ResolveEventDialog> createState() => _ResolveEventDialogState();
+}
+
+class _ResolveEventDialogState extends State<_ResolveEventDialog> {
+  String? _winnerOptionId;
+  final Set<String> _winnerIds = <String>{};
+  bool _loading = false;
+  List<EventParticipant> _participants = const <EventParticipant>[];
+
+  String get _predictionLabel => widget.event.type == EventType.prediction
+      ? 'Select the winning option'
+      : 'Select the winner(s)';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.event.type == EventType.challenge) {
+      _loadParticipants();
+    }
+  }
+
+  Future<void> _loadParticipants() async {
+    setState(() => _loading = true);
+    final repository = context.read<EventProvider>();
+    final result = await repository.openAnalytics(widget.event.id);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _participants = result.valueOrNull?.responses
+          .map(
+            (response) => EventParticipant(
+              userId: response.userId,
+              displayName: response.userId,
+            ),
+          )
+          .toList(growable: false) ??
+          const <EventParticipant>[];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPrediction = widget.event.type == EventType.prediction;
+    return AlertDialog(
+      title: Text(_predictionLabel),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : isPrediction
+            ? SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    for (final option in widget.event.configuration.options)
+                      RadioListTile<String>(
+                        title: Text(option.label),
+                        value: option.id,
+                        groupValue: _winnerOptionId,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _winnerOptionId = value);
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (_participants.isEmpty)
+                      const Text('No challenge responses yet.')
+                    else
+                      for (final participant in _participants)
+                        CheckboxListTile(
+                          title: Text(participant.userId),
+                          value: _winnerIds.contains(participant.userId),
+                          onChanged: (checked) {
+                            setState(() {
+                              if (checked ?? false) {
+                                _winnerIds.add(participant.userId);
+                              } else {
+                                _winnerIds.remove(participant.userId);
+                              }
+                            });
+                          },
+                        ),
+                  ],
+                ),
+              ),
+      ),
+      actions: <Widget>[
+        PubgetTextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          semanticLabel: EventStrings.cancelEvent,
+          child: const Text(EventStrings.cancelEvent),
+        ),
+        PubgetPrimaryButton(
+          onPressed: () => _resolve(context),
+          semanticLabel: 'Lock result',
+          child: const Text('Lock result'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _resolve(BuildContext context) async {
+    final provider = context.read<EventProvider>();
+    final result = await provider.resolve(
+      eventId: widget.event.id,
+      winnerOptionId: _winnerOptionId,
+      winnerIds: _winnerIds.toList(growable: false),
+    );
+    if (!context.mounted) return;
+    if (!result.isSuccess) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.failureOrNull?.message ?? '')));
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+}
+
+class _AnalyticsSheet extends StatelessWidget {
+  const _AnalyticsSheet({required this.event});
+
+  final PubgetEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final analytics = context.watch<EventProvider>().analyticsData;
+    final labels = <String, String>{
+      for (final option in event.configuration.options) option.id: option.label,
+    };
+    final responses = analytics?.responses ?? const <EventResponse>[];
+    final participants =
+        analytics?.participants ?? const <EventParticipant>[];
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                'Event analytics',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text('${analytics?.tally.submissions ?? 0} submissions'),
+              Text(
+                '${participants.where((item) => item.isActive).length} active participants',
+              ),
+              if (analytics?.tally.votes.isNotEmpty ?? false) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Votes',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                for (final entry in analytics!.tally.votes.entries)
+                  Text('${labels[entry.key] ?? entry.key}: ${entry.value}'),
+              ],
+              if (analytics?.tally.scores.isNotEmpty ?? false) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Scores',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                for (final entry in analytics!.tally.scores.entries)
+                  Text(
+                    '${labels[entry.key] ?? entry.key}: ${entry.value} pts',
+                  ),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Responses (${responses.length})',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (responses.isEmpty)
+                const Text('No responses yet.')
+              else
+                for (final response in responses)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(response.userId),
+                    subtitle: Text('${response.responseData}'),
+                  ),
+            ],
+          ),
+        ),
       ),
     );
   }

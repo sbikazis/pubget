@@ -29,11 +29,17 @@ abstract interface class EventRepository {
 
   Stream<Result<PubgetEvent>> watchEvent(String eventId);
 
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20});
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  });
 
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20});
 
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20});
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  });
 
   Future<Result<List<PubgetEvent>>> getGroupEvents({
     required String groupId,
@@ -53,4 +59,26 @@ abstract interface class EventRepository {
     required String eventId,
     required String userId,
   });
+
+  Future<Result<EventPreview>> preview({required String eventId});
+
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  });
+
+  Future<Result<EventAnalytics>> getAnalytics(String eventId);
+
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  });
+
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  });
+
+  Stream<Result<List<EventComment>>> watchComments(String eventId);
 }

@@ -32,6 +32,7 @@ final class GameTypeSpec {
     required this.version,
     required this.implemented,
     required this.capabilities,
+    this.genericCreate = true,
     this.scoringId = ScoringStrategyId.noop,
   });
 
@@ -41,6 +42,9 @@ final class GameTypeSpec {
   final IconData icon;
   final int version;
   final bool implemented;
+  /// True when [createGame] can create this type. Mafia is playable
+  /// (`implemented`) but only through `createMafiaGame`.
+  final bool genericCreate;
   final GameCapabilities capabilities;
   final ScoringStrategyId scoringId;
 }
@@ -54,7 +58,12 @@ abstract final class GameTypeRegistry {
       icon: Icons.person_search_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesScoring: true, usesRounds: true),
+      capabilities: GameCapabilities(
+        usesScoring: true,
+        usesRounds: true,
+        minPlayers: 2,
+        maxPlayers: 2,
+      ),
     ),
     GameType.animeChain: GameTypeSpec(
       type: GameType.animeChain,
@@ -63,7 +72,12 @@ abstract final class GameTypeRegistry {
       icon: Icons.link_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesRounds: true),
+      capabilities: GameCapabilities(
+        usesRounds: true,
+        usesScoring: true,
+        minPlayers: 2,
+        maxPlayers: 2,
+      ),
     ),
     GameType.emojiAnimeGuess: GameTypeSpec(
       type: GameType.emojiAnimeGuess,
@@ -72,15 +86,21 @@ abstract final class GameTypeRegistry {
       icon: Icons.emoji_emotions_outlined,
       version: 1,
       implemented: true,
-      capabilities: GameCapabilities(usesScoring: true),
+      capabilities: GameCapabilities(
+        usesScoring: true,
+        usesRounds: true,
+        minPlayers: 2,
+        maxPlayers: 4,
+      ),
     ),
     GameType.mafia: GameTypeSpec(
       type: GameType.mafia,
       name: 'Mafia',
-      description: 'Hidden roles, night actions, and a town vote.',
+      description: 'A private-role social deduction game.',
       icon: Icons.nightlight_outlined,
       version: 1,
       implemented: true,
+      genericCreate: false,
       capabilities: GameCapabilities(
         usesRounds: true,
         minPlayers: 4,
@@ -107,9 +127,29 @@ abstract final class GameTypeRegistry {
   }
 
   static List<GameTypeSpec> get implemented =>
-      specs.values.where((spec) => spec.implemented).toList(growable: false);
+      specs.values
+          .where((spec) => spec.implemented && spec.genericCreate)
+          .toList(growable: false);
+
+  static List<GameTypeSpec> get genericCreate => specs.values
+      .where((spec) => spec.implemented && spec.genericCreate)
+      .toList(growable: false);
 
   static bool isRegistered(GameType type) => specs.containsKey(type);
+
+  /// Default configuration for a type. Only implemented options are filled.
+  static GameConfiguration configurationFor(GameType type) {
+    final spec = of(type);
+    final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;
+    return GameConfiguration(
+      minPlayers: spec.capabilities.minPlayers,
+      maxPlayers: spec.capabilities.maxPlayers,
+      usesRounds: spec.capabilities.usesRounds,
+      roundCount: quiz ? 5 : 1,
+      timerSeconds: quiz ? 20 : 45,
+      difficulty: 'normal',
+    );
+  }
 }
 
 abstract final class GameStrings {
@@ -137,21 +177,15 @@ abstract final class GameStrings {
   static const comingSoon = 'This game is not available yet.';
   static const copied = 'Game link copied';
   static const copyLink = 'Copy link';
-  static const mafiaLobby = 'Mafia lobby';
-  static const yourRole = 'Your role';
-  static const eliminated = 'Eliminated';
-  static const alive = 'Alive';
-  static const waitingNight = 'Waiting for night actions.';
-  static const selectTarget = 'Select a player';
-  static const investigate = 'Investigate';
-  static const protect = 'Protect';
-  static const kill = 'Target';
-  static const vote = 'Vote';
-  static const nightResult = 'Night result';
-  static const voteResult = 'Vote result';
-  static const townWins = 'Town wins';
-  static const mafiaWins = 'Mafia wins';
-  static const spectating = 'You are spectating.';
-  static const noKill = 'Nobody was eliminated.';
-  static const saved = 'The Doctor saved the target.';
+  static const share = 'Share';
+  static const playAgain = 'Play again';
+  static const viewHistory = 'View history';
+  static const waitingForPlayers = 'Waiting for players';
+  static const cannotStart = 'Not enough players to start.';
+  static const yourTurn = 'Your turn';
+  static const waitingTurn = 'Waiting for the other players';
+  static const submitting = 'Submitting…';
+  static const timedOut = 'Time is up';
+  static const reconnecting = 'Reconnecting to the live game…';
+  static const offlineAction = 'Connect to the internet to take this action.';
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/chat_models.dart';
 import '../services/storage_video_controller.dart';
@@ -41,6 +42,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: const Text('Group media'),

@@ -50,6 +50,7 @@ function applyUpdate(current, data) {
 
 function createFakeDb(seed = {}) {
   const store = new Map(Object.entries(clone(seed)));
+  let txQueue = Promise.resolve();
   const makeCollection = (base) => ({
     doc(id) {
       const resolvedId = id || `auto-${store.size + 1}`;
@@ -127,44 +128,54 @@ function createFakeDb(seed = {}) {
       return makeCollection(name);
     },
     async runTransaction(callback) {
-      const transaction = {
-        async get(ref) {
-          const data = store.get(ref.path);
-          return {
-            exists: data !== undefined,
-            ref,
-            data: () => (data === undefined ? undefined : clone(data)),
-          };
-        },
-        create(ref, data) {
-          if (store.has(ref.path)) throw new Error("already-exists");
-          store.set(ref.path, clone(data));
-        },
-        set(ref, data) {
-          store.set(ref.path, clone(data));
-        },
-        update(ref, data) {
-          if (!store.has(ref.path)) throw new Error("not-found");
-          store.set(ref.path, applyUpdate(store.get(ref.path), data));
-        },
-        delete(ref) {
-          store.delete(ref.path);
-        },
-      };
-      return callback(transaction);
+      const run = txQueue.then(async () => {
+        const transaction = {
+          async get(ref) {
+            const data = store.get(ref.path);
+            return {
+              exists: data !== undefined,
+              ref,
+              data: () => (data === undefined ? undefined : clone(data)),
+            };
+          },
+          create(ref, data) {
+            if (store.has(ref.path)) {
+              const error = new Error("already-exists");
+              error.code = "already-exists";
+              throw error;
+            }
+            store.set(ref.path, clone(data));
+          },
+          set(ref, data) {
+            store.set(ref.path, clone(data));
+          },
+          update(ref, data) {
+            if (!store.has(ref.path)) throw new Error("not-found");
+            store.set(ref.path, applyUpdate(store.get(ref.path), data));
+          },
+          delete(ref) {
+            store.delete(ref.path);
+          },
+        };
+        return callback(transaction);
+      });
+      txQueue = run.then(() => undefined, () => undefined);
+      return run;
     },
   };
 }
 
-function seedGroup({ role = "founder" } = {}) {
+function seedGroup({ role = "founder", extra = {} } = {}) {
   return {
     "users/alice": { username: "Alice" },
     "users/bob": { username: "Bob" },
+    "users/charlie": { username: "Charlie" },
     "groups/g1": { founderId: "alice", name: "G" },
     "groups/g1/members/alice": { role, userId: "alice" },
     "groups/g1/members/bob": { role: "member", userId: "bob" },
     "groups/g1/roles/founder": { permissions: ["manageEvents"] },
     "groups/g1/roles/member": { permissions: [] },
+    ...extra,
   };
 }
 
@@ -254,16 +265,21 @@ test("unauthenticated event mutations are rejected", async () => {
   );
 });
 
-test("members without manageEvents cannot create an event", async () => {
+test("plain members can create and publish their own event", async () => {
   const db = createFakeDb(seedGroup());
   const events = handlers(db);
-  await assert.rejects(
-    events.saveEventDraft({
-      auth: { uid: "bob" },
-      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
-    }),
-    (error) => error.code === "permission-denied",
-  );
+  const draft = await events.saveEventDraft({
+    auth: { uid: "bob" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+  const start = new Date(Date.now() - 1000);
+  const end = new Date(Date.now() + 60 * 60 * 1000);
+  const published = await events.publishEvent({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, startAt: start.toISOString(), endAt: end.toISOString() },
+  });
+  assert.equal(published.status, "active");
 });
 
 test("founder can draft, publish, and members can submit once", async () => {
@@ -556,6 +572,11 @@ test("event start notifies group members, not only the creator", async () => {
   assert.ok(start);
   assert.ok(start.recipientIds.includes("alice"));
   assert.ok(start.recipientIds.includes("bob"));
+  assert.equal(start.recipientIds.includes("charlie"), false);
+  assert.equal(start.pushWorthy, true);
+  assert.equal(start.destination, `/event/${draft.eventId}`);
+  assert.equal(start.id, `event-start-${draft.eventId}`);
+  assert.equal(new Set(start.recipientIds).size, start.recipientIds.length);
 });
 
 test("event end notifies participants who joined", async () => {
@@ -582,9 +603,523 @@ test("event end notifies participants who joined", async () => {
   const recorder = recordingBuilder();
   const events = handlers(db, recorder);
   await events.processEventLifecycle();
-  const ended = recorder.sent.find((item) => item.type === "event_ended");
+  const ended = recorder.sent.find(
+    (item) => item.type === "event_result_available",
+  );
   assert.ok(ended);
   assert.ok(ended.recipientIds.includes("bob"));
   assert.ok(ended.recipientIds.includes("alice"));
   assert.equal(ended.recipientIds.includes("gone"), false);
+  assert.equal(ended.pushWorthy, true);
+  assert.equal(ended.destination, "/event/old");
+  assert.equal(ended.id, "event-end-old");
+  await events.processEventLifecycle();
+  assert.equal(
+    recorder.sent.filter((item) => item.type === "event_result_available").length,
+    1,
+  );
+});
+
+async function publishPoll(events, { allowUpdate = false, extraOptions } = {}) {
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Q",
+      groupId: "g1",
+      question: "Q?",
+      options: extraOptions || ["A", "B"],
+      configuration: {
+        allowUpdate,
+        question: "Q?",
+        options: extraOptions || ["A", "B"],
+      },
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  return draft.eventId;
+}
+
+test("first submission increments the tally once", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events);
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId, responseData: { optionId: "opt-1" } },
+  });
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.submissions, 1);
+  assert.equal(stored.tally.votes["opt-1"], 1);
+  assert.equal(stored.tally.votes["opt-2"], 0);
+});
+
+test("duplicate submission is rejected when updates are disallowed", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events, { allowUpdate: false });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId, responseData: { optionId: "opt-1" } },
+  });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-2" } },
+    }),
+    (error) => error.code === "already-exists",
+  );
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.votes["opt-1"], 1);
+  assert.equal(stored.tally.votes["opt-2"], 0);
+});
+
+test("concurrent in-flight updates keep a single consistent tally", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const eventId = await publishPoll(events, { allowUpdate: true });
+  await Promise.all([
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-2" } },
+    }),
+  ]);
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 1);
+  assert.equal(stored.tally.submissions, 1);
+  const votes = stored.tally.votes;
+  assert.equal((votes["opt-1"] || 0) + (votes["opt-2"] || 0), 1);
+  assert.ok((votes["opt-1"] === 1 && votes["opt-2"] === 0) ||
+    (votes["opt-1"] === 0 && votes["opt-2"] === 1));
+});
+
+test("concurrent first submissions from two members both count", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "users/carol": { username: "Carol" },
+      "groups/g1/members/carol": { role: "member", userId: "carol" },
+    },
+  }));
+  const events = handlers(db);
+  const eventId = await publishPoll(events);
+  await Promise.all([
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+    events.submitEventResponse({
+      auth: { uid: "carol" },
+      data: { eventId, responseData: { optionId: "opt-1" } },
+    }),
+  ]);
+  const stored = db.store.get(`events/${eventId}`);
+  assert.equal(stored.responsesCount, 2);
+  assert.equal(stored.tally.submissions, 2);
+  assert.equal(stored.tally.votes["opt-1"], 2);
+});
+
+test("captain default role can create an event", async () => {
+  const db = createFakeDb(seedGroup({ role: "captain" }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("custom role with manageEvents can create an event", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "groups/g1/members/bob": { role: "member", userId: "bob", customRoleId: "moderator" },
+      "groups/g1/roles/moderator": { permissions: ["manageEvents"] },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "bob" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("custom role without manageEvents can still create as a member", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "groups/g1/roles/captain": { permissions: ["invite"] },
+    },
+    role: "captain",
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("non-members cannot create an event", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  await assert.rejects(
+    events.saveEventDraft({
+      auth: { uid: "charlie" },
+      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("founder can create even when the role document has no permissions", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: { "groups/g1/roles/founder": { permissions: [] } },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+  });
+  assert.ok(draft.eventId);
+});
+
+test("quiz configuration accepts multiple ordered questions", () => {
+  const config = validateConfiguration("quiz", {
+    questions: [
+      { id: "q-a", prompt: "First?", options: ["A", "B"], correctIndex: 0 },
+      { id: "q-b", prompt: "Second?", options: ["C", "D", "E"], correctOptionId: "opt-2" },
+    ],
+  });
+  assert.equal(config.questions.length, 2);
+  assert.equal(config.questions[0].id, "q-a");
+  assert.equal(config.questions[1].correctOptionId, "opt-2");
+  assert.equal(config.allowUpdate, false);
+});
+
+test("character comparison requires catalog IDs and rejects duplicates", () => {
+  const valid = validateConfiguration("characterComparison", {
+    criterion: "Who would win?",
+    candidates: [{ characterId: "luffy" }, { characterId: "naruto" }],
+  });
+  assert.ok(valid);
+  assert.equal(valid.comparisonType, "character");
+  assert.equal(valid.options[0].characterId, "luffy");
+  assert.equal(valid.options[0].label, "Monkey D. Luffy");
+  assert.equal(
+    validateConfiguration("characterComparison", {
+      criterion: "Who would win?",
+      candidates: [{ characterId: "not-a-character" }, { characterId: "luffy" }],
+    }),
+    null,
+  );
+  assert.equal(
+    validateConfiguration("characterComparison", {
+      criterion: "Who would win?",
+      candidates: [{ characterId: "luffy" }, { characterId: "luffy" }],
+    }),
+    null,
+  );
+});
+
+test("anime comparison requires catalog titles and image comparison needs metadata", () => {
+  const anime = validateConfiguration("animeComparison", {
+    criterion: "Best worldbuilding?",
+    candidates: [{ animeId: "one_piece" }, { animeId: "naruto" }],
+  });
+  assert.ok(anime);
+  assert.equal(anime.options[0].label, "One Piece");
+  assert.equal(
+    validateConfiguration("animeComparison", {
+      criterion: "Best?",
+      candidates: [{ animeId: "missing" }, { animeId: "naruto" }],
+    }),
+    null,
+  );
+  const image = validateConfiguration("imageComparison", {
+    criterion: "Better composition?",
+    candidates: [
+      {
+        imageUrl: "https://cdn.pubget.test/a.jpg",
+        mimeType: "image/jpeg",
+        license: "cc0",
+        attribution: "Pubget fixture A",
+      },
+      {
+        imageUrl: "https://cdn.pubget.test/b.png",
+        mimeType: "image/png",
+        license: "cc-by",
+        attribution: "Pubget fixture B",
+      },
+    ],
+  });
+  assert.ok(image);
+  assert.equal(image.comparisonType, "image");
+  assert.equal(
+    validateConfiguration("imageComparison", {
+      criterion: "Better?",
+      candidates: [
+        { imageUrl: "http://insecure.test/a.jpg", mimeType: "image/jpeg", license: "cc0", attribution: "A" },
+        { imageUrl: "https://cdn.pubget.test/b.png", mimeType: "image/png", license: "cc-by", attribution: "B" },
+      ],
+    }),
+    null,
+  );
+});
+
+test("comparison result calculation is type-aware and archival", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "characterComparison",
+      title: "Best captain",
+      groupId: "g1",
+      criterion: "Who is the better captain?",
+      candidates: [{ characterId: "luffy" }, { characterId: "levi" }],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "luffy" } },
+  });
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  const ended = db.store.get(`events/${draft.eventId}`);
+  assert.equal(ended.result.kind, "characterComparison");
+  assert.equal(ended.result.criterion, "Who is the better captain?");
+  assert.deepEqual(ended.result.winnerIds, ["luffy"]);
+  assert.equal(ended.result.winners[0].characterId, "luffy");
+  await events.archiveEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(db.store.get(`events/${draft.eventId}`).status, "archived");
+  assert.ok(db.store.get(`events/${draft.eventId}`).result);
+});
+
+test("challenge completion ignores completed=true and verifies server evidence", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "user_achievements/bob/items/community_milestone": {
+        achievementId: "community_milestone",
+      },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Finish a match",
+      groupId: "g1",
+      prompt: "Finish any Pubget game.",
+      challengeKind: "finish_game",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, responseData: { completed: true } },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { completed: true } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}/responses/bob`);
+  assert.equal(stored.responseData.verified, true);
+  assert.equal(stored.responseData.completed, undefined);
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId: draft.eventId, responseData: { completed: true } },
+    }),
+    (error) => error.code === "already-exists",
+  );
+});
+
+test("wrong user, expired challenge, and self-report stay honest", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Emoji night",
+      groupId: "g1",
+      prompt: "Post an emoji in real life.",
+      challengeKind: "self_report",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { text: "done", completed: true } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}/responses/bob`);
+  assert.equal(stored.responseData.verified, false);
+  assert.equal(stored.responseData.verification, "self_reported");
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "charlie" },
+      data: { eventId: draft.eventId, responseData: { text: "hi" } },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  const other = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Late",
+      groupId: "g1",
+      prompt: "Finish a game",
+      challengeKind: "finish_game",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: other.eventId,
+      startAt: new Date(Date.now() - 2000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: other.eventId } });
+  await assert.rejects(
+    events.submitEventResponse({
+      auth: { uid: "bob" },
+      data: { eventId: other.eventId, responseData: {} },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});
+
+test("resolveEvent locks a prediction with the creator's winner option", async () => {
+  const db = createFakeDb(seedGroup());
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "prediction",
+      title: "Who reaches the finals?",
+      groupId: "g1",
+      question: "Who wins?",
+      options: ["A", "B"],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "opt-2" } },
+  });
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerOptionId: "opt-2" },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.status, "ended");
+  assert.equal(stored.result.winnerOptionId, "opt-2");
+  assert.deepEqual(stored.result.winnerIds, ["opt-2"]);
+  assert.ok(stored.resultLockedAt);
+  assert.equal(stored.resolvedBy, "alice");
+  const card = recorder.sent.find((item) => item.type === "event_result_available");
+  assert.ok(card);
+  assert.ok(card.recipientIds.includes("bob"));
+});
+
+test("resolveEvent rejects invalid winners and non-creators", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Best fan art",
+      groupId: "g1",
+      prompt: "Submit your fan art.",
+      challengeKind: "self_report",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { text: "Artwork" } },
+  });
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "charlie" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["ghost"] },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerIds: ["bob"] },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.result.winnerIds, ["bob"]);
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
 });

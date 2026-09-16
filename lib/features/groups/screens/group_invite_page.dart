@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../providers/group_provider.dart';
 
 class GroupInvitePage extends StatelessWidget {
@@ -20,7 +22,9 @@ class GroupInvitePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Group invitation')),
+      appBar: AppBar(
+        leading: AppBackButton.maybeOf(context),
+        title: const Text('Group invitation')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
@@ -37,8 +41,12 @@ class GroupInvitePage extends StatelessWidget {
                 const SizedBox(height: AppSpacing.lg),
                 PubgetPrimaryButton(
                   onPressed: () async {
+                    final userId =
+                        context.read<AuthProvider>().currentUser?.id;
+                    if (userId == null) return;
                     final result = await provider.join(
                       groupId,
+                      userId: userId,
                       inviteId: inviteId,
                     );
                     if (context.mounted && result.isSuccess) {

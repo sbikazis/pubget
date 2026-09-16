@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import '../repositories/group_members_repository.dart';
 
@@ -14,6 +15,9 @@ final class GroupMembersProvider extends ChangeNotifier {
   List<GroupMember> _members = const <GroupMember>[];
   List<JoinRequest> _requests = const <JoinRequest>[];
   List<GroupRoleDefinition> _roles = const <GroupRoleDefinition>[];
+  List<GroupBan> _bans = const <GroupBan>[];
+  List<RankAuditEvent> _audit = const <RankAuditEvent>[];
+  List<MemberWarningRecord> _warnings = const <MemberWarningRecord>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   String? _groupId;
@@ -22,19 +26,25 @@ final class GroupMembersProvider extends ChangeNotifier {
   List<GroupMember> get members => _members;
   List<JoinRequest> get requests => _requests;
   List<GroupRoleDefinition> get roles => _roles;
+  List<GroupBan> get bans => _bans;
+  List<RankAuditEvent> get audit => _audit;
+  List<MemberWarningRecord> get warnings => _warnings;
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
+
+  List<RankOccupancy> get rankOccupancy => computeRankOccupancy(_members);
 
   Future<void> load(String groupId) async {
     _groupId = groupId;
     _state = LoadingState.loading;
     notifyListeners();
-    final result = await _repository.getMembers(groupId);
+    // Council view needs a coherent global rank order — load a large page.
+    final result = await _repository.getMembers(groupId, limit: 500);
     result.fold(
       onSuccess: (members) {
-        _members = members;
-        _hasMore = members.length == 25;
+        _members = [...members]..sort(compareMembersByRankThenJoined);
+        _hasMore = members.length == 500;
         _state = members.isEmpty ? LoadingState.empty : LoadingState.loaded;
         notifyListeners();
       },
@@ -49,12 +59,14 @@ final class GroupMembersProvider extends ChangeNotifier {
     notifyListeners();
     final result = await _repository.getMembers(
       groupId,
+      limit: 100,
       afterUid: _members.last.uid,
     );
     result.fold(
       onSuccess: (members) {
-        _members = <GroupMember>[..._members, ...members];
-        _hasMore = members.length == 25;
+        _members = <GroupMember>[..._members, ...members]
+          ..sort(compareMembersByRankThenJoined);
+        _hasMore = members.length == 100;
         _state = LoadingState.loaded;
         notifyListeners();
       },
@@ -101,8 +113,11 @@ final class GroupMembersProvider extends ChangeNotifier {
     return result;
   }
 
+  Future<Result<List<GroupMember>>> lookupInviteCandidates(String query) =>
+      _repository.lookupInviteCandidates(query: query);
+
   Future<Result<void>> updateRolePermissions(
-    GroupRole role,
+    PubgetRank role,
     Set<GroupPermission> permissions,
   ) async {
     final result = await _repository.updateRolePermissions(
@@ -118,7 +133,7 @@ final class GroupMembersProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<Result<void>> changeRole(String uid, GroupRole role) => _act(
+  Future<Result<void>> changeRole(String uid, PubgetRank role) => _act(
     () => _repository.changeRole(groupId: _groupId!, uid: uid, role: role),
   );
 
@@ -127,6 +142,19 @@ final class GroupMembersProvider extends ChangeNotifier {
 
   Future<Result<void>> ban(String uid) =>
       _act(() => _repository.banMember(groupId: _groupId!, uid: uid));
+
+  Future<Result<void>> warnMember({
+    required String uid,
+    required MemberWarningType type,
+    required String details,
+  }) => _act(
+    () => _repository.warnMember(
+      groupId: _groupId!,
+      uid: uid,
+      type: type.name,
+      details: details,
+    ),
+  );
 
   Future<Result<void>> transferOwnership(String uid) async {
     _state = LoadingState.refreshing;
@@ -146,6 +174,51 @@ final class GroupMembersProvider extends ChangeNotifier {
         confirmationToken: prepared.valueOrNull!,
       ),
     );
+  }
+
+  Future<void> loadBans(String groupId) async {
+    _groupId = groupId;
+    _state = LoadingState.loading;
+    notifyListeners();
+    final result = await _repository.getBans(groupId);
+    result.fold(
+      onSuccess: (bans) {
+        _bans = bans;
+        _state = bans.isEmpty ? LoadingState.empty : LoadingState.loaded;
+        notifyListeners();
+      },
+      onFailure: _setFailure,
+    );
+  }
+
+  Future<Result<void>> unban(String uid) async {
+    _state = LoadingState.refreshing;
+    notifyListeners();
+    final result = await _repository.unbanMember(groupId: _groupId!, uid: uid);
+    if (!result.isSuccess) {
+      _setFailure(result.failureOrNull!);
+      return result;
+    }
+    if (_groupId != null) await loadBans(_groupId!);
+    return result;
+  }
+
+  Future<void> loadMemberHistory({
+    required String groupId,
+    required String targetUid,
+  }) async {
+    _groupId = groupId;
+    final audit = await _repository.getRankAudit(
+      groupId,
+      targetUid: targetUid,
+    );
+    final warnings = await _repository.getWarnings(
+      groupId,
+      targetUid: targetUid,
+    );
+    if (audit.isSuccess) _audit = audit.valueOrNull!;
+    if (warnings.isSuccess) _warnings = warnings.valueOrNull!;
+    notifyListeners();
   }
 
   Future<Result<void>> decideRequest(String uid, {required bool accept}) =>

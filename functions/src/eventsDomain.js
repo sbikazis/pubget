@@ -1,14 +1,17 @@
 "use strict";
 
-// Events domain (PROMPT 11).
+// Events domain (Events Rebirth Prompt 3).
 //
 // Independent of group-chat internals: chat activity is posted through
 // postEventChatActivity as type "event" system cards. Notifications use the
 // existing notification builder. Group permissions reuse ROLE_PERMISSIONS.
 
-const { ROLE_PERMISSIONS } = require("./groupsDomain");
+const { ROLE_PERMISSIONS, normalizeRole } = require("./groupsDomain");
+const { hasPermission } = require("./pubgetRanks");
+const catalog = require("./gameCatalog");
 
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+const MIN_DURATION_MS = 5 * 60 * 1000;
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const OPTION_MAX = 10;
@@ -17,23 +20,36 @@ const TEXT_MAX = 1000;
 const EVENT_ID_MAX = 128;
 
 const EVENT_TYPES = [
-  "poll", "multipleChoice", "ranking", "versus", "theory", "prediction",
-  "quiz", "imageComparison", "characterComparison", "animeComparison",
-  "openDiscussion", "challenge",
+  "poll", "comparison", "theory", "challenge", "ranking", "question",
+  "prediction", "quiz", "imageComparison", "characterComparison",
+  "animeComparison", "openDiscussion",
 ];
 
 const STATUSES = [
-  "draft", "scheduled", "active", "ended", "cancelled", "archived",
+  "DRAFT", "ACTIVE", "ENDED", "ARCHIVED", "DELETED",
 ];
 
 const TRANSITIONS = {
-  draft: new Set(["scheduled", "active", "cancelled"]),
-  scheduled: new Set(["active", "cancelled"]),
-  active: new Set(["ended", "cancelled"]),
-  ended: new Set(["archived"]),
-  cancelled: new Set(["archived"]),
-  archived: new Set(),
+  DRAFT: new Set(["ACTIVE", "DELETED"]),
+  ACTIVE: new Set(["ENDED"]),
+  ENDED: new Set(["ARCHIVED"]),
+  ARCHIVED: new Set(),
+  DELETED: new Set(),
 };
+
+const EVENT_SCOPES = Object.freeze(["group", "multiGroup", "global"]);
+const LEGACY_TYPE_ALIASES = Object.freeze({
+  multipleChoice: "question",
+  versus: "comparison",
+});
+const LEGACY_STATUS_ALIASES = Object.freeze({
+  draft: "DRAFT",
+  scheduled: "ACTIVE",
+  active: "ACTIVE",
+  ended: "ENDED",
+  archived: "ARCHIVED",
+  cancelled: "DELETED",
+});
 
 const TEMPLATES = {
   animeBattle: { type: "versus", title: "Anime Battle" },
@@ -43,9 +59,59 @@ const TEMPLATES = {
   guessCharacter: { type: "quiz", title: "Guess the Character" },
 };
 
+const CHALLENGE_KINDS = Object.freeze([
+  "finish_game",
+  "publish_edit",
+  "create_group",
+  "participate_event",
+  "self_report",
+]);
+
+const CHALLENGE_EVIDENCE = Object.freeze({
+  finish_game: { achievementId: "community_milestone" },
+  publish_edit: { achievementId: "first_edit" },
+  create_group: { achievementId: "first_group" },
+});
+
+const IMAGE_MIME_TYPES = Object.freeze([
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+]);
+
+const COMPARISON_TYPES = Object.freeze([
+  "comparison",
+  "imageComparison", "characterComparison", "animeComparison",
+]);
+
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 &&
     value.trim().length <= max;
+}
+
+function normalizeEventType(value) {
+  const type = typeof value === "string" ? value.trim() : "";
+  return LEGACY_TYPE_ALIASES[type] || type;
+}
+
+function normalizeEventStatus(value) {
+  const status = typeof value === "string" ? value.trim() : "";
+  return LEGACY_STATUS_ALIASES[status] || status;
+}
+
+function normalizeScope(input) {
+  const value = typeof input === "string" ? input.trim() : "";
+  if (value === "MULTI_GROUP" || value === "multi_group") return "multiGroup";
+  if (value === "GLOBAL") return "global";
+  if (value === "GROUP") return "group";
+  return EVENT_SCOPES.includes(value) ? value : "";
+}
+
+function utcDayKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+function eventCreationLimitRef(db, uid, now = new Date()) {
+  return db.collection("event_creation_limits")
+    .doc(`${uid}_${utcDayKey(now)}`);
 }
 
 function requireAuth(request, HttpsError) {
@@ -80,8 +146,10 @@ function roleRef(db, groupId, role) {
 }
 
 function assertTransition(from, to, HttpsError) {
-  if (!STATUSES.includes(from) || !STATUSES.includes(to) ||
-      !TRANSITIONS[from].has(to)) {
+  const canonicalFrom = normalizeEventStatus(from);
+  const canonicalTo = normalizeEventStatus(to);
+  if (!STATUSES.includes(canonicalFrom) || !STATUSES.includes(canonicalTo) ||
+      !TRANSITIONS[canonicalFrom].has(canonicalTo)) {
     throw new HttpsError(
       "failed-precondition",
       `Cannot move an event from ${from} to ${to}.`,
@@ -108,6 +176,9 @@ function assertDuration(startAt, endAt, HttpsError) {
   }
   if (end.getTime() <= start.getTime()) {
     throw new HttpsError("invalid-argument", "End time must be after start time.");
+  }
+  if (end.getTime() - start.getTime() < MIN_DURATION_MS) {
+    throw new HttpsError("invalid-argument", "Events must last at least 5 minutes.");
   }
   if (end.getTime() - start.getTime() > MAX_DURATION_MS) {
     throw new HttpsError("invalid-argument", "Events cannot last longer than 7 days.");
@@ -171,6 +242,190 @@ function validateQuiz(questions) {
   return normalized;
 }
 
+function pickCriterion(input) {
+  const value = input.criterion || input.question || input.prompt || input.title;
+  return validString(value, 200) ? value.trim() : "";
+}
+
+function validHttpsImageUrl(url) {
+  if (typeof url !== "string" || url.trim().length < 12 || url.trim().length > 1024) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password &&
+      Boolean(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+function candidateList(input) {
+  return input.candidates || input.options || input.items;
+}
+
+function validateCharacterComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seen = new Set();
+  for (const item of raw) {
+    let characterId = "";
+    if (typeof item === "string") characterId = item.trim();
+    else if (item && typeof item === "object") {
+      characterId = validString(item.characterId, 64) ? item.characterId.trim()
+        : (validString(item.id, 64) ? item.id.trim() : "");
+    }
+    const character = catalog.characterById(characterId);
+    if (!character || seen.has(character.id)) return null;
+    seen.add(character.id);
+    options.push({
+      id: character.id,
+      label: character.name,
+      characterId: character.id,
+      animeId: character.animeId,
+      animeTitle: character.animeTitle,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "character",
+    options,
+    candidates: options.map((item) => ({
+      characterId: item.characterId,
+      animeId: item.animeId,
+    })),
+    maxSelections: 1,
+  };
+}
+
+function validateAnimeComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seen = new Set();
+  for (const item of raw) {
+    let animeId = "";
+    if (typeof item === "string") animeId = item.trim();
+    else if (item && typeof item === "object") {
+      animeId = validString(item.animeId, 64) ? item.animeId.trim()
+        : (validString(item.id, 64) ? item.id.trim() : "");
+    }
+    const anime = catalog.byAnimeId(animeId);
+    if (!anime || seen.has(anime.id)) return null;
+    seen.add(anime.id);
+    options.push({
+      id: anime.id,
+      label: anime.title,
+      animeId: anime.id,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "anime",
+    options,
+    candidates: options.map((item) => ({ animeId: item.animeId })),
+    maxSelections: 1,
+  };
+}
+
+function validateImageComparison(input) {
+  const criterion = pickCriterion(input);
+  const raw = candidateList(input);
+  if (!criterion || !Array.isArray(raw) || raw.length < OPTION_MIN || raw.length > OPTION_MAX) {
+    return null;
+  }
+  const options = [];
+  const seenUrls = new Set();
+  for (let index = 0; index < raw.length; index += 1) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") return null;
+    const imageUrl = typeof item.imageUrl === "string" ? item.imageUrl.trim() : "";
+    const mimeType = typeof item.mimeType === "string" ? item.mimeType.trim().toLowerCase() : "";
+    const license = typeof item.license === "string" ? item.license.trim() : "";
+    const attribution = typeof item.attribution === "string" ? item.attribution.trim() : "";
+    const label = validString(item.label || item.caption, 80)
+      ? (item.label || item.caption).trim()
+      : `Image ${index + 1}`;
+    if (!validHttpsImageUrl(imageUrl) ||
+        !IMAGE_MIME_TYPES.includes(mimeType) ||
+        !validString(license, 80) ||
+        !validString(attribution, 200) ||
+        seenUrls.has(imageUrl)) {
+      return null;
+    }
+    seenUrls.add(imageUrl);
+    const id = validString(item.id, 64) ? item.id.trim() : `img-${index + 1}`;
+    if (options.some((option) => option.id === id)) return null;
+    options.push({
+      id,
+      label,
+      imageUrl,
+      mimeType,
+      license,
+      attribution,
+    });
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    question: criterion,
+    criterion,
+    comparisonType: "image",
+    options,
+    candidates: options.map((item) => ({
+      id: item.id,
+      imageUrl: item.imageUrl,
+      mimeType: item.mimeType,
+      license: item.license,
+      attribution: item.attribution,
+    })),
+    maxSelections: 1,
+  };
+}
+
+function validateChallenge(input) {
+  const prompt = validString(input.prompt || input.question, 200)
+    ? (input.prompt || input.question).trim()
+    : "";
+  if (!prompt) return null;
+  const challengeKind = validString(input.challengeKind, 40)
+    ? input.challengeKind.trim()
+    : "self_report";
+  if (!CHALLENGE_KINDS.includes(challengeKind)) return null;
+  let targetEventId = "";
+  if (challengeKind === "participate_event") {
+    if (!validString(input.targetEventId, EVENT_ID_MAX)) return null;
+    targetEventId = input.targetEventId.trim();
+  }
+  return {
+    allowMultiple: false,
+    allowUpdate: input.allowUpdate === true,
+    prompt,
+    challengeKind,
+    targetEventId,
+    verification: challengeKind === "self_report" ? "self_reported" : "server",
+    completionRule: typeof input.completionRule === "string"
+      ? input.completionRule.trim().slice(0, 200)
+      : "",
+    allowVoting: false,
+  };
+}
+
 function validateConfiguration(type, raw) {
   const input = raw && typeof raw === "object" ? raw : {};
   const allowMultiple = input.allowMultiple === true;
@@ -181,7 +436,11 @@ function validateConfiguration(type, raw) {
     if (!questions) return null;
     return { ...base, allowUpdate: false, questions };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "characterComparison") return validateCharacterComparison(input);
+  if (type === "animeComparison") return validateAnimeComparison(input);
+  if (type === "imageComparison") return validateImageComparison(input);
+  if (type === "challenge") return validateChallenge(input);
+  if (type === "theory" || type === "openDiscussion") {
     const prompt = validString(input.prompt || input.question, 200)
       ? (input.prompt || input.question).trim()
       : "";
@@ -199,12 +458,12 @@ function validateConfiguration(type, raw) {
     ? (input.question || input.prompt || input.title).trim()
     : "";
   const source = input.options || input.candidates || input.items;
-  const min = type === "versus" ? 2 : OPTION_MIN;
+  const min = type === "comparison" ? 2 : OPTION_MIN;
   const options = normalizeOptions(source, { min, max: OPTION_MAX });
   if (!question || !options) return null;
   let maxSelections = 1;
   if (type === "poll" && allowMultiple) maxSelections = options.length;
-  if (type === "multipleChoice") {
+  if (type === "question") {
     maxSelections = Number.isInteger(input.maxSelections) ? input.maxSelections : 1;
     if (maxSelections < 1 || maxSelections > options.length) return null;
   }
@@ -227,12 +486,16 @@ function validateResponse(type, configuration, data) {
     }
     return { answers: next };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
-    if (type === "challenge" && payload.completed === true) {
-      return { completed: true, text: "" };
-    }
+  if (type === "challenge") {
+    const text = typeof payload.text === "string" ? payload.text.trim().slice(0, TEXT_MAX) : "";
+    return {
+      text,
+      challengeKind: configuration.challengeKind || "self_report",
+    };
+  }
+  if (type === "theory" || type === "openDiscussion") {
     if (!validString(payload.text, TEXT_MAX)) return null;
-    return { text: payload.text.trim(), completed: payload.completed === true };
+    return { text: payload.text.trim() };
   }
   if (type === "ranking") {
     const ranked = Array.isArray(payload.rankedIds) ? payload.rankedIds : [];
@@ -268,7 +531,11 @@ function emptyTally(configuration, type) {
     return { scores, submissions: 0 };
   }
   if (type === "theory" || type === "openDiscussion" || type === "challenge") {
-    return { submissions: 0 };
+    return {
+      submissions: 0,
+      verifiedCompletions: 0,
+      selfReported: 0,
+    };
   }
   const votes = {};
   (configuration.options || []).forEach((item) => { votes[item.id] = 0; });
@@ -287,6 +554,8 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     votes: { ...(tally.votes || {}) },
     scores: { ...(tally.scores || {}) },
     correctCounts: { ...(tally.correctCounts || {}) },
+    verifiedCompletions: tally.verifiedCompletions || 0,
+    selfReported: tally.selfReported || 0,
   };
   if (type === "quiz") {
     const answers = payload.answers && typeof payload.answers === "object"
@@ -307,7 +576,16 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     });
     return next;
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "challenge") {
+    if (payload.verified === true) {
+      next.verifiedCompletions = Math.max(0, next.verifiedCompletions + step);
+    }
+    if (payload.verification === "self_reported") {
+      next.selfReported = Math.max(0, next.selfReported + step);
+    }
+    return next;
+  }
+  if (type === "theory" || type === "openDiscussion") {
     return next;
   }
   (payload.optionIds || []).forEach((id) => {
@@ -343,10 +621,45 @@ function calculateResult({ type, configuration, tally, responsesCount }) {
     const win = winnersFromMap(tally.scores || {});
     return { kind: type, submissions, scores: tally.scores || {}, winnerIds: win.ids };
   }
-  if (type === "theory" || type === "openDiscussion" || type === "challenge") {
+  if (type === "challenge") {
+    return {
+      kind: type,
+      challengeKind: configuration.challengeKind || "self_report",
+      verification: configuration.verification || "server",
+      submissions,
+      verifiedCompletions: tally.verifiedCompletions || 0,
+      selfReported: tally.selfReported || 0,
+    };
+  }
+  if (type === "theory" || type === "openDiscussion") {
     return { kind: type, submissions };
   }
   const win = winnersFromMap(tally.votes || {});
+  if (COMPARISON_TYPES.includes(type)) {
+    const byId = {};
+    (configuration.options || []).forEach((item) => {
+      byId[item.id] = item;
+    });
+    return {
+      kind: type,
+      comparisonKind: configuration.comparisonType || type,
+      criterion: configuration.criterion || configuration.question || "",
+      submissions,
+      votes: tally.votes || {},
+      winnerIds: win.ids,
+      winners: win.ids.map((id) => {
+        const option = byId[id] || { id };
+        return {
+          id,
+          label: option.label || id,
+          characterId: option.characterId || null,
+          animeId: option.animeId || null,
+          imageUrl: option.imageUrl || null,
+          license: option.license || null,
+        };
+      }),
+    };
+  }
   return { kind: type, submissions, votes: tally.votes || {}, winnerIds: win.ids };
 }
 
@@ -373,15 +686,41 @@ async function loadPermissions(transaction, db, groupId, uid) {
   ]);
   if (!group.exists) return { member: false, manageEvents: false, role: null, missingGroup: true };
   if (!member.exists) return { member: false, manageEvents: false, role: null };
-  const role = member.data().role || "member";
-  const roleSnap = await transaction.get(roleRef(db, groupId, role));
-  const permissions = roleSnap.exists && Array.isArray(roleSnap.data().permissions)
-    ? roleSnap.data().permissions
-    : (ROLE_PERMISSIONS[role] || []);
+  const data = member.data() || {};
+  const groupData = group.data() || {};
+  const role = normalizeRole(data.rankV2 || data.role || "ronin");
+  const customRoleId = validString(data.customRoleId, 128) ? data.customRoleId.trim() : null;
+  const roleSnap = await transaction.get(roleRef(db, groupId, customRoleId || role));
+  const roleDoc = roleSnap.exists ? roleSnap.data() : { permissions: ROLE_PERMISSIONS[role] || [] };
   return {
     member: true,
-    manageEvents: role === "founder" || permissions.includes("manageEvents"),
+    manageEvents: hasPermission(data, roleDoc, "manageEvents", groupData),
     role,
+  };
+}
+
+async function loadScopePermissions(
+  transaction,
+  db,
+  { scope, groupId, groupIds },
+  uid,
+) {
+  if (scope === "global") {
+    return { member: true, manageEvents: false, groups: [] };
+  }
+  const ids = scope === "multiGroup" ? groupIds : [groupId];
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { member: false, manageEvents: false, groups: [] };
+  }
+  const permissions = [];
+  for (const id of ids) {
+    permissions.push(await loadPermissions(transaction, db, id, uid));
+  }
+  return {
+    member: permissions.every((item) => item.member),
+    manageEvents: permissions.some((item) => item.manageEvents),
+    missingGroup: permissions.some((item) => item.missingGroup),
+    groups: permissions,
   };
 }
 
@@ -461,12 +800,67 @@ function uniqueRecipientIds(ids) {
     .slice(0, RECIPIENT_CAP);
 }
 
-function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder }) {
-  async function notifyEventLifecycle({ kind, eventId, groupId, creatorId, title }) {
+function achievementItemRef(db, uid, achievementId) {
+  return db.collection("user_achievements").doc(uid)
+    .collection("items").doc(achievementId);
+}
+
+async function verifyChallengeCompletion(transaction, db, uid, configuration, eventId, HttpsError) {
+  const kind = configuration.challengeKind || "self_report";
+  if (kind === "self_report") {
+    return {
+      verified: false,
+      verification: "self_reported",
+      challengeKind: kind,
+    };
+  }
+  if (kind === "participate_event") {
+    const target = configuration.targetEventId;
+    if (!validString(target, EVENT_ID_MAX) || target === eventId) {
+      throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+    }
+    const evidence = await transaction.get(responseRef(db, target, uid));
+    if (!evidence.exists) {
+      throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+    }
+    return {
+      verified: true,
+      verification: "server",
+      challengeKind: kind,
+      evidence: { eventId: target },
+    };
+  }
+  const mapped = CHALLENGE_EVIDENCE[kind];
+  if (!mapped) {
+    throw new HttpsError("invalid-argument", "Unknown challenge kind.");
+  }
+  const evidence = await transaction.get(achievementItemRef(db, uid, mapped.achievementId));
+  if (!evidence.exists) {
+    throw new HttpsError("failed-precondition", "This challenge is not complete yet.");
+  }
+  return {
+    verified: true,
+    verification: "server",
+    challengeKind: kind,
+    evidence: { achievementId: mapped.achievementId },
+  };
+}
+
+function createEventsDomain({
+  db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
+}) {
+  async function notifyEventLifecycle({
+    kind, eventId, groupId, groupIds = [], scope = "group", creatorId, title,
+  }) {
     if (!validString(eventId, EVENT_ID_MAX)) return;
     const started = kind === "started";
-    let recipientIds = started
-      ? await listGroupMemberIds(db, groupId)
+    const targetGroups = [
+      ...(validString(groupId, 128) ? [groupId] : []),
+      ...(Array.isArray(groupIds) ? groupIds : []),
+    ].filter((id, index, all) => validString(id, 128) && all.indexOf(id) === index);
+    let recipientIds = started && scope !== "global"
+      ? (await Promise.all(targetGroups.map((id) => listGroupMemberIds(db, id))))
+        .flat()
       : await listActiveParticipantIds(db, eventId);
     if (!started && recipientIds.length === 0) {
       recipientIds = await listGroupMemberIds(db, groupId);
@@ -477,24 +871,44 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
     await notifySafe(notificationBuilder, {
       id: started ? `event-start-${eventId}` : `event-end-${eventId}`,
       recipientIds,
-      type: started ? "event_starting" : "event_ended",
+      type: started ? "event_starting" : "event_result_available",
       actorId: creatorId || null,
       targetId: eventId,
-      action: started ? "started" : "ended",
+      action: started ? "started" : "result_available",
       destination: `/event/${eventId}`,
-      metadata: { groupId: groupId || "" },
-      title: started ? "Event started" : "Event ended",
-      body: title || (started ? "An event just started." : "Results are ready."),
-      pushWorthy: started,
+       metadata: {
+         groupId: groupId || "",
+         groupIds: targetGroups,
+         scope,
+       },
+      title: started ? "Event started" : "Results are ready",
+      body: title || (started ? "An event just started." : "Event ended — tap to see results."),
+      pushWorthy: true,
     });
   }
 
   async function saveEventDraft(request) {
     const uid = requireAuth(request, HttpsError);
     const input = applyTemplate(request.data || {});
-    const type = EVENT_TYPES.includes(input.type) ? input.type : null;
+    const legacyCaller = !request.data ||
+      !Object.prototype.hasOwnProperty.call(request.data, "scope");
+    const type = normalizeEventType(input.type || "");
+    const scope = normalizeScope(input.scope || (input.groupId ? "group" : ""));
+    const rawGroupIds = Array.isArray(input.groupIds)
+      ? input.groupIds.filter((value) => validString(value, 128)).map((value) => value.trim())
+      : [];
+    const groupIds = [...new Set(rawGroupIds)];
+    const groupId = validString(input.groupId, 128) ? input.groupId.trim() : null;
+    const scopeValid = scope === "global"
+      ? !groupId && groupIds.length === 0
+      : scope === "multiGroup"
+        ? !groupId && groupIds.length >= 2 && groupIds.length <= 20
+        : scope === "group" && Boolean(groupId) && groupIds.length === 0;
     if (!type || !validString(input.title, TITLE_MAX)) {
       throw new HttpsError("invalid-argument", "A valid type and title are required.");
+    }
+    if (!EVENT_TYPES.includes(type) || !scopeValid) {
+      throw new HttpsError("invalid-argument", "Choose a valid Event scope and type.");
     }
     if (typeof input.description === "string" && input.description.length > DESCRIPTION_MAX) {
       throw new HttpsError("invalid-argument", "Description is too long.");
@@ -503,27 +917,22 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
     if (!configuration) {
       throw new HttpsError("invalid-argument", "Event configuration is invalid.");
     }
-    const groupId = input.groupId ? String(input.groupId).trim() : null;
-    if (groupId && !validString(groupId, 128)) {
-      throw new HttpsError("invalid-argument", "groupId is invalid.");
-    }
     const existingId = validString(input.eventId, EVENT_ID_MAX) ? input.eventId.trim() : null;
     const ref = existingId ? eventRef(db, existingId) : db.collection("events").doc();
     await db.runTransaction(async (transaction) => {
-      const access = await loadPermissions(transaction, db, groupId, uid);
-      if (groupId && access.missingGroup) {
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        { scope, groupId, groupIds },
+        uid,
+      );
+      if (access.missingGroup) {
         throw new HttpsError("not-found", "Group not found.");
       }
-      if (groupId && !access.manageEvents) {
+      if (scope !== "global" && !access.member) {
         throw new HttpsError(
           "permission-denied",
-          "You need the Manage Events permission to create events.",
-        );
-      }
-      if (!groupId) {
-        throw new HttpsError(
-          "invalid-argument",
-          "Events must belong to a group in this version.",
+          "You must belong to every selected group to create this Event.",
         );
       }
       const existing = await transaction.get(ref);
@@ -532,11 +941,14 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         if (current.creatorId !== uid) {
           throw new HttpsError("permission-denied", "You cannot edit this draft.");
         }
-        if (current.status !== "draft") {
+        if (normalizeEventStatus(current.status) !== "DRAFT") {
           throw new HttpsError("failed-precondition", "Only drafts can be edited this way.");
         }
         transaction.update(ref, {
           type,
+          scope,
+          groupId,
+          groupIds,
           title: input.title.trim(),
           description: typeof input.description === "string" ? input.description.trim() : "",
           configuration,
@@ -544,18 +956,24 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
           coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
           searchName: searchNameOf(input.title),
           updatedAt: FieldValue.serverTimestamp(),
-          version: 1,
+          previewedAt: null,
+          resultLockedAt: null,
+          legacyMode: legacyCaller,
+          version: 2,
         });
         return;
       }
       transaction.create(ref, {
         type,
         creatorId: uid,
+        scope,
         groupId,
+        groupIds,
+        audienceMemberIds: [],
         title: input.title.trim(),
         description: typeof input.description === "string" ? input.description.trim() : "",
         configuration,
-        status: "draft",
+        status: "DRAFT",
         startAt: null,
         endAt: null,
         participantsCount: 0,
@@ -565,19 +983,58 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         publishedAt: null,
-        cancelledAt: null,
+        deletedAt: null,
         archivedAt: null,
         templateId: TEMPLATES[input.templateId] ? input.templateId : null,
         coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
         searchName: searchNameOf(input.title),
-        version: 1,
+        previewedAt: null,
+        resultLockedAt: null,
+        legacyMode: legacyCaller,
+        version: 2,
       });
     });
-    return { ok: true, eventId: ref.id, status: "draft" };
+    return { ok: true, eventId: ref.id, status: "DRAFT", scope, type };
+  }
+
+  async function previewEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    let preview;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const current = snapshot.data() || {};
+      if (current.creatorId !== uid) {
+        throw new HttpsError("permission-denied", "Only the creator can preview this Event.");
+      }
+      if (normalizeEventStatus(current.status) !== "DRAFT") {
+        throw new HttpsError("failed-precondition", "Only drafts can be previewed.");
+      }
+      preview = {
+        eventId: ref.id,
+        type: normalizeEventType(current.type),
+        scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+        title: current.title,
+        description: current.description || "",
+        configuration: current.configuration || {},
+      };
+      transaction.update(ref, {
+        previewedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true, ...preview };
   }
 
   async function publishEvent(request) {
     const uid = requireAuth(request, HttpsError);
+    const legacyCaller = !request.data ||
+      !Object.prototype.hasOwnProperty.call(request.data, "scope");
     const eventId = request.data && request.data.eventId;
     if (!validString(eventId, EVENT_ID_MAX)) {
       throw new HttpsError("invalid-argument", "eventId is required.");
@@ -591,33 +1048,94 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const status = normalizeEventStatus(current.status);
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const groupIds = Array.isArray(current.groupIds) ? current.groupIds : [];
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        { scope, groupId: current.groupId || null, groupIds },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "Join every selected group to publish.");
+      }
       if (current.creatorId !== uid && !access.manageEvents) {
         throw new HttpsError("permission-denied", "You cannot publish this event.");
       }
-      if (!access.manageEvents) {
-        throw new HttpsError("permission-denied", "You need Manage Events to publish.");
-      }
-      if (current.status !== "draft" && current.status !== "scheduled") {
-        if (current.status === "active" || current.status === "scheduled") {
-          published = { status: current.status, eventId: ref.id };
+      if (status !== "DRAFT") {
+        if (status === "ACTIVE") {
+          published = {
+            status: legacyCaller ? "active" : "ACTIVE",
+            canonicalStatus: "ACTIVE",
+            eventId: ref.id,
+          };
           return;
         }
         throw new HttpsError("failed-precondition", "This event cannot be published.");
       }
-      const now = Date.now();
-      const nextStatus = start.getTime() <= now ? "active" : "scheduled";
-      assertTransition(current.status === "scheduled" ? "scheduled" : "draft", nextStatus, HttpsError);
+      if (!legacyCaller && request.data.previewConfirmed !== true && !current.previewedAt) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Preview the Event and confirm it before publishing.",
+        );
+      }
+      const limitRef = eventCreationLimitRef(db, uid);
+      const limitSnapshot = await transaction.get(limitRef);
+      const limit = limitSnapshot.exists ? limitSnapshot.data() || {} : {};
+      const count = Number.isInteger(limit.count) ? limit.count : 0;
+      if (count >= 2) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "You can publish at most two Events per day.",
+        );
+      }
+      const audienceMemberIds = scope === "global"
+        ? []
+        : uniqueRecipientIds(
+          (await Promise.all(
+            (scope === "multiGroup" ? groupIds : [current.groupId])
+              .filter(Boolean)
+              .map((id) => listGroupMemberIds(db, id)),
+          )).flat(),
+        );
+      assertTransition("DRAFT", "ACTIVE", HttpsError);
       transaction.update(ref, {
-        status: nextStatus,
+        status: legacyCaller ? "active" : "ACTIVE",
         startAt: start,
         endAt: end,
+        audienceMemberIds,
+        legacyMode: legacyCaller,
         publishedAt: FieldValue.serverTimestamp(),
+        resultLockedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      published = { status: nextStatus, eventId: ref.id, groupId: current.groupId, title: current.title };
+      if (limitSnapshot.exists) {
+        transaction.update(limitRef, {
+          count: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.create(limitRef, {
+          uid,
+          day: utcDayKey(),
+          count: 1,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      published = {
+        status: legacyCaller ? "active" : "ACTIVE",
+        canonicalStatus: "ACTIVE",
+        eventId: ref.id,
+        groupId: current.groupId || null,
+        groupIds,
+        scope,
+        title: current.title,
+        startsAt: start.getTime(),
+      };
     });
-    if (published && published.status === "active") {
+    if (published && published.canonicalStatus === "ACTIVE" && published.startsAt <= Date.now()) {
       await postEventChatActivity(db, FieldValue, {
         groupId: published.groupId,
         eventId: published.eventId,
@@ -628,6 +1146,8 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         kind: "started",
         eventId: published.eventId,
         groupId: published.groupId,
+        groupIds: published.groupIds,
+        scope: published.scope,
         creatorId: uid,
         title: published.title,
       });
@@ -636,7 +1156,7 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         groupId: published.groupId,
         eventId: published.eventId,
         kind: "created",
-        text: `Event scheduled: ${published.title}`,
+        text: `Event published: ${published.title}`,
       });
     }
     return { ok: true, ...published };
@@ -654,28 +1174,46 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status === "cancelled" || current.status === "archived") {
+      const status = normalizeEventStatus(current.status);
+      if (status === "DELETED" || status === "ARCHIVED") {
         cancelled = { eventId: ref.id, status: current.status };
         return;
       }
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (current.creatorId !== uid && !access.manageEvents) {
         throw new HttpsError("permission-denied", "You cannot cancel this event.");
       }
-      assertTransition(current.status, "cancelled", HttpsError);
+      if (status !== "DRAFT" && status !== "ACTIVE") {
+        throw new HttpsError("failed-precondition", "This Event cannot be deleted now.");
+      }
+      assertTransition(status, "DELETED", HttpsError);
       transaction.update(ref, {
-        status: "cancelled",
-        cancelledAt: FieldValue.serverTimestamp(),
+        status: "DELETED",
+        deletedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      cancelled = { eventId: ref.id, status: "cancelled", groupId: current.groupId, title: current.title };
+      cancelled = {
+        eventId: ref.id,
+        status: "DELETED",
+        groupId: current.groupId,
+        title: current.title,
+      };
     });
-    if (cancelled && cancelled.groupId && cancelled.status === "cancelled") {
+    if (cancelled && cancelled.groupId && cancelled.status === "DELETED") {
       await postEventChatActivity(db, FieldValue, {
         groupId: cancelled.groupId,
         eventId: cancelled.eventId,
-        kind: "cancelled",
-        text: `Event cancelled: ${cancelled.title}`,
+        kind: "deleted",
+        text: `Event deleted: ${cancelled.title}`,
       });
     }
     return { ok: true, ...cancelled };
@@ -683,23 +1221,29 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
 
   async function finalizeEvent(transaction, snapshot, { reason }) {
     const current = snapshot.data() || {};
-    if (current.status === "ended" || current.status === "archived") {
+    const status = normalizeEventStatus(current.status);
+    if (status === "ENDED" || status === "ARCHIVED" || status === "DELETED") {
       return current;
     }
-    assertTransition(current.status, "ended", HttpsError);
+    assertTransition(status, "ENDED", HttpsError);
     const result = calculateResult({
       type: current.type,
       configuration: current.configuration || {},
       tally: current.tally || {},
       responsesCount: current.responsesCount || 0,
     });
+    const endedStatus = typeof current.status === "string" &&
+      current.status === current.status.toLowerCase()
+      ? "ended"
+      : "ENDED";
     transaction.update(snapshot.ref, {
-      status: "ended",
+      status: endedStatus,
       result,
       endedReason: reason || "completed",
+      resultLockedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return { ...current, status: "ended", result };
+    return { ...current, status: endedStatus, result };
   }
 
   async function endEvent(request) {
@@ -714,15 +1258,26 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (!access.manageEvents && current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot end this event.");
       }
       ended = await finalizeEvent(transaction, snapshot, { reason: "manual" });
     });
-    if (ended && ended.status === "ended") {
+    if (ended && normalizeEventStatus(ended.status) === "ENDED") {
       await postEventChatActivity(db, FieldValue, {
         groupId: ended.groupId,
+        groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+        scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
         eventId: ref.id,
         kind: "ended",
         text: `Event ended: ${ended.title}`,
@@ -734,8 +1289,9 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
         creatorId: ended.creatorId || uid,
         title: ended.title,
       });
+      await grantEventRewards(ref.id, ended);
     }
-    return { ok: true, eventId: ref.id, status: "ended", result: ended.result };
+      return { ok: true, eventId: ref.id, status: "ENDED", result: ended.result };
   }
 
   async function archiveEvent(request) {
@@ -749,19 +1305,32 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status === "archived") return;
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
+      const status = normalizeEventStatus(current.status);
+      if (status === "ARCHIVED") return;
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
       if (!access.manageEvents && current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot archive this event.");
       }
-      assertTransition(current.status, "archived", HttpsError);
+      assertTransition(status, "ARCHIVED", HttpsError);
       transaction.update(ref, {
-        status: "archived",
+        status: typeof current.status === "string" &&
+          current.status === current.status.toLowerCase()
+          ? "archived"
+          : "ARCHIVED",
         archivedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
-    return { ok: true, eventId: ref.id, status: "archived" };
+    return { ok: true, eventId: ref.id, status: "ARCHIVED" };
   }
 
   async function deleteEventDraft(request) {
@@ -778,10 +1347,14 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       if (current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot delete this draft.");
       }
-      if (current.status !== "draft") {
+      if (normalizeEventStatus(current.status) !== "DRAFT") {
         throw new HttpsError("failed-precondition", "Only drafts can be deleted.");
       }
-      transaction.delete(ref);
+      transaction.update(ref, {
+        status: "DELETED",
+        deletedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
     return { ok: true };
   }
@@ -802,12 +1375,26 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
-      if (!access.member) {
-        throw new HttpsError("permission-denied", "Join the group to participate.");
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot access this Event.");
       }
-      if (current.status !== "active" && current.status !== "scheduled") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "This event is not open to join.");
+      }
+      const start = dateOf(current.startAt);
+      if (start && start.getTime() > Date.now()) {
+        throw new HttpsError("failed-precondition", "This Event has not started yet.");
       }
       if (existing.exists && !existing.data().leftAt) return;
       const userData = user.exists ? user.data() : {};
@@ -847,7 +1434,7 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      if (current.status !== "active" && current.status !== "scheduled") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "You cannot leave this event now.");
       }
       if (!existing.exists || existing.data().leftAt) return;
@@ -878,23 +1465,45 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       ]);
       if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
       const current = snapshot.data() || {};
-      const access = await loadPermissions(transaction, db, current.groupId, uid);
-      if (!access.member) {
-        throw new HttpsError("permission-denied", "Join the group to participate.");
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot access this Event.");
       }
-      if (current.status !== "active") {
+      if (normalizeEventStatus(current.status) !== "ACTIVE") {
         throw new HttpsError("failed-precondition", "This event is not accepting responses.");
+      }
+      const start = dateOf(current.startAt);
+      if (start && start.getTime() > Date.now()) {
+        throw new HttpsError("failed-precondition", "This Event has not started yet.");
       }
       const end = dateOf(current.endAt);
       if (end && end.getTime() <= Date.now()) {
         throw new HttpsError("failed-precondition", "This event has already ended.");
       }
       const configuration = current.configuration || {};
-      const responseData = validateResponse(current.type, configuration, request.data && request.data.responseData);
+      let responseData = validateResponse(current.type, configuration, request.data && request.data.responseData);
       if (!responseData) {
         throw new HttpsError("invalid-argument", "The response does not match this event type.");
       }
-      if (prior.exists && configuration.allowUpdate !== true) {
+      if (current.type === "challenge") {
+        const verified = await verifyChallengeCompletion(
+          transaction, db, uid, configuration, ref.id, HttpsError,
+        );
+        responseData = { ...responseData, ...verified };
+      }
+      const legacyUpdatesAllowed = current.legacyMode === true &&
+        configuration.allowUpdate === true;
+      if (prior.exists && !legacyUpdatesAllowed) {
         throw new HttpsError("already-exists", "You already submitted a response.");
       }
       const userData = user.exists ? user.data() : {};
@@ -954,17 +1563,37 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
       if (joinedNow) eventUpdate.participantsCount = FieldValue.increment(1);
       transaction.update(ref, eventUpdate);
     });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_participated",
+        userId: uid,
+        source: "event",
+        metadata: { eventId: eventId.trim() },
+      });
+    }
     return { ok: true };
   }
 
   async function processEventLifecycle() {
     const now = new Date();
-    const activating = await db.collection("events")
-      .where("status", "==", "scheduled")
-      .where("startAt", "<=", now)
-      .limit(25)
-      .get();
-    for (const doc of activating.docs) {
+    const [canonicalExpiring, legacyExpiring, legacyScheduled] = await Promise.all([
+      db.collection("events")
+        .where("status", "==", "ACTIVE")
+        .where("endAt", "<=", now)
+        .limit(25)
+        .get(),
+      db.collection("events")
+        .where("status", "==", "active")
+        .where("endAt", "<=", now)
+        .limit(25)
+        .get(),
+      db.collection("events")
+        .where("status", "==", "scheduled")
+        .where("startAt", "<=", now)
+        .limit(25)
+        .get(),
+    ]);
+    for (const doc of legacyScheduled.docs) {
       await db.runTransaction(async (transaction) => {
         const snap = await transaction.get(doc.ref);
         if (!snap.exists || snap.data().status !== "scheduled") return;
@@ -973,35 +1602,20 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
           updatedAt: FieldValue.serverTimestamp(),
         });
       });
-      const data = doc.data() || {};
-      await postEventChatActivity(db, FieldValue, {
-        groupId: data.groupId,
-        eventId: doc.id,
-        kind: "started",
-        text: `Event started: ${data.title || "Event"}`,
-      });
-      await notifyEventLifecycle({
-        kind: "started",
-        eventId: doc.id,
-        groupId: data.groupId,
-        creatorId: data.creatorId,
-        title: data.title,
-      });
     }
-
-    const expiring = await db.collection("events")
-      .where("status", "==", "active")
-      .where("endAt", "<=", now)
-      .limit(25)
-      .get();
-    for (const doc of expiring.docs) {
+    const expiring = [
+      ...canonicalExpiring.docs,
+      ...legacyExpiring.docs.filter((item) =>
+        !canonicalExpiring.docs.some((canonical) => canonical.id === item.id)),
+    ];
+    for (const doc of expiring) {
       let ended;
       await db.runTransaction(async (transaction) => {
         const snap = await transaction.get(doc.ref);
-        if (!snap.exists || snap.data().status !== "active") return;
+        if (!snap.exists || normalizeEventStatus(snap.data().status) !== "ACTIVE") return;
         ended = await finalizeEvent(transaction, snap, { reason: "expired" });
       });
-      if (ended && ended.status === "ended") {
+      if (ended && normalizeEventStatus(ended.status) === "ENDED") {
         await postEventChatActivity(db, FieldValue, {
           groupId: ended.groupId,
           eventId: doc.id,
@@ -1012,16 +1626,302 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
           kind: "ended",
           eventId: doc.id,
           groupId: ended.groupId,
+          groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+          scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
           creatorId: ended.creatorId,
           title: ended.title,
         });
+        await grantEventRewards(doc.id, ended);
       }
     }
     return { ok: true };
   }
 
+  async function getEventAnalytics(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    let event;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      event = snapshot.data() || {};
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(event.scope || (event.groupId ? "group" : "global")),
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (event.creatorId !== uid && !access.manageEvents) {
+        throw new HttpsError("permission-denied", "Only the creator can view raw Event details.");
+      }
+    });
+    const [responses, participants] = await Promise.all([
+      ref.collection("responses").get(),
+      ref.collection("participants").get(),
+    ]);
+    return {
+      ok: true,
+      eventId: ref.id,
+      status: normalizeEventStatus(event.status),
+      tally: event.tally || {},
+      result: event.result || null,
+      participants: participants.docs.map((doc) => ({
+        userId: doc.id,
+        ...(doc.data() || {}),
+      })),
+      responses: responses.docs.map((doc) => ({
+        userId: doc.id,
+        ...(doc.data() || {}),
+      })),
+    };
+  }
+
+  async function addEventComment(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    const text = request.data && request.data.text;
+    if (!validString(eventId, EVENT_ID_MAX) || !validString(text, TEXT_MAX)) {
+      throw new HttpsError("invalid-argument", "Event and comment text are required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    const comment = ref.collection("comments").doc();
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const event = snapshot.data() || {};
+      const status = normalizeEventStatus(event.status);
+      if (status !== "ACTIVE" && status !== "ENDED" && status !== "ARCHIVED") {
+        throw new HttpsError("failed-precondition", "Comments are not open for this Event.");
+      }
+      const scope = normalizeScope(event.scope || (event.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot comment on this Event.");
+      }
+      transaction.create(comment, {
+        userId: uid,
+        text: text.trim(),
+        createdAt: FieldValue.serverTimestamp(),
+        deletedAt: null,
+      });
+    });
+    return { ok: true, eventId: ref.id, commentId: comment.id };
+  }
+
+  async function reactToEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    const reaction = request.data && request.data.reaction;
+    if (!validString(eventId, EVENT_ID_MAX) || !validString(reaction, 32)) {
+      throw new HttpsError("invalid-argument", "Event and reaction are required.");
+    }
+    const ref = eventRef(db, eventId.trim());
+    const reactionRef = ref.collection("reactions").doc(uid);
+    await db.runTransaction(async (transaction) => {
+      const [snapshot, existing] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(reactionRef),
+      ]);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const event = snapshot.data() || {};
+      const status = normalizeEventStatus(event.status);
+      if (status === "DELETED" || status === "DRAFT") {
+        throw new HttpsError("failed-precondition", "This Event is not visible.");
+      }
+      const scope = normalizeScope(event.scope || (event.groupId ? "group" : "global"));
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope,
+          groupId: event.groupId || null,
+          groupIds: Array.isArray(event.groupIds) ? event.groupIds : [],
+        },
+        uid,
+      );
+      if (scope !== "global" && !access.member) {
+        throw new HttpsError("permission-denied", "You cannot react to this Event.");
+      }
+      transaction.set(reactionRef, {
+        userId: uid,
+        reaction: reaction.trim().slice(0, 32),
+        createdAt: existing.exists
+          ? (existing.data() || {}).createdAt || FieldValue.serverTimestamp()
+          : FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true, eventId: ref.id };
+  }
+
+  async function resolveEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const winnerOptionId = request.data && request.data.winnerOptionId;
+    const winnerIds = request.data && request.data.winnerIds;
+    const ref = eventRef(db, eventId.trim());
+    let resolved;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const current = snapshot.data() || {};
+      const status = normalizeEventStatus(current.status);
+      if (status === "ENDED" || status === "ARCHIVED" || status === "DELETED") {
+        throw new HttpsError("failed-precondition", "This Event result is already locked.");
+      }
+      const type = normalizeEventType(current.type);
+      if (!["prediction", "challenge"].includes(type)) {
+        throw new HttpsError("failed-precondition", "This Event type cannot be resolved manually.");
+      }
+      const access = await loadScopePermissions(
+        transaction,
+        db,
+        {
+          scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+          groupId: current.groupId || null,
+          groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        },
+        uid,
+      );
+      if (current.creatorId !== uid && !access.manageEvents) {
+        throw new HttpsError("permission-denied", "Only the creator can resolve this Event.");
+      }
+      const configuration = current.configuration || {};
+      const tally = current.tally || {};
+      const submissions = current.responsesCount || 0;
+      let result;
+      if (type === "prediction") {
+        if (!validString(winnerOptionId, 64)) {
+          throw new HttpsError("invalid-argument", "winnerOptionId is required.");
+        }
+        const option = (configuration.options || []).find((item) => item.id === winnerOptionId);
+        if (!option) {
+          throw new HttpsError("invalid-argument", "winnerOptionId must match an option.");
+        }
+        const votes = tally.votes || {};
+        result = {
+          kind: type,
+          submissions,
+          votes,
+          winnerOptionId,
+          winnerIds: [winnerOptionId],
+          winners: [{ id: option.id, label: option.label || option.id }],
+        };
+      } else {
+        const picked = Array.isArray(winnerIds) ? winnerIds : [];
+        if (picked.length === 0) {
+          throw new HttpsError("invalid-argument", "winnerIds is required.");
+        }
+        for (const id of picked) {
+          const snap = await transaction.get(responseRef(db, ref.id, id));
+          if (!snap.exists) {
+            throw new HttpsError("invalid-argument", `Winner ${String(id)} has no valid submission.`);
+          }
+        }
+        result = {
+          kind: type,
+          challengeKind: configuration.challengeKind || "self_report",
+          verification: configuration.verification || "server",
+          submissions,
+          verifiedCompletions: tally.verifiedCompletions || 0,
+          selfReported: tally.selfReported || 0,
+          winnerIds: picked,
+        };
+      }
+      const resolveStatus = typeof current.status === "string" &&
+        current.status === current.status.toLowerCase()
+        ? "ended"
+        : "ENDED";
+      transaction.update(snapshot.ref, {
+        status: resolveStatus,
+        result,
+        resolvedBy: uid,
+        resolvedAt: FieldValue.serverTimestamp(),
+        resultLockedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      resolved = {
+        groupId: current.groupId || null,
+        groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
+        title: current.title || "",
+        status: resolveStatus,
+        result,
+      };
+    });
+    if (resolved) {
+      await postEventChatActivity(db, FieldValue, {
+        groupId: resolved.groupId,
+        groupIds: resolved.groupIds,
+        scope: resolved.scope,
+        eventId: ref.id,
+        kind: "result",
+        text: `Event resolved: ${resolved.title}`,
+      });
+      await notifyEventLifecycle({
+        kind: "ended",
+        eventId: ref.id,
+        groupId: resolved.groupId,
+        groupIds: resolved.groupIds,
+        scope: resolved.scope,
+        creatorId: uid,
+        title: resolved.title,
+      });
+      await grantEventRewards(ref.id, resolved);
+    }
+    return {
+      ok: true,
+      eventId: ref.id,
+      status: "ENDED",
+      result: resolved ? resolved.result : null,
+    };
+  }
+
+  async function grantEventRewards(eventId, event) {
+    if (!economy || typeof economy.grantDomainRewards !== "function") return;
+    const winners = Array.isArray(event && event.result && event.result.winnerIds)
+      ? event.result.winnerIds
+      : [];
+    if (winners.length === 0) return;
+    await economy.grantDomainRewards(winners, {
+      type: "earn_event",
+      referenceId: eventId,
+      source: "event",
+      metadata: { eventType: event.type || "" },
+    });
+    if (achievements && typeof achievements.evaluate === "function") {
+      await achievements.evaluate({
+        type: "event_won",
+        userIds: winners,
+        source: "event",
+        metadata: { eventId },
+      });
+    }
+  }
+
   return {
     saveEventDraft,
+    previewEvent,
     publishEvent,
     cancelEvent,
     endEvent,
@@ -1030,13 +1930,19 @@ function createEventsDomain({ db, FieldValue, HttpsError, notificationBuilder })
     joinEvent,
     leaveEvent,
     submitEventResponse,
+    resolveEvent,
     processEventLifecycle,
+    getEventAnalytics,
+    addEventComment,
+    reactToEvent,
   };
 }
 
 module.exports = {
   EVENT_TYPES,
   MAX_DURATION_MS,
+  MIN_DURATION_MS,
+  EVENT_SCOPES,
   STATUSES,
   TEMPLATES,
   TRANSITIONS,
@@ -1048,4 +1954,8 @@ module.exports = {
   emptyTally,
   validateConfiguration,
   validateResponse,
+  CHALLENGE_KINDS,
+  COMPARISON_TYPES,
+  normalizeEventType,
+  normalizeEventStatus,
 };

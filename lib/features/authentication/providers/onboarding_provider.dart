@@ -15,6 +15,7 @@ final class OnboardingProvider extends ChangeNotifier {
   PubgetUser? _profile;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
+  String? _boundUserId;
   bool _disposed = false;
 
   PubgetUser? get profile => _profile;
@@ -109,20 +110,80 @@ final class OnboardingProvider extends ChangeNotifier {
     );
   }
 
-  Future<Result<PubgetUser>> skip(AuthUser authUser) => saveProfile(
-    authUser: authUser,
-    username: _profile?.username,
-    displayName: _profile?.displayName,
-    avatarUrl: _profile?.avatarUrl,
-    bio: _profile?.bio,
-    favoriteAnimes: _profile?.favoriteAnimes ?? const <String>[],
-    isProfileCompleted: false,
-  );
+  Future<Result<PubgetUser>> skip(
+    AuthUser authUser, {
+    String? username,
+    String? displayName,
+    String? avatarUrl,
+    String? bio,
+    List<String> favoriteAnimes = const <String>[],
+  }) async {
+    final result = await saveProfile(
+      authUser: authUser,
+      username: username,
+      displayName: displayName,
+      avatarUrl: avatarUrl,
+      bio: bio,
+      favoriteAnimes: favoriteAnimes,
+      isProfileCompleted: false,
+    );
+    if (result is FailureResult<PubgetUser> && result.failure is NetworkError) {
+      final local = PubgetUser(
+        id: authUser.id,
+        email: authUser.email,
+        username: _clean(username) ?? _profile?.username,
+        displayName:
+            _clean(displayName) ??
+            _profile?.displayName ??
+            authUser.displayName,
+        avatarUrl:
+            _clean(avatarUrl) ?? _profile?.avatarUrl ?? authUser.avatarUrl,
+        bio: _clean(bio) ?? _profile?.bio,
+        favoriteAnimes: List<String>.unmodifiable(
+          favoriteAnimes.isEmpty
+              ? _profile?.favoriteAnimes ?? const <String>[]
+              : favoriteAnimes,
+        ),
+        createdAt: _profile?.createdAt ?? DateTime.now(),
+        isProfileCompleted: false,
+        hasSkippedOnboarding: true,
+      );
+      _profile = local;
+      _failure = null;
+      _setState(LoadingState.loaded);
+      return Success<PubgetUser>(local);
+    }
+    return result;
+  }
+
+  void applyFavoriteAnimeIds(List<String> ids) {
+    if (_profile == null) return;
+    _profile = _profile!.copyWith(
+      favoriteAnimeIds: List<String>.unmodifiable(ids),
+    );
+    if (!_disposed) notifyListeners();
+  }
 
   void clearFailure() {
     if (_failure == null) return;
     _failure = null;
     notifyListeners();
+  }
+
+  void clearSession() {
+    _profile = null;
+    _failure = null;
+    _state = LoadingState.initial;
+    if (!_disposed) notifyListeners();
+  }
+
+  void bindUser(String? userId) {
+    if (_boundUserId == userId) return;
+    final previous = _boundUserId;
+    _boundUserId = userId;
+    if (userId == null || (previous != null && previous != userId)) {
+      clearSession();
+    }
   }
 
   void _setFailure(Failure failure) {

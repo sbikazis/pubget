@@ -1,20 +1,19 @@
-// functions/src/mafia/phaseScheduler.js
-//
-// ✅ الإصلاح: عند بدء ليلة جديدة (next === 'night')، إعادة ضبط
-// canSpeak=true لكل اللاعبين الأحياء غير المنسحبين. هذا يجعل تأثير
-// المُسكِت (silencer) يدوم "ليوم واحد فقط" كما هو مصمَّم، بدل أن يبقى
-// دائماً. بقية الملف من Stage 6 دون أي تغيير آخر في المنطق.
+"use strict";
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
-const { nextPhase, durationOf, ARABIC_MESSAGES } = require("./phaseFlow");
+const { nextPhase, durationOf, PHASE_MESSAGES } = require("./phaseFlow");
 const { resolveNight } = require("./nightResolver");
 const { resolveVotes } = require("./voteResolver");
 const { checkWinCondition } = require("./winConditionChecker");
+const { postFromActivity } = require("../chatCardWriter");
+const { toMafiaActivity } = require("./mafiaActivity");
 
 const db = admin.firestore();
 
-const ACTIVE_LOOP_STATUSES = ["night", "day", "discussion", "voting", "execution"];
+const ACTIVE_LOOP_STATUSES = [
+  "ROLE_REVEAL", "NIGHT", "DAY", "DISCUSSION", "VOTING", "RESOLUTION",
+];
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 const processPhaseTransitions = onSchedule("every 1 minutes", async () => {
@@ -29,7 +28,53 @@ const processPhaseTransitions = onSchedule("every 1 minutes", async () => {
   for (const doc of expiredGames.docs) {
     await advancePhase(doc.id, doc.data());
   }
+
+  const discussionGames = await db.collection("mafia_games")
+    .where("status", "==", "DISCUSSION").get();
+  for (const doc of discussionGames.docs) {
+    const turnEndsAt = doc.data().turnEndsAt;
+    if (turnEndsAt?.toMillis?.() <= Date.now()) {
+      await advanceDiscussionTurn(doc.id);
+    }
+  }
 });
+
+async function advanceDiscussionTurn(gameId) {
+  const gameRef = db.collection("mafia_games").doc(gameId);
+  await db.runTransaction(async (tx) => {
+    const gameSnap = await tx.get(gameRef);
+    if (!gameSnap.exists) return;
+    const game = gameSnap.data() || {};
+    if (game.currentPhase !== "DISCUSSION") return;
+    const players = await tx.get(gameRef.collection("players"));
+    const eligible = new Set(players.docs
+      .filter((doc) => doc.data().isAlive === true &&
+        doc.data().hasLeft !== true && doc.data().isDisconnected !== true)
+      .map((doc) => doc.id));
+    const order = (game.speakingOrder || []).filter((id) => eligible.has(id));
+    const currentIndex = order.indexOf(game.currentSpeakerId);
+    const nextSpeakerId = currentIndex >= 0 ? order[currentIndex + 1] : order[0];
+    if (nextSpeakerId && nextSpeakerId !== game.currentSpeakerId) {
+      tx.update(gameRef, {
+        currentSpeakerId: nextSpeakerId,
+        turnStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        turnEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 20_000),
+      });
+    } else {
+      tx.update(gameRef, {
+        status: "VOTING",
+        currentPhase: "VOTING",
+        currentSpeakerId: null,
+        voteRound: 1,
+        revoteCandidates: null,
+        phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        phaseEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 45_000),
+        serverStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        serverEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 45_000),
+      });
+    }
+  });
+}
 
 async function advancePhase(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
@@ -45,8 +90,7 @@ async function advancePhase(gameId, gameData) {
     if (!snap.exists || !data || (data.currentPhase || data.status) !== current ||
         (!data.phaseEndsAt || typeof data.phaseEndsAt.toMillis !== "function" ||
         data.phaseEndsAt.toMillis() > Date.now()) || (claimedBy && !leaseExpired) ||
-        data.status === "finished" ||
-        data.status === "cancelled") return false;
+        ["GAME_OVER", "CANCELLED"].includes(data.status)) return false;
     tx.update(gameRef, {
       phaseTransitionClaim: {
         owner: claimId,
@@ -58,69 +102,116 @@ async function advancePhase(gameId, gameData) {
   if (!claimed) return;
 
   try {
-  const next = nextPhase(current);
+    if (current === "NIGHT") {
+      await resolveNight(gameId, gameData);
+      await checkWinCondition(gameId, (await gameRef.get()).data());
+    }
 
-  if (current === "night") {
-    await resolveNight(gameId, gameData);
-    await checkWinCondition(gameId, (await gameRef.get()).data());
-  }
+    if (current === "VOTING") {
+      await resolveVotes(gameId, gameData);
+      await checkWinCondition(gameId, (await gameRef.get()).data());
+    }
 
-  if (current === "voting") {
-    await resolveVotes(gameId, gameData);
-    await checkWinCondition(gameId, (await gameRef.get()).data());
-  }
+    const freshSnap = await gameRef.get();
+    const freshData = freshSnap.data();
+    if (["GAME_OVER", "CANCELLED"].includes(freshData.status)) {
+      await releaseClaim(gameRef, claimId);
+      return;
+    }
 
-  // ✅ فحص واحد موثوق بعد أي حساب قد ينهي المباراة — يحل محل الفحص
-  // المكرر غير الدقيق سابقاً (كان يقرأ نسخة قديمة من البيانات).
-  const freshSnap = await gameRef.get();
-  const freshData = freshSnap.data();
-  if (freshData.status === "finished" || freshData.status === "cancelled") {
-    await releaseClaim(gameRef, claimId);
-    return;
-  }
+    const afterResolution = await gameRef.get();
+    const afterData = afterResolution.data() || {};
+    // If resolveVotes set revoteCandidates (tie → re-vote), stay in VOTING.
+    if (afterData.currentPhase === "VOTING" &&
+        Array.isArray(afterData.revoteCandidates) &&
+        afterData.revoteCandidates.length > 0) {
+      await releaseClaim(gameRef, claimId);
+      return;
+    }
 
-  const durationSeconds = durationOf(next);
-  const phaseEndsAt = admin.firestore.Timestamp.fromMillis(
-    Date.now() + durationSeconds * 1000
-  );
+    let next = nextPhase(current);
+    const durationSeconds = durationOf(next);
+    const endsAtMs = Date.now() + durationSeconds * 1000;
+    const phaseEndsAt = admin.firestore.Timestamp.fromMillis(endsAtMs);
 
-  const updateData = {
-    status: next,
-    currentPhase: next,
-    phaseEndsAt,
-    phaseTransitionClaim: admin.firestore.FieldValue.delete(),
-  };
+    const updateData = {
+      status: next,
+      currentPhase: next,
+      phaseEndsAt,
+      phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      serverStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      serverEndsAt: phaseEndsAt,
+      phaseHistory: admin.firestore.FieldValue.arrayUnion({
+        from: current,
+        to: next,
+        at: new Date(),
+      }),
+      phaseTransitionClaim: admin.firestore.FieldValue.delete(),
+    };
 
-  if (next === "night") {
-    updateData.currentNight = admin.firestore.FieldValue.increment(1);
-  } else if (next === "day") {
-    updateData.currentDay = admin.firestore.FieldValue.increment(1);
-  }
+    if (next === "NIGHT") {
+      updateData.currentNight = admin.firestore.FieldValue.increment(1);
+      updateData.voteRound = admin.firestore.FieldValue.delete();
+      updateData.revoteCandidates = admin.firestore.FieldValue.delete();
+    } else if (next === "DAY") {
+      updateData.currentDay = admin.firestore.FieldValue.increment(1);
+    }
+    if (next === "DISCUSSION") {
+      const alive = (await gameRef.collection("players").get()).docs
+        .filter((doc) => doc.data().isAlive === true && doc.data().hasLeft !== true)
+        .map((doc) => doc.id);
+      updateData.speakingOrder = alive;
+      updateData.currentSpeakerId = alive[0] || null;
+      updateData.turnStartedAt = admin.firestore.FieldValue.serverTimestamp();
+      updateData.turnEndsAt = admin.firestore.Timestamp.fromMillis(Date.now() + 20_000);
+    }
+    if (next === "VOTING") {
+      updateData.voteRound = 1;
+      updateData.revoteCandidates = admin.firestore.FieldValue.delete();
+    }
 
-  const ownership = await gameRef.get();
-  if (!ownership.exists || ownership.data().phaseTransitionClaim?.owner !== claimId) return;
-  const batch = db.batch();
-  batch.update(gameRef, updateData);
-  batch.set(gameRef.collection("events").doc(`phase-${current}-${gameData.currentNight || gameData.currentDay || 0}`), {
-    type: "PhaseChanged",
-    message: ARABIC_MESSAGES[next] || `انتقلت المباراة إلى مرحلة ${next}`,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    payload: { from: current, to: next },
-  });
-
-  // ✅ الإصلاح: عند بدء ليلة جديدة، حرّر أي لاعب أُسكت الليلة/اليوم
-  // الماضي، حتى لا يبقى صامتاً للأبد.
-  if (next === "night") {
-    const playersSnap = await gameRef.collection("players").get();
-    playersSnap.docs.forEach((doc) => {
-      const player = doc.data();
-      if (player.isAlive === true && player.hasLeft !== true && player.canSpeak === false) {
-        batch.update(doc.ref, { canSpeak: true });
-      }
+    const ownership = await gameRef.get();
+    if (!ownership.exists || ownership.data().phaseTransitionClaim?.owner !== claimId) return;
+    const batch = db.batch();
+    batch.update(gameRef, updateData);
+    batch.set(gameRef.collection("events").doc(`phase-${current}-${gameData.currentNight || gameData.currentDay || 0}`), {
+      type: "PhaseChanged",
+      message: PHASE_MESSAGES[next] || `The game moved to ${next}.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      payload: { from: current, to: next },
     });
-  }
 
-  await batch.commit();
+    // Reset canSpeak for all alive non-left players on night start.
+    if (next === "NIGHT") {
+      const playersSnap = await gameRef.collection("players").get();
+      playersSnap.docs.forEach((doc) => {
+        const player = doc.data();
+        if (player.isAlive === true && player.hasLeft !== true && player.canSpeak === false) {
+          batch.update(doc.ref, { canSpeak: true });
+        }
+      });
+    }
+
+    await batch.commit();
+    const chatEventType = next === "NIGHT"
+      ? "NightStarted"
+      : next === "DAY"
+        ? "DayStarted"
+        : null;
+    if (chatEventType && freshData.groupId) {
+      try {
+        await postFromActivity(
+          db,
+          admin.firestore.FieldValue,
+          toMafiaActivity(
+            { type: chatEventType, actorId: "system", payload: { phase: next } },
+            { id: gameId, groupId: freshData.groupId, type: "mafia" },
+          ),
+        );
+      } catch (_) {
+        // Chat cards are projections and never block the game state machine.
+      }
+    }
   } catch (error) {
     // Permit the scheduled retry only if this invocation still owns the claim.
     await db.runTransaction(async (tx) => {
@@ -142,4 +233,4 @@ async function releaseClaim(gameRef, owner) {
   });
 }
 
-module.exports = { processPhaseTransitions, advancePhase };
+module.exports = { processPhaseTransitions, advancePhase, advanceDiscussionTurn };

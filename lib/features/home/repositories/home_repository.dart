@@ -19,5 +19,10 @@ abstract interface class HomeRepository {
     int limit = 10,
     PublicProfile? after,
   });
+  Future<Result<DiscoveryFeed>> getDiscoveryFeed({
+    String? section,
+    String? cursor,
+    int limit = 8,
+  });
   Future<Result<DiscoverySearchResults>> search(String query);
 }

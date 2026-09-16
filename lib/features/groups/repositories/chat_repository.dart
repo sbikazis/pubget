@@ -24,6 +24,23 @@ abstract interface class ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
+  });
+
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  });
+
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
   });
 
   Future<Result<ChatMessage>> editMessage({
@@ -71,5 +88,14 @@ abstract interface class ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
+  });
+
+  /// Returns the already-prepared media doc when a previous attempt produced
+  /// ready output (e.g. the client timed out waiting in [uploadMedia]), so
+  /// retries skip re-uploading bytes. Returns null when no ready doc exists.
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
   });
 }

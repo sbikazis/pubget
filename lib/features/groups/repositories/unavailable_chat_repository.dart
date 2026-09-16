@@ -35,6 +35,25 @@ final class UnavailableChatRepository implements ChatRepository {
     String? thumbnailUrl,
     String? mediaId,
     String? replyToMessageId,
+    String? stickerKey,
+    String? stickerCreatorId,
+    String? stickerCreatorName,
+  }) async => _fail();
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceGroupId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String groupId,
+    required String messageId,
+    required String reason,
+    String details = '',
   }) async => _fail();
 
   @override
@@ -90,5 +109,12 @@ final class UnavailableChatRepository implements ChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
+  }) async => _fail();
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
   }) async => _fail();
 }
