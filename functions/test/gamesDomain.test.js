@@ -162,6 +162,9 @@ function createFakeDb(seed = {}) {
       const run = chain.then(() => {
         const transaction = {
           async get(ref) {
+            if (ref && typeof ref.get === "function" && typeof ref.path !== "string") {
+              return ref.get();
+            }
             const data = store.get(ref.path);
             return {
               exists: data !== undefined,
@@ -208,11 +211,19 @@ function seedGroup({ role = "founder" } = {}) {
 }
 
 function handlers(db, notificationBuilder) {
+  const { createMafiaDomain } = require("../src/mafiaDomain");
+  const mafia = createMafiaDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    notificationBuilder,
+  });
   return createGamesDomain({
     db,
     FieldValue,
     HttpsError: TestHttpsError,
     notificationBuilder,
+    mafia,
   });
 }
 
@@ -297,7 +308,7 @@ test("ordinary group members can create a game", async () => {
   assert.equal(created.status, "WAITING");
 });
 
-test("mafia cannot be created and unknown types are rejected", async () => {
+test("mafia can be created and unknown types are rejected", async () => {
   const games = handlers(createFakeDb(seedGroup()));
   await assert.rejects(
     games.createGame({

@@ -97,6 +97,8 @@ import '../features/achievements/repositories/firebase_achievement_repository.da
 import '../features/achievements/repositories/unavailable_achievement_repository.dart';
 import '../features/achievements/screens/achievements_page.dart';
 import '../features/games/providers/game_providers.dart';
+import '../features/games/mafia/mafia_provider.dart';
+import '../features/games/mafia/mafia_repository.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
 import '../features/games/repositories/unavailable_game_repository.dart';

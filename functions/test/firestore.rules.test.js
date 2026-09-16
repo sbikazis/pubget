@@ -352,6 +352,39 @@ test("games are readable by group members and never client-writable", async () =
   }));
   await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
 });
+test("mafia hidden state is protected from clients", async () => {
+  // Attack 1: Player A cannot read Player B's private role.
+  await assertFails(db("alice").doc("games/mafia1/private/bob").get());
+  await assertSucceeds(db("alice").doc("games/mafia1/private/alice").get());
+  // Attack 2: Player A cannot write their own role.
+  await assertFails(db("alice").doc("games/mafia1/private/alice").update({ role: "civilian" }));
+  await assertFails(db("alice").doc("games/mafia1/private/alice").set({ role: "mafia" }));
+  // Attack 3: Player A cannot write another player's role.
+  await assertFails(db("alice").doc("games/mafia1/private/bob").set({ role: "civilian" }));
+  // Attack 4: Player A cannot change phase.
+  await assertFails(db("alice").doc("games/mafia1").update({
+    "mafia.phase": "day",
+  }));
+  await assertFails(db("alice").doc("games/mafia1").update({ status: "completed" }));
+  // Attack 5: Player cannot mark themselves alive after elimination.
+  await assertFails(db("bob").doc("games/mafia1/participants/bob").update({ isAlive: true }));
+  // Attack 10: Client cannot read authoritative hidden state.
+  await assertFails(db("alice").doc("games/mafia1/secret/state").get());
+  await assertFails(db("bob").doc("games/mafia1/secret/state").get());
+  await assertFails(db("charlie").doc("games/mafia1/secret/state").get());
+  // Non-participants cannot read private game state.
+  await assertFails(db("charlie").doc("games/mafia1").get());
+  await assertFails(db("charlie").doc("games/mafia1/private/alice").get());
+  // Public state is readable by participants/group members.
+  await assertSucceeds(db("bob").doc("games/mafia1").get());
+  await assertSucceeds(db("alice").doc("games/mafia1/participants/bob").get());
+  // Winner / vote tallies / night resolution cannot be client-written.
+  await assertFails(db("alice").doc("games/mafia1").update({ "mafia.winner": "mafia" }));
+  await assertFails(db("alice").doc("games/mafia1").set({
+    creatorId: "alice", groupId: "g1", type: "mafia", status: "completed",
+    mafia: { winner: "mafia", phase: "finished" },
+  }));
+});
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {
     founderId: "alice", name: "Capacity", description: "", slogan: "", imageUrl: "",

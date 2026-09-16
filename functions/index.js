@@ -142,6 +142,12 @@ const eventsDomain = createEventsDomain({
   economy: economyDomain,
   achievements: achievementsDomain,
 });
+const mafiaDomain = createMafiaDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  notificationBuilder,
+});
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,

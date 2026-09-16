@@ -856,51 +856,13 @@ service cloud.firestore {
         allow read: if gameVisible();
         allow create, update, delete: if false;
       }
-      match /secret/{docId} {
+      match /private/{uid} {
+        allow read: if gameVisible() && request.auth.uid == uid;
+        allow create, update, delete: if false;
+      }
+      match /secret/{document=**} {
         allow read, write: if false;
       }
-      match /private/{uid} {
-        allow read: if gameVisible() && self(uid);
-        allow write: if false;
-      }
-    }
-
-    match /game_history/{gameId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /achievements/{achievementId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /achievement_definitions/{achievementId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /user_achievements/{uid} {
-      // Unlocked badges are visible to signed-in profile visitors.
-      allow read: if signedIn();
-      allow write: if false;
-      match /items/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-      match /unlocked/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-    }
-    match /user_achievement_progress/{uid} {
-      allow read: if signedIn();
-      allow write: if false;
-      match /progress/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-    }
-    match /user_achievement_stats/{uid} {
-      allow read: if self(uid);
-      allow write: if false;
     }
 
     match /edits/{editId} {

@@ -288,6 +288,14 @@ void main() {
       }, id: 'legacy');
       expect(legacy.schemaVersion, 1);
       expect(legacy.type, GameEventType.gameStarted);
+      expect(
+        parseGameEventType('mafia_night_resolved'),
+        GameEventType.mafiaNightResolved,
+      );
+      expect(
+        parseGameEventType('mafia_game_completed'),
+        GameEventType.mafiaGameCompleted,
+      );
       final activity = GameActivity.fromEvent(
         event: restored,
         gameType: GameType.guessCharacter,

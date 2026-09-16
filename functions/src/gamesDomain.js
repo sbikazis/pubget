@@ -161,7 +161,10 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeConfiguration(raw, spec) {
+function normalizeConfiguration(raw, spec, type) {
+  if (type === "mafia") {
+    return validateMafiaConfig(raw, spec.capabilities || {});
+  }
   const input = raw && typeof raw === "object" ? raw : {};
   const caps = spec.capabilities || {};
   const extra = input.extra && typeof input.extra === "object" &&
@@ -698,7 +701,20 @@ function createGamesDomain({
         startedAt: null,
         endedAt: null,
         searchName: searchNameOf(title),
-      });
+      };
+      if (input.type === "mafia") {
+        created.mafia = {
+          phase: "setup",
+          roundNumber: 0,
+          phaseStartedAt: now,
+          phaseEndsAt: null,
+          deadUserIds: [],
+          lastNight: null,
+          lastVote: null,
+          winner: null,
+        };
+      }
+      transaction.create(ref, created);
       if (!asDraft) {
         transaction.create(participantRef(db, ref.id, uid), {
           gameId: ref.id,
@@ -932,6 +948,13 @@ function createGamesDomain({
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
       if (existing.data().status === "left" || existing.data().leftAt) return;
+      if (current.type === "mafia" &&
+          (current.status === "active" || current.status === "paused")) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You cannot leave an in-progress Mafia game.",
+        );
+      }
       const now = FieldValue.serverTimestamp();
       transaction.update(person, {
         status: "left",
@@ -952,7 +975,7 @@ function createGamesDomain({
   }
 
   async function mutateStatus(request, {
-    target, eventType, extra, fromStatuses, oneShotEvent = true,
+    target, eventType, extra, fromStatuses, oneShotEvent = true, after,
   }) {
     const uid = requireAuth(request, HttpsError);
     const gameId = request.data && request.data.gameId;
@@ -962,6 +985,7 @@ function createGamesDomain({
     const ref = gameRef(db, gameId.trim());
     let skipped = false;
     let snapshotData;
+    let afterResult;
     await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new HttpsError("not-found", "Game not found.");
@@ -1016,8 +1040,13 @@ function createGamesDomain({
         actorId: uid,
         payload: { from: current.status, to: target },
       });
+      if (typeof after === "function") {
+        afterResult = await after(transaction, {
+          ref, current: { ...current, ...update }, uid, now, target,
+        });
+      }
     });
-    return { ok: true, skipped, game: snapshotData };
+    return { ok: true, skipped, game: snapshotData, afterResult };
   }
 
   async function startGame(request) {
@@ -1028,6 +1057,19 @@ function createGamesDomain({
       extra: (current, now) => ({
         startedAt: current.startedAt || now,
       }),
+      after: async (transaction, ctx) => {
+        if (ctx.current.type !== "mafia") return null;
+        if (!mafia || typeof mafia.onStart !== "function") {
+          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
+        }
+        return mafia.onStart(transaction, {
+          ref: ctx.ref,
+          current: ctx.current,
+          uid: ctx.uid,
+          now: ctx.now,
+          gameId: ctx.ref.id,
+        });
+      },
     });
     if (!result.skipped && result.game) {
       await db.runTransaction(async (transaction) => {
@@ -1052,6 +1094,13 @@ function createGamesDomain({
         title: result.game.title,
         type: result.game.type,
       });
+      if (result.game.type === "mafia" && mafia && typeof mafia.notifyMafia === "function") {
+        await mafia.notifyMafia("night", {
+          gameId: request.data.gameId.trim(),
+          actorId: request.auth.uid,
+          roundNumber: 1,
+        });
+      }
     }
     await initializeEngine(request.data.gameId.trim());
     return { ok: true };
@@ -1146,6 +1195,21 @@ function createGamesDomain({
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
       const now = FieldValue.serverTimestamp();
+      if (current.type === "mafia") {
+        if (!mafia || typeof mafia.submitAction !== "function") {
+          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
+        }
+        await mafia.submitAction(transaction, {
+          gameId,
+          uid,
+          actionType: action.actionType,
+          payload: action.payload,
+          current,
+          person: existing.data() || {},
+        });
+        transaction.update(ref, { updatedAt: now });
+        return;
+      }
       transaction.create(stored, {
         actionId,
         gameId,
