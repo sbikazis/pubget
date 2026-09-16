@@ -1,0 +1,16 @@
+﻿dart-code.dart-code@3.142.0
+dart-code.flutter@3.142.0
+formulahendry.code-runner@0.12.2
+llvm-vs-code-extensions.lldb-dap@0.4.1
+ms-azuretools.vscode-azure-github-copilot@1.0.231
+ms-azuretools.vscode-azure-mcp-server@2.0.46
+ms-azuretools.vscode-azureresourcegroups@0.12.7
+ms-python.debugpy@2026.6.0
+ms-python.python@2026.4.0
+ms-python.vscode-pylance@2026.3.1
+ms-python.vscode-python-envs@1.36.0
+openai.chatgpt@26.908.40401
+pkief.material-icon-theme@5.38.1
+saoudrizwan.claude-dev@4.1.17
+swiftlang.swift-vscode@2.16.7
+vscjava.vscode-gradle@3.18.0

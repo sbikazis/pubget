@@ -1,0 +1,29 @@
+﻿PUBGET WINDOWS ENVIRONMENT SNAPSHOT
+
+Created: 2026-09-16 16:22:18
+Repository: C:/Users/admin/develop/flutter-apps/pubget
+Branch: cursor/reels-rebirth-1
+Commit: 16e266c88d4cee3fb8fe49cc2cb18c54689ed691
+
+Snapshot directory:
+C:\Users\admin\develop\flutter-apps\pubget\migration\windows-environment
+
+Reports:
+01-system.txt
+02-git.txt
+03-tools.txt
+04-tool-paths.txt
+05-flutter-doctor.txt
+06-vscode-extensions.txt
+07-npm-global.txt
+08-python-packages.txt
+09-dart-global.txt
+10-android.txt
+11-environment-paths.txt
+12-vscode-files.txt
+
+IMPORTANT:
+This is LOCAL ONLY.
+No commit.
+No push.
+No passwords/API keys/tokens/private SSH keys intentionally collected.
