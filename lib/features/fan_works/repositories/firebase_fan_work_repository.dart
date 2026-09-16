@@ -264,10 +264,14 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (animeId != null && animeId.isNotEmpty) {
       query = query.where('animeId', isEqualTo: animeId);
     }
-    query = query.orderBy('publishedAt', descending: true);
+    query = query.orderBy('publishedAt', descending: true).orderBy(
+      FieldPath.documentId,
+      descending: true,
+    );
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
+        after!.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);
@@ -281,10 +285,12 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   }) {
     Query<Map<String, dynamic>> query = _public
         .where('creatorId', isEqualTo: creatorId)
-        .orderBy('publishedAt', descending: true);
+        .orderBy('publishedAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true);
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
+        after!.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);

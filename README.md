@@ -5,9 +5,6 @@ Pubget is a Flutter anime community application built on Firebase
 Hosting). It supports Arabic and English, with a mobile-first Android target
 and a web release.
 
-See [replit.md](replit.md) for the Replit development setup, required Firebase
-Web values, validation commands, and deployment boundaries.
-
 ## Structure
 
 - `lib/` — Flutter client (features, providers, repositories, design system)

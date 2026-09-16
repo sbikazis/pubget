@@ -281,6 +281,14 @@ void main() {
     final profile = await parse('/profile/u-1');
     expect(profile.path, '/profile');
     expect(profile.parameters['uid'], 'u-1');
+
+    final fanWorks = await parse('/fan-works-creator?uid=u-1');
+    expect(fanWorks.path, '/fan-works-creator');
+    expect(fanWorks.parameters['uid'], 'u-1');
+
+    final groups = await parse('/profile-groups?uid=u-1');
+    expect(groups.path, '/profile-groups');
+    expect(groups.parameters['uid'], 'u-1');
   });
 
   test('missing ids, unknown routes, and malformed URIs fall back safely', () {

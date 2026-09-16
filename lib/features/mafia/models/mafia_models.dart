@@ -3,16 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 enum MafiaPhase {
   waiting,
   starting,
+  roleReveal,
   night,
   day,
   discussion,
   voting,
-  revote,
   voteResult,
   resolution,
-  roleReveal,
   gameOver,
-  finished,
   cancelled,
 }
 
@@ -31,9 +29,12 @@ final class MafiaGame {
     this.winner,
     this.countdownEndsAt,
     this.phaseEndsAt,
+    this.serverStartedAt,
+    this.serverEndsAt,
     this.startedAt,
     this.endedAt,
     this.currentSpeakerId,
+    this.voteRound = 1,
     this.revoteCandidates = const <String>[],
   });
 
@@ -50,28 +51,34 @@ final class MafiaGame {
   final String? winner;
   final DateTime? countdownEndsAt;
   final DateTime? phaseEndsAt;
+  final DateTime? serverStartedAt;
+  final DateTime? serverEndsAt;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final String? currentSpeakerId;
+  final int voteRound;
   final List<String> revoteCandidates;
 
-  bool get isLobby => status == 'waiting' || status == 'starting';
+  bool get isLobby => status == 'WAITING' || status == 'STARTING';
   bool get isFinished =>
-      status == 'finished' || status == 'game_over' || status == 'cancelled';
+      status == 'GAME_OVER' || status == 'CANCELLED';
   bool get canLeaveViaServer =>
-      status == 'starting' ||
-      status == 'night' ||
-      status == 'day' ||
-      status == 'discussion' ||
-      status == 'voting' || status == 'revote';
+      status == 'STARTING' ||
+      status == 'ROLE_REVEAL' ||
+      status == 'NIGHT' ||
+      status == 'DAY' ||
+      status == 'DISCUSSION' ||
+      status == 'VOTING' ||
+      status == 'VOTE_RESULT' ||
+      status == 'RESOLUTION';
 
   factory MafiaGame.fromMap(Map<String, dynamic> map, {required String id}) {
     return MafiaGame(
       id: id,
       groupId: map['groupId'] as String? ?? '',
       createdBy: map['createdBy'] as String? ?? '',
-      status: map['status'] as String? ?? 'waiting',
-      currentPhase: map['currentPhase'] as String? ?? 'waiting',
+      status: map['status'] as String? ?? 'WAITING',
+      currentPhase: map['currentPhase'] as String? ?? 'WAITING',
       playersCount: (map['playersCount'] as num?)?.toInt() ?? 0,
       minPlayers: (map['minPlayers'] as num?)?.toInt() ?? 4,
       maxPlayers: (map['maxPlayers'] as num?)?.toInt() ?? 8,
@@ -80,9 +87,12 @@ final class MafiaGame {
       winner: map['winner'] as String?,
       countdownEndsAt: _date(map['countdownEndsAt']),
       phaseEndsAt: _date(map['phaseEndsAt']),
+      serverStartedAt: _date(map['serverStartedAt']),
+      serverEndsAt: _date(map['serverEndsAt']),
       startedAt: _date(map['startedAt']),
       endedAt: _date(map['endedAt']),
       currentSpeakerId: map['currentSpeakerId'] as String?,
+      voteRound: (map['voteRound'] as num?)?.toInt() ?? 1,
       revoteCandidates: (map['revoteCandidates'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(growable: false),

@@ -492,6 +492,9 @@ void main() {
         MediaUploadPhase.uploading,
       );
 
+      // The provider runs an async ready-media pre-check before starting the
+      // upload; give it a turn so onProgress is registered before driving ticks.
+      await pumpEventQueue();
       repository.emitProgress(0.2);
       repository.emitProgress(0.55);
       repository.emitProgress(0.9);
@@ -740,6 +743,12 @@ final class _FakeChatRepository implements ChatRepository {
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
   }) async => const FailureResult(NetworkError());
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => const Success(null);
 }
 
 /// Lets tests drive upload progress without completing until asked.

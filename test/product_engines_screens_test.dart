@@ -38,12 +38,12 @@ import 'authentication_test_support.dart';
 
 void main() {
   test('mafia leave copy matches server-supported statuses only', () {
-    expect(MafiaLeaveCopy.canLeave('waiting'), isFalse);
-    expect(MafiaLeaveCopy.canLeave('starting'), isTrue);
-    expect(MafiaLeaveCopy.canLeave('night'), isTrue);
-    expect(MafiaLeaveCopy.canLeave('execution'), isFalse);
-    expect(MafiaLeaveCopy.bodyFor('night'), contains('eliminated'));
-    expect(MafiaLeaveCopy.bodyFor('starting'), contains('cancelled'));
+    expect(MafiaLeaveCopy.canLeave('WAITING'), isFalse);
+    expect(MafiaLeaveCopy.canLeave('STARTING'), isTrue);
+    expect(MafiaLeaveCopy.canLeave('NIGHT'), isTrue);
+    expect(MafiaLeaveCopy.canLeave('GAME_OVER'), isFalse);
+    expect(MafiaLeaveCopy.bodyFor('NIGHT'), contains('eliminated'));
+    expect(MafiaLeaveCopy.bodyFor('STARTING'), contains('cancelled'));
   });
 
   testWidgets('achievements page shows locked and unlocked items', (
@@ -110,7 +110,7 @@ void main() {
     tester,
   ) async {
     final auth = await _auth();
-    final repository = _FakeMafiaRepository(status: 'night', phase: 'night');
+    final repository = _FakeMafiaRepository(status: 'NIGHT', phase: 'NIGHT');
     final mafia = MafiaProvider(repository: repository);
     addTearDown(mafia.dispose);
     addTearDown(auth.dispose);
@@ -130,7 +130,7 @@ void main() {
     await tester.tap(find.text(MafiaLeaveCopy.leave));
     await tester.pump();
     expect(find.text(MafiaLeaveCopy.title), findsOneWidget);
-    expect(find.text(MafiaLeaveCopy.bodyFor('night')), findsOneWidget);
+    expect(find.text(MafiaLeaveCopy.bodyFor('NIGHT')), findsOneWidget);
     await tester.tap(find.text(MafiaLeaveCopy.confirm));
     await tester.pump();
     expect(repository.leaveCalls, 1);
@@ -392,8 +392,8 @@ final class _FakeAchievementRepository implements AchievementRepository {
 
 final class _FakeMafiaRepository implements MafiaRepository {
   _FakeMafiaRepository({
-    this.status = 'waiting',
-    this.phase = 'waiting',
+    this.status = 'WAITING',
+    this.phase = 'WAITING',
   });
 
   final String status;
@@ -474,7 +474,7 @@ final class _FakeMafiaRepository implements MafiaRepository {
             createdBy: 'alice',
             status: status,
             currentPhase: phase,
-            playersCount: status == 'waiting' ? 1 : 5,
+            playersCount: status == 'WAITING' ? 1 : 5,
             minPlayers: 4,
             maxPlayers: 8,
           ),
@@ -660,8 +660,10 @@ final class _ExpiredEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -687,12 +689,45 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async => const Success('comment-1');
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      const Stream<Result<List<EventComment>>>.empty();
 
   @override
   Future<Result<void>> join(String eventId) async => const Success<void>(null);

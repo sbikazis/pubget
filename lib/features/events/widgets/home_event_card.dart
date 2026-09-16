@@ -555,7 +555,7 @@ class HomeEventsSection extends StatelessWidget {
         final bLeft = b.remaining(now)?.inSeconds ?? 1 << 30;
         return aLeft.compareTo(bLeft);
       });
-    return ranked.take(2).toList(growable: false);
+    return ranked.take(3).toList(growable: false);
   }
 
   @override

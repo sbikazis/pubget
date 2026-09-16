@@ -10,6 +10,8 @@ const PUSH_TYPES = new Set([
   "edit_published",
   "edit_failed",
   "edit_needs_review",
+  "event_starting",
+  "event_result_available",
 ]);
 
 function validId(value) {

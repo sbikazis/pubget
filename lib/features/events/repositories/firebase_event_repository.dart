@@ -98,14 +98,24 @@ final class FirebaseEventRepository implements EventRepository {
   }
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) => _query(
-    _events
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) => _guard(() async {
+    var query = _events
         .where('scope', isEqualTo: 'global')
         .where('status', isEqualTo: 'ACTIVE')
         .orderBy('participantsCount', descending: true)
         .orderBy('endAt')
-        .limit(limit),
-  );
+        .limit(limit);
+    if (after != null) {
+      query = query.startAfterDocument(await _events.doc(after.id).get());
+    }
+    final snapshot = await query.get();
+    return snapshot.docs
+        .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) =>
@@ -119,13 +129,23 @@ final class FirebaseEventRepository implements EventRepository {
       );
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) => _query(
-    _events
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) => _guard(() async {
+    var query = _events
         .where('scope', isEqualTo: 'global')
         .where('status', whereIn: <String>['ENDED', 'ARCHIVED'])
         .orderBy('endAt', descending: true)
-        .limit(limit),
-  );
+        .limit(limit);
+    if (after != null) {
+      query = query.startAfterDocument(await _events.doc(after.id).get());
+    }
+    final snapshot = await query.get();
+    return snapshot.docs
+        .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -189,6 +209,95 @@ final class FirebaseEventRepository implements EventRepository {
     if (!snapshot.exists || snapshot.data() == null) return null;
     return EventResponse.fromMap(snapshot.data()!, userId: userId);
   });
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('previewEvent')
+            .call(<String, dynamic>{'eventId': eventId});
+        return EventPreview.fromMap(
+          Map<String, dynamic>.from(result.data as Map),
+        );
+      });
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('resolveEvent')
+        .call(<String, dynamic>{
+      'eventId': eventId,
+      if (winnerOptionId != null) 'winnerOptionId': winnerOptionId,
+      if (winnerIds?.isNotEmpty ?? false) 'winnerIds': winnerIds,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return EventResult.fromMap(data['result'] is Map
+        ? Map<String, dynamic>.from(data['result'] as Map)
+        : null);
+  });
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('getEventAnalytics')
+            .call(<String, dynamic>{'eventId': eventId});
+        return EventAnalytics.fromMap(
+          Map<String, dynamic>.from(result.data as Map),
+        );
+      });
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('addEventComment')
+        .call(<String, dynamic>{'eventId': eventId, 'text': text});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return data['commentId'] as String? ?? '';
+  });
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) => _call('reactToEvent', {
+    'eventId': eventId,
+    'reaction': reaction,
+  });
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) {
+    return _events
+        .doc(eventId)
+        .collection('comments')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map(
+          (snapshot) => Success<List<EventComment>>(
+            snapshot.docs
+                .where((doc) => doc.data()['deletedAt'] == null)
+                .map(
+                  (doc) => EventComment.fromMap(
+                    doc.data(),
+                    id: doc.id,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .handleError(
+          (Object error) =>
+              FailureResult<List<EventComment>>(_eventFailure(error)),
+        );
+  }
 
   Future<Result<List<PubgetEvent>>> _query(Query<Map<String, dynamic>> query) =>
       _guard(() async {

@@ -65,6 +65,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   late final UserStickerStore _userStickers =
       widget.userStickerStore ?? UserStickerStore();
   bool _initialized = false;
+  bool _reopenScheduled = false;
   bool _wasNearBottom = true;
   int _lastSeenMessageCount = 0;
   int _lastMarkedReadCount = -1;
@@ -102,7 +103,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   void dispose() {
-    unawaited(_chatProvider?.leaveGroup());
+    unawaited(_chatProvider?.leaveGroup(groupId: widget.groupId));
     _scrollController.removeListener(_onScroll);
     _controller.dispose();
     _focusNode.dispose();
@@ -115,6 +116,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final groupProvider = context.watch<GroupProvider>();
     final group = groupProvider.group;
     final contrast = ChatContrastTheme.fromBackground(group?.chatBackgroundUrl);
+    // Self-heal the shared (app-scoped) ChatProvider after a stacked chat page
+    // replaced our session: if we became visible again but no longer own a
+    // session for [widget.groupId], reopen it. Safe because open() early-returns
+    // when the same group+user is already active.
+    final chatProvider = context.read<ChatProvider>();
+    if (chatProvider.groupId != widget.groupId && !_reopenScheduled) {
+      _reopenScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _reopenScheduled = false;
+        if (!mounted) return;
+        final user = context.read<AuthProvider>().currentUser;
+        if (user == null) return;
+        unawaited(
+          context.read<ChatProvider>().open(
+            groupId: widget.groupId,
+            currentUserId: user.id,
+          ),
+        );
+      });
+    }
     return Scaffold(
       endDrawer: _GroupMenu(
         groupId: widget.groupId,
@@ -191,18 +212,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           _MessageList(
                             chat: chat,
                             contrast: contrast,
-                            currentUserId: context
-                                    .read<AuthProvider>()
-                                    .currentUser
-                                    ?.id ??
+                            currentUserId:
+                                context.read<AuthProvider>().currentUser?.id ??
                                 '',
                             controller: _scrollController,
                             stars: _stars,
                             onAction: _showActions,
                             onSwipeReply: (message) {
-                              context
-                                  .read<ChatProvider>()
-                                  .setReplyTarget(message);
+                              context.read<ChatProvider>().setReplyTarget(
+                                message,
+                              );
                             },
                             onAvatarTap: (message) {
                               final uid = message.senderId.trim();
@@ -506,16 +525,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final viewportBottom = viewportTop + viewportObject.size.height;
     // Message rows are keyed by message id, so use their actual render bounds
     // instead of estimating visibility from variable bubble heights.
-    return chat.messages.where((message) {
-      final context = _messageKeys[message.id]?.currentContext;
-      final renderObject = context?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-      final topLeft = renderObject.localToGlobal(Offset.zero);
-      final bottomRight = renderObject.localToGlobal(
-        renderObject.size.bottomRight(Offset.zero),
-      );
-      return bottomRight.dy >= viewportTop && topLeft.dy <= viewportBottom;
-    }).toList(growable: false);
+    return chat.messages
+        .where((message) {
+          final context = _messageKeys[message.id]?.currentContext;
+          final renderObject = context?.findRenderObject();
+          if (renderObject is! RenderBox || !renderObject.hasSize) return false;
+          final topLeft = renderObject.localToGlobal(Offset.zero);
+          final bottomRight = renderObject.localToGlobal(
+            renderObject.size.bottomRight(Offset.zero),
+          );
+          return bottomRight.dy >= viewportTop && topLeft.dy <= viewportBottom;
+        })
+        .toList(growable: false);
   }
 
   void _scrollToLatest() {
@@ -623,7 +644,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final permissions = context.read<GroupProvider>().viewerPermissions;
     final canDelete =
         isMine || permissions.contains(GroupPermission.deleteMessages);
-    final canPin = permissions.contains(GroupPermission.pinOwnMessages);
+    final canPin =
+        permissions.contains(GroupPermission.deleteMessages) ||
+        (isMine && permissions.contains(GroupPermission.pinOwnMessages));
     final canEdit =
         isMine &&
         !message.isDeleted &&
@@ -665,6 +688,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
       canDelete: canDelete && !message.isDeleted,
       canPin: canPin && !message.isDeleted,
       canReport: !isMine && !message.isDeleted,
+      canReact: message.sendState == ChatSendState.sent,
       isStarred: _stars.isStarred(message.id),
     );
     if (!mounted || result == null) return;
@@ -687,7 +711,20 @@ class _GroupChatPageState extends State<GroupChatPage> {
         chat.setReplyTarget(message);
         return;
       case ChatMessageAction.copy:
-        await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+        try {
+          await Clipboard.setData(ClipboardData(text: message.text ?? ''));
+        } catch (_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppStrings.of(
+                  context,
+                ).pick('Could not copy message', 'تعذّر نسخ الرسالة'),
+              ),
+            ),
+          );
+        }
         return;
       case ChatMessageAction.forward:
         await _forwardMessage(message);
@@ -757,15 +794,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _reportMessage(ChatMessage message) async {
+    final copy = AppStrings.of(context);
     final reason = await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
-        title: const Text('Report message'),
+        title: Text(copy.reportMessage),
         children: reportReasons
             .map(
               (value) => SimpleDialogOption(
                 onPressed: () => Navigator.pop(dialogContext, value),
-                child: Text(value),
+                child: Text(copy.reportReasonLabel(value)),
               ),
             )
             .toList(growable: false),
@@ -778,14 +816,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
         var submitting = false;
         return StatefulBuilder(
           builder: (context, setState) => AlertDialog(
-            title: const Text('Confirm report'),
-            content: Text('Submit this message report for “$reason”?'),
+            title: Text(copy.confirmReport),
+            content: Text(
+              copy.confirmReportContent(copy.reportReasonLabel(reason)),
+            ),
             actions: <Widget>[
               TextButton(
                 onPressed: submitting
                     ? null
                     : () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
+                child: Text(copy.cancel),
               ),
               FilledButton(
                 key: const Key('confirm-report'),
@@ -809,7 +849,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Submit report'),
+                    : Text(copy.submitReport),
               ),
             ],
           ),
@@ -817,12 +857,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
       },
     );
     if (confirmed == null || !mounted) return;
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          confirmed ? 'Report submitted' : 'Unable to submit report',
-        ),
+        content: Text(confirmed ? copy.reportSubmitted : copy.reportFailed),
       ),
     );
   }
@@ -864,6 +901,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _editMessage(ChatMessage message) async {
+    final copy = AppStrings.of(context);
     final controller = TextEditingController(text: message.text ?? '');
     final next = await showDialog<bool>(
       context: context,
@@ -871,21 +909,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
         var saving = false;
         return StatefulBuilder(
           builder: (context, setState) => AlertDialog(
-            title: const Text('Edit message'),
+            title: Text(copy.editMessage),
             content: TextField(
               key: const Key('chat-edit-field'),
               controller: controller,
               autofocus: true,
               maxLines: 4,
               enabled: !saving,
-              decoration: const InputDecoration(
-                hintText: 'Update your message',
-              ),
+              decoration: InputDecoration(hintText: copy.updateYourMessage),
             ),
             actions: <Widget>[
               TextButton(
                 onPressed: saving ? null : () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
+                child: Text(copy.cancel),
               ),
               TextButton(
                 onPressed: () async {
@@ -906,7 +942,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save'),
+                    : Text(copy.save),
               ),
             ],
           ),
@@ -917,7 +953,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     if (next == null || !mounted || next) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Unable to edit message')));
+    ).showSnackBar(SnackBar(content: Text(copy.messageEditFailed)));
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
@@ -1038,13 +1074,9 @@ class _MessageList extends StatelessWidget {
       final prev = i > 0 ? messages[i - 1] : null;
       final next = i + 1 < messages.length ? messages[i + 1] : null;
       final samePrev =
-          prev != null &&
-          _sameChatCluster(prev, message) &&
-          !message.isDeleted;
+          prev != null && _sameChatCluster(prev, message) && !message.isDeleted;
       final sameNext =
-          next != null &&
-          _sameChatCluster(message, next) &&
-          !next.isDeleted;
+          next != null && _sameChatCluster(message, next) && !next.isDeleted;
       rows.add(
         _ChatListRow.message(
           message,
@@ -1352,8 +1384,15 @@ class _GroupMenu extends StatelessWidget {
                 icon: Icons.auto_awesome_mosaic_outlined,
                 label: copy.eventCenter,
                 onTap: () {
-                  Navigator.pop(context);
-                  EventCenterSheet.show(context, groupId: groupId);
+                  // closeEndDrawer is the safe API for Scaffold endDrawer.
+                  Scaffold.of(context).closeEndDrawer();
+                  // Show the sheet after the drawer close animation begins so
+                  // the context remains mounted and the sheet renders above the
+                  // drawer overlay cleanly.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!context.mounted) return;
+                    EventCenterSheet.show(context, groupId: groupId);
+                  });
                 },
               ),
               if (canManageSettings || isFounder) ...[
@@ -1368,13 +1407,19 @@ class _GroupMenu extends StatelessWidget {
                 _MenuTile(
                   icon: Icons.wallpaper_outlined,
                   label: copy.chatBackground,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ChatBackgroundPickerPage(
-                        current: current?.chatBackgroundUrl,
-                      ),
-                    ),
-                  ),
+                  onTap: () {
+                    Scaffold.of(context).closeEndDrawer();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ChatBackgroundPickerPage(
+                            current: current?.chatBackgroundUrl,
+                          ),
+                        ),
+                      );
+                    });
+                  },
                 ),
               ],
               if (canManageMembers)
@@ -1561,14 +1606,14 @@ class _ReplyComposerBar extends StatelessWidget {
         dense: true,
         leading: const Icon(Icons.reply),
         title: Text(
-          'Replying to ${message.senderName}',
+          AppStrings.of(context).replyingToLabel(message.senderName),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: IconButton(
           key: const Key('reply-composer-clear'),
-          tooltip: 'Cancel reply',
+          tooltip: AppStrings.of(context).cancelReply,
           onPressed: onClear,
           icon: const Icon(Icons.close),
         ),
@@ -1603,8 +1648,9 @@ class _ForwardSheet extends StatelessWidget {
       child: ListenableBuilder(
         listenable: Listenable.merge(<Listenable>[groups, chats]),
         builder: (context, _) {
+          final copy = AppStrings.of(context);
           final destinations = <Widget>[
-            const ListTile(title: Text('Forward to')),
+            ListTile(title: Text(copy.forwardTo)),
             ...groups.joinedGroups
                 .where((group) => group.id != currentGroupId)
                 .map(
@@ -1629,9 +1675,7 @@ class _ForwardSheet extends StatelessWidget {
             ),
           ];
           if (destinations.length == 1) {
-            destinations.add(
-              const ListTile(title: Text('No other groups or chats available')),
-            );
+            destinations.add(ListTile(title: Text(copy.noForwardTargets)));
           }
           return ListView(shrinkWrap: true, children: destinations);
         },

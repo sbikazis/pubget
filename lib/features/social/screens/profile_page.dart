@@ -21,11 +21,6 @@ import '../../economy/widgets/economy_widgets.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../fan_works/models/fan_work_lifecycle.dart';
-import '../../fan_works/models/fan_work_models.dart';
-import '../../fan_works/repositories/fan_work_repository.dart';
-import '../../fan_works/widgets/fan_work_widgets.dart';
-import '../../groups/models/group_models.dart';
-import '../../groups/repositories/group_repository.dart';
 import '../models/profile_section_privacy.dart';
 import '../models/profile_social_link.dart';
 import '../models/public_profile.dart';
@@ -82,41 +77,30 @@ class _ProfilePageState extends State<ProfilePage> {
     final currentUserId = context.watch<AuthProvider>().currentUser?.id;
     final profileId = widget.userId ?? currentUserId ?? '';
     final copy = AppStrings.of(context);
+    final public = profile.publicProfile;
+    final viewerUsername = public?.username?.trim();
+    final viewerTitle = (viewerUsername == null || viewerUsername.isEmpty)
+        ? (public?.primaryName() ?? copy.profile)
+        : '@$viewerUsername';
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(profile.isOwner ? copy.myProfile : copy.profile),
+        title: Text(profile.isOwner ? copy.myProfile : viewerTitle),
         actions: <Widget>[
-          if (profileId.isNotEmpty) ...<Widget>[
+          if (profile.isOwner && profileId.isNotEmpty)
             PubgetIconButton(
+              key: const Key('profile-manage-button'),
+              icon: Icons.more_vert_rounded,
+              tooltip: copy.manageProfile,
+              onPressed: () => _openManageSheet(context, profileId),
+            )
+          else if (profileId.isNotEmpty)
+            PubgetIconButton(
+              key: const Key('profile-share-button'),
               icon: Icons.share_outlined,
               tooltip: copy.shareProfile,
-              onPressed: () => PubgetLinks.share(
-                context,
-                url: PubgetLinks.profile(profileId),
-                title:
-                    profile.publicProfile?.primaryName() ??
-                    profile.ownProfile?.primaryName ??
-                    copy.profile,
-                type: 'profile',
-              ),
-            ),
-            PubgetIconButton(
-              icon: Icons.copy_outlined,
-              tooltip: copy.copyLink,
-              onPressed: () => PubgetLinks.copy(
-                context,
-                PubgetLinks.profile(profileId),
-                type: 'profile',
-              ),
-            ),
-          ],
-          if (profile.isOwner)
-            PubgetIconButton(
-              icon: Icons.edit_outlined,
-              tooltip: copy.editProfile,
-              onPressed: () => AppNavigation.go(context, '/profile/edit'),
+              onPressed: () => _openShareSheet(context, profileId),
             ),
         ],
       ),
@@ -151,6 +135,166 @@ class _ProfilePageState extends State<ProfilePage> {
     await context.read<ProfileProvider>().load(
       viewerId: viewerId,
       profileId: profileId,
+    );
+  }
+}
+
+void _openManageSheet(BuildContext context, String profileId) {
+  final copy = AppStrings.of(context);
+  final profileName =
+      context.read<ProfileProvider>().publicProfile?.primaryName() ??
+      context.read<ProfileProvider>().ownProfile?.primaryName ??
+      copy.profile;
+  final url = PubgetLinks.profile(profileId);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          _ManageSheetTile(
+            key: const Key('profile-manage-edit'),
+            icon: Icons.edit_outlined,
+            label: copy.editProfile,
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/profile/edit');
+            },
+          ),
+          _ManageSheetTile(
+            icon: Icons.workspace_premium_outlined,
+            label: copy.drawerPremium,
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/premium');
+            },
+          ),
+          _ManageSheetTile(
+            icon: Icons.storefront_outlined,
+            label: copy.store,
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/store');
+            },
+          ),
+          _ManageSheetTile(
+            icon: Icons.settings_outlined,
+            label: copy.settings,
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/settings');
+            },
+          ),
+          _ManageSheetTile(
+            key: const Key('profile-manage-copy'),
+            icon: Icons.copy_outlined,
+            label: copy.copyLink,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              PubgetLinks.copy(context, url, type: 'profile');
+            },
+          ),
+          _ManageSheetTile(
+            key: const Key('profile-manage-share'),
+            icon: Icons.share_outlined,
+            label: copy.shareProfile,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              PubgetLinks.share(
+                context,
+                url: url,
+                title: profileName,
+                type: 'profile',
+              );
+            },
+          ),
+          _ManageSheetTile(
+            icon: Icons.person_add_alt_1_outlined,
+            label:
+                '${copy.friendRequests} (${context.read<SocialProvider>().incomingRequests.length})',
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/friend-requests');
+            },
+          ),
+          _ManageSheetTile(
+            icon: Icons.event_note_outlined,
+            label: 'My Events',
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await AppNavigation.go(context, '/events');
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _openShareSheet(BuildContext context, String profileId) {
+  final copy = AppStrings.of(context);
+  final url = PubgetLinks.profile(profileId);
+  final title =
+      context.read<ProfileProvider>().publicProfile?.primaryName() ??
+      copy.profile;
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          _ManageSheetTile(
+            key: const Key('profile-share-share'),
+            icon: Icons.share_outlined,
+            label: copy.shareProfile,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              PubgetLinks.share(
+                context,
+                url: url,
+                title: title,
+                type: 'profile',
+              );
+            },
+          ),
+          _ManageSheetTile(
+            key: const Key('profile-share-copy'),
+            icon: Icons.copy_outlined,
+            label: copy.copyLink,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              PubgetLinks.copy(context, url, type: 'profile');
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ManageSheetTile extends StatelessWidget {
+  const _ManageSheetTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    super.key,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon, color: AppColors.royalPurple),
+      title: Text(label),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 }
@@ -294,6 +438,8 @@ class _ProfileLifeReport extends StatelessWidget {
           data: data,
           isOwner: profile.isOwner,
           profileId: profileId,
+          privacy: data.privacy,
+          activityVisible: profile.isOwner || data.privacy.activity,
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -347,15 +493,8 @@ class _ProfileLifeReport extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: AppSpacing.xl),
-              _AchievementsEntryButton(
-                isOwner: profile.isOwner,
-                displayName: data.name,
-                profileId: profileId,
-              ),
-              const SizedBox(height: AppSpacing.md),
               if (profile.isOwner)
-                _OwnerQuickActions(social: social, economy: economy)
+                const SizedBox.shrink()
               else
                 _VisitorActions(
                   profileId: profileId,
@@ -363,37 +502,62 @@ class _ProfileLifeReport extends StatelessWidget {
                   onRespectChanged: onRespectChanged,
                 ),
               const SizedBox(height: AppSpacing.xl),
-              if (profile.isOwner || data.privacy.favorites)
-                _FavoritesSection(
-                  profileId: profileId,
-                  isOwner: profile.isOwner,
-                  labels: data.favoriteLabels,
+              if (profile.isOwner || data.privacy.achievements)
+                _CollapsedSectionButton(
+                  key: const Key('profile-achievements-entry'),
+                  icon: Icons.emoji_events_outlined,
+                  title: AchievementCopy.of(context).entryLabel(
+                    isOwner: profile.isOwner,
+                    displayName: data.name,
+                  ),
+                  onTap: () => _openAchievements(
+                    context,
+                    profileId: profileId,
+                    displayName: data.name,
+                    isOwner: profile.isOwner,
+                  ),
                 ),
+              if (profile.isOwner || data.privacy.favorites) ...[
+                const SizedBox(height: AppSpacing.md),
+                _CollapsedSectionButton(
+                  key: const Key('profile-favorites-entry'),
+                  icon: Icons.favorite_outline_rounded,
+                  title: 'Favorite anime',
+                  onTap: () => AppNavigation.go(
+                    context,
+                    profileId.isEmpty
+                        ? '/anime/me'
+                        : '/anime/me?uid=${Uri.encodeComponent(profileId)}',
+                  ),
+                ),
+              ],
               if (profile.isOwner || data.privacy.works) ...[
-                const SizedBox(height: AppSpacing.xl),
-                _CreatorEdits(profileId: profileId, isOwner: profile.isOwner),
-                const SizedBox(height: AppSpacing.xl),
-                _CreatorFanWorks(
-                  profileId: profileId,
-                  isOwner: profile.isOwner,
+                const SizedBox(height: AppSpacing.md),
+                _CollapsedSectionButton(
+                  key: const Key('profile-fan-works-entry'),
+                  icon: Icons.brush_outlined,
+                  title: FanWorkStrings.feedTitle,
+                  onTap: () => AppNavigation.go(
+                    context,
+                    '/fan-works-creator?uid=${Uri.encodeComponent(profileId)}',
+                  ),
                 ),
               ],
               if (profile.isOwner || data.privacy.groups) ...[
-                const SizedBox(height: AppSpacing.xl),
-                _GroupsSection(profileId: profileId, isOwner: profile.isOwner),
-              ],
-              if (profile.isOwner || data.privacy.achievements) ...[
-                const SizedBox(height: AppSpacing.xl),
-                _AchievementsSection(
-                  isOwner: profile.isOwner,
-                  profileId: profileId,
-                  displayName: data.name,
+                const SizedBox(height: AppSpacing.md),
+                _CollapsedSectionButton(
+                  key: const Key('profile-groups-entry'),
+                  icon: Icons.groups_outlined,
+                  title: 'Groups',
+                  onTap: () => AppNavigation.go(
+                    context,
+                    '/profile-groups?uid=${Uri.encodeComponent(profileId)}',
+                  ),
                 ),
               ],
-              if ((profile.isOwner || data.privacy.activity) &&
-                  data.createdAt != null) ...[
+              if (profile.isOwner || data.privacy.works) ...[
                 const SizedBox(height: AppSpacing.xl),
-                _ActivitySection(createdAt: data.createdAt!),
+                _EditsGrid(profileId: profileId, isOwner: profile.isOwner),
               ],
             ],
           ),
@@ -408,15 +572,20 @@ class _ProfileHero extends StatelessWidget {
     required this.data,
     required this.isOwner,
     required this.profileId,
+    required this.privacy,
+    required this.activityVisible,
   });
 
   final _ProfileViewData data;
   final bool isOwner;
   final String profileId;
+  final ProfileSectionPrivacy privacy;
+  final bool activityVisible;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final copy = AppStrings.of(context);
     return Column(
       children: <Widget>[
         SizedBox(
@@ -437,12 +606,31 @@ class _ProfileHero extends StatelessWidget {
                       ],
                     ),
                   ),
-                  child: data.coverUrl == null || data.coverUrl!.isEmpty
-                      ? CustomPaint(painter: _CoverPatternPainter())
-                      : AppImageLoader(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      if (data.coverUrl == null || data.coverUrl!.isEmpty)
+                        CustomPaint(painter: _CoverPatternPainter())
+                      else
+                        AppImageLoader(
                           imageUrl: data.coverUrl!,
                           fit: BoxFit.cover,
                         ),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              Colors.transparent,
+                              AppColors.darkBackground,
+                            ],
+                            stops: <double>[0.55, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Positioned(
@@ -499,14 +687,23 @@ class _ProfileHero extends StatelessWidget {
                               children: <Widget>[
                                 if (data.age != null)
                                   _MetaChip(
+                                    key: const Key('profile-meta-age'),
                                     icon: Icons.cake_outlined,
                                     label: '${data.age}',
                                   ),
                                 if (data.country != null &&
                                     data.country!.trim().isNotEmpty)
                                   _MetaChip(
+                                    key: const Key('profile-meta-country'),
                                     icon: Icons.public_outlined,
                                     label: data.country!.trim(),
+                                  ),
+                                if (activityVisible &&
+                                    data.createdAt != null)
+                                  _MetaChip(
+                                    key: const Key('profile-meta-member'),
+                                    icon: Icons.schedule_outlined,
+                                    label: _memberSince(data.createdAt!),
                                   ),
                               ],
                             ),
@@ -529,16 +726,21 @@ class _ProfileHero extends StatelessWidget {
               if (data.bio != null && data.bio!.trim().isNotEmpty)
                 Text(
                   data.bio!.trim(),
+                  key: const Key('profile-bio'),
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color: AppColors.lightText,
+                    color: AppColors.darkText,
                     height: 1.35,
                   ),
                 )
               else if (isOwner)
-                Text(
-                  'Add a short bio so people can meet the real you.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppColors.lightTextMuted,
+                Padding(
+                  padding: EdgeInsets.zero,
+                  child: PubgetSecondaryButton(
+                    key: const Key('profile-bio-invite'),
+                    onPressed: () => AppNavigation.go(context, '/profile/edit'),
+                    semanticLabel: copy.editProfile,
+                    leadingIcon: Icons.edit_outlined,
+                    child: const Text('Add a bio so people can meet you'),
                   ),
                 ),
               _ProfileAchievementStrip(
@@ -555,6 +757,12 @@ class _ProfileHero extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  static String _memberSince(DateTime createdAt) {
+    final local = createdAt.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    return 'Since ${local.year}-$month';
   }
 }
 
@@ -607,74 +815,6 @@ class _ProfileAchievementStrip extends StatelessWidget {
   }
 }
 
-class _AchievementsEntryButton extends StatelessWidget {
-  const _AchievementsEntryButton({
-    required this.isOwner,
-    required this.displayName,
-    required this.profileId,
-  });
-
-  final bool isOwner;
-  final String displayName;
-  final String profileId;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AchievementCopy.of(context);
-    final label = copy.entryLabel(isOwner: isOwner, displayName: displayName);
-    return SizedBox(
-      width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          gradient: LinearGradient(
-            colors: <Color>[
-              AppColors.royalPurple.withValues(alpha: 0.9),
-              AppColors.royalPurpleDark,
-            ],
-          ),
-          border: Border.all(color: AppColors.gold.withValues(alpha: 0.55)),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: const Key('profile-achievements-entry'),
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            onTap: () => _openAchievements(
-              context,
-              profileId: profileId,
-              displayName: displayName,
-              isOwner: isOwner,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.md,
-              ),
-              child: Row(
-                children: <Widget>[
-                  const Icon(Icons.emoji_events, color: AppColors.gold),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: AppColors.gold),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 void _openAchievements(
   BuildContext context, {
   required String profileId,
@@ -688,8 +828,68 @@ void _openAchievements(
   );
 }
 
+class _CollapsedSectionButton extends StatelessWidget {
+  const _CollapsedSectionButton({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    super.key,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 56,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.darkSurfaceMuted,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: AppColors.darkOutline.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Row(
+                children: <Widget>[
+                  Icon(icon, color: AppColors.royalPurpleLight),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppColors.darkText,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.darkTextMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
+  const _MetaChip({required this.icon, required this.label, super.key});
 
   final IconData icon;
   final String label;
@@ -729,7 +929,9 @@ class _QuoteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.royalPurplePale.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.royalPurpleLight.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: AppColors.royalPurpleLight.withValues(alpha: 0.35),
+        ),
       ),
       child: Text(
         '“$quote”',
@@ -757,69 +959,6 @@ class _CoverPatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _OwnerQuickActions extends StatelessWidget {
-  const _OwnerQuickActions({required this.social, required this.economy});
-
-  final SocialProvider social;
-  final EconomyProvider? economy;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AppStrings.of(context);
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      children: <Widget>[
-        _ActionChipButton(
-          key: const Key('profile-edit-chip'),
-          icon: Icons.edit_outlined,
-          label: copy.editProfile,
-          onTap: () => AppNavigation.go(context, '/profile/edit'),
-        ),
-        _ActionChipButton(
-          icon: Icons.person_add_alt_1_outlined,
-          label: '${copy.friendRequests} (${social.incomingRequests.length})',
-          onTap: () => AppNavigation.go(context, '/friend-requests'),
-        ),
-        if (economy != null) ...[
-          _ActionChipButton(
-            icon: Icons.storefront_outlined,
-            label: copy.store,
-            onTap: () => AppNavigation.go(context, '/store'),
-          ),
-          _ActionChipButton(
-            icon: Icons.workspace_premium_outlined,
-            label: copy.drawerPremium,
-            onTap: () => AppNavigation.go(context, '/premium'),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _ActionChipButton extends StatelessWidget {
-  const _ActionChipButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    super.key,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: Icon(icon, size: 16),
-      label: Text(label),
-      onPressed: onTap,
-    );
-  }
 }
 
 class _VisitorActions extends StatelessWidget {
@@ -879,250 +1018,18 @@ class _VisitorActions extends StatelessWidget {
   }
 }
 
-class _FavoritesSection extends StatelessWidget {
-  const _FavoritesSection({
-    required this.profileId,
-    required this.isOwner,
-    required this.labels,
-  });
-
-  final String profileId;
-  final bool isOwner;
-  final List<String> labels;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        ProfileSectionHeader(
-          title: 'Favorite anime',
-          onViewAll: () => AppNavigation.go(
-            context,
-            profileId.isEmpty
-                ? '/anime/me'
-                : '/anime/me?uid=${Uri.encodeComponent(profileId)}',
-          ),
-        ),
-        if (labels.isEmpty)
-          PubgetEmptyState(
-            compact: true,
-            icon: Icons.movie_outlined,
-            title: isOwner
-                ? 'No favorite anime yet'
-                : 'No favorites to show',
-            message: isOwner
-                ? 'Discover anime and pin what you love.'
-                : 'This collector is still exploring.',
-            action: isOwner
-                ? PubgetTextButton(
-                    onPressed: () => AppNavigation.go(context, '/anime'),
-                    semanticLabel: 'Discover anime',
-                    child: const Text('Discover anime'),
-                  )
-                : null,
-          )
-        else
-          SizedBox(
-            height: 44,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: labels.length,
-              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-              itemBuilder: (context, index) =>
-                  PubgetBadge(label: labels[index]),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _CreatorEdits extends StatefulWidget {
-  const _CreatorEdits({required this.profileId, required this.isOwner});
-  final String profileId;
-  final bool isOwner;
-
-  @override
-  State<_CreatorEdits> createState() => _CreatorEditsState();
-}
-
-class _CreatorEditsState extends State<_CreatorEdits> {
-  late final Future<Result<List<Edit>>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    try {
-      _future = context.read<EditsRepository>().getCreatorEdits(
-        widget.profileId,
-      );
-    } on ProviderNotFoundException {
-      _future = Future<Result<List<Edit>>>.value(
-        const Success<List<Edit>>(<Edit>[]),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<Result<List<Edit>>>(
-    future: _future,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const SizedBox(height: 1);
-      }
-      if (snapshot.hasError || snapshot.data is FailureResult) {
-        return PubgetErrorState(
-          message: 'Could not load edits.',
-          onRetry: () => setState(() {}),
-        );
-      }
-      final edits = snapshot.data?.valueOrNull ?? const <Edit>[];
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          ProfileSectionHeader(
-            title: 'Edits',
-            onViewAll: () => AppNavigation.go(context, '/edits'),
-          ),
-          if (edits.isEmpty)
-            PubgetEmptyState(
-              compact: true,
-              icon: Icons.movie_creation_outlined,
-              title: widget.isOwner
-                  ? 'No edits published yet'
-                  : 'No edits to show',
-              message: widget.isOwner
-                  ? 'Cut a scene and publish your first edit.'
-                  : 'This creator has not shared edits yet.',
-              action: widget.isOwner
-                  ? PubgetTextButton(
-                      onPressed: () => AppNavigation.go(context, '/edits'),
-                      semanticLabel: 'Open edits',
-                      child: const Text('Create an edit'),
-                    )
-                  : null,
-            )
-          else
-            SizedBox(
-              height: 130,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: edits.take(12).length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(width: AppSpacing.sm),
-                itemBuilder: (context, index) => SizedBox(
-                  width: 100,
-                  child: PubgetCard(
-                    onTap: () => AppNavigation.go(context, '/edits'),
-                    child: AppImageLoader(
-                      imageUrl: edits[index].thumbnailUrl,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      );
-    },
-  );
-}
-
-class _CreatorFanWorks extends StatefulWidget {
-  const _CreatorFanWorks({required this.profileId, required this.isOwner});
-  final String profileId;
-  final bool isOwner;
-
-  @override
-  State<_CreatorFanWorks> createState() => _CreatorFanWorksState();
-}
-
-class _CreatorFanWorksState extends State<_CreatorFanWorks> {
-  late final Future<Result<FanWorkListPage>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    try {
-      _future = context.read<FanWorkRepository>().getCreatorWorks(
-        creatorId: widget.profileId,
-        limit: 12,
-      );
-    } on ProviderNotFoundException {
-      _future = Future<Result<FanWorkListPage>>.value(
-        const Success<FanWorkListPage>(
-          FanWorkListPage(items: <FanWork>[], hasMore: false),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      FutureBuilder<Result<FanWorkListPage>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const SizedBox(height: 1);
-          }
-          if (snapshot.hasError || snapshot.data is FailureResult) {
-            return const PubgetErrorState(
-              message: 'Could not load fan works.',
-            );
-          }
-          final works =
-              snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              ProfileSectionHeader(
-                title: FanWorkStrings.feedTitle,
-                onViewAll: () => AppNavigation.go(context, '/fan-works'),
-              ),
-              if (works.isEmpty)
-                PubgetEmptyState(
-                  compact: true,
-                  icon: Icons.brush_outlined,
-                  title: widget.isOwner
-                      ? 'No fan works yet'
-                      : 'No fan works to show',
-                  message: widget.isOwner
-                      ? 'Share a drawing, manga page, or story.'
-                      : 'This creator has not shared works yet.',
-                )
-              else
-                SizedBox(
-                  height: 180,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: works.take(12).length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(width: AppSpacing.sm),
-                    itemBuilder: (context, index) => SizedBox(
-                      width: 120,
-                      child: FanWorkPreviewCard(work: works[index]),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      );
-}
-
-class _GroupsSection extends StatefulWidget {
-  const _GroupsSection({required this.profileId, required this.isOwner});
+class _EditsGrid extends StatefulWidget {
+  const _EditsGrid({required this.profileId, required this.isOwner});
 
   final String profileId;
   final bool isOwner;
 
   @override
-  State<_GroupsSection> createState() => _GroupsSectionState();
+  State<_EditsGrid> createState() => _EditsGridState();
 }
 
-class _GroupsSectionState extends State<_GroupsSection> {
-  Future<Result<List<Group>>>? _future;
+class _EditsGridState extends State<_EditsGrid> {
+  Future<Result<List<Edit>>>? _future;
 
   @override
   void didChangeDependencies() {
@@ -1130,86 +1037,71 @@ class _GroupsSectionState extends State<_GroupsSection> {
     _future ??= _load();
   }
 
-  Future<Result<List<Group>>> _load() async {
+  Future<Result<List<Edit>>> _load() {
     try {
-      return context.read<GroupRepository>().listJoinedGroups(widget.profileId);
+      return context.read<EditsRepository>().getCreatorEdits(
+        widget.profileId,
+      );
     } on ProviderNotFoundException {
-      return const Success<List<Group>>(<Group>[]);
+      return Future<Result<List<Edit>>>.value(
+        const Success<List<Edit>>(<Edit>[]),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Result<List<Group>>>(
+    return FutureBuilder<Result<List<Edit>>>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const SizedBox(height: 1);
         }
-        final groups = snapshot.data?.valueOrNull ?? const <Group>[];
+        if (snapshot.hasError || snapshot.data is FailureResult) {
+          return PubgetErrorState(
+            message: 'Could not load edits.',
+            onRetry: () => setState(() => _future = _load()),
+          );
+        }
+        final edits = snapshot.data?.valueOrNull ?? const <Edit>[];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            ProfileSectionHeader(
-              title: 'Groups',
-              onViewAll: () => AppNavigation.go(context, '/groups'),
-            ),
-            if (groups.isEmpty)
+            const ProfileSectionHeader(title: 'Edits'),
+            if (edits.isEmpty)
               PubgetEmptyState(
                 compact: true,
-                icon: Icons.groups_outlined,
+                icon: Icons.movie_creation_outlined,
                 title: widget.isOwner
-                    ? 'No groups yet'
-                    : 'No groups to show',
+                    ? 'No edits published yet'
+                    : 'No edits to show',
                 message: widget.isOwner
-                    ? 'Join a community or create your own.'
-                    : 'Groups stay private or empty for now.',
+                    ? 'Cut a scene and publish your first edit.'
+                    : 'This creator has not shared edits yet.',
                 action: widget.isOwner
                     ? PubgetTextButton(
-                        onPressed: () => AppNavigation.go(context, '/groups'),
-                        semanticLabel: 'Open groups',
-                        child: const Text('Explore groups'),
+                        onPressed: () => AppNavigation.go(context, '/edits'),
+                        semanticLabel: 'Open edits',
+                        child: const Text('Create an edit'),
                       )
                     : null,
               )
             else
-              SizedBox(
-                height: 96,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: groups.take(12).length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(width: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final group = groups[index];
-                    return SizedBox(
-                      width: 160,
-                      child: PubgetCard(
-                        onTap: () => AppNavigation.go(
-                          context,
-                          '/group?groupId=${Uri.encodeComponent(group.id)}',
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            PubgetAvatar(
-                              imageUrl: group.imageUrl,
-                              name: group.name,
-                              size: PubgetAvatarSize.small,
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                group.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: edits.length,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: AppSpacing.xs,
+                      crossAxisSpacing: AppSpacing.xs,
+                      childAspectRatio: 0.7,
+                    ),
+                itemBuilder: (context, index) {
+                  final edit = edits[index];
+                  return _EditGridCell(edit: edit);
+                },
               ),
           ],
         );
@@ -1218,102 +1110,36 @@ class _GroupsSectionState extends State<_GroupsSection> {
   }
 }
 
-class _AchievementsSection extends StatelessWidget {
-  const _AchievementsSection({
-    required this.isOwner,
-    required this.profileId,
-    required this.displayName,
-  });
+class _EditGridCell extends StatelessWidget {
+  const _EditGridCell({required this.edit});
 
-  final bool isOwner;
-  final String profileId;
-  final String displayName;
+  final Edit edit;
 
   @override
   Widget build(BuildContext context) {
-    List<AchievementItem> items = const <AchievementItem>[];
-    try {
-      items = context.watch<AchievementProvider>().unlocked;
-    } on ProviderNotFoundException {
-      items = const <AchievementItem>[];
-    }
-    final copy = AchievementCopy.of(context);
-    final preview = items.take(8).toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        ProfileSectionHeader(
-          title: copy.title,
-          onViewAll: () => _openAchievements(
-            context,
-            profileId: profileId,
-            displayName: displayName,
-            isOwner: isOwner,
-          ),
+    return Material(
+      color: AppColors.darkSurfaceMuted,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: Key('profile-edit-cell-${edit.id}'),
+        onTap: () => AppNavigation.go(
+          context,
+          PubgetLinks.editHighlightPath(edit.id),
         ),
-        if (preview.isEmpty)
-          PubgetEmptyState(
-            compact: true,
-            icon: Icons.emoji_events_outlined,
-            title: copy.unlockedEmptyTitle,
-            message: copy.unlockedEmptyBody,
-          )
-        else
-          SizedBox(
-            height: kAchievementStripBadgeSize + 8,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: preview.length,
-              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-              itemBuilder: (context, index) {
-                final item = preview[index];
-                return AchievementBadgeWidget(
-                  item: item,
-                  size: kAchievementStripBadgeSize,
-                  animate: true,
-                  onTap: () => _openAchievements(
-                    context,
-                    profileId: profileId,
-                    displayName: displayName,
-                    isOwner: isOwner,
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ActivitySection extends StatelessWidget {
-  const _ActivitySection({required this.createdAt});
-
-  final DateTime createdAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final stamp =
-        '${createdAt.toLocal().year}-${createdAt.toLocal().month.toString().padLeft(2, '0')}';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const ProfileSectionHeader(title: 'Activity'),
-        PubgetCard(
-          child: Row(
-            children: <Widget>[
-              const Icon(Icons.schedule_outlined, color: AppColors.royalPurple),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  'Member since $stamp',
-                  style: Theme.of(context).textTheme.titleMedium,
+        child: edit.hasPlayableVideo || edit.thumbnailUrl.isNotEmpty
+            ? AppImageLoader(
+                imageUrl: edit.thumbnailUrl,
+                fit: BoxFit.cover,
+                memCacheWidth: 320,
+              )
+            : const Center(
+                child: Icon(
+                  Icons.movie_creation_outlined,
+                  color: AppColors.darkTextMuted,
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -1353,9 +1179,11 @@ class _StartChatAction extends StatelessWidget {
         );
         return;
       }
-      final message = result.failureOrNull?.message ??
-          'Could not start this private chat.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final message =
+          result.failureOrNull?.message ?? 'Could not start this private chat.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } on ProviderNotFoundException {
       return;
     }
@@ -1463,7 +1291,8 @@ class _FriendAction extends StatelessWidget {
     if (relation?.status == FriendshipStatus.blocked) {
       return PubgetSecondaryButton(
         onPressed:
-            relation?.blockedBy == context.read<AuthProvider>().currentUser?.id
+            relation?.blockedBy ==
+                context.read<AuthProvider>().currentUser?.id
             ? () => social.unblockUser(profileId)
             : null,
         semanticLabel: 'Unblock user',

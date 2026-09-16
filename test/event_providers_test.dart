@@ -112,6 +112,91 @@ void main() {
     expect(provider.state, LoadingState.loaded);
     expect(provider.active, isEmpty);
   });
+
+  test('loadMoreActive appends new events and deduplicates by id', () async {
+    final repository = _FakeEventRepository();
+    repository.nextPage = <PubgetEvent>[
+      const PubgetEvent(
+        id: 'e1',
+        type: EventType.poll,
+        creatorId: 'alice',
+        groupId: null,
+        title: 'First poll',
+        description: '',
+        configuration: EventConfiguration(),
+        status: EventStatus.active,
+        startAt: null,
+        endAt: null,
+        participantsCount: 0,
+        responsesCount: 0,
+        tally: EventTally(),
+        result: null,
+        createdAt: null,
+        updatedAt: null,
+      ),
+    ];
+    final provider = EventListProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.loadHome();
+    expect(provider.active.length, 1);
+    expect(provider.hasMoreActive, isTrue);
+
+    repository.nextPage = <PubgetEvent>[
+      const PubgetEvent(
+        id: 'e2',
+        type: EventType.theory,
+        creatorId: 'bob',
+        groupId: null,
+        title: 'New theory',
+        description: '',
+        configuration: EventConfiguration(),
+        status: EventStatus.active,
+        startAt: null,
+        endAt: null,
+        participantsCount: 0,
+        responsesCount: 0,
+        tally: EventTally(),
+        result: null,
+        createdAt: null,
+        updatedAt: null,
+      ),
+    ];
+    await provider.loadMoreActive();
+    expect(provider.active.length, 2);
+
+    repository.nextPage = const <PubgetEvent>[];
+    await provider.loadMoreActive();
+    expect(provider.active.length, 2);
+    expect(provider.hasMoreActive, isFalse);
+    expect(provider.loadingMore, isFalse);
+  });
+
+  test('resolve forwards winnerOptionId/winnerIds to the repository', () async {
+    final repository = _FakeEventRepository();
+    final provider = EventProvider(repository: repository);
+    addTearDown(provider.dispose);
+    repository.resolveResult = const Success(
+      EventResult(kind: 'prediction', submissions: 1),
+    );
+    final result = await provider.resolve(
+      eventId: 'e1',
+      winnerOptionId: 'opt-1',
+      winnerIds: <String>['uid-1'],
+    );
+    expect(result.isSuccess, isTrue);
+    expect(repository.lastResolveWinnerOptionId, 'opt-1');
+    expect(repository.lastResolveWinnerIds, <String>['uid-1']);
+  });
+
+  test('addComment calls repository and logs analytics', () async {
+    final repository = _FakeEventRepository();
+    final provider = EventProvider(repository: repository);
+    addTearDown(provider.dispose);
+    final result = await provider.addComment('e1', 'Great event');
+    expect(result.isSuccess, isTrue);
+    expect(repository.lastCommentEventId, 'e1');
+    expect(repository.lastCommentText, 'Great event');
+  });
 }
 
 final class _FakeEventRepository implements EventRepository {
@@ -120,6 +205,14 @@ final class _FakeEventRepository implements EventRepository {
   int submitCalls = 0;
   int joinCalls = 0;
   int publishCalls = 0;
+  List<PubgetEvent> nextPage = const <PubgetEvent>[];
+  Result<EventResult> resolveResult = const Success(
+    EventResult(kind: '', submissions: 0),
+  );
+  String? lastResolveWinnerOptionId;
+  List<String>? lastResolveWinnerIds;
+  String? lastCommentEventId;
+  String? lastCommentText;
 
   @override
   Future<Result<void>> archive(String eventId) async =>
@@ -137,8 +230,10 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => Success(nextPage);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -164,12 +259,53 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      const FailureResult(ValidationError('not used'));
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async {
+    lastResolveWinnerOptionId = winnerOptionId;
+    lastResolveWinnerIds = winnerIds;
+    return resolveResult;
+  }
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
+      const FailureResult(ValidationError('not used'));
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async {
+    lastCommentEventId = eventId;
+    lastCommentText = text;
+    return const Success('comment-1');
+  }
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      const Stream<Result<List<EventComment>>>.empty();
 
   @override
   Future<Result<void>> join(String eventId) async {

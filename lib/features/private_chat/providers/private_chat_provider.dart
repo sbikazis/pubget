@@ -247,6 +247,9 @@ final class PrivateChatProvider extends ChangeNotifier {
     );
     _replyTarget = null;
     _upsert(pending);
+    // Persist the metadata before the upload so a restart mid-upload keeps
+    // the pending bubble durable; findReadyMedia validates the server doc.
+    unawaited(_persistPending(chatId, pending));
     await _performMediaUpload(mediaId, generation: generation);
   }
 
@@ -257,6 +260,18 @@ final class PrivateChatProvider extends ChangeNotifier {
     final payload = _pendingUploads[mediaId];
     if (payload == null) return;
     if (!_isCurrent(payload.chatId, generation)) return;
+    // A previous attempt may already have produced a ready media doc (e.g. the
+    // client timed out inside uploadMedia while the server kept processing).
+    // Reuse it instead of re-uploading the raw bytes.
+    final existing = await _repository.findReadyMedia(
+      chatId: payload.chatId,
+      mediaId: mediaId,
+    );
+    if (_disposed || !_isCurrent(payload.chatId, generation)) return;
+    if (existing.isSuccess && existing.valueOrNull != null) {
+      await _completeMediaSend(mediaId, existing.valueOrNull!, payload, generation);
+      return;
+    }
     _uploadProgress[mediaId] = 0;
     notifyListeners();
     final upload = await _repository.uploadMedia(
@@ -275,38 +290,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (_disposed || !_isCurrent(payload.chatId, generation)) return;
     upload.fold(
       onSuccess: (media) async {
-        final pending = ChatMessage.optimistic(
-          id: mediaId,
-          senderId: payload.senderId,
-          senderName: payload.senderName,
-          senderAvatar: payload.senderAvatar,
-          senderRole: '',
-          type: media.type,
-          text: null,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-           replyToMessageId: payload.replyToMessageId,
-           replyPreview: payload.replyPreview,
-        );
-        _upsert(pending);
-        unawaited(_persistPending(payload.chatId, pending));
-        final result = await _repository.sendMessage(
-          chatId: payload.chatId,
-          messageId: mediaId,
-          type: media.type,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-           replyToMessageId: payload.replyToMessageId,
-        );
-        _finishSend(
-          mediaId,
-          result,
-          chatId: payload.chatId,
-          generation: generation,
-        );
-        if (result.isSuccess) _pendingUploads.remove(mediaId);
+        await _completeMediaSend(mediaId, media, payload, generation);
       },
       onFailure: (failure) {
         final index = _messages.indexWhere((item) => item.id == mediaId);
@@ -339,12 +323,55 @@ final class PrivateChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _completeMediaSend(
+    String mediaId,
+    ChatMediaUpload media,
+    _PendingMediaUpload payload,
+    int generation,
+  ) async {
+    final pending = ChatMessage.optimistic(
+      id: mediaId,
+      senderId: payload.senderId,
+      senderName: payload.senderName,
+      senderAvatar: payload.senderAvatar,
+      senderRole: '',
+      type: media.type,
+      text: null,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      replyToMessageId: payload.replyToMessageId,
+      replyPreview: payload.replyPreview,
+    );
+    if (_isCurrent(payload.chatId, generation)) _upsert(pending);
+    unawaited(_persistPending(payload.chatId, pending));
+    final result = await _repository.sendMessage(
+      chatId: payload.chatId,
+      messageId: mediaId,
+      type: media.type,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      replyToMessageId: payload.replyToMessageId,
+    );
+    _finishSend(
+      mediaId,
+      result,
+      chatId: payload.chatId,
+      generation: generation,
+    );
+    if (result.isSuccess) _pendingUploads.remove(mediaId);
+  }
+
   Future<void> retry(ChatMessage message) async {
     if (message.isDeleted) return;
     if (message.sendState != ChatSendState.failed &&
         message.sendState != ChatSendState.pending) {
       return;
     }
+    // Never race an in-flight automatic retry for the same messageId —
+    // both would send the same id and duplicate the server write.
+    if (_autoRetryInFlight.contains(message.id)) return;
     final chatId = _chatId;
     final generation = _sessionGeneration;
     if (chatId == null || !_isCurrent(chatId, generation)) return;

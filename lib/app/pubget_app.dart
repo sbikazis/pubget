@@ -51,6 +51,7 @@ import '../features/groups/screens/group_members_page.dart';
 import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
+import '../features/groups/screens/profile_groups_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
 import '../features/edits/providers/edits_provider.dart';
 import '../features/edits/providers/edit_upload_manager.dart';
@@ -112,6 +113,7 @@ import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
+import '../features/fan_works/screens/profile_fan_works_page.dart';
 import '../features/economy/providers/economy_provider.dart';
 import '../features/economy/repositories/economy_repository.dart';
 import '../features/economy/repositories/firebase_economy_repository.dart';
@@ -972,6 +974,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/fan-works/create': (parameters) =>
             FanWorkEditorPage(workId: parameters['workId']),
+        '/fan-works-creator': (parameters) =>
+            ProfileFanWorksPage(userId: parameters['uid']),
+        '/profile-groups': (parameters) =>
+            ProfileGroupsPage(userId: parameters['uid']),
         '/store/item': (parameters) =>
             StoreItemDetailsPage(itemId: parameters['itemId'] ?? ''),
       },

@@ -409,6 +409,11 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
   }
+  if (segments.length == 2 &&
+      segments.first == 'profile' &&
+      segments[1] == 'edit') {
+    return const ParameterizedRoute(path: '/profile/edit');
+  }
   if (segments.length == 2 && segments.first == 'profile') {
     return entity(path: '/profile', key: 'uid', id: segments[1]);
   }

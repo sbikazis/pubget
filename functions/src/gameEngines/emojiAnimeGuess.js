@@ -17,39 +17,96 @@ const {
 function configOf(game) {
   const configuration = game.configuration || {};
   return {
-    timerSeconds: clampInt(configuration.timerSeconds, 25, 12, 60),
+    timerSeconds: clampInt(configuration.timerSeconds, 25, 12, 45),
     roundsPerPlayer: clampInt(configuration.roundCount, 1, 1, 3),
   };
 }
 
+// The catalog is authoritative. These aliases cover the common search names
+// used by anime databases while still resolving to a canonical catalog item.
+const ALIASES = Object.freeze({
+  haikyuu: "haikyuu",
+  "haikyuu!!": "haikyuu",
+  "the melancholy of haruhi suzumiya": null,
+  "frieren beyond journey's end": "frieren",
+  "frieren beyond journeys end": "frieren",
+});
+
+function resolveAnime(value) {
+  if (value && typeof value === "object") {
+    return resolveAnime(value.animeId || value.id || value.title || value.value);
+  }
+  if (typeof value !== "string" || !value.trim()) return null;
+  const byId = catalog.byAnimeId(value.trim());
+  if (byId) return byId;
+  const normalized = catalog.normalizeTitle(value);
+  const aliasId = ALIASES[normalized];
+  if (aliasId) return catalog.byAnimeId(aliasId);
+  return catalog.animeByTitle(value);
+}
+
+function pickTarget(usedIds, random) {
+  const used = usedIds || [];
+  const pool = catalog.ANIME.filter((item) => !used.includes(item.id));
+  return pickOne(pool.length ? pool : catalog.ANIME, random);
+}
+
 function publicEmojis(target) {
-  return (Array.isArray(target.emojiClues) ? target.emojiClues : [])
+  return (Array.isArray(target && target.emojiClues) ? target.emojiClues : [])
     .map((item) => String(item))
     .filter(Boolean)
     .slice(0, 4);
 }
 
+function writeTurn(transaction, {
+  gameRef, FieldValue, game, now, random, scores, playerOrder,
+  currentPlayerId, turnIndex, totalTurns, lastReveal, usedIds,
+}) {
+  const target = pickTarget(usedIds, random);
+  const emojis = publicEmojis(target);
+  const nextUsed = (usedIds || []).includes(target.id)
+    ? usedIds
+    : [...(usedIds || []), target.id];
+  const publicState = {
+    engine: "emojiAnimeGuess",
+    phase: "guess",
+    emojis,
+    currentPlayerId,
+    playerOrder,
+    scores,
+    turnIndex,
+    totalTurns,
+    lastReveal: lastReveal || null,
+    answeredPlayerIds: [],
+  };
+  transaction.set(secretRef(gameRef), {
+    targetAnimeId: target.id,
+    title: target.title,
+    turnIndex,
+    usedAnimeIds: nextUsed,
+  });
+  transaction.update(gameRef, {
+    publicState,
+    currentPhase: "guess",
+    currentRoundNumber: turnIndex + 1,
+    stateVersion: bumpVersion(game),
+    deadlineAt: deadlineAt(now, configOf(game).timerSeconds),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
 function complete(transaction, {
-  db,
-  gameRef,
-  FieldValue,
-  game,
-  gameId,
-  playerIds,
-  scores,
-  now,
-  lastReveal,
-  reason,
+  db, gameRef, FieldValue, game, gameId, scores, now, lastReveal,
 }) {
   const outcome = winnersFromScores(scores);
   const result = {
     kind: "emojiAnimeGuess",
     winnerIds: outcome.winnerIds,
     scores,
-    summary: { draw: outcome.draw, reason: reason || "completed" },
+    summary: { draw: outcome.draw },
   };
   transaction.update(gameRef, {
-    status: "completed",
+    status: "COMPLETED",
     result,
     endedAt: now,
     publicState: {
@@ -58,7 +115,7 @@ function complete(transaction, {
       phase: "game_over",
       scores,
       currentPlayerId: null,
-      turnOwnerId: null,
+      emojis: (game.publicState && game.publicState.emojis) || null,
       lastReveal,
     },
     currentPhase: "game_over",
@@ -70,7 +127,7 @@ function complete(transaction, {
     gameId,
     type: "emojiAnimeGuess",
     groupId: game.groupId || null,
-    participants: playerIds,
+    participants: Object.keys(scores),
     result,
     endedAt: now,
     createdAt: FieldValue.serverTimestamp(),
@@ -78,225 +135,131 @@ function complete(transaction, {
   return { completed: true, result };
 }
 
-function nextTurn(transaction, ctx, {
-  scores,
-  lastReveal,
-  reason,
-}) {
-  const {
-    gameRef,
-    FieldValue,
-    game,
-    now,
-    random,
-    playerIds,
-    gameId,
-    db,
-  } = ctx;
+function nextPlayer(order, currentId) {
+  const index = order.indexOf(currentId);
+  return order[(index < 0 ? 0 : index + 1) % order.length];
+}
+
+function advanceTurn(transaction, ctx, { lastReveal, scores, usedIds }) {
+  const { gameRef, FieldValue, game, now, random, db, gameId } = ctx;
   const state = game.publicState || {};
-  const order = state.playerOrder || playerIds;
-  const nextTurnIndex = (state.turnIndex || 0) + 1;
+  const order = state.playerOrder || Object.keys(scores);
+  const nextIndex = (state.turnIndex || 0) + 1;
   const totalTurns = state.totalTurns || order.length;
-  if (nextTurnIndex >= totalTurns) {
-    return complete(ctx.transaction, {
-      ...ctx,
-      db,
-      gameRef,
-      FieldValue,
-      game,
-      gameId,
-      playerIds: order,
-      scores,
-      now,
-      lastReveal,
-      reason,
+  game.publicState = { ...state, lastReveal, scores };
+  if (nextIndex >= totalTurns) {
+    return complete(transaction, {
+      db, gameRef, FieldValue, game, gameId, scores, now, lastReveal,
     });
   }
-  const owner = order[nextTurnIndex % order.length];
-  const targetPool = catalog.ANIME;
-  const target = pickOne(targetPool, random);
-  const emojis = publicEmojis(target);
-  ctx.transaction.set(secretRef(gameRef), {
-    targetAnimeId: target.id,
-    title: target.title,
-    turnIndex: nextTurnIndex,
-  });
-  ctx.transaction.update(gameRef, {
-    publicState: {
-      engine: "emojiAnimeGuess",
-      phase: "guess",
-      emojis,
-      currentPlayerId: owner,
-      turnOwnerId: owner,
-      playerOrder: order,
-      eligibleGuesserIds: order.filter((id) => id !== owner),
-      guessedPlayerIds: [],
-      scores,
-      turnIndex: nextTurnIndex,
-      totalTurns,
-      lastReveal: lastReveal || null,
-      lastMove: reason ? { reason } : null,
-    },
-    currentPhase: "guess",
-    currentRoundNumber: nextTurnIndex + 1,
-    stateVersion: bumpVersion(game),
-    deadlineAt: deadlineAt(now, configOf(game).timerSeconds),
-    updatedAt: FieldValue.serverTimestamp(),
+  writeTurn(transaction, {
+    gameRef, FieldValue, game, now, random, scores,
+    playerOrder: order,
+    currentPlayerId: nextPlayer(order, state.currentPlayerId),
+    turnIndex: nextIndex,
+    totalTurns,
+    lastReveal,
+    usedIds,
   });
   return { completed: false, result: null };
 }
 
 function initialize({
-  transaction,
-  gameRef,
-  FieldValue,
-  game,
-  playerIds,
-  random,
-  now,
+  transaction, gameRef, FieldValue, game, playerIds, random, now,
 }) {
-  if (playerIds.length < 2 || playerIds.length > 4) {
-    throw new Error("Emoji Anime Guess requires two to four players.");
-  }
   if (game.publicState && game.publicState.engine === "emojiAnimeGuess") return;
   const cfg = configOf(game);
-  const owner = playerIds[0];
-  const target = pickOne(catalog.ANIME, random);
   const totalTurns = playerIds.length * cfg.roundsPerPlayer;
-  transaction.set(secretRef(gameRef), {
-    targetAnimeId: target.id,
-    title: target.title,
+  writeTurn(transaction, {
+    gameRef, FieldValue, game, now, random,
+    scores: emptyScores(playerIds),
+    playerOrder: [...playerIds],
+    currentPlayerId: playerIds[0],
     turnIndex: 0,
-  });
-  transaction.update(gameRef, {
-    publicState: {
-      engine: "emojiAnimeGuess",
-      phase: "guess",
-      emojis: publicEmojis(target),
-      currentPlayerId: owner,
-      turnOwnerId: owner,
-      playerOrder: playerIds,
-      eligibleGuesserIds: playerIds.filter((id) => id !== owner),
-      guessedPlayerIds: [],
-      scores: emptyScores(playerIds),
-      turnIndex: 0,
-      totalTurns,
-      lastReveal: null,
-      lastMove: null,
-    },
-    currentPhase: "guess",
-    currentRoundNumber: 1,
-    stateVersion: bumpVersion(game),
-    deadlineAt: deadlineAt(now, cfg.timerSeconds),
-    updatedAt: FieldValue.serverTimestamp(),
+    totalTurns,
+    lastReveal: null,
+    usedIds: [],
   });
 }
 
 function applyAction(ctx) {
   const {
-    transaction,
-    gameRef,
-    FieldValue,
-    game,
-    uid,
-    action,
-    now,
-    HttpsError,
-    secretSnap,
+    transaction, game, uid, action, now, HttpsError, secretSnap,
   } = ctx;
-  const state = game.publicState || {};
   rejectStale(action.payload, game, HttpsError);
+  const state = game.publicState || {};
   if (state.phase !== "guess") {
-    throw new HttpsError("failed-precondition", "This round is not accepting guesses.");
+    throw new HttpsError("failed-precondition", "Guesses are not being accepted.");
   }
   if (isExpired(game.deadlineAt, now)) {
     throw new HttpsError("failed-precondition", "This round has already ended.");
   }
-  if (uid === state.turnOwnerId) {
-    throw new HttpsError(
-      "failed-precondition",
-      "The turn owner presents the clue; other players guess.",
-    );
+  // The turn owner supplies the clue; every other player may guess.
+  if (uid === state.currentPlayerId) {
+    throw new HttpsError("failed-precondition", "The turn owner cannot guess.");
   }
-  if (!(state.eligibleGuesserIds || []).includes(uid)) {
-    throw new HttpsError("permission-denied", "You are not an active player.");
-  }
-  if ((state.guessedPlayerIds || []).includes(uid)) {
+  if ((state.answeredPlayerIds || []).includes(uid)) {
     throw new HttpsError("already-exists", "You already guessed this round.");
   }
   if (action.actionType !== "guess" && action.actionType !== "submit") {
-    throw new HttpsError("invalid-argument", "Submit an anime title.");
+    throw new HttpsError("invalid-argument", "Submit an anime selection.");
   }
-  const raw = action.payload && (
-    action.payload.title || action.payload.value || action.payload.animeId
-  );
-  const match = catalog.byAnimeId(raw) || catalog.animeByTitle(raw);
+  const payload = action.payload || {};
+  const submitted = payload.animeId || payload.selection || payload.title ||
+    payload.value;
+  const match = resolveAnime(submitted);
   if (!match) {
-    throw new HttpsError("invalid-argument", "That anime is not in the catalog.");
+    throw new HttpsError("invalid-argument", "Select an anime from the catalog.");
   }
   const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
   if (!secret) {
-    throw new HttpsError("failed-precondition", "This clue is still being prepared.");
+    throw new HttpsError("failed-precondition", "This round is still being prepared.");
   }
-  const guessedPlayerIds = [...(state.guessedPlayerIds || []), uid];
+  const answered = [...(state.answeredPlayerIds || []), uid];
   const scores = { ...(state.scores || {}) };
   const correct = match.id === secret.targetAnimeId;
   if (correct) scores[uid] = (scores[uid] || 0) + 1;
   const lastReveal = {
-    animeId: secret.targetAnimeId,
     title: secret.title,
+    animeId: secret.targetAnimeId,
     winnerId: correct ? uid : null,
     guessedTitle: match.title,
     correct,
   };
-  if (correct) {
-    return nextTurn(transaction, {
-      ...ctx,
-      playerIds: state.playerOrder || Object.keys(scores),
-    }, { scores, lastReveal, reason: "correct_guess" });
+  // A correct answer closes immediately. A round with no correct answer
+  // closes once every eligible guesser has answered.
+  const guessers = (state.playerOrder || Object.keys(scores))
+    .filter((id) => id !== state.currentPlayerId);
+  if (correct || answered.length >= guessers.length) {
+    return advanceTurn(transaction, ctx, {
+      lastReveal, scores, usedIds: secret.usedAnimeIds || [],
+    });
   }
-  const eligible = state.eligibleGuesserIds || [];
-  if (guessedPlayerIds.length >= eligible.length) {
-    return nextTurn(transaction, {
-      ...ctx,
-      playerIds: state.playerOrder || Object.keys(scores),
-    }, { scores, lastReveal, reason: "no_winner" });
-  }
-  transaction.update(gameRef, {
-    publicState: {
-      ...state,
-      guessedPlayerIds,
-      scores,
-      lastMove: { type: "wrong_guess", playerId: uid },
-    },
+  game.publicState = { ...state, scores, answeredPlayerIds: answered };
+  transaction.update(ctx.gameRef, {
+    publicState: game.publicState,
     stateVersion: bumpVersion(game),
-    updatedAt: FieldValue.serverTimestamp(),
+    updatedAt: ctx.FieldValue.serverTimestamp(),
   });
   return { completed: false, result: null };
 }
 
 function onTimeout(ctx) {
-  const { game } = ctx;
+  const { game, secretSnap } = ctx;
   const state = game.publicState || {};
   if (state.phase !== "guess") return { completed: false, result: null };
-  return nextTurn(ctx.transaction, {
-    ...ctx,
-    playerIds: state.playerOrder || [],
-  }, {
-    scores: state.scores || {},
+  const secret = secretSnap && secretSnap.exists ? secretSnap.data() : null;
+  return advanceTurn(ctx.transaction, ctx, {
     lastReveal: {
-      animeId: "",
-      title: "",
+      title: (secret && secret.title) || "",
+      animeId: (secret && secret.targetAnimeId) || "",
       winnerId: null,
       correct: false,
       reason: "timeout",
     },
-    reason: "timeout",
+    scores: state.scores || {},
+    usedIds: (secret && secret.usedAnimeIds) || [],
   });
 }
 
-module.exports = {
-  initialize,
-  applyAction,
-  onTimeout,
-};
+module.exports = { initialize, applyAction, onTimeout };

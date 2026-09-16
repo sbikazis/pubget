@@ -12,6 +12,36 @@ This document describes what exists and what happens in the repository at that c
 
 ---
 
+## Chat Phase B — branch state at close (2026-09-14)
+
+Branch `cursor/chat-phase-b` on top of converged `main` (`95eec93`). Phase scope: prompt-driven chat system repair (24-part Arabic-PROMPT master task), delivered in pragmatic commits, then independently verified.
+
+New commits on the branch (`95eec93..HEAD`):
+
+| Commit | Subject |
+|--------|---------|
+| `08f7651` | docs: update CURRENT_STATE_MASTER git baseline to converged main |
+| `6b4f26e` | fix(chat): harden group chat lifecycle, retry safety, and media pipeline |
+| `6f015ef` | fix(chat): gate pinning, close drawers cleanly, and localize actions |
+| `113dc43` | feat(chat): render live video frame and file info in the send preview |
+| `aca8d51` | fix(chat): surface recent/favorite stickers and localize composer actions |
+| `1f434ee` | fix(chat): harden private chat retry, media re-upload, and send guards |
+| `7133c80` | fix(chat): correct security banner copy and gate reaction bar |
+| `67fdcf7` | test(chat): fix composer widget tests broken by localized strings |
+
+Client/app changes touch: `chat_provider`, group/private chat repositories, `group_chat_page`, `chat_special_cards`, `wa_composer` (composer, emoji/sticker panel, media preview), `private_chat_*`, `app_strings` (additive only), and chat tests. Server changes in `functions/src/groupChat.js` (edit-window permission gate + media requirements hardening) verified by `node --check` and the regression suite below. `firebase deploy --only functions` is still a separate manual step.
+
+Verification performed:
+
+- `flutter analyze` (full project): 0 errors, 0 warnings (23 pre-existing `info` deprecation notices only).
+- Chat-scope batch (7 files, 46 tests): all passed — covers provider lifecycle/retry/media, media-retry widget, actions overlay, chat rebuild, chat richness (stickers/recent/favorites, voice, previews), and the two WhatsApp composer suites.
+- Full `flutter test`: 538 passed / 11 failed. The 3 composer failures were live phase-B regressions (localization of hint/slide-to-cancel) and are fixed at `67fdcf7`. The remaining 8 failures were proven pre-existing by running the exact same 5 files against base `95eec93` in a temp worktree: identical failures (shell drawer stale destination, chat-message-bubble golden @3.85% pixel diff, edits×2 copy drift, bans×2, details×2). See `docs/PUBGET_PROJECT_STATE.md` → Known Issues.
+- `flutter build apk --debug` was **not** completed (interrupted); the APK build must be part of manual verification.
+
+See also `docs/PUBGET_PROJECT_STATE.md` (Known Issues / Follow-up checklist for the pre-existing failures) and the PR description for the full phase report.
+
+---
+
 ## 0. Repository & Build State
 
 ### 0.1 Git identity at inspection
@@ -379,11 +409,11 @@ These four paths share navigator key `app-shell` (`app_router.dart` 180–185).
 
 ### 4.2 Domain routes (`pubget_app.dart` 659–685)
 
-`/splash`, `/login`, `/register`, `/forgot-password`, `/terms`, `/onboarding`, `/home`, `/search`, `/settings`, `/guide`, `/unknown`, `/profile/edit`, `/friend-requests`, `/notifications`, `/edits`, `/edits/upload`, `/groups`, `/groups/create`, `/private`, `/anime`, `/anime/library`, `/fan-works`, `/store`, `/inventory`, `/premium`, `/economy/history`.
+`/splash`, `/login`, `/register`, `/forgot-password`, `/terms`, `/onboarding`, `/home`, `/search`, `/settings`, `/guide`, `/unknown`, `/profile/edit`, `/profile-groups`, `/fan-works-creator`, `/friend-requests`, `/notifications`, `/edits`, `/edits/upload`, `/groups`, `/groups/create`, `/private`, `/anime`, `/anime/library`, `/fan-works`, `/store`, `/inventory`, `/premium`, `/economy/history`.
 
 ### 4.3 Parameterized routes (`pubget_app.dart` 687–764)
 
-`/profile` (`uid`), `/group`, `/group-invite` (`groupId`,`inviteId`), `/group-chat`, `/group-media`, `/group-members`, `/group-requests`, `/group-roleplay`, `/private-chat` (`chatId`,`uid`), `/event`, `/events` (optional `groupId`), `/events/create`, `/anime/details`, `/anime/browse`, `/anime/genre`, `/anime/season`, `/anime/library`, `/game`, `/mafia`, `/achievements` (`id`), `/games`, `/games/create`, `/fan-work` (`workId`, `view=manga|story`), `/fan-works/create`, `/store/item`.
+`/profile` (`uid`), `/group`, `/group-invite` (`groupId`,`inviteId`), `/group-chat`, `/group-media`, `/group-members`, `/group-requests`, `/group-roleplay`, `/private-chat` (`chatId`,`uid`), `/event`, `/events` (optional `groupId`), `/events/create`, `/anime/details`, `/anime/browse`, `/anime/genre`, `/anime/season`, `/anime/library`, `/game`, `/mafia`, `/achievements` (`id`), `/games`, `/games/create`, `/fan-work` (`workId`, `view=manga|story`), `/fan-works/create`, `/fan-works-creator` (`uid`), `/profile-groups` (`uid`), `/store/item`.
 
 URI segment forms (`app_router.dart` 256–286): `/event/{id}`, `/anime/{id}` (or browse/genre/season/library), `/game/{id}`, `/mafia/{id}`, `/fan-work/{id}`, `/group/{id}`, `/profile/{uid}`. Missing required ids → `/unknown`.
 
@@ -427,15 +457,15 @@ Path: UI → `GroupProvider` → `httpsCallable('createGroup')`. Admin SDK write
 
 ### 5.3 Group Details (`group_details_page.dart`)
 
-If loaded, `isMember`, and `!isFounder` → post-frame redirect to `/group-chat?groupId=…` (40–49).
+Single unified `_GroupControlPanel` for anyone with `hasEntryHub` (rank ≥ GOKENIN, incl. founder). Strict 7-section order: AppBar (back + title + share + copy) → Hero Header (cover, gradient, privacy lock overlay, overlapping avatar, name/category, `group-hero-badges` horizontal row incl. gold rank badge with rank display name) → full-width "Open chat" primary button (first interactive element, red unread dot when `group.hasUnread`) → Quick Stats Strip (`group-quick-stats`, one horizontal row of uniform mini-cards: growth, members, chat activity 7d, new members this week, active members) → Promotion section (only `canManageSettings || isOwner`, promote + share + copy small buttons, eligibility gaps + gold progress bar, `currentlyPromoted`) → Quick Actions grid (2-col uniform cards, each shown only when the viewer holds the matching permission: requests=`manageRequests`, members=`kickBan`, rules=`manageRoles`→`/group-settings`, settings=`canManageSettings||isOwner`, events=`canManageEvents`, games=`manageGames`, bans=`kickBan||unban`; empty grid hidden) → Danger Zone (owner only: red-bordered card, transfer ownership + disband with existing double-confirm).
 
-If `isMember`: Group events, Group games; Create event if `canManageEvents`; Create game if `membership?.canManageGames == true`.
+If loaded, `isMember`, and `!isFounder` && `!hasEntryHub` → post-frame redirect to `/group-chat?groupId=…` (Rōnin rule, 40–49).
 
-If `!isMember`: `_JoinAction` — full → `Group is full`; `inviteOnly` → `Invitation required`; `approval` → `requestToJoin`; else `join`.
+If `!isMember`: `_VisitorDetails` + `_JoinAction` — full → `Group is full`; `inviteOnly` → `Invitation required`; `approval` → `requestToJoin`; else `join`.
 
-If `isFounder`: Manage members, Join requests, Roleplay characters when `group.type != GroupType.public`, Disband (two confirm dialogs).
+`hasEntryHub` = rank ≥ GOKENIN (via `rankHasAdminEntryHub`, `pubget_rank.dart`); `isFounder` is `membership?.role == GroupRole.founder` (`group_provider.dart` 34–36).
 
-`isFounder` is `membership?.role == GroupRole.founder` (`group_provider.dart` 34–36).
+After join success, provider sets `_membership = GroupMember(uid: '', role: member)` (`group_provider.dart` 97–101). **INCOMPLETE/MOCK** membership uid.
 
 After join success, provider sets `_membership = GroupMember(uid: '', role: member)` (`group_provider.dart` 97–101). **INCOMPLETE/MOCK** membership uid.
 
@@ -599,104 +629,113 @@ Firestore: `privateChats` and subcollections read if participant; all client wri
 
 ### 10.1 Shared infrastructure
 
-Types in `GAME_TYPES` (`gamesDomain.js` 21–26): `guessCharacter`, `animeChain`, `emojiAnimeGuess`, `mafia`. Both registries mark all four `implemented: true`. Mafia is `genericCreate: false` on server and client — `createGame` rejects it; the dedicated `createMafiaGame` / `MafiaProvider.create` path is the only creator. `GameTypeRegistry.implemented` still lists Mafia on the create hub because that page branches; `genericCreate` is the list that would call `createGame`.
+Types in `GAME_TYPES` (`gamesDomain.js`): `guessCharacter`, `animeChain`, `emojiAnimeGuess`. `GAME_TYPE_REGISTRY` lists exactly three games. Mafia is excluded from the generic registry and has no `implemented` entry.
 
-Statuses: draft, waiting, active, paused, completed, cancelled (`gamesDomain.js` 64–77).
+Statuses: `CREATED`, `WAITING`, `STARTING`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` (uppercase). Transitions enforced via `TRANSITIONS` + `assertTransition`.
 
-Engines (`gameEngines/index.js`): only the three trivia games.
+Engines (`gameEngines/index.js`): only the three trivia games. Engines read `players`/`playerOrder` arrays and `deadlineAt`; no `globalDeadlineAt`.
 
-Create requires `groupId` and `manageGames`. No auto-matchmaking. Join while `waiting`. Start when `participantsCount >= minPlayers`. Callables: `createGame`, `initializeGame`, `joinGame`, `leaveGame`, `startGame`, `pauseGame`, `resumeGame`, `submitGameAction`, `endGame`, `cancelGame`. Scheduler `processExpiredGames` every 1 minute.
+Create requires `groupId`, group membership (`isMember`), and `creationSource === "group_chat"`. `gameCreationLimits` enforces daily cap (2 per creator per day). `requestRef` idempotency via `game_request_idempotency`. No auto-matchmaking. Join while `WAITING`; 15-min `waitingDeadlineAt` expires to `CANCELLED` with reason `waiting-timeout`. Start requires `participantsCount >= minPlayers`. Two-phase start: `WAITING` → `STARTING` → `IN_PROGRESS`. `startGame` emits no chat card (only createGame emits a chat card via `chatCardWriter.postFromActivity`).
 
-Rewards (`afterComplete`, 393–431): `economy.grantDomainRewards` type `earn_game` for `winnerIds`; achievements `game_won` / `game_completed`. Server-authoritative. Daily cap bucket `"event"` amount 10, cap 3 (`economyConfig.js`).
+Callables: `createGame`, `initializeGame`, `joinGame`, `leaveGame`, `startGame`, `pauseGame`, `resumeGame`, `submitGameAction`, `endGame`, `cancelGame`. `pauseGame`/`resumeGame`/`endGame` throw (no client screens call them). Scheduler `processExpiredGames` every 1 minute, 50-per-query batch (two queries: `WAITING`+`waitingDeadlineAt` → `CANCELLED`, `IN_PROGRESS`+`deadlineAt` → resolve via engine).
 
-`configuration.difficulty` is stored and shown in create UI; engines do not read it. **INCOMPLETE/MOCK**
+Rewards (`afterComplete`, gamesDomain.js): outcome-specific types `earn_game_win_easy`/`earn_game_win_normal`/`earn_game_win_hard`/`earn_game_draw`/`earn_game_loss` via `economy.grantDomainRewards(userIds, spec)`. `game_history` written by engine on game end or player resignation.
 
 Client `ScoringStrategyRegistry` returns `NoOpScoringStrategy` (`scoring.dart` 41–44). Scores live in server `publicState`.
 
-Catalog: `gameCatalog.js` 16 anime entries (characters, emoji clues, studio/character relations).
+Catalog: `gameCatalog.js` 16 anime entries (characters, emoji clues, studio/character relations). Shares relation via `sharesRelation`. Titles normalized by `normalizeTitle`.
 
 Trigger: Group details / chat menu → `/games?groupId=` → `/games/create?groupId=` → type chips. Mafia branches to `MafiaProvider.create` → `/mafia/{id}` instead of `createGame`.
 
 Reconnect: Firestore snapshots on `GameProvider.open`. `GameStrings.reconnecting` is unused. **INCOMPLETE/MOCK** dedicated reconnect UI.
 
-Anti-abuse: auth, membership, `status === active`, idempotent `clientActionId`, `stateVersion` stale reject, deadline expiry.
+Anti-abuse: auth, membership, `creationSource`, idempotent `clientActionId` + `requestId`, `stateVersion` stale reject, deadline expiry, resign writes to `game_history`.
 
 ### 10.2 Guess Character
 
-Phases `publicState.phase`: `round` | `game_over`. 2 players. +1 per correct guess. Timer per round (`deadlineAt`). Default rounds 5, timer 20s (engine clamps rounds 3–8, timer 10–45s; domain normalize 3–10 / 10–60). Answer in `games/{id}/secret/round` (rules read false). Artwork via `characterArt.publicArtwork`.
+Phases `publicState.phase`: `selection` | `ask` | `answer` | `game_over`. 2 players (`playerIds.length === 2`). In selection phase, each player picks a character (`select` action). Once both selected, phase advances to `ask`. Asker = `currentPlayerId` (first in `playerOrder`); opponent = the other. Asker asks a question or guesses opponent's character. A correct guess ends the game immediately with the guesser winning. Wrong guess passes the turn. +1 per correct guess. Timer per phase (`deadlineAt`). Default timer 20s (engine clamps 10–45s; domain normalize 10–60). Secret stored in `games/{id}/secret/round` (rules read false). Artwork via `characterArt.publicArtwork`.
 
 ### 10.3 Anime Chain
 
-Phases `turn` | `game_over`. 2–8 players. Next title must share character or studio and not already appear. +1 per valid submit. Ends at `maxChain` (`roundCount` 5–16, default 8) or consecutive skips covering the table. Timeout skips current player.
+Phases `publicState.phase`: `turn` | `game_over`. 2–8 players. Next title must share character or studio (`sharesRelation`) and not already appear. `roundCount` tracks total chain length. +1 per valid submit. Ends at `roundCount` reaching `maxChain` (5–16, default 8) or consecutive skips covering the table. Timeout skips current player.
 
 ### 10.4 Emoji Anime Guess
 
-Phases `guess` | `game_over`. 2–4 players. Turns = players × `roundsPerPlayer` (1–3). +1 if normalized title matches secret. Timeout advances with no score.
+Phases `publicState.phase`: `guess` | `game_over`. 2–4 players (`cardinality.min=2, max=4`). Turns = `playerIds.length × roundsPerPlayer` (totalTurns). `currentPlayerId` is the turn owner who sets the emoji clue; other players guess. +1 if canonical title matches secret (`resolveAnime`). Timeout advances with no score.
 
-**Traceability:** `gamesDomain.js`, `gameEngines/*.js`, `gameCatalog.js`, `game_create_page.dart`, `game_details_screen.dart`, `game_play_panels.dart`, `game_providers.dart`, `firebase_game_repository.dart`, `game_type_registry.dart`, `firestore.rules` 706–745, `index.js` 400–443
+**Traceability:** `gamesDomain.js`, `gameEngines/*.js`, `gameCatalog.js`, `game_create_v2_screen.dart`, `game_details_screen.dart`, `game_play_panels.dart`, `game_room_v2_screen.dart`, `games_center_v2_screen.dart`, `game_providers.dart`, `game_type_registry.dart`, `games_schema_v2.dart`, `firebase_game_repository.dart`, `firestore.rules` 706–745, `index.js` 400–443
 
 ---
 
 ## 11. Mafia
 
-Separate collection `mafia_games`, not `gamesDomain` engines.
+Separate collection `mafia_games`, not `gamesDomain` engines. The whole game is **server-authoritative**: every phase transition, timer, role assignment, night/vote resolution, win check, reward, and history write happens in Cloud Functions/Admin SDK; clients can only call the callables (`createMafiaGame`, `joinMafiaGame`, `startMafiaGame`, `leaveMafiaGame`, `submitMafiaAction`, `sendMafiaChat`, `heartbeatMafia`).
 
-### 11.1 Phases (`phaseFlow.js` 6–27)
+### 11.1 Phases (`phaseFlow.js`)
 
-Lobby order: `waiting` (120s), `starting` (10s).  
-Play order: `night` (45s), `day` (20s), `discussion` (90s), `voting` (45s), `execution` (15s), then wrap.  
-`nextPhase`: waiting→starting→night; finished/cancelled stay; unknown play phase → night.
+Exact server-owned strings (no aliases, no legacy `execution`/`finished`/`revote`):
 
-Client enum matches (`mafia_models.dart` 3–13). Terminal: `finished`, `cancelled`.
+```
+WAITING → STARTING → ROLE_REVEAL → NIGHT → DAY → DISCUSSION → VOTING → VOTE_RESULT → RESOLUTION → (NIGHT …)
+CANCELLED  (valid cancel / undersized start)
+GAME_OVER  (win check)
+```
+
+Durations (`DURATIONS_SECONDS`): WAITING 120, STARTING 10, ROLE_REVEAL 8, NIGHT 45, DAY 20, DISCUSSION 90, VOTING 45, VOTE_RESULT 8, RESOLUTION 3. Revote stays inside the same `VOTING` phase (`voteRound` 1→2, `revoteCandidates` = tied players, 30s timer). Terminal states: `GAME_OVER`, `CANCELLED`. `nextPhase` maps to `ROLE_REVEAL` and then wraps the play loop. Client enum matches (`mafia_models.dart`).
 
 ### 11.2 Lobby
 
-One running game per group (`mafiaDomain.js` 125–127, 156–160). Defaults min 4 max 8 (clamped 4–16). Auto-start when full → `starting`. Manual `startMafiaGame`. Expired waiting lobby cancelled (`lobbyManager.js`). Expired starting assigns roles (`roleAssigner.js`).
+One running game per group (`mafiaDomain.js`). Defaults min 4 max 8 (hard-clamped 4–8, both server and rules). Auto-start when full → `STARTING`. Manual `startMafiaGame`. Expired waiting lobby cancelled (`lobbyManager.js`). Expired `STARTING` with a live claim assigns roles (`roleAssigner.js`).
 
-Client create/join/start/leave: callables. Rules also allow a constrained client `mafiaGameCreate` path (`firestore.rules` 102–141); the Flutter repository uses callables for those four actions.
+Client create/join/start/leave: callables. `firestore.rules` also allow a constrained client `mafiaGameCreate` path (uppercase `WAITING` marker on the group) that the Flutter repository does not use.
 
 ### 11.3 Roles (`abilities/index.js`, `roleAssigner.js`)
 
-Assigned: mafia, doctor, detective, citizen filler; `good_boy` at ≥8 (classic and advanced); sniper if advanced ≥9; silencer if advanced ≥10.  
-`good_boy` is a citizen-aligned named villager (`abilities/good_boy.js`): no night action, town win condition. Live `createMafiaGame` stores `version: 1` (classic), so the classic ≥8 gate is what actually assigns it.
+Exactly five roles: `mafia`, `don`, `doctor`, `detective`, `citizen`. No Good Boy / Sniper / Silencer. `computeRoleDistribution`: 4 players = mafia, doctor, detective, citizen; ≥5 = don + mafia + doctor + detective + citizen fill. Deterministic FNV-1a assignment seeded by `gameId` (no Roleplay export needed).
 
-Night resolution (`nightResolver.js`): mafia majority kill vs doctor save; sniper one bullet; silencer `canSpeak: false` (reset next night); detective writes `lastInvestigationResult` on private doc.
+Night resolution (`nightResolver.js`): mafia majority (incl. don) kill vs doctor save; tie → no kill; doctor cannot target the same player on two consecutive nights; detective writes `lastInvestigationResult` (Mafia/Not Mafia) on private doc; don writes `lastDonInvestigationResult` (Detective/Not Detective).
 
-Votes (`voteResolver.js`): majority executes; tie/none skip.
+Votes (`voteResolver.js`): majority executes immediately; first tie → revote restricted to the tied players (same `VOTING`, 30s); second tie (or non-tied targets) → skip with reason `second_tie` (no elimination, no day freeze).
 
-Win (`winConditionChecker.js`): mafia count ≥ others → mafias; mafia 0 → citizens.
+Win (`winConditionChecker.js`): mafia alive ≥ others → mafias; mafia 0 → citizens; checked after any player-count change.
 
-Roles live under `players/{uid}/private/data` (client read self only).
+Roles live under `players/{uid}/private/data` (client read self only, write false).
 
 ### 11.4 Server vs client
 
-Night action, vote, and mafia chat are **client Firestore writes** gated by rules (`firebase_mafia_repository.dart` 52–97; `firestore.rules` 888–955). Phase advance, role assignment, night/vote resolution, rewards: schedulers / Admin SDK.
+Night actions, votes, chat, and mafia messages are written **only by the `submitMafiaAction` / `sendMafiaChat` callables**. `firestore.rules` deny all client writes to `night_actions`, `votes`, `chat`, `mafia_messages`, `action_receipts`, and `players/{uid}/private`. Phase advance, role assignment, night/vote resolution, rewards, history: schedulers / Admin SDK.
 
-Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute. `leaveMafiaGame` callable: starting (cancel if below min, else decrement) or active night/day/discussion/voting (mark eliminated, then win check). Waiting and execution are `unsupported`. `MafiaGameScreen` leave + confirmation matches that server behavior.
+Heartbeat every 25s. Disconnect if `lastSeenAt` > 90s (`disconnectHandler.js`), scheduler every 1 minute; server transitions never stall on a missing client. `leaveMafiaGame` callable: during `ROLE_REVEAL`/`NIGHT`/`DAY`/`DISCUSSION`/`VOTING`/`VOTE_RESULT`/`RESOLUTION` → mark eliminated + win check + 60s reconnect window; `WAITING`/`STARTING` → decrement/cancel; `GAME_OVER`/`CANCELLED` → unsupported. `MafiaGameScreen` leave + confirmation matches that server behavior.
 
-Rewards: `rewardDistributor.js` `earn_game` source `mafia`, idempotent `rewardsDistributed`. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history`.
+Rewards: `rewardDistributor.js` `earn_mafia_win` 10 / `earn_mafia_loss` 2, idempotent `rewardsDistributed`, no draw reward, no reward on cancellation. History: `mafia_history/{gameId}`, `users/{uid}/user_mafia_history` (+ aggregated `stats`), written transactionally and claimed via `historyWritten` (SEC-H-02).
 
-**Traceability:** `mafiaDomain.js`, `phaseFlow.js`, `phaseScheduler.js`, `lobbyManager.js`, `disconnectHandler.js`, `leaveGame.js`, `roleAssigner.js`, `nightResolver.js`, `voteResolver.js`, `winConditionChecker.js`, `rewardDistributor.js`, `abilities/*`, `firebase_mafia_repository.dart`, `mafia_provider.dart`, `mafia_game_screen.dart`, `firestore.rules` 57–167, 861–958, `index.js` 444–455, 960–963
+**Traceability:** `mafiaDomain.js`, `phaseFlow.js`, `phaseScheduler.js`, `lobbyManager.js`, `disconnectHandler.js`, `leaveGame.js`, `leaveTransition.js`, `actionDomain.js`, `roleAssigner.js`, `nightResolver.js`, `voteResolver.js`, `winConditionChecker.js`, `rewardDistributor.js`, `historyWriter.js`, `abilities/index.js`, `firebase_mafia_repository.dart`, `mafia_provider.dart`, `mafia_game_screen.dart`, `mafia_models.dart`, `firestore.rules`, `index.js`
 
 ---
 
 ## 12. Events
 
-Types with code paths (`eventsDomain.js` 20–24): poll, multipleChoice, ranking, versus, theory, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion, challenge.
+Types with code paths (`eventsDomain.js` 20–24): poll, comparison, theory, challenge, ranking, question, prediction, quiz, imageComparison, characterComparison, animeComparison, openDiscussion — an exact, strictly validated set of 12 types.
 
-Statuses: draft, scheduled, active, ended, cancelled, archived (`26–37`).
+Statuses: DRAFT, ACTIVE, ENDED, ARCHIVED, DELETED (canonical uppercase for new callers; legacy lowercase when a caller omits `scope`).
 
-Max duration: `MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000` (`12`, 135–137) message `Events cannot last longer than 7 days.` Client `EventLifecycle.maxDuration` is 7 days.
+Scopes: `group`, `multiGroup` (member of any `groupIds` entry), `global` (whole community, no group membership required). Global + multi-group creation is reachable from `CreateEventEntryPage`.
 
-Group required on create. Callables: saveEventDraft, publishEvent, cancelEvent, endEvent, archiveEvent, deleteEventDraft, joinEvent, leaveEvent, submitEventResponse. Cron `processEventLifecycle` every 1 minute: scheduled→active at `startAt`; active→finalize `endedReason: "expired"` at `endAt`.
+Max duration: `MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000` (`12`, 135–137) message `Events cannot last longer than 7 days.` Daily creation limit is 2 per user (`event_creation_limits`), enforced race-safe in the save transaction. Client `EventLifecycle.maxDuration` is 7 days.
 
-Results: votes / Borda ranking / quiz correctCounts (no winnerIds) / theory submissions / comparison winners / challenge verified vs self_report. Rewards `earn_event` for `winnerIds` when present.
+Callables: saveEventDraft, previewEvent, publishEvent, cancelEvent, endEvent, archiveEvent, deleteEventDraft, joinEvent, leaveEvent, submitEventResponse, resolveEvent, getEventAnalytics, addEventComment, reactToEvent. Cron `processEventLifecycle` every 1 minute: scheduled→active at `startAt`; active→finalize `endedReason: "expired"` at `endAt`.
 
-Chat cards: `postEventChatActivity` as type `event`. Notifications `event_starting` (pushWorthy true) / `event_ended` (pushWorthy not set true in `notifyEventLifecycle`).
+Results: votes / Borda ranking / quiz correctCounts (no winnerIds) / theory submissions / comparison winners / challenge verified vs self_report. `resolveEvent` lets the prediction/challenge creator lock a result with `winnerOptionId` / validated `winnerIds`; the result is immutable afterwards (status ENDED, `resultLockedAt` set) and triggers an ended notification + result chat card + `earn_event` rewards for winners. Rewards `earn_event` for `winnerIds` when present.
 
-Trigger: `/events/create?groupId=` from group details when `canManageEvents`.
+Chat cards: `postEventChatActivity` as type `event` for lifecycle (`started`/`ended`) and resolution (`kind: "result"`). Notifications `event_starting` (pushWorthy true) / `event_result_available` (pushWorthy true) via `notifyEventLifecycle`.
 
-**Traceability:** `eventsDomain.js`, `event_models.dart`, `event_type_registry.dart`, `event_lifecycle.dart`, `event_builder_page.dart`, `event_details_screen.dart`, `event_list_screen.dart`, `firebase_event_repository.dart`, `index.js` 364–398, 552–555, `firestore.rules` 678–704
+Visibility in `firestore.rules`: scope-aware helpers `eventVisibleOrGlobal()` — a signed-in user sees the event if they are the creator, or the event is in a public status (`ACTIVE`/`active`/`ENDED`/`ended`/`ARCHIVED`/`archived`) and they are a member of its scope (group, any multi-group, or global). `comments`/`reactions` subcollections honor the same visibility. `responses` readable for the author's own doc or after ENDED/ARCHIVED.
+
+Trigger: `/events/create` (optional `groupId`) — global events from the community entry, group/multi-group events from `CreateEventEntryPage` when `canManageEvents`.
+
+Client: `EventDetailsScreen` shows live participation, like/react, comments (for visible events), creator resolve (prediction/challenge), and creator/manageEvents analytics sheet from `getEventAnalytics`. `EventListScreen` Active tab paginates discovery with `loadMoreActive()` (cursor-based `startAfterDocument`); search + type filter remain client-side. Profile owner quick actions include "My Events". Home strip keeps to 3 events (`HomeEventsSection.pickHome` → `take(3)`).
+
+**Traceability:** `eventsDomain.js` (resolveEvent ~1774, exports 1922–1938), `index.js` new exports (~449+), `notificationBuilder.js`, `firestore.rules` (~767+), `firestore.indexes.json` (scope composite indexes), `event_models.dart` (`EventComment`, `EventAnalytics`, `EventPreview`), `event_providers.dart` (EventProvider actions + EventListProvider `loadMoreActive`), `event_repository.dart` / `firebase_event_repository.dart` / `unavailable_event_repository.dart`, `event_details_screen.dart`, `event_list_screen.dart`, `home_event_card.dart`
 
 ---
 
@@ -747,7 +786,11 @@ Client screens: feed, details, manga viewer, story reader, editor (`fan_work_scr
 | Type | Amount | Daily cap | Sources in code |
 |------|--------|-----------|-----------------|
 | earn_event | 10 | 3 | `eventsDomain.js` grant on winners |
-| earn_game | 10 | 3 (bucket `event`) | trivia `afterComplete`; mafia `rewardDistributor` |
+| earn_game_win_easy | 7 | 10 (bucket `game`) | trivia `afterComplete` (easy difficulty) |
+| earn_game_win_normal | 8 | 10 (bucket `game`) | trivia `afterComplete` (normal difficulty) |
+| earn_game_win_hard | 10 | 10 (bucket `game`) | trivia `afterComplete` (hard difficulty) |
+| earn_game_draw | 5 | 10 (bucket `game`) | trivia `afterComplete` (draw) |
+| earn_game_loss | 2 | 10 (bucket `game`) | trivia `afterComplete` (loss) |
 | earn_publish | 10 | 1 | edit pipeline; fan work publish |
 | earn_achievement | 5 | 9 | `achievementsDomain.js` |
 | earn_referral_inviter | 70 | none in DAILY_CAPS | `economyDomain.js` |
@@ -804,7 +847,7 @@ Placements: `homeFeed`, `groupEntry`, `storeFooter` (`economy_types.dart` 22). D
 | achievement_unlocked | achievementsDomain | `/achievements?id=` | false |
 | game_invite / game_started / game_completed | gamesDomain | `/game/{id}` | invite/started pushWorthy true |
 | game_invite (mafia) | mafiaDomain create | `/mafia/{id}` | true |
-| event_starting / event_ended | eventsDomain `notifyEventLifecycle` | `/event/{id}` | starting true |
+| event_starting / event_result_available | eventsDomain `notifyEventLifecycle` | `/event/{id}` | pushWorthy true |
 | group_disbanded | `disbandGroup` inline write | not via notificationBuilder; type `group_disbanded`, `refId` groupId | FCM not in that write |
 
 Creation: `notificationBuilder.build` (idempotent per recipient+id) except disband which writes notification docs directly (`index.js` 768–778). Clients cannot create notifications (`firestore.rules` 418–421).
@@ -993,7 +1036,7 @@ Sensitive fields on `users` (coinsBalance, subscriptionType, totalRespect, fansC
 
 `lastMessageAt`/`lastMessageText` remain member-writable.
 
-Mafia night/vote/chat are client-trusted as **intent documents**; resolution is server-side.
+Mafia night actions, votes, chat, mafia messages, and action receipts are **server-written only**; the rules deny every client write (`submitMafiaAction` / `sendMafiaChat` callables do the writes with the Admin SDK). Resolution, phase advance, rewards, and history remain server-side.
 
 ### 23.2 Storage rules
 
@@ -1001,7 +1044,7 @@ Authenticated-only named paths. Avatars 5MB images; group image/background owner
 
 ### 23.3 Callables (exports in `functions/index.js`)
 
-HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/publish/cancel/end/archive/delete/join/leave/submit; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
+HTTPS callables (region us-central1 unless noted): updateSocialProfile; getDiscoveryFeed; anime list/favorites set/remove/get; startEditUpload, repostEdit, deleteEdit, likeEdit, addEditComment, startEditPlayback, recordEditView, recordEditSignal, editCommentAction; createGroup, createGroupInvite, joinGroup, requestToJoin, leaveGroup, accept/rejectJoinRequest, changeRole, updateGroupSettings, unbanMember, updateRolePermissions, kickMember, banMember, transferOwnership, prepareOwnershipTransfer, reserve/releaseRoleplayCharacter; send/edit/delete/pin/react/markRead/markDelivered group messages, updateGroupChatBackground; start/send/delete/markRead/markDelivered/delete private chat; event draft/preview/publish/cancel/end/archive/delete/join/leave/submit/resolve/analytics/comment/react; create/initialize/join/leave/start/pause/resume/submit/end/cancel game; create/join/start/leave mafia, submitMafiaAction, sendMafiaChat, heartbeatMafia; getAchievements; fan work draft/publish/revise/removal/archive/delete/media/like/bookmark/report/rate/comment/commentAction; getEconomy, getInventory, getEconomyTransactions, getPremiumEntitlement, restorePremiumPurchases, claimEconomyReward, purchaseStoreItem, equip/unequipCosmetic; giveRespect, send/respond/remove friend, block/unblock; markNotificationRead, markAllNotificationsRead, register/unregister FcmToken; disbandGroup.
 
 Triggers: syncAvatarPrivacy, syncPublicProfile, processEditVideo (europe-west3), processGroupChatMedia (europe-west3), recalculateInviteRanks, onNewGroupMessage, onJoinRequest, onJoinRequestDecision, onFriendRequest, onRespectReceived, onNewPrivateMessage, refreshGroupActivityScores, processExpiredGames, processEventLifecycle, processExpiredLobbies, processPhaseTransitions, markDisconnectedPlayers.
 
@@ -1051,7 +1094,7 @@ Flutter `test/` files (68 dart files) cover: auth (screens, provider, validators
 
 No Flutter widget tests named for: mafia play screen, group chat composer, edits feed playback, notification inbox `hasMore`/retry, roleplay reservation UI.
 
-Functions unit files (22): socialGraph, avatarPrivacy, groupsDomain, groupChat, privateChat, eventsDomain, gamesDomain, gameEngines, characterArt, achievementsDomain, mafiaDomain, mafiaEngine, fanWorksDomain, groupMediaPipeline, notificationBuilder, discoveryEngine, editsDomain, economyDomain, mafiaLeaveGame, ranking, recommendationEngine, animeListsDomain.
+Functions unit files (26): socialGraph, avatarPrivacy, groupsDomain, groupChat, privateChat, eventsDomain, gamesDomain, gameEngines, characterArt, achievementsDomain, mafiaDomain, mafiaEngine, fanWorksDomain, groupMediaPipeline, notificationBuilder, discoveryEngine, editsDomain, economyDomain, mafiaLeaveGame, chatCardWriter, contentFilter, ranking, recommendationEngine, animeListsDomain, animeHubDomain, mafiaHistory.
 
 **Traceability:** `/tmp/flutter-test.log`, `/tmp/functions-test.log`, `/tmp/rules-test.log`, `package.json`, `functions/package.json`, `test/**`, `functions/test/**`
 
@@ -1104,7 +1147,7 @@ Server-side Arabic appears in disband notifications (`index.js` 758–771 `تم 
 | Observed | notification inbox | Retry re-fetches; `hasMore` follows page size |
 | INCOMPLETE/MOCK | Home section names `*Placeholder` | Real strips, still named placeholder in enum |
 | INCOMPLETE/MOCK | `ScoringStrategyRegistry` | No-op client scoring |
-| Observed | Mafia waiting/execution leave | Server `leaveTransition` returns `unsupported`; UI hides leave in those phases |
+| Observed | Mafia leave in terminal states | Server `leaveTransition` returns `unsupported` for `GAME_OVER`/`CANCELLED`; UI hides leave when `isFinished` |
 | Observed | `UnreadEngine` | Shared shell/Drawer unread; no visual/audio vendor; inbox types still a subset |
 | Observed | `firestore.rules` vs `PubgetUser.toMap` | create/update keys vs `displayName` / `whoCanMessageMe` |
 | Unexported | `index.js` 814–950 | `legacyOnNewGroupMessage`, `legacyOnJoinRequest` not in `exports` |

@@ -26,7 +26,7 @@ function winnerFromAliveTeams(teams) {
 async function checkWinCondition(gameId, gameData) {
   const gameRef = db.collection("mafia_games").doc(gameId);
 
-  if (["game_over", "finished", "cancelled"].includes(gameData.status)) {
+  if (["GAME_OVER", "CANCELLED"].includes(gameData.status)) {
     return;
   }
 
@@ -57,13 +57,14 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
   const eventsRef = gameRef.collection("events");
   const claimed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(gameRef);
-    if (!snap.exists || ["finished", "cancelled"].includes(snap.data().status)) return false;
+    if (!snap.exists || ["GAME_OVER", "CANCELLED"].includes(snap.data().status)) return false;
     tx.update(gameRef, {
-       status: "game_over",
-       currentPhase: "game_over",
+       status: "GAME_OVER",
+       currentPhase: "GAME_OVER",
       winner,
       endedAt: admin.firestore.FieldValue.serverTimestamp(),
       phaseEndsAt: admin.firestore.FieldValue.delete(),
+      serverEndsAt: admin.firestore.FieldValue.delete(),
       phaseTransitionClaim: admin.firestore.FieldValue.delete(),
     });
     if (groupId) {

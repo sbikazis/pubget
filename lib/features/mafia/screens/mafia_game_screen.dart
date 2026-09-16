@@ -189,10 +189,9 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
     return self != null &&
         self.isAlive &&
         self.canSpeak &&
-        (game.currentPhase == 'day' ||
-            game.currentPhase == 'discussion' ||
-            game.currentPhase == 'voting' ||
-            game.currentPhase == 'revote');
+        (game.currentPhase == 'DAY' ||
+            game.currentPhase == 'DISCUSSION' ||
+            game.currentPhase == 'VOTING');
   }
 }
 
@@ -212,7 +211,9 @@ class _LobbyHeader extends StatelessWidget {
           Text(_phaseLabel(game.currentPhase),
               style: Theme.of(context).textTheme.titleMedium),
           Text('${game.playersCount}/${game.maxPlayers} لاعبين · الحد الأدنى ${game.minPlayers}'),
-          GameDeadlineTimer(deadlineAt: game.phaseEndsAt ?? game.countdownEndsAt),
+          GameDeadlineTimer(
+            deadlineAt: game.serverEndsAt ?? game.phaseEndsAt ?? game.countdownEndsAt,
+          ),
         ],
       ),
     );
@@ -324,7 +325,7 @@ class _PlayActions extends StatelessWidget {
       }
       return const Text('أنت تشاهد اللعبة كمشاهد.');
     }
-    if (game.currentPhase == 'discussion') {
+    if (game.currentPhase == 'DISCUSSION') {
       final isTurn = game.currentSpeakerId == userId;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -339,7 +340,7 @@ class _PlayActions extends StatelessWidget {
         ],
       );
     }
-    if (game.currentPhase == 'night' && self.canUseAbility) {
+    if (game.currentPhase == 'NIGHT' && self.canUseAbility) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -356,19 +357,18 @@ class _PlayActions extends StatelessWidget {
         ],
       );
     }
-    if ((game.currentPhase == 'voting' || game.currentPhase == 'revote') &&
-        self.canVote) {
+    if (game.currentPhase == 'VOTING' && self.canVote) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            game.currentPhase == 'revote'
+            game.revoteCandidates.isNotEmpty
                 ? 'إعادة تصويت سرية بين المتعادلين فقط.'
                 : 'تصويت سري. لا يمكنك التصويت لنفسك.',
           ),
           for (final player in alive)
             if (player.userId != userId &&
-                (game.currentPhase != 'revote' ||
+                (game.revoteCandidates.isEmpty ||
                     game.revoteCandidates.contains(player.userId)))
               ListTile(
                 title: Text(player.username),
@@ -460,17 +460,16 @@ class _Result extends StatelessWidget {
 }
 
 String _phaseLabel(String phase) => switch (phase) {
-      'waiting' => 'غرفة الانتظار',
-      'starting' => 'جاري بدء اللعبة',
-      'role_reveal' => 'كشف دورك',
-      'night' => 'الليل',
-      'day' => 'النهار',
-      'discussion' => 'النقاش',
-      'voting' => 'التصويت',
-      'revote' => 'إعادة التصويت',
-      'vote_result' => 'نتيجة التصويت',
-      'resolution' => 'معالجة النتيجة',
-      'game_over' || 'finished' => 'انتهت اللعبة',
+      'WAITING' => 'غرفة الانتظار',
+      'STARTING' => 'جاري بدء اللعبة',
+      'ROLE_REVEAL' => 'كشف دورك',
+      'NIGHT' => 'الليل',
+      'DAY' => 'النهار',
+      'DISCUSSION' => 'النقاش',
+      'VOTING' => 'التصويت',
+      'VOTE_RESULT' => 'نتيجة التصويت',
+      'RESOLUTION' => 'معالجة النتيجة',
+      'GAME_OVER' || 'CANCELLED' => 'انتهت اللعبة',
       _ => phase,
     };
 
