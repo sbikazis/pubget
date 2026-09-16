@@ -1,0 +1,42 @@
+﻿
+===== git =====
+
+Name         Source                                                            Version       
+----         ------                                                            -------       
+git.exe      C:\Program Files\Git\cmd\git.exe                                  2.52.0.1      
+
+===== flutter =====
+flutter.bat  C:\Users\admin\develop\flutter\bin\flutter.bat                    0.0.0.0       
+
+===== dart =====
+dart.bat     C:\Users\admin\develop\flutter\bin\dart.bat                       0.0.0.0       
+
+===== node =====
+node.exe     C:\nvm4w\nodejs\node.exe                                          20.19.0.0     
+
+===== npm =====
+npm.cmd      C:\nvm4w\nodejs\npm.cmd                                           0.0.0.0       
+
+===== python =====
+python.exe   C:\Users\admin\AppData\Local\Programs\Python\Python313\python.exe 3.13.7150.1013
+
+===== java =====
+java.exe     C:\Program Files\Java\jdk-17\bin\java.exe                         17.0.12.0     
+
+===== javac =====
+javac.exe    C:\Program Files\Java\jdk-17\bin\javac.exe                        17.0.12.0     
+
+===== adb =====
+adb.exe      C:\Users\admin\SDK pt\platform-tools\adb.exe                      0.0.0.0       
+
+===== firebase =====
+firebase.ps1 C:\nvm4w\nodejs\firebase.ps1                                                    
+
+===== code =====
+code.cmd     C:\Program Files\Microsoft VS Code\bin\code.cmd                   0.0.0.0       
+
+===== gradle =====
+
+===== sdkmanager =====
+
+
