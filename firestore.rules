@@ -132,11 +132,11 @@ service cloud.firestore {
         request.resource.data.keys().hasOnly([
           'groupId','createdBy','createdAt','version','status','currentPhase',
           'currentDay','currentNight','playersCount','maxPlayers','minPlayers',
-          'winner','countdownEndsAt','phaseEndsAt','isLocked','startedAt',
-          'endedAt','rewardsDistributed','historyWritten'
+          'winner','countdownEndsAt','phaseEndsAt','serverStartedAt','serverEndsAt',
+          'isLocked','startedAt','endedAt','rewardsDistributed','historyWritten'
         ]) &&
-        request.resource.data.status == 'waiting' &&
-        request.resource.data.currentPhase == 'waiting' &&
+        request.resource.data.status == 'WAITING' &&
+        request.resource.data.currentPhase == 'WAITING' &&
         request.resource.data.currentDay == 0 &&
         request.resource.data.currentNight == 0 &&
         request.resource.data.playersCount == 1 &&
@@ -155,6 +155,8 @@ service cloud.firestore {
         request.resource.data.isLocked == false &&
         request.resource.data.winner == null &&
         request.resource.data.phaseEndsAt == null &&
+        request.resource.data.serverStartedAt == null &&
+        request.resource.data.serverEndsAt == null &&
         request.resource.data.startedAt == null &&
         request.resource.data.endedAt == null &&
         request.resource.data.rewardsDistributed == false &&
@@ -162,11 +164,11 @@ service cloud.firestore {
         existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
         getAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)).data.userId == request.auth.uid &&
         getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.activeGameId == gameId &&
-        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.gameStatus == 'waiting' &&
+        getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.gameStatus == 'WAITING' &&
         getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.hasRunningGame == true;
     }
     function mafiaJoinCounterUpdate(gameId) {
-      return resource.data.status == 'waiting' &&
+      return resource.data.status == 'WAITING' &&
         request.resource.data.playersCount == resource.data.playersCount + 1 &&
         !exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
         existsAfter(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
@@ -174,8 +176,8 @@ service cloud.firestore {
           changedOnly(['playersCount'])) ||
          (request.resource.data.playersCount == resource.data.maxPlayers &&
           request.resource.data.isLocked == true &&
-          request.resource.data.status == 'starting' &&
-          request.resource.data.currentPhase == 'starting' &&
+          request.resource.data.status == 'STARTING' &&
+          request.resource.data.currentPhase == 'STARTING' &&
           request.resource.data.countdownEndsAt is timestamp &&
           request.resource.data.countdownEndsAt >= request.time &&
           request.resource.data.countdownEndsAt <= request.time + duration.value(60, 's') &&
@@ -183,7 +185,7 @@ service cloud.firestore {
             ['playersCount','isLocked','status','currentPhase','countdownEndsAt'])));
     }
     function mafiaLeaveCounterUpdate(gameId) {
-      return resource.data.status == 'waiting' &&
+      return resource.data.status == 'WAITING' &&
         request.resource.data.playersCount == resource.data.playersCount - 1 &&
         request.resource.data.playersCount >= 0 &&
         exists(/databases/$(database)/documents/mafia_games/$(gameId)/players/$(request.auth.uid)) &&
@@ -588,7 +590,7 @@ service cloud.firestore {
         signedIn() && groupMember(groupId) && changedOnly([
           'activeGameId','gameStatus','hasRunningGame'
         ]) && request.resource.data.activeGameId is string &&
-        request.resource.data.gameStatus == 'waiting' &&
+        request.resource.data.gameStatus == 'WAITING' &&
         request.resource.data.hasRunningGame == true &&
         existsAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)) &&
         getAfter(/databases/$(database)/documents/mafia_games/$(request.resource.data.activeGameId)).data.groupId == groupId &&
@@ -762,30 +764,62 @@ service cloud.firestore {
       }
     }
 
+    // ---- Events (posts) — root-scoped helpers, passed eventId explicitly ----
+    function eventDoc(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data;
+    }
+    function eventRecordExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+    function eventNotDraft(eventId) {
+      let status = eventDoc(eventId).get('status', '');
+      let s = status is string ? status.lower() : '';
+      return s != 'draft' && s != 'deleted' && s != 'archived';
+    }
+    function eventGlobalScope(eventId) {
+      return eventDoc(eventId).get('scope', 'group') == 'global';
+    }
+    function eventInSingleGroup(eventId) {
+      let data = eventDoc(eventId);
+      return data.keys().hasAny(['groupId']) &&
+        data.get('groupId') is string &&
+        groupMember(data.get('groupId'));
+    }
+        function eventInMultiGroup(eventId) {
+      // Rules functions cannot loop. Multi-group membership is enforced through
+      // the loop-free participants subcollection: the app writes a
+      // participants/{uid} record only after groupMember() passes (same gate
+      // as the green single-group path). Creator/global/single-group members
+      // are already readable via eventVisibleToUser's other branches.
+      return signedIn() &&
+        exists(/databases/$(database)/documents/events/$(eventId)/participants/$(request.auth.uid));
+    }
+    function eventVisibleToUser(eventId) {
+      return signedIn() && eventRecordExists(eventId) &&
+        (eventDoc(eventId).get('creatorId', '') == request.auth.uid ||
+         (eventNotDraft(eventId) &&
+          (eventGlobalScope(eventId) ||
+           eventInSingleGroup(eventId) ||
+           eventInMultiGroup(eventId))));
+    }
+    // ---- /events top-level: reads follow the root helpers; writes locked ----
     match /events/{eventId} {
-      function eventData() {
-        return get(/databases/$(database)/documents/events/$(eventId)).data;
-      }
-      function eventExists() {
-        return exists(/databases/$(database)/documents/events/$(eventId));
-      }
-      function eventVisible() {
-        return signedIn() && eventExists() &&
-          (eventData().creatorId == request.auth.uid ||
-           (eventData().status != 'draft' &&
-            eventData().groupId is string &&
-            groupMember(eventData().groupId)));
-      }
-      allow read: if eventVisible();
+      allow read: if eventVisibleToUser(eventId);
       allow create, update, delete: if false;
       match /participants/{uid} {
-        allow read: if eventVisible();
+        allow read: if eventVisibleToUser(eventId);
         allow create, update, delete: if false;
       }
       match /responses/{uid} {
-        allow read: if eventVisible() &&
-          (request.auth.uid == uid ||
-           eventData().status in ['ended', 'archived']);
+        allow read: if eventVisibleToUser(eventId);
+        allow create, update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if eventVisibleToUser(eventId);
+        allow create, update, delete: if false;
+      }
+      match /reactions/{reactionId} {
+        allow read: if eventVisibleToUser(eventId);
         allow create, update, delete: if false;
       }
     }
@@ -903,10 +937,10 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/fanWorks/$(workId));
       }
       function fanWorkVisible() {
-        return signedIn() && fanWorkExists() &&
-          (fanWorkData().creatorId == request.auth.uid ||
-           (fanWorkData().status == 'published' &&
-            fanWorkData().moderationStatus == 'approved'));
+        return signedIn() &&
+          (resource.data.creatorId == request.auth.uid ||
+           (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved'));
       }
       allow read: if fanWorkVisible();
       allow create, update, delete: if false;
@@ -929,11 +963,17 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /revisions/{revisionId} {
-        allow read: if fanWorkVisible();
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
         allow create, update, delete: if false;
       }
       match /comments/{commentId} {
-        allow read: if fanWorkVisible();
+        allow read: if signedIn() && fanWorkExists() &&
+          (fanWorkData().creatorId == request.auth.uid ||
+           (fanWorkData().status == 'published' &&
+            fanWorkData().moderationStatus == 'approved'));
         allow create, update, delete: if false;
         match /likes/{uid} {
           allow read: if self(uid);
@@ -991,12 +1031,12 @@ service cloud.firestore {
         allow create: if self(uid) && mafiaPublicPlayerDefaults(gameId, uid) &&
           ((!exists(/databases/$(database)/documents/mafia_games/$(gameId)) &&
              getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.createdBy == request.auth.uid) ||
-           (mafiaGame(gameId).data.status == 'waiting' &&
+           (mafiaGame(gameId).data.status == 'WAITING' &&
              mafiaGame(gameId).data.playersCount < mafiaGame(gameId).data.maxPlayers &&
              getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
                mafiaGame(gameId).data.playersCount + 1));
         allow delete: if self(uid) &&
-          mafiaGame(gameId).data.status == 'waiting' &&
+          mafiaGame(gameId).data.status == 'WAITING' &&
           getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount ==
             mafiaGame(gameId).data.playersCount - 1 &&
           getAfter(/databases/$(database)/documents/mafia_games/$(gameId)).data.playersCount >= 0 &&
