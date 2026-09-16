@@ -1,0 +1,42 @@
+﻿ANDROID_HOME=
+ANDROID_SDK_ROOT=
+
+ADB:
+Android Debug Bridge version 1.0.41
+Version 36.0.2-14143358
+Installed as C:\Users\admin\SDK pt\platform-tools\adb.exe
+Running on Windows 10.0.19045
+
+Android SDK:
+SDK=C:\Users\admin\AppData\Local\Android\sdk
+
+SDK directories:
+
+Name                   FullName                                                       
+----                   --------                                                       
+.downloadIntermediates C:\Users\admin\AppData\Local\Android\sdk\.downloadIntermediates
+.temp                  C:\Users\admin\AppData\Local\Android\sdk\.temp                 
+build-tools            C:\Users\admin\AppData\Local\Android\sdk\build-tools           
+cmake                  C:\Users\admin\AppData\Local\Android\sdk\cmake                 
+cmdline-tools          C:\Users\admin\AppData\Local\Android\sdk\cmdline-tools         
+emulator               C:\Users\admin\AppData\Local\Android\sdk\emulator              
+extras                 C:\Users\admin\AppData\Local\Android\sdk\extras                
+licenses               C:\Users\admin\AppData\Local\Android\sdk\licenses              
+ndk                    C:\Users\admin\AppData\Local\Android\sdk\ndk                   
+platform-tools         C:\Users\admin\AppData\Local\Android\sdk\platform-tools        
+platforms              C:\Users\admin\AppData\Local\Android\sdk\platforms             
+sources                C:\Users\admin\AppData\Local\Android\sdk\sources               
+system-images          C:\Users\admin\AppData\Local\Android\sdk\system-images         
+
+Platforms:
+android-33                                                                            
+android-34                                                                            
+android-35                                                                            
+android-36                                                                            
+android-36.1                                                                          
+
+Build Tools:
+35.0.0                                                                                
+36.1.0                                                                                
+
+

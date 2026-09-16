@@ -1,0 +1,19 @@
+﻿
+Caption                                    Version    BuildNumber OSArchitecture
+-------                                    -------    ----------- --------------
+Microsoft Windows 10 Famille Langue unique 10.0.19045 19045       64 bits       
+
+PowerShell:
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+
+Architecture:
+True
+
+
