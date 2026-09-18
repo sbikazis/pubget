@@ -26,6 +26,7 @@ final class FanWorkFeedProvider extends ChangeNotifier {
   bool _offlineCached = false;
   FanWorkType? _type;
   String? _animeId;
+  String? _characterId;
   bool _disposed = false;
 
   List<FanWork> get items => List<FanWork>.unmodifiable(_items);
@@ -36,16 +37,20 @@ final class FanWorkFeedProvider extends ChangeNotifier {
   bool get offlineCached => _offlineCached;
   FanWorkType? get type => _type;
   String? get animeId => _animeId;
+  String? get characterId => _characterId;
 
   Future<void> load({
     FanWorkType? type,
     String? animeId,
+    String? characterId,
     bool refresh = false,
   }) async {
-    final typeChanged = type != _type || animeId != _animeId;
+    final typeChanged =
+        type != _type || animeId != _animeId || characterId != _characterId;
     if (typeChanged || refresh) {
       _type = type;
       _animeId = animeId;
+      _characterId = characterId;
       _items.clear();
       _seenIds.clear();
       _hasMore = true;
@@ -54,10 +59,7 @@ final class FanWorkFeedProvider extends ChangeNotifier {
     _failure = null;
     _offlineCached = false;
     notifyListeners();
-    final result = await _repository.getPublicFeed(
-      type: _type,
-      animeId: _animeId,
-    );
+    final result = await _fetchFeed();
     result.fold(
       onSuccess: (page) {
         _replacePage(page);
@@ -84,11 +86,7 @@ final class FanWorkFeedProvider extends ChangeNotifier {
     _loadingMore = true;
     _state = LoadingState.loadingMore;
     notifyListeners();
-    final result = await _repository.getPublicFeed(
-      type: _type,
-      animeId: _animeId,
-      after: _items.last,
-    );
+    final result = await _fetchFeed(after: _items.last);
     result.fold(
       onSuccess: (page) {
         _appendPage(page);
@@ -110,6 +108,24 @@ final class FanWorkFeedProvider extends ChangeNotifier {
     final result = await _repository.getMyDrafts(userId: userId);
     result.fold(onSuccess: (drafts) => _drafts = drafts, onFailure: (_) {});
     _safeNotify();
+  }
+
+  Future<Result<FanWorkListPage>> _fetchFeed({FanWork? after}) {
+    final characterId = _characterId;
+    final repository = _repository;
+    if (characterId != null &&
+        characterId.isNotEmpty &&
+        repository is CharacterFanWorkRepository) {
+      return (repository as CharacterFanWorkRepository).getCharacterFeed(
+        characterId,
+        after: after,
+      );
+    }
+    return repository.getPublicFeed(
+      type: _type,
+      animeId: _animeId,
+      after: after,
+    );
   }
 
   void _replacePage(FanWorkListPage page) {

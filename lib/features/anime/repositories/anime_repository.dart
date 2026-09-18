@@ -35,6 +35,14 @@ abstract interface class AnimeRepository {
     int limit = 20,
   });
 
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25});
+
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  });
+
   Future<Result<List<AnimeSeasonYear>>> getAvailableSeasons();
 
   Future<Result<AnimePage>> getBySeason({
@@ -60,4 +68,6 @@ abstract final class AnimeCacheTtl {
   static const thisSeason = Duration(hours: 1);
   static const search = Duration(minutes: 20);
   static const genreList = Duration(hours: 2);
+  static const studiosIndex = Duration(hours: 24);
+  static const studioList = Duration(hours: 2);
 }

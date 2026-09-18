@@ -35,17 +35,32 @@ abstract final class AnimeLinks {
   static String seasonPath(int year, AnimeSeason season) =>
       '/anime/season?year=$year&season=${Uri.encodeComponent(season.name)}';
 
+  static String studioPath(String studioId, {String? name}) {
+    final encoded = Uri.encodeComponent(studioId);
+    if (name == null || name.isEmpty) return '/anime/studio?studioId=$encoded';
+    return '/anime/studio?studioId=$encoded&name=${Uri.encodeComponent(name)}';
+  }
+
   static void openHub(BuildContext context) =>
       AppNavigation.go(context, hubPath());
 
   static void openDetails(BuildContext context, String animeId) =>
       AppNavigation.go(context, detailsPath(animeId));
 
+  static String characterPath(String characterId) =>
+      PubgetLinks.characterPath(characterId);
+
+  static void openCharacter(BuildContext context, String characterId) =>
+      AppNavigation.go(context, characterPath(characterId));
+
   static void openCatalog(BuildContext context, AnimeCatalogKind kind) =>
       AppNavigation.go(context, catalogPath(kind));
 
   static void openGenre(BuildContext context, AnimeGenre genre) =>
       AppNavigation.go(context, genrePath(genre.id, name: genre.name));
+
+  static void openStudio(BuildContext context, AnimeStudio studio) =>
+      AppNavigation.go(context, studioPath(studio.id, name: studio.name));
 
   static void openSeason(
     BuildContext context, {
@@ -160,11 +175,7 @@ class AnimePoster extends StatelessWidget {
 }
 
 class AnimePosterCard extends StatelessWidget {
-  const AnimePosterCard({
-    required this.anime,
-    this.width = 128,
-    super.key,
-  });
+  const AnimePosterCard({required this.anime, this.width = 128, super.key});
 
   final Anime anime;
   final double width;
@@ -356,10 +367,7 @@ class AnimeHorizontalStrip extends StatelessWidget {
                     gradient: const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Color(0xFFF4D37D),
-                        Color(0xFF6C3FC5),
-                      ],
+                      colors: <Color>[Color(0xFFF4D37D), Color(0xFF6C3FC5)],
                     ),
                   ),
                 ),
@@ -376,10 +384,7 @@ class AnimeHorizontalStrip extends StatelessWidget {
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
                         const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: theme.textTheme.bodySmall,
-                        ),
+                        Text(subtitle!, style: theme.textTheme.bodySmall),
                       ],
                     ],
                   ),
@@ -494,9 +499,10 @@ class AnimeHomeStrip extends StatelessWidget {
 }
 
 class AnimePaginatedList extends StatelessWidget {
-  const AnimePaginatedList({required this.list, super.key});
+  const AnimePaginatedList({required this.list, this.header, super.key});
 
   final AnimeListProvider list;
+  final Widget? header;
 
   @override
   Widget build(BuildContext context) {
@@ -509,15 +515,17 @@ class AnimePaginatedList extends StatelessWidget {
         return false;
       },
       child: ListView.builder(
-        itemCount: list.items.length + 2,
+        itemCount: list.items.length + 2 + (header == null ? 0 : 1),
         itemBuilder: (context, index) {
-          if (index == 0) {
+          if (index == 0 && header != null) return header!;
+          final cursor = header == null ? index : index - 1;
+          if (cursor == 0) {
             if (!list.fromCache) return const SizedBox.shrink();
             return AnimeCachedBanner(
               offline: list.state == LoadingState.offline,
             );
           }
-          if (index == list.items.length + 1) {
+          if (cursor == list.items.length + 1) {
             if (list.state == LoadingState.loadingMore) {
               return const Padding(
                 padding: EdgeInsets.all(AppSpacing.lg),
@@ -540,7 +548,7 @@ class AnimePaginatedList extends StatelessWidget {
             }
             return const SizedBox.shrink();
           }
-          return AnimeResultTile(anime: list.items[index - 1]);
+          return AnimeResultTile(anime: list.items[cursor - 1]);
         },
       ),
     );
@@ -627,13 +635,14 @@ class _AnimeScorePill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               score.value.toStringAsFixed(1),
-              style: (large
-                      ? theme.textTheme.titleMedium
-                      : theme.textTheme.labelSmall)
-                  ?.copyWith(
-                    color: AppColors.goldPale,
-                    fontWeight: FontWeight.w800,
-                  ),
+              style:
+                  (large
+                          ? theme.textTheme.titleMedium
+                          : theme.textTheme.labelSmall)
+                      ?.copyWith(
+                        color: AppColors.goldPale,
+                        fontWeight: FontWeight.w800,
+                      ),
             ),
           ],
         ),

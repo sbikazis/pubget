@@ -72,6 +72,12 @@ abstract final class PubgetLinks {
 
   static String anime(String animeId) => canonical(animePath(animeId));
 
+  static String characterPath(String characterId) =>
+      _encodedPath('/anime/character', characterId) ?? '';
+
+  static String character(String characterId) =>
+      canonical(characterPath(characterId));
+
   static String groupPath(String groupId) =>
       _encodedPath('/group', groupId) ?? '';
 

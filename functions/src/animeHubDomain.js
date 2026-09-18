@@ -277,10 +277,78 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
     return { ok: true };
   }
 
+  function discussionRef(characterId) {
+    return db
+      .collection("character_discussions")
+      .doc(characterId)
+      .collection("posts");
+  }
+
+  async function postCharacterDiscussion(request) {
+    const userId = uid(request);
+    const characterId = validString(request.data && request.data.characterId, ID_MAX)
+      ? request.data.characterId.trim()
+      : null;
+    const text = optionalString(request.data && request.data.text, COMMENT_MAX);
+    if (!characterId || !text) {
+      throw new HttpsError(
+        "invalid-argument",
+        "characterId and text are required.",
+      );
+    }
+    const scan = scanText(text);
+    if (scan.flagged) {
+      throw new HttpsError("invalid-argument", "That text contains prohibited language.");
+    }
+    const username = await usernameOf(userId);
+    const ref = discussionRef(characterId).doc();
+    await ref.set({
+      characterId,
+      userId,
+      username,
+      text,
+      moderationStatus: "ok",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { id: ref.id, characterId, userId, username, text };
+  }
+
+  async function deleteCharacterDiscussion(request) {
+    const userId = uid(request);
+    const characterId = validString(request.data && request.data.characterId, ID_MAX)
+      ? request.data.characterId.trim()
+      : null;
+    const postId = validString(request.data && request.data.postId, ID_MAX)
+      ? request.data.postId.trim()
+      : null;
+    if (!characterId || !postId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "characterId and postId are required.",
+      );
+    }
+    const ref = discussionRef(characterId).doc(postId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Discussion post not found.");
+    }
+    if ((snap.data() || {}).userId !== userId) {
+      throw new HttpsError(
+        "permission-denied",
+        "This post belongs to another account.",
+      );
+    }
+    await ref.delete();
+    return { ok: true };
+  }
+
   return {
     upsertAnimeRating,
     deleteAnimeRating,
     reportAnimeReview,
+    postCharacterDiscussion,
+    deleteCharacterDiscussion,
     CRITERIA,
     ACTION_COOLDOWN_MS,
     REPORT_REASONS,

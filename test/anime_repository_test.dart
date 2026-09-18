@@ -34,6 +34,11 @@ void main() {
           statusCode: 200,
           body: '{"data":[{"mal_id":1,"name":"Action","count":10}]}',
         ),
+        '/producers': const AnimeHttpResponse(
+          statusCode: 200,
+          body:
+              '{"data":[{"mal_id":11,"titles":[{"type":"Default","title":"Madhouse"}],"count":340}]}',
+        ),
         '/seasons': const AnimeHttpResponse(
           statusCode: 200,
           body:
@@ -84,6 +89,34 @@ void main() {
       (await repository.getBySeason(year: 2026, season: (await repository.getAvailableSeasons()).valueOrNull!.first.seasons.first)).isSuccess,
       isTrue,
     );
+  });
+
+  test('studios list maps producers and rejects blank studio ids', () async {
+    final studios = await repository.getStudios();
+    expect(studios.valueOrNull!.single.id, '11');
+    expect(studios.valueOrNull!.single.name, 'Madhouse');
+    expect(studios.valueOrNull!.single.count, 340);
+    expect(http.calls.single.path, contains('/producers'));
+
+    final blank = await repository.getByStudio('  ');
+    expect(blank.failureOrNull, isA<ValidationError>());
+  });
+
+  test('studio browse filters by producer id', () async {
+    final result = await repository.getByStudio('11');
+    expect(result.isSuccess, isTrue);
+    expect(http.calls.single.queryParameters['producers'], '11');
+    expect(http.calls.single.queryParameters.containsKey('q'), isFalse);
+  });
+
+  test('studio search constraint becomes a producers filter', () async {
+    final result = await repository.searchAnime(
+      'frieren',
+      filter: const AnimeSearchFilter(studioId: '11'),
+    );
+    expect(result.isSuccess, isTrue);
+    expect(http.calls.single.queryParameters['q'], 'frieren');
+    expect(http.calls.single.queryParameters['producers'], '11');
   });
 
   test('404 becomes NotFoundError', () async {

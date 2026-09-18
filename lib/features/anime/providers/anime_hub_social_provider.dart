@@ -29,6 +29,10 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
   LoadingState _topState = LoadingState.initial;
   Failure? _topFailure;
 
+  List<AnimeCommunityStats> _mostListed = const <AnimeCommunityStats>[];
+  LoadingState _mostListedState = LoadingState.initial;
+  Failure? _mostListedFailure;
+
   List<CharacterCommunityStats> _popularCharacters =
       const <CharacterCommunityStats>[];
   LoadingState _charactersState = LoadingState.initial;
@@ -36,10 +40,17 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
 
   List<AnimeReview> _userRatings = const <AnimeReview>[];
   List<AnimeListEntry> _userList = const <AnimeListEntry>[];
+  List<AnimeCustomList> _userCustomLists = const <AnimeCustomList>[];
   List<CharacterFavorite> _userCharacters = const <CharacterFavorite>[];
   LoadingState _userState = LoadingState.initial;
   Failure? _userFailure;
   String? _userId;
+
+  final Map<String, List<CharacterDiscussion>> _discussions =
+      <String, List<CharacterDiscussion>>{};
+  LoadingState _discussionState = LoadingState.initial;
+  Failure? _discussionFailure;
+  String? _discussionCharacterId;
 
   AnimeCommunityStats? get stats => _stats;
 
@@ -49,6 +60,7 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     if (_stats?.animeId == id) return _stats;
     return _statsById[id];
   }
+
   AnimeReview? get myRating => _myRating;
   List<AnimeReview> get reviews => _reviews;
   LoadingState get animeState => _animeState;
@@ -59,15 +71,25 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
   LoadingState get topState => _topState;
   Failure? get topFailure => _topFailure;
 
+  List<AnimeCommunityStats> get mostListed => _mostListed;
+  LoadingState get mostListedState => _mostListedState;
+  Failure? get mostListedFailure => _mostListedFailure;
+
   List<CharacterCommunityStats> get popularCharacters => _popularCharacters;
   LoadingState get popularCharactersState => _charactersState;
   Failure? get popularCharactersFailure => _charactersFailure;
 
   List<AnimeReview> get userRatings => _userRatings;
   List<AnimeListEntry> get userList => _userList;
+  List<AnimeCustomList> get userCustomLists => _userCustomLists;
   List<CharacterFavorite> get userCharacters => _userCharacters;
   LoadingState get userState => _userState;
   Failure? get userFailure => _userFailure;
+
+  List<CharacterDiscussion> get discussions =>
+      _discussions[_discussionCharacterId] ?? const <CharacterDiscussion>[];
+  LoadingState get discussionState => _discussionState;
+  Failure? get discussionFailure => _discussionFailure;
 
   Future<void> loadAnime(String animeId) async {
     _animeId = animeId;
@@ -155,7 +177,35 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
       },
       onFailure: (failure) {
         _topFailure = failure;
-        _topState = _topRated.isEmpty ? LoadingState.error : LoadingState.loaded;
+        _topState = _topRated.isEmpty
+            ? LoadingState.error
+            : LoadingState.loaded;
+      },
+    );
+    _safeNotify();
+  }
+
+  Future<void> loadMostListed() async {
+    _mostListedState = LoadingState.loading;
+    _safeNotify();
+    final result = await _repository.listMostListed();
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (items) {
+        _mostListed = items;
+        for (final item in items) {
+          _statsById[item.animeId] = item;
+        }
+        _mostListedState = items.isEmpty
+            ? LoadingState.empty
+            : LoadingState.loaded;
+        _mostListedFailure = null;
+      },
+      onFailure: (failure) {
+        _mostListedFailure = failure;
+        _mostListedState = _mostListed.isEmpty
+            ? LoadingState.error
+            : LoadingState.loaded;
       },
     );
     _safeNotify();
@@ -169,8 +219,9 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (items) {
         _popularCharacters = items;
-        _charactersState =
-            items.isEmpty ? LoadingState.empty : LoadingState.loaded;
+        _charactersState = items.isEmpty
+            ? LoadingState.empty
+            : LoadingState.loaded;
         _charactersFailure = null;
       },
       onFailure: (failure) {
@@ -194,15 +245,110 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     _safeNotify();
     final ratings = await _repository.listUserRatings(userId);
     final list = await _repository.listUserAnimeList(userId);
+    final customs = await _repository.listUserCustomAnimeLists(userId);
     final characters = await _repository.listUserCharacterFavorites(userId);
     if (_disposed || _userId != userId) return;
     _userRatings = ratings.valueOrNull ?? const <AnimeReview>[];
     _userList = list.valueOrNull ?? const <AnimeListEntry>[];
+    _userCustomLists = customs.valueOrNull ?? const <AnimeCustomList>[];
     _userCharacters = characters.valueOrNull ?? const <CharacterFavorite>[];
     _userFailure =
-        ratings.failureOrNull ?? list.failureOrNull ?? characters.failureOrNull;
+        ratings.failureOrNull ??
+        list.failureOrNull ??
+        customs.failureOrNull ??
+        characters.failureOrNull;
     _userState = LoadingState.loaded;
     _safeNotify();
+  }
+
+  Future<void> loadCharacterDiscussion(
+    String characterId, {
+    bool refresh = false,
+  }) async {
+    final id = characterId.trim();
+    if (id.isEmpty) {
+      _discussionState = LoadingState.empty;
+      _safeNotify();
+      return;
+    }
+    _discussionCharacterId = id;
+    final cached = _discussions[id];
+    if (!refresh && cached != null) {
+      _discussionState = cached.isEmpty
+          ? LoadingState.empty
+          : LoadingState.loaded;
+      _safeNotify();
+      return;
+    }
+    _discussionState = LoadingState.loading;
+    _discussionFailure = null;
+    _safeNotify();
+    final result = await _repository.listCharacterDiscussions(id);
+    if (_disposed || _discussionCharacterId != id) return;
+    result.fold(
+      onSuccess: (items) {
+        _discussions[id] = items;
+        _discussionState = items.isEmpty
+            ? LoadingState.empty
+            : LoadingState.loaded;
+        _discussionFailure = null;
+      },
+      onFailure: (failure) {
+        _discussionFailure = failure;
+        _discussionState = cached == null
+            ? LoadingState.error
+            : LoadingState.offline;
+      },
+    );
+    _safeNotify();
+  }
+
+  Future<Result<void>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  }) async {
+    _saving = true;
+    _safeNotify();
+    final result = await _repository.postCharacterDiscussion(
+      characterId: characterId,
+      text: text,
+    );
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (post) {
+        final current =
+            _discussions[characterId] ?? const <CharacterDiscussion>[];
+        _discussions[characterId] = <CharacterDiscussion>[post, ...current];
+        _discussionState = LoadingState.loaded;
+      },
+      onFailure: (failure) => _discussionFailure = failure,
+    );
+    _saving = false;
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  }) async {
+    final result = await _repository.deleteCharacterDiscussion(
+      characterId: characterId,
+      postId: postId,
+    );
+    if (_disposed) return _asVoid(result);
+    if (result.isSuccess) {
+      final current =
+          _discussions[characterId] ?? const <CharacterDiscussion>[];
+      _discussions[characterId] = current
+          .where((post) => post.id != postId)
+          .toList(growable: false);
+      if (_discussions[characterId]!.isEmpty) {
+        _discussionState = LoadingState.empty;
+      }
+    }
+    _safeNotify();
+    return _asVoid(result);
   }
 
   Result<void> _asVoid<T>(Result<T> result) {

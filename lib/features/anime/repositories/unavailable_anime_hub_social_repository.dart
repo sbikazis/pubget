@@ -46,8 +46,14 @@ final class UnavailableAnimeHubSocialRepository
   }) async => _fail();
 
   @override
-  Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40}) async =>
-      _fail();
+  Future<Result<List<AnimeCommunityStats>>> listTopRated({
+    int limit = 40,
+  }) async => _fail();
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> listMostListed({
+    int limit = 40,
+  }) async => _fail();
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
@@ -68,7 +74,30 @@ final class UnavailableAnimeHubSocialRepository
       _fail();
 
   @override
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  ) async => _fail();
+
+  @override
   Future<Result<List<CharacterFavorite>>> listUserCharacterFavorites(
     String userId,
   ) async => _fail();
+
+  @override
+  Future<Result<List<CharacterDiscussion>>> listCharacterDiscussions(
+    String characterId, {
+    int limit = 30,
+  }) async => _fail();
+
+  @override
+  Future<Result<CharacterDiscussion>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  }) async => _fail();
 }

@@ -115,3 +115,98 @@ final class CharacterFavorite {
     );
   }
 }
+
+final class AnimeCustomList {
+  const AnimeCustomList({
+    required this.id,
+    required this.name,
+    this.description = '',
+    this.private = false,
+    this.itemsCount = 0,
+    this.ownerUid = '',
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final bool private;
+  final int itemsCount;
+  final String ownerUid;
+
+  AnimeCustomList copyWith({
+    String? name,
+    String? description,
+    bool? private,
+    int? itemsCount,
+  }) {
+    return AnimeCustomList(
+      id: id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      private: private ?? this.private,
+      itemsCount: itemsCount ?? this.itemsCount,
+      ownerUid: ownerUid,
+    );
+  }
+
+  factory AnimeCustomList.fromMap(Map<String, dynamic> map, {String? id}) {
+    return AnimeCustomList(
+      id: id ?? map['id'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      private: map['private'] == true,
+      itemsCount: (map['itemsCount'] as num?)?.toInt() ?? 0,
+      ownerUid: map['ownerUid'] as String? ?? '',
+    );
+  }
+}
+
+final class AnimeCustomListItem {
+  const AnimeCustomListItem({required this.animeId, this.title = ''});
+
+  final String animeId;
+  final String title;
+
+  factory AnimeCustomListItem.fromMap(Map<String, dynamic> map) {
+    return AnimeCustomListItem(
+      animeId: map['animeId'] as String? ?? map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+    );
+  }
+}
+
+final class AnimeCustomListDetail {
+  const AnimeCustomListDetail({required this.list, this.items = const []});
+
+  final AnimeCustomList list;
+  final List<AnimeCustomListItem> items;
+
+  factory AnimeCustomListDetail.fromMap(Map<String, dynamic> map) {
+    final rawList = map['list'];
+    final list = rawList is Map
+        ? AnimeCustomList.fromMap(Map<String, dynamic>.from(rawList))
+        : const AnimeCustomList(id: '', name: '');
+    final rawItems = map['items'] as List<Object?>? ?? const <Object?>[];
+    final items = rawItems
+        .whereType<Map>()
+        .map(
+          (item) => AnimeCustomListItem.fromMap(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+    return AnimeCustomListDetail(list: list, items: items);
+  }
+}
+
+final class CustomListMembership {
+  const CustomListMembership({required this.listId, this.name = ''});
+
+  final String listId;
+  final String name;
+
+  factory CustomListMembership.fromMap(Map<String, dynamic> map) {
+    return CustomListMembership(
+      listId: map['listId'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+    );
+  }
+}

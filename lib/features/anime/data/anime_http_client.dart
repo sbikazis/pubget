@@ -37,7 +37,8 @@ abstract interface class AnimeHttpClient {
 }
 
 final class PackageAnimeHttpClient implements AnimeHttpClient {
-  PackageAnimeHttpClient({http.Client? client}) : _client = client ?? http.Client();
+  PackageAnimeHttpClient({http.Client? client})
+    : _client = client ?? http.Client();
 
   final http.Client _client;
 
@@ -121,9 +122,7 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
     while (_pending.isNotEmpty) {
       final job = _pending.removeAt(0);
       try {
-        await _gated(
-          () => _send(job.uri, job.timeout, job.completer),
-        );
+        await _gated(() => _send(job.uri, job.timeout, job.completer));
       } catch (error, stack) {
         if (!job.completer.isCompleted) {
           job.completer.completeError(error, stack);
@@ -196,7 +195,11 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
   }
 }
 
-Failure mapAnimeHttpFailure(Object error, {int? statusCode, Duration? retryAfter}) {
+Failure mapAnimeHttpFailure(
+  Object error, {
+  int? statusCode,
+  Duration? retryAfter,
+}) {
   if (statusCode == 429) {
     return RateLimitedError(
       'Too many requests. Please wait a moment and try again.',
@@ -246,7 +249,11 @@ final class _QueuedAnimeRequest {
   final Completer<AnimeHttpResponse> completer;
 }
 
-Result<T> animeHttpFailure<T>(Object error, {int? statusCode, Duration? retryAfter}) {
+Result<T> animeHttpFailure<T>(
+  Object error, {
+  int? statusCode,
+  Duration? retryAfter,
+}) {
   return FailureResult<T>(
     mapAnimeHttpFailure(error, statusCode: statusCode, retryAfter: retryAfter),
   );

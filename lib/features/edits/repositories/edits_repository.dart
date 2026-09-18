@@ -69,3 +69,12 @@ abstract interface class EditsRepository {
     required String type,
   });
 }
+
+/// Optional capability for repositories that can surface published Edits
+/// (Reels) linked to a character. Implemented by the Firebase repository.
+abstract interface class CharacterEditsRepository {
+  Future<Result<List<Edit>>> getCharacterEdits(
+    String characterId, {
+    int limit = 12,
+  });
+}

@@ -197,7 +197,7 @@ async function resolveNight(gameId, gameData) {
   }
   if (plan.doctorPlayerId && playersById[plan.doctorPlayerId]?.privateRef) {
     batch.update(playersById[plan.doctorPlayerId].privateRef, {
-      lastDoctorTargetId: doctorTargetId,
+      lastDoctorTargetId: plan.doctorTargetId,
     });
   }
 

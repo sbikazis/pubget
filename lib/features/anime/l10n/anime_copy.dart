@@ -13,7 +13,8 @@ final class AnimeCopy {
 
   final AppStrings _s;
 
-  static AnimeCopy of(BuildContext context) => AnimeCopy(AppStrings.of(context));
+  static AnimeCopy of(BuildContext context) =>
+      AnimeCopy(AppStrings.of(context));
 
   static AnimeCopy forLocale(Locale? locale) =>
       AnimeCopy(AppStrings.forLocale(locale));
@@ -24,23 +25,17 @@ final class AnimeCopy {
   String get openSearch => _ui(AnimeStrings.openSearch, 'بحث');
   String get closeSearch => _ui(AnimeStrings.closeSearch, 'إغلاق البحث');
   String get nothingFound => _ui(AnimeStrings.nothingFound, 'لا يوجد أنمي');
-  String get nothingFoundMessage => _ui(
-    AnimeStrings.nothingFoundMessage,
-    'جرّب اسماً آخر أو صفّح الكتالوج.',
-  );
+  String get nothingFoundMessage =>
+      _ui(AnimeStrings.nothingFoundMessage, 'جرّب اسماً آخر أو صفّح الكتالوج.');
   String get unableToLoad =>
       _ui(AnimeStrings.unableToLoad, 'تعذّر تحميل الأنمي الآن.');
-  String get checkConnection => _ui(
-    AnimeStrings.checkConnection,
-    'تحقق من الاتصال وحاول مرة أخرى.',
-  );
+  String get checkConnection =>
+      _ui(AnimeStrings.checkConnection, 'تحقق من الاتصال وحاول مرة أخرى.');
   String get retry => _ui(AnimeStrings.retry, 'إعادة المحاولة');
   String get cachedBanner =>
       _ui(AnimeStrings.cachedBanner, 'عرض بيانات محفوظة');
-  String get offlineCached => _ui(
-    AnimeStrings.offlineCached,
-    'أنت غير متصل. عرض بيانات محفوظة.',
-  );
+  String get offlineCached =>
+      _ui(AnimeStrings.offlineCached, 'أنت غير متصل. عرض بيانات محفوظة.');
   String get genresTitle => _ui(AnimeStrings.genresTitle, 'تصفح حسب التصنيف');
   String get seasonsTitle => _ui(AnimeStrings.seasonsTitle, 'تصفح حسب الموسم');
   String get charactersTitle => _ui(AnimeStrings.charactersTitle, 'الشخصيات');
@@ -57,10 +52,8 @@ final class AnimeCopy {
   String get links => _ui(AnimeStrings.links, 'روابط خارجية');
   String get copied => _ui(AnimeStrings.copied, 'تم نسخ الرابط');
   String get share => _ui(AnimeStrings.share, 'مشاركة الأنمي');
-  String get favoriteLimit => _ui(
-    AnimeStrings.favoriteLimit,
-    'يمكنك حفظ حتى 50 أنمي في المفضلة.',
-  );
+  String get favoriteLimit =>
+      _ui(AnimeStrings.favoriteLimit, 'يمكنك حفظ حتى 50 أنمي في المفضلة.');
   String get libraryTitle => _ui(AnimeStrings.libraryTitle, 'قوائمي');
   String get libraryEmpty =>
       _ui(AnimeStrings.libraryEmpty, 'لا عناوين في هذه القائمة بعد');
@@ -81,13 +74,42 @@ final class AnimeCopy {
   String get myAnimeTitle => _ui(AnimeStrings.myAnimeTitle, 'أنميّاتي');
   String get theirAnimeTitle => _ui(AnimeStrings.theirAnimeTitle, 'أنمي');
   String get reviewsTitle => _ui(AnimeStrings.reviewsTitle, 'المراجعات');
+  String get relatedTitle => _ui(AnimeStrings.relatedTitle, 'مرتبط');
+  String get relatedFanWorksTitle =>
+      _ui(AnimeStrings.relatedFanWorksTitle, 'أعمال معجبين مرتبطة');
+  String get relatedGroupsTitle =>
+      _ui(AnimeStrings.relatedGroupsTitle, 'مجموعات مرتبطة');
   String get writeReview => _ui(AnimeStrings.writeReview, 'اكتب مراجعة');
-  String get reviewHint =>
-      _ui(AnimeStrings.reviewHint, 'شارك رأيك (اختياري)');
+  String get reviewHint => _ui(AnimeStrings.reviewHint, 'شارك رأيك (اختياري)');
   String get submitRating => _ui(AnimeStrings.submitRating, 'حفظ التقييم');
   String get favoriteCharacter =>
       _ui(AnimeStrings.favoriteCharacter, 'تفضيل الشخصية');
   String get filterGenre => _ui(AnimeStrings.filterGenre, 'التصنيف');
+  String get filterStudio => _ui(AnimeStrings.filterStudio, 'الاستوديو');
+  String get filterStatus => _ui(AnimeStrings.filterStatus, 'الحالة');
+  String get filterAgeRating =>
+      _ui(AnimeStrings.filterAgeRating, 'التصنيف العمري');
+
+  String statusFilter(AnimeAiringFilter value) => switch (value) {
+    AnimeAiringFilter.airing => _ui(AnimeStrings.statusAiring, 'يُعرض الآن'),
+    AnimeAiringFilter.finished => _ui(AnimeStrings.statusFinished, 'منتهٍ'),
+    AnimeAiringFilter.upcoming => _ui(AnimeStrings.statusUpcoming, 'قادم'),
+  };
+
+  String ageFilter(AnimeAgeFilter value) => switch (value) {
+    AnimeAgeFilter.allAges => _ui(AnimeStrings.ageAllAges, 'جميع الأعمار'),
+    AnimeAgeFilter.teens => _ui(AnimeStrings.ageTeens, 'مراهقون 13+'),
+    AnimeAgeFilter.adult => _ui(AnimeStrings.ageAdult, '17+'),
+  };
+
+  String get aggregatedResults =>
+      _ui(AnimeStrings.aggregatedResults, 'نتائج إضافية في Pubget');
+
+  String get entityGroup => _ui(AnimeStrings.entityGroup, 'مجموعة');
+  String get entityPerson => _ui(AnimeStrings.entityPerson, 'شخص');
+  String get entityEvent => _ui(AnimeStrings.entityEvent, 'حدث');
+  String get entityAnime => _ui(AnimeStrings.entityAnime, 'أنمي');
+  String get entityFanWork => _ui(AnimeStrings.entityFanWork, 'عمل خاص');
   String get filterType => _ui(AnimeStrings.filterType, 'النوع');
   String get filterSeason => _ui(AnimeStrings.filterSeason, 'الموسم');
   String get filterSort => _ui(AnimeStrings.filterSort, 'الترتيب');
@@ -99,10 +121,8 @@ final class AnimeCopy {
     AnimeStrings.searchFiltersHint,
     'ابحث بالاسم أو صفّ حسب الموسم والتصنيف.',
   );
-  String get noRatingsYet => _ui(
-    AnimeStrings.noRatingsYet,
-    'كن أول من يقيّم هذا الأنمي على Pubget.',
-  );
+  String get noRatingsYet =>
+      _ui(AnimeStrings.noRatingsYet, 'كن أول من يقيّم هذا الأنمي على Pubget.');
   String get characterAbout => _ui(AnimeStrings.characterAbout, 'نبذة');
   String get characterNicknames =>
       _ui(AnimeStrings.characterNicknames, 'ألقاب');
@@ -110,8 +130,7 @@ final class AnimeCopy {
       _ui(AnimeStrings.characterAnime, 'ظهور في الأنمي');
   String get characterManga =>
       _ui(AnimeStrings.characterManga, 'ظهور في المانغا');
-  String get characterVoices =>
-      _ui(AnimeStrings.characterVoices, 'أداء صوتي');
+  String get characterVoices => _ui(AnimeStrings.characterVoices, 'أداء صوتي');
   String get characterFacts =>
       _ui(AnimeStrings.characterFacts, 'بيانات الشخصية');
   String get characterMalId => _ui(AnimeStrings.characterMalId, 'معرف MAL');
@@ -121,10 +140,24 @@ final class AnimeCopy {
   String get malFavorites => _ui(AnimeStrings.malFavorites, 'مفضلات MAL');
   String get pubgetFavorites =>
       _ui(AnimeStrings.pubgetFavorites, 'مفضلات Pubget');
-  String get thisSeasonSubtitle => _ui(
-    AnimeStrings.thisSeasonSubtitle,
-    'أبرز عناوين الموسم الحالي.',
+  String get characterRank => _ui(AnimeStrings.characterRank, 'الترتيب');
+  String get characterYourRating =>
+      _ui(AnimeStrings.characterYourRating, 'تقييمك');
+  String get characterReels => _ui(AnimeStrings.characterReels, 'ريلز مرتبطة');
+  String get characterDiscussions =>
+      _ui(AnimeStrings.characterDiscussions, 'نقاشات المجتمع');
+  String get characterDiscussionHint =>
+      _ui(AnimeStrings.characterDiscussionHint, 'شارك رأيك في هذه الشخصية');
+  String get characterDiscussionEmpty => _ui(
+    AnimeStrings.characterDiscussionEmpty,
+    'لا يوجد نقاش بعد. ابدأ الحديث.',
   );
+  String get characterNotFound =>
+      _ui(AnimeStrings.characterNotFound, 'تعذّر العثور على هذه الشخصية.');
+  String get post => _ui(AnimeStrings.post, 'نشر');
+  String get delete => _ui(AnimeStrings.delete, 'حذف');
+  String get thisSeasonSubtitle =>
+      _ui(AnimeStrings.thisSeasonSubtitle, 'أبرز عناوين الموسم الحالي.');
   String get popularSubtitle =>
       _ui(AnimeStrings.popularSubtitle, 'الأكثر شعبية الآن.');
   String get detailsSection => _ui('Details', 'التفاصيل');
@@ -145,6 +178,49 @@ final class AnimeCopy {
     AnimeStrings.searchHomeHint,
     'ابحث في المجموعات والأشخاص والفعاليات والأنمي وأعمال المعجبين',
   );
+  String get customLists => _ui(AnimeStrings.customLists, 'قوائم مخصصة');
+  String get customListTab => _ui(AnimeStrings.customListTab, 'مخصصة');
+  String get newCustomList => _ui(AnimeStrings.newCustomList, 'قائمة جديدة');
+  String get customListName => _ui(AnimeStrings.customListName, 'اسم القائمة');
+  String get customListDescription =>
+      _ui(AnimeStrings.customListDescription, 'وصف (اختياري)');
+  String get privateList => _ui(AnimeStrings.privateList, 'خاصة');
+  String get privateListHint =>
+      _ui(AnimeStrings.privateListHint, 'أنت فقط من يرى هذه القائمة');
+  String get customListsEmpty =>
+      _ui(AnimeStrings.customListsEmpty, 'لا قوائم مخصصة بعد');
+  String get customListsEmptyMessage => _ui(
+    AnimeStrings.customListsEmptyMessage,
+    'أنشئ قوائمك الخاصة لتنظيم الأنمي على طريقتك.',
+  );
+  String get createList => _ui(AnimeStrings.createList, 'إنشاء القائمة');
+  String get customList => _ui(AnimeStrings.customList, 'قائمة مخصصة');
+  String get addToList => _ui(AnimeStrings.addToList, 'أضف إلى القائمة');
+  String get listNameRequired =>
+      _ui(AnimeStrings.listNameRequired, 'اسم القائمة مطلوب.');
+  String get editList => _ui(AnimeStrings.editList, 'تعديل القائمة');
+  String get deleteList => _ui(AnimeStrings.deleteList, 'حذف القائمة');
+
+  String customListItemCount(int count) {
+    final label = count == 1 ? '1 title' : '$count titles';
+    return _s.pick(label, '$count عنواناً');
+  }
+
+  String get communityStats => _ui(AnimeStrings.communityStats, 'إحصاءات المجتمع');
+  String get mostListed =>
+      _ui(AnimeStrings.mostListed, 'الأكثر في قوائم المستخدمين');
+  String get seasonalCharacters =>
+      _ui(AnimeStrings.seasonalCharacters, 'شخصيات هذا الموسم');
+
+  String listedCount(int count) {
+    final label = count == 1 ? '1 listed' : '$count listed';
+    return _s.pick(label, '$count في القوائم');
+  }
+
+  String characterFavoritesCount(int count) {
+    final label = count == 1 ? '1 favorite' : '$count favorites';
+    return _s.pick(label, '$count تفضيل');
+  }
 
   String ratingsCount(int count) =>
       _s.pick('$count Pubget ratings', '$count تقييم على Pubget');
@@ -200,14 +276,25 @@ final class AnimeCopy {
       AnimeStrings.malScore => malScore,
       AnimeStrings.ratingsTitle => ratingsTitle,
       AnimeStrings.popularCharactersTitle => popularCharactersTitle,
+      AnimeStrings.communityStats => communityStats,
+      AnimeStrings.mostListed => mostListed,
+      AnimeStrings.seasonalCharacters => seasonalCharacters,
       AnimeStrings.myAnimeTitle => myAnimeTitle,
       AnimeStrings.theirAnimeTitle => theirAnimeTitle,
       AnimeStrings.reviewsTitle => reviewsTitle,
+      AnimeStrings.relatedTitle => relatedTitle,
+      AnimeStrings.relatedFanWorksTitle => relatedFanWorksTitle,
+      AnimeStrings.relatedGroupsTitle => relatedGroupsTitle,
       AnimeStrings.writeReview => writeReview,
       AnimeStrings.reviewHint => reviewHint,
       AnimeStrings.submitRating => submitRating,
       AnimeStrings.favoriteCharacter => favoriteCharacter,
       AnimeStrings.filterGenre => filterGenre,
+      AnimeStrings.filterStudio => filterStudio,
+      AnimeStrings.filterStatus => filterStatus,
+      AnimeStrings.filterAgeRating => filterAgeRating,
+      AnimeStrings.aggregatedResults => aggregatedResults,
+      AnimeStrings.entityGroup => entityGroup,
       AnimeStrings.filterType => filterType,
       AnimeStrings.filterSeason => filterSeason,
       AnimeStrings.filterSort => filterSort,
@@ -228,9 +315,33 @@ final class AnimeCopy {
       AnimeStrings.loadingProfile => loadingProfile,
       AnimeStrings.malFavorites => malFavorites,
       AnimeStrings.pubgetFavorites => pubgetFavorites,
+      AnimeStrings.characterRank => characterRank,
+      AnimeStrings.characterYourRating => characterYourRating,
+      AnimeStrings.characterReels => characterReels,
+      AnimeStrings.characterDiscussions => characterDiscussions,
+      AnimeStrings.characterDiscussionHint => characterDiscussionHint,
+      AnimeStrings.characterDiscussionEmpty => characterDiscussionEmpty,
+      AnimeStrings.characterNotFound => characterNotFound,
+      AnimeStrings.post => post,
+      AnimeStrings.delete => delete,
       AnimeStrings.thisSeasonSubtitle => thisSeasonSubtitle,
       AnimeStrings.popularSubtitle => popularSubtitle,
       AnimeStrings.searchHomeHint => searchHomeHint,
+      AnimeStrings.customLists => customLists,
+      AnimeStrings.customListTab => customListTab,
+      AnimeStrings.newCustomList => newCustomList,
+      AnimeStrings.customListName => customListName,
+      AnimeStrings.customListDescription => customListDescription,
+      AnimeStrings.privateList => privateList,
+      AnimeStrings.privateListHint => privateListHint,
+      AnimeStrings.customListsEmpty => customListsEmpty,
+      AnimeStrings.customListsEmptyMessage => customListsEmptyMessage,
+      AnimeStrings.createList => createList,
+      AnimeStrings.customList => customList,
+      AnimeStrings.addToList => addToList,
+      AnimeStrings.listNameRequired => listNameRequired,
+      AnimeStrings.editList => editList,
+      AnimeStrings.deleteList => deleteList,
       'Details' => detailsSection,
       _ => catalogPhrase(english),
     };
@@ -434,6 +545,25 @@ final class AnimeCopy {
     };
   }
 
+  String relation(String? raw) {
+    final key = raw?.trim().toLowerCase() ?? '';
+    return switch (key) {
+      'sequel' => _ui('Sequel', 'تكملة'),
+      'prequel' => _ui('Prequel', 'مقدمة'),
+      'parent story' => _ui('Parent story', 'القصة الأم'),
+      'side story' => _ui('Side story', 'قصة جانبية'),
+      'spin-off' => _ui('Spin-off', 'عمل متفرّع'),
+      'alternative setting' => _ui('Alternative setting', 'إعداد بديل'),
+      'alternative version' => _ui('Alternative version', 'نسخة بديلة'),
+      'full story' => _ui('Full story', 'القصة الكاملة'),
+      'summary' => _ui('Summary', 'ملخّص'),
+      'adaptation' => _ui('Adaptation', 'اقتباس'),
+      'character' => _ui('Character', 'شخصية'),
+      'other' => _ui('Other', 'أخرى'),
+      _ => raw ?? '',
+    };
+  }
+
   String factLabel(String raw) {
     final key = raw.trim().toLowerCase();
     return switch (key) {
@@ -465,8 +595,9 @@ final class AnimeCopy {
       'french' => _ui('French', 'الفرنسية'),
       'german' => _ui('German', 'الألمانية'),
       'italian' => _ui('Italian', 'الإيطالية'),
-      'portuguese' || 'brazilian' || 'portuguese (br)' =>
-        _ui('Portuguese', 'البرتغالية'),
+      'portuguese' ||
+      'brazilian' ||
+      'portuguese (br)' => _ui('Portuguese', 'البرتغالية'),
       'arabic' => _ui('Arabic', 'العربية'),
       'hungarian' => _ui('Hungarian', 'المجرية'),
       'hebrew' => _ui('Hebrew', 'العبرية'),
@@ -510,7 +641,8 @@ final class AnimeCopy {
   String meta(Anime anime) {
     final parts = <String>[
       if (anime.type != null && anime.type!.isNotEmpty) typeLabel(anime.type),
-      if (anime.status != null && anime.status!.isNotEmpty) status(anime.status),
+      if (anime.status != null && anime.status!.isNotEmpty)
+        status(anime.status),
       if (anime.year != null) '${anime.year}',
       if (anime.season != null) season(anime.season!),
     ];

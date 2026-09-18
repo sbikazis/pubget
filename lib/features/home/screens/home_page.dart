@@ -11,6 +11,10 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../../anime/l10n/anime_copy.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/providers/anime_providers.dart';
+import '../../anime/widgets/anime_widgets.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/providers/edits_provider.dart';
 import '../../economy/models/economy_types.dart';
@@ -97,6 +101,7 @@ class _HomePageState extends State<HomePage> {
                 finish: HomeGroupFinish.rising,
               ),
               const SliverToBoxAdapter(child: _FanWorksSection()),
+              const SliverToBoxAdapter(child: _AnimeSection()),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
           ),
@@ -517,6 +522,36 @@ class _FanWorksSection extends StatelessWidget {
                 return HomeFanWorkCard(work: works[index]);
               },
             ),
+    );
+  }
+}
+
+class _AnimeSection extends StatelessWidget {
+  const _AnimeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final hub = maybeAnimeHub(context);
+    if (hub == null) return const SizedBox.shrink();
+    final kind = AnimeCatalogKind.thisSeason;
+    final snapshot = hub.section(kind);
+    if (snapshot.state == LoadingState.initial) {
+      Future<void>.microtask(hub.load);
+    }
+    if (snapshot.items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return AnimeHorizontalStrip(
+      key: const Key('home-anime'),
+      title: AnimeCopy.of(context).catalog(kind),
+      subtitle: AnimeCopy.of(context).thisSeasonSubtitle,
+      items: snapshot.items,
+      state: snapshot.state,
+      failure: snapshot.failure?.message,
+      posterWidth: 168,
+      highlightFirst: true,
+      onSeeAll: () => AnimeLinks.openCatalog(context, kind),
+      onRetry: () => hub.load(),
     );
   }
 }

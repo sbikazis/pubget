@@ -142,12 +142,6 @@ const eventsDomain = createEventsDomain({
   economy: economyDomain,
   achievements: achievementsDomain,
 });
-const mafiaDomain = createMafiaDomain({
-  db: getFirestore(),
-  FieldValue,
-  HttpsError,
-  notificationBuilder,
-});
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
@@ -243,6 +237,38 @@ exports.getCharacterFavorites = onCall(
   { region: "us-central1" },
   animeListsDomain.getCharacterFavorites,
 );
+exports.createCustomAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.createCustomAnimeList,
+);
+exports.updateCustomAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.updateCustomAnimeList,
+);
+exports.deleteCustomAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.deleteCustomAnimeList,
+);
+exports.addAnimeToCustomList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.addAnimeToCustomList,
+);
+exports.removeAnimeFromCustomList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.removeAnimeFromCustomList,
+);
+exports.getCustomAnimeLists = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCustomAnimeLists,
+);
+exports.getCustomAnimeList = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCustomAnimeList,
+);
+exports.getCustomListsForAnime = onCall(
+  { region: "us-central1" },
+  animeListsDomain.getCustomListsForAnime,
+);
 exports.upsertAnimeRating = onCall(
   { region: "us-central1" },
   animeHubDomain.upsertAnimeRating,
@@ -254,6 +280,14 @@ exports.deleteAnimeRating = onCall(
 exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
+);
+exports.postCharacterDiscussion = onCall(
+  { region: "us-central1" },
+  animeHubDomain.postCharacterDiscussion,
+);
+exports.deleteCharacterDiscussion = onCall(
+  { region: "us-central1" },
+  animeHubDomain.deleteCharacterDiscussion,
 );
 exports.startEditUpload = onCall(
   { region: "us-central1" },

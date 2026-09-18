@@ -107,6 +107,14 @@ test.beforeEach(async () => {
       groupIds: ["g1", "g2"], type: "poll", title: "Multi",
       status: "ACTIVE", participantsCount: 1, responsesCount: 0,
     });
+    // Multi-group membership is proven loop-free through the participants
+    // subcollection (the app writes it after groupMember() passes).
+    await admin.doc("events/e-multi/participants/bob").set({
+      userId: "bob", eventId: "e-multi",
+    });
+    await admin.doc("events/e-multi/participants/charlie").set({
+      userId: "charlie", eventId: "e-multi",
+    });
     await admin.doc("groups/g2").set({ founderId: "charlie", name: "G2" });
     await admin.doc("groups/g2/members/charlie").set({
       role: "founder", userId: "charlie",
@@ -354,35 +362,41 @@ test("games are readable by group members and never client-writable", async () =
 });
 test("mafia hidden state is protected from clients", async () => {
   // Attack 1: Player A cannot read Player B's private role.
-  await assertFails(db("alice").doc("games/mafia1/private/bob").get());
-  await assertSucceeds(db("alice").doc("games/mafia1/private/alice").get());
+  await assertFails(db("alice").doc("mafia_games/m1/players/bob/private/data").get());
+  await assertSucceeds(db("alice").doc("mafia_games/m1/players/alice/private/data").get());
   // Attack 2: Player A cannot write their own role.
-  await assertFails(db("alice").doc("games/mafia1/private/alice").update({ role: "civilian" }));
-  await assertFails(db("alice").doc("games/mafia1/private/alice").set({ role: "mafia" }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").update({
+    role: "civilian",
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").set({
+    role: "mafia",
+  }));
   // Attack 3: Player A cannot write another player's role.
-  await assertFails(db("alice").doc("games/mafia1/private/bob").set({ role: "civilian" }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/bob/private/data").set({
+    role: "civilian",
+  }));
   // Attack 4: Player A cannot change phase.
-  await assertFails(db("alice").doc("games/mafia1").update({
+  await assertFails(db("alice").doc("mafia_games/m1").update({
     "mafia.phase": "day",
   }));
-  await assertFails(db("alice").doc("games/mafia1").update({ status: "completed" }));
+  await assertFails(db("alice").doc("mafia_games/m1").update({ status: "completed" }));
   // Attack 5: Player cannot mark themselves alive after elimination.
-  await assertFails(db("bob").doc("games/mafia1/participants/bob").update({ isAlive: true }));
+  await assertFails(db("bob").doc("mafia_games/m1/players/bob").update({ isAlive: true }));
   // Attack 10: Client cannot read authoritative hidden state.
-  await assertFails(db("alice").doc("games/mafia1/secret/state").get());
-  await assertFails(db("bob").doc("games/mafia1/secret/state").get());
-  await assertFails(db("charlie").doc("games/mafia1/secret/state").get());
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/na1").get());
+  await assertFails(db("bob").doc("mafia_games/m1/votes/v1").get());
+  await assertFails(db("charlie").doc("mafia_games/m1/action_receipts/r1").get());
   // Non-participants cannot read private game state.
-  await assertFails(db("charlie").doc("games/mafia1").get());
-  await assertFails(db("charlie").doc("games/mafia1/private/alice").get());
+  await assertFails(db("charlie").doc("mafia_games/m1").get());
+  await assertFails(db("charlie").doc("mafia_games/m1/players/alice/private/data").get());
   // Public state is readable by participants/group members.
-  await assertSucceeds(db("bob").doc("games/mafia1").get());
-  await assertSucceeds(db("alice").doc("games/mafia1/participants/bob").get());
+  await assertSucceeds(db("bob").doc("mafia_games/m1").get());
+  await assertSucceeds(db("alice").doc("mafia_games/m1/players/bob").get());
   // Winner / vote tallies / night resolution cannot be client-written.
-  await assertFails(db("alice").doc("games/mafia1").update({ "mafia.winner": "mafia" }));
-  await assertFails(db("alice").doc("games/mafia1").set({
-    creatorId: "alice", groupId: "g1", type: "mafia", status: "completed",
-    mafia: { winner: "mafia", phase: "finished" },
+  await assertFails(db("alice").doc("mafia_games/m1").update({ winner: "mafia" }));
+  await assertFails(db("alice").doc("mafia_games/m1").set({
+    groupId: "g1", status: "COMPLETED", currentPhase: "COMPLETED",
+    winner: "mafia", playersCount: 2, maxPlayers: 8, minPlayers: 4,
   }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
@@ -1113,6 +1127,35 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   }));
 });
 
+test("custom anime lists are readable per privacy and never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("users/alice/anime_custom_lists/list-public").set({
+      ownerUid: "alice", name: "Public", private: false, itemsCount: 1,
+    });
+    await admin.doc("users/alice/anime_custom_lists/list-private").set({
+      ownerUid: "alice", name: "Private", private: true, itemsCount: 0,
+    });
+    await admin.doc("users/alice/anime_custom_lists/list-public/items/21").set({
+      animeId: "21", title: "One Piece",
+    });
+  });
+  await assertSucceeds(db("bob").doc("users/alice/anime_custom_lists/list-public").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-private").get());
+  await assertSucceeds(db("alice").doc("users/alice/anime_custom_lists/list-private").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_custom_lists/list-public/items/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-private/items/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-public").set({
+    ownerUid: "alice", name: "Forged", private: false,
+  }));
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-public/items/22").set({
+    animeId: "22",
+  }));
+  await assertFails(db("bob").doc("users/alice/custom_lists_meta/count").set({
+    count: 99,
+  }));
+});
+
 function pubgetUserToMap(overrides = {}) {
   return {
     email: "fan@example.com",
@@ -1257,6 +1300,22 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
     lastAt: new Date(),
   }));
+});
+
+test("character discussions are readable by signed-in users and never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("character_discussions/luffy/posts/p1").set({
+      characterId: "luffy", userId: "alice", text: "Hi",
+    });
+  });
+  await assertSucceeds(db("bob").doc("character_discussions/luffy/posts/p1").get());
+  await assertFails(
+    db("alice").doc("character_discussions/luffy/posts/p2").set({
+      characterId: "luffy", userId: "alice", text: "Spoofed",
+    }),
+  );
+  await assertFails(db("alice").doc("character_discussions/luffy/posts/p1").delete());
 });
 
 test("mafia history is participant-read only and never client-writable (SEC-H-01)", async () => {

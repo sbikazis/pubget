@@ -490,6 +490,37 @@ service cloud.firestore {
         allow read: if signedIn();
         allow create, update, delete: if false;
       }
+      match /custom_lists_meta/{id} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+      match /anime_custom_lists/{listId} {
+        allow read: if signedIn() &&
+          (resource.data.private == false || self(uid));
+        allow create, update, delete: if false;
+        match /items/{animeId} {
+          allow read: if signedIn() &&
+            (get(/databases/$(database)/documents/users/$(uid)/anime_custom_lists/$(listId)).data.private == false
+             || self(uid));
+          allow create, update, delete: if false;
+        }
+      }
+      // Durable anime catalog cache: written after a successful remote fetch
+      // and served as a graceful fallback when the catalog source is down.
+      match /anime_cache/{key} {
+        allow read: if self(uid);
+        allow create: if self(uid) &&
+          request.resource.data.keys().hasOnly([
+            'payload','savedAt','expiresAt']) &&
+          request.resource.data.payload is map &&
+          request.resource.data.payload.size() <= 200000;
+        allow update: if self(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['payload','savedAt','expiresAt']) &&
+          request.resource.data.payload is map &&
+          request.resource.data.payload.size() <= 200000;
+        allow delete: if false;
+      }
       match /character_favorites/{characterId} {
         allow read: if signedIn();
         allow create, update, delete: if false;
@@ -523,6 +554,24 @@ service cloud.firestore {
     match /character_stats/{characterId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+    match /character_discussions/{characterId}/posts/{postId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    // Achievements: server-authored badges and progress are readable (profile
+    // strips show unlocked badges to any signed-in visitor) but never
+    // client-writable.
+    match /user_achievements/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /items/{itemId} { allow read: if signedIn(); allow write: if false; }
+      match /unlocked/{itemId} { allow read: if signedIn(); allow write: if false; }
+    }
+    match /user_achievement_progress/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /progress/{itemId} { allow read: if signedIn(); allow write: if false; }
     }
     match /economyTransactions/{transactionId} {
       allow get: if signedIn() && resource.data.userId == request.auth.uid;
@@ -776,14 +825,19 @@ service cloud.firestore {
       let s = status is string ? status.lower() : '';
       return s != 'draft' && s != 'deleted' && s != 'archived';
     }
+    function eventEnded(eventId) {
+      let status = eventDoc(eventId).get('status', '');
+      let s = status is string ? status.lower() : '';
+      return s == 'ended' || s == 'archived';
+    }
     function eventGlobalScope(eventId) {
       return eventDoc(eventId).get('scope', 'group') == 'global';
     }
     function eventInSingleGroup(eventId) {
       let data = eventDoc(eventId);
       return data.keys().hasAny(['groupId']) &&
-        data.get('groupId') is string &&
-        groupMember(data.get('groupId'));
+        data.get('groupId', '') is string &&
+        groupMember(data.get('groupId', ''));
     }
         function eventInMultiGroup(eventId) {
       // Rules functions cannot loop. Multi-group membership is enforced through
@@ -811,7 +865,10 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /responses/{uid} {
-        allow read: if eventVisibleToUser(eventId);
+        // A participant's answer stays private until the event ends; only its
+        // owner may read it while the event is live.
+        allow read: if eventVisibleToUser(eventId) &&
+          (request.auth.uid == uid || eventEnded(eventId));
         allow create, update, delete: if false;
       }
       match /comments/{commentId} {

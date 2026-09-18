@@ -56,9 +56,10 @@ void main() {
       'M',
     );
     expect(
-      AnimeDisplayedScore.resolveAll(malScore: 7.2, community: null)
-          .map((item) => item.badge)
-          .toList(),
+      AnimeDisplayedScore.resolveAll(
+        malScore: 7.2,
+        community: null,
+      ).map((item) => item.badge).toList(),
       <String>['M'],
     );
     expect(
@@ -72,10 +73,41 @@ void main() {
     await social.loadPopularCharacters();
     expect(social.popularCharacters.single.favoritesCount, 42);
 
+    await social.loadMostListed();
+    expect(social.mostListedState, LoadingState.loaded);
+    expect(social.mostListed.single.animeId, '16498');
+    expect(social.mostListed.single.listedCount, 24);
+    expect(social.mostListed.single.hasListings, isTrue);
+
     await social.loadUser('alice');
     expect(social.userRatings.single.overall, 9.0);
     expect(social.userList.single.status, AnimeListStatus.watching);
     expect(social.userCharacters.single.characterId, 'erwin');
+  });
+
+  test('character discussion loads, posts, and deletes', () async {
+    final repository = _FakeHubSocialRepository();
+    final social = AnimeHubSocialProvider(repository: repository);
+    addTearDown(social.dispose);
+
+    await social.loadCharacterDiscussion('erwin');
+    expect(social.discussionState, LoadingState.loaded);
+    expect(social.discussions.single.text, 'Best commander.');
+
+    final posted = await social.postCharacterDiscussion(
+      characterId: 'erwin',
+      text: 'A true leader.',
+    );
+    expect(posted.isSuccess, isTrue);
+    expect(social.discussions.first.text, 'A true leader.');
+    expect(social.discussions, hasLength(2));
+
+    await social.deleteCharacterDiscussion(
+      characterId: 'erwin',
+      postId: 'post-new',
+    );
+    expect(social.discussions, hasLength(1));
+    expect(social.discussions.single.id, 'post-1');
   });
 
   test('unweighted mean of the six default criteria', () {
@@ -165,39 +197,49 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
   }) async => const Success<void>(null);
 
   @override
-  Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40}) async =>
-      const Success(<AnimeCommunityStats>[
-        AnimeCommunityStats(
-          animeId: '16498',
-          title: 'Attack on Titan',
-          averageScore: 8.8,
-          ratingCount: 12,
-        ),
-      ]);
+  Future<Result<List<AnimeCommunityStats>>> listTopRated({
+    int limit = 40,
+  }) async => const Success(<AnimeCommunityStats>[
+    AnimeCommunityStats(
+      animeId: '16498',
+      title: 'Attack on Titan',
+      averageScore: 8.8,
+      ratingCount: 12,
+    ),
+  ]);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> listMostListed({
+    int limit = 40,
+  }) async => const Success(<AnimeCommunityStats>[
+    AnimeCommunityStats(
+      animeId: '16498',
+      title: 'Attack on Titan',
+      listedCount: 24,
+    ),
+  ]);
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
     int limit = 40,
-  }) async =>
-      const Success(<CharacterCommunityStats>[
-        CharacterCommunityStats(
-          characterId: 'erwin',
-          name: 'Erwin Smith',
-          favoritesCount: 42,
-        ),
-      ]);
+  }) async => const Success(<CharacterCommunityStats>[
+    CharacterCommunityStats(
+      characterId: 'erwin',
+      name: 'Erwin Smith',
+      favoritesCount: 42,
+    ),
+  ]);
 
   @override
   Future<Result<CharacterCommunityStats?>> getCharacterStats(
     String characterId,
-  ) async =>
-      Success(
-        CharacterCommunityStats(
-          characterId: characterId,
-          name: 'Erwin Smith',
-          favoritesCount: 42,
-        ),
-      );
+  ) async => Success(
+    CharacterCommunityStats(
+      characterId: characterId,
+      name: 'Erwin Smith',
+      favoritesCount: 42,
+    ),
+  );
 
   @override
   Future<Result<List<AnimeReview>>> listUserRatings(String userId) async =>
@@ -214,10 +256,54 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
       ]);
 
   @override
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  ) async => const Success(<AnimeCustomList>[AnimeCustomList(
+    id: 'list-1',
+    name: 'My cool list',
+    description: '',
+    private: false,
+    itemsCount: 3,
+  )]);
+
+  @override
   Future<Result<List<CharacterFavorite>>> listUserCharacterFavorites(
     String userId,
-  ) async =>
-      const Success(<CharacterFavorite>[
-        CharacterFavorite(characterId: 'erwin', name: 'Erwin Smith'),
-      ]);
+  ) async => const Success(<CharacterFavorite>[
+    CharacterFavorite(characterId: 'erwin', name: 'Erwin Smith'),
+  ]);
+
+  @override
+  Future<Result<List<CharacterDiscussion>>> listCharacterDiscussions(
+    String characterId, {
+    int limit = 30,
+  }) async => const Success(<CharacterDiscussion>[
+    CharacterDiscussion(
+      id: 'post-1',
+      characterId: 'erwin',
+      userId: 'alice',
+      username: 'Alice',
+      text: 'Best commander.',
+    ),
+  ]);
+
+  @override
+  Future<Result<CharacterDiscussion>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  }) async => Success(
+    CharacterDiscussion(
+      id: 'post-new',
+      characterId: characterId,
+      userId: 'alice',
+      username: 'Alice',
+      text: text,
+    ),
+  );
+
+  @override
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  }) async => const Success<void>(null);
 }

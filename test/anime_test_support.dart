@@ -41,7 +41,16 @@ const sampleAnimeJson = '''
   "themes": [{"mal_id": 72, "name": "Reincarnation"}],
   "demographics": [],
   "explicit_genres": [],
-  "external": [{"name": "Official Site", "url": "https://frieren.test"}]
+  "external": [{"name": "Official Site", "url": "https://frieren.test"}],
+  "relations": [
+    {
+      "relation": "Sequel",
+      "entry": [
+        {"mal_id": 59978, "type": "anime", "name": "Frieren Season 2"},
+        {"mal_id": 126996, "type": "manga", "name": "Sousou no Frieren"}
+      ]
+    }
+  ]
 }
 ''';
 
@@ -83,6 +92,7 @@ Anime sampleAnime({
   String id = '52991',
   String title = 'Frieren',
   String type = 'TV',
+  List<AnimeRelated> relations = const <AnimeRelated>[],
 }) => Anime(
   id: id,
   title: title,
@@ -93,6 +103,7 @@ Anime sampleAnime({
   year: 2023,
   season: AnimeSeason.fall,
   images: const AnimeImages(thumbnailUrl: 'https://example.test/thumb.jpg'),
+  relations: relations,
 );
 
 final class FakeAnimeHttpClient implements AnimeHttpClient {
@@ -140,6 +151,7 @@ final class FakeAnimeRepository implements AnimeRepository {
     this.details,
     this.characters = const <AnimeCharacter>[],
     this.genres = const <AnimeGenre>[],
+    this.studios = const <AnimeStudio>[],
     this.seasons = const <AnimeSeasonYear>[],
     this.failure,
     this.detailsFailure,
@@ -153,6 +165,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   Anime? details;
   List<AnimeCharacter> characters;
   List<AnimeGenre> genres;
+  List<AnimeStudio> studios;
   List<AnimeSeasonYear> seasons;
   Failure? failure;
   Failure? detailsFailure;
@@ -175,6 +188,8 @@ final class FakeAnimeRepository implements AnimeRepository {
   int characterDetailsCalls = 0;
   int genresCalls = 0;
   int genreCalls = 0;
+  int studiosCalls = 0;
+  int studioCalls = 0;
   int seasonsCalls = 0;
   int seasonListCalls = 0;
   final List<int> requestedPages = <int>[];
@@ -357,6 +372,28 @@ final class FakeAnimeRepository implements AnimeRepository {
     int limit = 20,
   }) async {
     genreCalls++;
+    return _pageResult(page);
+  }
+
+  @override
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) async {
+    studiosCalls++;
+    if (gate != null) await gate!.future;
+    if (failure != null) return FailureResult<List<AnimeStudio>>(failure!);
+    return Success<List<AnimeStudio>>(
+      studios.isEmpty
+          ? const <AnimeStudio>[AnimeStudio(id: '11', name: 'Madhouse')]
+          : studios,
+    );
+  }
+
+  @override
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  }) async {
+    studioCalls++;
     return _pageResult(page);
   }
 

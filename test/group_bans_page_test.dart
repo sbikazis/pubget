@@ -26,12 +26,12 @@ void main() {
     expect(find.text('carol'), findsOneWidget);
     await tester.tap(find.byKey(const Key('unban-carol')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Unban').last);
+    await tester.tap(find.text('إلغاء الحظر').last);
     await tester.pumpAndSettle();
 
     expect(members.unbanCalls, <String>['carol']);
     expect(find.text('carol'), findsNothing);
-    expect(find.text('No banned users'), findsOneWidget);
+    expect(find.text('لا يوجد أعضاء محظورون حاليًا.'), findsOneWidget);
   });
 
   testWidgets('unauthorized user cannot unban', (tester) async {
@@ -42,7 +42,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('You cannot manage bans'), findsOneWidget);
+    expect(find.text('لا يمكن عرض المحظورين'), findsOneWidget);
     expect(find.byKey(const Key('unban-carol')), findsNothing);
     expect(members.unbanCalls, isEmpty);
   });

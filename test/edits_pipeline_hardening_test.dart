@@ -19,7 +19,7 @@ void main() {
     );
     expect(failure, isA<PermissionError>());
     expect(failure.message.toLowerCase(), isNot(contains('not authorized')));
-    expect(failure.message.toLowerCase(), contains('securely'));
+    expect(failure.message.toLowerCase(), contains('storage security'));
   });
 
   test('mapEditException maps permission-denied callables', () {
@@ -58,7 +58,7 @@ void main() {
         'User is not authorized to perform the desired action.',
       ),
     );
-    expect(message, contains('تعذر'));
+    expect(message, contains('حظر'));
     expect(message.toLowerCase(), isNot(contains('authorized')));
   });
 

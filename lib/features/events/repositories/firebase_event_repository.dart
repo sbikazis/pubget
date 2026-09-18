@@ -231,7 +231,7 @@ final class FirebaseEventRepository implements EventRepository {
         .httpsCallable('resolveEvent')
         .call(<String, dynamic>{
       'eventId': eventId,
-      if (winnerOptionId != null) 'winnerOptionId': winnerOptionId,
+      'winnerOptionId': ?winnerOptionId,
       if (winnerIds?.isNotEmpty ?? false) 'winnerIds': winnerIds,
     });
     final data = Map<String, dynamic>.from(result.data as Map);

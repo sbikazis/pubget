@@ -386,8 +386,18 @@ AppRoute _routeFromUri(Uri uri) {
       return ParameterizedRoute(path: '/anime', parameters: query);
     }
     final second = segments[1];
+    if (second == 'character') {
+      return segments.length >= 3
+          ? entity(
+              path: '/anime/character',
+              key: 'characterId',
+              id: segments[2],
+            )
+          : const ParameterizedRoute(path: '/unknown');
+    }
     if (second == 'browse' ||
         second == 'genre' ||
+        second == 'studio' ||
         second == 'season' ||
         second == 'library' ||
         second == 'ratings' ||
@@ -436,6 +446,7 @@ const _requiredEntityKeys = <String, String>{
   '/fan-work': 'workId',
   '/group': 'groupId',
   '/anime/details': 'animeId',
+  '/anime/character': 'characterId',
   '/store/item': 'itemId',
 };
 

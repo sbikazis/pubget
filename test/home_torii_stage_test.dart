@@ -28,7 +28,7 @@ void main() {
       ],
       now,
     );
-    expect(picked.map((event) => event.id), <String>['hot', 'quiet']);
+    expect(picked.map((event) => event.id), <String>['hot', 'quiet', 'soon']);
   });
 
   test('fan work row forces at least two types inside six cards', () {

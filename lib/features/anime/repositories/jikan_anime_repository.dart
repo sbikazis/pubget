@@ -6,11 +6,9 @@ import '../models/anime_models.dart';
 import 'anime_repository.dart';
 
 final class JikanAnimeRepository implements AnimeRepository {
-  JikanAnimeRepository({
-    required AnimeHttpClient http,
-    Uri? baseUri,
-  }) : _http = http,
-       _baseUri = baseUri ?? Uri.parse('https://api.jikan.moe/v4');
+  JikanAnimeRepository({required AnimeHttpClient http, Uri? baseUri})
+    : _http = http,
+      _baseUri = baseUri ?? Uri.parse('https://api.jikan.moe/v4');
 
   final AnimeHttpClient _http;
   final Uri _baseUri;
@@ -190,6 +188,44 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) {
+    return _list(
+      _uri('producers', <String, String>{
+        'page': '1',
+        'limit': '${_limit(limit)}',
+        'order_by': 'count',
+        'sort': 'desc',
+      }),
+      mapJikanStudios,
+    );
+  }
+
+  @override
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  }) {
+    final normalized = studioId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<AnimePage>>.value(
+        const FailureResult(ValidationError('Studio id is required.')),
+      );
+    }
+    return _page(
+      _uri('anime', <String, String>{
+        'producers': normalized,
+        'page': '$page',
+        'limit': '${_limit(limit)}',
+        'order_by': 'members',
+        'sort': 'desc',
+        'sfw': 'true',
+      }),
+      page: page,
+    );
+  }
+
+  @override
   Future<Result<List<AnimeSeasonYear>>> getAvailableSeasons() {
     return _list(_uri('seasons'), mapJikanSeasons);
   }
@@ -237,13 +273,37 @@ final class JikanAnimeRepository implements AnimeRepository {
     if (text.isNotEmpty) query['q'] = text;
     final genreId = filter.genreId?.trim();
     if (genreId != null && genreId.isNotEmpty) query['genres'] = genreId;
+    final studioId = filter.studioId?.trim();
+    if (studioId != null && studioId.isNotEmpty) {
+      query['producers'] = studioId;
+    }
     if (filter.type != null) query['type'] = filter.type!.name;
+    final status = filter.airing;
+    if (status != null) {
+      query['status'] = switch (status) {
+        AnimeAiringFilter.airing => 'airing',
+        AnimeAiringFilter.finished => 'complete',
+        AnimeAiringFilter.upcoming => 'upcoming',
+      };
+    }
+    final age = filter.ageRating;
+    if (age != null) {
+      query['rated'] = switch (age) {
+        AnimeAgeFilter.allAges => 'g',
+        AnimeAgeFilter.teens => 'pg13',
+        AnimeAgeFilter.adult => 'r17',
+      };
+    }
     return query;
   }
 
-  Uri _uri(String path, [Map<String, String> query = const <String, String>{}]) {
+  Uri _uri(
+    String path, [
+    Map<String, String> query = const <String, String>{},
+  ]) {
     return _baseUri.replace(
-      path: '${_baseUri.path.endsWith('/') ? _baseUri.path : '${_baseUri.path}/'}$path',
+      path:
+          '${_baseUri.path.endsWith('/') ? _baseUri.path : '${_baseUri.path}/'}$path',
       queryParameters: query.isEmpty ? null : query,
     );
   }

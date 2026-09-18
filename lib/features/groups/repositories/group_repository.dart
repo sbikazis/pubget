@@ -108,3 +108,13 @@ abstract interface class GroupRepository {
   });
   Future<Result<void>> promoteGroup(String groupId);
 }
+
+/// Optional capability for repositories that can list groups linked to an
+/// anime. Kept separate so existing [GroupRepository] implementers (and test
+/// fakes) are not forced to change.
+abstract interface class AnimeLinkedGroupRepository {
+  Future<Result<List<Group>>> listGroupsByAnime(
+    String animeId, {
+    int limit = 20,
+  });
+}

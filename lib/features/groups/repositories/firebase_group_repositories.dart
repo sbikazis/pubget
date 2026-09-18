@@ -9,7 +9,8 @@ import 'group_members_repository.dart';
 import 'group_repository.dart';
 import 'roleplay_repository.dart';
 
-final class FirebaseGroupRepository implements GroupRepository {
+final class FirebaseGroupRepository
+    implements GroupRepository, AnimeLinkedGroupRepository {
   FirebaseGroupRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
@@ -74,6 +75,23 @@ final class FirebaseGroupRepository implements GroupRepository {
               group.name.toLowerCase().contains(normalized) ||
               group.description.toLowerCase().contains(normalized),
         )
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<Group>>> listGroupsByAnime(
+    String animeId, {
+    int limit = 20,
+  }) => _guard(() async {
+    final id = animeId.trim();
+    if (id.isEmpty) return const <Group>[];
+    final snapshot = await _firestore
+        .collection('groups')
+        .where('animeId', isEqualTo: id)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => Group.fromMap(doc.data(), id: doc.id))
         .toList(growable: false);
   });
 

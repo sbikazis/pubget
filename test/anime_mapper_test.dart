@@ -21,6 +21,35 @@ void main() {
     expect(anime.images.thumbnailUrl, 'https://example.test/thumb.jpg');
     expect(anime.trailerUrl, 'https://youtube.test/watch?v=abc');
     expect(anime.genres.map((g) => g.kind), containsAll(<AnimeTagKind>[AnimeTagKind.genre, AnimeTagKind.theme]));
+    expect(anime.relations, hasLength(2));
+    expect(anime.relations.first.relation, 'Sequel');
+    expect(anime.relations.first.id, '59978');
+    expect(anime.relations.first.title, 'Frieren Season 2');
+    expect(anime.relations.first.type, 'anime');
+    expect(anime.relations[1].type, 'manga');
+  });
+
+  test('maps relations and skips malformed entries', () {
+    final relations = mapJikanRelations(<Object?>[
+      <String, Object?>{
+        'relation': 'Prequel',
+        'entry': <Object?>[
+          <String, Object?>{'mal_id': 1, 'type': 'anime', 'name': 'Prior'},
+          <String, Object?>{'type': 'anime', 'name': 'No id'},
+        ],
+      },
+      <String, Object?>{'relation': 'Empty', 'entry': <Object?>[]},
+      'not a map',
+    ]);
+    expect(relations, hasLength(1));
+    expect(relations.single.relation, 'Prequel');
+    expect(relations.single.id, '1');
+    expect(relations.single.title, 'Prior');
+  });
+
+  test('handles missing relations without throwing', () {
+    expect(mapJikanRelations(null), isEmpty);
+    expect(mapJikanRelations(<Object?>[]), isEmpty);
   });
 
   test('maps characters including voice actors', () {
@@ -138,5 +167,29 @@ void main() {
     ]);
     expect(years.first.year, 2026);
     expect(years.first.seasons, <AnimeSeason>[AnimeSeason.fall]);
+  });
+
+  test('maps studios from name or titles and skips duplicates', () {
+    final studios = mapJikanStudios(<Object?>[
+      <String, Object?>{'mal_id': 11, 'name': 'Madhouse', 'count': 340},
+      <String, Object?>{
+        'mal_id': 11,
+        'titles': <Object?>[
+          <String, Object?>{'type': 'Default', 'title': 'Duplicate'},
+        ],
+      },
+      <String, Object?>{
+        'mal_id': 43,
+        'titles': <Object?>[
+          <String, Object?>{'type': 'Default', 'title': 'Ufotable'},
+        ],
+        'count': 120,
+      },
+      <String, Object?>{'name': 'Missing id'},
+    ]);
+    expect(studios.map((item) => item.id), <String>['11', '43']);
+    expect(studios.first.name, 'Madhouse');
+    expect(studios.first.count, 340);
+    expect(studios[1].name, 'Ufotable');
   });
 }
