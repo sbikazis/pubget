@@ -213,10 +213,12 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       const nextCount = already
         ? Number(stats.data()?.favoritesCount) || 0
         : (Number(stats.data()?.favoritesCount) || 0) + 1;
+      const nextName = (name || stats.data()?.name || "").trim();
       tx.set(statsRef, {
         characterId,
-        name: name || stats.data()?.name || "",
+        name: nextName,
         imageUrl: imageUrl || stats.data()?.imageUrl || "",
+        searchName: nextName.toLowerCase() || " ",
         favoritesCount: nextCount,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });

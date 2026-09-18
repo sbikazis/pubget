@@ -34,6 +34,13 @@ abstract interface class AnimeHttpClient {
     Duration? timeout,
     AnimeRequestPriority priority = AnimeRequestPriority.catalog,
   });
+
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  });
 }
 
 final class PackageAnimeHttpClient implements AnimeHttpClient {
@@ -50,6 +57,30 @@ final class PackageAnimeHttpClient implements AnimeHttpClient {
   }) async {
     final response = await _client
         .get(uri, headers: const <String, String>{'Accept': 'application/json'})
+        .timeout(timeout ?? const Duration(seconds: 10));
+    return AnimeHttpResponse(
+      statusCode: response.statusCode,
+      body: response.body,
+      headers: response.headers,
+    );
+  }
+
+  @override
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    final response = await _client
+        .post(
+          uri,
+          headers: const <String, String>{
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: body == null ? null : jsonEncode(body),
+        )
         .timeout(timeout ?? const Duration(seconds: 10));
     return AnimeHttpResponse(
       statusCode: response.statusCode,
@@ -99,8 +130,34 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
       timeout: timeout ?? requestTimeout,
       priority: priority,
       completer: completer,
+      isPost: false,
     );
-    if (priority == AnimeRequestPriority.interactive) {
+    _enqueue(job);
+    return completer.future;
+  }
+
+  @override
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) {
+    final completer = Completer<AnimeHttpResponse>();
+    final job = _QueuedAnimeRequest(
+      uri: uri,
+      timeout: timeout ?? requestTimeout,
+      priority: priority,
+      completer: completer,
+      isPost: true,
+      postBody: body,
+    );
+    _enqueue(job);
+    return completer.future;
+  }
+
+  void _enqueue(_QueuedAnimeRequest job) {
+    if (job.priority == AnimeRequestPriority.interactive) {
       final catalogIndex = _pending.indexWhere(
         (pending) => pending.priority == AnimeRequestPriority.catalog,
       );
@@ -113,7 +170,6 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
       _pending.add(job);
     }
     unawaited(_drain());
-    return completer.future;
   }
 
   Future<void> _drain() async {
@@ -122,7 +178,11 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
     while (_pending.isNotEmpty) {
       final job = _pending.removeAt(0);
       try {
-        await _gated(() => _send(job.uri, job.timeout, job.completer));
+        await _gated(
+          () => job.isPost
+              ? _sendPost(job.uri, job.timeout, job.postBody, job.completer)
+              : _send(job.uri, job.timeout, job.completer),
+        );
       } catch (error, stack) {
         if (!job.completer.isCompleted) {
           job.completer.completeError(error, stack);
@@ -150,6 +210,43 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         final response = await _inner.get(uri, timeout: timeout);
+        if (_shouldRetryStatus(response.statusCode) && attempt < maxRetries) {
+          await _delay(_retryDelay(attempt + 1, response.retryAfter));
+          continue;
+        }
+        completer.complete(response);
+        return;
+      } on TimeoutException catch (error) {
+        lastError = error;
+        if (attempt >= maxRetries) break;
+        await _delay(_backoff(attempt + 1));
+      } on http.ClientException catch (error) {
+        lastError = error;
+        if (attempt >= maxRetries) break;
+        await _delay(_backoff(attempt + 1));
+      } catch (error) {
+        lastError = error;
+        if (attempt >= maxRetries) break;
+        await _delay(_backoff(attempt + 1));
+      }
+    }
+    if (!completer.isCompleted) {
+      completer.completeError(
+        lastError ?? TimeoutException('Anime request timed out', timeout),
+      );
+    }
+  }
+
+  Future<void> _sendPost(
+    Uri uri,
+    Duration timeout,
+    Object? body,
+    Completer<AnimeHttpResponse> completer,
+  ) async {
+    Object? lastError;
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        final response = await _inner.post(uri, body: body, timeout: timeout);
         if (_shouldRetryStatus(response.statusCode) && attempt < maxRetries) {
           await _delay(_retryDelay(attempt + 1, response.retryAfter));
           continue;
@@ -241,12 +338,16 @@ final class _QueuedAnimeRequest {
     required this.timeout,
     required this.priority,
     required this.completer,
+    required this.isPost,
+    this.postBody,
   });
 
   final Uri uri;
   final Duration timeout;
   final AnimeRequestPriority priority;
   final Completer<AnimeHttpResponse> completer;
+  final bool isPost;
+  final Object? postBody;
 }
 
 Result<T> animeHttpFailure<T>(

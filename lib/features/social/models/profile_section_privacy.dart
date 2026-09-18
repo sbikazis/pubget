@@ -9,6 +9,7 @@ final class ProfileSectionPrivacy {
     this.groups = true,
     this.ratings = true,
     this.achievements = true,
+    this.lists = true,
   });
 
   final bool favorites;
@@ -19,6 +20,7 @@ final class ProfileSectionPrivacy {
   final bool groups;
   final bool ratings;
   final bool achievements;
+  final bool lists;
 
   static const public = ProfileSectionPrivacy();
 
@@ -33,6 +35,7 @@ final class ProfileSectionPrivacy {
       groups: map['groups'] as bool? ?? true,
       ratings: map['ratings'] as bool? ?? true,
       achievements: map['achievements'] as bool? ?? true,
+      lists: map['lists'] as bool? ?? true,
     );
   }
 
@@ -45,6 +48,7 @@ final class ProfileSectionPrivacy {
     'groups': groups,
     'ratings': ratings,
     'achievements': achievements,
+    'lists': lists,
   };
 
   ProfileSectionPrivacy copyWith({
@@ -56,6 +60,7 @@ final class ProfileSectionPrivacy {
     bool? groups,
     bool? ratings,
     bool? achievements,
+    bool? lists,
   }) {
     return ProfileSectionPrivacy(
       favorites: favorites ?? this.favorites,
@@ -66,6 +71,7 @@ final class ProfileSectionPrivacy {
       groups: groups ?? this.groups,
       ratings: ratings ?? this.ratings,
       achievements: achievements ?? this.achievements,
+      lists: lists ?? this.lists,
     );
   }
 }

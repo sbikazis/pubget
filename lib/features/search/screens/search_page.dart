@@ -164,6 +164,8 @@ class SearchHitTile extends StatelessWidget {
       SearchHitType.event => Icons.celebration_outlined,
       SearchHitType.anime => Icons.movie_outlined,
       SearchHitType.fanWork => Icons.auto_awesome_outlined,
+      SearchHitType.character => Icons.face_outlined,
+      SearchHitType.reel => Icons.video_library_outlined,
     };
     return Icon(icon);
   }

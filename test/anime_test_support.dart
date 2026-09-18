@@ -143,6 +143,36 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
     }
     return const AnimeHttpResponse(statusCode: 404, body: '{}');
   }
+
+  @override
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) {
+    calls.add(uri);
+    if (alwaysThrow && throwError != null) {
+      throw throwError!;
+    }
+    final bodyKey = (body is Map) ? body['query']?.toString() ?? '' : '';
+    for (final key in responses.keys) {
+      if (uri.path == key || uri.path.endsWith(key)) {
+        return Future.value(responses[key]!);
+      }
+    }
+    if (bodyKey.isNotEmpty) {
+      final match = responses.entries.firstWhere(
+        (entry) => bodyKey.contains(entry.key),
+        orElse: () => MapEntry<String, AnimeHttpResponse>(
+          '',
+          const AnimeHttpResponse(statusCode: 404, body: '{}'),
+        ),
+      );
+      return Future.value(match.value);
+    }
+    return Future.value(const AnimeHttpResponse(statusCode: 404, body: '{}'));
+  }
 }
 
 final class FakeAnimeRepository implements AnimeRepository {

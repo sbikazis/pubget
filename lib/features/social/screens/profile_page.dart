@@ -28,6 +28,9 @@ import '../models/social_models.dart';
 import '../providers/profile_provider.dart';
 import '../providers/social_provider.dart';
 import '../widgets/profile_chrome.dart';
+import '../../anime/l10n/anime_copy.dart';
+import '../../anime/models/anime_list_models.dart';
+import '../../anime/providers/anime_library_provider.dart';
 import '../../private_chat/providers/private_chat_list_provider.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -377,7 +380,8 @@ class _ProfileViewData {
     final pub = public ?? const PublicProfile(uid: '');
     return _ProfileViewData(
       name: pub.primaryName(),
-      handle: pub.distinctHandle ??
+      handle:
+          pub.distinctHandle ??
           (pub.username == null || pub.username!.trim().isEmpty
               ? null
               : '@${pub.username}'),
@@ -531,6 +535,14 @@ class _ProfileLifeReport extends StatelessWidget {
                   ),
                 ),
               ],
+              if (profile.isOwner || data.privacy.lists) ...[
+                const SizedBox(height: AppSpacing.md),
+                _AnimeListsSection(
+                  profileId: profileId,
+                  isOwner: profile.isOwner,
+                  privacy: data.privacy,
+                ),
+              ],
               if (profile.isOwner || data.privacy.works) ...[
                 const SizedBox(height: AppSpacing.md),
                 _CollapsedSectionButton(
@@ -662,9 +674,9 @@ class _ProfileHero extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                          color: AppColors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                   ),
                                 ),
                                 if (data.isPremium) ...[
@@ -698,8 +710,7 @@ class _ProfileHero extends StatelessWidget {
                                     icon: Icons.public_outlined,
                                     label: data.country!.trim(),
                                   ),
-                                if (activityVisible &&
-                                    data.createdAt != null)
+                                if (activityVisible && data.createdAt != null)
                                   _MetaChip(
                                     key: const Key('profile-meta-member'),
                                     icon: Icons.schedule_outlined,
@@ -953,7 +964,11 @@ class _CoverPatternPainter extends CustomPainter {
       ..strokeWidth = 1.2;
     for (var i = -4; i < 12; i++) {
       final x = i * 48.0;
-      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), paint);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x + size.height, size.height),
+        paint,
+      );
     }
   }
 
@@ -1039,9 +1054,7 @@ class _EditsGridState extends State<_EditsGrid> {
 
   Future<Result<List<Edit>>> _load() {
     try {
-      return context.read<EditsRepository>().getCreatorEdits(
-        widget.profileId,
-      );
+      return context.read<EditsRepository>().getCreatorEdits(widget.profileId);
     } on ProviderNotFoundException {
       return Future<Result<List<Edit>>>.value(
         const Success<List<Edit>>(<Edit>[]),
@@ -1091,13 +1104,12 @@ class _EditsGridState extends State<_EditsGrid> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: edits.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: AppSpacing.xs,
-                      crossAxisSpacing: AppSpacing.xs,
-                      childAspectRatio: 0.7,
-                    ),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: AppSpacing.xs,
+                  crossAxisSpacing: AppSpacing.xs,
+                  childAspectRatio: 0.7,
+                ),
                 itemBuilder: (context, index) {
                   final edit = edits[index];
                   return _EditGridCell(edit: edit);
@@ -1123,10 +1135,8 @@ class _EditGridCell extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: Key('profile-edit-cell-${edit.id}'),
-        onTap: () => AppNavigation.go(
-          context,
-          PubgetLinks.editHighlightPath(edit.id),
-        ),
+        onTap: () =>
+            AppNavigation.go(context, PubgetLinks.editHighlightPath(edit.id)),
         child: edit.hasPlayableVideo || edit.thumbnailUrl.isNotEmpty
             ? AppImageLoader(
                 imageUrl: edit.thumbnailUrl,
@@ -1291,8 +1301,7 @@ class _FriendAction extends StatelessWidget {
     if (relation?.status == FriendshipStatus.blocked) {
       return PubgetSecondaryButton(
         onPressed:
-            relation?.blockedBy ==
-                context.read<AuthProvider>().currentUser?.id
+            relation?.blockedBy == context.read<AuthProvider>().currentUser?.id
             ? () => social.unblockUser(profileId)
             : null,
         semanticLabel: 'Unblock user',
@@ -1305,6 +1314,312 @@ class _FriendAction extends StatelessWidget {
       semanticLabel: 'Send friend request',
       leadingIcon: Icons.person_add_alt_1_outlined,
       child: const Text('Add friend'),
+    );
+  }
+}
+
+class _AnimeListsSection extends StatelessWidget {
+  const _AnimeListsSection({
+    required this.profileId,
+    required this.isOwner,
+    required this.privacy,
+  });
+
+  final String profileId;
+  final bool isOwner;
+  final ProfileSectionPrivacy privacy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AnimeLibraryProvider>(
+      builder: (context, library, _) {
+        if (!isOwner && !privacy.lists) return const SizedBox.shrink();
+        final entries = library.entries;
+        if (entries.isEmpty && library.customLists.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final copy = AnimeCopy.of(context);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const SizedBox(height: AppSpacing.xl),
+            ProfileSectionHeader(title: copy.myLibrary),
+            const SizedBox(height: AppSpacing.md),
+            _StandardListsGrid(entries: entries),
+            if (library.customLists.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              _CustomListsGrid(
+                lists: library.customLists,
+                isOwner: isOwner,
+                profileId: profileId,
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StandardListsGrid extends StatelessWidget {
+  const _StandardListsGrid({required this.entries});
+
+  final List<AnimeListEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final statuses = [
+      AnimeListStatus.watching,
+      AnimeListStatus.completed,
+      AnimeListStatus.onHold,
+      AnimeListStatus.dropped,
+      AnimeListStatus.planToWatch,
+    ];
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        for (final status in statuses)
+          _StandardListChip(
+            status: status,
+            count: entries.where((e) => e.status == status).length,
+          ),
+      ],
+    );
+  }
+}
+
+class _StandardListChip extends StatelessWidget {
+  const _StandardListChip({required this.status, required this.count});
+
+  final AnimeListStatus status;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    return Material(
+      color: AppColors.darkSurfaceMuted,
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        onTap: () => AppNavigation.go(
+          context,
+          '/anime/me?status=${status.name}&uid=${Uri.encodeComponent(context.read<AuthProvider>().currentUser?.id ?? '')}',
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                _iconForStatus(status),
+                size: 16,
+                color: _colorForStatus(status, context),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                _labelForStatus(status, copy),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppColors.darkText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: _colorForStatus(
+                    status,
+                    context,
+                  ).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  '$count',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: _colorForStatus(status, context),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForStatus(AnimeListStatus status) {
+    switch (status) {
+      case AnimeListStatus.watching:
+        return Icons.play_circle_outline;
+      case AnimeListStatus.completed:
+        return Icons.check_circle_outline;
+      case AnimeListStatus.onHold:
+        return Icons.pause_circle_outline;
+      case AnimeListStatus.dropped:
+        return Icons.cancel_outlined;
+      case AnimeListStatus.planToWatch:
+        return Icons.schedule_outlined;
+      case AnimeListStatus.favorites:
+        return Icons.favorite_outline;
+    }
+  }
+
+  Color _colorForStatus(AnimeListStatus status, BuildContext context) {
+    switch (status) {
+      case AnimeListStatus.watching:
+        return AppColors.royalPurple;
+      case AnimeListStatus.completed:
+        return AppColors.success;
+      case AnimeListStatus.onHold:
+        return AppColors.warning;
+      case AnimeListStatus.dropped:
+        return AppColors.error;
+      case AnimeListStatus.planToWatch:
+        return AppColors.info;
+      case AnimeListStatus.favorites:
+        return AppColors.gold;
+    }
+  }
+
+  String _labelForStatus(AnimeListStatus status, AnimeCopy copy) {
+    return copy.listStatusLabel(status);
+  }
+}
+
+class _CustomListsGrid extends StatelessWidget {
+  const _CustomListsGrid({
+    required this.lists,
+    required this.isOwner,
+    required this.profileId,
+  });
+
+  final List<AnimeCustomList> lists;
+  final bool isOwner;
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleLists = lists
+        .where((list) => isOwner || !list.private)
+        .toList(growable: false);
+    if (visibleLists.isEmpty) return const SizedBox.shrink();
+    final copy = AnimeCopy.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          copy.customListsTitle,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: AppColors.royalPurple,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: <Widget>[
+            for (final list in visibleLists)
+              _CustomListChip(
+                list: list,
+                isOwner: isOwner,
+                profileId: profileId,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CustomListChip extends StatelessWidget {
+  const _CustomListChip({
+    required this.list,
+    required this.isOwner,
+    required this.profileId,
+  });
+
+  final AnimeCustomList list;
+  final bool isOwner;
+  final String profileId;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPrivate = list.private && isOwner;
+    return Container(
+      decoration: BoxDecoration(
+        color: isPrivate
+            ? AppColors.warning.withValues(alpha: 0.15)
+            : AppColors.darkSurfaceMuted,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: isPrivate
+              ? AppColors.warning.withValues(alpha: 0.5)
+              : AppColors.darkOutline.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: () => AppNavigation.go(
+            context,
+            '/anime/list/${Uri.encodeComponent(list.id)}',
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (list.private && isOwner) ...[
+                  Icon(Icons.lock_outline, size: 16, color: AppColors.warning),
+                  const SizedBox(width: AppSpacing.xs),
+                ],
+                Text(
+                  list.name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.darkText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isPrivate
+                        ? AppColors.warning.withValues(alpha: 0.2)
+                        : AppColors.royalPurple.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text(
+                    '${list.itemsCount}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: isPrivate
+                          ? AppColors.warning
+                          : AppColors.royalPurple,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

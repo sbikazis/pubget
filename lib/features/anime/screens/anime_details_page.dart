@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -9,6 +11,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../../edits/models/edit_models.dart';
+import '../../edits/repositories/edits_repository.dart';
+import '../../events/models/event_models.dart';
+import '../../events/repositories/event_repository.dart';
+import '../../events/widgets/home_event_card.dart';
 import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/repositories/fan_work_repository.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
@@ -33,13 +40,20 @@ class AnimeDetailsPage extends StatefulWidget {
   State<AnimeDetailsPage> createState() => _AnimeDetailsPageState();
 }
 
-class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
+class _AnimeDetailsPageState extends State<AnimeDetailsPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   FanWorkFeedProvider? _relatedFanWorks;
   List<Group> _relatedGroups = const <Group>[];
+  List<Edit> _relatedReels = const <Edit>[];
+  List<PubgetEvent> _relatedEvents = const <PubgetEvent>[];
+  bool _loadingReels = false;
+  bool _loadingEvents = false;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     final details = context.read<AnimeDetailsProvider>();
     final auth = context.read<AuthProvider>();
     final onboarding = context.read<OnboardingProvider>();
@@ -66,6 +80,32 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
         });
       });
     }
+    final eventRepo = _eventRepository(context);
+    if (eventRepo != null) {
+      Future<void>.microtask(() async {
+        if (!mounted) return;
+        setState(() => _loadingEvents = true);
+        final result = await eventRepo.getEventsByAnime(animeId: widget.animeId);
+        if (!mounted) return;
+        setState(() {
+          _relatedEvents = result.valueOrNull ?? const <PubgetEvent>[];
+          _loadingEvents = false;
+        });
+      });
+    }
+    final editsRepo = _animeEditsRepository(context);
+    if (editsRepo != null) {
+      Future<void>.microtask(() async {
+        if (!mounted) return;
+        setState(() => _loadingReels = true);
+        final result = await editsRepo.getAnimeEdits(widget.animeId);
+        if (!mounted) return;
+        setState(() {
+          _relatedReels = result.valueOrNull ?? const <Edit>[];
+          _loadingReels = false;
+        });
+      });
+    }
     Future<void>.microtask(() async {
       await details.load(widget.animeId);
       await library?.load();
@@ -76,6 +116,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _relatedFanWorks?.dispose();
     super.dispose();
   }
@@ -114,6 +155,17 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
             ),
           ],
         ],
+        bottom: anime != null
+            ? TabBar(
+                controller: _tabController,
+                isScrollable: false,
+                tabs: <Widget>[
+                  Tab(text: copy.tabInfo),
+                  Tab(text: copy.tabCharacters),
+                  Tab(text: copy.tabRelated),
+                ],
+              )
+            : null,
       ),
       body: PubgetLoadingStateView(
         state: details.state,
@@ -134,158 +186,439 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
         ),
         child: anime == null
             ? const SizedBox.shrink()
-            : ListView(
-                padding: const EdgeInsets.only(bottom: AppSpacing.huge),
+            : TabBarView(
+                controller: _tabController,
                 children: <Widget>[
-                  if (details.fromCache)
-                    AnimeCachedBanner(offline: !network.isOnline),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg,
-                      AppSpacing.lg,
-                      AppSpacing.lg,
-                      0,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        SizedBox(
-                          width: 148,
-                          child: AnimePoster(
-                            images: anime.images,
-                            memCacheWidth: 360,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.lg),
-                        Expanded(
-                          child: _HeroCopy(anime: anime, social: social),
-                        ),
-                      ],
-                    ),
+                  _InfoTab(
+                    anime: anime,
+                    details: details,
+                    social: social,
+                    network: network,
                   ),
-                  const SizedBox(height: AppSpacing.xl),
-                  _ActionRow(anime: anime, details: details, social: social),
-                  const SizedBox(height: AppSpacing.xl),
-                  _AnimeListControls(anime: anime),
-                  _CustomListControls(anime: anime),
-                  if (anime.alternativeTitles.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        0,
+                  _CharactersTab(details: details),
+                  _RelatedTab(
+                    anime: anime,
+                    social: social,
+                    relatedFanWorks: _relatedFanWorks,
+                    relatedGroups: _relatedGroups,
+                    relatedReels: _relatedReels,
+                    relatedEvents: _relatedEvents,
+                    loadingReels: _loadingReels,
+                    loadingEvents: _loadingEvents,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _InfoTab extends StatelessWidget {
+  const _InfoTab({
+    required this.anime,
+    required this.details,
+    required this.social,
+    required this.network,
+  });
+
+  final Anime anime;
+  final AnimeDetailsProvider details;
+  final AnimeHubSocialProvider? social;
+  final NetworkService network;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.huge),
+      children: <Widget>[
+        if (details.fromCache)
+          AnimeCachedBanner(offline: !network.isOnline),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+            0,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(
+                width: 148,
+                child: AnimePoster(
+                  images: anime.images,
+                  memCacheWidth: 360,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: _HeroCopy(anime: anime, social: social),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        _ActionRow(anime: anime, details: details, social: social),
+        const SizedBox(height: AppSpacing.xl),
+        _AnimeListControls(anime: anime),
+        _CustomListControls(anime: anime),
+        if (anime.alternativeTitles.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: Text(
+              anime.alternativeTitles.join(' · '),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        if (anime.genres.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: <Widget>[
+                for (final genre in anime.genres.where(
+                  (item) => item.isBrowsable,
+                ))
+                  PubgetSelectionChip(
+                    label: AnimeCopy.of(context).genre(genre.name),
+                    selected: false,
+                    onSelected: (_) =>
+                        AnimeLinks.openGenre(context, genre),
+                  ),
+              ],
+            ),
+          ),
+        _FactsCard(anime: anime),
+        if (anime.synopsis != null && anime.synopsis!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: PubgetCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    AnimeCopy.of(context).synopsisTitle,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    anime.synopsis!,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (anime.trailerUrl != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: PubgetSecondaryButton(
+              onPressed: () =>
+                  AnimeLinks.copyUrl(context, anime.trailerUrl!),
+              semanticLabel: AnimeCopy.of(context).trailer,
+              child: Text(AnimeCopy.of(context).trailer),
+            ),
+          ),
+        if (anime.externalLinks.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: PubgetCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    AnimeCopy.of(context).links,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  for (final link in anime.externalLinks)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(link.label),
+                      subtitle: Text(
+                        link.url,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      child: Text(
-                        anime.alternativeTitles.join(' · '),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  if (anime.genres.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        0,
-                      ),
-                      child: Wrap(
-                        spacing: AppSpacing.sm,
-                        runSpacing: AppSpacing.sm,
-                        children: <Widget>[
-                          for (final genre in anime.genres.where(
-                            (item) => item.isBrowsable,
-                          ))
-                            PubgetSelectionChip(
-                              label: AnimeCopy.of(context).genre(genre.name),
-                              selected: false,
-                              onSelected: (_) =>
-                                  AnimeLinks.openGenre(context, genre),
-                            ),
-                        ],
-                      ),
-                    ),
-                  _FactsCard(anime: anime),
-                  if (anime.synopsis != null && anime.synopsis!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        0,
-                      ),
-                      child: PubgetCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              AnimeCopy.of(context).synopsisTitle,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              anime.synopsis!,
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  _CharactersSection(details: details),
-                  _ReviewsSection(social: social, anime: anime),
-                  _RelatedWorksSection(anime: anime),
-                  _RelatedFanWorksSection(feed: _relatedFanWorks),
-                  _RelatedGroupsSection(groups: _relatedGroups),
-                  if (anime.trailerUrl != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        0,
-                      ),
-                      child: PubgetSecondaryButton(
-                        onPressed: () =>
-                            AnimeLinks.copyUrl(context, anime.trailerUrl!),
-                        semanticLabel: AnimeCopy.of(context).trailer,
-                        child: Text(AnimeCopy.of(context).trailer),
-                      ),
-                    ),
-                  if (anime.externalLinks.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        0,
-                      ),
-                      child: PubgetCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              AnimeCopy.of(context).links,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            for (final link in anime.externalLinks)
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(link.label),
-                                subtitle: Text(
-                                  link.url,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                onTap: () =>
-                                    AnimeLinks.copyUrl(context, link.url),
-                              ),
-                          ],
-                        ),
-                      ),
+                      onTap: () =>
+                          AnimeLinks.copyUrl(context, link.url),
                     ),
                 ],
               ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CharactersTab extends StatelessWidget {
+  const _CharactersTab({required this.details});
+
+  final AnimeDetailsProvider details;
+
+  @override
+  Widget build(BuildContext context) {
+    return _CharactersSection(details: details);
+  }
+}
+
+class _RelatedTab extends StatelessWidget {
+  const _RelatedTab({
+    required this.anime,
+    required this.social,
+    required this.relatedFanWorks,
+    required this.relatedGroups,
+    required this.relatedReels,
+    required this.relatedEvents,
+    required this.loadingReels,
+    required this.loadingEvents,
+  });
+
+  final Anime anime;
+  final AnimeHubSocialProvider? social;
+  final FanWorkFeedProvider? relatedFanWorks;
+  final List<Group> relatedGroups;
+  final List<Edit> relatedReels;
+  final List<PubgetEvent> relatedEvents;
+  final bool loadingReels;
+  final bool loadingEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.huge),
+      children: <Widget>[
+        _ReviewsSection(social: social, anime: anime),
+        _RelatedWorksSection(anime: anime),
+        _RelatedFanWorksSection(feed: relatedFanWorks),
+        _RelatedGroupsSection(groups: relatedGroups),
+        _RelatedReelsSection(
+          reels: relatedReels,
+          loading: loadingReels,
+        ),
+        _RelatedEventsSection(
+          events: relatedEvents,
+          loading: loadingEvents,
+        ),
+      ],
+    );
+  }
+}
+
+class _RelatedReelsSection extends StatelessWidget {
+  const _RelatedReelsSection({
+    required this.reels,
+    required this.loading,
+  });
+
+  final List<Edit> reels;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    if (!loading && reels.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                copy.relatedReels,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              if (loading) ...<Widget>[
+                const SizedBox(width: AppSpacing.sm),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (reels.isEmpty && !loading)
+            Text(
+              copy.noReelsFound,
+              style: Theme.of(context).textTheme.bodyMedium,
+            )
+          else
+            SizedBox(
+              height: 180,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: reels.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.sm),
+                itemBuilder: (context, index) => _ReelCard(edit: reels[index]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReelCard extends StatelessWidget {
+  const _ReelCard({required this.edit});
+
+  final Edit edit;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 280,
+      child: PubgetCard(
+        padding: EdgeInsets.zero,
+        onTap: () =>
+            AppNavigation.go(context, PubgetLinks.reelHighlightPath(edit.id)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            AspectRatio(
+              aspectRatio: 9 / 16,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  if (edit.thumbnailUrl.isNotEmpty)
+                    Image.network(
+                      edit.thumbnailUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const ColoredBox(color: AppColors.darkSurfaceMuted),
+                    )
+                  else
+                    const ColoredBox(color: AppColors.darkSurfaceMuted),
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(onTap: () {}),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    edit.caption.isEmpty ? edit.animeTag : edit.caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    _formatDuration(edit.durationSeconds),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDuration(int seconds) {
+    if (seconds <= 0) return '';
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+}
+
+class _RelatedEventsSection extends StatelessWidget {
+  const _RelatedEventsSection({
+    required this.events,
+    required this.loading,
+  });
+
+  final List<PubgetEvent> events;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    if (!loading && events.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                copy.relatedEvents,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              if (loading) ...<Widget>[
+                const SizedBox(width: AppSpacing.sm),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (events.isEmpty && !loading)
+            Text(
+              copy.noEventsFound,
+              style: Theme.of(context).textTheme.bodyMedium,
+            )
+          else
+            Column(
+              children: <Widget>[
+                for (final event in events)
+                  HomeEventCard(event: event),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -1616,6 +1949,22 @@ AnimeLinkedGroupRepository? _animeLinkedGroups(BuildContext context) {
 FanWorkRepository? _fanWorkRepository(BuildContext context) {
   try {
     return Provider.of<FanWorkRepository>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+EventRepository? _eventRepository(BuildContext context) {
+  try {
+    return Provider.of<EventRepository>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+AnimeEditsRepository? _animeEditsRepository(BuildContext context) {
+  try {
+    return Provider.of<AnimeEditsRepository>(context, listen: false);
   } on ProviderNotFoundException {
     return null;
   }

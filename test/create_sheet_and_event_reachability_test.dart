@@ -293,6 +293,12 @@ final class _EmptyEventRepository implements EventRepository {
       const Success(<PubgetEvent>[]);
 
   @override
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  }) async => const Success(<PubgetEvent>[]);
+
+  @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>
       const FailureResult(ValidationError('unused'));
 

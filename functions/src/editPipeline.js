@@ -189,6 +189,11 @@ async function detectPlatformWatermark(ffmpeg, source, dir, editData) {
   };
 }
 
+function editSearchName(editData) {
+  const parts = [editData && editData.caption, editData && editData.animeTag, editData && editData.animeId];
+  return parts.filter(Boolean).join(" ").trim().toLowerCase();
+}
+
 function decideEditPublication(editData, processingFields, watermarkScan) {
   const decision = moderateEditCopy({
     caption: editData && editData.caption,
@@ -230,6 +235,7 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
       moderationStatus: "approved",
       moderationReason: null,
       watermarkScan: watermarkScan || null,
+      searchName: editSearchName(editData) || " ",
     },
     publish: true,
     reason: null,
