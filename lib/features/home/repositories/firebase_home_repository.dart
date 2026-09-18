@@ -2,9 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/result.dart';
-import '../../groups/models/group_models.dart';
+import '../../../core/widgets/pubget_design_system.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/models/anime_rating_models.dart';
+import '../../edits/models/edit_models.dart';
 import '../../events/models/event_models.dart';
 import '../../fan_works/models/fan_work_models.dart';
+import '../../groups/models/group_models.dart';
 import '../../search/search_query.dart';
 import '../../social/models/public_profile.dart';
 import '../models/home_models.dart';
@@ -256,16 +260,33 @@ final class FirebaseHomeRepository implements HomeRepository {
           .where('searchTitle', isLessThanOrEqualTo: end)
           .limit(20)
           .get();
+      final charactersFuture = _firestore
+          .collection('character_stats')
+          .where('searchName', isGreaterThanOrEqualTo: normalized)
+          .where('searchName', isLessThanOrEqualTo: end)
+          .limit(20)
+          .get();
+      final reelsFuture = _firestore
+          .collection('edits')
+          .where('status', isEqualTo: 'published')
+          .where('searchName', isGreaterThanOrEqualTo: normalized)
+          .where('searchName', isLessThanOrEqualTo: end)
+          .limit(20)
+          .get();
       final results = await Future.wait([
         groupsFuture,
         peopleFuture,
         eventsFuture,
         fanWorksFuture,
+        charactersFuture,
+        reelsFuture,
       ]);
       final groups = results[0];
       final people = results[1];
       final events = results[2];
       final fanWorks = results[3];
+      final characters = results[4];
+      final reels = results[5];
       return Success(
         DiscoverySearchResults(
           groups: _uniqueBy(
@@ -289,6 +310,18 @@ final class FirebaseHomeRepository implements HomeRepository {
               (doc) => FanWorkPreview.fromMap(doc.data(), id: doc.id),
             ),
             (work) => work.id,
+          ),
+          characters: _uniqueBy(
+            characters.docs.map(
+              (doc) => CharacterCommunityStats.fromMap(doc.data(), id: doc.id),
+            ),
+            (character) => character.characterId,
+          ),
+          reels: _uniqueBy(
+            reels.docs.map(
+              (doc) => Edit.fromMap(doc.data(), id: doc.id),
+            ),
+            (edit) => edit.id,
           ),
         ),
       );

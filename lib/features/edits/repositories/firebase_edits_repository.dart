@@ -327,6 +327,27 @@ class FirebaseEditsRepository
   });
 
   @override
+  Future<Result<List<Edit>>> getAnimeEdits(
+    String animeId, {
+    int limit = 12,
+  }) => _guard(() async {
+    final id = animeId.trim();
+    if (id.isEmpty) return const <Edit>[];
+    final snapshot = await _firestore
+        .collection(_collection)
+        .where('status', isEqualTo: 'published')
+        .where('animeTag', isEqualTo: id)
+        .orderBy('score', descending: true)
+        .orderBy('createdAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(limit.clamp(1, 24))
+        .get();
+    return snapshot.docs
+        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
+
+  @override
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {
     final doc = await _firestore.collection(_collection).doc(editId).get();
     if (!doc.exists || doc.data() == null) {

@@ -13,6 +13,8 @@ import '../data/anime_search_ranker.dart';
 import '../models/anime_models.dart';
 import '../repositories/anime_repository.dart';
 
+export 'anime_recommendation_provider.dart';
+
 LoadingState animeFailureState(Failure failure, {required bool hasContent}) {
   if (hasContent) {
     return failure is NetworkError || failure is TimeoutError

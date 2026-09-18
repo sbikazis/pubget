@@ -8,6 +8,7 @@ import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../../home/models/home_models.dart';
 import '../../home/repositories/home_repository.dart';
 import '../../search/search_hit.dart';
@@ -430,6 +431,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
                 ),
               ),
             SliverToBoxAdapter(child: _communitySection(context)),
+            SliverToBoxAdapter(child: _recommendationsSection(context)),
           ],
         ],
       ),
@@ -481,6 +483,90 @@ Widget _communitySection(BuildContext context) {
           ),
       ],
     ),
+  );
+}
+
+Widget _recommendationsSection(BuildContext context) {
+  final auth = context.read<AuthProvider>();
+  final userId = auth.currentUser?.id;
+  if (userId == null) return const SizedBox.shrink();
+  final copy = AnimeCopy.of(context);
+  return Consumer<AnimeRecommendationProvider>(
+    builder: (context, provider, _) {
+      if (provider.state == LoadingState.initial ||
+          provider.state == LoadingState.loading) {
+        return const SizedBox.shrink();
+      }
+      if (provider.recommendations.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.xs,
+              ),
+              child: Text(
+                copy.recommendedForYou,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 220,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                itemCount: provider.recommendations.length,
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
+                itemBuilder: (context, index) {
+                  final rec = provider.recommendations[index];
+                  final anime = rec.anime;
+                  return SizedBox(
+                    width: 132,
+                    child: InkWell(
+                      onTap: () => AnimeLinks.openDetails(context, anime.id),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimePoster(
+                              images: anime.images,
+                              memCacheWidth: 264,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            anime.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if (anime.score != null && anime.score! > 0)
+                            AnimeScoreBadge(
+                              malScore: anime.score!,
+                              large: false,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -842,6 +928,8 @@ class _AggregatedHitTile extends StatelessWidget {
       SearchHitType.event => copy.entityEvent,
       SearchHitType.anime => copy.entityAnime,
       SearchHitType.fanWork => copy.entityFanWork,
+      SearchHitType.character => copy.entityCharacter,
+      SearchHitType.reel => copy.entityReel,
     };
   }
 

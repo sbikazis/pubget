@@ -71,6 +71,15 @@ abstract interface class EditsRepository {
 }
 
 /// Optional capability for repositories that can surface published Edits
+/// (Reels) linked to an anime. Implemented by the Firebase repository.
+abstract interface class AnimeEditsRepository {
+  Future<Result<List<Edit>>> getAnimeEdits(
+    String animeId, {
+    int limit = 12,
+  });
+}
+
+/// Optional capability for repositories that can surface published Edits
 /// (Reels) linked to a character. Implemented by the Firebase repository.
 abstract interface class CharacterEditsRepository {
   Future<Result<List<Edit>>> getCharacterEdits(

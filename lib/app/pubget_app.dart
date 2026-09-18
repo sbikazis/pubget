@@ -66,9 +66,11 @@ import '../features/anime/data/anime_http_client.dart';
 import '../features/anime/models/anime_models.dart';
 import '../features/anime/providers/anime_providers.dart';
 import '../features/anime/repositories/anime_repository.dart';
+import '../features/anime/repositories/anilist_anime_repository.dart';
 import '../features/anime/repositories/cached_anime_repository.dart';
 import '../features/anime/repositories/firestore_cached_anime_repository.dart';
 import '../features/anime/repositories/jikan_anime_repository.dart';
+import '../features/anime/repositories/provider_chain_anime_repository.dart';
 import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
@@ -205,10 +207,22 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<AnimeRepository>(
           create: (context) {
             final network = context.read<NetworkService>();
+            final chain = ProviderChainAnimeRepository(
+              providers: <AnimeRepository>[
+                JikanAnimeRepository(
+                  http: ResilientAnimeHttpClient(
+                    inner: PackageAnimeHttpClient(),
+                  ),
+                ),
+                AniListAnimeRepository(
+                  http: ResilientAnimeHttpClient(
+                    inner: PackageAnimeHttpClient(),
+                  ),
+                ),
+              ],
+            );
             final base = CachedAnimeRepository(
-              inner: JikanAnimeRepository(
-                http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
-              ),
+              inner: chain,
               isOnline: () => network.isOnline,
             );
             if (!firebaseState.isReady) return base;
@@ -441,6 +455,24 @@ class PubgetApp extends StatelessWidget {
           create: (context) => AnimeHubSocialProvider(
             repository: context.read<AnimeHubSocialRepository>(),
           ),
+        ),
+        provider.ChangeNotifierProxyProvider2<
+          AuthProvider,
+          AnimeHubSocialProvider,
+          AnimeRecommendationProvider
+        >(
+          create: (context) => AnimeRecommendationProvider(
+            social: context.read<AnimeHubSocialProvider>(),
+            repository: context.read<AnimeRepository>(),
+            userId: context.read<AuthProvider>().currentUser?.id ?? '',
+          ),
+          update: (_, auth, social, previous) {
+            return previous ?? AnimeRecommendationProvider(
+              social: social,
+              repository: context.read<AnimeRepository>(),
+              userId: auth.currentUser?.id ?? '',
+            )..bindUser(auth.currentUser?.id ?? '');
+          },
         ),
         provider.ChangeNotifierProvider<GameListProvider>(
           create: (context) =>

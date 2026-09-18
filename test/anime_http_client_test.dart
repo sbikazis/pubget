@@ -119,6 +119,15 @@ final class _SequenceHttpClient implements AnimeHttpClient {
     }
     return const AnimeHttpResponse(statusCode: 200, body: '{"ok":true}');
   }
+
+  @override
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) =>
+      get(uri, timeout: timeout, priority: priority);
 }
 
 final class _HoldHttpClient implements AnimeHttpClient {
@@ -132,6 +141,18 @@ final class _HoldHttpClient implements AnimeHttpClient {
     AnimeRequestPriority priority = AnimeRequestPriority.catalog,
   }) async {
     started.add(uri.path);
+    await _ready.future;
+    return const AnimeHttpResponse(statusCode: 200, body: '{}');
+  }
+
+  @override
+  Future<AnimeHttpResponse> post(
+    Uri uri, {
+    Object? body,
+    Duration? timeout,
+    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
+  }) async {
+    started.add('POST ${uri.path}');
     await _ready.future;
     return const AnimeHttpResponse(statusCode: 200, body: '{}');
   }

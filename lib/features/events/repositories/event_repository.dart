@@ -55,6 +55,11 @@ abstract interface class EventRepository {
 
   Future<Result<List<PubgetEvent>>> search(String query);
 
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  });
+
   Future<Result<EventResponse?>> getMyResponse({
     required String eventId,
     required String userId,

@@ -85,6 +85,12 @@ final class UnavailableEventRepository implements EventRepository {
   Future<Result<List<PubgetEvent>>> search(String query) async => _fail();
 
   @override
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  }) async => _fail();
+
+  @override
   Future<Result<EventResponse?>> getMyResponse({
     required String eventId,
     required String userId,

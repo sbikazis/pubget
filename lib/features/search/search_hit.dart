@@ -8,7 +8,15 @@ import '../events/widgets/event_widgets.dart';
 import '../fan_works/widgets/fan_work_widgets.dart';
 import '../home/models/home_models.dart';
 
-enum SearchHitType { user, group, event, anime, fanWork }
+enum SearchHitType {
+  user,
+  group,
+  event,
+  anime,
+  fanWork,
+  character,
+  reel,
+}
 
 final class SearchHit {
   const SearchHit({
@@ -96,7 +104,38 @@ final class SearchHit {
             route: FanWorkLinks.path(work.id),
             canonicalUrl: FanWorkLinks.canonical(work.id),
           ),
-    ];
+];
+    for (final character in results.characters) {
+      if (character.characterId.isNotEmpty) {
+        hits.add(
+          SearchHit(
+            type: SearchHitType.character,
+            id: character.characterId,
+            title: character.name,
+            subtitle: 'شخصية',
+            imageUrl: character.imageUrl?.isEmpty ?? true ? null : character.imageUrl,
+            route: AnimeLinks.characterPath(character.characterId),
+            canonicalUrl: PubgetLinks.character(character.characterId),
+          ),
+        );
+      }
+    }
+    for (final edit in results.reels) {
+      if (edit.id.isNotEmpty && edit.isPublished) {
+        final caption = edit.caption.trim();
+        hits.add(
+          SearchHit(
+            type: SearchHitType.reel,
+            id: edit.id,
+            title: caption.isEmpty ? edit.animeTag : caption,
+            subtitle: 'ريل',
+            imageUrl: edit.thumbnailUrl.isEmpty ? null : edit.thumbnailUrl,
+            route: PubgetLinks.reelHighlightPath(edit.id),
+            canonicalUrl: PubgetLinks.reelHighlight(edit.id),
+          ),
+        );
+      }
+    }
     return _dedupe(hits);
   }
 

@@ -426,6 +426,20 @@ function validateChallenge(input) {
   };
 }
 
+function extractAnimeIds(configuration) {
+  if (!configuration || !configuration.options) return [];
+  const ids = new Set();
+  for (const option of configuration.options) {
+    if (option.animeId) ids.add(option.animeId);
+  }
+  if (configuration.candidates) {
+    for (const candidate of configuration.candidates) {
+      if (candidate.animeId) ids.add(candidate.animeId);
+    }
+  }
+  return [...ids];
+}
+
 function validateConfiguration(type, raw) {
   const input = raw && typeof raw === "object" ? raw : {};
   const allowMultiple = input.allowMultiple === true;
@@ -955,6 +969,7 @@ function createEventsDomain({
           templateId: TEMPLATES[input.templateId] ? input.templateId : null,
           coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
           searchName: searchNameOf(input.title),
+          animeIds: extractAnimeIds(configuration),
           updatedAt: FieldValue.serverTimestamp(),
           previewedAt: null,
           resultLockedAt: null,
@@ -988,6 +1003,7 @@ function createEventsDomain({
         templateId: TEMPLATES[input.templateId] ? input.templateId : null,
         coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
         searchName: searchNameOf(input.title),
+        animeIds: extractAnimeIds(configuration),
         previewedAt: null,
         resultLockedAt: null,
         legacyMode: legacyCaller,

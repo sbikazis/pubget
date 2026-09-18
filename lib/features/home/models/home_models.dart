@@ -1,6 +1,8 @@
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
 import '../../anime/models/anime_models.dart';
+import '../../anime/models/anime_rating_models.dart';
+import '../../edits/models/edit_models.dart';
 import '../../fan_works/models/fan_work_models.dart';
 import '../../social/models/public_profile.dart';
 
@@ -24,6 +26,8 @@ final class DiscoverySearchResults {
     this.events = const <PubgetEvent>[],
     this.anime = const <Anime>[],
     this.fanWorks = const <FanWorkPreview>[],
+    this.characters = const <CharacterCommunityStats>[],
+    this.reels = const <Edit>[],
   });
 
   final List<Group> groups;
@@ -31,13 +35,17 @@ final class DiscoverySearchResults {
   final List<PubgetEvent> events;
   final List<Anime> anime;
   final List<FanWorkPreview> fanWorks;
+  final List<CharacterCommunityStats> characters;
+  final List<Edit> reels;
 
   bool get isEmpty =>
       groups.isEmpty &&
       people.isEmpty &&
       events.isEmpty &&
       anime.isEmpty &&
-      fanWorks.isEmpty;
+      fanWorks.isEmpty &&
+      characters.isEmpty &&
+      reels.isEmpty;
 }
 
 final class DiscoveryItem {

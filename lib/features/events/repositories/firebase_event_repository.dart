@@ -197,6 +197,17 @@ final class FirebaseEventRepository implements EventRepository {
   }
 
   @override
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  }) => _query(
+    _events
+        .where('animeIds', arrayContains: animeId)
+        .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
+        .limit(limit),
+  );
+
+  @override
   Future<Result<EventResponse?>> getMyResponse({
     required String eventId,
     required String userId,
