@@ -30,7 +30,7 @@ function createFakeDb() {
       path,
       collection(name) {
         return {
-          doc(id) {
+          doc(id = `auto-${store.size + 1}`) {
             return ref(`${path}/${name}/${id}`);
           },
         };
@@ -50,7 +50,7 @@ function createFakeDb() {
     store,
     collection(name) {
       return {
-        doc(id) {
+        doc(id = `auto-${store.size + 1}`) {
           return ref(`${name}/${id}`);
         },
       };
@@ -248,4 +248,68 @@ test("review reports flag the review and cannot target yourself", async () => {
   });
   assert.equal(db.store.get("anime_stats/16498/reviews/alice").moderationStatus, "flagged");
   assert.ok(db.store.get("anime_stats/16498/reviews/alice/reports/bob"));
+});
+
+test("character discussion posts are authored by the caller", async () => {
+  const { hub, db } = domain();
+  const result = await hub.postCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", text: "Future pirate king." },
+  });
+  assert.equal(result.characterId, "luffy");
+  assert.equal(result.userId, "alice");
+  assert.equal(result.username, "Alice");
+  const stored = db.store.get(`character_discussions/luffy/posts/${result.id}`);
+  assert.equal(stored.text, "Future pirate king.");
+  assert.equal(stored.userId, "alice");
+});
+
+test("character discussion rejects empty, banned, and unauthenticated posts", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.postCharacterDiscussion({ auth: { uid: "alice" }, data: { characterId: "luffy" } }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.postCharacterDiscussion({
+      auth: { uid: "alice" },
+      data: { characterId: "luffy", text: "kys" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.postCharacterDiscussion({ data: { characterId: "luffy", text: "hi" } }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+test("only the author can delete a character discussion post", async () => {
+  const { hub, db } = domain();
+  const post = await hub.postCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", text: "Hello." },
+  });
+  await assert.rejects(
+    hub.deleteCharacterDiscussion({
+      auth: { uid: "bob" },
+      data: { characterId: "luffy", postId: post.id },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await hub.deleteCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", postId: post.id },
+  });
+  assert.equal(db.store.has(`character_discussions/luffy/posts/${post.id}`), false);
+});
+
+test("deleting a missing character discussion post is not found", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.deleteCharacterDiscussion({
+      auth: { uid: "alice" },
+      data: { characterId: "luffy", postId: "missing" },
+    }),
+    (error) => error.code === "not-found",
+  );
 });

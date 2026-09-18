@@ -69,6 +69,16 @@ void main() {
       await tester.tap(find.byKey(const Key('app-shell-menu')));
       await tester.pumpAndSettle();
       final finder = find.byKey(Key('drawer-$id'));
+      if (!tester.any(finder)) {
+        await tester.scrollUntilVisible(
+          finder,
+          120,
+          scrollable: find.descendant(
+            of: find.byType(Drawer),
+            matching: find.byType(Scrollable),
+          ),
+        );
+      }
       await tester.ensureVisible(finder);
       await tester.tap(finder);
       await tester.pumpAndSettle();
@@ -125,7 +135,7 @@ void main() {
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(14));
+    expect(AppShellDrawerDestinations.items, hasLength(15));
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {

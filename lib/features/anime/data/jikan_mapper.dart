@@ -37,7 +37,9 @@ Anime? mapJikanAnime(Object? raw) {
     genres: List<AnimeGenre>.unmodifiable(_genresFrom(map)),
     studios: List<String>.unmodifiable(_namedList(map['studios'])),
     producers: List<String>.unmodifiable(_namedList(map['producers'])),
+    relations: mapJikanRelations(map['relations']),
     source: _string(map['source']),
+    rating: _string(map['rating']),
     images: _images(map['images']),
     trailerUrl: _trailer(map['trailer']),
     externalLinks: List<AnimeExternalLink>.unmodifiable(_externalLinks(map)),
@@ -51,7 +53,8 @@ List<Anime> mapJikanAnimeList(Object? raw) {
   final items = <Anime>[];
   final seen = <String>{};
   for (final entry in raw) {
-    final anime = mapJikanAnime(entry) ?? _animeFromWatchOrRecommendation(entry);
+    final anime =
+        mapJikanAnime(entry) ?? _animeFromWatchOrRecommendation(entry);
     if (anime == null || !seen.add(anime.id)) continue;
     items.add(anime);
   }
@@ -72,7 +75,9 @@ AnimeCharacter? mapJikanCharacterEntry(Object? raw) {
     role: _string(map['role']),
     favorites: _int(map['favorites'] ?? character['favorites']),
     url: _string(character['url']),
-    voiceActors: List<VoiceActor>.unmodifiable(_voiceActors(map['voice_actors'])),
+    voiceActors: List<VoiceActor>.unmodifiable(
+      _voiceActors(map['voice_actors']),
+    ),
   );
 }
 
@@ -110,7 +115,10 @@ AnimeCharacter? mapJikanCharacterFull(Object? raw) {
   );
 }
 
-List<AnimeGenre> mapJikanGenres(Object? raw, {AnimeTagKind kind = AnimeTagKind.genre}) {
+List<AnimeGenre> mapJikanGenres(
+  Object? raw, {
+  AnimeTagKind kind = AnimeTagKind.genre,
+}) {
   if (raw is! List) return const <AnimeGenre>[];
   final items = <AnimeGenre>[];
   for (final entry in raw) {
@@ -120,15 +128,54 @@ List<AnimeGenre> mapJikanGenres(Object? raw, {AnimeTagKind kind = AnimeTagKind.g
     final name = _string(map['name']);
     if (id == null || name == null || name.isEmpty) continue;
     items.add(
-      AnimeGenre(
-        id: id,
-        name: name,
-        kind: kind,
-        count: _int(map['count']),
-      ),
+      AnimeGenre(id: id, name: name, kind: kind, count: _int(map['count'])),
     );
   }
   return List<AnimeGenre>.unmodifiable(items);
+}
+
+List<AnimeStudio> mapJikanStudios(Object? raw) {
+  if (raw is! List) return const <AnimeStudio>[];
+  final studios = <AnimeStudio>[];
+  final seen = <String>{};
+  for (final entry in raw) {
+    if (entry is! Map) continue;
+    final map = Map<String, dynamic>.from(entry);
+    final id = _idOf(map['mal_id']);
+    final name = _string(map['name']) ?? _titleOf(map['titles']);
+    if (id == null || name == null || name.isEmpty || !seen.add(id)) continue;
+    studios.add(AnimeStudio(id: id, name: name, count: _int(map['count'])));
+  }
+  return List<AnimeStudio>.unmodifiable(studios);
+}
+
+List<AnimeRelated> mapJikanRelations(Object? raw) {
+  if (raw is! List) return const <AnimeRelated>[];
+  final items = <AnimeRelated>[];
+  for (final group in raw) {
+    if (group is! Map) continue;
+    final map = Map<String, dynamic>.from(group);
+    final relation = _string(map['relation']) ?? '';
+    final entries = map['entry'];
+    if (entries is! List) continue;
+    for (final entry in entries) {
+      if (entry is! Map) continue;
+      final item = Map<String, dynamic>.from(entry);
+      final id = _idOf(item['mal_id']);
+      final title = _string(item['name']) ?? _string(item['title']);
+      if (id == null || title == null || title.isEmpty) continue;
+      items.add(
+        AnimeRelated(
+          id: id,
+          title: title,
+          relation: relation,
+          type: _string(item['type']),
+          imageUrl: _images(item['images']).displayUrl,
+        ),
+      );
+    }
+  }
+  return List<AnimeRelated>.unmodifiable(items);
 }
 
 List<AnimeSeasonYear> mapJikanSeasons(Object? raw) {
@@ -261,10 +308,7 @@ void _addNamedLinks(
     final url = _string(map['url']);
     if (url == null) continue;
     links.add(
-      AnimeExternalLink(
-        label: _string(map['name']) ?? fallbackLabel,
-        url: url,
-      ),
+      AnimeExternalLink(label: _string(map['name']) ?? fallbackLabel, url: url),
     );
   }
 }
@@ -305,6 +349,17 @@ List<String> _namedList(Object? raw) {
       })
       .whereType<String>()
       .toList(growable: false);
+}
+
+String? _titleOf(Object? raw) {
+  if (raw is Map) return _string(raw['title']);
+  if (raw is! List) return null;
+  for (final entry in raw) {
+    if (entry is! Map) continue;
+    final title = _string(entry['title']);
+    if (title != null && title.isNotEmpty) return title;
+  }
+  return null;
 }
 
 String? _idOf(Object? raw) {

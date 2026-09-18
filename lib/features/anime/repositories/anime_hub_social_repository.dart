@@ -7,7 +7,10 @@ abstract interface class AnimeHubSocialRepository {
 
   Future<Result<AnimeReview?>> getMyRating(String animeId);
 
-  Future<Result<List<AnimeReview>>> listReviews(String animeId, {int limit = 30});
+  Future<Result<List<AnimeReview>>> listReviews(
+    String animeId, {
+    int limit = 30,
+  });
 
   Future<Result<AnimeReview>> upsertRating({
     required String animeId,
@@ -28,17 +31,40 @@ abstract interface class AnimeHubSocialRepository {
 
   Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40});
 
+  Future<Result<List<AnimeCommunityStats>>> listMostListed({int limit = 40});
+
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
     int limit = 40,
   });
 
-  Future<Result<CharacterCommunityStats?>> getCharacterStats(String characterId);
+  Future<Result<CharacterCommunityStats?>> getCharacterStats(
+    String characterId,
+  );
 
   Future<Result<List<AnimeReview>>> listUserRatings(String userId);
 
   Future<Result<List<AnimeListEntry>>> listUserAnimeList(String userId);
 
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  );
+
   Future<Result<List<CharacterFavorite>>> listUserCharacterFavorites(
     String userId,
   );
+
+  Future<Result<List<CharacterDiscussion>>> listCharacterDiscussions(
+    String characterId, {
+    int limit = 30,
+  });
+
+  Future<Result<CharacterDiscussion>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  });
+
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  });
 }

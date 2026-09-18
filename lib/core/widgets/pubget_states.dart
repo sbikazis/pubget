@@ -183,38 +183,54 @@ class _StateLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(compact ? AppSpacing.md : AppSpacing.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: compact ? 28 : 48, color: iconColor),
-            SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
-            Text(
-              title,
-              style: compact
-                  ? theme.textTheme.titleMedium
-                  : theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            if (message != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                message!,
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-                maxLines: compact ? 2 : null,
-                overflow: compact ? TextOverflow.ellipsis : null,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 0.0;
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(
+                  compact ? AppSpacing.md : AppSpacing.xxl,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(icon, size: compact ? 28 : 48, color: iconColor),
+                    SizedBox(height: compact ? AppSpacing.sm : AppSpacing.lg),
+                    Text(
+                      title,
+                      style: compact
+                          ? theme.textTheme.titleMedium
+                          : theme.textTheme.titleLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    if (message != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        message!,
+                        style: theme.textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                        maxLines: compact ? 2 : null,
+                        overflow: compact ? TextOverflow.ellipsis : null,
+                      ),
+                    ],
+                    if (action != null) ...[
+                      SizedBox(
+                        height: compact ? AppSpacing.sm : AppSpacing.xl,
+                      ),
+                      action!,
+                    ],
+                  ],
+                ),
               ),
-            ],
-            if (action != null) ...[
-              SizedBox(height: compact ? AppSpacing.sm : AppSpacing.xl),
-              action!,
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

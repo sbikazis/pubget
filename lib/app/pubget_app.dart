@@ -67,8 +67,11 @@ import '../features/anime/models/anime_models.dart';
 import '../features/anime/providers/anime_providers.dart';
 import '../features/anime/repositories/anime_repository.dart';
 import '../features/anime/repositories/cached_anime_repository.dart';
+import '../features/anime/repositories/firestore_cached_anime_repository.dart';
 import '../features/anime/repositories/jikan_anime_repository.dart';
+import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
@@ -97,8 +100,6 @@ import '../features/achievements/repositories/firebase_achievement_repository.da
 import '../features/achievements/repositories/unavailable_achievement_repository.dart';
 import '../features/achievements/screens/achievements_page.dart';
 import '../features/games/providers/game_providers.dart';
-import '../features/games/mafia/mafia_provider.dart';
-import '../features/games/mafia/mafia_repository.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
 import '../features/games/repositories/unavailable_game_repository.dart';
@@ -204,14 +205,14 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<AnimeRepository>(
           create: (context) {
             final network = context.read<NetworkService>();
-            return CachedAnimeRepository(
+            final base = CachedAnimeRepository(
               inner: JikanAnimeRepository(
-                http: ResilientAnimeHttpClient(
-                  inner: PackageAnimeHttpClient(),
-                ),
+                http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
               isOnline: () => network.isOnline,
             );
+            if (!firebaseState.isReady) return base;
+            return FirestoreCachedAnimeRepository(inner: base);
           },
         ),
         provider.Provider<GameRepository>.value(value: repositories.$14),
@@ -413,7 +414,16 @@ class PubgetApp extends StatelessWidget {
             analytics: context.read<Analytics>(),
           ),
         ),
-        provider.ChangeNotifierProxyProvider<AuthProvider, AnimeLibraryProvider>(
+        provider.ChangeNotifierProvider<AnimeCharacterProvider>(
+          create: (context) => AnimeCharacterProvider(
+            repository: context.read<AnimeRepository>(),
+            social: context.read<AnimeHubSocialRepository>(),
+          ),
+        ),
+        provider.ChangeNotifierProxyProvider<
+          AuthProvider,
+          AnimeLibraryProvider
+        >(
           create: (context) {
             final library = AnimeLibraryProvider(
               repository: context.read<AnimeLibraryRepository>(),
@@ -548,6 +558,7 @@ class PubgetApp extends StatelessWidget {
       child: _PubgetRouterHost(firebaseState: firebaseState),
     );
   }
+
   (
     AuthRepository,
     UserRepository,
@@ -809,9 +820,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           messaging: widget.firebaseState.isReady
               ? FirebaseMessaging.instance
               : null,
-          child: EditUploadOverlayHost(
-            child: child ?? const SizedBox.shrink(),
-          ),
+          child: EditUploadOverlayHost(child: child ?? const SizedBox.shrink()),
         );
       },
       routerConfig: _router!,
@@ -929,14 +938,19 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           genreId: parameters['genreId'],
           genreName: parameters['name'],
         ),
+        '/anime/studio': (parameters) => AnimeBrowsePage(
+          studioId: parameters['studioId'],
+          studioName: parameters['name'],
+        ),
         '/anime/season': (parameters) => AnimeBrowsePage(
           year: int.tryParse(parameters['year'] ?? ''),
           season: AnimeSeason.tryParse(parameters['season']),
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
         '/anime/ratings': (parameters) => const AnimeRatingsPage(),
-        '/anime/characters': (parameters) =>
-            const AnimePopularCharactersPage(),
+        '/anime/characters': (parameters) => const AnimePopularCharactersPage(),
+        '/anime/character': (parameters) =>
+            AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),

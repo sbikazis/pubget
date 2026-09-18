@@ -929,7 +929,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
       const role = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
-      if (!permissionFor(context.data, role.data(), "manageSettings")) {
+      if (!permissionFor(context.data, role.data(), "manageSettings", context.group.data())) {
         throw new HttpsError("permission-denied", "You cannot manage group settings.");
       }
       transaction.update(groupPath(db, groupId), updates);

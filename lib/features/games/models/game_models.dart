@@ -176,9 +176,6 @@ final class PubgetGame {
   final int stateVersion;
   final DateTime? deadlineAt;
 
-  /// Public Mafia slice. Hidden roles never live here.
-  final Map<String, dynamic>? mafia;
-
   bool get isJoinable => status == GameStatus.waiting;
   bool get isPlayable => status == GameStatus.active;
   bool get isTerminal =>

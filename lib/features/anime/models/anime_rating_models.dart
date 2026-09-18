@@ -141,6 +141,7 @@ final class AnimeCommunityStats {
     this.imageUrl,
     this.averageScore = 0,
     this.ratingCount = 0,
+    this.listedCount = 0,
   });
 
   final String animeId;
@@ -148,19 +149,19 @@ final class AnimeCommunityStats {
   final String? imageUrl;
   final double averageScore;
   final int ratingCount;
+  final int listedCount;
 
   bool get hasRatings => ratingCount > 0;
+  bool get hasListings => listedCount > 0;
 
-  factory AnimeCommunityStats.fromMap(
-    Map<String, dynamic> map, {
-    String? id,
-  }) {
+  factory AnimeCommunityStats.fromMap(Map<String, dynamic> map, {String? id}) {
     return AnimeCommunityStats(
       animeId: id ?? map['animeId'] as String? ?? '',
       title: map['title'] as String? ?? '',
       imageUrl: map['imageUrl'] as String?,
       averageScore: (map['averageScore'] as num?)?.toDouble() ?? 0,
       ratingCount: (map['ratingCount'] as num?)?.toInt() ?? 0,
+      listedCount: (map['listedCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -240,6 +241,43 @@ final class AnimeReview {
       ),
       overall: (map['overall'] as num?)?.toDouble() ?? 0,
       comment: map['comment'] as String? ?? '',
+    );
+  }
+}
+
+final class CharacterDiscussion {
+  const CharacterDiscussion({
+    required this.id,
+    required this.characterId,
+    required this.userId,
+    this.username = '',
+    this.text = '',
+    this.createdAt,
+  });
+
+  final String id;
+  final String characterId;
+  final String userId;
+  final String username;
+  final String text;
+  final DateTime? createdAt;
+
+  factory CharacterDiscussion.fromMap(Map<String, dynamic> map, {String? id}) {
+    final raw = map['createdAt'];
+    final DateTime? createdAt = raw is DateTime
+        ? raw
+        : raw is String
+        ? DateTime.tryParse(raw)
+        : raw is int
+        ? DateTime.fromMillisecondsSinceEpoch(raw)
+        : null;
+    return CharacterDiscussion(
+      id: id ?? map['id'] as String? ?? '',
+      characterId: map['characterId'] as String? ?? '',
+      userId: map['userId'] as String? ?? '',
+      username: map['username'] as String? ?? '',
+      text: map['text'] as String? ?? '',
+      createdAt: createdAt,
     );
   }
 }

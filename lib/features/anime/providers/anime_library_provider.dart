@@ -20,7 +20,14 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   final AnimeLibraryRepository _repository;
   final Analytics? _analytics;
   final Map<String, AnimeListEntry> _entries = <String, AnimeListEntry>{};
-  final Set<String> _characterIds = <String>{};
+  final Map<String, CharacterFavorite> _characterFavorites =
+      <String, CharacterFavorite>{};
+  final Map<String, AnimeCustomList> _customListsById =
+      <String, AnimeCustomList>{};
+  final Map<String, AnimeCustomListDetail> _customListDetails =
+      <String, AnimeCustomListDetail>{};
+  final Map<String, List<CustomListMembership>> _membershipsByAnime =
+      <String, List<CustomListMembership>>{};
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _saving = false;
@@ -38,17 +45,36 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   AnimeListEntry? entryFor(String animeId) => _entries[animeId];
 
   bool isCharacterFavorite(String characterId) =>
-      _characterIds.contains(characterId);
+      _characterFavorites.containsKey(characterId);
 
-  List<AnimeListEntry> byStatus(AnimeListStatus status) => entries
-      .where((entry) => entry.status == status)
-      .toList(growable: false);
+  CharacterFavorite? characterFavorite(String characterId) =>
+      _characterFavorites[characterId];
+
+  List<AnimeListEntry> byStatus(AnimeListStatus status) =>
+      entries.where((entry) => entry.status == status).toList(growable: false);
+
+  List<AnimeCustomList> get customLists =>
+      List<AnimeCustomList>.unmodifiable(_customListsById.values);
+
+  AnimeCustomList? customListById(String listId) => _customListsById[listId];
+
+  AnimeCustomListDetail? customListDetail(String listId) =>
+      _customListDetails[listId];
+
+  List<CustomListMembership> membershipsFor(String animeId) =>
+      _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
+
+  bool isInCustomList(String animeId, String listId) =>
+      membershipsFor(animeId).any((membership) => membership.listId == listId);
 
   void bindUser(String? userId) {
     if (userId == _userId) return;
     _userId = userId;
     _entries.clear();
-    _characterIds.clear();
+    _characterFavorites.clear();
+    _customListsById.clear();
+    _customListDetails.clear();
+    _membershipsByAnime.clear();
     _state = LoadingState.initial;
     _failure = null;
     _loadGeneration += 1;
@@ -71,6 +97,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     _safeNotify();
     final lists = await _repository.getList(limit: 50);
     final characters = await _repository.getCharacterFavorites();
+    final customs = await _repository.getCustomLists();
     if (_disposed || generation != _loadGeneration) return;
     lists.fold(
       onSuccess: (page) {
@@ -88,9 +115,17 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     );
     characters.fold(
       onSuccess: (items) {
-        _characterIds
+        _characterFavorites
           ..clear()
-          ..addAll(items.map((item) => item.characterId));
+          ..addEntries(items.map((item) => MapEntry(item.characterId, item)));
+      },
+      onFailure: (_) {},
+    );
+    customs.fold(
+      onSuccess: (items) {
+        _customListsById
+          ..clear()
+          ..addEntries(items.map((item) => MapEntry(item.id, item)));
       },
       onFailure: (_) {},
     );
@@ -144,11 +179,16 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     required String name,
     String? imageUrl,
   }) async {
-    final next = !_characterIds.contains(characterId);
+    final previous = _characterFavorites[characterId];
+    final next = previous == null;
     if (next) {
-      _characterIds.add(characterId);
+      _characterFavorites[characterId] = CharacterFavorite(
+        characterId: characterId,
+        name: name,
+        imageUrl: imageUrl,
+      );
     } else {
-      _characterIds.remove(characterId);
+      _characterFavorites.remove(characterId);
     }
     _safeNotify();
     final result = await _repository.setCharacterFavorite(
@@ -166,11 +206,252 @@ final class AnimeLibraryProvider extends ChangeNotifier {
         );
       },
       onFailure: (failure) {
-        if (next) {
-          _characterIds.remove(characterId);
+        if (previous == null) {
+          _characterFavorites.remove(characterId);
         } else {
-          _characterIds.add(characterId);
+          _characterFavorites[characterId] = previous;
         }
+        _failure = failure;
+      },
+    );
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<Result<void>> setCharacterRating({
+    required String characterId,
+    required int rating,
+    String name = '',
+    String? imageUrl,
+  }) async {
+    final clamped = rating.clamp(1, 10);
+    final previous = _characterFavorites[characterId];
+    _characterFavorites[characterId] = CharacterFavorite(
+      characterId: characterId,
+      name: name.isEmpty ? previous?.name ?? '' : name,
+      imageUrl: imageUrl ?? previous?.imageUrl,
+      rating: clamped,
+    );
+    _saving = true;
+    _safeNotify();
+    final result = await _repository.setCharacterFavorite(
+      characterId: characterId,
+      favorite: true,
+      name: name,
+      imageUrl: imageUrl,
+      rating: clamped,
+    );
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (_) {
+        _analytics?.logEvent(
+          'character_rating',
+          parameters: {'rating': clamped},
+        );
+      },
+      onFailure: (failure) {
+        if (previous == null) {
+          _characterFavorites.remove(characterId);
+        } else {
+          _characterFavorites[characterId] = previous;
+        }
+        _failure = failure;
+      },
+    );
+    _saving = false;
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<Result<AnimeCustomList>> createCustomList({
+    required String name,
+    String description = '',
+    bool private = false,
+    List<String> animeIds = const <String>[],
+  }) async {
+    _saving = true;
+    _safeNotify();
+    final result = await _repository.createCustomList(
+      name: name,
+      description: description,
+      private: private,
+      animeIds: animeIds,
+    );
+    if (_disposed) return result;
+    result.fold(
+      onSuccess: (list) {
+        if (list.id.isNotEmpty) {
+          _customListsById[list.id] = list;
+          for (final animeId in animeIds) {
+            final current =
+                _membershipsByAnime[animeId] ??
+                const <CustomListMembership>[];
+            if (!current.any((item) => item.listId == list.id)) {
+              _membershipsByAnime[animeId] = <CustomListMembership>[
+                CustomListMembership(listId: list.id, name: list.name),
+                ...current,
+              ];
+            }
+          }
+        }
+        _analytics?.logEvent('custom_list_created');
+      },
+      onFailure: (failure) => _failure = failure,
+    );
+    _saving = false;
+    _safeNotify();
+    return result;
+  }
+
+  Future<Result<void>> updateCustomList({
+    required String listId,
+    String? name,
+    String? description,
+    bool? private,
+  }) async {
+    final previous = _customListsById[listId];
+    if (previous != null) {
+      _customListsById[listId] = previous.copyWith(
+        name: name,
+        description: description,
+        private: private,
+      );
+    }
+    _saving = true;
+    _safeNotify();
+    final result = await _repository.updateCustomList(
+      listId: listId,
+      name: name,
+      description: description,
+      private: private,
+    );
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (_) {},
+      onFailure: (failure) {
+        if (previous != null) _customListsById[listId] = previous;
+        _failure = failure;
+      },
+    );
+    _saving = false;
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<Result<void>> removeCustomList(String listId) async {
+    final previous = _customListsById[listId];
+    _customListsById.remove(listId);
+    _customListDetails.remove(listId);
+    _saving = true;
+    _safeNotify();
+    final result = await _repository.deleteCustomList(listId);
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (_) {
+        _analytics?.logEvent('custom_list_deleted');
+      },
+      onFailure: (failure) {
+        if (previous != null) _customListsById[listId] = previous;
+        _failure = failure;
+      },
+    );
+    _saving = false;
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<void> loadCustomList(String listId, {String? userId}) async {
+    final result = await _repository.getCustomList(listId: listId, userId: userId);
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (detail) {
+        _customListDetails[listId] = detail;
+        if (detail.list.id.isNotEmpty) {
+          _customListsById[detail.list.id] = detail.list;
+        }
+      },
+      onFailure: (_) {},
+    );
+    _safeNotify();
+  }
+
+  Future<void> loadCustomListMembership(String animeId) async {
+    final result = await _repository.getCustomListMembership(animeId);
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (items) {
+        _membershipsByAnime[animeId] = items;
+        _safeNotify();
+      },
+      onFailure: (_) {},
+    );
+  }
+
+  Future<Result<void>> addToCustomList({
+    required String listId,
+    required String animeId,
+    String title = '',
+  }) async {
+    final membership = CustomListMembership(
+      listId: listId,
+      name: _customListsById[listId]?.name ?? '',
+    );
+    final current = _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
+    if (!current.any((item) => item.listId == listId)) {
+      _membershipsByAnime[animeId] = <CustomListMembership>[
+        membership,
+        ...current,
+      ];
+    }
+    final list = _customListsById[listId];
+    if (list != null) {
+      _customListsById[listId] = list.copyWith(itemsCount: list.itemsCount + 1);
+    }
+    _safeNotify();
+    final result = await _repository.addToCustomList(
+      listId: listId,
+      animeId: animeId,
+      title: title,
+    );
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (_) {},
+      onFailure: (failure) {
+        _membershipsByAnime[animeId] = current;
+        if (list != null) _customListsById[listId] = list;
+        _failure = failure;
+      },
+    );
+    _safeNotify();
+    return _asVoid(result);
+  }
+
+  Future<Result<void>> removeFromCustomList({
+    required String listId,
+    required String animeId,
+  }) async {
+    final current = _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
+    _membershipsByAnime[animeId] = current
+        .where((item) => item.listId != listId)
+        .toList(growable: false);
+    final list = _customListsById[listId];
+    if (list != null) {
+      final next = list.itemsCount - 1;
+      _customListsById[listId] = list.copyWith(
+        itemsCount: next < 0 ? 0 : next,
+      );
+    }
+    _safeNotify();
+    final result = await _repository.removeFromCustomList(
+      listId: listId,
+      animeId: animeId,
+    );
+    if (_disposed) return _asVoid(result);
+    result.fold(
+      onSuccess: (_) {},
+      onFailure: (failure) {
+        _membershipsByAnime[animeId] = current;
+        if (list != null) _customListsById[listId] = list;
         _failure = failure;
       },
     );

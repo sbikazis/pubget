@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/loading/loading_state.dart';
+import 'package:pubget/features/anime/data/anime_search_ranker.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
@@ -79,6 +80,19 @@ void main() {
       "Demashita! Powerpuff Girls Z",
       'Demon Slayer',
     ]);
+  });
+
+  test('fuzzy ranker tolerates a missing-letter typo', () {
+    final anime = sampleAnime(id: '1', title: 'One Piece');
+    final unrelated = sampleAnime(id: '2', title: 'Naruto');
+    expect(AnimeSearchRanker.matchTier(anime, 'one piece'), 0);
+    expect(AnimeSearchRanker.matchTier(anime, 'one pice'), 3);
+    expect(AnimeSearchRanker.matchTier(unrelated, 'one pice'), 99);
+    final ranked = AnimeSearchRanker.rank(
+      <Anime>[unrelated, anime],
+      'one pice',
+    );
+    expect(ranked.single.title, 'One Piece');
   });
 
   test('valid query loads results', () async {

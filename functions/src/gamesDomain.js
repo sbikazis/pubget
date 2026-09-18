@@ -675,7 +675,7 @@ function createGamesDomain({
           createdAt: now,
         });
       }
-      transaction.create(ref, {
+      const created = {
         schemaVersion: 2,
         type: input.type,
         title,

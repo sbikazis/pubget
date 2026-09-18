@@ -9,7 +9,8 @@ import '../../../core/errors/result.dart';
 import '../models/fan_work_models.dart';
 import 'fan_work_repository.dart';
 
-final class FirebaseFanWorkRepository implements FanWorkRepository {
+final class FirebaseFanWorkRepository
+    implements FanWorkRepository, CharacterFanWorkRepository {
   FirebaseFanWorkRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
@@ -271,7 +272,34 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
-        after!.id,
+        after.id,
+      ]);
+    }
+    return _page(query.limit(limit + 1), limit);
+  }
+
+  @override
+  Future<Result<FanWorkListPage>> getCharacterFeed(
+    String characterId, {
+    FanWork? after,
+    int limit = 20,
+  }) {
+    final id = characterId.trim();
+    if (id.isEmpty) {
+      return Future<Result<FanWorkListPage>>.value(
+        const Success<FanWorkListPage>(
+          FanWorkListPage(items: <FanWork>[], hasMore: false),
+        ),
+      );
+    }
+    var query = _public
+        .where('characterIds', arrayContains: id)
+        .orderBy('publishedAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true);
+    if (after?.publishedAt != null) {
+      query = query.startAfter(<Object>[
+        Timestamp.fromDate(after!.publishedAt!.toUtc()),
+        after.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);
@@ -290,7 +318,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
-        after!.id,
+        after.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);

@@ -32,14 +32,10 @@ final class CachedAnimeRepository implements AnimeRepository {
     final trimmed = query.trim().toLowerCase();
     final resolved = filter ?? AnimeSearchFilter(text: query);
     return _cachedPage(
-      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
+      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
       AnimeCacheTtl.search,
-      () => _inner.searchAnime(
-        query,
-        page: page,
-        limit: limit,
-        filter: resolved,
-      ),
+      () =>
+          _inner.searchAnime(query, page: page, limit: limit, filter: resolved),
     );
   }
 
@@ -138,6 +134,28 @@ final class CachedAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) {
+    return _cached(
+      'studios-index:$limit',
+      AnimeCacheTtl.studiosIndex,
+      () => _inner.getStudios(limit: limit),
+    );
+  }
+
+  @override
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  }) {
+    return _cachedPage(
+      'studio:${studioId.trim()}:$page:$limit',
+      AnimeCacheTtl.studioList,
+      () => _inner.getByStudio(studioId, page: page, limit: limit),
+    );
+  }
+
+  @override
   Future<Result<List<AnimeSeasonYear>>> getAvailableSeasons() {
     return _cached(
       'seasons-index',
@@ -195,9 +213,7 @@ final class CachedAnimeRepository implements AnimeRepository {
         final value = wrapCache?.call(existing.value) ?? existing.value;
         return Success<T>(value);
       }
-      return const FailureResult(
-        NetworkError(AnimeNetworkMessages.offline),
-      );
+      return const FailureResult(NetworkError(AnimeNetworkMessages.offline));
     }
 
     final pending = _inflight[key];

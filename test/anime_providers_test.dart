@@ -101,6 +101,29 @@ void main() {
     expect(list.state, LoadingState.offline);
   });
 
+  test('hub loads studios alongside genres', () async {
+    final hub = AnimeHubProvider(repository: FakeAnimeRepository());
+    addTearDown(hub.dispose);
+    await hub.load();
+    expect(hub.studios, isNotEmpty);
+    expect(hub.studios.first.name, 'Madhouse');
+    expect(hub.studiosState, LoadingState.loaded);
+  });
+
+  test('openStudio browses a studio and paginates', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(repository: repository);
+    addTearDown(list.dispose);
+    await list.openStudio(const AnimeStudio(id: '11', name: 'Madhouse'));
+    expect(list.studioId, '11');
+    expect(list.title, 'Madhouse');
+    expect(repository.studioCalls, 1);
+    expect(list.items, isNotEmpty);
+    await list.loadMore();
+    expect(repository.studioCalls, 2);
+    expect(list.items.map((item) => item.id), contains('52991-p2'));
+  });
+
   test('character profiles are prefetched and reused instantly', () async {
     const preview = AnimeCharacter(
       id: '10',

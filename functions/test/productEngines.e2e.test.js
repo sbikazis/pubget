@@ -139,7 +139,7 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   assert.equal(selected.publicState.phase, "ask");
   const asker = selected.publicState.currentPlayerId;
   const opponent = asker === "alice" ? "bob" : "alice";
-  const secretData = secretSnap.data();
+  const secretData = (await db.doc(`games/${created.gameId}/secret/round`).get()).data();
   await domain.submitGameAction({
     ...auth(asker),
     data: {
@@ -156,7 +156,7 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   await assert.rejects(
     domain.submitGameAction({
       ...auth("charlie"),
-      data: { gameId: created.gameId, actionType: "guess", payload: { choiceId: correct } },
+      data: { gameId: created.gameId, actionType: "guess", payload: { characterId: "luffy" } },
     }),
     (error) => error.code === "permission-denied" || error.code === "failed-precondition",
   );
@@ -302,12 +302,18 @@ test("comparison event, expiry, and server-verified challenge", async () => {
   assert.equal(response.responseData.verified, true);
 });
 
-test("seasonal achievement unlocks once during the season", async () => {
+test("achievements unlock once and cannot be forged", async () => {
   const domain = achievements({ now: () => new Date("2026-09-03T12:00:00Z") });
-  const first = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
-  assert.equal(first.some((item) => item.achievementId === "autumn_2026_rally" && item.unlocked), true);
-  const second = await domain.evaluate({ type: "game_won", userIds: ["alice"] });
-  assert.equal(second.find((item) => item.achievementId === "autumn_2026_rally").reason, "already_unlocked");
+  const first = await domain.evaluate({ type: "group_joined", userId: "alice" });
+  assert.equal(
+    first.some((item) => item.achievementId === "the_threshold" && item.unlocked),
+    true,
+  );
+  const second = await domain.evaluate({ type: "group_joined", userId: "alice" });
+  assert.equal(
+    second.find((item) => item.achievementId === "the_threshold").reason,
+    "already_unlocked",
+  );
   await assertFails(client("alice").doc("user_achievements/alice/items/forged").set({
     achievementId: "forged",
   }));
@@ -409,14 +415,14 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     playerId: mafiaUid,
     targetId: citizenUid,
     nightNumber: 1,
-    submittedAt: serverTimestamp(),
+    submittedAt: FieldValue.serverTimestamp(),
   });
   if (doctorUid && doctorUid !== mafiaUid) {
     await db.doc(`mafia_games/${created.gameId}/night_actions/${doctorUid}_n1`).set({
       playerId: doctorUid,
       targetId: mafiaUid,
       nightNumber: 1,
-      submittedAt: serverTimestamp(),
+      submittedAt: FieldValue.serverTimestamp(),
     });
   }
   const resolved = await resolveNight(created.gameId, {
@@ -441,7 +447,7 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     voterId: voter, targetId: target, dayNumber: 1, time: serverTimestamp(),
   }));
   await db.doc(`mafia_games/${created.gameId}/votes/${voter}_d1`).set({
-    voterId: voter, targetId: target, dayNumber: 1, time: serverTimestamp(),
+    voterId: voter, targetId: target, dayNumber: 1, time: FieldValue.serverTimestamp(),
   });
   await resolveVotes(created.gameId, {
     currentDay: 1, status: "VOTING", currentPhase: "VOTING",

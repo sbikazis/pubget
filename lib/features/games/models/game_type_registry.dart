@@ -180,6 +180,7 @@ abstract final class GameStrings {
   static const share = 'Share';
   static const playAgain = 'Play again';
   static const viewHistory = 'View history';
+  static const eliminated = 'Eliminated';
   static const waitingForPlayers = 'Waiting for players';
   static const cannotStart = 'Not enough players to start.';
   static const yourTurn = 'Your turn';

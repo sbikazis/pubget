@@ -59,9 +59,9 @@ class _AnimeRatingsPageState extends State<AnimeRatingsPage> {
                 children: <Widget>[
                   Text(
                     '${index + 1}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.gold,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(color: AppColors.gold),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   SizedBox(

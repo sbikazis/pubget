@@ -7,6 +7,14 @@ abstract interface class FanWorkDraftStore {
   Future<void> delete(String key);
 }
 
+abstract interface class CharacterFanWorkRepository {
+  Future<Result<FanWorkListPage>> getCharacterFeed(
+    String characterId, {
+    FanWork? after,
+    int limit = 20,
+  });
+}
+
 abstract interface class FanWorkRepository {
   Future<Result<String>> saveDraft(FanWorkDraft draft);
 

@@ -26,4 +26,42 @@ abstract interface class AnimeLibraryRepository {
     String? imageUrl,
     int? rating,
   });
+
+  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId});
+
+  Future<Result<AnimeCustomListDetail>> getCustomList({
+    required String listId,
+    String? userId,
+  });
+
+  Future<Result<AnimeCustomList>> createCustomList({
+    required String name,
+    String description = '',
+    bool private = false,
+    List<String> animeIds = const <String>[],
+  });
+
+  Future<Result<void>> updateCustomList({
+    required String listId,
+    String? name,
+    String? description,
+    bool? private,
+  });
+
+  Future<Result<void>> deleteCustomList(String listId);
+
+  Future<Result<void>> addToCustomList({
+    required String listId,
+    required String animeId,
+    String title = '',
+  });
+
+  Future<Result<void>> removeFromCustomList({
+    required String listId,
+    required String animeId,
+  });
+
+  Future<Result<List<CustomListMembership>>> getCustomListMembership(
+    String animeId,
+  );
 }

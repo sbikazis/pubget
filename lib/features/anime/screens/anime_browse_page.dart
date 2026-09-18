@@ -14,6 +14,8 @@ class AnimeBrowsePage extends StatefulWidget {
     this.kind,
     this.genreId,
     this.genreName,
+    this.studioId,
+    this.studioName,
     this.year,
     this.season,
     super.key,
@@ -22,6 +24,8 @@ class AnimeBrowsePage extends StatefulWidget {
   final AnimeCatalogKind? kind;
   final String? genreId;
   final String? genreName;
+  final String? studioId;
+  final String? studioName;
   final int? year;
   final AnimeSeason? season;
 
@@ -40,10 +44,12 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
   Future<void> _open(AnimeListProvider list) {
     if (widget.genreId != null && widget.genreId!.isNotEmpty) {
       return list.openGenre(
-        AnimeGenre(
-          id: widget.genreId!,
-          name: widget.genreName ?? 'Genre',
-        ),
+        AnimeGenre(id: widget.genreId!, name: widget.genreName ?? 'Genre'),
+      );
+    }
+    if (widget.studioId != null && widget.studioId!.isNotEmpty) {
+      return list.openStudio(
+        AnimeStudio(id: widget.studioId!, name: widget.studioName ?? 'Studio'),
       );
     }
     if (widget.year != null && widget.season != null) {
@@ -62,7 +68,8 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
         title: Text(copy.pageTitle(list.title)),
       ),
       body: PubgetLoadingStateView(
-        state: list.state == LoadingState.loadingMore ||
+        state:
+            list.state == LoadingState.loadingMore ||
                 list.state == LoadingState.refreshing
             ? LoadingState.loaded
             : list.state,

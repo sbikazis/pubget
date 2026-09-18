@@ -9,6 +9,12 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../../fan_works/providers/fan_work_providers.dart';
+import '../../fan_works/repositories/fan_work_repository.dart';
+import '../../fan_works/widgets/fan_work_widgets.dart';
+import '../../groups/models/group_models.dart';
+import '../../groups/repositories/group_repository.dart';
+import '../../groups/widgets/group_list_card.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
@@ -28,6 +34,9 @@ class AnimeDetailsPage extends StatefulWidget {
 }
 
 class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
+  FanWorkFeedProvider? _relatedFanWorks;
+  List<Group> _relatedGroups = const <Group>[];
+
   @override
   void initState() {
     super.initState();
@@ -41,11 +50,34 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
     );
     final library = maybeAnimeLibrary(context, listen: false);
     final social = maybeAnimeHubSocial(context, listen: false);
+    final fanWorks = _fanWorkRepository(context);
+    if (fanWorks != null) {
+      final feed = FanWorkFeedProvider(repository: fanWorks);
+      _relatedFanWorks = feed;
+      Future<void>.microtask(() => feed.load(animeId: widget.animeId));
+    }
+    final groups = _animeLinkedGroups(context);
+    if (groups != null) {
+      Future<void>.microtask(() async {
+        final result = await groups.listGroupsByAnime(widget.animeId);
+        if (!mounted) return;
+        setState(() {
+          _relatedGroups = result.valueOrNull ?? const <Group>[];
+        });
+      });
+    }
     Future<void>.microtask(() async {
       await details.load(widget.animeId);
       await library?.load();
       await social?.loadAnime(widget.animeId);
+      await library?.loadCustomListMembership(widget.animeId);
     });
+  }
+
+  @override
+  void dispose() {
+    _relatedFanWorks?.dispose();
+    super.dispose();
   }
 
   @override
@@ -71,16 +103,14 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
             PubgetIconButton(
               icon: Icons.share_outlined,
               tooltip: copy.share,
-              onPressed: () => AnimeLinks.share(
-                context,
-                widget.animeId,
-                title: anime.title,
-              ),
+              onPressed: () =>
+                  AnimeLinks.share(context, widget.animeId, title: anime.title),
             ),
             PubgetIconButton(
               icon: Icons.link_outlined,
               tooltip: copy.copied,
-              onPressed: () => AnimeLinks.copyCanonical(context, widget.animeId),
+              onPressed: () =>
+                  AnimeLinks.copyCanonical(context, widget.animeId),
             ),
           ],
         ],
@@ -137,6 +167,7 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                   _ActionRow(anime: anime, details: details, social: social),
                   const SizedBox(height: AppSpacing.xl),
                   _AnimeListControls(anime: anime),
+                  _CustomListControls(anime: anime),
                   if (anime.alternativeTitles.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
@@ -202,6 +233,9 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage> {
                     ),
                   _CharactersSection(details: details),
                   _ReviewsSection(social: social, anime: anime),
+                  _RelatedWorksSection(anime: anime),
+                  _RelatedFanWorksSection(feed: _relatedFanWorks),
+                  _RelatedGroupsSection(groups: _relatedGroups),
                   if (anime.trailerUrl != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
@@ -278,11 +312,7 @@ class _HeroCopy extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        AnimeScoreBadge(
-          malScore: anime.score,
-          community: stats,
-          large: true,
-        ),
+        AnimeScoreBadge(malScore: anime.score, community: stats, large: true),
         if (stats != null && stats.hasRatings) ...<Widget>[
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -400,7 +430,11 @@ class _FactsCard extends StatelessWidget {
     final copy = AnimeCopy.of(context);
     final rows = <(IconData, String, String)>[
       if (anime.type != null && anime.type!.isNotEmpty)
-        (Icons.movie_filter_outlined, copy.factType, copy.typeLabel(anime.type)),
+        (
+          Icons.movie_filter_outlined,
+          copy.factType,
+          copy.typeLabel(anime.type),
+        ),
       if (anime.episodes != null)
         (Icons.view_list_outlined, copy.factEpisodes, '${anime.episodes}'),
       if (anime.duration != null)
@@ -467,11 +501,12 @@ class _FactsCard extends StatelessWidget {
                                   const SizedBox(height: AppSpacing.xs),
                                   Text(
                                     row.$3,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: AppColors.goldPale,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1.25,
-                                    ),
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: AppColors.goldPale,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.25,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -709,9 +744,8 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               const SizedBox(height: AppSpacing.xs),
               Text(character.nameKanji!, style: theme.textTheme.titleMedium),
             ],
-            if (character.role != null && character.role!.isNotEmpty) ...<
-              Widget
-            >[
+            if (character.role != null &&
+                character.role!.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.xs),
               Text(
                 '${AnimeCopy.of(context).characterRole}: ${AnimeCopy.of(context).role(character.role)}',
@@ -925,9 +959,9 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
                               Chip(
                                 visualDensity: VisualDensity.compact,
                                 label: Text(
-                                  AnimeCopy.of(context).voiceLanguage(
-                                    actor.language,
-                                  ),
+                                  AnimeCopy.of(
+                                    context,
+                                  ).voiceLanguage(actor.language),
                                 ),
                               ),
                             ],
@@ -1193,6 +1227,143 @@ class _AnimeListControls extends StatelessWidget {
   }
 }
 
+class _CustomListControls extends StatelessWidget {
+  const _CustomListControls({required this.anime});
+
+  final Anime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final library = maybeAnimeLibrary(context);
+    if (library == null) return const SizedBox.shrink();
+    final lists = library.customLists;
+    final copy = AnimeCopy.of(context);
+    if (library.customLists.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const SizedBox(height: AppSpacing.xl),
+          Text(
+            copy.addToList,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            key: const Key('custom-list-controls'),
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final list in lists)
+                PubgetSelectionChip(
+                  label: list.name,
+                  selected: library.isInCustomList(anime.id, list.id),
+                  onSelected: library.saving
+                      ? null
+                      : (selected) {
+                          if (selected) {
+                            library.addToCustomList(
+                              listId: list.id,
+                              animeId: anime.id,
+                              title: anime.title,
+                            );
+                          } else {
+                            library.removeFromCustomList(
+                              listId: list.id,
+                              animeId: anime.id,
+                            );
+                          }
+                        },
+                ),
+              PubgetSelectionChip(
+                label: copy.newCustomList,
+                selected: false,
+                onSelected: library.saving
+                    ? null
+                    : (_) => _newListFromDetails(context, library, anime),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _newListFromDetails(
+  BuildContext context,
+  AnimeLibraryProvider library,
+  Anime anime,
+) async {
+  final copy = AnimeCopy.of(context);
+  final nameController = TextEditingController();
+  final descriptionController = TextEditingController();
+  var private = false;
+  var error = '';
+  await PubgetBottomSheet.show<void>(
+    context,
+    isScrollControlled: true,
+    title: copy.newCustomList,
+    child: StatefulBuilder(
+      builder: (context, setSheetState) {
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              PubgetTextField(
+                controller: nameController,
+                label: copy.customListName,
+                onChanged: (_) {
+                  if (error.isNotEmpty) setSheetState(() => error = '');
+                },
+              ),
+              if (error.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(error, style: Theme.of(context).textTheme.bodySmall),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              PubgetTextField(
+                controller: descriptionController,
+                label: copy.customListDescription,
+                maxLines: 2,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(copy.privateList),
+                subtitle: Text(copy.privateListHint),
+                value: private,
+                onChanged: (value) => setSheetState(() => private = value),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              PubgetPrimaryButton(
+                semanticLabel: copy.createList,
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  if (name.isEmpty) {
+                    setSheetState(() => error = copy.listNameRequired);
+                    return;
+                  }
+                  await library.createCustomList(
+                    name: name,
+                    description: descriptionController.text.trim(),
+                    private: private,
+                    animeIds: <String>[anime.id],
+                  );
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+                child: Text(copy.createList),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
 Future<void> _openRating(
   BuildContext context,
   Anime anime,
@@ -1213,15 +1384,14 @@ Future<void> _openRating(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Text(
-                  AnimeCopy.of(context).overallScore(
-                    scores.overall.toStringAsFixed(1),
-                  ),
+                  AnimeCopy.of(
+                    context,
+                  ).overallScore(scores.overall.toStringAsFixed(1)),
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                for (final criterion in AnimeRatingCriterion.values) ...<
-                  Widget
-                >[
+                for (final criterion
+                    in AnimeRatingCriterion.values) ...<Widget>[
                   Text(AnimeCopy.of(context).criterion(criterion)),
                   Slider(
                     min: 0,
@@ -1265,4 +1435,188 @@ Future<void> _openRating(
       },
     ),
   );
+}
+
+class _RelatedWorksSection extends StatelessWidget {
+  const _RelatedWorksSection({required this.anime});
+
+  final Anime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final relations = anime.relations;
+    if (relations.isEmpty) return const SizedBox.shrink();
+    final copy = AnimeCopy.of(context);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(copy.relatedTitle, style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            height: 116,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: relations.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (context, index) {
+                final relation = relations[index];
+                final isAnime =
+                    (relation.type ?? '').trim().toLowerCase() == 'anime';
+                return SizedBox(
+                  width: 220,
+                  child: PubgetCard(
+                    padding: EdgeInsets.zero,
+                    onTap: isAnime
+                        ? () => AnimeLinks.openDetails(context, relation.id)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Text(
+                            copy.relation(relation.relation),
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: AppColors.goldSheen,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            relation.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          if (relation.type != null &&
+                              relation.type!.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              copy.typeLabel(relation.type),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RelatedFanWorksSection extends StatelessWidget {
+  const _RelatedFanWorksSection({required this.feed});
+
+  final FanWorkFeedProvider? feed;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = feed;
+    if (current == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: current,
+      builder: (context, _) {
+        final items = current.items;
+        if (items.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.lg,
+            0,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                AnimeCopy.of(context).relatedFanWorksTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                height: 280,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.take(8).length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) => SizedBox(
+                    width: 140,
+                    child: FanWorkPreviewCard(work: items[index]),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RelatedGroupsSection extends StatelessWidget {
+  const _RelatedGroupsSection({required this.groups});
+
+  final List<Group> groups;
+
+  @override
+  Widget build(BuildContext context) {
+    if (groups.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            AnimeCopy.of(context).relatedGroupsTitle,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          for (final group in groups.take(5)) ...<Widget>[
+            GroupListCard(group: group),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+AnimeLinkedGroupRepository? _animeLinkedGroups(BuildContext context) {
+  try {
+    final repository = Provider.of<GroupRepository>(context, listen: false);
+    return repository is AnimeLinkedGroupRepository
+        ? repository as AnimeLinkedGroupRepository
+        : null;
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+FanWorkRepository? _fanWorkRepository(BuildContext context) {
+  try {
+    return Provider.of<FanWorkRepository>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
 }

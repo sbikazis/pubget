@@ -56,13 +56,14 @@ class _AnimePopularCharactersPageState
           itemBuilder: (context, index) {
             final item = social!.popularCharacters[index];
             return PubgetCard(
+              onTap: () => AnimeLinks.openCharacter(context, item.characterId),
               child: Row(
                 children: <Widget>[
                   Text(
                     '${index + 1}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.gold,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(color: AppColors.gold),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   SizedBox(
