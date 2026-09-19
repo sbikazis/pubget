@@ -136,17 +136,7 @@ final class AnimeSearchFilter {
     }
     final age = ageRating;
     if (age != null) {
-      final raw = anime.rating?.toLowerCase() ?? '';
-      final matching = switch (age) {
-        AnimeAgeFilter.allAges =>
-          raw.isEmpty ||
-            raw.startsWith('g -') ||
-            raw.startsWith('pg - children'),
-        AnimeAgeFilter.teens => raw.startsWith('pg-13'),
-        AnimeAgeFilter.adult =>
-          raw.startsWith('r -') || raw.startsWith('r+') || raw.startsWith('rx'),
-      };
-      if (!matching) return false;
+      if (anime.ageRating != age) return false;
     }
     return true;
   }
@@ -445,6 +435,7 @@ final class Anime {
   const Anime({
     required this.id,
     required this.title,
+    this.titleArabic,
     this.alternativeTitles = const <String>[],
     this.synopsis,
     this.type,
@@ -474,6 +465,7 @@ final class Anime {
 
   final String id;
   final String title;
+  final String? titleArabic;
   final List<String> alternativeTitles;
   final String? synopsis;
   final String? type;
@@ -509,9 +501,29 @@ final class Anime {
     return parts.join(' · ');
   }
 
-  Anime copyWith({bool? fromCache}) => Anime(
+  AnimeAgeFilter get ageRating {
+    final raw = rating?.toLowerCase() ?? '';
+    if (raw.isEmpty) return AnimeAgeFilter.allAges;
+    if (raw.startsWith('g -') || raw.startsWith('pg - children')) {
+      return AnimeAgeFilter.allAges;
+    }
+    if (raw.startsWith('pg-13')) {
+      return AnimeAgeFilter.teens;
+    }
+    if (raw.startsWith('r -') || raw.startsWith('r+') || raw.startsWith('rx')) {
+      return AnimeAgeFilter.adult;
+    }
+    // Default for unrecognized ratings (PG, etc.)
+    return AnimeAgeFilter.allAges;
+  }
+
+  Anime copyWith({
+    bool? fromCache,
+    String? titleArabic,
+  }) => Anime(
     id: id,
     title: title,
+    titleArabic: titleArabic ?? this.titleArabic,
     alternativeTitles: alternativeTitles,
     synopsis: synopsis,
     type: type,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -862,19 +863,41 @@ class _AggregatedSearchStripState extends State<_AggregatedSearchStrip> {
     final query = widget.query.trim();
     final repository = _repositoryOf(context);
     if (query.length < 2 || repository == null) return;
+    final list = context.read<AnimeListProvider>();
+    final animeHits = <SearchHit>[
+      for (final anime in list.items)
+        if (anime.id.isNotEmpty)
+          SearchHit(
+            type: SearchHitType.anime,
+            id: anime.id,
+            title: anime.title,
+            subtitle: 'Anime',
+            imageUrl: anime.images.displayUrl,
+            route: AnimeLinks.detailsPath(anime.id),
+            canonicalUrl: PubgetLinks.anime(anime.id),
+          ),
+    ];
     final result = await repository.search(query);
     if (!mounted || query != widget.query.trim()) return;
-    final hits = SearchHit.fromDiscovery(
+    final discoveryHits = SearchHit.fromDiscovery(
       result.valueOrNull ?? const DiscoverySearchResults(),
     )
-        .where(
-          (hit) =>
-              hit.type != SearchHitType.anime &&
-              hit.type != SearchHitType.user,
-        )
-        .take(8)
+        .where((hit) => hit.type != SearchHitType.user)
         .toList(growable: false);
+    final hits = _uniqueHits([...animeHits, ...discoveryHits]).take(8).toList(
+      growable: false,
+    );
     setState(() => _hits = hits);
+  }
+
+  static List<SearchHit> _uniqueHits(List<SearchHit> hits) {
+    final seen = <String>{};
+    final unique = <SearchHit>[];
+    for (final hit in hits) {
+      if (hit.id.isEmpty || hit.route.isEmpty || !seen.add(hit.key)) continue;
+      unique.add(hit);
+    }
+    return unique;
   }
 
   @override

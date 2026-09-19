@@ -519,7 +519,7 @@ class _ReelCard extends StatelessWidget {
                     Image.network(
                       edit.thumbnailUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
+                      errorBuilder: (_, _, _) =>
                           const ColoredBox(color: AppColors.darkSurfaceMuted),
                     )
                   else
@@ -644,6 +644,16 @@ class _HeroCopy extends StatelessWidget {
             height: 1.15,
           ),
         ),
+        if (anime.titleArabic != null && anime.titleArabic!.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            anime.titleArabic!,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: AppColors.goldPale,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
         const SizedBox(height: AppSpacing.md),
         AnimeScoreBadge(malScore: anime.score, community: stats, large: true),
         if (stats != null && stats.hasRatings) ...<Widget>[

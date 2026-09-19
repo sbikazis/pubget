@@ -11,6 +11,7 @@ Anime? mapJikanAnime(Object? raw) {
 
   final english = _string(map['title_english']);
   final japanese = _string(map['title_japanese']);
+  final arabic = _string(map['title_arabic']);
   final synonyms = _stringList(map['title_synonyms']);
   final alternatives = <String>[
     if (english != null && english != title) english,
@@ -21,6 +22,7 @@ Anime? mapJikanAnime(Object? raw) {
   return Anime(
     id: id,
     title: title,
+    titleArabic: arabic,
     alternativeTitles: List<String>.unmodifiable(alternatives),
     synopsis: _string(map['synopsis']),
     type: _string(map['type']),
