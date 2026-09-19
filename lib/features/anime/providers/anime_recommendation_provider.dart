@@ -1,16 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/errors/failure.dart';
-import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../models/anime_rating_models.dart';
 import 'anime_hub_social_provider.dart';
-import '../repositories/anime_hub_social_repository.dart';
 import '../repositories/anime_repository.dart';
 
 final class AnimeRecommendationProvider extends ChangeNotifier {
@@ -55,10 +52,16 @@ final class AnimeRecommendationProvider extends ChangeNotifier {
 
       final userLists = _social.userList;
       final userRatings = _social.userRatings;
-      final userFavorites = <String>{};
 
-      final favoriteGenres = _extractFavoriteGenres(userLists, userFavorites);
-      final ratedGenres = _extractRatedGenres(userRatings);
+      // Fetch full anime details for user's list entries to extract genres
+      final listAnimeIds = userLists.map((e) => e.animeId).toSet();
+      final ratingAnimeIds = userRatings.map((e) => e.animeId).toSet();
+      final allUserAnimeIds = <String>{...listAnimeIds, ...ratingAnimeIds};
+
+      final animeDetails = await _fetchAnimeDetails(allUserAnimeIds);
+
+      final favoriteGenres = _extractFavoriteGenres(userLists, animeDetails);
+      final ratedGenres = _extractRatedGenres(userRatings, animeDetails);
       final allPreferredGenres = <String>{
         ...favoriteGenres,
         ...ratedGenres,
@@ -95,22 +98,73 @@ final class AnimeRecommendationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Map<String, Anime>> _fetchAnimeDetails(Set<String> animeIds) async {
+    if (animeIds.isEmpty) return <String, Anime>{};
+    final details = <String, Anime>{};
+    // Fetch in batches of 10 to avoid rate limits
+    final batches = <List<String>>[];
+    final buffer = <String>[];
+    for (final id in animeIds) {
+      buffer.add(id);
+      if (buffer.length >= 10) {
+        batches.add(List.from(buffer));
+        buffer.clear();
+      }
+    }
+    if (buffer.isNotEmpty) batches.add(buffer);
+
+    for (final batch in batches) {
+      final results = await Future.wait([
+        for (final id in batch) _repository.getAnimeDetails(id),
+      ]);
+      for (final (index, result) in results.indexed) {
+        final id = batch[index];
+        result.fold(
+          onSuccess: (anime) => details[id] = anime,
+          onFailure: (_) {},
+        );
+      }
+      // Small delay between batches to be respectful to the API
+      if (batches.length > 1) await Future.delayed(const Duration(milliseconds: 200));
+    }
+    return details;
+  }
+
   Set<String> _extractFavoriteGenres(
     List<AnimeListEntry> lists,
-    Set<String> favoriteIds,
+    Map<String, Anime> animeDetails,
   ) {
     final genres = <String>{};
     for (final entry in lists) {
-      if (favoriteIds.contains(entry.animeId)) {
-        // We'd need anime details for genres; simplified for now
+      if (entry.rating != null && entry.rating! >= 8) {
+        // Consider high-rated entries as "favorites"
+        final anime = animeDetails[entry.animeId];
+        if (anime != null) {
+          for (final genre in anime.genres) {
+            genres.add(genre.name);
+          }
+        }
       }
     }
     return genres;
   }
 
-  Set<String> _extractRatedGenres(List<AnimeReview> ratings) {
-    // Would need anime details; placeholder
-    return <String>{};
+  Set<String> _extractRatedGenres(
+    List<AnimeReview> ratings,
+    Map<String, Anime> animeDetails,
+  ) {
+    final genres = <String>{};
+    for (final rating in ratings) {
+      if (rating.overall >= 7) {
+        final anime = animeDetails[rating.animeId];
+        if (anime != null) {
+          for (final genre in anime.genres) {
+            genres.add(genre.name);
+          }
+        }
+      }
+    }
+    return genres;
   }
 
   int _scoreAnime(
@@ -127,6 +181,11 @@ final class AnimeRecommendationProvider extends ChangeNotifier {
 
     if (anime.score != null && anime.score! > 0) {
       score += (anime.score! * 2).round();
+    }
+
+    // Bonus for highly rated by community
+    if (anime.popularity != null && anime.popularity! < 1000) {
+      score += 5;
     }
 
     return score;
