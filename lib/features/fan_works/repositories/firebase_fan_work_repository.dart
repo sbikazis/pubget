@@ -304,6 +304,7 @@ final class FirebaseFanWorkRepository
     }
     return _page(query.limit(limit + 1), limit);
   }
+  }
 
   @override
   Future<Result<FanWorkListPage>> getCreatorWorks({

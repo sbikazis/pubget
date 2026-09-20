@@ -217,8 +217,9 @@ final class FirebaseEventRepository implements EventRepository {
         .collection('responses')
         .doc(userId)
         .get();
-    if (!snapshot.exists || snapshot.data() == null) return null;
-    return EventResponse.fromMap(snapshot.data()!, userId: userId);
+    final data = snapshot.data();
+    if (!snapshot.exists || data == null) return null;
+    return EventResponse.fromMap(data, userId: userId);
   });
 
   @override
@@ -241,10 +242,14 @@ final class FirebaseEventRepository implements EventRepository {
     final result = await _functions
         .httpsCallable('resolveEvent')
         .call(<String, dynamic>{
-      'eventId': eventId,
-      'winnerOptionId': ?winnerOptionId,
-      if (winnerIds?.isNotEmpty ?? false) 'winnerIds': winnerIds,
-    });
+          'eventId': eventId,
+          ...?winnerOptionId == null
+              ? null
+              : <String, dynamic>{'winnerOptionId': winnerOptionId},
+          ...?winnerIds == null || winnerIds.isEmpty
+              ? null
+              : <String, dynamic>{'winnerIds': winnerIds},
+      });
     final data = Map<String, dynamic>.from(result.data as Map);
     return EventResult.fromMap(data['result'] is Map
         ? Map<String, dynamic>.from(data['result'] as Map)
