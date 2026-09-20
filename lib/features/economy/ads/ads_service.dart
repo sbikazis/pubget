@@ -17,6 +17,21 @@ final class AdsService {
                 frequencyPerDay: 1,
                 cooldown: Duration(minutes: 10),
               ),
+              AdPlacement.groupEntryInterstitial: AdPlacementConfig(
+                placement: AdPlacement.groupEntryInterstitial,
+                frequencyPerDay: 2,
+                cooldown: Duration(minutes: 30),
+              ),
+              AdPlacement.reelsNativeFeed: AdPlacementConfig(
+                placement: AdPlacement.reelsNativeFeed,
+                frequencyPerDay: 5,
+                cooldown: Duration(minutes: 5),
+              ),
+              AdPlacement.bannerNonIntrusive: AdPlacementConfig(
+                placement: AdPlacement.bannerNonIntrusive,
+                frequencyPerDay: 8,
+                cooldown: Duration(minutes: 2),
+              ),
             };
 
   final Map<AdPlacement, AdPlacementConfig> configs;

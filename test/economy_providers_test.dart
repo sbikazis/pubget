@@ -106,6 +106,57 @@ void main() {
     expect(configNow, isNull);
   });
 
+  test('new AdMob placements are eligible by default for free users', () {
+    final ads = AdsService();
+    final now = DateTime(2026, 9, 2, 12);
+    for (final placement in const <AdPlacement>[
+      AdPlacement.groupEntryInterstitial,
+      AdPlacement.reelsNativeFeed,
+      AdPlacement.bannerNonIntrusive,
+    ]) {
+      expect(
+        ads.shouldShow(
+          placement: placement,
+          isAdFree: false,
+          now: now,
+          log: const AdImpressionLog(),
+        ),
+        isTrue,
+        reason: '$placement should be enabled by default',
+      );
+      expect(
+        ads.shouldShow(
+          placement: placement,
+          isAdFree: true,
+          now: now,
+          log: const AdImpressionLog(),
+        ),
+        isFalse,
+        reason: '$placement should be excluded for premium',
+      );
+    }
+  });
+
+  test('recorded impressions feed back into provider eligibility', () async {
+    final repository = _FakeEconomyRepository()
+      ..snapshot = _snapshot(balance: 200);
+    final provider = EconomyProvider(
+      repository: repository,
+      network: NetworkService(probe: () async => true),
+    );
+    addTearDown(provider.dispose);
+    await provider.load();
+    final now = DateTime(2026, 9, 2, 12);
+    expect(provider.showAd(AdPlacement.homeFeed, now), isTrue);
+    // A real AdManager show logs via recordAdImpression; the legacy
+    // frequency log must observe it and block the immediate re-show.
+    provider.recordAdImpression(AdPlacement.homeFeed);
+    expect(
+      provider.showAd(AdPlacement.homeFeed, now.add(const Duration(seconds: 1))),
+      isFalse,
+    );
+  });
+
   test('economy provider purchases through the repository and blocks double taps', () async {
     final repository = _FakeEconomyRepository()
       ..snapshot = _snapshot(balance: 200);
