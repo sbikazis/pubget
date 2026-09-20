@@ -19,7 +19,16 @@ enum EconomyTransactionType {
 
 enum PremiumStatus { inactive, active, expired }
 
-enum AdPlacement { homeFeed, groupEntry, storeFooter }
+enum AdPlacement {
+  homeFeed,
+  groupEntry,
+  storeFooter,
+  groupEntryInterstitial,
+  reelsNativeFeed,
+  bannerNonIntrusive,
+}
+
+enum AdMobFormat { banner, interstitial, native, rewarded }
 
 abstract final class EconomyStrings {
   static const storeTitle = 'Store';
