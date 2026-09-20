@@ -380,6 +380,27 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   }) async => const Success<void>(null);
 
   @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
+      const Success(<FanWorkRevision>[]);
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async =>
+      Success(
+        FanWorkAnalytics(
+          totalWorks: 0,
+          publishedWorks: 0,
+          draftWorks: 0,
+          totalLikes: 0,
+          totalBookmarks: 0,
+          totalComments: 0,
+          totalViews: 0,
+          averageRating: 0.0,
+          worksByType: const <String, int>{},
+          topWorks: const <FanWorkPreview>[],
+        ),
+      );
+
+  @override
   Stream<Result<FanWork>> watchWork(String workId) =>
       Stream<Result<FanWork>>.value(
         watchWorkResult ??

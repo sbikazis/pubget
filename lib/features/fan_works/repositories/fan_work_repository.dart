@@ -125,4 +125,8 @@ abstract interface class FanWorkRepository {
     required String workId,
     required String userId,
   });
+
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId);
+
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId);
 }

@@ -641,6 +641,59 @@ final class FanWorkComment {
   }
 }
 
+final class FanWorkRevision {
+  const FanWorkRevision({
+    required this.version,
+    required this.title,
+    required this.description,
+    required this.content,
+    required this.copyright,
+    required this.createdAt,
+    required this.creatorId,
+  });
+
+  final int version;
+  final String title;
+  final String description;
+  final FanWorkContent content;
+  final FanWorkCopyright copyright;
+  final DateTime? createdAt;
+  final String creatorId;
+
+  factory FanWorkRevision.fromMap(
+    Map<String, dynamic> map, {
+    required int version,
+  }) {
+    return FanWorkRevision(
+      version: version,
+      title: map['title'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      content: FanWorkContent.fromMap(
+        map['content'] is Map
+            ? Map<String, dynamic>.from(map['content'] as Map)
+            : null,
+      ),
+      copyright: FanWorkCopyright.fromMap(
+        map['copyright'] is Map
+            ? Map<String, dynamic>.from(map['copyright'] as Map)
+            : null,
+      ),
+      createdAt: _date(map['createdAt']),
+      creatorId: map['creatorId'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'version': version,
+    'title': title,
+    'description': description,
+    'content': content.toMap(),
+    'copyright': copyright.toMap(),
+    'createdAt': createdAt?.toUtc().toIso8601String(),
+    'creatorId': creatorId,
+  };
+}
+
 final class FanWorkDraft {
   const FanWorkDraft({
     this.workId,
@@ -866,6 +919,50 @@ List<FanWorkNamedEntry> _entries(Object? raw) {
       if (item is Map)
         FanWorkNamedEntry.fromMap(Map<String, dynamic>.from(item)),
   ];
+}
+
+final class FanWorkAnalytics {
+  const FanWorkAnalytics({
+    required this.totalWorks,
+    required this.publishedWorks,
+    required this.draftWorks,
+    required this.totalLikes,
+    required this.totalBookmarks,
+    required this.totalComments,
+    required this.totalViews,
+    required this.averageRating,
+    required this.worksByType,
+    required this.topWorks,
+  });
+
+  final int totalWorks;
+  final int publishedWorks;
+  final int draftWorks;
+  final int totalLikes;
+  final int totalBookmarks;
+  final int totalComments;
+  final int totalViews;
+  final double averageRating;
+  final Map<String, int> worksByType;
+  final List<FanWorkPreview> topWorks;
+
+  factory FanWorkAnalytics.fromMap(Map<String, dynamic> map) {
+    return FanWorkAnalytics(
+      totalWorks: (map['totalWorks'] as num?)?.toInt() ?? 0,
+      publishedWorks: (map['publishedWorks'] as num?)?.toInt() ?? 0,
+      draftWorks: (map['draftWorks'] as num?)?.toInt() ?? 0,
+      totalLikes: (map['totalLikes'] as num?)?.toInt() ?? 0,
+      totalBookmarks: (map['totalBookmarks'] as num?)?.toInt() ?? 0,
+      totalComments: (map['totalComments'] as num?)?.toInt() ?? 0,
+      totalViews: (map['totalViews'] as num?)?.toInt() ?? 0,
+      averageRating: (map['averageRating'] as num?)?.toDouble() ?? 0.0,
+      worksByType: Map<String, int>.from(map['worksByType'] ?? {}),
+      topWorks: (map['topWorks'] as List?)
+              ?.map((e) => FanWorkPreview.fromMap(Map<String, dynamic>.from(e as Map), id: e['id'] as String? ?? ''))
+              .toList(growable: false) ??
+          const <FanWorkPreview>[],
+    );
+  }
 }
 
 DateTime? _date(dynamic value) {

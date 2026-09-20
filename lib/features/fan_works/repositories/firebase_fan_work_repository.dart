@@ -376,6 +376,63 @@ final class FirebaseFanWorkRepository
     return snapshot.exists;
   });
 
+  @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) => _guard(() async {
+    final snapshot = await _works
+        .doc(workId)
+        .collection('revisions')
+        .orderBy('version', descending: true)
+        .get();
+    return snapshot.docs
+        .map((doc) {
+          final version = (doc.data()['version'] as num?)?.toInt() ?? 0;
+          return FanWorkRevision.fromMap(doc.data(), version: version);
+        })
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) => _guard(() async {
+    final worksSnapshot = await _works
+        .where('creatorId', isEqualTo: creatorId)
+        .get();
+    final works = worksSnapshot.docs
+        .map((doc) => FanWork.fromMap(doc.data(), id: doc.id))
+        .toList();
+
+    final totalWorks = works.length;
+    final publishedWorks = works.where((w) => w.isPublished).length;
+    final draftWorks = works.where((w) => w.isDraft).length;
+    final totalLikes = works.fold<int>(0, (total, w) => total + w.likesCount);
+    final totalBookmarks = works.fold<int>(0, (total, w) => total + w.bookmarksCount);
+    final totalComments = works.fold<int>(0, (total, w) => total + w.commentsCount);
+    final totalViews = 0;
+    final ratingsSum = works.fold<double>(0.0, (total, w) => total + w.ratingsAverage);
+    final averageRating = totalWorks > 0 ? ratingsSum / totalWorks : 0.0;
+
+    final worksByType = <String, int>{};
+    for (final w in works) {
+      worksByType[w.type.name] = (worksByType[w.type.name] ?? 0) + 1;
+    }
+
+    final sortedWorks = [...works]
+      ..sort((a, b) => b.likesCount.compareTo(a.likesCount));
+    final topWorks = sortedWorks.take(5).map((w) => w.preview).toList();
+
+    return FanWorkAnalytics(
+      totalWorks: totalWorks,
+      publishedWorks: publishedWorks,
+      draftWorks: draftWorks,
+      totalLikes: totalLikes,
+      totalBookmarks: totalBookmarks,
+      totalComments: totalComments,
+      totalViews: totalViews,
+      averageRating: averageRating,
+      worksByType: worksByType,
+      topWorks: topWorks,
+    );
+  });
+
   Future<Result<FanWorkListPage>> _page(
     Query<Map<String, dynamic>> query,
     int limit,

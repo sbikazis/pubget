@@ -478,6 +478,7 @@ class _DetailsBody extends StatelessWidget {
             child: const Text('Edit draft'),
           ),
         const SizedBox(height: AppSpacing.xl),
+        _FanWorkRevisionsSection(workId: work.id),
         _FanWorkCommentsSection(workId: work.id),
       ],
       ),
@@ -504,6 +505,70 @@ class _DetailsBody extends StatelessWidget {
     await context.read<FanWorkDetailsProvider>().report(
       workId: work.id,
       reason: reason,
+    );
+  }
+}
+
+class _FanWorkRevisionsSection extends StatelessWidget {
+  const _FanWorkRevisionsSection({required this.workId});
+
+  final String workId;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = context.watch<FanWorkDetailsProvider>();
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                '${FanWorkStrings.revisions} (${details.revisions.length})',
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            TextButton(
+              onPressed: details.revisionsLoading
+                  ? null
+                  : () => details.loadRevisions(workId),
+              child: Text(details.revisionsLoading ? '…' : 'Load'),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (details.revisionsFailure != null)
+          Text(
+            details.revisionsFailure?.message ?? FanWorkStrings.missing,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.error),
+          )
+        else if (details.revisions.isEmpty)
+          Text(
+            FanWorkStrings.noRevisions,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.outline),
+          )
+        else
+          for (final revision in details.revisions)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.history, size: 20),
+              title: Text(
+                '${FanWorkStrings.version} ${revision.version}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              subtitle: Text(
+                revision.description.isNotEmpty
+                    ? revision.description
+                    : FanWorkStrings.revised,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+      ],
     );
   }
 }

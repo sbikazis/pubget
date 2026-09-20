@@ -148,4 +148,10 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required String workId,
     required String userId,
   }) async => _fail();
+
+  @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async => _fail();
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async => _fail();
 }
