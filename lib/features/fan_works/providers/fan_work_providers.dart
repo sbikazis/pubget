@@ -187,6 +187,11 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   Failure? _commentsFailure;
   FanWorkComment? _replyTo;
 
+  final List<FanWorkRevision> _revisions = <FanWorkRevision>[];
+  bool _revisionsLoading = false;
+  bool _revisionsLoaded = false;
+  Failure? _revisionsFailure;
+
   FanWork? get work => _work;
   LoadingState get state => _state;
   Failure? get failure => _failure;
@@ -200,6 +205,11 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   bool get commentsHasMore => _commentsHasMore;
   Failure? get commentsFailure => _commentsFailure;
   FanWorkComment? get replyTo => _replyTo;
+  List<FanWorkRevision> get revisions =>
+      List<FanWorkRevision>.unmodifiable(_revisions);
+  bool get revisionsLoading => _revisionsLoading;
+  bool get revisionsLoaded => _revisionsLoaded;
+  Failure? get revisionsFailure => _revisionsFailure;
 
   Future<void> open({required String workId, required String userId}) async {
     _state = LoadingState.loading;
@@ -377,6 +387,31 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
       },
     );
     _safeNotify();
+  }
+
+  Future<Result<void>> loadRevisions(String workId) async {
+    _revisionsLoading = true;
+    _revisionsFailure = null;
+    _safeNotify();
+    final result = await _repository.getRevisions(workId);
+    if (_disposed) return const Success<void>(null);
+    result.fold(
+      onSuccess: (revisions) {
+        _revisions
+          ..clear()
+          ..addAll(revisions);
+        _revisionsLoaded = true;
+        _revisionsLoading = false;
+      },
+      onFailure: (failure) {
+        _revisionsFailure = failure;
+        _revisionsLoading = false;
+      },
+    );
+    _safeNotify();
+    return _revisionsLoaded
+        ? const Success<void>(null)
+        : FailureResult(_revisionsFailure ?? const UnknownError());
   }
 
   Future<Result<void>> addComment({
@@ -786,4 +821,53 @@ final class _NoOpAnalytics implements Analytics {
 
   @override
   void logEvent(String name, {Map<String, Object?> parameters = const {}}) {}
+}
+
+final class FanWorkAnalyticsProvider extends ChangeNotifier {
+  FanWorkAnalyticsProvider({
+    required FanWorkRepository repository,
+  }) : _repository = repository;
+
+  final FanWorkRepository _repository;
+  FanWorkAnalytics? _analytics;
+  LoadingState _state = LoadingState.initial;
+  Failure? _failure;
+  String? _creatorId;
+  bool _disposed = false;
+
+  FanWorkAnalytics? get analytics => _analytics;
+  LoadingState get state => _state;
+  Failure? get failure => _failure;
+  String? get creatorId => _creatorId;
+
+  Future<void> load(String creatorId) async {
+    _creatorId = creatorId;
+    _state = LoadingState.loading;
+    _failure = null;
+    notifyListeners();
+    final result = await _repository.getAnalytics(creatorId);
+    if (_disposed) return;
+    result.fold(
+      onSuccess: (analytics) {
+        _analytics = analytics;
+        _state = LoadingState.loaded;
+        _failure = null;
+      },
+      onFailure: (failure) {
+        _failure = failure;
+        _state = failure is NetworkError ? LoadingState.offline : LoadingState.error;
+      },
+    );
+    _safeNotify();
+  }
+
+  void _safeNotify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 }

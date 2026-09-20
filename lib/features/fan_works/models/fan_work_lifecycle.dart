@@ -162,4 +162,8 @@ abstract final class FanWorkStrings {
   static const copyright = 'Copyright and source';
   static const requestRemoval = 'Request removal';
   static const revised = 'Revision saved';
+  static const revisions = 'Revision history';
+  static const noRevisions = 'No revisions yet';
+  static const version = 'Version';
+  static const revisionsCount = 'revisions';
 }
