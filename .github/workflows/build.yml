@@ -3,7 +3,9 @@ name: Pubget APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - cursor/reels-rebirth-1
 
 jobs:
   build-apk:
@@ -32,6 +34,9 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=release.jks" >> android/key.properties
 
+      - name: Clean build state
+        run: flutter clean
+
       - name: Get packages
         run: flutter pub get
 
@@ -41,5 +46,5 @@ jobs:
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: pubget-apk
+          name: pubget-apk-${{ github.ref_name }}
           path: build/app/outputs/flutter-apk/*.apk

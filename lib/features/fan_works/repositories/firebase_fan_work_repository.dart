@@ -271,7 +271,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
-        after!.id,
+        after.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);
@@ -290,7 +290,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
-        after!.id,
+        after.id,
       ]);
     }
     return _page(query.limit(limit + 1), limit);
