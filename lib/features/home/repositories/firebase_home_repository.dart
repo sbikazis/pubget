@@ -2,8 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/result.dart';
-import '../../../core/widgets/pubget_design_system.dart';
-import '../../anime/models/anime_models.dart';
 import '../../anime/models/anime_rating_models.dart';
 import '../../edits/models/edit_models.dart';
 import '../../events/models/event_models.dart';

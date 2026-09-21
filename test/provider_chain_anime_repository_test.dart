@@ -88,7 +88,6 @@ final class _FlakyRepository implements AnimeRepository {
   Future<Result<AnimePage>> getPopular({int page = 1, int limit = 20}) =>
       Future.value(_handler());
 
-  @override
   Never _missing() => throw UnimplementedError();
 
   @override

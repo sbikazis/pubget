@@ -326,7 +326,6 @@ class FirebaseEditsRepository
         .toList(growable: false);
   });
 
-  @override
   Future<Result<List<Edit>>> getAnimeEdits(
     String animeId, {
     int limit = 12,
