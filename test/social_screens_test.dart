@@ -3,7 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
+import 'package:pubget/features/anime/models/anime_list_models.dart';
+import 'package:pubget/features/anime/providers/anime_library_provider.dart';
+import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
 import 'package:pubget/features/social/models/social_models.dart';
 import 'package:pubget/features/social/providers/profile_provider.dart';
 import 'package:pubget/features/social/providers/social_provider.dart';
@@ -34,6 +38,11 @@ void main() {
           ),
           ChangeNotifierProvider<SocialProvider>(
             create: (_) => SocialProvider(repository: FakeSocialRepository()),
+          ),
+          ChangeNotifierProvider<AnimeLibraryProvider>(
+            create: (_) => AnimeLibraryProvider(
+              repository: _FakeAnimeLibraryRepository(),
+            ),
           ),
         ],
         child: const MaterialApp(home: ProfilePage(userId: 'user-2')),
@@ -135,6 +144,11 @@ void main() {
               ),
             ),
           ),
+          ChangeNotifierProvider<AnimeLibraryProvider>(
+            create: (_) => AnimeLibraryProvider(
+              repository: _FakeAnimeLibraryRepository(),
+            ),
+          ),
         ],
         child: const MaterialApp(home: ProfilePage(userId: 'user-2')),
       ),
@@ -157,4 +171,95 @@ Future<void> _scrollProfileTo(WidgetTester tester, Key key) async {
     await tester.drag(find.byType(ListView).first, const Offset(0, -280));
     await tester.pumpAndSettle();
   }
+}
+
+/// Empty anime library: profile screens only need the provider present.
+/// With no entries and no custom lists the anime section renders nothing,
+/// so existing profile assertions are unaffected.
+final class _FakeAnimeLibraryRepository implements AnimeLibraryRepository {
+  @override
+  Future<Result<AnimeListPage>> getList({
+    AnimeListStatus? status,
+    String? cursor,
+    int limit = 20,
+  }) async => const Success<AnimeListPage>(AnimeListPage());
+
+  @override
+  Future<Result<AnimeListEntry>> setEntry({
+    required String animeId,
+    required AnimeListStatus status,
+    String title = '',
+    int? rating,
+  }) async => Success<AnimeListEntry>(
+    AnimeListEntry(animeId: animeId, status: status),
+  );
+
+  @override
+  Future<Result<void>> removeEntry(String animeId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<List<CharacterFavorite>>> getCharacterFavorites() async =>
+      const Success<List<CharacterFavorite>>(<CharacterFavorite>[]);
+
+  @override
+  Future<Result<CharacterFavorite>> setCharacterFavorite({
+    required String characterId,
+    required bool favorite,
+    String name = '',
+    String? imageUrl,
+    int? rating,
+  }) async => Success<CharacterFavorite>(CharacterFavorite(characterId: characterId));
+
+  @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) async =>
+      const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
+
+  @override
+  Future<Result<AnimeCustomListDetail>> getCustomList({
+    required String listId,
+    String? userId,
+  }) async => Success<AnimeCustomListDetail>(
+    AnimeCustomListDetail(list: AnimeCustomList(id: listId, name: '')),
+  );
+
+  @override
+  Future<Result<AnimeCustomList>> createCustomList({
+    required String name,
+    String description = '',
+    bool private = false,
+    List<String> animeIds = const <String>[],
+  }) async => Success<AnimeCustomList>(AnimeCustomList(id: 'list-1', name: name));
+
+  @override
+  Future<Result<void>> updateCustomList({
+    required String listId,
+    String? name,
+    String? description,
+    bool? private,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> deleteCustomList(String listId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> addToCustomList({
+    required String listId,
+    required String animeId,
+    String title = '',
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> removeFromCustomList({
+    required String listId,
+    required String animeId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<CustomListMembership>>> getCustomListMembership(
+    String animeId,
+  ) async => const Success<List<CustomListMembership>>(
+    <CustomListMembership>[],
+  );
 }

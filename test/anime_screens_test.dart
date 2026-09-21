@@ -217,6 +217,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabCharacters));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('character-10')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('character-10')));
@@ -324,8 +326,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabRelated));
+    await tester.pumpAndSettle();
 
-    expect(find.text(AnimeStrings.relatedTitle), findsOneWidget);
+    expect(find.text(AnimeStrings.relatedTitle), findsWidgets);
     expect(find.text('Frieren Season 2'), findsWidgets);
     expect(find.text('Sequel'), findsWidgets);
 
@@ -526,12 +530,22 @@ Widget _harness({
     ),
   )..initialize();
   final onboarding = OnboardingProvider(repository: FakeUserRepository());
+  final recommendations = AnimeRecommendationProvider(
+    social:
+        social ??
+        AnimeHubSocialProvider(repository: _FakeCharacterSocialRepository()),
+    repository: repository,
+    userId: 'user-1',
+  );
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
       ChangeNotifierProvider<AnimeDetailsProvider>.value(value: details),
+      ChangeNotifierProvider<AnimeRecommendationProvider>.value(
+        value: recommendations,
+      ),
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
       ChangeNotifierProvider<OnboardingProvider>.value(value: onboarding),
       if (character != null)
