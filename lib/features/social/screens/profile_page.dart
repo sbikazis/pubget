@@ -1368,7 +1368,6 @@ class _StandardListsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final copy = AppStrings.of(context);
     final statuses = [
       AnimeListStatus.watching,
       AnimeListStatus.completed,
