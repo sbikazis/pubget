@@ -123,6 +123,16 @@ service firebase.storage {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
+    // Profile cover photo. Mirrors the avatar privacy gate: private profiles
+    // are only readable by their owner (spec §18.3).
+    match /users/{userId}/cover.jpg {
+      allow read: if signedIn() &&
+          (request.auth.uid == userId || publicProfileAvatar(userId));
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          imageUpload(10 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
     match /users/{userId}/stickers/{fileName} {
       allow read: if signedIn();
       allow create, update: if signedIn() && request.auth.uid == userId &&

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -72,18 +73,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final profile = context.watch<ProfileProvider>();
     final loading = profile.state == LoadingState.loading;
     final own = profile.ownProfile;
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Edit profile'),
+        title: Text(copy.editProfile),
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: <Widget>[
-          Text('Cover', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.cover, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           AspectRatio(
             aspectRatio: 16 / 9,
@@ -99,10 +101,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: loading ? null : _pickCover,
-            semanticLabel: 'Choose a cover photo',
+            semanticLabel: copy.chooseCoverSemantic,
             leadingIcon: Icons.wallpaper_outlined,
             child: Text(
-              _coverBytes == null ? 'Change cover' : 'New cover selected',
+              _coverBytes == null ? copy.coverChange : copy.coverSelected,
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -117,17 +119,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: loading ? null : _pickAvatar,
-            semanticLabel: 'Choose a new profile photo',
+            semanticLabel: copy.chooseAvatarSemantic,
             leadingIcon: Icons.photo_library_outlined,
             child: Text(
-              _avatarBytes == null ? 'Change photo' : 'New photo selected',
+              _avatarBytes == null ? copy.avatarChange : copy.avatarSelected,
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
           PubgetTextField(
             key: const Key('edit-profile-username'),
             controller: _username,
-            label: 'Username',
+            label: copy.username,
+            helperText: copy.usernameHelp,
             enabled: !loading,
             errorText: _usernameError,
             autocorrect: false,
@@ -136,15 +139,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _displayName,
-            label: 'Display name',
+            label: copy.displayName,
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextArea(
             key: const Key('edit-profile-bio'),
             controller: _bio,
-            label: 'Bio',
-            hint: 'Tell the community about you.',
+            label: copy.bio,
+            hint: copy.editBioHint,
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -153,7 +156,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               Expanded(
                 child: PubgetTextField(
                   controller: _age,
-                  label: 'Age (optional)',
+                  label: copy.ageOptional,
                   enabled: !loading,
                   keyboardType: TextInputType.number,
                 ),
@@ -162,7 +165,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               Expanded(
                 child: PubgetTextField(
                   controller: _country,
-                  label: 'Country (optional)',
+                  label: copy.countryOptional,
                   enabled: !loading,
                 ),
               ),
@@ -171,25 +174,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _favoriteQuote,
-            label: 'Favorite quote (optional)',
+            label: copy.favoriteQuoteOptional,
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _animeTwin,
-            label: 'Anime twin (optional)',
-            hint: 'A character you vibe with',
+            label: copy.animeTwinOptional,
+            hint: copy.animeTwinHint,
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _favoriteAnimeIds,
-            label: 'Favorite anime IDs',
+            label: copy.favoriteAnimeIds,
             hint: 'one-piece, frieren',
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.xl),
-          Text('Social links', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            copy.socialLinks,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.sm),
           if (_socialLinks.isNotEmpty) ...[
             ProfileSocialLinkChips(links: _socialLinks),
@@ -210,28 +216,30 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ],
           PubgetTextField(
             controller: _linkUrl,
-            label: 'Add link URL',
+            label: copy.addLinkUrl,
             hint: 'https://...',
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.sm),
           PubgetTextField(
             controller: _linkLabel,
-            label: 'Label (optional)',
+            label: copy.linkLabelOptional,
             enabled: !loading,
           ),
           const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: loading ? null : _addLink,
-            semanticLabel: 'Add social link',
+            semanticLabel: copy.addSocialLinkSemantic,
             leadingIcon: Icons.add_link,
-            child: const Text('Add link'),
+            child: Text(copy.addLink),
           ),
           const SizedBox(height: AppSpacing.xl),
-          Text('Privacy', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.privacy, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           _VisibilityField(
-            label: 'Profile visibility',
+            publicLabel: copy.public,
+            privateLabel: copy.private,
+            label: copy.profileVisibility,
             value: _profileVisibility,
             onChanged: loading
                 ? null
@@ -239,7 +247,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
           const SizedBox(height: AppSpacing.md),
           _VisibilityField(
-            label: 'Activity visibility',
+            publicLabel: copy.public,
+            privateLabel: copy.private,
+            label: copy.activityVisibility,
             value: _activityVisibility,
             onChanged: loading
                 ? null
@@ -249,15 +259,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
           DropdownButtonFormField<String>(
             key: const Key('edit-profile-who-can-message'),
             value: _whoCanMessageMe,
-            decoration: const InputDecoration(labelText: 'Who can message me'),
-            items: const <DropdownMenuItem<String>>[
+            decoration: InputDecoration(labelText: copy.whoCanMessageMe),
+            items: <DropdownMenuItem<String>>[
               DropdownMenuItem(
                 value: 'related',
-                child: Text('Fans and Friends'),
+                child: Text(copy.whoCanMessageRelated),
               ),
               DropdownMenuItem(
                 value: 'friends',
-                child: Text('Friends only'),
+                child: Text(copy.whoCanMessageFriends),
               ),
             ],
             onChanged: loading
@@ -269,7 +279,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   },
           ),
           const SizedBox(height: AppSpacing.md),
-          ..._sectionToggles(loading),
+          ..._sectionToggles(loading, copy),
           if (profile.failure != null) ...[
             const SizedBox(height: AppSpacing.md),
             PubgetErrorState(message: profile.failure!.message),
@@ -278,16 +288,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
           PubgetPrimaryButton(
             key: const Key('edit-profile-save'),
             onPressed: loading ? null : _save,
-            semanticLabel: 'Save profile changes',
+            semanticLabel: copy.saveProfileChangesSemantic,
             loading: loading,
-            child: const Text('Save changes'),
+            child: Text(copy.saveChanges),
           ),
         ],
       ),
     );
   }
 
-  List<Widget> _sectionToggles(bool loading) {
+  List<Widget> _sectionToggles(bool loading, AppStrings copy) {
     Widget tile(String label, bool value, ValueChanged<bool> onChanged) {
       return SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -299,56 +309,56 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     return <Widget>[
       tile(
-        'Show favorites',
+        copy.showFavorites,
         _sectionPrivacy.favorites,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(favorites: value),
         ),
       ),
       tile(
-        'Show activity',
+        copy.showActivity,
         _sectionPrivacy.activity,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(activity: value),
         ),
       ),
       tile(
-        'Show friends',
+        copy.showFriends,
         _sectionPrivacy.friends,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(friends: value),
         ),
       ),
       tile(
-        'Show fans',
+        copy.showFans,
         _sectionPrivacy.fans,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(fans: value),
         ),
       ),
       tile(
-        'Show works (Edits / Fan Works)',
+        copy.showWorks,
         _sectionPrivacy.works,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(works: value),
         ),
       ),
       tile(
-        'Show groups',
+        copy.showGroups,
         _sectionPrivacy.groups,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(groups: value),
         ),
       ),
       tile(
-        'Show ratings',
+        copy.showRatings,
         _sectionPrivacy.ratings,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(ratings: value),
         ),
       ),
       tile(
-        'Show achievements',
+        copy.showAchievements,
         _sectionPrivacy.achievements,
         (value) => setState(
           () =>
@@ -426,11 +436,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _save() async {
+    final copy = AppStrings.of(context);
     final userId = context.read<AuthProvider>().currentUser?.id;
     if (userId == null) return;
     final usernameError = AuthValidators.username(_username.text);
     final requiredError = _username.text.trim().isEmpty
-        ? 'Username is required.'
+        ? copy.usernameRequired
         : usernameError;
     setState(() => _usernameError = requiredError);
     if (requiredError != null) return;
@@ -491,11 +502,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
 class _VisibilityField extends StatelessWidget {
   const _VisibilityField({
+    required this.publicLabel,
+    required this.privateLabel,
     required this.label,
     required this.value,
     required this.onChanged,
   });
 
+  final String publicLabel;
+  final String privateLabel;
   final String label;
   final String value;
   final ValueChanged<String>? onChanged;
@@ -505,9 +520,9 @@ class _VisibilityField extends StatelessWidget {
     return DropdownButtonFormField<String>(
       value: value,
       decoration: InputDecoration(labelText: label),
-      items: const <DropdownMenuItem<String>>[
-        DropdownMenuItem(value: 'public', child: Text('Public')),
-        DropdownMenuItem(value: 'private', child: Text('Private')),
+      items: <DropdownMenuItem<String>>[
+        DropdownMenuItem(value: 'public', child: Text(publicLabel)),
+        DropdownMenuItem(value: 'private', child: Text(privateLabel)),
       ],
       onChanged: onChanged == null
           ? null

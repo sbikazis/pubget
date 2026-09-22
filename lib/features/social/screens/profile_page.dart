@@ -224,7 +224,7 @@ void _openManageSheet(BuildContext context, String profileId) {
           ),
           _ManageSheetTile(
             icon: Icons.event_note_outlined,
-            label: 'My Events',
+            label: copy.myEvents,
             onTap: () async {
               Navigator.pop(sheetContext);
               await AppNavigation.go(context, '/events');
@@ -296,7 +296,11 @@ class _ManageSheetTile extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: AppColors.royalPurple),
       title: Text(label),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Icon(
+        Directionality.of(context) == TextDirection.rtl
+            ? Icons.chevron_left
+            : Icons.chevron_right,
+      ),
       onTap: onTap,
     );
   }
@@ -490,7 +494,7 @@ class _ProfileLifeReport extends StatelessWidget {
                   data.animeTwin!.trim().isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  'Anime twin · ${data.animeTwin}',
+                  '${copy.animeTwin} · ${data.animeTwin}',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppColors.royalPurpleDark,
                     fontWeight: FontWeight.w600,
@@ -526,7 +530,7 @@ class _ProfileLifeReport extends StatelessWidget {
                 _CollapsedSectionButton(
                   key: const Key('profile-favorites-entry'),
                   icon: Icons.favorite_outline_rounded,
-                  title: 'Favorite anime',
+                  title: copy.favoriteAnime,
                   onTap: () => AppNavigation.go(
                     context,
                     profileId.isEmpty
@@ -560,7 +564,7 @@ class _ProfileLifeReport extends StatelessWidget {
                 _CollapsedSectionButton(
                   key: const Key('profile-groups-entry'),
                   icon: Icons.groups_outlined,
-                  title: 'Groups',
+                  title: copy.homeGroups,
                   onTap: () => AppNavigation.go(
                     context,
                     '/profile-groups?uid=${Uri.encodeComponent(profileId)}',
@@ -714,7 +718,7 @@ class _ProfileHero extends StatelessWidget {
                                   _MetaChip(
                                     key: const Key('profile-meta-member'),
                                     icon: Icons.schedule_outlined,
-                                    label: _memberSince(data.createdAt!),
+                                    label: _memberSince(data.createdAt!, copy),
                                   ),
                               ],
                             ),
@@ -751,7 +755,7 @@ class _ProfileHero extends StatelessWidget {
                     onPressed: () => AppNavigation.go(context, '/profile/edit'),
                     semanticLabel: copy.editProfile,
                     leadingIcon: Icons.edit_outlined,
-                    child: const Text('Add a bio so people can meet you'),
+                    child: Text(copy.bioEmptyCta),
                   ),
                 ),
               _ProfileAchievementStrip(
@@ -770,10 +774,10 @@ class _ProfileHero extends StatelessWidget {
     );
   }
 
-  static String _memberSince(DateTime createdAt) {
+  static String _memberSince(DateTime createdAt, AppStrings copy) {
     final local = createdAt.toLocal();
     final month = local.month.toString().padLeft(2, '0');
-    return 'Since ${local.year}-$month';
+    return copy.memberSince('${local.year}-$month');
   }
 }
 
@@ -885,8 +889,10 @@ class _CollapsedSectionButton extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
+                  Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
                     color: AppColors.darkTextMuted,
                   ),
                 ],
@@ -990,10 +996,11 @@ class _VisitorActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final social = context.watch<SocialProvider>();
+    final copy = AppStrings.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Give Respect', style: Theme.of(context).textTheme.titleMedium),
+        Text(copy.giveRespect, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         Wrap(
           spacing: AppSpacing.sm,
@@ -1014,9 +1021,9 @@ class _VisitorActions extends StatelessWidget {
           onPressed: social.state == LoadingState.loading
               ? null
               : () => social.giveRespect(toUserId: profileId, value: respect),
-          semanticLabel: 'Give selected Respect',
+          semanticLabel: copy.giveRespectSemantic,
           loading: social.state == LoadingState.loading,
-          child: const Text('Save Respect'),
+          child: Text(copy.saveRespect),
         ),
         const SizedBox(height: AppSpacing.sm),
         _FriendAction(profileId: profileId),
@@ -1072,30 +1079,29 @@ class _EditsGridState extends State<_EditsGrid> {
         }
         if (snapshot.hasError || snapshot.data is FailureResult) {
           return PubgetErrorState(
-            message: 'Could not load edits.',
+            message: AppStrings.of(context).couldNotLoadEdits,
             onRetry: () => setState(() => _future = _load()),
           );
         }
         final edits = snapshot.data?.valueOrNull ?? const <Edit>[];
+        final copy = AppStrings.of(context);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const ProfileSectionHeader(title: 'Edits'),
+            ProfileSectionHeader(title: copy.edits),
             if (edits.isEmpty)
               PubgetEmptyState(
                 compact: true,
                 icon: Icons.movie_creation_outlined,
-                title: widget.isOwner
-                    ? 'No edits published yet'
-                    : 'No edits to show',
+                title: widget.isOwner ? copy.noEditsYet : copy.noEditsToShow,
                 message: widget.isOwner
-                    ? 'Cut a scene and publish your first edit.'
-                    : 'This creator has not shared edits yet.',
+                    ? copy.cutSceneCta
+                    : copy.creatorNoEdits,
                 action: widget.isOwner
                     ? PubgetTextButton(
                         onPressed: () => AppNavigation.go(context, '/edits'),
-                        semanticLabel: 'Open edits',
-                        child: const Text('Create an edit'),
+                        semanticLabel: copy.openEdits,
+                        child: Text(copy.createAnEdit),
                       )
                     : null,
               )
@@ -1162,6 +1168,7 @@ class _StartChatAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final social = context.watch<SocialProvider>();
+    final copy = AppStrings.of(context);
     if (!social.canStartPrivateChatWith(profileId)) {
       return const SizedBox.shrink();
     }
@@ -1170,9 +1177,9 @@ class _StartChatAction extends StatelessWidget {
       onPressed: social.state == LoadingState.loading
           ? null
           : () => _start(context),
-      semanticLabel: 'Start a private chat',
+      semanticLabel: copy.startChatSemantic,
       leadingIcon: Icons.chat_bubble_outline,
-      child: const Text('Start chat'),
+      child: Text(copy.startChat),
     );
   }
 
@@ -1190,7 +1197,7 @@ class _StartChatAction extends StatelessWidget {
         return;
       }
       final message =
-          result.failureOrNull?.message ?? 'Could not start this private chat.';
+          result.failureOrNull?.message ?? AppStrings.of(context).couldNotStartChat;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -1208,6 +1215,7 @@ class _BlockAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final social = context.watch<SocialProvider>();
+    final copy = AppStrings.of(context);
     final relation = social.snapshot.relationWith(profileId);
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final blockedByMe =
@@ -1223,11 +1231,11 @@ class _BlockAction extends StatelessWidget {
           : blockedByMe
           ? () => social.unblockUser(profileId)
           : () => _confirmBlock(context, social),
-      semanticLabel: blockedByMe ? 'Unblock user' : 'Block user',
+      semanticLabel: blockedByMe ? copy.unblockUser : copy.blockUser,
       leadingIcon: blockedByMe
           ? Icons.lock_open_outlined
           : Icons.block_outlined,
-      child: Text(blockedByMe ? 'Unblock user' : 'Block user'),
+      child: Text(blockedByMe ? copy.unblockUser : copy.blockUser),
     );
   }
 
@@ -1235,21 +1243,20 @@ class _BlockAction extends StatelessWidget {
     BuildContext context,
     SocialProvider social,
   ) async {
+    final copy = AppStrings.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Block this user?'),
-        content: const Text(
-          'They will no longer be able to interact with this relationship.',
-        ),
+        title: Text(copy.blockUserConfirmTitle),
+        content: Text(copy.blockUserConfirmBody),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(copy.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Block'),
+            child: Text(copy.block),
           ),
         ],
       ),
@@ -1266,19 +1273,20 @@ class _FriendAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final social = context.watch<SocialProvider>();
+    final copy = AppStrings.of(context);
+    final me = context.read<AuthProvider>().currentUser?.id;
     final relation = social.snapshot.relationWith(profileId);
     if (relation?.status == FriendshipStatus.accepted) {
       return PubgetSecondaryButton(
         onPressed: () => social.removeFriend(profileId),
-        semanticLabel: 'Remove friend',
-        child: const Text('Remove friend'),
+        semanticLabel: copy.removeFriend,
+        child: Text(copy.removeFriend),
       );
     }
     if (relation?.status == FriendshipStatus.pending) {
+      final iRequested = relation!.requestedBy == me;
       return PubgetSecondaryButton(
-        onPressed:
-            relation!.requestedBy ==
-                context.read<AuthProvider>().currentUser?.id
+        onPressed: iRequested
             ? () => social.respondToFriendRequest(
                 otherUserId: profileId,
                 accept: false,
@@ -1287,33 +1295,26 @@ class _FriendAction extends StatelessWidget {
                 otherUserId: profileId,
                 accept: true,
               ),
-        semanticLabel:
-            relation.requestedBy == context.read<AuthProvider>().currentUser?.id
-            ? 'Cancel friend request'
-            : 'Accept friend request',
-        child: Text(
-          relation.requestedBy == context.read<AuthProvider>().currentUser?.id
-              ? 'Cancel request'
-              : 'Accept request',
-        ),
+        semanticLabel: iRequested
+            ? copy.cancelFriendRequest
+            : copy.acceptFriendRequest,
+        child: Text(iRequested ? copy.cancelRequest : copy.acceptRequest),
       );
     }
     if (relation?.status == FriendshipStatus.blocked) {
       return PubgetSecondaryButton(
         onPressed:
-            relation?.blockedBy == context.read<AuthProvider>().currentUser?.id
-            ? () => social.unblockUser(profileId)
-            : null,
-        semanticLabel: 'Unblock user',
-        child: const Text('Unblock'),
+            relation?.blockedBy == me ? () => social.unblockUser(profileId) : null,
+        semanticLabel: copy.unblockUser,
+        child: Text(copy.unblock),
       );
     }
     return PubgetSecondaryButton(
       key: const Key('profile-add-friend'),
       onPressed: () => social.sendFriendRequest(toUserId: profileId),
-      semanticLabel: 'Send friend request',
+      semanticLabel: copy.sendFriendRequest,
       leadingIcon: Icons.person_add_alt_1_outlined,
-      child: const Text('Add friend'),
+      child: Text(copy.addFriend),
     );
   }
 }

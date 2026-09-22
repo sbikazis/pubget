@@ -17,9 +17,13 @@ class AuthLanguagePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     final copy = AppStrings.of(context);
-    final selected = copy.isArabic
-        ? AppLocaleOption.arabic
-        : AppLocaleOption.english;
+    // Mirrors the Settings radios: the selected state follows
+    // SettingsProvider (the source of truth), not the momentarily-rendered
+    // copy. "System" falls back to the Arabic default here because the login
+    // bar only offers the two official languages (spec §1.4).
+    final selected = settings.localeOption == AppLocaleOption.english
+        ? AppLocaleOption.english
+        : AppLocaleOption.arabic;
     return Semantics(
       label: copy.chooseLanguage,
       child: DecoratedBox(
@@ -56,7 +60,10 @@ class AuthLanguagePicker extends StatelessWidget {
 }
 
 class SettingsLanguageRadios extends StatelessWidget {
-  const SettingsLanguageRadios({super.key});
+  const SettingsLanguageRadios({this.onChanged, super.key});
+
+  /// Optional side-effect hook invoked after a language choice is persisted.
+  final void Function(AppLocaleOption option)? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +79,10 @@ class SettingsLanguageRadios extends StatelessWidget {
             value: option,
             groupValue: settings.localeOption,
             onChanged: (value) {
-              if (value != null) settings.setLocaleOption(value);
+              if (value != null) {
+                settings.setLocaleOption(value);
+                onChanged?.call(value);
+              }
             },
           ),
       ],

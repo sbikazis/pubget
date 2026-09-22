@@ -183,6 +183,44 @@ test("profile owner can change display data but not coins", async () => {
   await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 999999 }));
   await assertFails(db("mallory").doc("users/alice").update({ bio: "pwned" }));
 });
+test("users language is constrained to ar/en and username is bounded on update", async () => {
+  await assertSucceeds(db("alice").doc("users/alice").update({ language: "en" }));
+  await assertSucceeds(db("alice").doc("users/alice").update({ language: "ar" }));
+  await assertFails(db("alice").doc("users/alice").update({ language: "fr" }));
+  await assertFails(db("mallory").doc("users/alice").update({ language: "en" }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    username: "Alice_2024",
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    username: "x".repeat(40),
+  }));
+});
+test("users create carries the same language and username guards", async () => {
+  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
+  await assertSucceeds(db("newbie").doc("users/newbie").set(base));
+  await assertSucceeds(db("newbie2").doc("users/newbie2").set({
+    ...base, language: "ar",
+  }));
+  await assertFails(db("newbie3").doc("users/newbie3").set({
+    ...base, language: "fr",
+  }));
+  await assertFails(db("newbie4").doc("users/newbie4").set({
+    ...base, username: "x".repeat(40),
+  }));
+  await assertFails(db("newbie").doc("users/newbie").set({
+    ...base, language: "en", username: "okname", coinsBalance: 1,
+  }));
+});
+test("usernames registry is signed-in readable but never client-writable", async () => {
+  await assertSucceeds(db("alice").doc("usernames/fan").get());
+  await assertSucceeds(db("mallory").collection("usernames").get());
+  await assertFails(
+    env.unauthenticatedContext().firestore().doc("usernames/fan").get(),
+  );
+  await assertFails(db("alice").doc("usernames/fan").set({ uid: "alice" }));
+  await assertFails(db("alice").doc("usernames/fan").update({ uid: "mallory" }));
+  await assertFails(db("alice").doc("usernames/fan").delete());
+});
 test("private users and server-owned public profiles are separated", async () => {
   await assertSucceeds(db("alice").doc("users/alice").get());
   await assertFails(db("bob").doc("users/alice").get());

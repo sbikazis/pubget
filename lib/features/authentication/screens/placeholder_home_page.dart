@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/auth_provider.dart';
@@ -17,6 +18,7 @@ class PlaceholderHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final auth = context.watch<AuthProvider>();
     final profile = context.watch<OnboardingProvider>().profile;
     final name =
@@ -30,13 +32,13 @@ class PlaceholderHomePage extends StatelessWidget {
             count: context.watch<UnreadEngine>().notifications,
             child: PubgetIconButton(
               icon: Icons.notifications_outlined,
-              tooltip: 'Notifications',
+              tooltip: copy.notifications,
               onPressed: () => AppNavigation.go(context, '/notifications'),
             ),
           ),
           PubgetIconButton(
             icon: Icons.logout,
-            tooltip: 'Sign out',
+            tooltip: copy.signOut,
             onPressed: () => _signOut(context),
           ),
         ],
@@ -58,33 +60,34 @@ class PlaceholderHomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    name == null ? 'Welcome to Pubget' : 'Welcome, $name',
+                    name == null
+                        ? copy.homeWelcomeToPubget
+                        : copy.userNameWelcome(name),
                     style: Theme.of(context).textTheme.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  const Text(
-                    'Your account is ready. The full home experience arrives '
-                    'in a later prompt.',
+                  Text(
+                    copy.homeAccountReady,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   PubgetSecondaryButton(
                     onPressed: () => AppNavigation.go(context, '/profile'),
-                    semanticLabel: 'Open my profile',
-                    child: const Text('My profile'),
+                    semanticLabel: copy.homeMyProfileSemantic,
+                    child: Text(copy.homeMyProfile),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetSecondaryButton(
                     onPressed: () => AppNavigation.go(context, '/groups'),
-                    semanticLabel: 'Open groups',
-                    child: const Text('Groups'),
+                    semanticLabel: copy.homeGroupsSemantic,
+                    child: Text(copy.homeGroups),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetTextButton(
                     onPressed: () => AppNavigation.go(context, '/onboarding'),
-                    semanticLabel: 'Edit onboarding details',
-                    child: const Text('Edit onboarding details'),
+                    semanticLabel: copy.homeEditOnboardingSemantic,
+                    child: Text(copy.homeEditOnboarding),
                   ),
                 ],
               ),

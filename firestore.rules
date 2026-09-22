@@ -401,7 +401,7 @@ service cloud.firestore {
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
           'customMaxCreatedGroupsLimit','hasClaimedReferral',
           'favoriteAnimeIds','profileVisibility','activityVisibility',
-          'hasSkippedOnboarding','whoCanMessageMe'
+          'hasSkippedOnboarding','whoCanMessageMe','language'
         ]) &&
         request.resource.data.keys().hasAll([
           'email','createdAt','isProfileCompleted'
@@ -421,6 +421,11 @@ service cloud.firestore {
         request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('activityVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'] &&
+        (!request.resource.data.keys().hasAny(['language']) ||
+         request.resource.data.language in ['ar','en']) &&
+        (!request.resource.data.keys().hasAny(['username']) ||
+         (request.resource.data.username is string &&
+          request.resource.data.username.size() <= 32)) &&
         (!request.resource.data.keys().hasAny(['displayName']) ||
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
@@ -431,8 +436,13 @@ service cloud.firestore {
         ((changedOnly([
           'username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age','country',
           'favoriteAnimeIds','activityVisibility','whoCanMessageMe',
-          'isProfileCompleted','hasSkippedOnboarding','updatedAt'
+          'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
+          (!request.resource.data.keys().hasAny(['username']) ||
+           (request.resource.data.username is string &&
+            request.resource.data.username.size() <= 32)) &&
+          (!request.resource.data.keys().hasAny(['language']) ||
+           request.resource.data.language in ['ar','en']) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
            request.resource.data.bio == null ||
            (request.resource.data.bio is string &&
@@ -593,6 +603,14 @@ service cloud.firestore {
       allow list: if signedIn();
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
+      allow create, update, delete: if false;
+    }
+
+    match /usernames/{username} {
+      // Reserved-namespace registry (spec §3.2 uniqueness). Writes are only
+      // performed by server functions (reserveUsername callable + the
+      // username-reconciliation trigger). Clients can look names up.
+      allow get, list: if signedIn();
       allow create, update, delete: if false;
     }
 

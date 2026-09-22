@@ -292,3 +292,63 @@ test("fan work media is owner-writable and public only when the work is publishe
     bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
   );
 });
+
+test("profile covers require owner writes and mirror avatar privacy on reads", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("users/cover-private").set({ profileVisibility: "private" });
+    await db.doc("users/cover-public").set({ profileVisibility: "public" });
+  });
+  const owner = env.authenticatedContext("cover-private");
+  const publicOwner = env.authenticatedContext("cover-public");
+  await assertSucceeds(upload(
+    owner,
+    "users/cover-private/cover.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(upload(
+    publicOwner,
+    "users/cover-public/cover.jpg",
+    "image/jpeg",
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    "users/cover-private/cover.jpg",
+    "image/jpeg",
+  ));
+  // Enforces MIME + 10 MB ceiling.
+  await assertFails(upload(
+    owner,
+    "users/cover-private/cover2.jpg",
+    "video/mp4",
+  ));
+  await assertFails(upload(
+    owner,
+    "users/cover-private/cover3.jpg",
+    "image/jpeg",
+    10 * 1024 * 1024 + 1,
+  ));
+  await assertFails(upload(
+    env.unauthenticatedContext(),
+    "users/cover-private/cover.jpg",
+    "image/jpeg",
+  ));
+
+  await assertSucceeds(
+    owner.storage().ref("users/cover-private/cover.jpg").getDownloadURL(),
+  );
+  await assertFails(
+    env.authenticatedContext("bob")
+      .storage().ref("users/cover-private/cover.jpg").getDownloadURL(),
+  );
+  await assertSucceeds(
+    env.authenticatedContext("bob")
+      .storage().ref("users/cover-public/cover.jpg").getDownloadURL(),
+  );
+
+  await assertFails(
+    env.authenticatedContext("bob").storage()
+      .ref("users/cover-private/cover.jpg").delete(),
+  );
+  await assertSucceeds(owner.storage().ref("users/cover-private/cover.jpg").delete());
+});
