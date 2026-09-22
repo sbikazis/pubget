@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -12,6 +15,7 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../auth_validators.dart';
+import '../models/username_status.dart';
 import '../providers/auth_provider.dart';
 import '../providers/onboarding_provider.dart';
 import 'auth_page_shell.dart';
@@ -33,6 +37,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     'Romance',
   ];
 
+  static const _usernameDebounce = Duration(milliseconds: 250);
+
   final _username = TextEditingController();
   final _displayName = TextEditingController();
   final _bio = TextEditingController();
@@ -42,13 +48,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Uint8List? _avatarBytes;
   String _avatarContentType = 'image/png';
   String? _usernameError;
+  String? _displayNameError;
   String? _avatarError;
+  UsernameStatus? _availability;
+  Timer? _availabilityTimer;
+  var _checking = false;
   var _step = 0;
 
   static const _totalSteps = 3;
 
   @override
   void dispose() {
+    _availabilityTimer?.cancel();
     _username.dispose();
     _displayName.dispose();
     _bio.dispose();
@@ -59,42 +70,46 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final auth = context.watch<AuthProvider>();
     final onboarding = context.watch<OnboardingProvider>();
     final network = context.watch<NetworkService>();
     final loading = onboarding.state == LoadingState.loading;
     final user = auth.currentUser;
     final offline = network.isOffline;
+    final avatarUrl =
+        _avatarBytes == null
+        ? (onboarding.profile?.avatarUrl ?? user?.avatarUrl)
+        : null;
     return AuthPageShell(
       title: switch (_step) {
-        0 => 'Your face & name',
-        1 => 'A little about you',
-        _ => 'What do you love?',
+        0 => copy.onboardingTitleIdentity,
+        1 => copy.onboardingTitleAbout,
+        _ => copy.onboardingTitleInterests,
       },
       subtitle: switch (_step) {
-        0 => 'Username and photo are required. Everything else can wait.',
-        1 => 'Optional details. Skip any field you want to fill later.',
-        _ => 'Pick anime moods to feed recommendations. Skip anytime.',
+        0 => copy.onboardingSubtitleIdentity,
+        1 => copy.onboardingSubtitleAbout,
+        _ => copy.onboardingSubtitleInterests,
       },
       compactBrand: true,
-      trailing: PubgetTextButton(
-        key: const Key('onboarding-skip-step'),
-        onPressed: loading
-            ? null
-            : () {
-                if (_step == 0) {
-                  _skip(onboarding);
-                } else if (_step < _totalSteps - 1) {
-                  setState(() => _step += 1);
-                } else {
-                  _finish(completed: _canCompleteMinimum);
-                }
-              },
-        semanticLabel: _step == 0
-            ? 'Skip profile setup for now'
-            : 'Skip this step',
-        child: Text(_step == 0 ? 'Skip for now' : 'Skip'),
-      ),
+      trailing: _step == 0
+          ? offline
+                ? PubgetTextButton(
+                    key: const Key('onboarding-skip-step'),
+                    onPressed: loading ? null : _skip,
+                    semanticLabel: copy.onboardingOfflineSaveSemantic,
+                    child: Text(copy.onboardingOfflineSave),
+                  )
+                : null
+          : PubgetTextButton(
+              key: const Key('onboarding-skip-step'),
+              onPressed: loading ? null : _skipStepOrFinish(offline),
+              semanticLabel: copy.onboardingSkipStep,
+              child: Text(
+                offline ? copy.onboardingOfflineSave : copy.onboardingSkipStep,
+              ),
+            ),
       primaryAction: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -102,59 +117,69 @@ class _OnboardingPageState extends State<OnboardingPage> {
             PubgetPrimaryButton(
               key: const Key('onboarding-continue'),
               onPressed: loading ? null : _continue,
-              semanticLabel: 'Continue profile setup',
-              child: const Text('Continue'),
+              semanticLabel: copy.onboardingContinueSemantic,
+              child: Text(copy.onboardingContinue),
             )
           else
             PubgetPrimaryButton(
               key: const Key('onboarding-save'),
-              onPressed: offline || loading
-                  ? null
-                  : () => _finish(completed: _canCompleteMinimum),
-              semanticLabel: 'Save profile and continue',
+              onPressed: offline || loading ? null : () => _finish(completed: true),
+              semanticLabel: copy.onboardingSaveAndEnter,
               loading: loading,
-              child: const Text('Enter Pubget'),
+              child: Text(copy.onboardingEnterPubget),
             ),
           if (_step > 0)
             PubgetTextButton(
               onPressed: loading ? null : () => setState(() => _step -= 1),
-              semanticLabel: 'Back to previous step',
-              child: const Text('Back'),
+              semanticLabel: copy.onboardingBackSemantic,
+              child: Text(copy.onboardingBack),
             ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _OnboardingProgress(step: _step, total: _totalSteps),
+          _OnboardingProgress(
+            step: _step,
+            total: _totalSteps,
+            label: '${copy.onboardingStepOfLabel} ${_step + 1} '
+                '${copy.onboardingOfLabel} $_totalSteps',
+          ),
           const SizedBox(height: AppSpacing.md),
           if (offline)
-            const PubgetInlineBanner(
-              title: 'You are offline',
-              message: 'Skip for now, or reconnect to save your profile.',
+            PubgetInlineBanner(
+              title: copy.onboardingOfflineTitle,
+              message: copy.onboardingOfflineMessage,
               icon: Icons.cloud_off_outlined,
             )
           else if (onboarding.failure != null)
             PubgetInlineBanner.error(
-              title: 'Profile not saved',
+              title: copy.onboardingSaveFailedTitle,
               message: onboarding.failure!.message,
             ),
           if (offline || onboarding.failure != null)
             const SizedBox(height: AppSpacing.md),
           if (_step == 0)
             _IdentityStep(
+              copy: copy,
               username: _username,
               displayName: _displayName,
               usernameError: _usernameError,
+              displayNameError: _displayNameError,
               avatarError: _avatarError,
+              checking: _checking,
+              availability: _availability,
+              availabilityIcon: _availabilityIcon,
               loading: loading,
               avatarBytes: _avatarBytes,
-              avatarUrl: onboarding.profile?.avatarUrl ?? user?.avatarUrl,
+              avatarUrl: avatarUrl,
               onPickAvatar: _pickAvatar,
-              onDisplayNameChanged: () => setState(() {}),
+              onUsernameChanged: _onUsernameChanged,
+              onDisplayNameChanged: _onDisplayNameChanged,
             )
           else if (_step == 1)
             _AboutStep(
+              copy: copy,
               bio: _bio,
               country: _country,
               age: _age,
@@ -174,6 +199,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             )
           else
             _InterestsStep(
+              copy: copy,
               interests: _interests,
               options: _interestOptions,
               loading: loading,
@@ -186,39 +212,111 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   }
                 });
               },
-              onSkipInterests: () {
-                _interests.clear();
-                _finish(completed: _canCompleteMinimum);
-              },
+              onSkipInterests: () => _finish(completed: true),
             ),
         ],
       ),
     );
   }
 
-  bool get _canCompleteMinimum =>
-      _username.text.trim().length >= 3 &&
-      (_avatarBytes != null ||
-          (context.read<OnboardingProvider>().profile?.avatarUrl?.isNotEmpty ==
-              true) ||
-          (context.read<AuthProvider>().currentUser?.avatarUrl?.isNotEmpty ==
-              true));
+  bool get _isOnline => !context.read<NetworkService>().isOffline;
 
-  void _continue() {
+  _OnboardingAvailabilityIcon _availabilityIcon(AppStrings copy) {
+    if (_checking) {
+      return const _OnboardingAvailabilityIcon.checking();
+    }
+    final status = _availability;
+    if (status == null || status.available) {
+      return const _OnboardingAvailabilityIcon.available();
+    }
+    return const _OnboardingAvailabilityIcon.taken();
+  }
+
+  void _onUsernameChanged(String value) {
+    _availabilityTimer?.cancel();
+    final trimmed = value.trim();
+    setState(() {
+      _usernameError = null;
+      _availability = null;
+      _checking = false;
+    });
+    if (trimmed.isEmpty) return;
+    if (AuthValidators.username(trimmed) != null) return;
+    if (!_isOnline) return;
+    setState(() => _checking = true);
+    _availabilityTimer = Timer(_usernameDebounce, () {
+      if (mounted) _runAvailabilityCheck(trimmed);
+    });
+  }
+
+  Future<void> _runAvailabilityCheck(String username) async {
+    final result = await context
+        .read<OnboardingProvider>()
+        .checkUsernameAvailable(username);
+    if (!mounted) return;
+    if (result is FailureResult) {
+      setState(() {
+        _checking = false;
+        _availability = null;
+      });
+      return;
+    }
+    if (_username.text.trim() != username) return;
+    setState(() {
+      _checking = false;
+      _availability = result.valueOrNull;
+    });
+  }
+
+  Future<UsernameStatus?> _checkNow(String username) async {
+    final result = await context
+        .read<OnboardingProvider>()
+        .checkUsernameAvailable(username);
+    return result is FailureResult ? null : result.valueOrNull;
+  }
+
+  void _onDisplayNameChanged() {
+    if (_displayNameError != null) {
+      setState(() => _displayNameError = null);
+    }
+  }
+
+  Future<void> _continue() async {
+    final copy = AppStrings.of(context);
     if (_step == 0) {
       final username = _username.text.trim();
       final usernameError = username.isEmpty
-          ? 'Username is required.'
+          ? copy.usernameRequired
           : AuthValidators.username(username);
       final avatarMissing = _avatarBytes == null &&
           (context.read<OnboardingProvider>().profile?.avatarUrl?.isEmpty ??
               true) &&
           (context.read<AuthProvider>().currentUser?.avatarUrl?.isEmpty ?? true);
+      final displayNameMissing = _displayName.text.trim().isEmpty;
       setState(() {
         _usernameError = usernameError;
-        _avatarError = avatarMissing ? 'Profile photo is required.' : null;
+        _avatarError = avatarMissing ? copy.onboardingPhotoRequired : null;
+        _displayNameError = displayNameMissing
+            ? copy.onboardingDisplayNameRequired
+            : null;
       });
-      if (usernameError != null || avatarMissing) return;
+      if (usernameError != null || avatarMissing || displayNameMissing) return;
+      if (_isOnline) {
+        final status = await _checkNow(username);
+        if (!mounted) return;
+        if (status == null) {
+          setState(() => _usernameError = copy.usernameCheckFailed);
+          return;
+        }
+        if (!status.available) {
+          setState(() {
+            _usernameError = status.cause == UsernameStatusCause.taken
+                ? copy.usernameTaken
+                : copy.usernameInvalidCharacters;
+          });
+          return;
+        }
+      }
       setState(() => _step = 1);
       return;
     }
@@ -238,26 +336,54 @@ class _OnboardingPageState extends State<OnboardingPage> {
     });
   }
 
+  VoidCallback _skipStepOrFinish(bool offline) {
+    if (offline) return _skip;
+    return () {
+      if (_step < _totalSteps - 1) {
+        setState(() => _step += 1);
+      } else {
+        _finish(completed: true);
+      }
+    };
+  }
+
   Future<void> _finish({required bool completed}) async {
+    final copy = AppStrings.of(context);
     final authUser = context.read<AuthProvider>().currentUser;
     if (authUser == null) {
       await AppNavigation.go(context, '/login');
       return;
     }
     final username = _username.text.trim();
-    if (completed) {
-      final error = username.isEmpty
-          ? 'Username is required.'
-          : AuthValidators.username(username);
-      if (error != null) {
+    final error = username.isEmpty
+        ? copy.usernameRequired
+        : AuthValidators.username(username);
+    if (completed && error != null) {
+      setState(() {
+        _usernameError = error;
+        _step = 0;
+      });
+      return;
+    }
+    final provider = context.read<OnboardingProvider>();
+    if (completed && _isOnline && username.isNotEmpty) {
+      // Claim the username server-side before the direct profile write so the
+      // reserved-name flow stays race-safe (spec §3.2).
+      final reserve = await provider.reserveUsername(username);
+      if (!mounted) return;
+      if (reserve is FailureResult) {
+        final reserveFailure = reserve.failureOrNull;
+        if (reserveFailure is NetworkError && _isOnline) {
+          setState(() => _usernameError = copy.usernameCheckFailed);
+          return;
+        }
         setState(() {
-          _usernameError = error;
+          _usernameError = copy.usernameTaken;
           _step = 0;
         });
         return;
       }
     }
-    final provider = context.read<OnboardingProvider>();
     final age = int.tryParse(_age.text.trim());
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
@@ -299,29 +425,64 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
   }
 
-  Future<void> _skip(OnboardingProvider onboarding) async {
+  Future<void> _skip() async {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) {
       await AppNavigation.go(context, '/login');
       return;
     }
-    final result = await onboarding.skip(
-      user,
-      username: _username.text,
-      displayName: _displayName.text,
-      bio: _bio.text,
-      favoriteAnimes: _interests.toList(growable: false),
-    );
+    final result = await context
+        .read<OnboardingProvider>()
+        .skip(
+          user,
+          username: _username.text,
+          displayName: _displayName.text,
+          bio: _bio.text,
+          favoriteAnimes: _interests.toList(growable: false),
+        );
     if (!mounted) return;
     if (result.isSuccess) await AppNavigation.go(context, '/home');
   }
 }
 
+class _OnboardingAvailabilityIcon extends StatelessWidget {
+  const _OnboardingAvailabilityIcon.available() : icon = null, checking = false;
+  const _OnboardingAvailabilityIcon.taken() : icon = true, checking = false;
+  const _OnboardingAvailabilityIcon.checking()
+    : icon = null,
+      checking = true;
+
+  final bool? icon;
+  final bool checking;
+
+  @override
+  Widget build(BuildContext context) {
+    if (checking) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    final theme = Theme.of(context);
+    return Icon(
+      icon == true ? Icons.error_outline : Icons.check_circle_outline,
+      size: 18,
+      color: icon == true ? theme.colorScheme.error : theme.colorScheme.secondary,
+    );
+  }
+}
+
 class _OnboardingProgress extends StatelessWidget {
-  const _OnboardingProgress({required this.step, required this.total});
+  const _OnboardingProgress({
+    required this.step,
+    required this.total,
+    required this.label,
+  });
 
   final int step;
   final int total;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +491,7 @@ class _OnboardingProgress extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          'Step ${step + 1} of $total',
+          label,
           style: theme.textTheme.labelMedium?.copyWith(
             color: AppColors.royalPurpleDark,
           ),
@@ -352,25 +513,37 @@ class _OnboardingProgress extends StatelessWidget {
 
 class _IdentityStep extends StatelessWidget {
   const _IdentityStep({
+    required this.copy,
     required this.username,
     required this.displayName,
     required this.usernameError,
+    required this.displayNameError,
     required this.avatarError,
+    required this.checking,
+    required this.availability,
+    required this.availabilityIcon,
     required this.loading,
     required this.avatarBytes,
     required this.avatarUrl,
     required this.onPickAvatar,
+    required this.onUsernameChanged,
     required this.onDisplayNameChanged,
   });
 
+  final AppStrings copy;
   final TextEditingController username;
   final TextEditingController displayName;
   final String? usernameError;
+  final String? displayNameError;
   final String? avatarError;
+  final bool checking;
+  final UsernameStatus? availability;
+  final Widget Function(AppStrings copy) availabilityIcon;
   final bool loading;
   final Uint8List? avatarBytes;
   final String? avatarUrl;
   final VoidCallback onPickAvatar;
+  final ValueChanged<String> onUsernameChanged;
   final VoidCallback onDisplayNameChanged;
 
   @override
@@ -386,8 +559,8 @@ class _IdentityStep extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         if (avatarBytes != null)
-          const PubgetBadge(
-            label: 'Photo ready',
+          PubgetBadge(
+            label: copy.onboardingPhotoReady,
             icon: Icons.check_circle_outline,
             compact: true,
           ),
@@ -401,28 +574,32 @@ class _IdentityStep extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         PubgetSecondaryButton(
           onPressed: loading ? null : onPickAvatar,
-          semanticLabel: 'Choose a profile picture',
+          semanticLabel: copy.onboardingChoosePhotoSemantic,
           leadingIcon: Icons.photo_library_outlined,
-          child: const Text('Choose profile picture'),
+          child: Text(copy.onboardingChoosePhoto),
         ),
         const SizedBox(height: AppSpacing.lg),
         PubgetTextField(
           key: const Key('onboarding-username'),
           controller: username,
-          label: 'Username',
-          hint: 'pubget_fan',
-          helperText: 'Required. At least 3 characters.',
+          label: copy.username,
+          hint: copy.usernameHint,
+          helperText: _helperText(),
           errorText: usernameError,
+          suffixIcon: availabilityIcon(copy),
           enabled: !loading,
           textInputAction: TextInputAction.next,
           autocorrect: false,
           enableSuggestions: false,
+          onChanged: onUsernameChanged,
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           controller: displayName,
-          label: 'Display name (optional)',
-          helperText: 'How you appear to other members.',
+          key: const Key('onboarding-displayName'),
+          label: copy.onboardingDisplayName,
+          helperText: copy.onboardingDisplayNameHint,
+          errorText: displayNameError,
           enabled: !loading,
           textInputAction: TextInputAction.next,
           onChanged: (_) => onDisplayNameChanged(),
@@ -430,10 +607,19 @@ class _IdentityStep extends StatelessWidget {
       ],
     );
   }
+
+  String? _helperText() {
+    if (checking) return copy.usernameChecking;
+    final status = availability;
+    if (status != null && status.available) return copy.usernameAvailable;
+    if (usernameError != null) return null;
+    return copy.usernameHelp;
+  }
 }
 
 class _AboutStep extends StatelessWidget {
   const _AboutStep({
+    required this.copy,
     required this.bio,
     required this.country,
     required this.age,
@@ -443,6 +629,7 @@ class _AboutStep extends StatelessWidget {
     required this.onSkipAge,
   });
 
+  final AppStrings copy;
   final TextEditingController bio;
   final TextEditingController country;
   final TextEditingController age;
@@ -458,34 +645,34 @@ class _AboutStep extends StatelessWidget {
       children: <Widget>[
         PubgetTextArea(
           controller: bio,
-          label: 'Bio',
-          hint: 'A short vibe check for your page.',
+          label: copy.onboardingBio,
+          hint: copy.onboardingBioHint,
           enabled: !loading,
         ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: PubgetTextButton(
             onPressed: loading ? null : onSkipBio,
-            semanticLabel: 'Skip bio',
-            child: const Text('Skip bio'),
+            semanticLabel: copy.onboardingSkipBioSemantic,
+            child: Text(copy.onboardingSkipBio),
           ),
         ),
         PubgetTextField(
           controller: country,
-          label: 'Country',
+          label: copy.onboardingCountry,
           enabled: !loading,
         ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: PubgetTextButton(
             onPressed: loading ? null : onSkipCountry,
-            semanticLabel: 'Skip country',
-            child: const Text('Skip country'),
+            semanticLabel: copy.onboardingSkipCountrySemantic,
+            child: Text(copy.onboardingSkipCountry),
           ),
         ),
         PubgetTextField(
           controller: age,
-          label: 'Age',
+          label: copy.onboardingAge,
           enabled: !loading,
           keyboardType: TextInputType.number,
         ),
@@ -493,8 +680,8 @@ class _AboutStep extends StatelessWidget {
           alignment: AlignmentDirectional.centerEnd,
           child: PubgetTextButton(
             onPressed: loading ? null : onSkipAge,
-            semanticLabel: 'Skip age',
-            child: const Text('Skip age'),
+            semanticLabel: copy.onboardingSkipAgeSemantic,
+            child: Text(copy.onboardingSkipAge),
           ),
         ),
       ],
@@ -504,6 +691,7 @@ class _AboutStep extends StatelessWidget {
 
 class _InterestsStep extends StatelessWidget {
   const _InterestsStep({
+    required this.copy,
     required this.interests,
     required this.options,
     required this.loading,
@@ -511,6 +699,7 @@ class _InterestsStep extends StatelessWidget {
     required this.onSkipInterests,
   });
 
+  final AppStrings copy;
   final Set<String> interests;
   final List<String> options;
   final bool loading;
@@ -522,7 +711,10 @@ class _InterestsStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Anime interests', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          copy.onboardingInterestsTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.sm),
         Wrap(
           spacing: AppSpacing.sm,
@@ -530,7 +722,7 @@ class _InterestsStep extends StatelessWidget {
           children: options
               .map(
                 (interest) => PubgetSelectionChip(
-                  label: interest,
+                  label: _interestLabel(copy, interest),
                   selected: interests.contains(interest),
                   onSelected: loading
                       ? null
@@ -542,10 +734,20 @@ class _InterestsStep extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextButton(
           onPressed: loading ? null : onSkipInterests,
-          semanticLabel: 'Skip anime interests',
-          child: const Text('Skip interests'),
+          semanticLabel: copy.onboardingSkipInterestsSemantic,
+          child: Text(copy.onboardingSkipInterests),
         ),
       ],
     );
   }
+
+  static String _interestLabel(AppStrings copy, String interest) =>
+      switch (interest) {
+        'Action' => copy.onboardingInterestAction,
+        'Adventure' => copy.onboardingInterestAdventure,
+        'Comedy' => copy.onboardingInterestComedy,
+        'Fantasy' => copy.onboardingInterestFantasy,
+        'Mystery' => copy.onboardingInterestMystery,
+        _ => copy.onboardingInterestRomance,
+      };
 }

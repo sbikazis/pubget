@@ -755,4 +755,251 @@ final class AppStrings {
   String get resume => pick('Resume', 'استئناف');
   String get pause => pick('Pause', 'إيقاف مؤقت');
   String get preview => pick('Preview', 'معاينة');
+
+  // ---- Phase 02: username + availability (spec §3.2) ----
+  String get username => pick('Username', 'اسم المستخدم');
+  String get usernameHint => pick('pubget_fan', 'pubget_fan');
+  String get usernameRequired => pick('Username is required.', 'اسم المستخدم مطلوب.');
+  String get usernameHelp => pick(
+    'Letters, numbers, dots, underscores and hyphens. 3–20 characters, not starting with a digit.',
+    'حروف وأرقام ونقاط وشرطات سفلية وواصلات. 3–20 حروف، ولا يبدأ برقم.',
+  );
+  String get usernameTooLong =>
+      pick('Use at most 20 characters.', '20 حروف كحد أقصى.');
+  String get usernameInvalidStart =>
+      pick('Must start with a letter.', 'يجب أن يبدأ بحرف.');
+  String get usernameInvalidCharacters => pick(
+    'Use letters, numbers, and middle dots only.',
+    'استخدم الحروف والأرقام والنقاط المتوسطة فقط.',
+  );
+  String get usernameChecking =>
+      pick('Checking availability…', 'نفحص توفر الاسم…');
+  String get usernameAvailable =>
+      pick('Username is available.', 'اسم المستخدم متاح.');
+  String get usernameTaken =>
+      pick('Username is already taken.', 'اسم المستخدم محجوز بالفعل.');
+  String get usernameCheckFailed =>
+      pick('We could not check this username.', 'تعذّر فحص هذا الاسم.');
+
+  // ---- Phase 02: onboarding (spec §3.2/§3.3) ----
+  String get onboardingTitleIdentity => pick('Your face & name', 'صورتك واسمك');
+  String get onboardingTitleAbout => pick('A little about you', 'القليل عنك');
+  String get onboardingTitleInterests => pick('What do you love?', 'ماذا تحب؟');
+  String get onboardingSubtitleIdentity => pick(
+    'Username and photo are required. Everything else can wait.',
+    'اسم المستخدم والصور مطلوبان. كل شيء آخر يمكن تأجيله.',
+  );
+  String get onboardingSubtitleAbout => pick(
+    'Optional details. Skip any field you want to fill later.',
+    'تفاصيل اختيارية. تخطَّ أي حقل تريد تعبئته لاحقاً.',
+  );
+  String get onboardingSubtitleInterests => pick(
+    'Pick anime moods to feed recommendations. Skip anytime.',
+    'اختر مزاجك الأنمي لتغذية التوصيات. يمكنك التخطي في أي وقت.',
+  );
+  String get onboardingContinue => pick('Continue', 'متابعة');
+  String get onboardingContinueSemantic =>
+      pick('Continue profile setup', 'متابعة إعداد الملف');
+  String get onboardingSaveAndEnter => pick(
+    'Save profile and continue',
+    'حفظ الملف والمتابعة',
+  );
+  String get onboardingEnterPubget => pick('Enter Pubget', 'ادخل إلى Pubget');
+  String get onboardingBack => pick('Back', 'رجوع');
+  String get onboardingBackSemantic =>
+      pick('Back to previous step', 'العودة إلى الخطوة السابقة');
+  String get onboardingSkipStep => pick('Skip this step', 'تخطي هذه الخطوة');
+  String get onboardingSkipForNow => pick('Skip for now', 'تخطٍّ الآن');
+  String get onboardingStepOfLabel => pick('Step', 'الخطوة');
+  String get onboardingOfLabel => pick('of', 'من');
+  String get onboardingDisplayName =>
+      pick('Display name', 'الاسم الظاهر');
+  String get onboardingDisplayNameOptional =>
+      pick('Display name (optional)', 'الاسم الظاهر (اختياري)');
+  String get onboardingDisplayNameHint => pick(
+    'How you appear to other members.',
+    'كيف تظهر لأعضاء آخرين.',
+  );
+  String get onboardingDisplayNameRequired =>
+      pick('Display name is required.', 'الاسم الظاهر مطلوب.');
+  String get onboardingPhotoRequired =>
+      pick('Profile photo is required.', 'صورة البروفايل مطلوبة.');
+  String get onboardingChoosePhoto =>
+      pick('Choose profile picture', 'اختر صورة البروفايل');
+  String get onboardingChoosePhotoSemantic =>
+      pick('Choose a profile picture', 'اختر صورة للبروفايل');
+  String get onboardingPhotoReady => pick('Photo ready', 'الصورة جاهزة');
+  String get onboardingBio => pick('Bio', 'نبذة');
+  String get onboardingBioHint =>
+      pick('A short vibe check for your page.', 'سطر قصير يعبّر عن صفحتك.');
+  String get onboardingSkipBio => pick('Skip bio', 'تخطي النبذة');
+  String get onboardingSkipBioSemantic => pick('Skip bio', 'تخطي النبذة');
+  String get onboardingCountry => pick('Country', 'البلد');
+  String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
+  String get onboardingSkipCountrySemantic => pick('Skip country', 'تخطي البلد');
+  String get onboardingAge => pick('Age', 'العمر');
+  String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
+  String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
+  String get onboardingInterestsTitle =>
+      pick('Anime interests', 'اهتماماتك الأنمي');
+  String get onboardingSkipInterests => pick('Skip interests', 'تخطي الاهتمامات');
+  String get onboardingSkipInterestsSemantic =>
+      pick('Skip anime interests', 'تخطي اهتمامات الأنمي');
+  String get onboardingOfflineSave =>
+      pick('Save on this device for now', 'احفظ على هذا الجهاز الآن');
+  String get onboardingOfflineSaveSemantic => pick(
+    'Save your onboarding details on this device for now.',
+    'احفظ بياناتك على هذا الجهاز الآن.',
+  );
+  String get onboardingInterestAction => pick('Action', 'أكشن');
+  String get onboardingInterestAdventure => pick('Adventure', 'مغامرة');
+  String get onboardingInterestComedy => pick('Comedy', 'كوميديا');
+  String get onboardingInterestFantasy => pick('Fantasy', 'فانتازيا');
+  String get onboardingInterestMystery => pick('Mystery', 'غموض');
+  String get onboardingInterestRomance => pick('Romance', 'رومانسية');
+  String get onboardingOfflineTitle => pick('You are offline', 'أنت غير متصل');
+  String get onboardingOfflineMessage => pick(
+    'Skip for now, or reconnect to save your profile.',
+    'تخطَّ الآن، أو أعد الاتصال لحفظ ملفك.',
+  );
+  String get onboardingSaveFailedTitle =>
+      pick('Profile not saved', 'لم يتم حفظ الملف');
+
+  // ---- Phase 02: place holder home shell chrome ----
+  String get homeWelcomeToPubget => pick('Welcome to Pubget', 'مرحباً بك في Pubget');
+  String get homeAccountReady => pick(
+    'Your account is ready. The full home experience arrives in a later prompt.',
+    'حسابك جاهز. تجربة الرئيسية الكاملة ستصل في تحديث لاحق.',
+  );
+  String get homeMyProfile => pick('My profile', 'ملفي');
+  String get homeMyProfileSemantic => pick('Open my profile', 'فتح ملفي');
+  String get homeGroups => pick('Groups', 'المجموعات');
+  String get homeGroupsSemantic => pick('Open groups', 'فتح المجموعات');
+  String get homeEditOnboarding => pick(
+    'Edit onboarding details',
+    'تعديل بيانات التعارف',
+  );
+  String get homeEditOnboardingSemantic => pick(
+    'Edit onboarding details',
+    'تعديل بيانات التعارف',
+  );
+
+  // ---- Phase 02: profile (spec §18) ----
+  String get displayName => pick('Display name', 'الاسم الظاهر');
+  String get bio => pick('Bio', 'نبذة');
+  String get bioHint =>
+      pick('Tell your community who you are.', 'أخبر مجتمعك من أنت.');
+  String get bioEmptyCta =>
+      pick('Add a bio so people can meet you', 'أضف نبذة ليتعارف الناس عليك');
+  String get age => pick('Age', 'العمر');
+  String get country => pick('Country', 'البلد');
+  String get favoriteQuote => pick('Favorite quote', 'اقتباسك المفضل');
+  String get animeTwin => pick('Anime twin', 'توأمك الأنمي');
+  String get giveRespect => pick('Give Respect', 'منح الاحترام');
+  String get saveRespect => pick('Save Respect', 'حفظ الاحترام');
+  String get startChat => pick('Start chat', 'ابدأ المحادثة');
+  String get blockUser => pick('Block user', 'حظر المستخدم');
+  String get unblockUser => pick('Unblock user', 'إلغاء الحظر');
+  String get blockUserConfirmTitle => pick('Block this user?', 'حظر هذا المستخدم؟');
+  String get blockUserConfirmBody => pick(
+    'Blocked users cannot message you or appear in your feed.',
+    'لا يمكن للمحظورين مراسلتك أو الظهور في خلاصتك.',
+  );
+  String get addFriend => pick('Add friend', 'إضافة صديق');
+  String get removeFriend => pick('Remove friend', 'إزالة الصديق');
+  String get couldNotLoadEdits =>
+      pick('Could not load edits.', 'تعذّر تحميل الإيديتات.');
+  String get edits => pick('Edits', 'الإيديتات');
+  String get noEditsYet => pick('No edits published yet', 'لا توجد إيديتات منشورة بعد');
+  String get noEditsToShow => pick('No edits to show', 'لا توجد إيديتات للعرض');
+  String get cutSceneCta => pick(
+    'Cut a scene and publish your first edit.',
+    'قصّ مشهداً وانشر أول إيديت لك.',
+  );
+  String get creatorNoEdits => pick(
+    'This creator has not shared edits yet.',
+    'لم يشارك هذا المبدع إيديتات بعد.',
+  );
+  String get openEdits => pick('Open edits', 'فتح الإيديتات');
+  String get createAnEdit => pick('Create an edit', 'أنشئ إيديتاً');
+  String get favoriteAnime => pick('Favorite anime', 'الأنمي المفضل');
+  String get giveRespectSemantic =>
+      pick('Give selected Respect', 'منح الاحترام المختار');
+  String get startChatSemantic =>
+      pick('Start a private chat', 'ابدأ محادثة خاصة');
+  String get couldNotStartChat => pick(
+    'Could not start this private chat.',
+    'تعذّر بدء هذه المحادثة الخاصة.',
+  );
+  String get block => pick('Block', 'حظر');
+  String get sendFriendRequest =>
+      pick('Send friend request', 'إرسال طلب صداقة');
+  String get cancelFriendRequest =>
+      pick('Cancel friend request', 'إلغاء طلب الصداقة');
+  String get acceptFriendRequest =>
+      pick('Accept friend request', 'قبول طلب الصداقة');
+  String get cancelRequest => pick('Cancel request', 'إلغاء الطلب');
+  String get acceptRequest => pick('Accept request', 'قبول الطلب');
+  String get unblock => pick('Unblock', 'إلغاء الحظر');
+  String get myEvents => pick('My Events', 'فعالياتي');
+
+  // ---- Phase 02: edit profile (spec §18.2) ----
+  String get cover => pick('Cover', 'الغلاف');
+  String get coverChange => pick('Change cover', 'تغيير الغلاف');
+  String get coverSelected =>
+      pick('New cover selected', 'تم اختيار غلاف جديد');
+  String get avatarChange => pick('Change photo', 'تغيير الصورة');
+  String get avatarSelected =>
+      pick('New photo selected', 'تم اختيار صورة جديدة');
+  String get editBioHint => pick(
+    'Tell the community about you.',
+    'أخبر المجتمع عن نفسك.',
+  );
+  String get ageOptional => pick('Age (optional)', 'العمر (اختياري)');
+  String get countryOptional =>
+      pick('Country (optional)', 'البلد (اختياري)');
+  String get favoriteQuoteOptional =>
+      pick('Favorite quote (optional)', 'اقتباسك المفضل (اختياري)');
+  String get animeTwinOptional =>
+      pick('Anime twin (optional)', 'توأمك الأنمي (اختياري)');
+  String get animeTwinHint =>
+      pick('A character you vibe with', 'شخصية تنسجم معها');
+  String get favoriteAnimeIds =>
+      pick('Favorite anime IDs', 'معرّفات الأنمي المفضل');
+  String get socialLinks => pick('Social links', 'روابط التواصل');
+  String get addLinkUrl => pick('Add link URL', 'أضف رابطاً');
+  String get linkLabelOptional => pick('Label (optional)', 'التسمية (اختياري)');
+  String get addLink => pick('Add link', 'إضافة الرابط');
+  String get addSocialLinkSemantic =>
+      pick('Add social link', 'إضافة رابط تواصل');
+  String get privacy => pick('Privacy', 'الخصوصية');
+  String get profileVisibility => pick('Profile visibility', 'ظهور الملف');
+  String get activityVisibility => pick('Activity visibility', 'ظهور النشاط');
+  String get whoCanMessageMe => pick('Who can message me', 'من يمكنه مراسلتي');
+  String get whoCanMessageRelated =>
+      pick('Fans and Friends', 'المعجبون والأصدقاء');
+  String get whoCanMessageFriends => pick('Friends only', 'الأصدقاء فقط');
+  String get showFavorites => pick('Show favorites', 'إظهار المفضلة');
+  String get showActivity => pick('Show activity', 'إظهار النشاط');
+  String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
+  String get showFans => pick('Show fans', 'إظهار المعجبين');
+  String get showWorks =>
+      pick('Show works (Edits / Fan Works)', 'إظهار الأعمال (الإيديتات / أعمال المعجبين)');
+  String get showGroups => pick('Show groups', 'إظهار المجموعات');
+  String get showRatings => pick('Show ratings', 'إظهار التقييمات');
+  String get showAchievements => pick('Show achievements', 'إظهار الإنجازات');
+  String get public => pick('Public', 'عام');
+  String get private => pick('Private', 'خاص');
+  String get saveChanges => pick('Save changes', 'حفظ التغييرات');
+  String get saveProfileChangesSemantic =>
+      pick('Save profile changes', 'حفظ تغييرات الملف');
+  String get chooseCoverSemantic =>
+      pick('Choose a cover photo', 'اختر صورة غلاف');
+  String get chooseAvatarSemantic =>
+      pick('Choose a new profile photo', 'اختر صورة ملف جديدة');
+
+  String userNameWelcome(String name) => pick('Welcome, $name', 'مرحباً، $name');
+  String stepOf(int step, int total) =>
+      pick('Step $step of $total', 'الخطوة $step من $total');
+  String memberSince(String month) => pick('Since $month', 'منذ $month');
 }

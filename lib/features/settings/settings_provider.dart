@@ -18,6 +18,7 @@ final class SettingsProvider extends ChangeNotifier {
   ThemeMode get themeMode => _snapshot.themeMode;
   Locale? get locale => _snapshot.locale;
   AppLocaleOption get localeOption => _snapshot.localeOption;
+  bool get languageSeeded => _snapshot.languageSeeded;
   LoadingState get state => _state;
   String? get failure => _failure;
 
@@ -42,8 +43,25 @@ final class SettingsProvider extends ChangeNotifier {
   Future<bool> setThemeMode(ThemeMode mode) =>
       _commit(_snapshot.copyWith(themeMode: mode));
 
-  Future<bool> setLocaleOption(AppLocaleOption option) =>
-      _commit(_snapshot.copyWith(localeOption: option));
+  Future<bool> setLocaleOption(
+    AppLocaleOption option, {
+    bool markSeeded = true,
+  }) => _commit(
+    _snapshot.copyWith(
+      localeOption: option,
+      languageSeeded: markSeeded ? true : _snapshot.languageSeeded,
+    ),
+  );
+
+  /// Applies a server-profile language once, on a first-run device, before the
+  /// user has made an explicit choice (spec §1.4 device + Firestore).
+  Future<bool> seedLanguageFromServer(String language) {
+    if (_snapshot.languageSeeded) return Future<bool>.value(false);
+    final option = language == 'en'
+        ? AppLocaleOption.english
+        : AppLocaleOption.arabic;
+    return setLocaleOption(option, markSeeded: true);
+  }
 
   Future<bool> _commit(SettingsSnapshot next) async {
     final previous = _snapshot;

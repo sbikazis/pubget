@@ -11,6 +11,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/auth_provider.dart';
 import '../providers/onboarding_provider.dart';
+import '../../settings/settings_provider.dart';
 import '../widgets/auth_atmosphere.dart';
 import '../widgets/pubget_torii_mark.dart';
 
@@ -145,6 +146,16 @@ class _SplashPageState extends State<SplashPage> {
     if (result is FailureResult) {
       setState(() {});
       return;
+    }
+    // First-run language seeding: the server profile language wins on a fresh
+    // device before any explicit device choice (spec §1.4).
+    final serverLanguage = onboarding.profile?.language;
+    if (serverLanguage != null &&
+        (serverLanguage == 'ar' || serverLanguage == 'en')) {
+      await context.read<SettingsProvider>().seedLanguageFromServer(
+        serverLanguage,
+      );
+      if (!mounted) return;
     }
     if (!alreadyReady) await _holdBrandMoment();
     if (!mounted) return;

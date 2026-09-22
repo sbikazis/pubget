@@ -21,6 +21,10 @@ const {
   createUpdateSocialProfile,
 } = require("./src/avatarPrivacy");
 const {
+  createUserNameCallables,
+  createUsernameReconciliationTrigger,
+} = require("./src/userNameRegistry");
+const {
   buildPublicProfile,
   shouldPublishProfile,
 } = require("./src/publicProfile");
@@ -50,7 +54,6 @@ initializeApp();
 // Load Mafia actions after Admin initialization because the action domain
 // obtains its Firestore handle at module load time.
 const mafiaActions = require("./src/mafia/actionDomain");
-
 exports.syncAvatarPrivacy = onDocumentWritten(
   "users/{uid}",
   createAvatarPrivacySync({
@@ -59,6 +62,24 @@ exports.syncAvatarPrivacy = onDocumentWritten(
     randomUUID,
   }),
 );
+const userNameCallables = createUserNameCallables({
+  db: getFirestore(),
+  HttpsError,
+});
+exports.syncUsernameReservation = onDocumentWritten(
+  "users/{uid}",
+  createUsernameReconciliationTrigger({ db: getFirestore() }),
+);
+
+exports.checkUsernameAvailable = onCall(
+  { region: "us-central1" },
+  userNameCallables.checkUsernameAvailable,
+);
+exports.reserveUsername = onCall(
+  { region: "us-central1" },
+  userNameCallables.reserveUsername,
+);
+
 exports.updateSocialProfile = onCall(
   { region: "us-central1" },
   createUpdateSocialProfile({
@@ -66,6 +87,7 @@ exports.updateSocialProfile = onCall(
     bucket: getStorage().bucket(),
     randomUUID,
     HttpsError,
+    userNameRegistry: userNameCallables.registry,
   }),
 );
 

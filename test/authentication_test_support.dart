@@ -14,6 +14,7 @@ import 'package:pubget/features/settings/settings_repository.dart';
 import 'package:pubget/features/settings/settings_store.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/models/pubget_user.dart';
+import 'package:pubget/features/authentication/models/username_status.dart';
 import 'package:pubget/features/authentication/providers/auth_draft_store.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
@@ -94,6 +95,9 @@ final class FakeUserRepository implements UserRepository {
   PubgetUser? user;
   Failure? failure;
   int avatarUploads = 0;
+  final Set<String> takenUsernames = <String>{};
+  final List<String> mirrorLanguageChanges = <String>[];
+  Failure? availabilityFailure;
 
   @override
   Future<Result<PubgetUser>> createUserProfile(PubgetUser user) async =>
@@ -122,6 +126,49 @@ final class FakeUserRepository implements UserRepository {
     return currentFailure == null
         ? const Success<String>('https://example.com/avatar.jpg')
         : FailureResult<String>(currentFailure);
+  }
+
+  @override
+  Future<Result<UsernameStatus>> checkUsernameAvailable(
+    String username,
+  ) async {
+    final currentFailure = availabilityFailure;
+    if (currentFailure != null) {
+      return FailureResult<UsernameStatus>(currentFailure);
+    }
+    final normalized = username.trim().toLowerCase();
+    if (takenUsernames.contains(normalized)) {
+      return const Success<UsernameStatus>(
+        UsernameStatus.unavailable(UsernameStatusCause.taken),
+      );
+    }
+    return Success<UsernameStatus>(UsernameStatus.available(normalized));
+  }
+
+  @override
+  Future<Result<String>> reserveUsername(String username) async {
+    final currentFailure = availabilityFailure;
+    if (currentFailure != null) {
+      return FailureResult<String>(currentFailure);
+    }
+    final normalized = username.trim().toLowerCase();
+    if (takenUsernames.contains(normalized)) {
+      return const FailureResult<String>(
+        ValidationError('This username is already taken.'),
+      );
+    }
+    takenUsernames.add(normalized);
+    return Success<String>(normalized);
+  }
+
+  @override
+  Future<Result<void>> updateLanguage(String language) async {
+    final currentFailure = failure;
+    if (currentFailure != null) {
+      return FailureResult<void>(currentFailure);
+    }
+    mirrorLanguageChanges.add(language);
+    return const Success<void>(null);
   }
 
   Result<PubgetUser> _save(PubgetUser next) {

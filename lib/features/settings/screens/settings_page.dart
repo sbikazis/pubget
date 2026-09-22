@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,7 +10,10 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
+import '../../authentication/repositories/user_repository.dart';
+import '../../notifications/repositories/notification_repository.dart';
 import '../settings_provider.dart';
+import '../settings_store.dart';
 import '../widgets/language_picker.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -75,7 +80,11 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
           Text(copy.language, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
-          const PubgetCard(child: SettingsLanguageRadios()),
+          PubgetCard(
+            child: SettingsLanguageRadios(
+              onChanged: (option) => _mirrorLanguage(context, option),
+            ),
+          ),
           const SizedBox(height: AppSpacing.xl),
           Text(copy.appearance, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
@@ -148,7 +157,21 @@ class SettingsPage extends StatelessWidget {
     ThemeMode.dark => copy.themeDark,
   };
 
+  static void _mirrorLanguage(BuildContext context, AppLocaleOption option) {
+    if (option == AppLocaleOption.system) return;
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+    final code = option == AppLocaleOption.english ? 'en' : 'ar';
+    // Mirror the explicit device choice to Firestore (spec §1.4). The event
+    // is unawaited by design; the device settings remain the source of truth.
+    unawaited(context.read<UserRepository>().updateLanguage(code));
+  }
+
   static Future<void> _signOut(BuildContext context) async {
+    // Release the push token before dropping the session (mirrors the sign-out
+    // in the place holder home chrome).
+    await context.read<NotificationRepository>().unregisterDeviceToken();
+    if (!context.mounted) return;
     await context.read<AuthProvider>().signOut();
     if (!context.mounted) return;
     await AppNavigation.go(context, '/login');

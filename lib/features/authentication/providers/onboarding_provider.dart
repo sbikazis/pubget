@@ -5,6 +5,7 @@ import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../models/auth_user.dart';
 import '../models/pubget_user.dart';
+import '../models/username_status.dart';
 import '../repositories/user_repository.dart';
 
 final class OnboardingProvider extends ChangeNotifier {
@@ -169,6 +170,20 @@ final class OnboardingProvider extends ChangeNotifier {
     _failure = null;
     notifyListeners();
   }
+
+  /// Instant server-side availability check (spec §3.2). Read-only, so it does
+  /// not flip the onboarding loading state.
+  Future<Result<UsernameStatus>> checkUsernameAvailable(String username) =>
+      _repository.checkUsernameAvailable(username);
+
+  /// Server-side claim before the direct profile write. Idempotent for the
+  /// same owner. Failure means the username was taken between check and save.
+  Future<Result<String>> reserveUsername(String username) =>
+      _repository.reserveUsername(username);
+
+  /// Mirrors the chosen language to the server (spec §1.4).
+  Future<Result<void>> updateLanguage(String language) =>
+      _repository.updateLanguage(language);
 
   void clearSession() {
     _profile = null;

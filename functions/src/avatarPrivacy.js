@@ -77,7 +77,13 @@ function validSectionPrivacy(value) {
   return keys.every((key) => value[key] === undefined || typeof value[key] === "boolean");
 }
 
-function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
+function createUpdateSocialProfile({
+  db,
+  bucket,
+  randomUUID,
+  HttpsError,
+  userNameRegistry,
+}) {
   return async function updateSocialProfile(request) {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Authentication is required.");
@@ -124,8 +130,13 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
         !["related", "friends"].includes(input.whoCanMessageMe)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
-    if (input.username !== undefined && !optionalString(input.username, 32)) {
-      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    if (input.username !== undefined) {
+      const validation = userNameRegistry.validateUsername(
+        String(input.username).trim(),
+      );
+      if (!validation.valid) {
+        throw new HttpsError("invalid-argument", "Profile update is invalid.");
+      }
     }
     if (input.displayName !== undefined &&
         !optionalString(input.displayName, 64)) {
@@ -159,6 +170,10 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
     if (input.coverUrl !== undefined && !optionalUrl(input.coverUrl, 1024)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
+    if (input.language !== undefined &&
+        !["ar", "en"].includes(input.language)) {
+      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    }
 
     if (!hasLegacyBundle &&
         input.bio === undefined &&
@@ -175,7 +190,8 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
         input.age === undefined &&
         input.socialLinks === undefined &&
         input.sectionPrivacy === undefined &&
-        input.coverUrl === undefined) {
+        input.coverUrl === undefined &&
+        input.language === undefined) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
 
@@ -235,6 +251,7 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
     if (input.coverUrl !== undefined) {
       update.coverUrl = input.coverUrl === null ? null : String(input.coverUrl).trim();
     }
+    if (input.language !== undefined) update.language = input.language;
 
     const profileVisibility =
       update.profileVisibility || current.profileVisibility || "public";
@@ -261,7 +278,32 @@ function createUpdateSocialProfile({ db, bucket, randomUUID, HttpsError }) {
       }
     }
 
-    await userRef.update(update);
+    // Username uniqueness (spec §3.2). Reserve the new name before writing,
+    // release the previous reservation only after the write succeeds, and
+    // back out the reservation if the write fails.
+    const previousUsername = (current.username || "").trim();
+    const requestedUsername = (update.username || "").trim();
+    const usernameChanged =
+      requestedUsername !== "" &&
+      userNameRegistry.normalizeUsername(requestedUsername) !==
+        userNameRegistry.normalizeUsername(previousUsername);
+
+    if (usernameChanged) {
+      await userNameRegistry.reserve(uid, requestedUsername, HttpsError);
+    }
+
+    try {
+      await userRef.update(update);
+    } catch (error) {
+      if (usernameChanged) {
+        await userNameRegistry.release(uid, requestedUsername);
+      }
+      throw error;
+    }
+
+    if (usernameChanged && previousUsername) {
+      await userNameRegistry.release(uid, previousUsername);
+    }
     return { ok: true };
   };
 }
