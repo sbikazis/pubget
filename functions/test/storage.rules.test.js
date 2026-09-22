@@ -3,9 +3,9 @@
  * FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 \
  * FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test test/storage.rules.test.js
  *
- * This test intentionally is not wired into package.json: the application
- * package does not currently include @firebase/rules-unit-testing. Install it
- * as a development dependency in CI before running this file.
+ * Wired into package.json as part of the "test:rules" script together with
+ * firestore.rules.test.js, executed under the Firebase emulators with
+ * --project demo-pubget-security. @firebase/rules-unit-testing is a devDependency.
  */
 const fs = require("node:fs");
 const path = require("node:path");
