@@ -17,6 +17,7 @@ class PubgetTextField extends StatelessWidget {
     this.textInputAction,
     this.maxLines = 1,
     this.minLines,
+    this.maxLength,
     this.prefixIcon,
     this.suffixIcon,
     this.autofocus = false,
@@ -41,6 +42,7 @@ class PubgetTextField extends StatelessWidget {
   final TextInputAction? textInputAction;
   final int? maxLines;
   final int? minLines;
+  final int? maxLength;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final bool autofocus;
@@ -60,6 +62,7 @@ class PubgetTextField extends StatelessWidget {
       textInputAction: textInputAction,
       maxLines: obscureText ? 1 : maxLines,
       minLines: minLines,
+      maxLength: maxLength,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       autofocus: autofocus,
@@ -91,6 +94,7 @@ class PubgetTextArea extends StatelessWidget {
     this.enabled = true,
     this.minLines = 3,
     this.maxLines = 6,
+    this.maxLength,
     super.key,
   });
 
@@ -102,6 +106,7 @@ class PubgetTextArea extends StatelessWidget {
   final bool enabled;
   final int minLines;
   final int maxLines;
+  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +119,7 @@ class PubgetTextArea extends StatelessWidget {
       enabled: enabled,
       minLines: minLines,
       maxLines: maxLines,
+      maxLength: maxLength,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
     );

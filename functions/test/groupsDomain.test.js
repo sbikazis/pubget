@@ -270,3 +270,210 @@ test("promoteGroup is founder-only, server-priced, and debits coins", async () =
     (error) => error.code === "failed-precondition",
   );
 });
+
+function fakeDb(store) {
+  function refFor(path) {
+    const id = path.split("/").pop();
+    return {
+      id,
+      path,
+      collection(name) {
+        return {
+          doc(docId) {
+            const next = docId || `auto-${Object.keys(store).length}`;
+            return refFor(`${path}/${name}/${next}`);
+          },
+        };
+      },
+      get: async () => ({
+        exists: Object.prototype.hasOwnProperty.call(store, path),
+        data: () => store[path],
+      }),
+    };
+  }
+  return {
+    collection(name) {
+      return { doc: (id) => refFor(`${name}/${id}`) };
+    },
+    runTransaction: async (fn) => fn({
+      get: async (ref) => ({
+        exists: Object.prototype.hasOwnProperty.call(store, ref.path),
+        data: () => store[ref.path],
+      }),
+      create: (ref, data) => {
+        store[ref.path] = data;
+      },
+      set: (ref, data) => {
+        store[ref.path] = data;
+      },
+      update: (ref, data) => {
+        store[ref.path] = Object.assign({}, store[ref.path], data);
+      },
+      delete: (ref) => {
+        delete store[ref.path];
+      },
+    }),
+  };
+}
+
+test("createGroup persists welcomeMessage and chatBackgroundUrl", async () => {
+  const store = { "users/alice": {} };
+  const db = fakeDb(store);
+  const domain = createGroupsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  const result = await domain.createGroup({
+    auth: { uid: "alice" },
+    data: {
+      name: "Knights",
+      description: "",
+      type: "public",
+      animeId: null,
+      joinPolicy: "approval",
+      isSearchable: true,
+      rules: "Be kind",
+      welcomeMessage: "  Welcome aboard!  ",
+      chatBackgroundUrl: "https://cdn.example.com/bg.jpg",
+    },
+  });
+  assert.equal(result.ok, true);
+  const group = store[`groups/${result.groupId}`];
+  assert.equal(group.welcomeMessage, "Welcome aboard!");
+  assert.equal(group.chatBackgroundUrl, "https://cdn.example.com/bg.jpg");
+  assert.equal(group.membersCount, 1);
+  assert.ok(store[`groups/${result.groupId}/members/alice`]);
+});
+
+test("createGroup validates welcome fields before database access", async () => {
+  const base = {
+    name: "Knights",
+    description: "",
+    type: "public",
+    animeId: null,
+    joinPolicy: "open",
+    isSearchable: true,
+    rules: "",
+  };
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: Object.assign({}, base, { welcomeMessage: "x".repeat(501) }),
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: Object.assign({}, base, { welcomeMessage: { not: "a string" } }),
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: Object.assign({}, base, { chatBackgroundUrl: "ftp://cdn.example.com/bg.jpg" }),
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: Object.assign({}, base, { chatBackgroundUrl: "https://cdn.example.com/bad bg.jpg" }),
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("joinGroup writes the group welcome message as a system chat message", async () => {
+  const store = {
+    "groups/g1": {
+      joinPolicy: "open",
+      membersCount: 0,
+      maxMembers: 100,
+      type: "public",
+      name: "Crew",
+      welcomeMessage: "Welcome to the crew!",
+    },
+  };
+  const db = fakeDb(store);
+  const domain = createGroupsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  await domain.joinGroup({ auth: { uid: "bob" }, data: { groupId: "g1" } });
+  assert.ok(store["groups/g1/members/bob"]);
+  assert.equal(store["groups/g1"].membersCount, 1);
+  const messages = Object.entries(store)
+    .filter(([key]) => key.startsWith("groups/g1/messages/"))
+    .map(([, value]) => value);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "system");
+  assert.equal(messages[0].text, "Welcome to the crew!");
+  assert.equal(messages[0].senderId, "system");
+  assert.equal(messages[0].senderName, "Pubget");
+});
+
+test("joinGroup writes no system message without a welcomeMessage", async () => {
+  const store = {
+    "groups/g1": {
+      joinPolicy: "open",
+      membersCount: 0,
+      maxMembers: 100,
+      type: "public",
+    },
+  };
+  const db = fakeDb(store);
+  const domain = createGroupsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  await domain.joinGroup({ auth: { uid: "bob" }, data: { groupId: "g1" } });
+  assert.equal(
+    Object.keys(store).filter((key) => key.includes("/messages/")).length,
+    0,
+  );
+});
+
+test("acceptJoinRequest writes the welcome message for the accepted member", async () => {
+  const store = {
+    "groups/g1": {
+      joinPolicy: "approval",
+      membersCount: 1,
+      maxMembers: 100,
+      type: "public",
+      name: "Crew",
+      welcomeMessage: "Glad you joined!",
+    },
+    "groups/g1/members/alice": { uid: "alice", role: "mikado", rankV2: "mikado" },
+    "groups/g1/roles/mikado": { name: "mikado", permissions: ROLE_PERMISSIONS.mikado },
+    "groups/g1/requests/bob": { status: "pending", roleplayCharacter: null },
+  };
+  const db = fakeDb(store);
+  const domain = createGroupsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  await domain.acceptJoinRequest({
+    auth: { uid: "alice" },
+    data: { groupId: "g1", uid: "bob" },
+  });
+  assert.ok(store["groups/g1/members/bob"]);
+  assert.equal(store["groups/g1/requests/bob"].status, "accepted");
+  assert.equal(store["groups/g1"].membersCount, 2);
+  const messages = Object.entries(store)
+    .filter(([key]) => key.startsWith("groups/g1/messages/"))
+    .map(([, value]) => value);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "system");
+  assert.equal(messages[0].text, "Glad you joined!");
+  assert.equal(messages[0].senderId, "system");
+});

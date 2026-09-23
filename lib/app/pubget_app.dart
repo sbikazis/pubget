@@ -42,7 +42,7 @@ import '../features/groups/repositories/group_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
 import '../features/groups/repositories/unavailable_chat_repository.dart';
-import '../features/groups/screens/create_group_wizard_page.dart';
+import '../features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
@@ -310,8 +310,11 @@ class PubgetApp extends StatelessWidget {
           ),
         ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
-          create: (context) =>
-              RoleplayProvider(repository: context.read<RoleplayRepository>()),
+          create: (context) => RoleplayProvider(
+            repository: context.read<RoleplayRepository>(),
+            animeRepository: context.read<AnimeRepository>(),
+            socialRepository: context.read<AnimeHubSocialRepository>(),
+          ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) => ChatProvider(

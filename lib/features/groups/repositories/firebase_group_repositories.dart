@@ -613,19 +613,28 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
   });
 
   @override
-  Future<Result<List<RoleplayCharacter>>> getAvailableCharacters(
-    String groupId,
-  ) => _guard(() async {
-    final reserved = await _firestore
-        .collection('groups')
-        .doc(groupId)
-        .collection('characters')
-        .get();
-    final keys = reserved.docs.map((doc) => doc.id).toSet();
-    return _mockCharacters
-        .where((character) => !keys.contains(character.key))
-        .toList(growable: false);
-  });
+  Future<Result<RoleplayGroupContext>> roleplayContext(String groupId) =>
+      _guard(() async {
+        final group = await _firestore.collection('groups').doc(groupId).get();
+        final reserved = await _firestore
+            .collection('groups')
+            .doc(groupId)
+            .collection('characters')
+            .get();
+        final keys = reserved.docs.map((doc) => doc.id).toSet();
+        final snap = group.exists
+            ? (group.data() ?? const <String, dynamic>{})
+            : const <String, dynamic>{};
+        final type = GroupType.values.firstWhere(
+          (value) => value.name == snap['type'],
+          orElse: () => GroupType.public,
+        );
+        return RoleplayGroupContext(
+          type: type,
+          animeId: snap['animeId'] as String?,
+          reservedKeys: keys,
+        );
+      });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
@@ -635,13 +644,6 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
     }
   }
 }
-
-const _mockCharacters = <RoleplayCharacter>[
-  RoleplayCharacter(key: 'hero', name: 'The Hero', avatarUrl: ''),
-  RoleplayCharacter(key: 'rival', name: 'The Rival', avatarUrl: ''),
-  RoleplayCharacter(key: 'mentor', name: 'The Mentor', avatarUrl: ''),
-  RoleplayCharacter(key: 'trickster', name: 'The Trickster', avatarUrl: ''),
-];
 
 DateTime? _memberDate(Object? value) {
   if (value is DateTime) return value;

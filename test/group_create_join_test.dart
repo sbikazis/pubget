@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:pubget/app/app_shell_create_sheet.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/l10n/app_strings.dart';
-import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
@@ -14,7 +13,7 @@ import 'package:pubget/features/groups/data/group_image_uploader.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
-import 'package:pubget/features/groups/screens/create_group_wizard_page.dart';
+import 'package:pubget/features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import 'package:pubget/features/groups/screens/group_anime_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_character_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_details_page.dart';
@@ -75,7 +74,7 @@ void main() {
     );
   });
 
-  testWidgets('public create confirm stays disabled until avatar and name', (
+  testWidgets('public create advances only after avatar and name', (
     tester,
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.public));
@@ -83,9 +82,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byKey(const Key('group-create-name')), findsOneWidget);
-    expect(tester.widget<PubgetPrimaryButton>(
-      find.byKey(const Key('group-create-confirm')),
-    ).onPressed, isNull);
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.descendant(
+              of: find.byKey(const Key('group-create-next')),
+              matching: find.byType(ElevatedButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
 
     await tester.ensureVisible(find.byKey(const Key('group-create-image-url')));
     await tester.enterText(
@@ -98,20 +105,21 @@ void main() {
 
     final enabled = tester.widget<ElevatedButton>(
       find.descendant(
-        of: find.byKey(const Key('group-create-confirm')),
+        of: find.byKey(const Key('group-create-next')),
         matching: find.byType(ElevatedButton),
       ),
     );
     expect(enabled.onPressed, isNotNull);
   });
 
-  testWidgets('anime roleplay confirm stays disabled without character', (
+  testWidgets('anime roleplay requires anime and character before advancing', (
     tester,
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.animeRoleplay));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const Key('group-create-name')), findsOneWidget);
+
     await tester.ensureVisible(find.byKey(const Key('group-create-image-url')));
     await tester.enterText(
       find.byKey(const Key('group-create-image-url')),
@@ -120,15 +128,18 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('group-create-name')));
     await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
     await tester.pump();
+
+    await tester.tap(find.byKey(const Key('group-create-next')));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const Key('group-create-pick-anime')), findsOneWidget);
-    expect(find.byKey(const Key('group-create-pick-character')), findsNothing);
-    final confirm = tester.widget<ElevatedButton>(
+    final next = tester.widget<ElevatedButton>(
       find.descendant(
-        of: find.byKey(const Key('group-create-confirm')),
+        of: find.byKey(const Key('group-create-next')),
         matching: find.byType(ElevatedButton),
       ),
     );
-    expect(confirm.onPressed, isNull);
+    expect(next.onPressed, isNull);
   });
 
   testWidgets('anime picker shows popular titles and a no-results state', (
