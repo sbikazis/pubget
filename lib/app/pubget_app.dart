@@ -310,8 +310,11 @@ class PubgetApp extends StatelessWidget {
           ),
         ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
-          create: (context) =>
-              RoleplayProvider(repository: context.read<RoleplayRepository>()),
+          create: (context) => RoleplayProvider(
+            repository: context.read<RoleplayRepository>(),
+            animeRepository: context.read<AnimeRepository>(),
+            socialRepository: context.read<AnimeHubSocialRepository>(),
+          ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) => ChatProvider(

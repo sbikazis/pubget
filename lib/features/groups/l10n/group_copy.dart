@@ -309,6 +309,21 @@ final class GroupCopy {
   String get noCharacters => _s.noCharacterResults;
   String get noCharactersHint => _s.noCharacterResultsHint;
   String get characterReserved => _s.characterReserved;
+
+  // Roleplay character reservation tray.
+  String get roleplayCharacterTitle =>
+      _s.pick('Choose a character', 'اختر شخصية');
+  String get reserveCharacter => _s.pick('Reserve', 'حجز');
+  String get roleplayNoCharacters =>
+      _s.pick('No characters available', 'لا توجد شخصيات متاحة');
+  String get roleplayAllReserved => _s.pick(
+    'All characters for this group are already reserved.',
+    'كل شخصيات هذه المجموعة محجوزة بالفعل.',
+  );
+  String get roleplayCharactersLoadFailed => _s.pick(
+    'Characters could not load.',
+    'تعذّر تحميل الشخصيات.',
+  );
   String get pickImage => _s.pick('Choose image', 'اختيار صورة');
   String get imageUrl => _s.pick('Image URL', 'رابط الصورة');
   String get uploadingImage => _s.pick('Uploading image…', 'جاري رفع الصورة…');

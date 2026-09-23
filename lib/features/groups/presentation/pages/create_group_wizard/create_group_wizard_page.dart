@@ -325,7 +325,6 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     final steps = <_WizardStep>[
       _WizardStep(
         title: copy.step1Title,
-        icon: Icons.badge_outlined,
         child: Step1Identity(
           nameController: _name,
           descriptionController: _description,
@@ -338,7 +337,6 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step2Title,
-        icon: Icons.category_outlined,
         child: Step2Type(
           onSelected: (type) {
             setState(() {
@@ -356,7 +354,6 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step3Title,
-        icon: Icons.rule_outlined,
         child: Step3Rules(
           joinPolicy: _policy,
           onJoinPolicyChanged: (policy) {
@@ -389,7 +386,6 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step4Title,
-        icon: Icons.tune_outlined,
         child: Step4Customization(
           welcomeMessageController: _welcomeMessage,
           chatBackgroundController: _chatBackgroundUrl,
@@ -398,14 +394,12 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step5Title,
-        icon: Icons.security_outlined,
         child: Step5Permissions(
           groupType: _type ?? GroupType.public,
         ),
       ),
       _WizardStep(
         title: copy.step6Title,
-        icon: Icons.preview_outlined,
         child: Step6Preview(
           name: _name.text,
           description: _description.text,
@@ -427,7 +421,6 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step7Title,
-        icon: Icons.publish_outlined,
         child: Step7Publish(
           onPublish: () => _createGroup(provider),
           isSubmitting: _submitting || provider.creating,
@@ -523,12 +516,10 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
 class _WizardStep {
   const _WizardStep({
     required this.title,
-    required this.icon,
     required this.child,
   });
 
   final String title;
-  final IconData icon;
   final Widget child;
 }
 

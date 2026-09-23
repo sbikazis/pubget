@@ -13,7 +13,7 @@ abstract interface class RoleplayRepository {
     required String characterKey,
   });
 
-  Future<Result<List<RoleplayCharacter>>> getAvailableCharacters(
-    String groupId,
-  );
+  /// Server-authoritative roleplay context: group type, linked anime, and the
+  /// currently reserved character keys.
+  Future<Result<RoleplayGroupContext>> roleplayContext(String groupId);
 }

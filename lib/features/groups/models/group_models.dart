@@ -564,6 +564,20 @@ final class RoleplayCharacter {
   };
 }
 
+/// Group-level roleplay context used to list reserve-able characters from the
+/// real character catalogs (anime-specific or open/popular).
+final class RoleplayGroupContext {
+  const RoleplayGroupContext({
+    required this.type,
+    this.animeId,
+    required this.reservedKeys,
+  });
+
+  final GroupType? type;
+  final String? animeId;
+  final Set<String> reservedKeys;
+}
+
 final class GroupJoinPayload {
   const GroupJoinPayload({
     this.invitedBy,
