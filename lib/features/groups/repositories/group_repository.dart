@@ -15,6 +15,8 @@ final class GroupDraft {
     this.coverUrl,
     this.character,
     this.idempotencyKey,
+    this.welcomeMessage,
+    this.chatBackgroundUrl,
   });
 
   final String name;
@@ -29,6 +31,8 @@ final class GroupDraft {
   final String? coverUrl;
   final RoleplayCharacter? character;
   final String? idempotencyKey;
+  final String? welcomeMessage;
+  final String? chatBackgroundUrl;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'name': name.trim(),
@@ -42,6 +46,8 @@ final class GroupDraft {
     if (imageUrl != null) 'imageUrl': imageUrl,
     if (coverUrl != null) 'coverUrl': coverUrl,
     if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+    if (welcomeMessage != null) 'welcomeMessage': welcomeMessage,
+    if (chatBackgroundUrl != null) 'chatBackgroundUrl': chatBackgroundUrl,
     if (character != null) ...<String, dynamic>{
       'characterKey': character!.key,
       'character': character!.toMap(),

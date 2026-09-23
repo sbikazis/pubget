@@ -42,7 +42,7 @@ import '../features/groups/repositories/group_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
 import '../features/groups/repositories/unavailable_chat_repository.dart';
-import '../features/groups/screens/create_group_wizard_page.dart';
+import '../features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';

@@ -82,7 +82,11 @@ function groupInput(request, HttpsError) {
       data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128)) ||
-      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500)) {
+      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500) ||
+      !optionalUrl(data.chatBackgroundUrl, 500) ||
+      (data.welcomeMessage !== undefined && data.welcomeMessage !== null &&
+       (typeof data.welcomeMessage !== "string" ||
+        data.welcomeMessage.length > 500))) {
     throw new HttpsError("invalid-argument", "Group details are invalid.");
   }
   if (data.type === "animeRoleplay" && !validString(data.animeId, 128)) {
@@ -95,7 +99,19 @@ function groupInput(request, HttpsError) {
   if (data.type === "public" && character) {
     throw new HttpsError("invalid-argument", "Public groups cannot reserve a character.");
   }
-  return Object.assign({}, data, { character });
+  const normalized = Object.assign({}, data, { character });
+  if (typeof normalized.welcomeMessage === "string") {
+    normalized.welcomeMessage = normalized.welcomeMessage.trim();
+    if (normalized.welcomeMessage.length === 0) normalized.welcomeMessage = null;
+  } else {
+    normalized.welcomeMessage = null;
+  }
+  if (typeof normalized.chatBackgroundUrl === "string") {
+    normalized.chatBackgroundUrl = normalized.chatBackgroundUrl.trim();
+  } else {
+    normalized.chatBackgroundUrl = null;
+  }
+  return normalized;
 }
 
 function groupPath(db, groupId) {
@@ -104,6 +120,17 @@ function groupPath(db, groupId) {
 
 function memberPath(db, groupId, uid) {
   return groupPath(db, groupId).collection("members").doc(uid);
+}
+
+function writeWelcomeSystemMessage(transaction, groupRef, text, FieldValue) {
+  transaction.set(groupRef.collection("messages").doc(), {
+    type: "system",
+    text,
+    senderId: "system",
+    senderName: "Pubget",
+    senderRole: "system",
+    createdAt: FieldValue.serverTimestamp(),
+  });
 }
 
 function rolePath(db, groupId, role) {
@@ -205,7 +232,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         joinPolicy: data.joinPolicy,
         isSearchable: data.isSearchable,
         createdAt: FieldValue.serverTimestamp(),
-        chatBackgroundUrl: null,
+        chatBackgroundUrl: data.chatBackgroundUrl || null,
+        welcomeMessage: data.welcomeMessage || null,
         rules: data.rules.trim(),
         activityScore: 0,
         risingEligible: false,
@@ -323,6 +351,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       transaction.update(groupRef, {
         membersCount: (data.membersCount || 0) + 1,
       });
+      if (typeof data.welcomeMessage === "string" && data.welcomeMessage.trim()) {
+        writeWelcomeSystemMessage(
+          transaction,
+          groupRef,
+          data.welcomeMessage.trim(),
+          FieldValue,
+        );
+      }
       if (inviteId) {
         transaction.update(groupRef.collection("invites").doc(inviteId), {
           usedAt: FieldValue.serverTimestamp(),
@@ -512,6 +548,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         }),
       );
       transaction.update(groupRef, { membersCount: (data.membersCount || 0) + 1 });
+      if (typeof data.welcomeMessage === "string" && data.welcomeMessage.trim()) {
+        writeWelcomeSystemMessage(
+          transaction,
+          groupRef,
+          data.welcomeMessage.trim(),
+          FieldValue,
+        );
+      }
       transaction.update(requestRef, {
         status: "accepted",
         decidedAt: FieldValue.serverTimestamp(),

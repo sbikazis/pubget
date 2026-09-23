@@ -22,6 +22,7 @@ final class Group {
     required this.chatBackgroundUrl,
     required this.rules,
     required this.activityScore,
+    this.welcomeMessage,
     this.risingScore = 0,
     this.risingEligible = false,
     this.isPromoted = false,
@@ -47,6 +48,7 @@ final class Group {
   final String? chatBackgroundUrl;
   final String rules;
   final num activityScore;
+  final String? welcomeMessage;
   final num risingScore;
   final bool risingEligible;
   final bool isPromoted;
@@ -120,6 +122,7 @@ final class Group {
       chatBackgroundUrl: chatBackgroundUrl,
       rules: rules ?? this.rules,
       activityScore: activityScore,
+      welcomeMessage: welcomeMessage,
       risingScore: risingScore,
       risingEligible: risingEligible ?? this.risingEligible,
       isPromoted: isPromoted ?? this.isPromoted,
@@ -159,6 +162,7 @@ final class Group {
       chatBackgroundUrl: map['chatBackgroundUrl'] as String?,
       rules: map['rules'] as String? ?? '',
       activityScore: (map['activityScore'] as num?) ?? 0,
+      welcomeMessage: map['welcomeMessage'] as String?,
       risingScore: (map['risingScore'] as num?) ?? 0,
       risingEligible: map['risingEligible'] == true,
       isPromoted: map['isPromoted'] == true,
