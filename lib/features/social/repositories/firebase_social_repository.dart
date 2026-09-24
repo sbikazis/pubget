@@ -67,6 +67,10 @@ final class FirebaseSocialRepository implements SocialRepository {
       _call('sendFriendRequest', <String, dynamic>{'toUserId': toUserId});
 
   @override
+  Future<Result<void>> cancelFriendRequest({required String otherUserId}) =>
+      _call('cancelFriendRequest', <String, dynamic>{'otherUserId': otherUserId});
+
+  @override
   Future<Result<void>> respondToFriendRequest({
     required String otherUserId,
     required String response,

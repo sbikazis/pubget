@@ -728,6 +728,10 @@ exports.sendFriendRequest = onCall(
   { region: "us-central1" },
   socialGraph.sendFriendRequest,
 );
+exports.cancelFriendRequest = onCall(
+  { region: "us-central1" },
+  socialGraph.cancelFriendRequest,
+);
 exports.respondToFriendRequest = onCall(
   { region: "us-central1" },
   socialGraph.respondToFriendRequest,

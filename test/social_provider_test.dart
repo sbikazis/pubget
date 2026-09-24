@@ -81,7 +81,7 @@ void main() {
     expect(provider.outgoingRequests.single.otherUserId('user-1'), 'user-3');
   });
 
-  test('Fan or Friend can start a private chat, blocked users cannot', () {
+  test('Friend or mutual fans can start a private chat, one-way fans cannot', () {
     const friends = SocialSnapshot(
       friendships: <Friendship>[
         Friendship(
@@ -92,9 +92,17 @@ void main() {
         ),
       ],
     );
-    const fans = SocialSnapshot(
+    const mutualFans = SocialSnapshot(
       givenRespect: <RespectRelation>[
         RespectRelation(fromUserId: 'user-1', toUserId: 'user-3', value: 5),
+      ],
+      receivedRespect: <RespectRelation>[
+        RespectRelation(fromUserId: 'user-3', toUserId: 'user-1', value: 6),
+      ],
+    );
+    const oneWayFan = SocialSnapshot(
+      givenRespect: <RespectRelation>[
+        RespectRelation(fromUserId: 'user-1', toUserId: 'user-7', value: 7),
       ],
     );
     const blocked = SocialSnapshot(
@@ -110,11 +118,39 @@ void main() {
       givenRespect: <RespectRelation>[
         RespectRelation(fromUserId: 'user-1', toUserId: 'user-4', value: 7),
       ],
+      receivedRespect: <RespectRelation>[
+        RespectRelation(fromUserId: 'user-4', toUserId: 'user-1', value: 7),
+      ],
     );
 
     expect(friends.canStartPrivateChat('user-1', 'user-2'), isTrue);
-    expect(fans.canStartPrivateChat('user-1', 'user-3'), isTrue);
+    expect(mutualFans.canStartPrivateChat('user-1', 'user-3'), isTrue);
+    expect(oneWayFan.canStartPrivateChat('user-1', 'user-7'), isFalse);
     expect(blocked.canStartPrivateChat('user-1', 'user-4'), isFalse);
     expect(const SocialSnapshot().canStartPrivateChat('user-1', 'user-9'), isFalse);
+  });
+
+  test('cancelFriendRequest removes the outgoing pending request', () async {
+    final repository = FakeSocialRepository(
+      snapshot: const SocialSnapshot(
+        friendships: <Friendship>[
+          Friendship(
+            userA: 'user-1',
+            userB: 'user-3',
+            status: FriendshipStatus.pending,
+            requestedBy: 'user-1',
+          ),
+        ],
+      ),
+    );
+    final provider = SocialProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.load('user-1');
+
+    expect(provider.outgoingRequests, hasLength(1));
+    final result = await provider.cancelFriendRequest('user-3');
+    expect(result.isSuccess, isTrue);
+    expect(repository.cancelFriendRequestCalls, 1);
+    expect(provider.outgoingRequests, isEmpty);
   });
 }

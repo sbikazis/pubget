@@ -507,6 +507,9 @@ final class AppStrings {
   String get fans => pick('Fans', 'المعجبون');
   String get friends => pick('Friends', 'الأصدقاء');
   String get friendRequests => pick('Friend requests', 'طلبات الصداقة');
+  String get friendRequest => pick('Friend request', 'طلب صداقة');
+  String get couldNotLoadFriendRequests =>
+      pick('Friend requests could not load.', 'تعذّر تحميل طلبات الصداقة.');
   String get achievements => pick('Achievements', 'الإنجازات');
   String get store => pick('Store', 'المتجر');
   String get profileUnavailable =>
@@ -941,6 +944,18 @@ final class AppStrings {
   String get cancelRequest => pick('Cancel request', 'إلغاء الطلب');
   String get acceptRequest => pick('Accept request', 'قبول الطلب');
   String get unblock => pick('Unblock', 'إلغاء الحظر');
+  String get incomingRequests =>
+      pick('Incoming requests', 'الطلبات الواردة');
+  String get outgoingRequests =>
+      pick('Outgoing requests', 'الطلبات المرسلة');
+  String get requestSent =>
+      pick('Request sent', 'تم إرسال الطلب');
+  String get rejectRequest =>
+      pick('Reject request', 'رفض الطلب');
+  String get noFriendRequests =>
+      pick('No friend requests', 'لا توجد طلبات صداقة');
+  String get newRequestsAppearHere =>
+      pick('New friend requests will appear here.', 'ستظهر طلبات الصداقة هنا.');
   String get myEvents => pick('My Events', 'فعالياتي');
 
   // ---- Phase 02: edit profile (spec §18.2) ----

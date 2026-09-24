@@ -11,6 +11,8 @@ abstract interface class SocialRepository {
 
   Future<Result<void>> sendFriendRequest({required String toUserId});
 
+  Future<Result<void>> cancelFriendRequest({required String otherUserId});
+
   Future<Result<void>> respondToFriendRequest({
     required String otherUserId,
     required String response,

@@ -1287,10 +1287,7 @@ class _FriendAction extends StatelessWidget {
       final iRequested = relation!.requestedBy == me;
       return PubgetSecondaryButton(
         onPressed: iRequested
-            ? () => social.respondToFriendRequest(
-                otherUserId: profileId,
-                accept: false,
-              )
+            ? () => social.cancelFriendRequest(profileId)
             : () => social.respondToFriendRequest(
                 otherUserId: profileId,
                 accept: true,

@@ -110,7 +110,52 @@ void main() {
     expect(find.byTooltip('Reject request'), findsOneWidget);
   });
 
-  testWidgets('start chat is offered only when Fan or Friend exists', (
+  testWidgets(
+    'friend requests page lists outgoing requests with a cancel action',
+    (tester) async {
+      final authRepository = FakeAuthRepository(
+        user: const AuthUser(id: 'user-1', email: 'fan@example.com'),
+      );
+      final auth = AuthProvider(repository: authRepository);
+      await auth.initialize();
+      addTearDown(authRepository.close);
+      addTearDown(auth.dispose);
+      final socialRepository = FakeSocialRepository(
+        snapshot: const SocialSnapshot(
+          friendships: <Friendship>[
+            Friendship(
+              userA: 'user-1',
+              userB: 'user-3',
+              status: FriendshipStatus.pending,
+              requestedBy: 'user-1',
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+            ChangeNotifierProvider<SocialProvider>(
+              create: (_) => SocialProvider(repository: socialRepository),
+            ),
+          ],
+          child: const MaterialApp(home: FriendRequestsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Outgoing requests'), findsOneWidget);
+      expect(find.text('Request sent'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cancel-request')));
+      await tester.pumpAndSettle();
+      expect(socialRepository.cancelFriendRequestCalls, 1);
+      expect(socialRepository.snapshot.outgoingFor('user-1'), isEmpty);
+    },
+  );
+
+  testWidgets('start chat is offered only when Friend or mutual Fan exists', (
     tester,
   ) async {
     final authRepository = FakeAuthRepository(

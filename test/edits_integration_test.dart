@@ -114,6 +114,12 @@ final class _FailingRespectRepo implements SocialRepository {
       const Success(null);
 
   @override
+  Future<Result<void>> cancelFriendRequest({
+    required String otherUserId,
+  }) async =>
+      const Success(null);
+
+  @override
   Future<Result<void>> respondToFriendRequest({
     required String otherUserId,
     required String response,
