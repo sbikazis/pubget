@@ -97,6 +97,7 @@ final class FakeSocialRepository implements SocialRepository {
   Failure? failure;
   int respectCalls = 0;
   int friendRequestCalls = 0;
+  int cancelFriendRequestCalls = 0;
   int blockCalls = 0;
 
   Result<T> _result<T>(T value) =>
@@ -118,6 +119,25 @@ final class FakeSocialRepository implements SocialRepository {
   @override
   Future<Result<void>> sendFriendRequest({required String toUserId}) async {
     friendRequestCalls++;
+    return _result<void>(null);
+  }
+
+  @override
+  Future<Result<void>> cancelFriendRequest({
+    required String otherUserId,
+  }) async {
+    cancelFriendRequestCalls++;
+    snapshot = SocialSnapshot(
+      friendships: <Friendship>[
+        ...snapshot.friendships.where(
+          (item) =>
+              !((item.userA == 'user-1' && item.userB == otherUserId) ||
+                  (item.userA == otherUserId && item.userB == 'user-1')),
+        ),
+      ],
+      givenRespect: snapshot.givenRespect,
+      receivedRespect: snapshot.receivedRespect,
+    );
     return _result<void>(null);
   }
 

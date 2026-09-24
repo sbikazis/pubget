@@ -39,6 +39,9 @@ final class Friendship {
 
   List<String> get userIds => <String>[userA, userB];
 
+  /// Stable identity for the pair, independent of parameter order.
+  String get userIdKey => '${userA}_$userB';
+
   String otherUserId(String userId) => userId == userA ? userB : userA;
 
   factory Friendship.fromMap(Map<String, dynamic> map) {
@@ -73,6 +76,9 @@ final class SocialSnapshot {
 
   static const int fanThreshold = Limits.fanThreshold;
 
+  /// Private chat requires a mutual fan relationship (Master Spec §10.1): I
+  /// gave the other user 5+ Respect AND they gave me 5+. An accepted Friend
+  /// is itself a confirmed mutual relationship and qualifies.
   bool canStartPrivateChat(String viewerId, String otherUserId) {
     if (viewerId.isEmpty || viewerId == otherUserId) return false;
     final relation = relationWith(otherUserId);
@@ -84,7 +90,7 @@ final class SocialSnapshot {
     final received = receivedRespect.any(
       (item) => item.fromUserId == otherUserId && item.value >= fanThreshold,
     );
-    return given || received;
+    return given && received;
   }
 
   List<Friendship> pendingFor(String userId) => friendships

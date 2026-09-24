@@ -23,6 +23,11 @@ final class UnavailableSocialRepository implements SocialRepository {
       FailureResult<void>(UnknownError(message));
 
   @override
+  Future<Result<void>> cancelFriendRequest({
+    required String otherUserId,
+  }) async => FailureResult<void>(UnknownError(message));
+
+  @override
   Future<Result<void>> respondToFriendRequest({
     required String otherUserId,
     required String response,

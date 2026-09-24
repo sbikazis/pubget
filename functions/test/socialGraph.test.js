@@ -25,6 +25,79 @@ class TestHttpsError extends Error {
   }
 }
 
+function clone(value) {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(clone);
+  const next = {};
+  for (const [key, item] of Object.entries(value)) next[key] = clone(item);
+  return next;
+}
+
+function createFakeDb(seed = {}) {
+  const store = new Map(Object.entries(clone(seed)));
+  const collectionFor = (base) => ({
+    doc(id) {
+      const path = `${base}/${id}`;
+      return {
+        path,
+        id,
+        collection(name) {
+          return collectionFor(`${path}/${name}`);
+        },
+      };
+    },
+  });
+  return {
+    store,
+    collection(name) {
+      return collectionFor(name);
+    },
+    async runTransaction(callback) {
+      const transaction = {
+        async get(ref) {
+          const data = store.get(ref.path);
+          return {
+            exists: data !== undefined,
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
+        },
+        create(ref, data) {
+          if (store.has(ref.path)) {
+            const error = new Error("already-exists");
+            error.code = "already-exists";
+            throw error;
+          }
+          store.set(ref.path, clone(data));
+        },
+        set(ref, data) {
+          store.set(ref.path, clone(data));
+        },
+        update(ref, data) {
+          if (!store.has(ref.path)) throw new Error("not-found");
+          store.set(ref.path, { ...store.get(ref.path), ...clone(data) });
+        },
+        delete(ref) {
+          store.delete(ref.path);
+        },
+      };
+      return callback(transaction);
+    },
+  };
+}
+
+function pendingFriendshipSeed({ requestedBy = "alice" } = {}) {
+  const pb = "friendships/" + pairId("alice", "bob");
+  return createFakeDb({
+    [pb]: {
+      userA: "alice",
+      userB: "bob",
+      userIds: ["alice", "bob"],
+      status: "pending",
+      requestedBy,
+    },
+  });
+}
+
 test("relationship IDs are deterministic", () => {
   assert.equal(pairId("bob", "alice"), "5:alice3:bob");
   assert.equal(pairId("alice", "bob"), "5:alice3:bob");
@@ -117,4 +190,77 @@ test("callables reject unauthenticated, self, and out-of-range respect", async (
     (error) => error.code === "invalid-argument",
   );
   assert.equal(validUid("bad/id"), false);
+});
+
+test("cancelFriendRequest deletes a pending request made by the caller", async () => {
+  const db = pendingFriendshipSeed();
+  const handlers = createSocialGraph({
+    db,
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+  });
+  const result = await handlers.cancelFriendRequest({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(db.store.has("friendships/" + pairId("alice", "bob")), false);
+});
+
+test("cancelFriendRequest rejects unauthenticated, self, and non-requester", async () => {
+  const handlers = createSocialGraph({
+    db: {},
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    handlers.cancelFriendRequest({ data: { otherUserId: "bob" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  await assert.rejects(
+    handlers.giveRespect({
+      auth: { uid: "alice" },
+      data: { otherUserId: "alice" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  const db = pendingFriendshipSeed();
+  const requesterOnly = createSocialGraph({
+    db,
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    requesterOnly.cancelFriendRequest({
+      auth: { uid: "bob" },
+      data: { otherUserId: "alice" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  assert.equal(db.store.has("friendships/" + pairId("alice", "bob")), true);
+});
+
+test("cancelFriendRequest rejects requests that are not pending", async () => {
+  const db = createFakeDb({
+    ["friendships/" + pairId("alice", "bob")]: {
+      userA: "alice",
+      userB: "bob",
+      userIds: ["alice", "bob"],
+      status: "accepted",
+      requestedBy: "alice",
+    },
+  });
+  const handlers = createSocialGraph({
+    db,
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    handlers.cancelFriendRequest({
+      auth: { uid: "alice" },
+      data: { otherUserId: "bob" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  assert.equal(db.store.has("friendships/" + pairId("alice", "bob")), true);
 });

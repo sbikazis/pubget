@@ -9,8 +9,10 @@
 // Reused from PROMPT 05 (socialGraph.js): pairId / respectId length-prefixed
 // identifiers, legacy `_` fallback with participant matching, FAN_THRESHOLD,
 // block status on friendships.
-// New here: Fan-or-Friend gate on start, whoCanMessageMe (related|friends),
-// Block re-checked on every send, deterministic chatId = pairId(uid, other).
+// New here: Mutual-Fan-or-Friend gate on start (Master Spec §10.1: private chat
+// requires a mutual fan relationship — I gave them 5+ AND they gave me 5+),
+// whoCanMessageMe (related|friends), Block re-checked on every send,
+// deterministic chatId = pairId(uid, other).
 
 const {
   FAN_THRESHOLD,
@@ -141,12 +143,12 @@ async function respectValue(transaction, db, fromUserId, toUserId) {
   return 0;
 }
 
-async function isFanEitherDirection(transaction, db, uid, otherUserId) {
+async function isFanMutual(transaction, db, uid, otherUserId) {
   const [forward, reverse] = await Promise.all([
     respectValue(transaction, db, uid, otherUserId),
     respectValue(transaction, db, otherUserId, uid),
   ]);
-  return forward >= FAN_THRESHOLD || reverse >= FAN_THRESHOLD;
+  return forward >= FAN_THRESHOLD && reverse >= FAN_THRESHOLD;
 }
 
 async function relationshipState(transaction, db, uid, otherUserId) {
@@ -156,7 +158,7 @@ async function relationshipState(transaction, db, uid, otherUserId) {
     : null;
   const blocked = status === "blocked";
   const friend = status === "accepted";
-  const fan = await isFanEitherDirection(transaction, db, uid, otherUserId);
+  const fan = await isFanMutual(transaction, db, uid, otherUserId);
   return { friendship, blocked, friend, fan };
 }
 
@@ -189,7 +191,7 @@ function assertCanStartChat(state, recipient, HttpsError) {
   if (!state.friend && !state.fan) {
     throw new HttpsError(
       "permission-denied",
-      "A Fan or Friend relationship is required to start a private chat.",
+      "A Mutual Fan or Friend relationship is required to start a private chat.",
     );
   }
   assertMessagingPolicy(state, recipient, HttpsError);

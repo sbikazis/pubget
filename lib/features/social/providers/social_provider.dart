@@ -150,6 +150,10 @@ final class SocialProvider extends ChangeNotifier {
     return _runAction(() => _repository.sendFriendRequest(toUserId: toUserId));
   }
 
+  /// Cancels an outgoing pending request (OUTGOING_REQUEST → NONE).
+  Future<Result<void>> cancelFriendRequest(String otherUserId) =>
+      _runAction(() => _repository.cancelFriendRequest(otherUserId: otherUserId));
+
   Future<Result<void>> respondToFriendRequest({
     required String otherUserId,
     required bool accept,
