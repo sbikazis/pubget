@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   MAX_DURATION_MS,
+  MIN_DURATION_MS,
   TEMPLATES,
   applyTally,
   assertDuration,
@@ -205,29 +206,57 @@ test("poll configuration requires two to ten options", () => {
   assert.equal(ok.options.length, 2);
 });
 
-test("quiz responses must answer every question", () => {
+test("quiz responses accept partial answers (missing counts as wrong) and validate chosen options", () => {
   const config = validateConfiguration("quiz", {
     questions: [{
       prompt: "Who wins?",
-      options: ["A", "B"],
+      options: ["A", "B", "C"],
       correctIndex: 0,
     }],
   });
-  assert.equal(validateResponse("quiz", config, { answers: {} }), null);
-  const valid = validateResponse("quiz", config, { answers: { "q-1": "opt-1" } });
-  assert.equal(valid.answers["q-1"], "opt-1");
+  const empty = validateResponse("quiz", config, { answers: {} });
+  assert.deepEqual(empty.answers, {});
+  const partial = validateResponse("quiz", config, { answers: { "q-1": "opt-2" } });
+  assert.equal(partial.answers["q-1"], "opt-2");
+  assert.equal(
+    validateResponse("quiz", config, { answers: { "q-1": "not-an-option" } }),
+    null,
+  );
 });
 
-test("duration rejects inverted and over-long windows", () => {
+test("quiz questions accept bounded per-question seconds timers", () => {
+  const config = validateConfiguration("quiz", {
+    questions: [
+      { prompt: "Q1", options: ["A", "B"], correctIndex: 0, seconds: 30 },
+      { prompt: "Q2", options: ["A", "B", "C"], correctIndex: 1, seconds: 0 },
+    ],
+  });
+  assert.equal(config.questions[0].seconds, 30);
+  assert.equal(config.questions[1].seconds, 0);
+  const bad = validateConfiguration("quiz", {
+    questions: [
+      { prompt: "Q1", options: ["A", "B"], correctIndex: 0, seconds: 4 },
+    ],
+  });
+  assert.equal(bad, null);
+});
+
+test("duration rejects inverted, too-short, and over-long windows", () => {
   const start = new Date("2026-09-01T00:00:00Z");
   assert.throws(
     () => assertDuration(start, new Date("2026-08-31T00:00:00Z"), TestHttpsError),
     (error) => error.code === "invalid-argument",
   );
   assert.throws(
+    () => assertDuration(start, new Date(start.getTime() + MIN_DURATION_MS - 1), TestHttpsError),
+    (error) => error.code === "invalid-argument",
+  );
+  assert.throws(
     () => assertDuration(start, new Date(start.getTime() + MAX_DURATION_MS + 1), TestHttpsError),
     (error) => error.code === "invalid-argument",
   );
+  const min = assertDuration(start, new Date(start.getTime() + MIN_DURATION_MS), TestHttpsError);
+  assert.equal(min.end.getTime() - min.start.getTime(), MIN_DURATION_MS);
   const exact = assertDuration(start, new Date(start.getTime() + MAX_DURATION_MS), TestHttpsError);
   assert.equal(exact.end.getTime() - exact.start.getTime(), MAX_DURATION_MS);
 });
@@ -250,6 +279,42 @@ test("poll results are deterministic from tallies", () => {
   const result = calculateResult({ type: "poll", configuration: config, tally });
   assert.deepEqual(result.winnerIds, ["opt-1"]);
   assert.equal(result.votes["opt-1"], 2);
+});
+
+test("ranking results use aggregate score with configuration-order ties", () => {
+  const config = validateConfiguration("ranking", {
+    question: "Rank",
+    options: ["A", "B", "C"],
+  });
+  const result = calculateResult({
+    type: "ranking",
+    configuration: config,
+    tally: {
+      submissions: 4,
+      scores: { "opt-3": 5, "opt-1": 8, "opt-2": 8 },
+    },
+  });
+  assert.deepEqual(result.orderedOptionIds, ["opt-1", "opt-2", "opt-3"]);
+  assert.deepEqual(result.winnerIds, ["opt-1", "opt-2"]);
+});
+
+test("ranking response requires every option exactly once", () => {
+  const config = validateConfiguration("ranking", {
+    question: "Rank",
+    options: ["A", "B", "C"],
+  });
+  assert.deepEqual(
+    validateResponse("ranking", config, { rankedIds: ["opt-2", "opt-1", "opt-3"] }),
+    { rankedIds: ["opt-2", "opt-1", "opt-3"] },
+  );
+  assert.equal(
+    validateResponse("ranking", config, { rankedIds: ["opt-1", "opt-1", "opt-3"] }),
+    null,
+  );
+  assert.equal(
+    validateResponse("ranking", config, { rankedIds: ["opt-1", "opt-2"] }),
+    null,
+  );
 });
 
 test("event templates map to real event types", () => {
@@ -808,6 +873,48 @@ test("quiz configuration accepts multiple ordered questions", () => {
   assert.equal(config.allowUpdate, false);
 });
 
+test("quiz tracks a per-user scoreboard and ranks in the result", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: { "groups/g1/members/charlie": { role: "member", userId: "charlie" } },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "quiz",
+      title: "Knowledge check",
+      groupId: "g1",
+      questions: [
+        { prompt: "First", options: ["A", "B"], correctIndex: 0 },
+        { prompt: "Second", options: ["C", "D"], correctIndex: 1 },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { answers: { "q-1": "opt-1", "q-2": "opt-2" } } },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "charlie" },
+    data: { eventId: draft.eventId, responseData: { answers: { "q-1": "opt-2", "q-2": "opt-1" } } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.tally.scoreboard.bob, 2);
+  assert.equal(stored.tally.scoreboard.charlie, 0);
+  const ended = await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(ended.result.kind, "quiz");
+  assert.deepEqual(ended.result.leaderboard, { bob: 2, charlie: 0 });
+  assert.deepEqual(ended.result.correctCounts, { "q-1": 1, "q-2": 1 });
+});
+
 test("character comparison requires catalog IDs and rejects duplicates", () => {
   const valid = validateConfiguration("characterComparison", {
     criterion: "Who would win?",
@@ -1061,7 +1168,7 @@ test("resolveEvent locks a prediction with the creator's winner option", async (
   const stored = db.store.get(`events/${draft.eventId}`);
   assert.equal(stored.status, "ended");
   assert.equal(stored.result.winnerOptionId, "opt-2");
-  assert.deepEqual(stored.result.winnerIds, ["opt-2"]);
+  assert.deepEqual(stored.result.winnerIds, ["bob"]);
   assert.ok(stored.resultLockedAt);
   assert.equal(stored.resolvedBy, "alice");
   const card = recorder.sent.find((item) => item.type === "event_result_available");

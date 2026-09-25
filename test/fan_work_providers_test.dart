@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
@@ -8,31 +10,40 @@ import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart'
 import 'package:pubget/features/fan_works/repositories/memory_fan_work_draft_store.dart';
 
 void main() {
-  test('feed pagination appends, skips duplicates, and retries a failed page', () async {
-    final repository = _FakeFanWorkRepository()
-      ..pages = <FanWorkListPage>[
-        FanWorkListPage(items: <FanWork>[_work('a'), _work('b')], hasMore: true),
-        FanWorkListPage(items: <FanWork>[_work('b'), _work('c')], hasMore: false),
+  test(
+    'feed pagination appends, skips duplicates, and retries a failed page',
+    () async {
+      final repository = _FakeFanWorkRepository()
+        ..pages = <FanWorkListPage>[
+          FanWorkListPage(
+            items: <FanWork>[_work('a'), _work('b')],
+            hasMore: true,
+          ),
+          FanWorkListPage(
+            items: <FanWork>[_work('b'), _work('c')],
+            hasMore: false,
+          ),
+        ];
+      final feed = FanWorkFeedProvider(repository: repository);
+      addTearDown(feed.dispose);
+
+      await feed.load();
+      expect(feed.items.map((work) => work.id), <String>['a', 'b']);
+      expect(feed.hasMore, isTrue);
+
+      await feed.loadMore();
+      expect(feed.items.map((work) => work.id), <String>['a', 'b', 'c']);
+      expect(feed.hasMore, isFalse);
+
+      repository.feedFailure = const NetworkError('offline');
+      repository.pages = <FanWorkListPage>[
+        FanWorkListPage(items: const <FanWork>[], hasMore: false),
       ];
-    final feed = FanWorkFeedProvider(repository: repository);
-    addTearDown(feed.dispose);
-
-    await feed.load();
-    expect(feed.items.map((work) => work.id), <String>['a', 'b']);
-    expect(feed.hasMore, isTrue);
-
-    await feed.loadMore();
-    expect(feed.items.map((work) => work.id), <String>['a', 'b', 'c']);
-    expect(feed.hasMore, isFalse);
-
-    repository.feedFailure = const NetworkError('offline');
-    repository.pages = <FanWorkListPage>[
-      FanWorkListPage(items: const <FanWork>[], hasMore: false),
-    ];
-    await feed.load();
-    expect(feed.offlineCached, isTrue);
-    expect(feed.items, isNotEmpty);
-  });
+      await feed.load();
+      expect(feed.offlineCached, isTrue);
+      expect(feed.items, isNotEmpty);
+    },
+  );
 
   test('empty page marks the end of the feed', () async {
     final repository = _FakeFanWorkRepository()
@@ -99,6 +110,77 @@ void main() {
     expect(editor.draftSavedLocally, isTrue);
   });
 
+  test('upload progress can be canceled and retried', () async {
+    final repository = _FakeFanWorkRepository()
+      ..uploadCompleter = Completer<Result<void>>();
+    final editor = FanWorkEditorProvider(repository: repository);
+    addTearDown(editor.dispose);
+    await editor.start();
+
+    final upload = editor.uploadImage(
+      bytes: <int>[1, 2, 3],
+      contentType: 'image/jpeg',
+      role: FanWorkMediaRole.image,
+    );
+    for (
+      var attempt = 0;
+      attempt < 10 && repository.uploadAttempts == 0;
+      attempt += 1
+    ) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(editor.uploading, isTrue);
+    expect(editor.uploadCancellable, isTrue);
+    expect(editor.uploadProgress, closeTo(0.35, 0.001));
+    await editor.cancelUpload();
+    final canceled = await upload;
+
+    expect(canceled.failureOrNull, isA<CancelledError>());
+    expect(repository.cancelUploadCalls, 1);
+    expect(editor.uploading, isFalse);
+    expect(editor.uploadCanceled, isTrue);
+    expect(editor.canRetryUpload, isTrue);
+
+    repository.uploadFailure = null;
+    final retried = await editor.retryUpload();
+
+    expect(retried.isSuccess, isTrue);
+    expect(repository.uploadAttempts, 2);
+    expect(editor.uploadProgress, 1);
+    expect(editor.uploadFailed, isFalse);
+    expect(editor.draft.imageIds, <String>['m1']);
+  });
+
+  test(
+    'upload retry reuses transferred bytes after confirmation failure',
+    () async {
+      final repository = _FakeFanWorkRepository()
+        ..confirmMediaFailure = const NetworkError('offline');
+      final editor = FanWorkEditorProvider(repository: repository);
+      addTearDown(editor.dispose);
+      await editor.start();
+
+      final first = await editor.uploadImage(
+        bytes: <int>[1, 2, 3],
+        contentType: 'image/jpeg',
+        role: FanWorkMediaRole.image,
+      );
+
+      expect(first.failureOrNull, isA<NetworkError>());
+      expect(repository.uploadAttempts, 1);
+      expect(editor.uploadProgress, 1);
+      expect(editor.canRetryUpload, isTrue);
+
+      repository.confirmMediaFailure = null;
+      final retried = await editor.retryUpload();
+
+      expect(retried.isSuccess, isTrue);
+      expect(repository.uploadAttempts, 1);
+      expect(editor.draft.imageIds, <String>['m1']);
+    },
+  );
+
   test('details reports loading, missing, and offline states', () async {
     final repository = _FakeFanWorkRepository();
     final details = FanWorkDetailsProvider(repository: repository);
@@ -108,9 +190,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(details.state, LoadingState.empty);
 
-    repository.watchWorkResult = FailureResult(
-      const NetworkError('offline'),
-    );
+    repository.watchWorkResult = FailureResult(const NetworkError('offline'));
     await details.open(workId: 'w1', userId: 'alice');
     await Future<void>.delayed(Duration.zero);
     expect(details.state, LoadingState.offline);
@@ -126,7 +206,9 @@ void main() {
     addTearDown(details.dispose);
 
     await details.open(workId: 'w1', userId: 'alice');
-    expect(details.comments.map((comment) => comment.text), <String>['Loved this']);
+    expect(details.comments.map((comment) => comment.text), <String>[
+      'Loved this',
+    ]);
 
     await details.addComment(workId: 'w1', text: 'Thanks @bob');
     expect(repository.addedComments, contains('Thanks @bob'));
@@ -181,11 +263,17 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Failure? nextFailure;
   Failure? saveFailure;
   Failure? publishFailure;
+  Failure? uploadFailure;
+  Failure? confirmMediaFailure;
+  Completer<Result<void>>? uploadCompleter;
+  int uploadAttempts = 0;
+  int cancelUploadCalls = 0;
   Result<FanWork>? watchWorkResult;
   final Map<String, FanWorkDraft> drafts = <String, FanWorkDraft>{};
 
   @override
-  Future<Result<void>> archive(String workId) async => const Success<void>(null);
+  Future<Result<void>> archive(String workId) async =>
+      const Success<void>(null);
 
   @override
   Future<Result<void>> bookmark({
@@ -196,7 +284,10 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   int? storedRating;
 
   @override
-  Future<Result<void>> rate({required String workId, required int rating}) async {
+  Future<Result<void>> rate({
+    required String workId,
+    required int rating,
+  }) async {
     storedRating = rating;
     return const Success<void>(null);
   }
@@ -208,13 +299,28 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   }) async => Success(storedRating);
 
   @override
+  Future<Result<void>> cancelMediaUpload() async {
+    cancelUploadCalls += 1;
+    final pending = uploadCompleter;
+    uploadCompleter = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(const FailureResult(CancelledError()));
+    }
+    return const Success<void>(null);
+  }
+
+  @override
   Future<Result<void>> confirmMedia({
     required String workId,
     required String mediaId,
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
-  }) async => const Success<void>(null);
+  }) async {
+    final failure = confirmMediaFailure;
+    if (failure != null) return FailureResult(failure);
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> deleteDraft(String workId) async =>
@@ -225,7 +331,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String creatorId,
     FanWork? after,
     int limit = 20,
-  }) async => const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
+  }) async =>
+      const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
 
   @override
   Future<Result<List<FanWork>>> getMyDrafts({required String userId}) async =>
@@ -245,9 +352,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
       return FailureResult(nextFailure!);
     }
     if (_pageIndex >= pages.length) {
-      return const Success(
-        FanWorkListPage(items: <FanWork>[], hasMore: false),
-      );
+      return const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
     }
     return Success(pages[_pageIndex++]);
   }
@@ -395,7 +500,17 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
-  }) async => const Success<void>(null);
+    FanWorkUploadProgress? onProgress,
+  }) async {
+    uploadAttempts += 1;
+    onProgress?.call(0.35);
+    final pending = uploadCompleter;
+    if (pending != null) return pending.future;
+    final failure = uploadFailure;
+    if (failure != null) return FailureResult(failure);
+    onProgress?.call(1);
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
@@ -411,7 +526,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
           totalLikes: 0,
           totalBookmarks: 0,
           totalComments: 0,
-          totalViews: 0,
+          totalRatings: 0,
           averageRating: 0.0,
           worksByType: const <String, int>{},
           topWorks: const <FanWorkPreview>[],

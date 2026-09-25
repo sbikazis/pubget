@@ -484,10 +484,35 @@ final class AppStrings {
     'imageComparison' => pick('Images', 'صور'),
     'characterComparison' => pick('Characters', 'شخصيات'),
     'animeComparison' => pick('Anime', 'أنمي'),
+    'comparison' => pick('Comparison', 'مقارنة'),
+    'question' => pick('Question', 'سؤال'),
     'openDiscussion' => pick('Talk', 'نقاش'),
     'challenge' => pick('Challenge', 'تحدٍ'),
     _ => type,
   };
+
+  String get eventRankOptionsHint => pick(
+    'Drag options into your preferred order.',
+    'اسحب الخيارات إلى الترتيب الذي تفضّله.',
+  );
+  String get eventResetRanking => pick('Reset ranking', 'إعادة ضبط الترتيب');
+  String get eventQuestionTimer =>
+      pick('Time limit per question', 'المدة الزمنية لكل سؤال');
+  String get eventNoTimeLimit => pick('No time limit', 'بدون وقت');
+  String eventQuestionSeconds(int seconds) =>
+      pick('$seconds seconds', '$seconds ثانية');
+  String eventQuestionMinutes(int minutes) =>
+      pick('$minutes minutes', '$minutes دقيقة');
+  String get eventTimeUp => pick('Time up', 'انتهى الوقت');
+  String get eventQuestionLocked => pick(
+    'This question was locked and counts as 0 points.',
+    'تم قفل هذا السؤال ويُحتسب بـ 0 نقاط.',
+  );
+  String get eventLeaderboard => pick('Leaderboard', 'لوحة المتصدرين');
+  String get eventPoints => pick('pts', 'نقطة');
+  String get eventResultTitle => pick('Final result', 'النتيجة النهائية');
+  String get eventSubmissions => pick('Submissions', 'الإجابات');
+  String get eventWinner => pick('Winner', 'الفائز');
 
   String pagesCount(int count) => pick('$count pages', '$count صفحة');
   String readMinutes(int minutes) =>
@@ -705,10 +730,10 @@ final class AppStrings {
       pick('This message could not be sent.', 'تعذّر إرسال هذه الرسالة.');
   String get chatSecurityNote => pick(
     'Messages are stored securely with Firebase and protected during transit. '
-    'Pubget and community moderators can access content for safety, moderation, '
-    'and abuse reporting.',
+        'Pubget and community moderators can access content for safety, moderation, '
+        'and abuse reporting.',
     'تُخزَّن الرسائل بأمان عبر Firebase وتُحمى أثناء النقل. يمكن لبُبجت ومشرفي '
-    'المجتمع الاطلاع على المحتوى لأغراض السلامة والرقابة والإبلاغ عن الإساءة.',
+        'المجتمع الاطلاع على المحتوى لأغراض السلامة والرقابة والإبلاغ عن الإساءة.',
   );
   String chatSendFailureLabel(String? code) {
     switch (code) {
@@ -762,7 +787,8 @@ final class AppStrings {
   // ---- Phase 02: username + availability (spec §3.2) ----
   String get username => pick('Username', 'اسم المستخدم');
   String get usernameHint => pick('pubget_fan', 'pubget_fan');
-  String get usernameRequired => pick('Username is required.', 'اسم المستخدم مطلوب.');
+  String get usernameRequired =>
+      pick('Username is required.', 'اسم المستخدم مطلوب.');
   String get usernameHelp => pick(
     'Letters, numbers, dots, underscores and hyphens. 3–20 characters, not starting with a digit.',
     'حروف وأرقام ونقاط وشرطات سفلية وواصلات. 3–20 حروف، ولا يبدأ برقم.',
@@ -803,10 +829,8 @@ final class AppStrings {
   String get onboardingContinue => pick('Continue', 'متابعة');
   String get onboardingContinueSemantic =>
       pick('Continue profile setup', 'متابعة إعداد الملف');
-  String get onboardingSaveAndEnter => pick(
-    'Save profile and continue',
-    'حفظ الملف والمتابعة',
-  );
+  String get onboardingSaveAndEnter =>
+      pick('Save profile and continue', 'حفظ الملف والمتابعة');
   String get onboardingEnterPubget => pick('Enter Pubget', 'ادخل إلى Pubget');
   String get onboardingBack => pick('Back', 'رجوع');
   String get onboardingBackSemantic =>
@@ -815,14 +839,11 @@ final class AppStrings {
   String get onboardingSkipForNow => pick('Skip for now', 'تخطٍّ الآن');
   String get onboardingStepOfLabel => pick('Step', 'الخطوة');
   String get onboardingOfLabel => pick('of', 'من');
-  String get onboardingDisplayName =>
-      pick('Display name', 'الاسم الظاهر');
+  String get onboardingDisplayName => pick('Display name', 'الاسم الظاهر');
   String get onboardingDisplayNameOptional =>
       pick('Display name (optional)', 'الاسم الظاهر (اختياري)');
-  String get onboardingDisplayNameHint => pick(
-    'How you appear to other members.',
-    'كيف تظهر لأعضاء آخرين.',
-  );
+  String get onboardingDisplayNameHint =>
+      pick('How you appear to other members.', 'كيف تظهر لأعضاء آخرين.');
   String get onboardingDisplayNameRequired =>
       pick('Display name is required.', 'الاسم الظاهر مطلوب.');
   String get onboardingPhotoRequired =>
@@ -839,13 +860,15 @@ final class AppStrings {
   String get onboardingSkipBioSemantic => pick('Skip bio', 'تخطي النبذة');
   String get onboardingCountry => pick('Country', 'البلد');
   String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
-  String get onboardingSkipCountrySemantic => pick('Skip country', 'تخطي البلد');
+  String get onboardingSkipCountrySemantic =>
+      pick('Skip country', 'تخطي البلد');
   String get onboardingAge => pick('Age', 'العمر');
   String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
   String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
   String get onboardingInterestsTitle =>
       pick('Anime interests', 'اهتماماتك الأنمي');
-  String get onboardingSkipInterests => pick('Skip interests', 'تخطي الاهتمامات');
+  String get onboardingSkipInterests =>
+      pick('Skip interests', 'تخطي الاهتمامات');
   String get onboardingSkipInterestsSemantic =>
       pick('Skip anime interests', 'تخطي اهتمامات الأنمي');
   String get onboardingOfflineSave =>
@@ -869,7 +892,8 @@ final class AppStrings {
       pick('Profile not saved', 'لم يتم حفظ الملف');
 
   // ---- Phase 02: place holder home shell chrome ----
-  String get homeWelcomeToPubget => pick('Welcome to Pubget', 'مرحباً بك في Pubget');
+  String get homeWelcomeToPubget =>
+      pick('Welcome to Pubget', 'مرحباً بك في Pubget');
   String get homeAccountReady => pick(
     'Your account is ready. The full home experience arrives in a later prompt.',
     'حسابك جاهز. تجربة الرئيسية الكاملة ستصل في تحديث لاحق.',
@@ -878,14 +902,10 @@ final class AppStrings {
   String get homeMyProfileSemantic => pick('Open my profile', 'فتح ملفي');
   String get homeGroups => pick('Groups', 'المجموعات');
   String get homeGroupsSemantic => pick('Open groups', 'فتح المجموعات');
-  String get homeEditOnboarding => pick(
-    'Edit onboarding details',
-    'تعديل بيانات التعارف',
-  );
-  String get homeEditOnboardingSemantic => pick(
-    'Edit onboarding details',
-    'تعديل بيانات التعارف',
-  );
+  String get homeEditOnboarding =>
+      pick('Edit onboarding details', 'تعديل بيانات التعارف');
+  String get homeEditOnboardingSemantic =>
+      pick('Edit onboarding details', 'تعديل بيانات التعارف');
 
   // ---- Phase 02: profile (spec §18) ----
   String get displayName => pick('Display name', 'الاسم الظاهر');
@@ -903,7 +923,8 @@ final class AppStrings {
   String get startChat => pick('Start chat', 'ابدأ المحادثة');
   String get blockUser => pick('Block user', 'حظر المستخدم');
   String get unblockUser => pick('Unblock user', 'إلغاء الحظر');
-  String get blockUserConfirmTitle => pick('Block this user?', 'حظر هذا المستخدم؟');
+  String get blockUserConfirmTitle =>
+      pick('Block this user?', 'حظر هذا المستخدم؟');
   String get blockUserConfirmBody => pick(
     'Blocked users cannot message you or appear in your feed.',
     'لا يمكن للمحظورين مراسلتك أو الظهور في خلاصتك.',
@@ -913,7 +934,8 @@ final class AppStrings {
   String get couldNotLoadEdits =>
       pick('Could not load edits.', 'تعذّر تحميل الإيديتات.');
   String get edits => pick('Edits', 'الإيديتات');
-  String get noEditsYet => pick('No edits published yet', 'لا توجد إيديتات منشورة بعد');
+  String get noEditsYet =>
+      pick('No edits published yet', 'لا توجد إيديتات منشورة بعد');
   String get noEditsToShow => pick('No edits to show', 'لا توجد إيديتات للعرض');
   String get cutSceneCta => pick(
     'Cut a scene and publish your first edit.',
@@ -944,14 +966,10 @@ final class AppStrings {
   String get cancelRequest => pick('Cancel request', 'إلغاء الطلب');
   String get acceptRequest => pick('Accept request', 'قبول الطلب');
   String get unblock => pick('Unblock', 'إلغاء الحظر');
-  String get incomingRequests =>
-      pick('Incoming requests', 'الطلبات الواردة');
-  String get outgoingRequests =>
-      pick('Outgoing requests', 'الطلبات المرسلة');
-  String get requestSent =>
-      pick('Request sent', 'تم إرسال الطلب');
-  String get rejectRequest =>
-      pick('Reject request', 'رفض الطلب');
+  String get incomingRequests => pick('Incoming requests', 'الطلبات الواردة');
+  String get outgoingRequests => pick('Outgoing requests', 'الطلبات المرسلة');
+  String get requestSent => pick('Request sent', 'تم إرسال الطلب');
+  String get rejectRequest => pick('Reject request', 'رفض الطلب');
   String get noFriendRequests =>
       pick('No friend requests', 'لا توجد طلبات صداقة');
   String get newRequestsAppearHere =>
@@ -961,18 +979,14 @@ final class AppStrings {
   // ---- Phase 02: edit profile (spec §18.2) ----
   String get cover => pick('Cover', 'الغلاف');
   String get coverChange => pick('Change cover', 'تغيير الغلاف');
-  String get coverSelected =>
-      pick('New cover selected', 'تم اختيار غلاف جديد');
+  String get coverSelected => pick('New cover selected', 'تم اختيار غلاف جديد');
   String get avatarChange => pick('Change photo', 'تغيير الصورة');
   String get avatarSelected =>
       pick('New photo selected', 'تم اختيار صورة جديدة');
-  String get editBioHint => pick(
-    'Tell the community about you.',
-    'أخبر المجتمع عن نفسك.',
-  );
+  String get editBioHint =>
+      pick('Tell the community about you.', 'أخبر المجتمع عن نفسك.');
   String get ageOptional => pick('Age (optional)', 'العمر (اختياري)');
-  String get countryOptional =>
-      pick('Country (optional)', 'البلد (اختياري)');
+  String get countryOptional => pick('Country (optional)', 'البلد (اختياري)');
   String get favoriteQuoteOptional =>
       pick('Favorite quote (optional)', 'اقتباسك المفضل (اختياري)');
   String get animeTwinOptional =>
@@ -998,8 +1012,10 @@ final class AppStrings {
   String get showActivity => pick('Show activity', 'إظهار النشاط');
   String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
   String get showFans => pick('Show fans', 'إظهار المعجبين');
-  String get showWorks =>
-      pick('Show works (Edits / Fan Works)', 'إظهار الأعمال (الإيديتات / أعمال المعجبين)');
+  String get showWorks => pick(
+    'Show works (Edits / Fan Works)',
+    'إظهار الأعمال (الإيديتات / أعمال المعجبين)',
+  );
   String get showGroups => pick('Show groups', 'إظهار المجموعات');
   String get showRatings => pick('Show ratings', 'إظهار التقييمات');
   String get showAchievements => pick('Show achievements', 'إظهار الإنجازات');
@@ -1013,7 +1029,8 @@ final class AppStrings {
   String get chooseAvatarSemantic =>
       pick('Choose a new profile photo', 'اختر صورة ملف جديدة');
 
-  String userNameWelcome(String name) => pick('Welcome, $name', 'مرحباً، $name');
+  String userNameWelcome(String name) =>
+      pick('Welcome, $name', 'مرحباً، $name');
   String stepOf(int step, int total) =>
       pick('Step $step of $total', 'الخطوة $step من $total');
   String memberSince(String month) => pick('Since $month', 'منذ $month');

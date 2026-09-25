@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -68,11 +70,78 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text(FanWorkTypeCatalog.label(FanWorkType.manga)), findsOneWidget);
-    expect(find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)), findsOneWidget);
-    await tester.tap(find.text(FanWorkTypeCatalog.label(FanWorkType.character)));
+    expect(
+      find.text(FanWorkTypeCatalog.label(FanWorkType.manga)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.text(FanWorkTypeCatalog.label(FanWorkType.character)),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
+  });
+
+  testWidgets('editor shows upload progress and retry after cancellation', (
+    tester,
+  ) async {
+    final repository = _FakeFanWorkRepository()
+      ..uploadCompleter = Completer<Result<void>>();
+    final editor = FanWorkEditorProvider(repository: repository);
+    addTearDown(editor.dispose);
+    await editor.start();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<FanWorkEditorProvider>.value(
+        value: editor,
+        child: const MaterialApp(home: FanWorkEditorPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final upload = editor.uploadImage(
+      bytes: <int>[1, 2, 3],
+      contentType: 'image/jpeg',
+      role: FanWorkMediaRole.image,
+    );
+    for (
+      var attempt = 0;
+      attempt < 10 && repository.uploadAttempts == 0;
+      attempt += 1
+    ) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(find.text('35% uploaded'), findsOneWidget);
+    final progress = tester.widget<LinearProgressIndicator>(
+      find.byKey(const Key('fan-work-upload-progress')),
+    );
+    expect(progress.value, closeTo(0.35, 0.001));
+    expect(find.byKey(const Key('fan-work-upload-cancel')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('fan-work-upload-cancel')));
+    await tester.pump();
+    final canceled = await upload;
+    await tester.pump();
+
+    expect(canceled.failureOrNull, isA<CancelledError>());
+    expect(editor.uploadCanceled, isTrue);
+    expect(find.text(FanWorkStrings.uploadCanceled), findsOneWidget);
+    expect(find.byKey(const Key('fan-work-upload-retry')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('fan-work-upload-retry')));
+    for (var attempt = 0; attempt < 20; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(repository.uploadAttempts, 2);
+    expect(editor.uploadFailed, isFalse);
+    expect(find.byKey(const Key('fan-work-upload-status')), findsNothing);
   });
 
   testWidgets('manga viewer keeps page order and an indicator', (tester) async {
@@ -120,7 +189,9 @@ void main() {
     expect(find.textContaining('village far away'), findsOneWidget);
   });
 
-  testWidgets('details shows comments and accepts a new comment', (tester) async {
+  testWidgets('details shows comments and accepts a new comment', (
+    tester,
+  ) async {
     final auth = await _auth();
     final repository = _FakeFanWorkRepository()
       ..watchWorkResult = Success(_story())
@@ -178,11 +249,7 @@ FanWork _manga() => FanWork(
         index: 0,
         caption: 'Splash',
       ),
-      FanWorkPage(
-        mediaId: 'p2',
-        path: 'https://example.test/2.jpg',
-        index: 1,
-      ),
+      FanWorkPage(mediaId: 'p2', path: 'https://example.test/2.jpg', index: 1),
     ],
   ),
   status: FanWorkStatus.published,
@@ -210,9 +277,12 @@ FanWork _story() => FanWork(
 
 final class _FakeFanWorkRepository implements FanWorkRepository {
   Result<FanWork>? watchWorkResult;
+  Completer<Result<void>>? uploadCompleter;
+  int uploadAttempts = 0;
 
   @override
-  Future<Result<void>> archive(String workId) async => const Success<void>(null);
+  Future<Result<void>> archive(String workId) async =>
+      const Success<void>(null);
 
   @override
   Future<Result<void>> bookmark({
@@ -223,7 +293,10 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   int? storedRating;
 
   @override
-  Future<Result<void>> rate({required String workId, required int rating}) async {
+  Future<Result<void>> rate({
+    required String workId,
+    required int rating,
+  }) async {
     storedRating = rating;
     return const Success<void>(null);
   }
@@ -233,6 +306,16 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String workId,
     required String userId,
   }) async => Success(storedRating);
+
+  @override
+  Future<Result<void>> cancelMediaUpload() async {
+    final pending = uploadCompleter;
+    uploadCompleter = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(const FailureResult(CancelledError()));
+    }
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> confirmMedia({
@@ -252,7 +335,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String creatorId,
     FanWork? after,
     int limit = 20,
-  }) async => const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
+  }) async =>
+      const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
 
   @override
   Future<Result<List<FanWork>>> getMyDrafts({required String userId}) async =>
@@ -264,7 +348,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     String? animeId,
     FanWork? after,
     int limit = 20,
-  }) async => const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
+  }) async =>
+      const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
 
   @override
   Future<Result<FanWork>> getWork(String workId) async =>
@@ -370,14 +455,29 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
     required String contentType,
-  }) async => const FailureResult(UnknownError('unused'));
+  }) async => Success(
+    FanWorkUploadTicket(
+      workId: workId,
+      mediaId: 'm1',
+      path: 'fan_works/alice/$workId/m1.jpg',
+      contentType: contentType,
+    ),
+  );
 
   @override
   Future<Result<void>> uploadMediaBytes({
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
-  }) async => const Success<void>(null);
+    FanWorkUploadProgress? onProgress,
+  }) async {
+    uploadAttempts += 1;
+    onProgress?.call(0.35);
+    final pending = uploadCompleter;
+    if (pending != null) return pending.future;
+    onProgress?.call(1);
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
@@ -393,7 +493,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
           totalLikes: 0,
           totalBookmarks: 0,
           totalComments: 0,
-          totalViews: 0,
+          totalRatings: 0,
           averageRating: 0.0,
           worksByType: const <String, int>{},
           topWorks: const <FanWorkPreview>[],

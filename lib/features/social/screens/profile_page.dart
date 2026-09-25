@@ -20,7 +20,7 @@ import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
-import '../../fan_works/models/fan_work_lifecycle.dart';
+import '../../fan_works/l10n/fan_work_copy.dart';
 import '../models/profile_section_privacy.dart';
 import '../models/profile_social_link.dart';
 import '../models/public_profile.dart';
@@ -552,7 +552,7 @@ class _ProfileLifeReport extends StatelessWidget {
                 _CollapsedSectionButton(
                   key: const Key('profile-fan-works-entry'),
                   icon: Icons.brush_outlined,
-                  title: FanWorkStrings.feedTitle,
+                  title: FanWorkCopy.of(context).feedTitle,
                   onTap: () => AppNavigation.go(
                     context,
                     '/fan-works-creator?uid=${Uri.encodeComponent(profileId)}',

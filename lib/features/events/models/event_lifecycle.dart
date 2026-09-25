@@ -4,7 +4,7 @@ import 'event_models.dart';
 /// authoritative; this only validates UI input and keeps tests aligned.
 abstract final class EventLifecycle {
   static const maxDuration = Duration(days: 7);
-  static const minDuration = Duration(minutes: 5);
+  static const minDuration = Duration(hours: 1);
 
   static const allowed = <EventStatus, Set<EventStatus>>{
     EventStatus.draft: {EventStatus.active, EventStatus.deleted},
@@ -22,7 +22,7 @@ abstract final class EventLifecycle {
       return 'End time must be after start time.';
     }
     if (end.difference(start) < minDuration) {
-      return 'Events must last at least 5 minutes.';
+      return 'Events must last at least one hour.';
     }
     if (end.difference(start) > maxDuration) {
       return 'Events cannot last longer than 7 days.';

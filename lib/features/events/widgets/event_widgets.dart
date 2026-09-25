@@ -59,7 +59,7 @@ class EventCountdown extends StatelessWidget {
         final now = snapshot.data ?? DateTime.now();
         final remaining = event.remaining(now);
         if (event.status != EventStatus.active || remaining == null) {
-          return Text(EventTypeRegistry.of(event.type).label);
+          return Text(AppStrings.of(context).eventTypeLabel(event.type.name));
         }
         final hours = remaining.inHours;
         final minutes = remaining.inMinutes.remainder(60);
@@ -134,7 +134,9 @@ class EventHomeStrip extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           PubgetBadge(
-                            label: EventTypeRegistry.of(event.type).label,
+                            label: AppStrings.of(
+                              context,
+                            ).eventTypeLabel(event.type.name),
                           ),
                           const SizedBox(height: AppSpacing.sm),
                           Text(

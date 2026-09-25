@@ -657,6 +657,12 @@ abstract final class AnimeStrings {
   static const tabInfo = 'Info';
   static const tabCharacters = 'Characters';
   static const tabRelated = 'Related';
+  static const favoriteCharactersTab = 'Favorite characters';
+  static const favoriteAnimeTab = 'Favorite anime';
+  static const listsTab = 'Lists';
+  static const ratingsTab = 'Ratings';
+  static const reportLabel = 'Report';
+  static const reportReview = 'Report review';
   static const relatedReels = 'Related reels';
   static const relatedEvents = 'Related events';
   static const noReelsFound = 'No reels found';

@@ -929,7 +929,7 @@ final class FanWorkAnalytics {
     required this.totalLikes,
     required this.totalBookmarks,
     required this.totalComments,
-    required this.totalViews,
+    required this.totalRatings,
     required this.averageRating,
     required this.worksByType,
     required this.topWorks,
@@ -941,7 +941,7 @@ final class FanWorkAnalytics {
   final int totalLikes;
   final int totalBookmarks;
   final int totalComments;
-  final int totalViews;
+  final int totalRatings;
   final double averageRating;
   final Map<String, int> worksByType;
   final List<FanWorkPreview> topWorks;
@@ -954,7 +954,7 @@ final class FanWorkAnalytics {
       totalLikes: (map['totalLikes'] as num?)?.toInt() ?? 0,
       totalBookmarks: (map['totalBookmarks'] as num?)?.toInt() ?? 0,
       totalComments: (map['totalComments'] as num?)?.toInt() ?? 0,
-      totalViews: (map['totalViews'] as num?)?.toInt() ?? 0,
+      totalRatings: (map['totalRatings'] as num?)?.toInt() ?? 0,
       averageRating: (map['averageRating'] as num?)?.toDouble() ?? 0.0,
       worksByType: Map<String, int>.from(map['worksByType'] ?? {}),
       topWorks: (map['topWorks'] as List?)

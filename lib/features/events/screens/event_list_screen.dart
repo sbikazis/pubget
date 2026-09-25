@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -154,7 +155,11 @@ class _EventListScreenState extends State<EventListScreen> {
                           ...EventType.values.map(
                             (type) => DropdownMenuItem<EventType?>(
                               value: type,
-                              child: Text(EventTypeRegistry.of(type).label),
+                              child: Text(
+                                AppStrings.of(
+                                  context,
+                                ).eventTypeLabel(type.name),
+                              ),
                             ),
                           ),
                         ],
@@ -236,7 +241,7 @@ class _EventTiles extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             title: Text(event.title),
             subtitle: Text(
-              '${EventTypeRegistry.of(event.type).label} · ${event.status.name}',
+              '${AppStrings.of(context).eventTypeLabel(event.type.name)} · ${event.status.name}',
             ),
             trailing: EventCountdown(event: event),
           ),

@@ -11,7 +11,7 @@ const { hasPermission } = require("./pubgetRanks");
 const catalog = require("./gameCatalog");
 
 const MAX_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
-const MIN_DURATION_MS = 5 * 60 * 1000;
+const MIN_DURATION_MS = 60 * 60 * 1000;
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const OPTION_MAX = 10;
@@ -178,7 +178,7 @@ function assertDuration(startAt, endAt, HttpsError) {
     throw new HttpsError("invalid-argument", "End time must be after start time.");
   }
   if (end.getTime() - start.getTime() < MIN_DURATION_MS) {
-    throw new HttpsError("invalid-argument", "Events must last at least 5 minutes.");
+    throw new HttpsError("invalid-argument", "Events must last at least one hour.");
   }
   if (end.getTime() - start.getTime() > MAX_DURATION_MS) {
     throw new HttpsError("invalid-argument", "Events cannot last longer than 7 days.");
@@ -232,11 +232,14 @@ function validateQuiz(questions) {
       ? question.correctOptionId
       : (options[Number.isInteger(question.correctIndex) ? question.correctIndex : 0] || {}).id;
     if (!optionIds(options).has(correctId)) return null;
+    const seconds = Number.isInteger(question.seconds) ? question.seconds : 0;
+    if (seconds !== 0 && (seconds < 5 || seconds > 600)) return null;
     normalized.push({
       id: validString(question.id, 64) ? question.id.trim() : `q-${index + 1}`,
       prompt: question.prompt.trim(),
       options,
       correctOptionId: correctId,
+      seconds,
     });
   }
   return normalized;
@@ -493,6 +496,7 @@ function validateResponse(type, configuration, data) {
     const next = {};
     for (const question of configuration.questions) {
       const chosen = answers[question.id];
+      if (chosen === undefined || chosen === null || chosen === "") continue;
       if (!validString(chosen, 64) || !optionIds(question.options).has(chosen)) {
         return null;
       }
@@ -537,7 +541,7 @@ function validateResponse(type, configuration, data) {
 
 function emptyTally(configuration, type) {
   if (type === "quiz") {
-    return { correctCounts: {}, submissions: 0 };
+    return { correctCounts: {}, scoreboard: {}, submissions: 0 };
   }
   if (type === "ranking") {
     const scores = {};
@@ -560,7 +564,7 @@ function bumpMap(map, id, amount) {
   map[id] = Math.max(0, (map[id] || 0) + amount);
 }
 
-function applyTally(tally, type, configuration, responseData, delta = 1) {
+function applyTally(tally, type, configuration, responseData, delta = 1, uid = null) {
   const step = delta < 0 ? -1 : 1;
   const payload = responseData && typeof responseData === "object" ? responseData : {};
   const next = {
@@ -568,6 +572,7 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     votes: { ...(tally.votes || {}) },
     scores: { ...(tally.scores || {}) },
     correctCounts: { ...(tally.correctCounts || {}) },
+    scoreboard: { ...(tally.scoreboard || {}) },
     verifiedCompletions: tally.verifiedCompletions || 0,
     selfReported: tally.selfReported || 0,
   };
@@ -575,11 +580,22 @@ function applyTally(tally, type, configuration, responseData, delta = 1) {
     const answers = payload.answers && typeof payload.answers === "object"
       ? payload.answers
       : {};
-    (configuration.questions || []).forEach((question) => {
+    const questions = configuration.questions || [];
+    (questions).forEach((question) => {
       if (answers[question.id] === question.correctOptionId) {
         bumpMap(next.correctCounts, question.id, step);
       }
     });
+    if (typeof uid === "string" && uid) {
+      if (step < 0) {
+        delete next.scoreboard[uid];
+      } else {
+        const score = questions.filter(
+          (question) => answers[question.id] === question.correctOptionId,
+        ).length;
+        next.scoreboard[uid] = score;
+      }
+    }
     return next;
   }
   if (type === "ranking") {
@@ -629,11 +645,28 @@ function calculateResult({ type, configuration, tally, responsesCount }) {
       kind: type,
       submissions,
       correctCounts: tally.correctCounts || {},
+      leaderboard: tally.scoreboard || {},
     };
   }
   if (type === "ranking") {
-    const win = winnersFromMap(tally.scores || {});
-    return { kind: type, submissions, scores: tally.scores || {}, winnerIds: win.ids };
+    const scores = tally.scores || {};
+    const order = new Map(
+      (configuration.options || []).map((item, index) => [item.id, index]),
+    );
+    const orderedOptionIds = (configuration.options || [])
+      .map((item) => item.id)
+      .sort((left, right) => {
+        const scoreDelta = (scores[right] || 0) - (scores[left] || 0);
+        return scoreDelta || (order.get(left) ?? 0) - (order.get(right) ?? 0);
+      });
+    const win = winnersFromMap(scores);
+    return {
+      kind: type,
+      submissions,
+      scores,
+      orderedOptionIds,
+      winnerIds: win.ids,
+    };
   }
   if (type === "challenge") {
     return {
@@ -647,6 +680,9 @@ function calculateResult({ type, configuration, tally, responsesCount }) {
   }
   if (type === "theory" || type === "openDiscussion") {
     return { kind: type, submissions };
+  }
+  if (type === "prediction") {
+    return { kind: type, submissions, votes: tally.votes || {} };
   }
   const win = winnersFromMap(tally.votes || {});
   if (COMPARISON_TYPES.includes(type)) {
@@ -1547,6 +1583,7 @@ function createEventsDomain({
           configuration,
           prior.data().responseData || {},
           -1,
+          uid,
         );
         tally = applyTally(
           tally,
@@ -1554,6 +1591,7 @@ function createEventsDomain({
           configuration,
           responseData,
           1,
+          uid,
         );
         transaction.update(answer, payload);
         transaction.update(ref, {
@@ -1569,6 +1607,7 @@ function createEventsDomain({
         configuration,
         responseData,
         1,
+        uid,
       );
       const joinedNow = !existing.exists || existing.data().leftAt;
       const eventUpdate = {
@@ -1796,6 +1835,12 @@ function createEventsDomain({
     const winnerOptionId = request.data && request.data.winnerOptionId;
     const winnerIds = request.data && request.data.winnerIds;
     const ref = eventRef(db, eventId.trim());
+    const pickedByUid = {};
+    const prefetchedResponses = await ref.collection("responses").get();
+    for (const entry of prefetchedResponses.docs) {
+      const data = entry.data() || {};
+      pickedByUid[entry.id] = (data.responseData || {}).optionId;
+    }
     let resolved;
     await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
@@ -1835,12 +1880,15 @@ function createEventsDomain({
           throw new HttpsError("invalid-argument", "winnerOptionId must match an option.");
         }
         const votes = tally.votes || {};
+        const winners = Object.keys(pickedByUid).filter(
+          (uid) => pickedByUid[uid] === winnerOptionId,
+        );
         result = {
           kind: type,
           submissions,
           votes,
           winnerOptionId,
-          winnerIds: [winnerOptionId],
+          winnerIds: winners,
           winners: [{ id: option.id, label: option.label || option.id }],
         };
       } else {

@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../l10n/fan_work_copy.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
 import '../providers/fan_work_providers.dart';
@@ -37,22 +39,23 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
   @override
   Widget build(BuildContext context) {
     final feed = context.watch<FanWorkFeedProvider>();
+    final copy = FanWorkCopy.of(context);
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
           leading: AppBackButton.maybeOf(context),
-          title: const Text(FanWorkStrings.feedTitle),
-          bottom: const TabBar(
+          title: Text(copy.feedTitle),
+          bottom: TabBar(
             tabs: <Widget>[
-              Tab(text: 'Latest'),
-              Tab(text: 'Drafts'),
+              Tab(text: copy.latest),
+              Tab(text: copy.draftsLabel),
             ],
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => AppNavigation.go(context, '/fan-works/create'),
-          label: const Text(FanWorkStrings.create),
+          label: Text(copy.create),
           icon: const Icon(Icons.add),
         ),
         body: TabBarView(
@@ -72,7 +75,7 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
                           end: AppSpacing.sm,
                         ),
                         child: PubgetSelectionChip(
-                          label: 'All',
+                          label: copy.allTypes,
                           selected: _type == null,
                           onSelected: (_) {
                             setState(() => _type = null);
@@ -86,7 +89,7 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
                             end: AppSpacing.sm,
                           ),
                           child: PubgetSelectionChip(
-                            label: FanWorkTypeCatalog.label(type),
+                            label: copy.typeLabel(type),
                             selected: _type == type,
                             onSelected: (_) {
                               setState(() => _type = type);
@@ -98,17 +101,17 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
                   ),
                 ),
                 if (feed.offlineCached)
-                  const Padding(
-                    padding: EdgeInsets.all(AppSpacing.sm),
-                    child: Text(FanWorkStrings.offlineCached),
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    child: Text(copy.offlineCached),
                   ),
                 Expanded(
                   child: PubgetLoadingStateView(
                     state: feed.state,
                     onRetry: feed.load,
-                    empty: const PubgetEmptyState(
-                      title: FanWorkStrings.emptyTitle,
-                      message: FanWorkStrings.emptyMessage,
+                    empty: PubgetEmptyState(
+                      title: copy.emptyTitle,
+                      message: copy.emptyMessage,
                       icon: Icons.auto_awesome_outlined,
                     ),
                     child: NotificationListener<ScrollNotification>(
@@ -143,9 +146,7 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
                                     ),
                             ),
                             title: Text(work.title),
-                            subtitle: Text(
-                              FanWorkTypeCatalog.label(work.type),
-                            ),
+                            subtitle: Text(FanWorkTypeCatalog.label(work.type)),
                             onTap: () => FanWorkLinks.open(context, work.id),
                           );
                         },
@@ -156,9 +157,9 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
               ],
             ),
             feed.drafts.isEmpty
-                ? const PubgetEmptyState(
-                    title: FanWorkStrings.draftsEmpty,
-                    message: 'Start a Fan Work and save it as a draft.',
+                ? PubgetEmptyState(
+                    title: copy.draftsEmpty,
+                    message: copy.draftsEmptyMessage,
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -169,9 +170,9 @@ class _FanWorkFeedPageState extends State<FanWorkFeedPage> {
                       final work = feed.drafts[index];
                       return ListTile(
                         title: Text(
-                          work.title.isEmpty ? 'Untitled draft' : work.title,
+                          work.title.isEmpty ? copy.untitledDraft : work.title,
                         ),
-                        subtitle: Text(FanWorkTypeCatalog.label(work.type)),
+                        subtitle: Text(copy.typeLabel(work.type)),
                         onTap: () => AppNavigation.go(
                           context,
                           '/fan-works/create?workId=${Uri.encodeComponent(work.id)}',
@@ -212,14 +213,15 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
   Widget build(BuildContext context) {
     final details = context.watch<FanWorkDetailsProvider>();
     final uid = context.watch<AuthProvider>().currentUser?.id;
+    final copy = FanWorkCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(details.work?.title ?? FanWorkStrings.feedTitle),
+        title: Text(details.work?.title ?? copy.feedTitle),
         actions: <Widget>[
           if (details.work != null)
             IconButton(
-              tooltip: FanWorkStrings.share,
+              tooltip: copy.share,
               onPressed: () => FanWorkLinks.share(
                 context,
                 details.work!.id,
@@ -232,10 +234,7 @@ class _FanWorkDetailsPageState extends State<FanWorkDetailsPage> {
       body: PubgetLoadingStateView(
         state: details.state,
         onRetry: () => details.open(workId: widget.workId, userId: uid ?? ''),
-        empty: const PubgetEmptyState(
-          title: FanWorkStrings.missing,
-          message: 'It may be a draft, archived, or removed.',
-        ),
+        empty: PubgetEmptyState(title: copy.missing, message: copy.missingHint),
         child: details.work == null
             ? const SizedBox.shrink()
             : _DetailsBody(
@@ -272,220 +271,231 @@ class _DetailsBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final details = context.read<FanWorkDetailsProvider>();
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-        if (work.cover?.path.isNotEmpty ?? false)
-          AspectRatio(
-            aspectRatio: 3 / 4,
-            child: AppImageLoader(imageUrl: work.cover!.path, fit: BoxFit.cover),
-          ),
-        const SizedBox(height: AppSpacing.md),
-        Text(work.title, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: AppSpacing.xs),
-        Wrap(
-          spacing: AppSpacing.sm,
-          children: <Widget>[
-            PubgetSelectionChip(
-              label: FanWorkTypeCatalog.label(work.type),
-              selected: false,
-              onSelected: null,
-            ),
-            if (work.isAiAssisted)
-              const PubgetSelectionChip(
-                label: FanWorkStrings.aiAssisted,
-                selected: true,
-                onSelected: null,
-              ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (work.creatorSnapshot.username.isNotEmpty)
-          Text(work.creatorSnapshot.username, style: theme.textTheme.titleSmall),
-        if (work.publishedAt != null)
-          Text(
-            'Published ${work.publishedAt!.toLocal().toIso8601String().split('T').first}',
-            style: theme.textTheme.bodySmall,
-          ),
-        const SizedBox(height: AppSpacing.md),
-        if (work.description.isNotEmpty) Text(work.description),
-        if (work.animeTitle.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            'Related anime: ${work.animeTitle}',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-        if (!work.copyright.isEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          Text(FanWorkStrings.copyright, style: theme.textTheme.titleSmall),
-          if (work.copyright.sourceTitle.isNotEmpty)
-            Text('Source: ${work.copyright.sourceTitle}'),
-          if (work.copyright.originalWorkId.isNotEmpty)
-            Text('Original ID: ${work.copyright.originalWorkId}'),
-          if (work.copyright.credit.isNotEmpty)
-            Text('Credit: ${work.copyright.credit}'),
-          Text('Revision ${work.version}'),
-        ],
-        if (work.characterIds.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Text('Character refs: ${work.characterIds.join(', ')}'),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        FanWorkTagWrap(tags: work.tags),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          '${work.likesCount} likes · ${work.commentsCount} comments · ${work.bookmarksCount} saves'
-          '${work.ratingsCount > 0 ? ' · ${work.ratingsAverage.toStringAsFixed(1)} rating' : ''}',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        if (work.type == FanWorkType.manga)
-          PubgetPrimaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/fan-work/${Uri.encodeComponent(work.id)}?view=manga',
-            ),
-            semanticLabel: 'Read manga',
-            child: const Text('Read manga'),
-          ),
-        if (work.type == FanWorkType.story)
-          PubgetPrimaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/fan-work/${Uri.encodeComponent(work.id)}?view=story',
-            ),
-            semanticLabel: 'Read story',
-            child: const Text('Read story'),
-          ),
-        if (work.type == FanWorkType.character ||
-            work.type == FanWorkType.aiCharacter) ...[
-          const SizedBox(height: AppSpacing.md),
-          if (work.content.image != null)
-            SizedBox(
-              height: 220,
+          if (work.cover?.path.isNotEmpty ?? false)
+            AspectRatio(
+              aspectRatio: 3 / 4,
               child: AppImageLoader(
-                imageUrl: work.content.image!.path,
+                imageUrl: work.cover!.path,
                 fit: BoxFit.cover,
               ),
             ),
-          Text(work.content.name, style: theme.textTheme.titleLarge),
-          if (work.content.personality.isNotEmpty)
-            Text('Personality: ${work.content.personality}'),
-          if (work.content.abilities.isNotEmpty)
-            Text('Abilities: ${work.content.abilities}'),
-          if (work.content.background.isNotEmpty)
-            Text(work.content.background),
-        ],
-        if (work.type == FanWorkType.worldbuilding) ...[
           const SizedBox(height: AppSpacing.md),
-          Text(work.content.lore),
-          for (final location in work.content.locations)
-            ListTile(
-              title: Text(location.name),
-              subtitle: Text(location.description),
-            ),
-        ],
-        if (work.type == FanWorkType.drawing || work.type == FanWorkType.other)
-          ...work.content.images.map(
-            (image) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: AppImageLoader(imageUrl: image.path, fit: BoxFit.cover),
-            ),
-          ),
-        const SizedBox(height: AppSpacing.lg),
-        Text(FanWorkStrings.rating, style: theme.textTheme.titleSmall),
-        const SizedBox(height: AppSpacing.xs),
-        Wrap(
-          spacing: AppSpacing.sm,
-          children: [
-            for (var score = 1; score <= 10; score++)
+          Text(work.title, style: theme.textTheme.headlineSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.sm,
+            children: <Widget>[
               PubgetSelectionChip(
-                key: Key('fan-work-rate-$score'),
-                label: '$score',
-                selected: myRating == score,
-                onSelected: acting
-                    ? null
-                    : (_) => details.rate(workId: work.id, rating: score),
+                label: copy.typeLabel(work.type),
+                selected: false,
+                onSelected: null,
+              ),
+              if (work.isAiAssisted)
+                PubgetSelectionChip(
+                  label: copy.aiAssisted,
+                  selected: true,
+                  onSelected: null,
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (work.creatorSnapshot.username.isNotEmpty)
+            Text(
+              work.creatorSnapshot.username,
+              style: theme.textTheme.titleSmall,
+            ),
+          if (work.publishedAt != null)
+            Text(
+              copy.publishedOn(work.publishedAt!),
+              style: theme.textTheme.bodySmall,
+            ),
+          const SizedBox(height: AppSpacing.md),
+          if (work.description.isNotEmpty) Text(work.description),
+          if (work.animeTitle.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              copy.relatedAnime(work.animeTitle),
+              style: theme.textTheme.bodyMedium,
+            ),
+          ],
+          if (!work.copyright.isEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(copy.copyright, style: theme.textTheme.titleSmall),
+            if (work.copyright.sourceTitle.isNotEmpty)
+              Text(copy.sourceLine(work.copyright.sourceTitle)),
+            if (work.copyright.originalWorkId.isNotEmpty)
+              Text(copy.originalId(work.copyright.originalWorkId)),
+            if (work.copyright.credit.isNotEmpty)
+              Text(copy.credit(work.copyright.credit)),
+            Text(copy.revisionNumber(work.version)),
+          ],
+          if (work.characterIds.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(copy.characterRefs(work.characterIds.join(', '))),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          FanWorkTagWrap(tags: work.tags),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            '${copy.likes(work.likesCount)} · ${copy.commentsCount(work.commentsCount)} · ${copy.saves(work.bookmarksCount)}'
+            '${work.ratingsCount > 0 ? ' · ${copy.ratings(work.ratingsCount)}' : ''}',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (work.type == FanWorkType.manga)
+            PubgetPrimaryButton(
+              onPressed: () => AppNavigation.go(
+                context,
+                '/fan-work/${Uri.encodeComponent(work.id)}?view=manga',
+              ),
+              semanticLabel: copy.readManga,
+              child: Text(copy.readManga),
+            ),
+          if (work.type == FanWorkType.story)
+            PubgetPrimaryButton(
+              onPressed: () => AppNavigation.go(
+                context,
+                '/fan-work/${Uri.encodeComponent(work.id)}?view=story',
+              ),
+              semanticLabel: copy.readStory,
+              child: Text(copy.readStory),
+            ),
+          if (work.type == FanWorkType.character ||
+              work.type == FanWorkType.aiCharacter) ...[
+            const SizedBox(height: AppSpacing.md),
+            if (work.content.image != null)
+              SizedBox(
+                height: 220,
+                child: AppImageLoader(
+                  imageUrl: work.content.image!.path,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            Text(work.content.name, style: theme.textTheme.titleLarge),
+            if (work.content.personality.isNotEmpty)
+              Text('${copy.personalityLabel}: ${work.content.personality}'),
+            if (work.content.abilities.isNotEmpty)
+              Text('${copy.abilitiesLabel}: ${work.content.abilities}'),
+            if (work.content.background.isNotEmpty)
+              Text(work.content.background),
+          ],
+          if (work.type == FanWorkType.worldbuilding) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(work.content.lore),
+            for (final location in work.content.locations)
+              ListTile(
+                title: Text(location.name),
+                subtitle: Text(location.description),
               ),
           ],
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: PubgetSecondaryButton(
-                onPressed: acting ? null : () => details.toggleLike(work.id),
-                semanticLabel: FanWorkStrings.like,
-                leadingIcon: liked ? Icons.favorite : Icons.favorite_border,
-                child: Text(liked ? 'Liked' : FanWorkStrings.like),
+          if (work.type == FanWorkType.drawing ||
+              work.type == FanWorkType.other)
+            ...work.content.images.map(
+              (image) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: AppImageLoader(imageUrl: image.path, fit: BoxFit.cover),
               ),
             ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: PubgetSecondaryButton(
-                onPressed: acting
-                    ? null
-                    : () => details.toggleBookmark(work.id),
-                semanticLabel: FanWorkStrings.bookmark,
-                leadingIcon: bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                child: Text(bookmarked ? 'Saved' : FanWorkStrings.bookmark),
+          const SizedBox(height: AppSpacing.lg),
+          Text(copy.rating, style: theme.textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.sm,
+            children: [
+              for (var score = 1; score <= 10; score++)
+                PubgetSelectionChip(
+                  key: Key('fan-work-rate-$score'),
+                  label: '$score',
+                  selected: myRating == score,
+                  onSelected: acting
+                      ? null
+                      : (_) => details.rate(workId: work.id, rating: score),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: PubgetSecondaryButton(
+                  onPressed: acting ? null : () => details.toggleLike(work.id),
+                  semanticLabel: copy.like,
+                  leadingIcon: liked ? Icons.favorite : Icons.favorite_border,
+                  child: Text(liked ? copy.liked : copy.like),
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        PubgetTextButton(
-          onPressed: () => _report(context),
-          semanticLabel: FanWorkStrings.report,
-          child: const Text(FanWorkStrings.report),
-        ),
-        PubgetTextButton(
-          onPressed: acting
-              ? null
-              : () => details.requestRemoval(workId: work.id),
-          semanticLabel: FanWorkStrings.requestRemoval,
-          child: const Text(FanWorkStrings.requestRemoval),
-        ),
-        if (isOwner && work.isPublished)
-          PubgetSecondaryButton(
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: PubgetSecondaryButton(
+                  onPressed: acting
+                      ? null
+                      : () => details.toggleBookmark(work.id),
+                  semanticLabel: copy.bookmark,
+                  leadingIcon: bookmarked
+                      ? Icons.bookmark
+                      : Icons.bookmark_border,
+                  child: Text(bookmarked ? copy.bookmarked : copy.bookmark),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          PubgetTextButton(
+            onPressed: () => _report(context),
+            semanticLabel: copy.report,
+            child: Text(copy.report),
+          ),
+          PubgetTextButton(
             onPressed: acting
                 ? null
-                : () => details.revisePublished(
-                    workId: work.id,
-                    title: work.title,
-                    description: work.description,
-                    copyright: work.copyright,
-                  ),
-            semanticLabel: FanWorkStrings.revised,
-            child: const Text('Save revision metadata'),
+                : () => details.requestRemoval(workId: work.id),
+            semanticLabel: copy.requestRemoval,
+            child: Text(copy.requestRemoval),
           ),
-        if (isOwner && work.isPublished)
-          PubgetSecondaryButton(
-            onPressed: acting ? null : () => details.archive(work.id),
-            semanticLabel: FanWorkStrings.archive,
-            child: const Text(FanWorkStrings.archive),
-          ),
-        if (isOwner && work.isDraft)
-          PubgetSecondaryButton(
-            onPressed: () => AppNavigation.go(
-              context,
-              '/fan-works/create?workId=${Uri.encodeComponent(work.id)}',
+          if (isOwner && work.isPublished)
+            PubgetSecondaryButton(
+              onPressed: acting
+                  ? null
+                  : () => details.revisePublished(
+                      workId: work.id,
+                      title: work.title,
+                      description: work.description,
+                      copyright: work.copyright,
+                    ),
+              semanticLabel: copy.revised,
+              child: Text(copy.saveRevisionMetadata),
             ),
-            semanticLabel: 'Edit draft',
-            child: const Text('Edit draft'),
-          ),
-        const SizedBox(height: AppSpacing.xl),
-        _FanWorkRevisionsSection(workId: work.id),
-        _FanWorkCommentsSection(workId: work.id),
-      ],
+          if (isOwner && work.isPublished)
+            PubgetSecondaryButton(
+              onPressed: acting ? null : () => details.archive(work.id),
+              semanticLabel: copy.archive,
+              child: Text(copy.archive),
+            ),
+          if (isOwner && work.isDraft)
+            PubgetSecondaryButton(
+              onPressed: () => AppNavigation.go(
+                context,
+                '/fan-works/create?workId=${Uri.encodeComponent(work.id)}',
+              ),
+              semanticLabel: copy.editDraft,
+              child: Text(copy.editDraft),
+            ),
+          const SizedBox(height: AppSpacing.xl),
+          _FanWorkRevisionsSection(workId: work.id),
+          _FanWorkCommentsSection(workId: work.id),
+        ],
       ),
     );
   }
 
   Future<void> _report(BuildContext context) async {
+    final copy = FanWorkCopy.of(context);
     final reason = await PubgetBottomSheet.present<FanWorkReportReason>(
       context: context,
       builder: (context) => SafeArea(
@@ -494,7 +504,7 @@ class _DetailsBody extends StatelessWidget {
           children: [
             for (final value in FanWorkReportReason.values)
               ListTile(
-                title: Text(value.name),
+                title: Text(copy.reportReason(value)),
                 onTap: () => Navigator.pop(context, value),
               ),
           ],
@@ -518,6 +528,7 @@ class _FanWorkRevisionsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final details = context.watch<FanWorkDetailsProvider>();
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -525,7 +536,7 @@ class _FanWorkRevisionsSection extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: Text(
-                '${FanWorkStrings.revisions} (${details.revisions.length})',
+                '${copy.revisions} (${details.revisions.length})',
                 style: theme.textTheme.titleMedium,
               ),
             ),
@@ -533,22 +544,24 @@ class _FanWorkRevisionsSection extends StatelessWidget {
               onPressed: details.revisionsLoading
                   ? null
                   : () => details.loadRevisions(workId),
-              child: Text(details.revisionsLoading ? '…' : 'Load'),
+              child: Text(details.revisionsLoading ? '…' : copy.load),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
         if (details.revisionsFailure != null)
           Text(
-            details.revisionsFailure?.message ?? FanWorkStrings.missing,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.error),
+            details.revisionsFailure?.message ?? copy.missing,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           )
         else if (details.revisions.isEmpty)
           Text(
-            FanWorkStrings.noRevisions,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.outline),
+            copy.noRevisions,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           )
         else
           for (final revision in details.revisions)
@@ -557,13 +570,13 @@ class _FanWorkRevisionsSection extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.history, size: 20),
               title: Text(
-                '${FanWorkStrings.version} ${revision.version}',
+                copy.versionNumber(revision.version),
                 style: theme.textTheme.bodyMedium,
               ),
               subtitle: Text(
                 revision.description.isNotEmpty
                     ? revision.description
-                    : FanWorkStrings.revised,
+                    : copy.revised,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -579,7 +592,8 @@ class _FanWorkCommentsSection extends StatefulWidget {
   final String workId;
 
   @override
-  State<_FanWorkCommentsSection> createState() => _FanWorkCommentsSectionState();
+  State<_FanWorkCommentsSection> createState() =>
+      _FanWorkCommentsSectionState();
 }
 
 class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
@@ -607,23 +621,24 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
     final details = context.watch<FanWorkDetailsProvider>();
     final uid = context.watch<AuthProvider>().currentUser?.id;
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text(FanWorkStrings.comments, style: theme.textTheme.titleMedium),
+        Text(copy.comments, style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         if (details.replyTo != null)
           Row(
             children: <Widget>[
               Expanded(
                 child: Text(
-                  'Replying to ${details.replyTo!.text}',
+                  '${copy.replyingTo} ${details.replyTo!.text}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               IconButton(
-                tooltip: 'Cancel reply',
+                tooltip: copy.cancelReply,
                 onPressed: () => details.setReplyTo(null),
                 icon: const Icon(Icons.close),
               ),
@@ -635,7 +650,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
               child: PubgetTextField(
                 key: const Key('fan-work-comment-field'),
                 controller: _controller,
-                hint: FanWorkStrings.addComment,
+                hint: copy.addComment,
                 minLines: 1,
                 maxLines: 1,
                 textInputAction: TextInputAction.send,
@@ -644,7 +659,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
             ),
             IconButton(
               key: const Key('fan-work-comment-send'),
-              tooltip: FanWorkStrings.sendComment,
+              tooltip: copy.sendComment,
               onPressed: _send,
               icon: const Icon(Icons.send),
             ),
@@ -659,11 +674,11 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
             onRetry: () => details.loadComments(widget.workId),
           )
         else if (details.comments.isEmpty)
-          const PubgetEmptyState(
+          PubgetEmptyState(
             compact: true,
             icon: Icons.chat_bubble_outline,
-            title: FanWorkStrings.noComments,
-            message: FanWorkStrings.noCommentsMessage,
+            title: copy.noComments,
+            message: copy.noCommentsMessage,
           )
         else
           for (final comment in details.comments)
@@ -672,22 +687,22 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
               title: Text(comment.text),
               subtitle: Text(
                 [
-                  if (comment.replyToCommentId != null) 'Reply',
+                  if (comment.replyToCommentId != null) copy.replyBadge,
                   if (comment.mentions.isNotEmpty)
                     comment.mentions.map((handle) => '@$handle').join(' '),
-                  '${comment.likesCount} likes',
+                  copy.likes(comment.likesCount),
                 ].join(' · '),
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   IconButton(
-                    tooltip: FanWorkStrings.reply,
+                    tooltip: copy.reply,
                     onPressed: () => details.setReplyTo(comment),
                     icon: const Icon(Icons.reply),
                   ),
                   IconButton(
-                    tooltip: FanWorkStrings.likeComment,
+                    tooltip: copy.likeComment,
                     onPressed: details.acting
                         ? null
                         : () => details.commentAction(
@@ -699,7 +714,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
                   ),
                   if (comment.authorId == uid)
                     IconButton(
-                      tooltip: FanWorkStrings.deleteComment,
+                      tooltip: copy.deleteComment,
                       onPressed: details.acting
                           ? null
                           : () => details.commentAction(
@@ -711,7 +726,7 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
                     )
                   else
                     IconButton(
-                      tooltip: FanWorkStrings.reportComment,
+                      tooltip: copy.reportComment,
                       onPressed: details.acting
                           ? null
                           : () => details.commentAction(
@@ -729,8 +744,10 @@ class _FanWorkCommentsSectionState extends State<_FanWorkCommentsSection> {
             onPressed: details.commentsLoadingMore
                 ? null
                 : () => details.loadComments(widget.workId, more: true),
-            semanticLabel: 'Load more comments',
-            child: Text(details.commentsLoadingMore ? 'Loading…' : 'Load more'),
+            semanticLabel: copy.loadMoreComments,
+            child: Text(
+              details.commentsLoadingMore ? copy.loading : copy.loadMore,
+            ),
           ),
       ],
     );
@@ -864,9 +881,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     );
     if (!mounted) return;
     if (!result.isSuccess) {
+      if (result.failureOrNull is CancelledError) return;
+      final copy = FanWorkCopy.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.failureOrNull?.message ?? FanWorkStrings.uploadFailed),
+          content: Text(result.failureOrNull?.message ?? copy.uploadFailed),
         ),
       );
     }
@@ -875,14 +894,11 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
   @override
   Widget build(BuildContext context) {
     final editor = context.watch<FanWorkEditorProvider>();
+    final copy = FanWorkCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(
-          widget.workId == null
-              ? FanWorkStrings.create
-              : 'Edit draft',
-        ),
+        title: Text(widget.workId == null ? copy.create : copy.editDraft),
       ),
       body: Column(
         children: <Widget>[
@@ -890,7 +906,7 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
             Padding(
               padding: const EdgeInsets.all(AppSpacing.sm),
               child: Text(
-                '${editor.failure!.message} Your draft is still on this device.',
+                copy.draftStillOnDevice(editor.failure!.message),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -898,8 +914,73 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
             Padding(
               padding: const EdgeInsets.all(AppSpacing.sm),
               child: Text(
-                editor.fieldError!,
+                copy.lifecycleError(editor.fieldError),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (editor.uploading || editor.uploadFailed)
+            Padding(
+              key: const Key('fan-work-upload-status'),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    editor.uploadFailed
+                        ? editor.uploadCanceled
+                              ? copy.uploadCanceled
+                              : copy.uploadFailed
+                        : copy.uploadProgress(editor.uploadPercent),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Semantics(
+                    label: editor.uploading
+                        ? copy.uploadingMedia
+                        : copy.uploadFailed,
+                    value: '${editor.uploadPercent}%',
+                    child: LinearProgressIndicator(
+                      key: const Key('fan-work-upload-progress'),
+                      value: editor.uploadProgress,
+                    ),
+                  ),
+                  if (editor.uploadCancellable || editor.canRetryUpload)
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: Wrap(
+                        spacing: AppSpacing.sm,
+                        children: <Widget>[
+                          if (editor.uploadCancellable)
+                            PubgetTextButton(
+                              key: const Key('fan-work-upload-cancel'),
+                              onPressed: () async {
+                                final result = await editor.cancelUpload();
+                                if (!context.mounted || result.isSuccess) {
+                                  return;
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(copy.uploadFailed)),
+                                );
+                              },
+                              semanticLabel: copy.cancelUpload,
+                              child: Text(copy.cancelUpload),
+                            ),
+                          if (editor.canRetryUpload)
+                            PubgetTextButton(
+                              key: const Key('fan-work-upload-retry'),
+                              onPressed: editor.retryUpload,
+                              semanticLabel: copy.retryUpload,
+                              child: Text(copy.retryUpload),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           Expanded(
@@ -908,178 +989,170 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                if (editor.step == FanWorkEditorStep.type)
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: [
-                      for (final type in FanWorkType.values)
-                        PubgetSelectionChip(
-                          label: FanWorkTypeCatalog.label(type),
-                          selected: editor.draft.type == type,
-                          onSelected: (_) => editor.selectType(type),
-                        ),
-                    ],
-                  ),
-                if (editor.step != FanWorkEditorStep.type) ...[
-                  PubgetTextField(
-                    key: const Key('fan-work-title'),
-                    controller: _title,
-                    label: 'Title',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextArea(
-                    key: const Key('fan-work-description'),
-                    controller: _description,
-                    label: 'Description',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-tags'),
-                    controller: _tags,
-                    label: 'Tags',
-                    hint: 'demonslayer, tanjiro',
-                    helperText: 'Up to 8 tags. Values are normalized.',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-anime-id'),
-                    controller: _animeId,
-                    label: 'Related anime ID',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-anime-title'),
-                    controller: _animeTitle,
-                    label: 'Related anime title',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-original-id'),
-                    controller: _originalWorkId,
-                    label: 'Original work ID',
-                    hint: 'Optional source identifier',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-source-title'),
-                    controller: _sourceTitle,
-                    label: 'Source title',
-                    hint: 'Original series or work',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PubgetTextField(
-                    key: const Key('fan-work-credit'),
-                    controller: _credit,
-                    label: 'Credit',
-                    hint: 'How this work should be credited',
-                    onChanged: (_) =>
-                        editor.updateDraft(_collected(editor)),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  if (editor.draft.type == FanWorkType.story ||
-                      editor.draft.type == FanWorkType.other)
-                    PubgetTextArea(
-                      key: const Key('fan-work-story-body'),
-                      controller: _body,
-                      label: editor.draft.type == FanWorkType.story
-                          ? 'Story'
-                          : 'Content',
-                      minLines: 8,
-                      maxLines: 16,
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                  if (editor.step == FanWorkEditorStep.type)
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: [
+                        for (final type in FanWorkType.values)
+                          PubgetSelectionChip(
+                            label: copy.typeLabel(type),
+                            selected: editor.draft.type == type,
+                            onSelected: (_) => editor.selectType(type),
+                          ),
+                      ],
                     ),
-                  if (editor.draft.type == FanWorkType.character ||
-                      editor.draft.type == FanWorkType.aiCharacter) ...[
-                    if (editor.draft.type == FanWorkType.aiCharacter)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: AppSpacing.sm),
-                        child: PubgetSelectionChip(
-                          label: FanWorkStrings.aiAssisted,
-                          selected: true,
-                          onSelected: null,
-                        ),
-                      ),
+                  if (editor.step != FanWorkEditorStep.type) ...[
                     PubgetTextField(
-                      key: const Key('fan-work-character-name'),
-                      controller: _name,
-                      label: 'Name',
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                      key: const Key('fan-work-title'),
+                      controller: _title,
+                      label: copy.titleLabel,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PubgetTextArea(
-                      controller: _personality,
-                      label: 'Personality',
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                      key: const Key('fan-work-description'),
+                      controller: _description,
+                      label: copy.descriptionLabel,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    PubgetTextArea(
-                      controller: _abilities,
-                      label: 'Abilities',
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                    PubgetTextField(
+                      key: const Key('fan-work-tags'),
+                      controller: _tags,
+                      label: copy.tagsLabel,
+                      hint: copy.tagsHintEnEditor,
+                      helperText: copy.tagsHelperEditor,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    PubgetTextArea(
-                      controller: _background,
-                      label: 'Background',
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                    PubgetTextField(
+                      key: const Key('fan-work-anime-id'),
+                      controller: _animeId,
+                      label: copy.relatedAnimeId,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
-                  ],
-                  if (editor.draft.type == FanWorkType.worldbuilding)
-                    PubgetTextArea(
-                      key: const Key('fan-work-lore'),
-                      controller: _lore,
-                      label: 'Lore',
-                      minLines: 6,
-                      maxLines: 12,
-                      onChanged: (_) =>
-                          editor.updateDraft(_collected(editor)),
+                    const SizedBox(height: AppSpacing.md),
+                    PubgetTextField(
+                      key: const Key('fan-work-anime-title'),
+                      controller: _animeTitle,
+                      label: copy.relatedAnimeTitle,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
-                  const SizedBox(height: AppSpacing.md),
-                  TypeSpecificEditor(
-                    draft: editor.draft,
-                    work: editor.loaded,
-                    onChanged: editor.updateDraft,
-                    onAddImage: () => _pick(
-                      editor.draft.type == FanWorkType.character ||
-                              editor.draft.type == FanWorkType.aiCharacter
-                          ? FanWorkMediaRole.image
-                          : FanWorkMediaRole.image,
+                    const SizedBox(height: AppSpacing.md),
+                    PubgetTextField(
+                      key: const Key('fan-work-original-id'),
+                      controller: _originalWorkId,
+                      label: copy.originalWorkId,
+                      hint: copy.optionalSourceIdentifier,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
                     ),
-                    onAddPage: () => _pick(FanWorkMediaRole.page),
-                  ),
-                  if (editor.step == FanWorkEditorStep.preview) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    PubgetTextField(
+                      key: const Key('fan-work-source-title'),
+                      controller: _sourceTitle,
+                      label: copy.sourceTitle,
+                      hint: copy.originalSeriesOrWork,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    PubgetTextField(
+                      key: const Key('fan-work-credit'),
+                      controller: _credit,
+                      label: copy.creditLabel,
+                      hint: copy.creditHint,
+                      onChanged: (_) => editor.updateDraft(_collected(editor)),
+                    ),
                     const SizedBox(height: AppSpacing.lg),
-                    Text(
-                      'Preview',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    if (editor.draft.type == FanWorkType.story ||
+                        editor.draft.type == FanWorkType.other)
+                      PubgetTextArea(
+                        key: const Key('fan-work-story-body'),
+                        controller: _body,
+                        label: editor.draft.type == FanWorkType.story
+                            ? copy.storyLabel
+                            : copy.contentLabel,
+                        minLines: 8,
+                        maxLines: 16,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                    if (editor.draft.type == FanWorkType.character ||
+                        editor.draft.type == FanWorkType.aiCharacter) ...[
+                      if (editor.draft.type == FanWorkType.aiCharacter)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: PubgetSelectionChip(
+                            label: copy.aiAssisted,
+                            selected: true,
+                            onSelected: null,
+                          ),
+                        ),
+                      PubgetTextField(
+                        key: const Key('fan-work-character-name'),
+                        controller: _name,
+                        label: copy.nameLabel,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      PubgetTextArea(
+                        controller: _personality,
+                        label: copy.personalityLabel,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      PubgetTextArea(
+                        controller: _abilities,
+                        label: copy.abilitiesLabel,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      PubgetTextArea(
+                        controller: _background,
+                        label: copy.backgroundLabel,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                    ],
+                    if (editor.draft.type == FanWorkType.worldbuilding)
+                      PubgetTextArea(
+                        key: const Key('fan-work-lore'),
+                        controller: _lore,
+                        label: copy.loreLabel,
+                        minLines: 6,
+                        maxLines: 12,
+                        onChanged: (_) =>
+                            editor.updateDraft(_collected(editor)),
+                      ),
+                    const SizedBox(height: AppSpacing.md),
+                    TypeSpecificEditor(
+                      draft: editor.draft,
+                      work: editor.loaded,
+                      onChanged: editor.updateDraft,
+                      onAddImage: () => _pick(
+                        editor.draft.type == FanWorkType.character ||
+                                editor.draft.type == FanWorkType.aiCharacter
+                            ? FanWorkMediaRole.image
+                            : FanWorkMediaRole.image,
+                      ),
+                      onAddPage: () => _pick(FanWorkMediaRole.page),
                     ),
-                    Text(editor.draft.title),
-                    Text(editor.draft.description),
-                    if (editor.draft.type == FanWorkType.aiCharacter)
-                      const Text(FanWorkStrings.aiAssisted),
+                    if (editor.step == FanWorkEditorStep.preview) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        copy.preview,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(editor.draft.title),
+                      Text(editor.draft.description),
+                      if (editor.draft.type == FanWorkType.aiCharacter)
+                        Text(copy.aiAssisted),
+                    ],
                   ],
                 ],
-              ],
               ),
             ),
           ),
@@ -1100,16 +1173,16 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                                 SnackBar(
                                   content: Text(
                                     result.isSuccess
-                                        ? FanWorkStrings.draftSaved
+                                        ? copy.draftSaved
                                         : result.failureOrNull?.message ??
-                                              'Draft kept on this device.',
+                                              copy.draftKept,
                                   ),
                                 ),
                               );
                             },
-                      semanticLabel: FanWorkStrings.saveDraft,
+                      semanticLabel: copy.saveDraft,
                       loading: editor.saving,
-                      child: const Text(FanWorkStrings.saveDraft),
+                      child: Text(copy.saveDraft),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -1132,15 +1205,15 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
                                   SnackBar(
                                     content: Text(
                                       result.failureOrNull?.message ??
-                                          FanWorkStrings.publishFailed,
+                                          copy.publishFailed,
                                     ),
                                   ),
                                 );
                               }
                             },
-                      semanticLabel: FanWorkStrings.publish,
+                      semanticLabel: copy.publish,
                       loading: editor.publishing,
-                      child: const Text(FanWorkStrings.publish),
+                      child: Text(copy.publish),
                     ),
                   ),
                 ],
@@ -1179,15 +1252,14 @@ class _MangaViewerPageState extends State<MangaViewerPage> {
   Widget build(BuildContext context) {
     final details = context.watch<FanWorkDetailsProvider>();
     final pages = details.work?.content.orderedPages ?? const <FanWorkPage>[];
+    final copy = FanWorkCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(details.work?.title ?? 'Manga')),
+        title: Text(details.work?.title ?? copy.mangaFallback),
+      ),
       body: pages.isEmpty
-          ? const PubgetEmptyState(
-              title: 'No pages yet',
-              message: 'This manga does not have pages to display.',
-            )
+          ? PubgetEmptyState(title: copy.noPagesYet, message: copy.mangaNoPages)
           : PageView.builder(
               itemCount: pages.length,
               itemBuilder: (context, index) {
@@ -1205,7 +1277,7 @@ class _MangaViewerPageState extends State<MangaViewerPage> {
                       padding: const EdgeInsets.all(AppSpacing.sm),
                       child: Text(
                         '${index + 1} / ${pages.length}',
-                        semanticsLabel: 'Page ${index + 1} of ${pages.length}',
+                        semanticsLabel: copy.pageOf(pages.length, index + 1),
                       ),
                     ),
                     if (page.caption.isNotEmpty) Text(page.caption),
@@ -1249,10 +1321,12 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
     final body = chapters.isEmpty
         ? (work?.content.body ?? '')
         : chapters[_chapter.clamp(0, chapters.length - 1)].body;
+    final copy = FanWorkCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(work?.title ?? 'Story')),
+        title: Text(work?.title ?? copy.storyFallback),
+      ),
       body: work == null
           ? const PubgetSkeleton.card(width: double.infinity)
           : ListView(
@@ -1267,16 +1341,15 @@ class _StoryReaderPageState extends State<StoryReaderPage> {
                           value: i,
                           child: Text(
                             chapters[i].title.isEmpty
-                                ? 'Chapter ${i + 1}'
+                                ? copy.chapterNumber(i + 1)
                                 : chapters[i].title,
                           ),
                         ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _chapter = value ?? 0),
+                    onChanged: (value) => setState(() => _chapter = value ?? 0),
                   ),
                 Text(
-                  body.isEmpty ? 'This story has no content yet.' : body,
+                  body.isEmpty ? copy.storyNoContent : body,
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ],

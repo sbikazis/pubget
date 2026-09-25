@@ -1,6 +1,8 @@
 import '../../../core/errors/result.dart';
 import '../models/fan_work_models.dart';
 
+typedef FanWorkUploadProgress = void Function(double value);
+
 abstract interface class FanWorkDraftStore {
   Future<void> write(String key, Map<String, dynamic> data);
   Future<Map<String, dynamic>?> read(String key);
@@ -33,7 +35,10 @@ abstract interface class FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   });
+
+  Future<Result<void>> cancelMediaUpload();
 
   Future<Result<void>> confirmMedia({
     required String workId,
@@ -90,10 +95,7 @@ abstract interface class FanWorkRepository {
     List<String>? tags,
   });
 
-  Future<Result<void>> requestRemoval({
-    required String workId,
-    String details,
-  });
+  Future<Result<void>> requestRemoval({required String workId, String details});
 
   Stream<Result<FanWork>> watchWork(String workId);
 

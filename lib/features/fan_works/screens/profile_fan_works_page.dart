@@ -8,7 +8,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
-import '../models/fan_work_lifecycle.dart';
+import '../l10n/fan_work_copy.dart';
 import '../models/fan_work_models.dart';
 import '../providers/fan_work_providers.dart';
 import '../repositories/fan_work_repository.dart';
@@ -119,16 +119,17 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
   Widget build(BuildContext context) {
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final isOwner = currentUserId != null && currentUserId == widget.userId;
+    final copy = FanWorkCopy.of(context);
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(FanWorkStrings.feedTitle),
+        title: Text(copy.feedTitle),
         bottom: TabBar(
           controller: _tabController,
           tabs: [
-            const Tab(text: 'Works'),
-            if (isOwner) const Tab(text: 'Analytics'),
+            Tab(text: copy.works),
+            if (isOwner) Tab(text: copy.analytics),
           ],
         ),
       ),
@@ -140,7 +141,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
               builder: (context) {
                 if (_failure != null) {
                   return PubgetErrorState(
-                    message: 'Could not load fan works.',
+                    message: copy.couldNotLoadFanWorks,
                     onRetry: _retry,
                   );
                 }
@@ -150,10 +151,12 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
                 if (_loaded && _items.isEmpty) {
                   return PubgetEmptyState(
                     icon: Icons.brush_outlined,
-                    title: isOwner ? 'No fan works yet' : 'No fan works to show',
+                    title: isOwner
+                        ? copy.noFanWorksOwner
+                        : copy.noFanWorksVisitor,
                     message: isOwner
-                        ? 'Share a drawing, manga page, or story.'
-                        : 'This creator has not shared works yet.',
+                        ? copy.shareAWorkHint
+                        : copy.creatorNoWorksHint,
                   );
                 }
                 return GridView.builder(
@@ -181,7 +184,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
           else if (isOwner)
             const Center(child: CircularProgressIndicator())
           else
-            const Center(child: Text('Analytics available for your own works')),
+            Center(child: Text(copy.analyticsOwnOnly)),
         ],
       ),
     );
@@ -238,6 +241,7 @@ class _StatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -246,14 +250,14 @@ class _StatsGrid extends StatelessWidget {
       crossAxisSpacing: AppSpacing.md,
       childAspectRatio: 1.5,
       children: [
-        _StatCard(label: 'Total Works', value: '${analytics.totalWorks}', icon: Icons.auto_awesome),
-        _StatCard(label: 'Published', value: '${analytics.publishedWorks}', icon: Icons.publish),
-        _StatCard(label: 'Drafts', value: '${analytics.draftWorks}', icon: Icons.drafts),
-        _StatCard(label: 'Total Likes', value: '${analytics.totalLikes}', icon: Icons.favorite),
-        _StatCard(label: 'Total Saves', value: '${analytics.totalBookmarks}', icon: Icons.bookmark),
-        _StatCard(label: 'Total Comments', value: '${analytics.totalComments}', icon: Icons.comment),
-        _StatCard(label: 'Avg Rating', value: analytics.averageRating.toStringAsFixed(1), icon: Icons.star),
-        _StatCard(label: 'Total Views', value: '${analytics.totalViews}', icon: Icons.visibility),
+        _StatCard(label: copy.totalWorks, value: '${analytics.totalWorks}', icon: Icons.auto_awesome),
+        _StatCard(label: copy.publishedLabel, value: '${analytics.publishedWorks}', icon: Icons.publish),
+        _StatCard(label: copy.draftsLabel, value: '${analytics.draftWorks}', icon: Icons.drafts),
+        _StatCard(label: copy.totalLikes, value: '${analytics.totalLikes}', icon: Icons.favorite),
+        _StatCard(label: copy.totalSaves, value: '${analytics.totalBookmarks}', icon: Icons.bookmark),
+        _StatCard(label: copy.totalComments, value: '${analytics.totalComments}', icon: Icons.comment),
+        _StatCard(label: copy.avgRating, value: analytics.averageRating.toStringAsFixed(1), icon: Icons.star),
+        _StatCard(label: copy.totalRatings, value: '${analytics.totalRatings}', icon: Icons.star_border),
       ],
     );
   }
@@ -290,10 +294,14 @@ class _WorksByTypeChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     final rows = analytics.worksByType.entries.map((entry) {
       final total = analytics.totalWorks;
       final percentage = total > 0 ? entry.value / total : 0.0;
-      final label = entry.key;
+      final type = FanWorkType.values
+          .where((t) => t.name == entry.key)
+          .firstOrNull;
+      final label = type == null ? entry.key : copy.typeLabel(type);
       final caption =
           '${entry.value} (${(percentage * 100).toStringAsFixed(0)}%)';
       return Padding(
@@ -324,7 +332,7 @@ class _WorksByTypeChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Works by Type', style: theme.textTheme.titleMedium),
+          Text(copy.worksByType, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           ...rows,
         ],
@@ -342,11 +350,12 @@ class _TopWorksSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (analytics.topWorks.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Top Works', style: theme.textTheme.titleMedium),
+          Text(copy.topWorks, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           ...analytics.topWorks.map((work) => ListTile(
             contentPadding: EdgeInsets.zero,
@@ -358,7 +367,7 @@ class _TopWorksSection extends StatelessWidget {
                   )
                 : const Icon(Icons.auto_awesome_outlined, size: 40),
             title: Text(work.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${FanWorkTypeCatalog.label(work.type)} · ${work.creatorName}'),
+            subtitle: Text('${copy.typeLabel(work.type)} · ${work.creatorName}'),
             onTap: () => FanWorkLinks.open(context, work.id),
           )),
         ],

@@ -55,13 +55,13 @@ class _AnimeMyPageState extends State<AnimeMyPage> {
                 ? AnimeCopy.of(context).myAnimeTitle
                 : AnimeCopy.of(context).theirAnimeTitle,
           ),
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
             tabs: <Widget>[
-              Tab(text: 'Favorite characters'),
-              Tab(text: 'Favorite anime'),
-              Tab(text: 'Lists'),
-              Tab(text: 'Ratings'),
+              Tab(text: AnimeCopy.of(context).favoriteCharactersTab),
+              Tab(text: AnimeCopy.of(context).favoriteAnimeTab),
+              Tab(text: AnimeCopy.of(context).listsTab),
+              Tab(text: AnimeCopy.of(context).ratingsTab),
             ],
           ),
         ),
