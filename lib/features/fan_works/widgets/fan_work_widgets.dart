@@ -7,6 +7,7 @@ import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/fan_work_copy.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
 import '../providers/fan_work_providers.dart';
@@ -23,7 +24,7 @@ abstract final class FanWorkLinks {
         context,
         canonical(workId),
         type: 'fanWork',
-        message: FanWorkStrings.copied,
+        message: FanWorkCopy.of(context).copied,
       );
 
   static Future<void> share(
@@ -33,7 +34,7 @@ abstract final class FanWorkLinks {
   }) => PubgetLinks.share(
     context,
     url: canonical(workId),
-    title: title ?? FanWorkStrings.share,
+    title: title ?? FanWorkCopy.of(context).share,
     type: 'fanWork',
   );
 
@@ -63,9 +64,10 @@ class FanWorkPreviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return Semantics(
       button: true,
-      label: '${preview.title}, ${FanWorkTypeCatalog.label(preview.type)}',
+      label: '${preview.title}, ${copy.typeLabel(preview.type)}',
       child: PubgetCard(
         onTap: onTap ?? () => FanWorkLinks.open(context, preview.id),
         padding: EdgeInsets.zero,
@@ -94,14 +96,14 @@ class FanWorkPreviewTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    preview.title.isEmpty ? 'Untitled' : preview.title,
+                    preview.title.isEmpty ? copy.untitled : preview.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    FanWorkTypeCatalog.label(preview.type),
+                    copy.typeLabel(preview.type),
                     style: theme.textTheme.bodySmall,
                   ),
                   if (preview.creatorName.isNotEmpty)
@@ -127,6 +129,7 @@ class FanWorkHomeStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feed = context.watch<FanWorkFeedProvider>();
+    final copy = FanWorkCopy.of(context);
     if (feed.state == LoadingState.initial) {
       Future<void>.microtask(feed.load);
     }
@@ -137,7 +140,7 @@ class FanWorkHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionFanWorks,
-            actionLabel: FanWorkStrings.seeAll,
+            actionLabel: copy.seeAll,
             onAction: () => AppNavigation.go(context, '/fan-works'),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -147,9 +150,9 @@ class FanWorkHomeStrip extends StatelessWidget {
               child: PubgetSkeleton.card(width: double.infinity, height: 150),
             )
           else if (feed.items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Text('Fan Works will appear here after they are published.'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Text(copy.homeStripEmpty),
             )
           else
             SizedBox(
@@ -206,13 +209,14 @@ class CommonFanWorkFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         PubgetTextField(
           key: const Key('fan-work-title'),
-          label: 'Title',
-          hint: 'Give this work a name',
+          label: copy.titleLabel,
+          hint: copy.titleHint,
           controller: TextEditingController(text: draft.title)
             ..selection = TextSelection.collapsed(offset: draft.title.length),
           onChanged: (value) => onChanged(draft.copyWith(title: value)),
@@ -220,8 +224,8 @@ class CommonFanWorkFields extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
           key: const Key('fan-work-description'),
-          label: 'Description',
-          hint: 'What is this work about?',
+          label: copy.descriptionLabel,
+          hint: copy.descriptionHint,
           controller: TextEditingController(text: draft.description)
             ..selection = TextSelection.collapsed(
               offset: draft.description.length,
@@ -231,9 +235,9 @@ class CommonFanWorkFields extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-tags'),
-          label: 'Tags',
-          hint: 'demonslayer, tanjiro, drawing',
-          helperText: 'Up to 8 tags. Hashtags are normalized.',
+          label: copy.tagsLabel,
+          hint: copy.tagsHintEnWidgets,
+          helperText: copy.tagsHelperWidgets,
           controller: TextEditingController(text: draft.tags.join(', '))
             ..selection = TextSelection.collapsed(
               offset: draft.tags.join(', ').length,
@@ -245,8 +249,8 @@ class CommonFanWorkFields extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-anime-id'),
-          label: 'Related anime ID',
-          hint: 'Optional anime identifier',
+          label: copy.relatedAnimeId,
+          hint: copy.optionalAnimeIdentifier,
           controller: TextEditingController(text: draft.animeId)
             ..selection = TextSelection.collapsed(offset: draft.animeId.length),
           onChanged: (value) => onChanged(draft.copyWith(animeId: value.trim())),
@@ -254,8 +258,8 @@ class CommonFanWorkFields extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-anime-title'),
-          label: 'Related anime title',
-          hint: 'Optional display title',
+          label: copy.relatedAnimeTitle,
+          hint: copy.optionalDisplayTitle,
           controller: TextEditingController(text: draft.animeTitle)
             ..selection = TextSelection.collapsed(
               offset: draft.animeTitle.length,
@@ -285,10 +289,11 @@ class MangaEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pages = work?.content.orderedPages ?? const <FanWorkPage>[];
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Pages', style: Theme.of(context).textTheme.titleMedium),
+        Text(copy.pagesLabel, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         for (final page in pages)
           ListTile(
@@ -298,9 +303,9 @@ class MangaEditor extends StatelessWidget {
               height: 64,
               child: AppImageLoader(imageUrl: page.path, fit: BoxFit.cover),
             ),
-            title: Text('Page ${page.index + 1}'),
+            title: Text(copy.pageNumber(page.index + 1)),
             subtitle: PubgetTextField(
-              hint: 'Optional caption',
+              hint: copy.optionalCaption,
               controller: TextEditingController(text: page.caption)
                 ..selection = TextSelection.collapsed(
                   offset: page.caption.length,
@@ -314,9 +319,9 @@ class MangaEditor extends StatelessWidget {
           ),
         PubgetSecondaryButton(
           onPressed: onAddPage,
-          semanticLabel: 'Add manga page',
+          semanticLabel: copy.addSectionItem(copy.pagesLabel),
           leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add page'),
+          child: Text(copy.addPage),
         ),
       ],
     );
@@ -339,10 +344,11 @@ class DrawingEditor extends StatelessWidget {
       if (work?.cover != null) work!.cover!,
       ...?work?.content.images,
     ];
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Images', style: Theme.of(context).textTheme.titleMedium),
+        Text(copy.imagesLabel, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         Wrap(
           spacing: AppSpacing.sm,
@@ -359,9 +365,9 @@ class DrawingEditor extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         PubgetSecondaryButton(
           onPressed: onAddImage,
-          semanticLabel: 'Add drawing image',
+          semanticLabel: copy.addSectionItem(copy.imagesLabel),
           leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add image'),
+          child: Text(copy.addImage),
         ),
       ],
     );
@@ -380,10 +386,14 @@ class StoryEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Chapters', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          copy.chaptersLabel,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.sm),
         for (var i = 0; i < draft.chapters.length; i++)
           Padding(
@@ -392,7 +402,7 @@ class StoryEditor extends StatelessWidget {
               child: Column(
                 children: <Widget>[
                   PubgetTextField(
-                    label: 'Chapter title',
+                    label: copy.chapterTitleLabel,
                     controller:
                         TextEditingController(text: draft.chapters[i].title)
                           ..selection = TextSelection.collapsed(
@@ -406,7 +416,7 @@ class StoryEditor extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetTextArea(
-                    label: 'Chapter text',
+                    label: copy.chapterTextLabel,
                     minLines: 4,
                     maxLines: 8,
                     controller:
@@ -437,9 +447,9 @@ class StoryEditor extends StatelessWidget {
             ];
             onChanged(draft.copyWith(chapters: chapters));
           },
-          semanticLabel: 'Add chapter',
+          semanticLabel: copy.addChapter,
           leadingIcon: Icons.add,
-          child: const Text('Add chapter'),
+          child: Text(copy.addChapter),
         ),
       ],
     );
@@ -464,32 +474,33 @@ class CharacterEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         if (aiAssisted) ...[
           PubgetSelectionChip(
-            label: FanWorkStrings.aiAssisted,
+            label: copy.aiAssisted,
             selected: true,
             onSelected: null,
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'This work is labeled as AI-assisted. Pubget does not generate the character in this version.',
+            copy.aiAssistedNotice,
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: AppSpacing.md),
         ],
         PubgetTextField(
           key: const Key('fan-work-character-name'),
-          label: 'Name',
+          label: copy.nameLabel,
           controller: TextEditingController(text: draft.name)
             ..selection = TextSelection.collapsed(offset: draft.name.length),
           onChanged: (value) => onChanged(draft.copyWith(name: value)),
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Personality',
+          label: copy.personalityLabel,
           controller: TextEditingController(text: draft.personality)
             ..selection = TextSelection.collapsed(
               offset: draft.personality.length,
@@ -498,7 +509,7 @@ class CharacterEditor extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Abilities',
+          label: copy.abilitiesLabel,
           controller: TextEditingController(text: draft.abilities)
             ..selection = TextSelection.collapsed(
               offset: draft.abilities.length,
@@ -507,7 +518,7 @@ class CharacterEditor extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Background',
+          label: copy.backgroundLabel,
           controller: TextEditingController(text: draft.background)
             ..selection = TextSelection.collapsed(
               offset: draft.background.length,
@@ -525,9 +536,9 @@ class CharacterEditor extends StatelessWidget {
           ),
         PubgetSecondaryButton(
           onPressed: onAddImage,
-          semanticLabel: 'Add character image',
+          semanticLabel: copy.addSectionItem(copy.nameLabel),
           leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add image'),
+          child: Text(copy.addImage),
         ),
       ],
     );
@@ -546,12 +557,13 @@ class WorldbuildingEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         PubgetTextArea(
           key: const Key('fan-work-lore'),
-          label: 'Lore',
+          label: copy.loreLabel,
           minLines: 6,
           maxLines: 12,
           controller: TextEditingController(text: draft.lore)
@@ -560,17 +572,17 @@ class WorldbuildingEditor extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         _NamedEntryEditor(
-          title: 'Locations',
+          title: copy.locationsLabel,
           entries: draft.locations,
           onChanged: (entries) => onChanged(draft.copyWith(locations: entries)),
         ),
         _NamedEntryEditor(
-          title: 'Factions',
+          title: copy.factionsLabel,
           entries: draft.factions,
           onChanged: (entries) => onChanged(draft.copyWith(factions: entries)),
         ),
         _NamedEntryEditor(
-          title: 'Characters',
+          title: copy.charactersLabel,
           entries: draft.characters,
           onChanged: (entries) =>
               onChanged(draft.copyWith(characters: entries)),
@@ -596,11 +608,12 @@ class OtherEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         PubgetTextArea(
-          label: 'Content',
+          label: copy.contentLabel,
           minLines: 4,
           maxLines: 10,
           controller: TextEditingController(text: draft.body)
@@ -627,6 +640,7 @@ class _NamedEntryEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -636,7 +650,7 @@ class _NamedEntryEditor extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: PubgetTextField(
-              label: 'Name',
+              label: copy.nameLabel,
               controller: TextEditingController(text: entries[i].name)
                 ..selection = TextSelection.collapsed(
                   offset: entries[i].name.length,
@@ -656,8 +670,8 @@ class _NamedEntryEditor extends StatelessWidget {
             ...entries,
             const FanWorkNamedEntry(name: ''),
           ]),
-          semanticLabel: 'Add $title item',
-          child: Text('Add $title'),
+          semanticLabel: copy.addSectionItem(title),
+          child: Text(copy.addSection(title)),
         ),
         const SizedBox(height: AppSpacing.md),
       ],

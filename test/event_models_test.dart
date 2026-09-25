@@ -40,6 +40,24 @@ void main() {
     expect(restored.tally.votes['opt-1'], 2);
   });
 
+  test('ranking results preserve aggregate option order', () {
+    final result = EventResult(
+      kind: 'ranking',
+      submissions: 3,
+      scores: const <String, int>{'a': 9, 'b': 12, 'c': 4},
+      orderedOptionIds: const <String>['b', 'a', 'c'],
+    );
+
+    final restored = EventResult.fromMap(<String, dynamic>{
+      'kind': result.kind,
+      'submissions': result.submissions,
+      'scores': result.scores,
+      'orderedOptionIds': result.orderedOptionIds,
+    });
+
+    expect(restored.orderedOptionIds, <String>['b', 'a', 'c']);
+  });
+
   test('invalid maps fall back to safe defaults', () {
     final event = PubgetEvent.fromMap(const <String, dynamic>{}, id: 'missing');
     expect(event.type, EventType.poll);
@@ -187,6 +205,33 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('quiz questions round-trip per-question seconds timers', () {
+    final question = EventQuizQuestion(
+      id: 'q-1',
+      prompt: 'Who?',
+      options: const <EventOption>[
+        EventOption(id: 'opt-1', label: 'A'),
+        EventOption(id: 'opt-2', label: 'B'),
+      ],
+      correctOptionId: 'opt-2',
+      seconds: 45,
+    );
+    final restored = EventQuizQuestion.fromMap(question.toMap(), index: 0);
+    expect(restored.seconds, 45);
+    expect(restored.prompt, 'Who?');
+
+    final noTimer = EventQuizQuestion.fromMap(
+      const EventQuizQuestion(
+        id: 'q-2',
+        prompt: 'Where?',
+        options: <EventOption>[EventOption(id: 'opt-1', label: 'X')],
+        correctOptionId: 'opt-1',
+      ).toMap(),
+      index: 0,
+    );
+    expect(noTimer.seconds, 0);
   });
 
   test('comparison events require canonical candidates', () {

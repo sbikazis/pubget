@@ -33,7 +33,11 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) async => _fail();
+
+  @override
+  Future<Result<void>> cancelMediaUpload() async => _fail();
 
   @override
   Future<Result<void>> confirmMedia({
@@ -45,8 +49,10 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
-  Future<Result<void>> like({required String workId, required bool like}) async =>
-      _fail();
+  Future<Result<void>> like({
+    required String workId,
+    required bool like,
+  }) async => _fail();
 
   @override
   Future<Result<void>> bookmark({
@@ -55,8 +61,10 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
-  Future<Result<void>> rate({required String workId, required int rating}) async =>
-      _fail();
+  Future<Result<void>> rate({
+    required String workId,
+    required int rating,
+  }) async => _fail();
 
   @override
   Future<Result<int?>> myRating({
@@ -150,8 +158,10 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
-  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async => _fail();
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
+      _fail();
 
   @override
-  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async => _fail();
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async =>
+      _fail();
 }

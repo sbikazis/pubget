@@ -199,7 +199,8 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   bool get bookmarked => _bookmarked;
   int? get myRating => _myRating;
   bool get acting => _acting;
-  List<FanWorkComment> get comments => List<FanWorkComment>.unmodifiable(_comments);
+  List<FanWorkComment> get comments =>
+      List<FanWorkComment>.unmodifiable(_comments);
   bool get commentsLoading => _commentsLoading;
   bool get commentsLoadingMore => _commentsLoadingMore;
   bool get commentsHasMore => _commentsHasMore;
@@ -259,10 +260,7 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
   Future<Result<void>> toggleBookmark(String workId) {
     return _act(() async {
       final next = !_bookmarked;
-      final result = await _repository.bookmark(
-        workId: workId,
-        bookmark: next,
-      );
+      final result = await _repository.bookmark(workId: workId, bookmark: next);
       if (result.isSuccess) _bookmarked = next;
       return result;
     });
@@ -317,9 +315,10 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
         details: details,
       );
       if (result.isSuccess) {
-        _analytics.logEvent('fan_work_removal_requested', parameters: {
-          'workId': workId,
-        });
+        _analytics.logEvent(
+          'fan_work_removal_requested',
+          parameters: {'workId': workId},
+        );
       }
       return result;
     });
@@ -481,6 +480,22 @@ final class FanWorkDetailsProvider extends ChangeNotifier {
 
 enum FanWorkEditorStep { type, details, content, preview }
 
+final class _PendingFanWorkUpload {
+  _PendingFanWorkUpload({
+    required List<int> bytes,
+    required this.contentType,
+    required this.role,
+    required this.caption,
+  }) : bytes = List<int>.of(bytes);
+
+  final List<int> bytes;
+  final String contentType;
+  final FanWorkMediaRole role;
+  final String caption;
+  FanWorkUploadTicket? ticket;
+  bool bytesUploaded = false;
+}
+
 final class FanWorkEditorProvider extends ChangeNotifier {
   FanWorkEditorProvider({
     required FanWorkRepository repository,
@@ -503,6 +518,10 @@ final class FanWorkEditorProvider extends ChangeNotifier {
   bool _saving = false;
   bool _publishing = false;
   bool _uploading = false;
+  bool _uploadCancellable = false;
+  double _uploadProgress = 0;
+  Failure? _uploadFailure;
+  _PendingFanWorkUpload? _pendingUpload;
   bool _draftSavedLocally = false;
   bool _disposed = false;
 
@@ -515,6 +534,12 @@ final class FanWorkEditorProvider extends ChangeNotifier {
   bool get saving => _saving;
   bool get publishing => _publishing;
   bool get uploading => _uploading;
+  bool get uploadCancellable => _uploadCancellable;
+  double get uploadProgress => _uploadProgress;
+  int get uploadPercent => (_uploadProgress * 100).round();
+  bool get uploadFailed => _uploadFailure != null;
+  bool get uploadCanceled => _uploadFailure is CancelledError;
+  bool get canRetryUpload => _pendingUpload != null && !_uploading;
   bool get draftSavedLocally => _draftSavedLocally;
   bool get busy => _saving || _publishing || _uploading;
 
@@ -624,74 +649,136 @@ final class FanWorkEditorProvider extends ChangeNotifier {
       notifyListeners();
       return FailureResult(ValidationError(mediaError));
     }
+    if (_uploading) {
+      return FailureResult(
+        const ValidationError(FanWorkStrings.uploadAlreadyRunning),
+      );
+    }
+    final pending = _PendingFanWorkUpload(
+      bytes: bytes,
+      contentType: contentType,
+      role: role,
+      caption: caption,
+    );
+    _pendingUpload = pending;
+    return _runUpload(pending);
+  }
+
+  Future<Result<void>> retryUpload() {
+    final pending = _pendingUpload;
+    if (pending == null) {
+      return Future<Result<void>>.value(
+        const FailureResult(
+          ValidationError(FanWorkStrings.uploadNothingToRetry),
+        ),
+      );
+    }
+    if (_uploading) {
+      return Future<Result<void>>.value(
+        const FailureResult(
+          ValidationError(FanWorkStrings.uploadAlreadyRunning),
+        ),
+      );
+    }
+    return _runUpload(pending);
+  }
+
+  Future<Result<void>> cancelUpload() {
+    if (!_uploadCancellable) return Future.value(const Success<void>(null));
+    return _repository.cancelMediaUpload();
+  }
+
+  Future<Result<void>> _runUpload(_PendingFanWorkUpload pending) async {
     _uploading = true;
-    _failure = null;
-    notifyListeners();
+    _uploadCancellable = false;
+    _uploadProgress = 0;
+    _uploadFailure = null;
+    _fieldError = null;
+    _safeNotify();
     var workId = _draft.workId;
     if (workId == null || workId.isEmpty) {
       final saved = await _repository.saveDraft(_draft);
       if (!saved.isSuccess) {
-        _uploading = false;
-        _failure = saved.failureOrNull;
-        _draftSavedLocally = true;
-        _safeNotify();
-        return FailureResult(_failure ?? const UnknownError());
+        return _failedUpload(saved.failureOrNull);
       }
       workId = saved.valueOrNull;
       _draft = _draft.copyWith(workId: workId);
     }
-    final ticket = await _repository.startMediaUpload(
-      workId: workId!,
-      contentType: contentType,
-    );
-    if (!ticket.isSuccess) {
-      _uploading = false;
-      _failure = ticket.failureOrNull;
-      _draftSavedLocally = true;
-      _safeNotify();
-      return FailureResult(_failure ?? const UnknownError());
+    final resolvedWorkId = workId!;
+    var upload = pending.ticket;
+    if (upload == null) {
+      final ticket = await _repository.startMediaUpload(
+        workId: resolvedWorkId,
+        contentType: pending.contentType,
+      );
+      if (!ticket.isSuccess) {
+        return _failedUpload(ticket.failureOrNull);
+      }
+      upload = ticket.valueOrNull!;
+      pending.ticket = upload;
     }
-    final upload = ticket.valueOrNull!;
-    final bytesResult = await _repository.uploadMediaBytes(
-      ticket: upload,
-      bytes: bytes,
-      contentType: contentType,
-    );
-    if (!bytesResult.isSuccess) {
-      _uploading = false;
-      _failure = bytesResult.failureOrNull ??
-          const NetworkError(FanWorkStrings.uploadFailed);
-      _draftSavedLocally = true;
-      _safeNotify();
-      return bytesResult;
+    if (!pending.bytesUploaded) {
+      _uploadCancellable = true;
+      final bytesResult = await _repository.uploadMediaBytes(
+        ticket: upload,
+        bytes: pending.bytes,
+        contentType: pending.contentType,
+        onProgress: _setUploadProgress,
+      );
+      _uploadCancellable = false;
+      if (!bytesResult.isSuccess) {
+        return _failedUpload(bytesResult.failureOrNull);
+      }
+      pending.bytesUploaded = true;
+    } else {
+      _setUploadProgress(1);
     }
     final confirmed = await _repository.confirmMedia(
-      workId: workId,
+      workId: resolvedWorkId,
       mediaId: upload.mediaId,
       path: upload.path,
-      role: role,
-      caption: caption,
+      role: pending.role,
+      caption: pending.caption,
     );
-    if (confirmed.isSuccess) {
-      if (role == FanWorkMediaRole.page) {
-        _draft = _draft.copyWith(
-          pageIds: [..._draft.pageIds, upload.mediaId],
-          pageCaptions: {..._draft.pageCaptions, upload.mediaId: caption},
-        );
-      } else if (role == FanWorkMediaRole.image ||
-          role == FanWorkMediaRole.extra) {
-        _draft = _draft.copyWith(imageIds: [..._draft.imageIds, upload.mediaId]);
-      }
-      await _persistLocal();
-      final refreshed = await _repository.getWork(workId);
-      _loaded = refreshed.valueOrNull ?? _loaded;
-    } else {
-      _failure = confirmed.failureOrNull;
-      _draftSavedLocally = true;
+    if (!confirmed.isSuccess) {
+      return _failedUpload(confirmed.failureOrNull);
     }
+    if (pending.role == FanWorkMediaRole.page) {
+      _draft = _draft.copyWith(
+        pageIds: [..._draft.pageIds, upload.mediaId],
+        pageCaptions: {..._draft.pageCaptions, upload.mediaId: pending.caption},
+      );
+    } else if (pending.role == FanWorkMediaRole.image ||
+        pending.role == FanWorkMediaRole.extra) {
+      _draft = _draft.copyWith(imageIds: [..._draft.imageIds, upload.mediaId]);
+    }
+    _pendingUpload = null;
+    _uploadProgress = 1;
+    _uploadFailure = null;
+    await _persistLocal();
+    final refreshed = await _repository.getWork(resolvedWorkId);
+    _loaded = refreshed.valueOrNull ?? _loaded;
     _uploading = false;
     _safeNotify();
     return confirmed;
+  }
+
+  void _setUploadProgress(double value) {
+    if (!value.isFinite) return;
+    final next = value.clamp(0.0, 1.0).toDouble();
+    if ((next - _uploadProgress).abs() < 0.001) return;
+    _uploadProgress = next;
+    _safeNotify();
+  }
+
+  Result<void> _failedUpload(Failure? failure) {
+    final resolved = failure ?? const NetworkError(FanWorkStrings.uploadFailed);
+    _uploadFailure = resolved;
+    _draftSavedLocally = true;
+    _uploading = false;
+    _uploadCancellable = false;
+    _safeNotify();
+    return FailureResult(resolved);
   }
 
   Future<Result<FanWork>> publish() async {
@@ -773,7 +860,8 @@ final class FanWorkEditorProvider extends ChangeNotifier {
       type: fanWorkTypeFrom(data['type']),
       title: data['title'] as String? ?? '',
       description: data['description'] as String? ?? '',
-      tags: (data['tags'] as List<Object?>?)?.whereType<String>().toList() ??
+      tags:
+          (data['tags'] as List<Object?>?)?.whereType<String>().toList() ??
           const <String>[],
       animeId: data['animeId'] as String? ?? '',
       animeTitle: data['animeTitle'] as String? ?? '',
@@ -824,9 +912,8 @@ final class _NoOpAnalytics implements Analytics {
 }
 
 final class FanWorkAnalyticsProvider extends ChangeNotifier {
-  FanWorkAnalyticsProvider({
-    required FanWorkRepository repository,
-  }) : _repository = repository;
+  FanWorkAnalyticsProvider({required FanWorkRepository repository})
+    : _repository = repository;
 
   final FanWorkRepository _repository;
   FanWorkAnalytics? _analytics;
@@ -855,7 +942,9 @@ final class FanWorkAnalyticsProvider extends ChangeNotifier {
       },
       onFailure: (failure) {
         _failure = failure;
-        _state = failure is NetworkError ? LoadingState.offline : LoadingState.error;
+        _state = failure is NetworkError
+            ? LoadingState.offline
+            : LoadingState.error;
       },
     );
     _safeNotify();

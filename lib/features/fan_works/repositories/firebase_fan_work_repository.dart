@@ -23,6 +23,7 @@ final class FirebaseFanWorkRepository
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
+  UploadTask? _activeUpload;
 
   CollectionReference<Map<String, dynamic>> get _works =>
       _firestore.collection('fanWorks');
@@ -83,8 +84,9 @@ final class FirebaseFanWorkRepository
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) => _guard(() async {
-    await _storage
+    final task = _storage
         .ref(ticket.path)
         .putData(
           Uint8List.fromList(bytes),
@@ -95,6 +97,28 @@ final class FirebaseFanWorkRepository
             },
           ),
         );
+    final subscription = task.snapshotEvents.listen((snapshot) {
+      if (snapshot.totalBytes > 0) {
+        onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+      }
+    });
+    _activeUpload = task;
+    try {
+      await task;
+      onProgress?.call(1);
+    } finally {
+      await subscription.cancel();
+      if (identical(_activeUpload, task)) {
+        _activeUpload = null;
+      }
+    }
+  });
+
+  @override
+  Future<Result<void>> cancelMediaUpload() => _guard(() async {
+    final task = _activeUpload;
+    if (task == null) return;
+    await task.cancel();
   });
 
   @override
@@ -216,10 +240,7 @@ final class FirebaseFanWorkRepository
   Future<Result<void>> requestRemoval({
     required String workId,
     String details = '',
-  }) => _call('requestFanWorkRemoval', {
-    'workId': workId,
-    'details': details,
-  });
+  }) => _call('requestFanWorkRemoval', {'workId': workId, 'details': details});
 
   @override
   Stream<Result<FanWork>> watchWork(String workId) {
@@ -265,10 +286,9 @@ final class FirebaseFanWorkRepository
     if (animeId != null && animeId.isNotEmpty) {
       query = query.where('animeId', isEqualTo: animeId);
     }
-    query = query.orderBy('publishedAt', descending: true).orderBy(
-      FieldPath.documentId,
-      descending: true,
-    );
+    query = query
+        .orderBy('publishedAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true);
     if (after?.publishedAt != null) {
       query = query.startAfter(<Object>[
         Timestamp.fromDate(after!.publishedAt!.toUtc()),
@@ -325,14 +345,13 @@ final class FirebaseFanWorkRepository
   }
 
   @override
-  Future<Result<List<FanWork>>> getMyDrafts({required String userId}) =>
-      _list(
-        _works
-            .where('creatorId', isEqualTo: userId)
-            .where('status', isEqualTo: 'draft')
-            .orderBy('updatedAt', descending: true)
-            .limit(40),
-      );
+  Future<Result<List<FanWork>>> getMyDrafts({required String userId}) => _list(
+    _works
+        .where('creatorId', isEqualTo: userId)
+        .where('status', isEqualTo: 'draft')
+        .orderBy('updatedAt', descending: true)
+        .limit(40),
+  );
 
   @override
   Future<Result<List<FanWorkPreview>>> search(String query) async {
@@ -377,61 +396,76 @@ final class FirebaseFanWorkRepository
   });
 
   @override
-  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) => _guard(() async {
-    final snapshot = await _works
-        .doc(workId)
-        .collection('revisions')
-        .orderBy('version', descending: true)
-        .get();
-    return snapshot.docs
-        .map((doc) {
-          final version = (doc.data()['version'] as num?)?.toInt() ?? 0;
-          return FanWorkRevision.fromMap(doc.data(), version: version);
-        })
-        .toList(growable: false);
-  });
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) =>
+      _guard(() async {
+        final snapshot = await _works
+            .doc(workId)
+            .collection('revisions')
+            .orderBy('version', descending: true)
+            .get();
+        return snapshot.docs
+            .map((doc) {
+              final version = (doc.data()['version'] as num?)?.toInt() ?? 0;
+              return FanWorkRevision.fromMap(doc.data(), version: version);
+            })
+            .toList(growable: false);
+      });
 
   @override
-  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) => _guard(() async {
-    final worksSnapshot = await _works
-        .where('creatorId', isEqualTo: creatorId)
-        .get();
-    final works = worksSnapshot.docs
-        .map((doc) => FanWork.fromMap(doc.data(), id: doc.id))
-        .toList();
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) => _guard(
+    () async {
+      final worksSnapshot = await _works
+          .where('creatorId', isEqualTo: creatorId)
+          .get();
+      final works = worksSnapshot.docs
+          .map((doc) => FanWork.fromMap(doc.data(), id: doc.id))
+          .toList();
 
-    final totalWorks = works.length;
-    final publishedWorks = works.where((w) => w.isPublished).length;
-    final draftWorks = works.where((w) => w.isDraft).length;
-    final totalLikes = works.fold<int>(0, (total, w) => total + w.likesCount);
-    final totalBookmarks = works.fold<int>(0, (total, w) => total + w.bookmarksCount);
-    final totalComments = works.fold<int>(0, (total, w) => total + w.commentsCount);
-    final totalViews = 0;
-    final ratingsSum = works.fold<double>(0.0, (total, w) => total + w.ratingsAverage);
-    final averageRating = totalWorks > 0 ? ratingsSum / totalWorks : 0.0;
+      final totalWorks = works.length;
+      final publishedWorks = works.where((w) => w.isPublished).length;
+      final draftWorks = works.where((w) => w.isDraft).length;
+      final totalLikes = works.fold<int>(0, (total, w) => total + w.likesCount);
+      final totalBookmarks = works.fold<int>(
+        0,
+        (total, w) => total + w.bookmarksCount,
+      );
+      final totalComments = works.fold<int>(
+        0,
+        (total, w) => total + w.commentsCount,
+      );
+      final ratingsSum = works.fold<double>(
+        0.0,
+        (total, w) => total + w.ratingsAverage * w.ratingsCount,
+      );
+      final totalRatings = works.fold<int>(
+        0,
+        (total, w) => total + w.ratingsCount,
+      );
+      final averageRating = totalRatings > 0 ? ratingsSum / totalRatings : 0.0;
 
-    final worksByType = <String, int>{};
-    for (final w in works) {
-      worksByType[w.type.name] = (worksByType[w.type.name] ?? 0) + 1;
-    }
+      final worksByType = <String, int>{};
+      for (final w in works) {
+        worksByType[w.type.name] = (worksByType[w.type.name] ?? 0) + 1;
+      }
 
-    final sortedWorks = [...works]
-      ..sort((a, b) => b.likesCount.compareTo(a.likesCount));
-    final topWorks = sortedWorks.take(5).map((w) => w.preview).toList();
+      final sortedWorks = [...works]
+        ..sort((a, b) => b.likesCount.compareTo(a.likesCount));
+      final topWorks = sortedWorks.take(5).map((w) => w.preview).toList();
 
-    return FanWorkAnalytics(
-      totalWorks: totalWorks,
-      publishedWorks: publishedWorks,
-      draftWorks: draftWorks,
-      totalLikes: totalLikes,
-      totalBookmarks: totalBookmarks,
-      totalComments: totalComments,
-      totalViews: totalViews,
-      averageRating: averageRating,
-      worksByType: worksByType,
-      topWorks: topWorks,
-    );
-  });
+      return FanWorkAnalytics(
+        totalWorks: totalWorks,
+        publishedWorks: publishedWorks,
+        draftWorks: draftWorks,
+        totalLikes: totalLikes,
+        totalBookmarks: totalBookmarks,
+        totalComments: totalComments,
+        totalRatings: totalRatings,
+        averageRating: averageRating,
+        worksByType: worksByType,
+        topWorks: topWorks,
+      );
+    },
+  );
 
   Future<Result<FanWorkListPage>> _page(
     Query<Map<String, dynamic>> query,
@@ -475,6 +509,7 @@ final class FirebaseFanWorkRepository
 Failure _fanWorkFailure(Object error) {
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
+      'canceled' || 'cancelled' => const CancelledError('Upload canceled.'),
       'unauthenticated' || 'permission-denied' => PermissionError(
         error.message ?? "You don't have permission.",
       ),
@@ -491,7 +526,13 @@ Failure _fanWorkFailure(Object error) {
     };
   }
   if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
+      (error.code == 'canceled' || error.code == 'cancelled')) {
+    return const CancelledError('Upload canceled.');
+  }
+  if (error is FirebaseException &&
+      (error.code == 'unavailable' ||
+          error.code == 'deadline-exceeded' ||
+          error.code == 'network-request-failed')) {
     return const NetworkError('Check your connection and try again.');
   }
   if (error is FirebaseException && error.code == 'permission-denied') {

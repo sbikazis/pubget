@@ -115,6 +115,15 @@ final class AnimeCopy {
   String get tabInfo => _ui(AnimeStrings.tabInfo, 'معلومات');
   String get tabCharacters => _ui(AnimeStrings.tabCharacters, 'شخصيات');
   String get tabRelated => _ui(AnimeStrings.tabRelated, 'مرتبط');
+  String get favoriteCharactersTab =>
+      _ui(AnimeStrings.favoriteCharactersTab, 'شخصيات مفضلة');
+  String get favoriteAnimeTab =>
+      _ui(AnimeStrings.favoriteAnimeTab, 'أنمي مفضل');
+  String get listsTab => _ui(AnimeStrings.listsTab, 'قوائم');
+  String get ratingsTab => _ui(AnimeStrings.ratingsTab, 'تقييمات');
+  String get reportLabel => _ui(AnimeStrings.reportLabel, 'إبلاغ');
+  String get reportReview =>
+      _ui(AnimeStrings.reportReview, 'مراجعة الإبلاغ');
   String get relatedReels => _ui(AnimeStrings.relatedReels, 'ريلز مرتبط');
   String get relatedEvents => _ui(AnimeStrings.relatedEvents, 'أحداث مرتبط');
   String get noReelsFound => _ui(AnimeStrings.noReelsFound, 'لا توجد ريلز');

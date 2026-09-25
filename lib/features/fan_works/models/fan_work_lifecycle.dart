@@ -146,7 +146,8 @@ abstract final class FanWorkStrings {
   static const reportComment = 'Report comment';
   static const missing = 'This Fan Work is unavailable.';
   static const emptyTitle = 'No Fan Works yet';
-  static const emptyMessage = 'Be the first to publish a drawing, story, or manga.';
+  static const emptyMessage =
+      'Be the first to publish a drawing, story, or manga.';
   static const draftsEmpty = 'No drafts yet';
   static const offlineCached = 'Showing cached Fan Works. You are offline.';
   static const offline = 'You are offline. Connect and try again.';
@@ -155,6 +156,12 @@ abstract final class FanWorkStrings {
   static const published = 'Fan Work published';
   static const publishFailed = 'Publishing failed. Your draft was kept.';
   static const uploadFailed = 'Upload failed. Your draft was kept.';
+  static const uploadingMedia = 'Uploading media';
+  static const cancelUpload = 'Cancel upload';
+  static const retryUpload = 'Retry upload';
+  static const uploadCanceled = 'Upload canceled. Your draft was kept.';
+  static const uploadAlreadyRunning = 'An upload is already in progress.';
+  static const uploadNothingToRetry = 'There is no upload to retry.';
   static const chooseType = 'Choose a type';
   static const basicInfo = 'Basic information';
   static const mediaContent = 'Media and content';

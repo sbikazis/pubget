@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -184,7 +185,9 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                       .map(
                         (type) => DropdownMenuItem(
                           value: type,
-                          child: Text(EventTypeRegistry.of(type).label),
+                          child: Text(
+                            AppStrings.of(context).eventTypeLabel(type.name),
+                          ),
                         ),
                       )
                       .toList(growable: false),
@@ -676,6 +679,7 @@ class _QuizQuestionForm {
     String prompt = '',
     List<String>? optionLabels,
     this.correctOptionId = 'opt-1',
+    this.seconds = 30,
   }) : prompt = TextEditingController(text: prompt),
        options = [
          for (var i = 0; i < (optionLabels?.length ?? 2); i++)
@@ -690,6 +694,7 @@ class _QuizQuestionForm {
       prompt: question.prompt,
       optionLabels: question.options.map((option) => option.label).toList(),
       correctOptionId: question.correctOptionId,
+      seconds: question.seconds,
     );
   }
 
@@ -697,6 +702,7 @@ class _QuizQuestionForm {
   final TextEditingController prompt;
   final List<TextEditingController> options;
   String correctOptionId;
+  int seconds;
 
   EventQuizQuestion toQuestion({required int index}) {
     final resolvedOptions = [
@@ -712,6 +718,7 @@ class _QuizQuestionForm {
       prompt: prompt.text,
       options: resolvedOptions,
       correctOptionId: correct,
+      seconds: seconds,
     );
   }
 
@@ -748,6 +755,7 @@ class _QuizQuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -813,6 +821,30 @@ class _QuizQuestionCard extends StatelessWidget {
             onChanged: (value) {
               if (value == null) return;
               form.correctOptionId = value;
+              onChanged();
+            },
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          DropdownButtonFormField<int>(
+            key: ValueKey<String>('${form.id}-seconds'),
+            value: form.seconds,
+            decoration: InputDecoration(labelText: strings.eventQuestionTimer),
+            items: [
+              DropdownMenuItem(value: 0, child: Text(strings.eventNoTimeLimit)),
+              for (final seconds in <int>[10, 20, 30])
+                DropdownMenuItem(
+                  value: seconds,
+                  child: Text(strings.eventQuestionSeconds(seconds)),
+                ),
+              for (final minutes in <int>[1, 2, 5])
+                DropdownMenuItem(
+                  value: minutes * 60,
+                  child: Text(strings.eventQuestionMinutes(minutes)),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              form.seconds = value;
               onChanged();
             },
           ),

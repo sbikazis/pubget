@@ -185,4 +185,7 @@ abstract final class EventStrings {
   static const archiveEvent = 'Archive';
   static const alreadyParticipated = 'You already participated';
   static const resultTitle = 'Final result';
+  static const quizLeaderboard = 'Leaderboard';
+  static const quizPoints = 'pts';
+  static const questionTimer = 'Time limit per question';
 }

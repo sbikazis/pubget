@@ -86,18 +86,21 @@ final class EventQuizQuestion {
     required this.prompt,
     required this.options,
     required this.correctOptionId,
+    this.seconds = 0,
   });
 
   final String id;
   final String prompt;
   final List<EventOption> options;
   final String correctOptionId;
+  final int seconds;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'id': id,
     'prompt': prompt,
     'options': options.map((item) => item.toMap()).toList(growable: false),
     'correctOptionId': correctOptionId,
+    if (seconds > 0) 'seconds': seconds,
   };
 
   factory EventQuizQuestion.fromMap(
@@ -112,6 +115,7 @@ final class EventQuizQuestion {
       correctOptionId:
           map['correctOptionId'] as String? ??
           (options.isEmpty ? '' : options.first.id),
+      seconds: (map['seconds'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -120,11 +124,13 @@ final class EventQuizQuestion {
     String? prompt,
     List<EventOption>? options,
     String? correctOptionId,
+    int? seconds,
   }) => EventQuizQuestion(
     id: id ?? this.id,
     prompt: prompt ?? this.prompt,
     options: options ?? this.options,
     correctOptionId: correctOptionId ?? this.correctOptionId,
+    seconds: seconds ?? this.seconds,
   );
 }
 
@@ -237,16 +243,22 @@ final class EventResult {
     required this.submissions,
     this.votes = const <String, int>{},
     this.scores = const <String, int>{},
+    this.orderedOptionIds = const <String>[],
     this.correctCounts = const <String, int>{},
     this.winnerIds = const <String>[],
+    this.winnerOptionId,
+    this.leaderboard = const <String, int>{},
   });
 
   final String kind;
   final int submissions;
   final Map<String, int> votes;
   final Map<String, int> scores;
+  final List<String> orderedOptionIds;
   final Map<String, int> correctCounts;
   final List<String> winnerIds;
+  final String? winnerOptionId;
+  final Map<String, int> leaderboard;
 
   factory EventResult.fromMap(Map<String, dynamic>? map) {
     if (map == null) {
@@ -257,12 +269,19 @@ final class EventResult {
       submissions: (map['submissions'] as num?)?.toInt() ?? 0,
       votes: _intMap(map['votes']),
       scores: _intMap(map['scores']),
+      orderedOptionIds:
+          (map['orderedOptionIds'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const <String>[],
       correctCounts: _intMap(map['correctCounts']),
       winnerIds:
           (map['winnerIds'] as List<Object?>?)?.whereType<String>().toList(
             growable: false,
           ) ??
           const <String>[],
+      winnerOptionId: map['winnerOptionId'] as String?,
+      leaderboard: _intMap(map['leaderboard']),
     );
   }
 }
@@ -389,8 +408,11 @@ final class PubgetEvent {
             'submissions': result!.submissions,
             'votes': result!.votes,
             'scores': result!.scores,
+            'orderedOptionIds': result!.orderedOptionIds,
             'correctCounts': result!.correctCounts,
             'winnerIds': result!.winnerIds,
+            'winnerOptionId': result!.winnerOptionId,
+            'leaderboard': result!.leaderboard,
           },
     'createdAt': createdAt?.toUtc().toIso8601String(),
     'updatedAt': updatedAt?.toUtc().toIso8601String(),
@@ -513,10 +535,7 @@ final class EventComment {
   final String text;
   final DateTime? createdAt;
 
-  factory EventComment.fromMap(
-    Map<String, dynamic> map, {
-    required String id,
-  }) {
+  factory EventComment.fromMap(Map<String, dynamic> map, {required String id}) {
     return EventComment(
       id: id,
       userId: map['userId'] as String? ?? '',

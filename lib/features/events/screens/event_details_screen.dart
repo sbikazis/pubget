@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -26,9 +29,10 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   final Set<String> _selectedIds = <String>{};
   final List<String> _rankedIds = <String>[];
   final Map<String, String> _quizAnswers = <String, String>{};
-  final _text = TextEditingController();
+  final TextEditingController _text = TextEditingController();
   bool _opened = false;
   String? _loadedGroupId;
+  String? _rankingEventId;
 
   @override
   void didChangeDependencies() {
@@ -49,6 +53,17 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     super.dispose();
   }
 
+  void _syncRanking(PubgetEvent event) {
+    if (!EventTypeRegistry.of(event.type).usesRanking ||
+        _rankingEventId == event.id) {
+      return;
+    }
+    _rankingEventId = event.id;
+    _rankedIds
+      ..clear()
+      ..addAll(event.configuration.options.map((option) => option.id));
+  }
+
   void _maybeLoadGroup(PubgetEvent event) {
     final groupId = event.groupId;
     final uid = context.read<AuthProvider>().currentUser?.id;
@@ -63,7 +78,10 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   Widget build(BuildContext context) {
     final eventState = context.watch<EventProvider>();
     final event = eventState.event;
-    if (event != null) _maybeLoadGroup(event);
+    if (event != null) {
+      _syncRanking(event);
+      _maybeLoadGroup(event);
+    }
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
@@ -115,7 +133,9 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                     runSpacing: AppSpacing.sm,
                     children: <Widget>[
                       PubgetBadge(
-                        label: EventTypeRegistry.of(event.type).label,
+                        label: AppStrings.of(
+                          context,
+                        ).eventTypeLabel(event.type.name),
                       ),
                       PubgetBadge(label: event.status.name),
                     ],
@@ -164,14 +184,32 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                           }
                         });
                       },
-                      onRank: (id) {
+                      onRankReorder: (ids) {
                         setState(() {
-                          if (!_rankedIds.contains(id)) _rankedIds.add(id);
+                          _rankedIds
+                            ..clear()
+                            ..addAll(ids);
                         });
                       },
-                      onResetRank: () => setState(_rankedIds.clear),
+                      onResetRank: () {
+                        setState(() {
+                          _rankedIds
+                            ..clear()
+                            ..addAll(
+                              event.configuration.options.map(
+                                (option) => option.id,
+                              ),
+                            );
+                        });
+                      },
                       onQuizAnswer: (questionId, optionId) {
-                        setState(() => _quizAnswers[questionId] = optionId);
+                        setState(() {
+                          if (optionId.isEmpty) {
+                            _quizAnswers.remove(questionId);
+                          } else {
+                            _quizAnswers[questionId] = optionId;
+                          }
+                        });
                       },
                     ),
                   ],
@@ -225,7 +263,7 @@ class _ResponseForm extends StatelessWidget {
     required this.text,
     required this.onSelect,
     required this.onToggle,
-    required this.onRank,
+    required this.onRankReorder,
     required this.onResetRank,
     required this.onQuizAnswer,
   });
@@ -238,7 +276,7 @@ class _ResponseForm extends StatelessWidget {
   final TextEditingController text;
   final ValueChanged<String> onSelect;
   final void Function(String id, bool selected) onToggle;
-  final ValueChanged<String> onRank;
+  final ValueChanged<List<String>> onRankReorder;
   final VoidCallback onResetRank;
   final void Function(String questionId, String optionId) onQuizAnswer;
 
@@ -246,6 +284,7 @@ class _ResponseForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final spec = EventTypeRegistry.of(event.type);
     final provider = context.watch<EventProvider>();
+    final strings = AppStrings.of(context);
     if (provider.hasSubmitted && !event.configuration.allowUpdate) {
       return const PubgetEmptyState(
         title: EventStrings.alreadyParticipated,
@@ -266,19 +305,47 @@ class _ResponseForm extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
         ],
         if (spec.usesRanking) ...[
-          const Text('Tap options in the order you want to rank them.'),
-          ...event.configuration.options.map((option) {
-            final rank = rankedIds.indexOf(option.id);
-            return ListTile(
-              title: Text(option.label),
-              trailing: Text(rank < 0 ? '' : '${rank + 1}'),
-              onTap: () => onRank(option.id),
-            );
-          }),
+          Text(strings.eventRankOptionsHint),
+          const SizedBox(height: AppSpacing.sm),
+          ReorderableListView.builder(
+            key: const Key('event-ranking-options'),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: event.configuration.options.length,
+            onReorder: (oldIndex, newIndex) {
+              final next = <String>[
+                for (final option in event.configuration.options)
+                  if (rankedIds.contains(option.id)) option.id,
+                for (final option in event.configuration.options)
+                  if (!rankedIds.contains(option.id)) option.id,
+              ];
+              if (newIndex > oldIndex) newIndex -= 1;
+              next.insert(newIndex, next.removeAt(oldIndex));
+              onRankReorder(next);
+            },
+            itemBuilder: (context, index) {
+              final id = rankedIds.isEmpty
+                  ? event.configuration.options[index].id
+                  : rankedIds[index];
+              final option = event.configuration.options.firstWhere(
+                (item) => item.id == id,
+              );
+              return ListTile(
+                key: ValueKey('ranking-$id'),
+                leading: Text('${index + 1}'),
+                title: Text(option.label),
+                trailing: ReorderableDragStartListener(
+                  key: Key('ranking-handle-$id'),
+                  index: index,
+                  child: const Icon(Icons.drag_handle),
+                ),
+              );
+            },
+          ),
           PubgetTextButton(
             onPressed: onResetRank,
-            semanticLabel: 'Reset ranking',
-            child: const Text('Reset ranking'),
+            semanticLabel: strings.eventResetRanking,
+            child: Text(strings.eventResetRanking),
           ),
         ] else if (spec.usesOptions && multi)
           ...event.configuration.options.map(
@@ -328,27 +395,15 @@ class _ResponseForm extends StatelessWidget {
           ),
         if (spec.usesQuiz)
           ...event.configuration.questions.map(
-            (question) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    question.prompt,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  ...question.options.map(
-                    (option) => RadioListTile<String>(
-                      title: Text(option.label),
-                      value: option.id,
-                      groupValue: quizAnswers[question.id],
-                      onChanged: (value) {
-                        if (value != null) onQuizAnswer(question.id, value);
-                      },
-                    ),
-                  ),
-                ],
-              ),
+            (question) => _QuizQuestionTile(
+              question: question,
+              selectedId: quizAnswers[question.id],
+              onSelect: (optionId) => onQuizAnswer(question.id, optionId),
+              onExpire: () {
+                if (quizAnswers.containsKey(question.id)) {
+                  onQuizAnswer(question.id, '');
+                }
+              },
             ),
           ),
         PubgetPrimaryButton(
@@ -374,7 +429,7 @@ class _ResponseForm extends StatelessWidget {
         if (text.text.trim().isNotEmpty) 'text': text.text.trim(),
       };
     } else if (spec.usesQuiz) {
-      if (quizAnswers.length != event.configuration.questions.length) return;
+      if (quizAnswers.isEmpty) return;
       data = <String, dynamic>{'answers': quizAnswers};
     } else if (event.configuration.maxSelections > 1 ||
         event.configuration.allowMultiple) {
@@ -394,6 +449,124 @@ class _ResponseForm extends StatelessWidget {
   }
 }
 
+class _QuizQuestionTile extends StatefulWidget {
+  const _QuizQuestionTile({
+    required this.question,
+    required this.selectedId,
+    required this.onSelect,
+    required this.onExpire,
+  });
+
+  final EventQuizQuestion question;
+  final String? selectedId;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onExpire;
+
+  @override
+  State<_QuizQuestionTile> createState() => _QuizQuestionTileState();
+}
+
+class _QuizQuestionTileState extends State<_QuizQuestionTile> {
+  Timer? _timer;
+  int _left = 0;
+  bool _expired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.question.seconds > 0) {
+      _left = widget.question.seconds;
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        if (_left <= 1) {
+          _timer?.cancel();
+          setState(() {
+            _left = 0;
+            _expired = true;
+          });
+          widget.onExpire();
+        } else {
+          setState(() => _left -= 1);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final strings = AppStrings.of(context);
+    final locked = _expired && widget.selectedId == null;
+    final minutes = (_left ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_left % 60).toString().padLeft(2, '0');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  widget.question.prompt,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              if (widget.question.seconds > 0) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Icon(
+                  _expired ? Icons.timer_off_outlined : Icons.timer_outlined,
+                  size: 18,
+                  color: _expired
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
+                Text(
+                  _expired ? strings.eventTimeUp : '$minutes:$seconds',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _expired
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_expired && widget.selectedId == null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(
+                strings.eventQuestionLocked,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ...widget.question.options.map(
+            (option) => RadioListTile<String>(
+              title: Text(option.label),
+              value: option.id,
+              groupValue: widget.selectedId,
+              onChanged: locked
+                  ? null
+                  : (value) {
+                      if (value != null) widget.onSelect(value);
+                    },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultCard extends StatelessWidget {
   const _ResultCard({required this.event});
 
@@ -402,6 +575,7 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final result = event.result!;
+    final strings = AppStrings.of(context);
     final labels = <String, String>{
       for (final option in event.configuration.options) option.id: option.label,
     };
@@ -410,22 +584,48 @@ class _ResultCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            EventStrings.resultTitle,
+            strings.eventResultTitle,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          Text('${result.submissions} submissions'),
-          if (result.winnerIds.isNotEmpty)
+          Text('${strings.eventSubmissions}: ${result.submissions}'),
+          if (event.type == EventType.quiz &&
+              result.leaderboard.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
             Text(
-              'Winner: ${result.winnerIds.map((id) => labels[id] ?? id).join(', ')}',
+              strings.eventLeaderboard,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            for (final entry
+                in result.leaderboard.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value)))
+              Text('${entry.key}: ${entry.value} ${strings.eventPoints}'),
+          ],
+          if (event.type == EventType.prediction &&
+              result.winnerOptionId != null)
+            Text(
+              '${strings.eventResultTitle}: ${labels[result.winnerOptionId] ?? result.winnerOptionId}',
+            ),
+          if (result.winnerIds.isNotEmpty && event.type != EventType.prediction)
+            Text(
+              '${strings.eventWinner}: ${result.winnerIds.map((id) => labels[id] ?? id).join(', ')}',
             ),
           ...result.votes.entries.map(
             (entry) =>
                 Text('${labels[entry.key] ?? entry.key}: ${entry.value}'),
           ),
-          ...result.scores.entries.map(
-            (entry) =>
-                Text('${labels[entry.key] ?? entry.key}: ${entry.value} pts'),
-          ),
+          if (event.type == EventType.ranking &&
+              result.orderedOptionIds.isNotEmpty)
+            for (final entry in result.orderedOptionIds.indexed)
+              Text(
+                '${entry.$1 + 1}. ${labels[entry.$2] ?? entry.$2}: '
+                '${result.scores[entry.$2] ?? 0} ${strings.eventPoints}',
+              )
+          else
+            ...result.scores.entries.map(
+              (entry) => Text(
+                '${labels[entry.key] ?? entry.key}: ${entry.value} ${strings.eventPoints}',
+              ),
+            ),
         ],
       ),
     );
@@ -535,9 +735,9 @@ class _SocialActionsRow extends StatelessWidget {
             final result = await provider.react(event.id, 'like');
             if (!context.mounted) return;
             if (!result.isSuccess) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text(result.failureOrNull?.message ?? '')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(result.failureOrNull?.message ?? '')),
+              );
             }
           },
           semanticLabel: 'Like',
@@ -556,10 +756,7 @@ class _SocialActionsRow extends StatelessWidget {
 }
 
 class _CommentsSection extends StatelessWidget {
-  const _CommentsSection({
-    required this.event,
-    required this.text,
-  });
+  const _CommentsSection({required this.event, required this.text});
 
   final PubgetEvent event;
   final TextEditingController text;
@@ -626,9 +823,7 @@ class _CommentsSection extends StatelessWidget {
                       if (!result.isSuccess) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              result.failureOrNull?.message ?? '',
-                            ),
+                            content: Text(result.failureOrNull?.message ?? ''),
                           ),
                         );
                       }
@@ -677,14 +872,15 @@ class _ResolveEventDialogState extends State<_ResolveEventDialog> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _participants = result.valueOrNull?.responses
-          .map(
-            (response) => EventParticipant(
-              userId: response.userId,
-              displayName: response.userId,
-            ),
-          )
-          .toList(growable: false) ??
+      _participants =
+          result.valueOrNull?.responses
+              .map(
+                (response) => EventParticipant(
+                  userId: response.userId,
+                  displayName: response.userId,
+                ),
+              )
+              .toList(growable: false) ??
           const <EventParticipant>[];
     });
   }
@@ -766,9 +962,9 @@ class _ResolveEventDialogState extends State<_ResolveEventDialog> {
     );
     if (!context.mounted) return;
     if (!result.isSuccess) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(result.failureOrNull?.message ?? '')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.failureOrNull?.message ?? '')),
+      );
     } else {
       Navigator.of(context).pop();
     }
@@ -787,8 +983,7 @@ class _AnalyticsSheet extends StatelessWidget {
       for (final option in event.configuration.options) option.id: option.label,
     };
     final responses = analytics?.responses ?? const <EventResponse>[];
-    final participants =
-        analytics?.participants ?? const <EventParticipant>[];
+    final participants = analytics?.participants ?? const <EventParticipant>[];
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
@@ -808,23 +1003,15 @@ class _AnalyticsSheet extends StatelessWidget {
               ),
               if (analytics?.tally.votes.isNotEmpty ?? false) ...[
                 const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Votes',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Votes', style: Theme.of(context).textTheme.titleMedium),
                 for (final entry in analytics!.tally.votes.entries)
                   Text('${labels[entry.key] ?? entry.key}: ${entry.value}'),
               ],
               if (analytics?.tally.scores.isNotEmpty ?? false) ...[
                 const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Scores',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('Scores', style: Theme.of(context).textTheme.titleMedium),
                 for (final entry in analytics!.tally.scores.entries)
-                  Text(
-                    '${labels[entry.key] ?? entry.key}: ${entry.value} pts',
-                  ),
+                  Text('${labels[entry.key] ?? entry.key}: ${entry.value} pts'),
               ],
               const SizedBox(height: AppSpacing.md),
               Text(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
@@ -71,7 +72,203 @@ void main() {
     expect(find.text(EventStrings.missing), findsWidgets);
     expect(find.byType(PubgetEmptyState), findsOneWidget);
   });
+
+  testWidgets('ranking copy follows the app locale', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final auth = await _auth();
+    final repository = _FakeEventRepository()..event = _rankingEvent();
+    final events = EventProvider(repository: repository);
+    addTearDown(events.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<EventProvider>.value(value: events),
+          ChangeNotifierProvider<GroupProvider>(
+            create: (_) => GroupProvider(repository: _FakeGroupRepository()),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: <Locale>[Locale('en'), Locale('ar')],
+          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: EventDetailsScreen(eventId: 'ranking-1'),
+        ),
+      ),
+    );
+    for (
+      var attempt = 0;
+      attempt < 20 &&
+          find.byKey(const Key('event-ranking-options')).evaluate().isEmpty;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(find.text('اسحب الخيارات إلى الترتيب الذي تفضّله.'), findsOneWidget);
+    expect(find.text('إعادة ضبط الترتيب'), findsOneWidget);
+  });
+
+  testWidgets('quiz questions lock when the per-question timer expires', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final auth = await _auth();
+    final repository = _FakeEventRepository()..event = _quizEvent();
+    final events = EventProvider(repository: repository);
+    addTearDown(events.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<EventProvider>.value(value: events),
+          ChangeNotifierProvider<GroupProvider>(
+            create: (_) => GroupProvider(repository: _FakeGroupRepository()),
+          ),
+        ],
+        child: const MaterialApp(home: EventDetailsScreen(eventId: 'quiz-1')),
+      ),
+    );
+    for (
+      var attempt = 0;
+      attempt < 20 && find.text('Who wins?').evaluate().isEmpty;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(find.text('00:01'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('Time up'), findsOneWidget);
+    expect(find.textContaining('locked'), findsOneWidget);
+  });
+
+  testWidgets('ranking events submit the drag-and-drop order', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final auth = await _auth();
+    final repository = _FakeEventRepository()..event = _rankingEvent();
+    final events = EventProvider(repository: repository);
+    addTearDown(events.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<EventProvider>.value(value: events),
+          ChangeNotifierProvider<GroupProvider>(
+            create: (_) => GroupProvider(repository: _FakeGroupRepository()),
+          ),
+        ],
+        child: const MaterialApp(
+          home: EventDetailsScreen(eventId: 'ranking-1'),
+        ),
+      ),
+    );
+    for (
+      var attempt = 0;
+      attempt < 20 &&
+          find.byKey(const Key('event-ranking-options')).evaluate().isEmpty;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(events.event, isNotNull);
+    final ranking = tester.widget<ReorderableListView>(
+      find.byKey(const Key('event-ranking-options')),
+    );
+    expect(find.byType(ReorderableDragStartListener), findsNWidgets(3));
+    ranking.onReorder(1, 0);
+    await tester.pump();
+    await tester.tap(find.text(EventStrings.submit));
+    await tester.pump();
+    await tester.pump();
+
+    expect(repository.submittedResponses.single['rankedIds'], <String>[
+      'opt-2',
+      'opt-1',
+      'opt-3',
+    ]);
+  });
 }
+
+PubgetEvent _rankingEvent() => PubgetEvent(
+  id: 'ranking-1',
+  type: EventType.ranking,
+  creatorId: 'alice',
+  groupId: null,
+  title: 'Rank the options',
+  description: '',
+  configuration: const EventConfiguration(
+    question: 'Rank the options',
+    options: <EventOption>[
+      EventOption(id: 'opt-1', label: 'One'),
+      EventOption(id: 'opt-2', label: 'Two'),
+      EventOption(id: 'opt-3', label: 'Three'),
+    ],
+  ),
+  status: EventStatus.active,
+  startAt: DateTime.utc(2026, 9, 25),
+  endAt: DateTime.utc(2027, 9, 25),
+  participantsCount: 1,
+  responsesCount: 0,
+  tally: const EventTally(),
+  result: null,
+  createdAt: DateTime.utc(2026, 9, 1),
+  updatedAt: DateTime.utc(2026, 9, 1),
+);
+
+PubgetEvent _quizEvent() => PubgetEvent(
+  id: 'quiz-1',
+  type: EventType.quiz,
+  creatorId: 'alice',
+  groupId: null,
+  title: 'Knowledge check',
+  description: '',
+  configuration: const EventConfiguration(
+    question: 'Who wins?',
+    questions: <EventQuizQuestion>[
+      EventQuizQuestion(
+        id: 'q-1',
+        prompt: 'Who wins?',
+        options: <EventOption>[
+          EventOption(id: 'opt-1', label: 'One'),
+          EventOption(id: 'opt-2', label: 'Two'),
+        ],
+        correctOptionId: 'opt-1',
+        seconds: 1,
+      ),
+    ],
+  ),
+  status: EventStatus.active,
+  startAt: DateTime.utc(2026, 9, 25),
+  endAt: DateTime.utc(2027, 9, 25),
+  participantsCount: 1,
+  responsesCount: 0,
+  tally: const EventTally(),
+  result: null,
+  createdAt: DateTime.utc(2026, 9, 1),
+  updatedAt: DateTime.utc(2026, 9, 1),
+);
 
 Future<AuthProvider> _auth() async {
   final repository = FakeAuthRepository(
@@ -83,6 +280,10 @@ Future<AuthProvider> _auth() async {
 }
 
 final class _FakeEventRepository implements EventRepository {
+  PubgetEvent? event;
+  final List<Map<String, dynamic>> submittedResponses =
+      <Map<String, dynamic>>[];
+
   @override
   Future<Result<void>> archive(String eventId) async =>
       const Success<void>(null);
@@ -199,13 +400,20 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> submit({
     required String eventId,
     required Map<String, dynamic> responseData,
-  }) async => const Success<void>(null);
+  }) async {
+    submittedResponses.add(responseData);
+    return const Success<void>(null);
+  }
 
   @override
-  Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
-      Stream<Result<PubgetEvent>>.value(
-        const FailureResult(NotFoundError('This event no longer exists.')),
-      );
+  Stream<Result<PubgetEvent>> watchEvent(String eventId) {
+    final current = event;
+    return Stream<Result<PubgetEvent>>.value(
+      current == null
+          ? const FailureResult(NotFoundError('This event no longer exists.'))
+          : Success(current),
+    );
+  }
 }
 
 final class _FakeGroupRepository implements GroupRepository {
@@ -239,8 +447,10 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
-      const Success<void>(null);
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
@@ -273,11 +483,11 @@ final class _FakeGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-

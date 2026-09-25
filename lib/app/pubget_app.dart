@@ -116,6 +116,7 @@ import '../features/mafia/screens/mafia_game_screen.dart';
 import '../features/fan_works/providers/fan_work_providers.dart';
 import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
+import '../features/fan_works/repositories/shared_preferences_fan_work_draft_store.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
 import '../features/fan_works/screens/profile_fan_works_page.dart';
@@ -542,6 +543,7 @@ class PubgetApp extends StatelessWidget {
           create: (context) => FanWorkEditorProvider(
             repository: context.read<FanWorkRepository>(),
             analytics: context.read<Analytics>(),
+            draftStore: SharedPreferencesFanWorkDraftStore(),
           ),
         ),
         provider.ChangeNotifierProxyProvider<AuthProvider, EconomyProvider>(

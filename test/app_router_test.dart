@@ -259,6 +259,17 @@ void main() {
     expect(fanWork.path, '/fan-work');
     expect(fanWork.parameters['view'], 'manga');
 
+    final fanWorkAlias = await parse('/work/w1?view=manga');
+    expect(fanWorkAlias.path, '/fan-work');
+    expect(fanWorkAlias.parameters['workId'], 'w1');
+    expect(fanWorkAlias.parameters['view'], 'manga');
+
+    final fanWorkAliasEmpty = await parse('/work/   ');
+    expect(fanWorkAliasEmpty.path, '/unknown');
+
+    final unknownAlias = await parse('/work');
+    expect(unknownAlias.path, '/unknown');
+
     final browse = await parse('/anime/browse?kind=trending');
     expect(browse.path, '/anime/browse');
     expect(browse.parameters['kind'], 'trending');
