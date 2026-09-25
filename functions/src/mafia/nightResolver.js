@@ -110,121 +110,146 @@ function planNightResolution({ playersById, actions, nightNumber }) {
   };
 }
 
-async function resolveNight(gameId, gameData) {
-  const gameRef = db.collection("mafia_games").doc(gameId);
+// A night may only be resolved once. `resolvedNights` on the game document is
+// the guard: it is read and written inside the same transaction that applies the
+// kills, so a scheduler retry, a lease expiry, or a duplicate invocation can
+// never resolve the same night twice.
+async function resolveNight(gameId, gameData, deps = {}) {
+  const database = deps.db || db;
+  const postCard = deps.postFromActivity || postFromActivity;
+  const gameRef = database.collection("mafia_games").doc(gameId);
   const playersRef = gameRef.collection("players");
-  const nightNumber = gameData.currentNight || 0;
-  const currentGame = await gameRef.get();
-  if (!currentGame.exists || currentGame.data().status !== "NIGHT" ||
-      currentGame.data().currentPhase !== "NIGHT" ||
-      currentGame.data().currentNight !== nightNumber) return false;
+  const requestedNight = gameData.currentNight || 0;
+  let resolvedKilledIds = [];
 
-  const [playersSnap, actionsSnap] = await Promise.all([
-    playersRef.get(),
-    gameRef.collection("night_actions").where("nightNumber", "==", nightNumber).get(),
-  ]);
+  const resolved = await database.runTransaction(async (tx) => {
+    const gameSnap = await tx.get(gameRef);
+    if (!gameSnap.exists) return false;
+    const game = gameSnap.data() || {};
+    if (game.status !== "NIGHT" || (game.currentPhase || game.status) !== "NIGHT") {
+      return false;
+    }
+    const nightNumber = game.currentNight || 0;
+    if (nightNumber !== requestedNight) return false;
+    if (Array.isArray(game.resolvedNights) && game.resolvedNights.includes(nightNumber)) {
+      return false;
+    }
 
-  const privateSnaps = await Promise.all(
-    playersSnap.docs.map((doc) => doc.ref.collection("private").doc("data").get()),
-  );
+    const [playersSnap, actionsSnap] = await Promise.all([
+      tx.get(playersRef),
+      tx.get(gameRef.collection("night_actions").where("nightNumber", "==", nightNumber)),
+    ]);
 
-  const playersById = {};
-  playersSnap.docs.forEach((doc, index) => {
-    const privateData = privateSnaps[index].exists ? privateSnaps[index].data() : {};
-    playersById[doc.id] = {
-      ref: doc.ref,
-      privateRef: privateSnaps[index].ref,
-      ...doc.data(),
-      role: privateData.role || "citizen",
-      team: privateData.team || "citizens",
-    lastDoctorTargetId: privateData.lastDoctorTargetId || null,
-    };
-  });
+    const privateSnaps = await Promise.all(
+      playersSnap.docs.map((doc) => tx.get(doc.ref.collection("private").doc("data"))),
+    );
 
-  const plan = planNightResolution({
-    playersById,
-    actions: actionsSnap.docs.map((doc) => doc.data()),
-    nightNumber,
-  });
-
-  const batch = db.batch();
-  const eventsRef = gameRef.collection("events");
-  const killedIds = new Set(plan.killedIds);
-  const savedIds = new Set(plan.savedIds);
-
-  killedIds.forEach((playerId) => {
-    if (savedIds.has(playerId)) return;
-    const player = playersById[playerId];
-    if (!player) return;
-    batch.update(player.ref, {
-      isAlive: false,
-      canVote: false,
-      canSpeak: false,
-      canUseAbility: false,
+    const playersById = {};
+    playersSnap.docs.forEach((doc, index) => {
+      const privateData = privateSnaps[index].exists ? privateSnaps[index].data() : {};
+      playersById[doc.id] = {
+        ref: doc.ref,
+        privateRef: privateSnaps[index].ref,
+        ...doc.data(),
+        role: privateData.role || "citizen",
+        team: privateData.team || "citizens",
+        lastDoctorTargetId: privateData.lastDoctorTargetId || null,
+      };
     });
-    const name = typeof player.username === "string" && player.username.trim()
-      ? player.username.trim().slice(0, 80)
-      : "A player";
-    batch.set(eventsRef.doc(`night-${nightNumber}-killed-${playerId}`), {
-      type: "PlayerKilled",
-      message: `${name} was killed last night.`,
+
+    const plan = planNightResolution({
+      playersById,
+      actions: actionsSnap.docs.map((doc) => doc.data()),
+      nightNumber,
+    });
+
+    const eventsRef = gameRef.collection("events");
+    const killedIds = new Set(plan.killedIds);
+    const savedIds = new Set(plan.savedIds);
+    resolvedKilledIds = [...killedIds];
+
+    killedIds.forEach((playerId) => {
+      if (savedIds.has(playerId)) return;
+      const player = playersById[playerId];
+      if (!player) return;
+      tx.update(player.ref, {
+        isAlive: false,
+        canVote: false,
+        canSpeak: false,
+        canUseAbility: false,
+        revealedRole: true,
+        eliminatedBy: "night",
+        canSayLastWords: true,
+      });
+      const name = typeof player.username === "string" && player.username.trim()
+        ? player.username.trim().slice(0, 80)
+        : "A player";
+      tx.set(eventsRef.doc(`night-${nightNumber}-killed-${playerId}`), {
+        type: "PlayerKilled",
+        message: `${name} was killed last night.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        payload: { playerId, cause: "night" },
+      });
+    });
+
+    for (const investigation of plan.investigations) {
+      const detective = playersById[investigation.detectiveId];
+      if (!detective || !detective.privateRef) continue;
+      tx.update(detective.privateRef, {
+        lastInvestigationResult: {
+          targetId: investigation.targetId,
+          result: investigation.result,
+          nightNumber,
+        },
+      });
+    }
+    for (const investigation of plan.donInvestigations) {
+      const don = playersById[investigation.donId];
+      if (!don || !don.privateRef) continue;
+      tx.update(don.privateRef, {
+        lastDonInvestigationResult: {
+          targetId: investigation.targetId,
+          result: investigation.result,
+          nightNumber,
+        },
+      });
+    }
+    if (plan.doctorPlayerId && playersById[plan.doctorPlayerId]?.privateRef) {
+      tx.update(playersById[plan.doctorPlayerId].privateRef, {
+        lastDoctorTargetId: plan.doctorTargetId,
+      });
+    }
+
+    tx.set(eventsRef.doc(`night-${nightNumber}-resolved`), {
+      type: "NightResolved",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      payload: { playerId, cause: "night" },
-    });
-  });
+      message: killedIds.size > 0 ? "Night ended with an elimination." : "Night ended with no death.",
+      payload: { nightNumber, deathOccurred: killedIds.size > 0 },
+    }, { merge: true });
 
-  for (const investigation of plan.investigations) {
-    const detective = playersById[investigation.detectiveId];
-    if (!detective || !detective.privateRef) continue;
-    batch.update(detective.privateRef, {
-      lastInvestigationResult: {
-        targetId: investigation.targetId,
-        result: investigation.result,
-        nightNumber,
-      },
-    });
-  }
-  for (const investigation of plan.donInvestigations) {
-    const don = playersById[investigation.donId];
-    if (!don || !don.privateRef) continue;
-    batch.update(don.privateRef, {
-      lastDonInvestigationResult: {
-        targetId: investigation.targetId,
-        result: investigation.result,
-        nightNumber,
-      },
-    });
-  }
-  if (plan.doctorPlayerId && playersById[plan.doctorPlayerId]?.privateRef) {
-    batch.update(playersById[plan.doctorPlayerId].privateRef, {
-      lastDoctorTargetId: plan.doctorTargetId,
-    });
-  }
-
-  batch.set(eventsRef.doc(`night-${nightNumber}-resolved`), {
-    type: "NightResolved",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    message: killedIds.size > 0 ? "Night ended with an elimination." : "Night ended with no death.",
-    payload: { nightNumber, deathOccurred: killedIds.size > 0 },
-  }, { merge: true });
-  if (killedIds.size > 0) {
-    batch.update(gameRef, {
-      eliminations: admin.firestore.FieldValue.arrayUnion(
+    const gameUpdate = {
+      resolvedNights: admin.firestore.FieldValue.arrayUnion(nightNumber),
+    };
+    if (killedIds.size > 0) {
+      gameUpdate.eliminations = admin.firestore.FieldValue.arrayUnion(
         ...[...killedIds].map((playerId) => ({
           playerId,
           cause: "night",
           nightNumber,
           at: new Date(),
         })),
-      ),
-    });
-  }
-  await batch.commit();
+      );
+    }
+    tx.update(gameRef, gameUpdate);
+    return true;
+  });
+
+  if (!resolved) return false;
   if (gameData.groupId) {
     try {
-      for (const playerId of killedIds) {
-        await postFromActivity(
-          db,
+      for (const playerId of resolvedKilledIds) {
+        await postCard(
+          database,
           admin.firestore.FieldValue,
           toMafiaActivity(
             { type: "PlayerEliminated", actorId: "system", payload: { playerId } },

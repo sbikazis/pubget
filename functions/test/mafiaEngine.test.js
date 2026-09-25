@@ -54,15 +54,29 @@ test("mafia state machine follows the server-owned uppercase lifecycle", () => {
   assert.equal(ORDER.includes("execution"), false);
 });
 
-test("classic four-player roles stay below mafia parity", () => {
-  const four = computeRoleDistribution(4);
-  assert.equal(four.filter((role) => role === "mafia").length, 1);
-  assert.ok(four.includes("doctor"));
-  assert.ok(four.includes("detective"));
-  const five = computeRoleDistribution(5);
-  assert.equal(five.filter((role) => role === "mafia").length, 1);
-  assert.ok(five.includes("don"));
-  assert.ok(five.includes("doctor"));
+// Master Spec 13.2 fixes the lobby at 7-15 players and 13.3 demands a
+// deterministic distribution that never hands the town fewer players than the
+// mafia team, otherwise the "mafia alive >= town alive" condition in 13.5 would
+// already be true on night zero.
+test("the 7-15 distribution keeps the town at or above mafia parity", () => {
+  for (let count = 7; count <= 15; count += 1) {
+    const roles = computeRoleDistribution(count);
+    assert.equal(roles.length, count, `distribution must cover all ${count} players`);
+    const mafiaCount = roles.filter((role) => role === "mafia").length;
+    const donCount = roles.filter((role) => role === "don").length;
+    const mafiaTeam = mafiaCount + donCount;
+    const town = count - mafiaTeam;
+    assert.equal(donCount, 1, "the Don is a single-slot role");
+    assert.equal(roles.filter((role) => role === "doctor").length, 1);
+    assert.equal(roles.filter((role) => role === "detective").length, 1);
+    assert.ok(mafiaCount >= 1, "at least one plain mafia member always exists");
+    assert.ok(town >= mafiaTeam, `town ${town} must not be outnumbered at ${count} players`);
+  }
+  // Deterministic: the same count always yields the same multiset.
+  assert.deepEqual(computeRoleDistribution(11), computeRoleDistribution(11));
+  // Out of the documented range there is no distribution at all.
+  assert.deepEqual(computeRoleDistribution(6), []);
+  assert.deepEqual(computeRoleDistribution(16), []);
 });
 
 test("night resolution kills, saves, investigates, and rejects invalid actions", () => {
@@ -153,19 +167,33 @@ test("voting majority executes, first tie requests revote, second tie skips", ()
   assert.deepEqual(tie.tiedIds.sort(), ["a", "b"]);
   assert.equal(tie.targetId, null);
 
-  // Second round tie → no elimination (voteRound >= 2).
+  // Second round tie → no elimination (voteRound >= 2). The ballots carry the
+  // round they were cast in; a re-vote must not inherit the first round's votes.
   const secondTie = planVoteResolution({
     playersById,
     dayNumber: 1,
     voteRound: 2,
     votes: [
-      { voterId: "a", targetId: "b", dayNumber: 1 },
-      { voterId: "b", targetId: "a", dayNumber: 1 },
+      { voterId: "a", targetId: "b", dayNumber: 1, voteRound: 2 },
+      { voterId: "b", targetId: "a", dayNumber: 1, voteRound: 2 },
     ],
   });
   assert.equal(secondTie.kind, "skip");
   assert.equal(secondTie.reason, "second_tie");
   assert.equal(secondTie.targetId, null);
+
+  // Round-1 ballots are ignored while round 2 is being counted.
+  const inherited = planVoteResolution({
+    playersById,
+    dayNumber: 1,
+    voteRound: 2,
+    votes: [
+      { voterId: "a", targetId: "b", dayNumber: 1, voteRound: 1 },
+      { voterId: "b", targetId: "a", dayNumber: 1, voteRound: 1 },
+    ],
+  });
+  assert.equal(inherited.kind, "skip");
+  assert.equal(inherited.reason, "no_votes");
 
   // Revote round is restricted to the tied players only.
   const restricted = planVoteResolution({
@@ -174,15 +202,15 @@ test("voting majority executes, first tie requests revote, second tie skips", ()
     voteRound: 2,
     tiedIds: ["a", "b"],
     votes: [
-      { voterId: "a", targetId: "b", dayNumber: 1 },
-      { voterId: "b", targetId: "a", dayNumber: 1 },
-      { voterId: "a", targetId: "c", dayNumber: 1 },
-      { voterId: "a", targetId: "b", dayNumber: 2 },
+      { voterId: "a", targetId: "b", dayNumber: 1, voteRound: 2 },
+      { voterId: "b", targetId: "a", dayNumber: 1, voteRound: 2 },
+      { voterId: "a", targetId: "c", dayNumber: 1, voteRound: 2 },
+      { voterId: "a", targetId: "b", dayNumber: 2, voteRound: 2 },
     ],
   });
   assert.equal(restricted.kind, "skip");
   assert.equal(restricted.reason, "second_tie");
-  // The non-tied target ("c") and the stale day round are ignored.
+  // The non-tied target ("c") and the stale day are ignored.
   assert.deepEqual(Object.keys(restricted.tally).sort(), ["a", "b"]);
 
   const skip = planVoteResolution({
@@ -206,8 +234,8 @@ test("only the five approved Mafia roles are distributed deterministically", () 
     [...new Set(roles)].sort(),
     ["citizen", "detective", "doctor", "don", "mafia"].sort(),
   );
-  assert.equal(computeRoleDistribution(3).length, 0);
-  assert.equal(computeRoleDistribution(9).length, 0);
+  assert.equal(computeRoleDistribution(6).length, 0);
+  assert.equal(computeRoleDistribution(16).length, 0);
   assert.equal(getAbility("don").team, "mafias");
   assert.equal(
     winnerFromAliveTeams(["mafias", "citizens"]),

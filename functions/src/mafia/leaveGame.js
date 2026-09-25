@@ -2,7 +2,13 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { checkWinCondition } = require("./winConditionChecker");
-const { leaveTransition, validGameId, activeLeavePlayerUpdate } = require("./leaveTransition");
+const { ROLE_LABELS } = require("./voteResolver");
+const {
+  leaveTransition,
+  validGameId,
+  activeLeavePlayerUpdate,
+  waitingLeavePlayerUpdate,
+} = require("./leaveTransition");
 
 async function leaveMafiaGame(request) {
   if (!request.auth) {
@@ -45,19 +51,26 @@ async function leaveMafiaGame(request) {
       throw new HttpsError("failed-precondition", "This game can no longer be left.");
     }
 
-    const playerUpdate = activeLeavePlayerUpdate(admin.firestore.FieldValue);
-    tx.update(playerRef, playerUpdate);
-
     if (transition.kind === "active-left") {
+      tx.update(playerRef, activeLeavePlayerUpdate(admin.firestore.FieldValue));
       const currentCount = Number.isInteger(game.playersCount) ? game.playersCount : 0;
       tx.update(gameRef, { playersCount: Math.max(0, currentCount - 1) });
+      await recordElimination(tx, {
+        gameRef,
+        playersRef,
+        gameId,
+        game,
+        uid,
+        cause: "leave",
+      });
       outcome = "left-active";
       return;
     }
 
-    if (transition.kind === "starting-left") {
+    if (transition.kind === "waiting-left") {
+      tx.update(playerRef, waitingLeavePlayerUpdate(admin.firestore.FieldValue));
       tx.update(gameRef, { playersCount: transition.nextCount });
-      outcome = "left-starting";
+      outcome = "left-waiting";
       return;
     }
 
@@ -92,6 +105,57 @@ async function leaveMafiaGame(request) {
     }
   }
   return { ok: true, outcome };
+}
+
+
+// Master Spec 13.7: an elimination writes the public event, reveals the role and
+// opens a short last-words window. The role value itself is read from the
+// private subcollection on the server and written to the public document, which
+// is what makes the reveal safe under the rules.
+async function recordElimination(tx, {
+  gameRef, playersRef, gameId, game, uid, cause,
+}) {
+  const privateRef = playersRef.doc(uid).collection("private").doc("data");
+  const privateSnap = await tx.get(privateRef);
+  const role = privateSnap.exists && privateSnap.data() && privateSnap.data().role
+    ? privateSnap.data().role
+    : null;
+  const playerSnap = await tx.get(playersRef.doc(uid));
+  const username = playerSnap.exists && typeof playerSnap.data().username === "string"
+    ? playerSnap.data().username.trim().slice(0, 80)
+    : "A player";
+  const roleLabel = ROLE_LABELS[role] || "a villager";
+  tx.set(gameRef.collection("events").doc(`eliminated-${cause}-${uid}`), {
+    type: "PlayerEliminated",
+    message: `${username} left the game. They were ${roleLabel}.`,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    payload: {
+      playerId: uid,
+      cause,
+      role: role || null,
+      dayNumber: game.currentDay || 0,
+      nightNumber: game.currentNight || 0,
+    },
+  });
+  if (typeof game.groupId === "string" && game.groupId) {
+    const card = require("../chatCardWriter").cardFromActivity(
+      require("./mafiaActivity").toMafiaActivity(
+        {
+          type: "PlayerEliminated",
+          actorId: "system",
+          payload: { playerId: uid, cause, role: role || null },
+        },
+        { id: gameId, groupId: game.groupId, type: "mafia" },
+      ),
+    );
+    if (card) {
+      tx.set(
+        db.collection("groups").doc(game.groupId)
+          .collection("messages").doc(card.messageId),
+        { ...card, senderId: "system", createdAt: admin.firestore.FieldValue.serverTimestamp() },
+      );
+    }
+  }
 }
 
 module.exports = {
