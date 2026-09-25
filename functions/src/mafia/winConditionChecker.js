@@ -23,8 +23,9 @@ function winnerFromAliveTeams(teams) {
   return null;
 }
 
-async function checkWinCondition(gameId, gameData) {
-  const gameRef = db.collection("mafia_games").doc(gameId);
+async function checkWinCondition(gameId, gameData, deps = {}) {
+  const firestore = deps.db || db;
+  const gameRef = firestore.collection("mafia_games").doc(gameId);
 
   if (["GAME_OVER", "CANCELLED"].includes(gameData.status)) {
     return;
@@ -33,29 +34,43 @@ async function checkWinCondition(gameId, gameData) {
   const playersRef = gameRef.collection("players");
   const playersSnap = await playersRef.get();
 
+  // Every player's private role is resolved once, up front. The alive subset
+  // decides the winner; the whole map is what the final reveal publishes.
+  const privateSnaps = await Promise.all(
+    playersSnap.docs.map((doc) => doc.ref.collection("private").doc("data").get()),
+  );
+  const rolesById = {};
+  playersSnap.docs.forEach((doc, index) => {
+    const data = privateSnaps[index].exists ? privateSnaps[index].data() : {};
+    rolesById[doc.id] = {
+      role: data.role || "citizen",
+      team: data.team || "citizens",
+    };
+  });
+
   const alivePlayers = playersSnap.docs.filter(
     (doc) => doc.data().isAlive === true && doc.data().hasLeft !== true,
   );
 
   if (alivePlayers.length === 0) {
-    await finishGame(gameId, gameRef, null, playersSnap, gameData.groupId);
-    return;
+    return finishGame(gameId, gameRef, null, playersSnap, gameData.groupId, rolesById, deps);
   }
 
-  const privateSnaps = await Promise.all(
-    alivePlayers.map((doc) => doc.ref.collection("private").doc("data").get()),
-  );
   const winner = winnerFromAliveTeams(
-    privateSnaps.map((snap) => (snap.exists ? snap.data().team : "citizens")),
+    alivePlayers.map((doc) => (rolesById[doc.id] || { team: "citizens" }).team),
   );
   if (!winner) return;
 
-  await finishGame(gameId, gameRef, winner, playersSnap, gameData.groupId);
+  return finishGame(gameId, gameRef, winner, playersSnap, gameData.groupId, rolesById, deps);
 }
 
-async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
+async function finishGame(gameId, gameRef, winner, playersSnap, groupId, rolesById = {}, deps = {}) {
+  const firestore = deps.db || db;
+  const write = deps.writeHistory || writeHistory;
+  const pay = deps.distributeRewards || distributeRewards;
+  const post = deps.postFromActivity || postFromActivity;
   const eventsRef = gameRef.collection("events");
-  const claimed = await db.runTransaction(async (tx) => {
+  const claimed = await firestore.runTransaction(async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists || ["GAME_OVER", "CANCELLED"].includes(snap.data().status)) return false;
     tx.update(gameRef, {
@@ -67,8 +82,17 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
       serverEndsAt: admin.firestore.FieldValue.delete(),
       phaseTransitionClaim: admin.firestore.FieldValue.delete(),
     });
+    // Master Spec 13.10: the game ends by revealing every final role. The
+    // reveal rides the same transaction that claims the win, so a client can
+    // never observe a finished game whose roles are still private.
+    for (const playerDoc of playersSnap.docs) {
+      tx.update(playerDoc.ref, {
+        revealedRole: true,
+        role: (rolesById[playerDoc.id] || {}).role || "citizen",
+      });
+    }
     if (groupId) {
-      const groupRef = db.collection("groups").doc(groupId);
+      const groupRef = firestore.collection("groups").doc(groupId);
       const group = await tx.get(groupRef);
       if (group.exists && group.data().activeGameId === gameId) {
         tx.update(groupRef, {
@@ -88,15 +112,21 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
       ? "Town eliminated every Mafia member."
       : "The game ended without a winner.";
 
+  const revealedRoles = playersSnap.docs.map((doc) => ({
+    playerId: doc.id,
+    displayName: (doc.data() && doc.data().displayName) || null,
+    role: (rolesById[doc.id] || {}).role || "citizen",
+  }));
+
   await eventsRef.doc("game-finished").set({
     type: "GameFinished",
     message,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    payload: { winner },
+    payload: { winner, revealedRoles },
   });
 
   try {
-    await postFromActivity(
+    await post(
       admin.firestore(),
       admin.firestore.FieldValue,
       toMafiaActivity(
@@ -108,11 +138,11 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
         { id: gameId, groupId, type: "mafia" },
       ),
     );
-    await postFromActivity(
+    await post(
       admin.firestore(),
       admin.firestore.FieldValue,
       toMafiaActivity(
-        { type: "GameFinished", actorId: "system", payload: { winner } },
+        { type: "GameFinished", actorId: "system", payload: { winner, revealedRoles } },
         { id: gameId, groupId, type: "mafia" },
       ),
     );
@@ -120,12 +150,12 @@ async function finishGame(gameId, gameRef, winner, playersSnap, groupId) {
     // Result card is best-effort; history and rewards still proceed.
   }
 
-  await writeHistory(gameId, gameRef, winner, playersSnap);
+  await write(gameId, gameRef, winner, playersSnap);
 
   if (winner) {
-    await distributeRewards(gameId, gameRef, winner, playersSnap);
+    await pay(gameId, gameRef, winner, playersSnap);
     try {
-      await postFromActivity(
+      await post(
         admin.firestore(),
         admin.firestore.FieldValue,
         toMafiaActivity(

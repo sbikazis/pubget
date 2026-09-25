@@ -4,13 +4,7 @@ const admin = require("firebase-admin");
 
 const db = admin.firestore();
 
-const ROLE_LABELS = {
-  mafia: "Mafia",
-  don: "Don",
-  doctor: "the Doctor",
-  detective: "the Detective",
-  citizen: "a Citizen",
-};
+const { roleLabel } = require("./roleLabels");
 
 function planVoteResolution({ playersById, votes, dayNumber, voteRound = 1, tiedIds = [] }) {
   const validVotes = (votes || []).filter((vote) => {
@@ -172,7 +166,7 @@ async function resolveVotes(gameId, gameData, deps = {}) {
     const role = privateSnap.exists && privateSnap.data() && privateSnap.data().role
       ? privateSnap.data().role
       : "citizen";
-    const roleLabel = ROLE_LABELS[role] || "a villager";
+    const label = roleLabel(role);
     const name = typeof target.username === "string" && target.username.trim()
       ? target.username.trim().slice(0, 80)
       : "A player";
@@ -188,7 +182,7 @@ async function resolveVotes(gameId, gameData, deps = {}) {
     });
     tx.set(eventsRef.doc(`vote-${dayNumber}-resolved`), {
       type: "PlayerExecuted",
-      message: `The village eliminated ${name}. They were ${roleLabel}.`,
+      message: `The village eliminated ${name}. They were ${label}.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       payload: { playerId: plan.targetId, role, dayNumber, voteRound },
     });
@@ -219,4 +213,4 @@ async function resolveVotes(gameId, gameData, deps = {}) {
   return executed;
 }
 
-module.exports = { resolveVotes, planVoteResolution, ROLE_LABELS };
+module.exports = { resolveVotes, planVoteResolution };

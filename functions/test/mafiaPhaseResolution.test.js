@@ -15,6 +15,7 @@ if (admin.apps.length === 0) {
 
 const { resolveNight } = require("../src/mafia/nightResolver");
 const { resolveVotes } = require("../src/mafia/voteResolver");
+const { checkWinCondition } = require("../src/mafia/winConditionChecker");
 
 const TIMESTAMP_MARKER = "__timestamp__";
 const DELETE_MARKER = "__delete__";
@@ -151,9 +152,14 @@ function createFakeDb(seed = {}) {
       const run = chain.then(() => {
         const transaction = {
           async get(ref) {
-            if (ref && ref._isCollection) return ref.get();
-            if (ref && typeof ref.get === "function" && typeof ref.path !== "string") {
-              return ref.get();
+            // The real Firestore SDK only accepts a DocumentReference here.
+            // Anything else throws, so the fake refuses it too instead of
+            // quietly standing in for an API that does not exist.
+            if (!ref || typeof ref.path !== "string" || ref._isCollection ||
+                typeof ref.id !== "string") {
+              throw new Error(
+                "transaction-get-invalid-ref: a transaction may only read a document",
+              );
             }
             const data = store.get(ref.path);
             return {
@@ -205,6 +211,17 @@ function playerDoc(uid, role, team, isAlive = true) {
   return {
     [`mafia_games/g1/players/${uid}`]: player(uid, role, team, isAlive),
     [`mafia_games/g1/players/${uid}/private/data`]: { role, team },
+  };
+}
+
+function groupGame(overrides = {}) {
+  return {
+    status: "DAY",
+    currentPhase: "DAY",
+    currentNight: 1,
+    currentDay: 2,
+    groupId: "grp",
+    ...overrides,
   };
 }
 
@@ -297,11 +314,18 @@ test("a night elimination reveals the role and opens last words", async () => {
   assert.equal(dead.canVote, false);
   assert.equal(dead.canSpeak, false);
   assert.equal(dead.canUseAbility, false);
-  // The role value itself stays in the private subcollection.
+  // The role value itself stays in the private subcollection until the game
+  // ends; the table learns it from the public timeline instead.
   assert.equal(dead.role, undefined);
   assert.equal(
     db.store.get("mafia_games/g1/players/det/private/data").role,
     "detective",
+  );
+  const killed = db.store.get("mafia_games/g1/events/night-2-killed-det");
+  assert.equal(killed.payload.role, "detective");
+  assert.equal(
+    killed.message,
+    "det was killed last night. They were the Detective.",
   );
 });
 
@@ -468,4 +492,65 @@ test("a re-vote never re-counts the first round's ballots", async () => {
   assert.deepEqual(game.resolvedVoteRounds, ["2:2"]);
   assert.equal(db.store.get("mafia_games/g1/players/t1").isAlive, true);
   assert.equal(db.store.get("mafia_games/g1/players/t2").isAlive, true);
+});
+
+test("a finished game reveals every final role", async () => {
+  const db = createFakeDb({
+    "mafia_games/g1": groupGame({ status: "RESOLUTION", currentPhase: "RESOLUTION" }),
+    "groups/grp": { activeGameId: "g1", gameStatus: "DAY", hasRunningGame: true },
+    ...playerDoc("m1", "mafia", "mafias", false),
+    ...playerDoc("m2", "mafia", "mafias", false),
+    ...playerDoc("don", "don", "mafias", false),
+    ...playerDoc("doc", "doctor", "citizens"),
+    ...playerDoc("det", "detective", "citizens"),
+    ...playerDoc("t1", "citizen", "citizens"),
+  });
+  const rewards = [];
+  const history = [];
+  const deps = {
+    db,
+    writeHistory: async (_gameId, _ref, winner) => history.push(winner),
+    distributeRewards: async (_gameId, _ref, winner, snap) => {
+      rewards.push(winner);
+      assert.equal(snap.docs.length, 6);
+    },
+    postFromActivity: async () => null,
+  };
+
+  // The mafia are all dead and the game is still nominally running. The win
+  // must be declared and the whole board published, not just the players who
+  // happened to still be alive.
+  assert.equal(await checkWinCondition("g1", db.store.get("mafia_games/g1"), deps), true);
+
+  const game = db.store.get("mafia_games/g1");
+  assert.equal(game.status, "GAME_OVER");
+  assert.equal(game.currentPhase, "GAME_OVER");
+  assert.equal(game.winner, "citizens");
+  assert.equal(game.phaseEndsAt, undefined);
+  assert.deepEqual(history, ["citizens"]);
+  assert.deepEqual(rewards, ["citizens"]);
+
+  for (const uid of ["m1", "m2", "don", "doc", "det", "t1"]) {
+    const doc = db.store.get(`mafia_games/g1/players/${uid}`);
+    assert.equal(doc.revealedRole, true, `${uid} must be revealed`);
+    assert.equal(typeof doc.role, "string");
+    assert.notEqual(doc.role, "");
+  }
+  assert.equal(db.store.get("mafia_games/g1/players/don").role, "don");
+  assert.equal(db.store.get("mafia_games/g1/players/doc").role, "doctor");
+  assert.equal(db.store.get("mafia_games/g1/players/m1").isAlive, false);
+
+  const finished = db.store.get("mafia_games/g1/events/game-finished");
+  assert.equal(finished.payload.winner, "citizens");
+  assert.deepEqual(
+    finished.payload.revealedRoles.map((entry) => entry.role).sort(),
+    ["citizen", "detective", "doctor", "don", "mafia", "mafia"],
+  );
+  // The group stops advertising the finished game as its active one.
+  assert.deepEqual(db.store.get("groups/grp"), { hasRunningGame: false });
+
+  // A second check is a no-op: the game is terminal, so no history or rewards.
+  assert.equal(await checkWinCondition("g1", game, deps), undefined);
+  assert.deepEqual(history, ["citizens"]);
+  assert.deepEqual(rewards, ["citizens"]);
 });

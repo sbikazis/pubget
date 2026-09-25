@@ -2,7 +2,7 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { checkWinCondition } = require("./winConditionChecker");
-const { ROLE_LABELS } = require("./voteResolver");
+const { roleLabel } = require("./roleLabels");
 const {
   leaveTransition,
   validGameId,
@@ -124,10 +124,10 @@ async function recordElimination(tx, {
   const username = playerSnap.exists && typeof playerSnap.data().username === "string"
     ? playerSnap.data().username.trim().slice(0, 80)
     : "A player";
-  const roleLabel = ROLE_LABELS[role] || "a villager";
+  const label = roleLabel(role);
   tx.set(gameRef.collection("events").doc(`eliminated-${cause}-${uid}`), {
     type: "PlayerEliminated",
-    message: `${username} left the game. They were ${roleLabel}.`,
+    message: `${username} left the game. They were ${label}.`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     payload: {
       playerId: uid,

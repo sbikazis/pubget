@@ -3,6 +3,7 @@
 const admin = require("firebase-admin");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
+const { roleLabel } = require("./roleLabels");
 
 const db = admin.firestore();
 
@@ -122,6 +123,18 @@ async function resolveNight(gameId, gameData, deps = {}) {
   const requestedNight = gameData.currentNight || 0;
   let resolvedKilledIds = [];
 
+  // A Firestore transaction may only read documents, never a collection query,
+  // so the roster and the night's actions are discovered here and re-read by
+  // reference inside the transaction. Only the *set* of documents is taken from
+  // these reads; every value the decision depends on is read transactionally,
+  // and the game document is re-validated before anything is written.
+  const [roster, actionList] = await Promise.all([
+    playersRef.get(),
+    gameRef.collection("night_actions").where("nightNumber", "==", requestedNight).get(),
+  ]);
+  const playerRefs = roster.docs.map((doc) => doc.ref);
+  const actionRefs = actionList.docs.map((doc) => doc.ref);
+
   const resolved = await database.runTransaction(async (tx) => {
     const gameSnap = await tx.get(gameRef);
     if (!gameSnap.exists) return false;
@@ -135,22 +148,20 @@ async function resolveNight(gameId, gameData, deps = {}) {
       return false;
     }
 
-    const [playersSnap, actionsSnap] = await Promise.all([
-      tx.get(playersRef),
-      tx.get(gameRef.collection("night_actions").where("nightNumber", "==", nightNumber)),
+    const [playerSnaps, privateSnaps, actionSnaps] = await Promise.all([
+      Promise.all(playerRefs.map((ref) => tx.get(ref))),
+      Promise.all(playerRefs.map((ref) => tx.get(ref.collection("private").doc("data")))),
+      Promise.all(actionRefs.map((ref) => tx.get(ref))),
     ]);
 
-    const privateSnaps = await Promise.all(
-      playersSnap.docs.map((doc) => tx.get(doc.ref.collection("private").doc("data"))),
-    );
-
     const playersById = {};
-    playersSnap.docs.forEach((doc, index) => {
+    playerRefs.forEach((ref, index) => {
+      if (!playerSnaps[index].exists) return;
       const privateData = privateSnaps[index].exists ? privateSnaps[index].data() : {};
-      playersById[doc.id] = {
-        ref: doc.ref,
-        privateRef: privateSnaps[index].ref,
-        ...doc.data(),
+      playersById[ref.id] = {
+        ref,
+        privateRef: ref.collection("private").doc("data"),
+        ...playerSnaps[index].data(),
         role: privateData.role || "citizen",
         team: privateData.team || "citizens",
         lastDoctorTargetId: privateData.lastDoctorTargetId || null,
@@ -159,7 +170,7 @@ async function resolveNight(gameId, gameData, deps = {}) {
 
     const plan = planNightResolution({
       playersById,
-      actions: actionsSnap.docs.map((doc) => doc.data()),
+      actions: actionSnaps.filter((snap) => snap.exists).map((snap) => snap.data()),
       nightNumber,
     });
 
@@ -184,11 +195,14 @@ async function resolveNight(gameId, gameData, deps = {}) {
       const name = typeof player.username === "string" && player.username.trim()
         ? player.username.trim().slice(0, 80)
         : "A player";
+      // The role is revealed to the table, not just flagged on the player
+      // document: a night kill is only informative if everyone learns what died.
+      const label = roleLabel(player.role);
       tx.set(eventsRef.doc(`night-${nightNumber}-killed-${playerId}`), {
         type: "PlayerKilled",
-        message: `${name} was killed last night.`,
+        message: `${name} was killed last night. They were ${label}.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        payload: { playerId, cause: "night" },
+        payload: { playerId, role: player.role, cause: "night" },
       });
     });
 
