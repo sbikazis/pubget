@@ -3,7 +3,12 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createGamesDomain } = require("../src/gamesDomain");
-const catalog = require("../src/gameCatalog");
+const {
+  createFakeAnimeCatalog,
+  FAKE_ANIME,
+  relatedAnimeId,
+  titleOf,
+} = require("./support/fakeAnimeCatalog");
 
 class TestHttpsError extends Error {
   constructor(code, message) {
@@ -205,6 +210,7 @@ function domain(db, extras = {}) {
     random: extras.random || (() => 0.2),
     economy: extras.economy,
     achievements: extras.achievements,
+    catalog: extras.catalog || createFakeAnimeCatalog(),
   });
 }
 
@@ -217,11 +223,19 @@ async function startGuess(db, games) {
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
   await games.submitGameAction({
     auth: { uid: "alice" },
-    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "luffy" } },
+    data: {
+      gameId: created.gameId,
+      actionType: "select",
+      payload: { characterId: "jikan:2001" },
+    },
   });
   await games.submitGameAction({
     auth: { uid: "bob" },
-    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "naruto" } },
+    data: {
+      gameId: created.gameId,
+      actionType: "select",
+      payload: { characterId: "jikan:2003" },
+    },
   });
   return created.gameId;
 }
@@ -237,7 +251,7 @@ test("guess character scores server-side and ignores client score", async () => 
     data: {
       gameId,
       actionType: "guess",
-      payload: { characterId: "naruto", score: 100 },
+      payload: { characterId: "jikan:2003", score: 100 },
       clientActionId: "a1",
     },
   });
@@ -250,7 +264,7 @@ test("guess character rejects duplicate answers, non-players, and stale versions
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
-  const choice = "naruto";
+  const choice = "jikan:2003";
   await games.submitGameAction({
     auth: { uid: "alice" },
      data: { gameId, actionType: "guess", payload: { characterId: choice }, clientActionId: "a1" },
@@ -300,7 +314,7 @@ test("guess character does not expose selected answers", async () => {
   const gameId = await startGuess(db, games);
   const publicState = db.store.get(`games/${gameId}`).publicState;
   assert.equal(publicState.question, null);
-  assert.equal(JSON.stringify(publicState).includes("luffy"), false);
+  assert.equal(JSON.stringify(publicState).includes("2001"), false);
 });
 
 
@@ -320,11 +334,15 @@ test("anime chain validates studio/character relations and turn order", async ()
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: other },
-      data: { gameId: created.gameId, actionType: "submit", payload: { title: "Naruto" } },
+      data: {
+        gameId: created.gameId,
+        actionType: "submit",
+        payload: { title: titleOf(relatedAnimeId(lastId)) },
+      },
     }),
     (error) => error.code === "failed-precondition",
   );
-  const valid = catalog.ANIME.find((item) => catalog.sharesRelation(lastId, item.id));
+  const valid = { id: relatedAnimeId(lastId), title: titleOf(relatedAnimeId(lastId)) };
   await games.submitGameAction({
     auth: { uid: current },
     data: {
@@ -344,7 +362,7 @@ test("anime chain validates studio/character relations and turn order", async ()
   assert.equal(db.store.get(`games/${created.gameId}`).status, "COMPLETED");
 });
 
-test("emoji guess uses server clues and scores a correct title", async () => {
+test("emoji guess uses server-derived emoji and scores a correct title", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const created = await games.createGame({

@@ -44,6 +44,7 @@ const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
+const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
@@ -164,6 +165,9 @@ const eventsDomain = createEventsDomain({
   economy: economyDomain,
   achievements: achievementsDomain,
 });
+// Canonical Anime/Character repository (Master Spec 16.2). Games validate every
+// submitted ID through it, so no engine ever decides from a local table.
+const animeCatalog = createAnimeCatalogDomain({ db: getFirestore() });
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
@@ -171,6 +175,7 @@ const gamesDomain = createGamesDomain({
   notificationBuilder,
   economy: economyDomain,
   achievements: achievementsDomain,
+  catalog: animeCatalog,
 });
 const mafiaDomain = createMafiaDomain({
   db: getFirestore(),
@@ -571,6 +576,14 @@ exports.endGame = onCall(
 exports.cancelGame = onCall(
   { region: "us-central1" },
   gamesDomain.cancelGame,
+);
+exports.searchAnimeCatalog = onCall(
+  { region: "us-central1" },
+  gamesDomain.searchAnimeCatalog,
+);
+exports.searchCharacterCatalog = onCall(
+  { region: "us-central1" },
+  gamesDomain.searchCharacterCatalog,
 );
 exports.processExpiredGames = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

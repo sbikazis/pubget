@@ -12,6 +12,7 @@ const {
   toGameActivity,
   validateActionShape,
 } = require("../src/gamesDomain");
+const { createFakeAnimeCatalog } = require("./support/fakeAnimeCatalog");
 
 class TestHttpsError extends Error {
   constructor(code, message) {
@@ -23,6 +24,7 @@ class TestHttpsError extends Error {
 const FieldValue = {
   serverTimestamp: () => ({ _serverTimestamp: true }),
   increment: (value) => ({ _increment: value }),
+  delete: () => ({ _delete: true }),
 };
 
 function millisOf(value) {
@@ -59,6 +61,10 @@ function clone(value) {
 function applyUpdate(current, data) {
   const next = clone(current);
   for (const [key, value] of Object.entries(data)) {
+    if (value && value._delete === true) {
+      delete next[key];
+      continue;
+    }
     if (value && value._increment != null) {
       next[key] = (next[key] || 0) + value._increment;
       continue;
@@ -211,19 +217,12 @@ function seedGroup({ role = "founder" } = {}) {
 }
 
 function handlers(db, notificationBuilder) {
-  const { createMafiaDomain } = require("../src/mafiaDomain");
-  const mafia = createMafiaDomain({
-    db,
-    FieldValue,
-    HttpsError: TestHttpsError,
-    notificationBuilder,
-  });
   return createGamesDomain({
     db,
     FieldValue,
     HttpsError: TestHttpsError,
     notificationBuilder,
-    mafia,
+    catalog: createFakeAnimeCatalog(),
   });
 }
 
@@ -408,7 +407,7 @@ test("submitAction is idempotent and rejects impersonation", async () => {
       data: {
         gameId: created.gameId,
         actionType: "guess",
-        payload: { animeId: "naruto" },
+        payload: { animeId: "jikan:1002" },
         clientActionId: "act-1",
       },
     });
@@ -562,4 +561,123 @@ test("processExpiredGames queries eligible deadlines and stays bounded", async (
   assert.equal(db.store.get("games/cancel").status, "CANCELLED");
   const second = await games.processExpiredGames();
   assert.ok(second.scanned <= 50);
+});
+test("an empty waiting game is cancelled by timeout and stops being announced", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const db = createFakeDb(seedGroup());
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+    catalog: createFakeAnimeCatalog(),
+  });
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: { type: "guessCharacter", title: "Ghost", groupId: "g1", creationSource: "group_chat" },
+  });
+  // A waiting game with nobody else is announced in the group chat and, when
+  // the group carries an active pointer, by that pointer.
+  db.store.set("groups/g1", {
+    ...db.store.get("groups/g1"),
+    activeGameId: created.gameId,
+    gameStatus: "WAITING",
+    hasRunningGame: true,
+  });
+  db.store.set(`games/${created.gameId}`, {
+    ...db.store.get(`games/${created.gameId}`),
+    waitingDeadlineAt: new Date("2026-09-03T11:00:00Z"),
+  });
+  const outcome = await games.processExpiredGames();
+  assert.equal(outcome.cancelled, 1);
+  const game = db.store.get(`games/${created.gameId}`);
+  assert.equal(game.status, "CANCELLED");
+  assert.equal(game.cancellationReason, "waiting_timeout");
+  assert.equal(game.result.summary.reason, "waiting_timeout");
+  const group = db.store.get("groups/g1");
+  assert.equal(group.activeGameId, undefined);
+  assert.equal(group.hasRunningGame, false);
+  // The Join affordance is replaced in place instead of being left behind.
+  const card = db.store.get(`groups/g1/messages/card-game-${created.gameId}-created`);
+  assert.equal(card.type, "game");
+  assert.equal(card.senderId, "system");
+  assert.equal(card.gameActivity.status, "cancelled");
+  assert.equal(game.rewardsDistributed, undefined, "a cancelled lobby pays nothing");
+});
+
+test("a timed-out round settles rewards exactly once", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const db = createFakeDb(seedGroup());
+  const grants = [];
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+    catalog: createFakeAnimeCatalog(),
+    economy: {
+      grantDomainRewards: async (userIds, spec) => {
+        grants.push({ userIds: [...userIds], type: spec.type });
+        return userIds.map((userId) => ({ applied: true, userId }));
+      },
+    },
+  });
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: { type: "guessCharacter", title: "Timeout", groupId: "g1", creationSource: "group_chat" },
+  });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
+  await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  db.store.set(`games/${created.gameId}`, {
+    ...db.store.get(`games/${created.gameId}`),
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  });
+  await games.processExpiredGames();
+  const game = db.store.get(`games/${created.gameId}`);
+  assert.equal(game.status, "COMPLETED");
+  assert.equal(game.rewardsDistributed, true);
+  assert.equal(grants.length, 1, "an unresolved round is a draw for both players");
+  assert.deepEqual(grants[0].userIds.sort(), ["alice", "bob"]);
+  assert.equal(grants[0].type, "earn_game_draw");
+
+  // A second scheduler pass must not pay again.
+  await games.processExpiredGames();
+  assert.equal(grants.length, 1);
+});
+
+test("a reward is not forfeited when the economy grant fails", async () => {
+  const now = new Date("2026-09-03T12:00:00Z");
+  const db = createFakeDb(seedGroup());
+  let attempts = 0;
+  const games = createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    clock: { now: () => now },
+    catalog: createFakeAnimeCatalog(),
+    economy: {
+      grantDomainRewards: async (userIds) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("economy_unavailable");
+        return userIds.map((userId) => ({ applied: true, userId }));
+      },
+    },
+  });
+  const created = await games.createGame({
+    auth: { uid: "alice" },
+    data: { type: "guessCharacter", title: "Retry", groupId: "g1", creationSource: "group_chat" },
+  });
+  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
+  await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
+  db.store.set(`games/${created.gameId}`, {
+    ...db.store.get(`games/${created.gameId}`),
+    deadlineAt: new Date("2026-09-03T11:00:00Z"),
+  });
+  await assert.rejects(games.processExpiredGames());
+  assert.equal(attempts, 1);
+  assert.equal(
+    db.store.get(`games/${created.gameId}`).rewardsDistributed,
+    undefined,
+    "a failed grant must never burn the claim",
+  );
 });
