@@ -69,9 +69,12 @@ async function submitMafiaAction(request) {
       if (!string(data.text, 280)) {
         throw new HttpsError("invalid-argument", "Last words must be short.");
       }
+      // `canSayLastWords` means "may submit right now", so it closes the moment
+      // the words land. The text is the durable record.
       tx.update(playerRef, {
         lastWords: data.text.trim(),
         lastWordsAt: admin.firestore.FieldValue.serverTimestamp(),
+        canSayLastWords: false,
       });
     } else if (type === "mafia_message") {
       if (!MAFIA_ROLES.has(privateData.role) || !string(data.text, 1000)) {
@@ -95,17 +98,15 @@ async function submitMafiaAction(request) {
       if (["mafia", "don"].includes(privateData.role) && targetId === uid) {
         throw new HttpsError("invalid-argument", "You cannot target yourself.");
       }
+      if (privateData.role === "doctor" && privateData.lastDoctorTargetId === targetId) {
+        throw new HttpsError("invalid-argument", "Doctor cannot protect the same player twice.");
+      }
       const actionRef = gameRef.collection("night_actions").doc(`${uid}_n${game.currentNight}`);
       tx.set(actionRef, {
         actionId: actionId.trim(), playerId: uid, targetId: targetId.trim(),
         nightNumber: game.currentNight, role: privateData.role,
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      if (privateData.role === "doctor") {
-        if (privateData.lastDoctorTargetId === targetId) {
-          throw new HttpsError("invalid-argument", "Doctor cannot protect the same player twice.");
-        }
-      }
     } else if (type === "vote") {
       if (phase !== "VOTING" || player.canVote === false) {
         throw new HttpsError("failed-precondition", "Voting is not open.");
@@ -198,7 +199,18 @@ async function heartbeatMafia(request) {
   const uid = requireUid(request);
   const { gameId } = request.data || {};
   if (!string(gameId)) throw new HttpsError("invalid-argument", "gameId is required.");
-  await db.collection("mafia_games").doc(gameId.trim()).collection("players").doc(uid).update({
+  const playerRef = db.collection("mafia_games").doc(gameId.trim())
+    .collection("players").doc(uid);
+  const snap = await playerRef.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "You are not in this game.");
+  }
+  // A heartbeat from someone who already left must not clear their
+  // disconnect flag and put them back in front of a client as connected.
+  if ((snap.data() || {}).hasLeft === true) {
+    throw new HttpsError("failed-precondition", "You have left this game.");
+  }
+  await playerRef.update({
     lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
     isDisconnected: false,
     reconnectUntil: admin.firestore.FieldValue.delete(),

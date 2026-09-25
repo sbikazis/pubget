@@ -12,6 +12,12 @@ const DEFAULT_MAX = 15;
 // Master Spec 13.2: only SAMURAI and above may create a Mafia game. The check
 // runs inside the creation transaction against the caller's own membership
 // document, so a client cannot talk its way past it.
+//
+// The rank floor is the whole gate. `manageGames` (Master Spec 8.2) is an
+// administrative permission — the generic Games path does not require it to
+// create a game either, only to cancel someone else's — and it is not granted
+// to SAMURAI or HATAMOTO. Requiring both would silently raise the real
+// minimum to DAIMYO and make this section's own sentence untrue.
 const CREATE_MIN_RANK = "samurai";
 const CREATE_MIN_RANK_POSITION = ROLE_POSITIONS[CREATE_MIN_RANK];
 const LOBBY_SECONDS = 120;
@@ -147,9 +153,6 @@ function createMafiaDomain({
       if (access.missingGroup) throw new HttpsError("not-found", "Group not found.");
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to create Mafia.");
-      }
-      if (!access.manageGames) {
-        throw new HttpsError("permission-denied", "You need Manage Games to create Mafia.");
       }
       if (!access.rankEligible) {
         throw new HttpsError(

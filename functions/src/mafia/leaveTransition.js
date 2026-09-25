@@ -42,7 +42,6 @@ function activeLeavePlayerUpdate(FieldValue) {
     revealedRole: true,
     eliminatedBy: "leave",
     canSayLastWords: true,
-    lastWordsUntil: FieldValue.serverTimestamp(),
     leftAt: FieldValue.serverTimestamp(),
   };
 }
