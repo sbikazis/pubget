@@ -183,9 +183,12 @@ ThemeData _withAnimeHub(ThemeData theme) {
       ? AnimeHubColors.dark
       : AnimeHubColors.light;
   if (theme.extension<AnimeHubColors>() == hub) return theme;
-  return theme.copyWith(
-    extensions: <ThemeExtension<dynamic>>[...theme.extensions.values, hub],
-  );
+  // The list takes its element type from ThemeData instead of spelling out
+  // `ThemeExtension<dynamic>`: newer Dart SDKs instantiate that type argument
+  // to `ThemeExtension<ThemeExtension<dynamic>>`, which rejects the values
+  // being spread in and fails the release build.
+  final extensions = theme.extensions.values.toList()..add(hub);
+  return theme.copyWith(extensions: extensions);
 }
 
 class PubgetApp extends StatelessWidget {
