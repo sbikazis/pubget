@@ -1110,6 +1110,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Game Center History/Recent. The server writes one history document per
+    // finished game, so a player can only read their own finished games.
+    match /game_history/{gameId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+      allow write: if false;
+    }
+
     // Joined tab: collection-group *list* of `members` is own-uid only.
     // `get` stays on nested groups/{groupId}/members/{uid} so a
     // deletionPending group still closes direct member reads (spec of

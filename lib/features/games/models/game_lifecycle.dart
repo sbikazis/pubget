@@ -4,15 +4,13 @@ import 'game_models.dart';
 /// Client-side mirror of the server game lifecycle. Server state is
 /// authoritative; this only validates UI input and keeps tests aligned.
 abstract final class GameLifecycle {
+  /// Mirrors `GAME_TRANSITIONS` in functions/src/gamesDomain.js. There is no
+  /// paused state, so a game can never be suspended and later resumed.
   static const allowed = <GameStatus, Set<GameStatus>>{
-    GameStatus.draft: {GameStatus.waiting, GameStatus.cancelled},
-    GameStatus.waiting: {GameStatus.active, GameStatus.cancelled},
-    GameStatus.active: {
-      GameStatus.paused,
-      GameStatus.completed,
-      GameStatus.cancelled,
-    },
-    GameStatus.paused: {GameStatus.active, GameStatus.cancelled},
+    GameStatus.created: {GameStatus.waiting, GameStatus.cancelled},
+    GameStatus.waiting: {GameStatus.starting, GameStatus.cancelled},
+    GameStatus.starting: {GameStatus.inProgress, GameStatus.cancelled},
+    GameStatus.inProgress: {GameStatus.completed, GameStatus.cancelled},
     GameStatus.completed: <GameStatus>{},
     GameStatus.cancelled: <GameStatus>{},
   };

@@ -189,3 +189,79 @@ test("mafia start requires the host, min players, and cannot be forced by a clie
     (error) => error.code === "permission-denied",
   );
 });
+
+test("mafia creation is gated on the SAMURAI rank floor from spec 13.2, not on manageGames", async () => {
+  const ranks = {
+    ronin: "ronin",
+    gokenin: "gokenin",
+    samurai: "samurai",
+    hatamoto: "hatamoto",
+    daimyo: "daimyo",
+  };
+  const seedRanks = () => {
+    const base = seed();
+    Object.entries(ranks).forEach(([uid, role]) => {
+      base[`groups/g1/members/${uid}`] = { rankV2: role, userId: uid };
+    });
+    return base;
+  };
+
+  for (const [uid, role] of Object.entries(ranks)) {
+    const db = createFakeDb(seedRanks());
+    const mafia = domain(db);
+    if (role === "ronin" || role === "gokenin") {
+      await assert.rejects(
+        mafia.createMafiaGame({ auth: { uid }, data: { groupId: "g1" } }),
+        (error) => error.code === "permission-denied" &&
+          /SAMURAI/.test(error.message),
+        `${role} must not be able to create a Mafia game`,
+      );
+      assert.equal(db.store.size > 0 && db.store.get("mafia_games"), undefined);
+      continue;
+    }
+    const created = await mafia.createMafiaGame({ auth: { uid }, data: { groupId: "g1" } });
+    assert.equal(db.store.get(`mafia_games/${created.gameId}`).createdBy, uid);
+    assert.equal(db.store.get(`mafia_games/${created.gameId}`).minPlayers, 7);
+    assert.equal(db.store.get(`mafia_games/${created.gameId}`).maxPlayers, 15);
+  }
+
+  // A SAMURAI holds no manageGames permission in the spec's matrix, and must
+  // still be able to create the game. The rank floor is the only gate.
+  const db = createFakeDb({
+    ...seedRanks(),
+    "groups/g1/members/samurai": { rankV2: "samurai", userId: "samurai" },
+  });
+  assert.deepEqual(
+    require("../src/pubgetRanks").ROLE_PERMISSIONS.samurai.includes("manageGames"),
+    false,
+  );
+  const created = await domain(db).createMafiaGame({
+    auth: { uid: "samurai" },
+    data: { groupId: "g1" },
+  });
+  assert.equal(db.store.get(`mafia_games/${created.gameId}`).createdBy, "samurai");
+});
+
+test("a mafia lobby is 7-15 players and cannot start short", async () => {
+  const db = createFakeDb(seed());
+  const mafia = domain(db);
+  // Nonsense bounds are clamped into the specified range rather than trusted.
+  const created = await mafia.createMafiaGame({
+    auth: { uid: "alice" },
+    data: { groupId: "g1", minPlayers: 3, maxPlayers: 40 },
+  });
+  const game = db.store.get(`mafia_games/${created.gameId}`);
+  assert.equal(game.minPlayers, 7);
+  assert.equal(game.maxPlayers, 15);
+
+  // Six players is one short of the minimum, so the host cannot start it.
+  for (const uid of ["bob", "dave", "u1", "u2", "u3"]) {
+    db.store.set(`groups/g1/members/${uid}`, { rankV2: "ronin", userId: uid });
+    await mafia.joinMafiaGame({ auth: { uid }, data: { gameId: created.gameId } });
+  }
+  assert.equal(db.store.get(`mafia_games/${created.gameId}`).playersCount, 6);
+  await assert.rejects(
+    mafia.startMafiaGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } }),
+    (error) => error.code === "failed-precondition",
+  );
+});

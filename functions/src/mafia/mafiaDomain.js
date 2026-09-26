@@ -1,13 +1,25 @@
 "use strict";
 
 const { ROLE_PERMISSIONS, normalizeRole } = require("../groupsDomain");
-const { hasPermission } = require("../pubgetRanks");
+const { ROLE_POSITIONS, hasPermission } = require("../pubgetRanks");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
 const TITLE_MAX = 80;
-const DEFAULT_MIN = 4;
-const DEFAULT_MAX = 8;
+// Master Spec 13.2: a Mafia lobby holds 7-15 players.
+const DEFAULT_MIN = 7;
+const DEFAULT_MAX = 15;
+// Master Spec 13.2: only SAMURAI and above may create a Mafia game. The check
+// runs inside the creation transaction against the caller's own membership
+// document, so a client cannot talk its way past it.
+//
+// The rank floor is the whole gate. `manageGames` (Master Spec 8.2) is an
+// administrative permission — the generic Games path does not require it to
+// create a game either, only to cancel someone else's — and it is not granted
+// to SAMURAI or HATAMOTO. Requiring both would silently raise the real
+// minimum to DAIMYO and make this section's own sentence untrue.
+const CREATE_MIN_RANK = "samurai";
+const CREATE_MIN_RANK_POSITION = ROLE_POSITIONS[CREATE_MIN_RANK];
 const LOBBY_SECONDS = 120;
 const STARTING_SECONDS = 10;
 
@@ -80,8 +92,12 @@ function createMafiaDomain({
       transaction.get(db.collection("groups").doc(groupId).collection("members").doc(uid)),
       transaction.get(db.collection("groups").doc(groupId)),
     ]);
-    if (!group.exists) return { member: false, manageGames: false, missingGroup: true };
-    if (!member.exists) return { member: false, manageGames: false, group };
+    if (!group.exists) {
+      return { member: false, manageGames: false, rankEligible: false, missingGroup: true };
+    }
+    if (!member.exists) {
+      return { member: false, manageGames: false, rankEligible: false, group };
+    }
     const data = member.data() || {};
     const groupData = group.data() || {};
     const role = normalizeRole(data.rankV2 || data.role || "ronin");
@@ -92,6 +108,7 @@ function createMafiaDomain({
     return {
       member: true,
       manageGames: hasPermission(data, roleDoc, "manageGames", groupData),
+      rankEligible: (ROLE_POSITIONS[role] || 0) >= CREATE_MIN_RANK_POSITION,
       role,
       group,
     };
@@ -137,8 +154,11 @@ function createMafiaDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to create Mafia.");
       }
-      if (!access.manageGames) {
-        throw new HttpsError("permission-denied", "You need Manage Games to create Mafia.");
+      if (!access.rankEligible) {
+        throw new HttpsError(
+          "permission-denied",
+          `Only ${CREATE_MIN_RANK.toUpperCase()} and above can create a Mafia game.`,
+        );
       }
       if (access.group.data().hasRunningGame === true) {
         throw new HttpsError("failed-precondition", "This group already has a running Mafia game.");

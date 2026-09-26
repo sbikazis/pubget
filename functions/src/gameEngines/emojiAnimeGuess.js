@@ -1,6 +1,6 @@
 "use strict";
 
-const catalog = require("../gameCatalog");
+const { emojiCluesFor } = require("../animeCatalogDomain");
 const {
   clampInt,
   isExpired,
@@ -12,6 +12,7 @@ const {
   rejectStale,
   bumpVersion,
   historyRef,
+  snapshot,
 } = require("./helpers");
 
 function configOf(game) {
@@ -22,47 +23,28 @@ function configOf(game) {
   };
 }
 
-// The catalog is authoritative. These aliases cover the common search names
-// used by anime databases while still resolving to a canonical catalog item.
-const ALIASES = Object.freeze({
-  haikyuu: "haikyuu",
-  "haikyuu!!": "haikyuu",
-  "the melancholy of haruhi suzumiya": null,
-  "frieren beyond journey's end": "frieren",
-  "frieren beyond journeys end": "frieren",
-});
+// The canonical repository is the only thing that turns a submission into a
+// game entity. Alternative titles are matched by the repository, never by a
+// hand-maintained alias table, so the domain resolves `ctx.resolvedAnime`
+// before the engine sees the action.
 
-function resolveAnime(value) {
-  if (value && typeof value === "object") {
-    return resolveAnime(value.animeId || value.id || value.title || value.value);
-  }
-  if (typeof value !== "string" || !value.trim()) return null;
-  const byId = catalog.byAnimeId(value.trim());
-  if (byId) return byId;
-  const normalized = catalog.normalizeTitle(value);
-  const aliasId = ALIASES[normalized];
-  if (aliasId) return catalog.byAnimeId(aliasId);
-  return catalog.animeByTitle(value);
-}
-
-function pickTarget(usedIds, random) {
+function pickTarget(animePool, usedIds, random) {
   const used = usedIds || [];
-  const pool = catalog.ANIME.filter((item) => !used.includes(item.id));
-  return pickOne(pool.length ? pool : catalog.ANIME, random);
+  const pool = (animePool || []).filter((item) => !used.includes(item.id));
+  return pickOne(pool.length ? pool : (animePool || []), random);
 }
 
 function publicEmojis(target) {
-  return (Array.isArray(target && target.emojiClues) ? target.emojiClues : [])
-    .map((item) => String(item))
-    .filter(Boolean)
-    .slice(0, 4);
+  // 3-4 emoji, no words, no title, nothing that leaks the answer directly.
+  return emojiCluesFor(target).slice(0, 4);
 }
 
 function writeTurn(transaction, {
   gameRef, FieldValue, game, now, random, scores, playerOrder,
-  currentPlayerId, turnIndex, totalTurns, lastReveal, usedIds,
+  currentPlayerId, turnIndex, totalTurns, lastReveal, usedIds, animePool,
 }) {
-  const target = pickTarget(usedIds, random);
+  const target = pickTarget(animePool, usedIds, random);
+  if (!target) throw new Error("Emoji Anime Guess has no available title.");
   const emojis = publicEmojis(target);
   const nextUsed = (usedIds || []).includes(target.id)
     ? usedIds
@@ -141,7 +123,7 @@ function nextPlayer(order, currentId) {
 }
 
 function advanceTurn(transaction, ctx, { lastReveal, scores, usedIds }) {
-  const { gameRef, FieldValue, game, now, random, db, gameId } = ctx;
+  const { gameRef, FieldValue, game, now, random, db, gameId, animePool } = ctx;
   const state = game.publicState || {};
   const order = state.playerOrder || Object.keys(scores);
   const nextIndex = (state.turnIndex || 0) + 1;
@@ -160,16 +142,22 @@ function advanceTurn(transaction, ctx, { lastReveal, scores, usedIds }) {
     totalTurns,
     lastReveal,
     usedIds,
+    animePool,
   });
   return { completed: false, result: null };
 }
 
-function initialize({
-  transaction, gameRef, FieldValue, game, playerIds, random, now,
-}) {
+function initialize(ctx) {
+  const { transaction, gameRef, FieldValue, game, playerIds, random, now } = ctx;
   if (game.publicState && game.publicState.engine === "emojiAnimeGuess") return;
+  if (!Array.isArray(playerIds) || playerIds.length < 2 || playerIds.length > 4) {
+    throw new Error("Emoji Anime Guess requires two to four players.");
+  }
   const cfg = configOf(game);
   const totalTurns = playerIds.length * cfg.roundsPerPlayer;
+  const animePool = Array.isArray(ctx.animePool) && ctx.animePool.length > 0
+    ? ctx.animePool
+    : snapshot.ANIME;
   writeTurn(transaction, {
     gameRef, FieldValue, game, now, random,
     scores: emptyScores(playerIds),
@@ -179,6 +167,7 @@ function initialize({
     totalTurns,
     lastReveal: null,
     usedIds: [],
+    animePool,
   });
 }
 
@@ -204,10 +193,8 @@ function applyAction(ctx) {
   if (action.actionType !== "guess" && action.actionType !== "submit") {
     throw new HttpsError("invalid-argument", "Submit an anime selection.");
   }
-  const payload = action.payload || {};
-  const submitted = payload.animeId || payload.selection || payload.title ||
-    payload.value;
-  const match = resolveAnime(submitted);
+  // Resolved by the domain against real catalog data before this transaction.
+  const match = ctx.resolvedAnime;
   if (!match) {
     throw new HttpsError("invalid-argument", "Select an anime from the catalog.");
   }

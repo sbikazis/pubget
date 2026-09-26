@@ -1,6 +1,5 @@
 "use strict";
 
-const catalog = require("../gameCatalog");
 const {
   clampInt,
   isExpired,
@@ -145,9 +144,11 @@ function applyAction(ctx) {
       throw new HttpsError("failed-precondition", "Choose a character first.");
     }
     if (selections[uid]) throw new HttpsError("already-exists", "Character already selected.");
-    const characterId = action.payload && (action.payload.characterId || action.payload.value);
-    const character = typeof characterId === "string" ? catalog.characterById(characterId) : null;
-    if (!character) throw new HttpsError("invalid-argument", "Select a valid Character ID.");
+    // Real Character ID only: a free-text name can never become game state.
+    const character = ctx.resolvedCharacter;
+    if (!character) {
+      throw new HttpsError("invalid-argument", "Select a valid Character ID.");
+    }
     if (Object.values(selections).includes(character.id)) {
       throw new HttpsError("invalid-argument", "Each secret character must be different.");
     }
@@ -188,11 +189,18 @@ function applyAction(ctx) {
     }
     const opponent = players.find((id) => id !== uid);
     if (action.actionType === "guess") {
-      const guessId = action.payload && (action.payload.characterId || action.payload.value);
-      if (typeof guessId !== "string" || !catalog.characterById(guessId)) {
+      // The domain resolves the submitted ID against the canonical repository
+      // before the transaction opens, so an unknown ID never reaches here.
+      const submitted = ctx.resolvedCharacter;
+      if (!submitted) {
         throw new HttpsError("invalid-argument", "Guess a valid Character ID.");
       }
-      if (guessId === selections[opponent]) return endGame(transaction, { ...ctx }, [uid], "correct_guess");
+      if (submitted.id === selections[uid]) {
+        throw new HttpsError("invalid-argument", "You cannot guess your own character.");
+      }
+      if (submitted.id === selections[opponent]) {
+        return endGame(transaction, { ...ctx }, [uid], "correct_guess");
+      }
       const next = { ...state, currentPlayerId: opponent, lastAction: { type: "wrong_guess", playerId: uid } };
       transaction.update(gameRef, {
         publicState: next,

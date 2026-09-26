@@ -8,8 +8,10 @@ const { toMafiaActivity } = require("./mafiaActivity");
 const db = admin.firestore();
 
 const FIRST_NIGHT_DURATION_SECONDS = 8;
-const MIN_PLAYERS = 4;
-const MAX_PLAYERS = 8;
+// Master Spec 13.2: a Mafia game holds 7-15 players. Start is refused below
+// the minimum, and joining is closed for good once the game starts.
+const MIN_PLAYERS = 7;
+const MAX_PLAYERS = 15;
 
 async function cancelInvalidStartingGame(gameId, owner) {
   const gameRef = db.collection("mafia_games").doc(gameId);
@@ -39,13 +41,31 @@ async function cancelInvalidStartingGame(gameId, owner) {
   });
 }
 
+// Master Spec 13.3 fixes the registry and demands a deterministic, server-side
+// distribution per player count with no re-distribution after the start. It does
+// not tabulate counts per size, so this is the minimal allocation consistent with
+// the spec's own rules:
+//
+//   - every one of the five closed roles is always present;
+//   - the Don, Detective and Doctor are single-slot roles;
+//   - the rest split evenly between Mafia and Citizen, so the town always holds
+//     at least as many players as the mafia team, which is what makes the
+//     "mafia alive >= town alive" win condition reachable rather than decided at
+//     the start.
+//
+// The result is a pure function of the count, so two servers assign identically.
 function computeRoleDistribution(playersCount) {
   if (!Number.isInteger(playersCount) || playersCount < MIN_PLAYERS ||
       playersCount > MAX_PLAYERS) return [];
-  const roles = playersCount === 4
-    ? ["mafia", "doctor", "detective", "citizen"]
-    : ["don", "mafia", "doctor", "detective"];
-  while (roles.length < playersCount) roles.push("citizen");
+  const roles = ["don", "detective", "doctor"];
+  let remaining = playersCount - roles.length;
+  const mafiaCount = Math.max(1, Math.floor(remaining / 2));
+  remaining -= mafiaCount;
+  for (let index = 0; index < mafiaCount; index += 1) roles.push("mafia");
+  while (remaining > 0) {
+    roles.push("citizen");
+    remaining -= 1;
+  }
   return roles;
 }
 

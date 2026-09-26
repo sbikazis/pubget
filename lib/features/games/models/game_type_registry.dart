@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../mafia/models/mafia_models.dart';
 import '../engine/scoring.dart';
 import 'game_models.dart';
 
@@ -32,6 +33,8 @@ final class GameTypeSpec {
     required this.version,
     required this.implemented,
     required this.capabilities,
+    required this.winCondition,
+    required this.rules,
     this.genericCreate = true,
     this.scoringId = ScoringStrategyId.noop,
   });
@@ -42,11 +45,19 @@ final class GameTypeSpec {
   final IconData icon;
   final int version;
   final bool implemented;
+
   /// True when [createGame] can create this type. Mafia is playable
   /// (`implemented`) but only through `createMafiaGame`.
   final bool genericCreate;
   final GameCapabilities capabilities;
   final ScoringStrategyId scoringId;
+
+  /// How a game is won, described from the implemented engine. This is
+  /// presentation only: the server decides the outcome.
+  final String winCondition;
+
+  /// Short rules summary for the Game Center Rules section.
+  final String rules;
 }
 
 abstract final class GameTypeRegistry {
@@ -64,6 +75,10 @@ abstract final class GameTypeRegistry {
         minPlayers: 2,
         maxPlayers: 2,
       ),
+      winCondition: 'Guess the other player\'s secret character.',
+      rules:
+          'Each player picks a secret character from the catalog, then takes '
+          'turns asking yes or no questions or guessing outright.',
     ),
     GameType.animeChain: GameTypeSpec(
       type: GameType.animeChain,
@@ -78,6 +93,10 @@ abstract final class GameTypeRegistry {
         minPlayers: 2,
         maxPlayers: 2,
       ),
+      winCondition: 'Hold the highest score when the chain ends.',
+      rules:
+          'Take turns naming an Anime that links to the previous title. A '
+          'broken link, a duplicate, or a timeout ends the game.',
     ),
     GameType.emojiAnimeGuess: GameTypeSpec(
       type: GameType.emojiAnimeGuess,
@@ -92,6 +111,10 @@ abstract final class GameTypeRegistry {
         minPlayers: 2,
         maxPlayers: 4,
       ),
+      winCondition: 'Most correct guesses across the rounds.',
+      rules:
+          'One player owns the emoji clue and cannot guess. Everyone else '
+          'guesses the Anime once per round; a correct guess scores a point.',
     ),
     GameType.mafia: GameTypeSpec(
       type: GameType.mafia,
@@ -103,9 +126,15 @@ abstract final class GameTypeRegistry {
       genericCreate: false,
       capabilities: GameCapabilities(
         usesRounds: true,
-        minPlayers: 4,
-        maxPlayers: 16,
+        minPlayers: MafiaLimits.minPlayers,
+        maxPlayers: MafiaLimits.maxPlayers,
       ),
+      winCondition:
+          'Mafia reaches parity with the town, or the town eliminates '
+          'every Mafia member.',
+      rules:
+          'Roles are secret and assigned by the server. Nights resolve '
+          'silently, days vote one player out, and Mafia chat stays private.',
     ),
   };
 
@@ -126,10 +155,14 @@ abstract final class GameTypeRegistry {
     return null;
   }
 
-  static List<GameTypeSpec> get implemented =>
-      specs.values
-          .where((spec) => spec.implemented && spec.genericCreate)
-          .toList(growable: false);
+  static List<GameTypeSpec> get implemented => specs.values
+      .where((spec) => spec.implemented && spec.genericCreate)
+      .toList(growable: false);
+
+  /// Every playable game, including Mafia, which the Game Center must always
+  /// show even though it is created through its own callable.
+  static List<GameTypeSpec> get all =>
+      specs.values.where((spec) => spec.implemented).toList(growable: false);
 
   static List<GameTypeSpec> get genericCreate => specs.values
       .where((spec) => spec.implemented && spec.genericCreate)
@@ -165,8 +198,6 @@ abstract final class GameStrings {
   static const join = 'Join game';
   static const leave = 'Leave game';
   static const start = 'Start game';
-  static const pause = 'Pause';
-  static const resume = 'Resume';
   static const end = 'End game';
   static const cancel = 'Cancel game';
   static const submit = 'Submit action';
@@ -189,4 +220,28 @@ abstract final class GameStrings {
   static const timedOut = 'Time is up';
   static const reconnecting = 'Reconnecting to the live game…';
   static const offlineAction = 'Connect to the internet to take this action.';
+
+  // Guess Character phase copy.
+  static const guessCharacter = 'Guess the Character';
+  static const chooseSecret = 'Choose your secret character';
+  static const secretLocked = 'Secret locked in. Waiting for the other player.';
+  static const searchSecretCharacter = 'Search the character catalog';
+  static const noCatalogMatch = 'No matches in the catalog.';
+  static const askAQuestion = 'Ask a yes or no question';
+  static const guessInstead = 'Or guess the character directly';
+  static const ask = 'Ask';
+  static const yes = 'Yes';
+  static const no = 'No';
+  static const answered = 'Answer';
+  static const wrongGuess = 'Wrong guess. The turn passed.';
+  static const turnTimedOut = 'That turn timed out.';
+  static const clueOwnerTurn = 'You own this clue. Wait for a guess.';
+  static const alreadyGuessed = 'You already guessed this round.';
+  static const nextTitle = 'Next title';
+  static const animeTitle = 'Anime title';
+  static const submitGuess = 'Submit guess';
+  static const lastTitle = 'Last title';
+  static const turn = 'Turn';
+  static const you = 'You';
+  static const guessTheAnime = 'Guess the Anime from the emoji clue';
 }

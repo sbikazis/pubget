@@ -13,8 +13,8 @@ final class UnavailableMafiaRepository implements MafiaRepository {
   @override
   Future<Result<String>> create({
     required String groupId,
-    int minPlayers = 4,
-    int maxPlayers = 8,
+    int minPlayers = 7,
+    int maxPlayers = 15,
   }) async => _fail();
 
   @override
@@ -43,7 +43,8 @@ final class UnavailableMafiaRepository implements MafiaRepository {
   }) async => _fail();
 
   @override
-  Future<Result<void>> endTurn(String gameId, {String? actionId}) async => _fail();
+  Future<Result<void>> endTurn(String gameId, {String? actionId}) async =>
+      _fail();
 
   @override
   Future<Result<void>> submitLastWords(
@@ -92,6 +93,7 @@ final class UnavailableMafiaRepository implements MafiaRepository {
       Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
 
   @override
-  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId) =>
-      Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(
+    String gameId,
+  ) => Stream<Result<List<Map<String, dynamic>>>>.value(_fail());
 }

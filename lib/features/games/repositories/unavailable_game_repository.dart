@@ -26,11 +26,7 @@ final class UnavailableGameRepository implements GameRepository {
   Future<Result<void>> start(String gameId) async => _fail();
 
   @override
-  Future<Result<void>> pause(String gameId) async => _fail();
-
   @override
-  Future<Result<void>> resume(String gameId) async => _fail();
-
   @override
   Future<Result<void>> submitAction({
     required String gameId,
@@ -82,4 +78,23 @@ final class UnavailableGameRepository implements GameRepository {
   @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>
       _fail();
+
+  @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => _fail();
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => _fail();
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => _fail();
 }

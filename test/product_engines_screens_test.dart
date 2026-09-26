@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pubget/core/analytics/analytics.dart';
 import 'package:pubget/core/errors/failure.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/achievements/data/achievement_catalog.dart';
@@ -20,6 +22,7 @@ import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
 import 'package:pubget/features/games/models/game_models.dart';
 import 'package:pubget/features/games/models/game_type_registry.dart';
+import 'package:pubget/features/games/providers/game_catalog_provider.dart';
 import 'package:pubget/features/games/providers/game_providers.dart';
 import 'package:pubget/features/games/repositories/game_repository.dart';
 import 'package:pubget/features/games/screens/game_create_page.dart';
@@ -38,12 +41,78 @@ import 'authentication_test_support.dart';
 
 void main() {
   test('mafia leave copy matches server-supported statuses only', () {
-    expect(MafiaLeaveCopy.canLeave('WAITING'), isFalse);
-    expect(MafiaLeaveCopy.canLeave('STARTING'), isTrue);
-    expect(MafiaLeaveCopy.canLeave('NIGHT'), isTrue);
-    expect(MafiaLeaveCopy.canLeave('GAME_OVER'), isFalse);
-    expect(MafiaLeaveCopy.bodyFor('NIGHT'), contains('eliminated'));
-    expect(MafiaLeaveCopy.bodyFor('STARTING'), contains('cancelled'));
+    // Master Spec 13.7: a player may leave the waiting room, the lobby in
+    // STARTING, and any live phase. A finished game cannot be left.
+    for (final status in <String>[
+      'WAITING',
+      'STARTING',
+      'ROLE_REVEAL',
+      'NIGHT',
+      'DAY',
+      'DISCUSSION',
+      'VOTING',
+      'VOTE_RESULT',
+      'RESOLUTION',
+    ]) {
+      expect(
+        MafiaGame.fromMap(<String, dynamic>{
+          'status': status,
+        }, id: 'g1').canLeaveViaServer,
+        isTrue,
+        reason: '$status must be leaveable',
+      );
+    }
+    for (final status in <String>['GAME_OVER', 'CANCELLED']) {
+      expect(
+        MafiaGame.fromMap(<String, dynamic>{
+          'status': status,
+        }, id: 'g1').canLeaveViaServer,
+        isFalse,
+        reason: '$status must not be leaveable',
+      );
+    }
+
+    final copy = AppStrings.forLocale(const Locale('en'));
+    expect(copy.mafiaLeaveBodyFor('NIGHT'), contains('eliminated'));
+    expect(copy.mafiaLeaveBodyFor('STARTING'), contains('cancelled'));
+    expect(copy.mafiaLeaveBodyFor('WAITING'), contains('free'));
+    expect(copy.mafiaLeaveBodyFor('GAME_OVER'), contains('cannot be left'));
+    // Both official locales are real copy, not one with empty strings.
+    final arabic = AppStrings.arabic;
+    for (final body in <String>[
+      arabic.mafiaLeaveWaitingBody,
+      arabic.mafiaLeaveStartingBody,
+      arabic.mafiaLeaveActiveBody,
+    ]) {
+      expect(body, isNotEmpty);
+      expect(body, isNot(equals(copy.mafiaLeaveActiveBody)));
+    }
+  });
+
+  test('a mafia game parses the server status vocabulary', () {
+    // The server writes uppercase lifecycle states. The client used to compare
+    // them against lowercase Dart names, so every game parsed as a draft and
+    // nothing was ever joinable, playable, or terminal.
+    for (final entry in <String, bool>{
+      'WAITING': true,
+      'STARTING': true,
+      'IN_PROGRESS': false,
+      'COMPLETED': false,
+      'CANCELLED': false,
+      'CREATED': false,
+    }.entries) {
+      final game = MafiaGame.fromMap(<String, dynamic>{
+        'status': entry.key,
+        'currentPhase': entry.key,
+      }, id: 'g1');
+      expect(game.status, entry.key);
+      expect(game.isLobby, entry.value, reason: entry.key);
+    }
+    // The specified 7-15 range is also the client's default when a field is
+    // missing, instead of the old 4-8.
+    final bare = MafiaGame.fromMap(const <String, dynamic>{}, id: 'g1');
+    expect(bare.minPlayers, 7);
+    expect(bare.maxPlayers, 15);
   });
 
   testWidgets('achievements page shows locked and unlocked items', (
@@ -51,7 +120,9 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final auth = await _auth();
-    final provider = AchievementProvider(repository: _FakeAchievementRepository());
+    final provider = AchievementProvider(
+      repository: _FakeAchievementRepository(),
+    );
     addTearDown(provider.dispose);
     addTearDown(auth.dispose);
 
@@ -91,60 +162,254 @@ void main() {
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ChangeNotifierProvider<MafiaProvider>.value(value: mafia),
         ],
-        child: const MaterialApp(home: MafiaGameScreen(gameId: 'm1')),
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: <Locale>[Locale('en'), Locale('ar')],
+          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: MafiaGameScreen(gameId: 'm1'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('تحتاج اللعبة إلى 4 لاعبين. المنضم الآن: 1.'), findsOneWidget);
+    final arabic = AppStrings.of(tester.element(find.byType(MafiaGameScreen)));
+    expect(arabic.isArabic, isTrue, reason: 'the app must render Arabic here');
+    expect(find.text(arabic.mafiaNeedMorePlayers(7, 1)), findsOneWidget);
     final start = tester.widget<PubgetPrimaryButton>(
       find.byType(PubgetPrimaryButton).last,
     );
     expect(start.onPressed, isNull);
-    expect(find.textContaining('دورك:'), findsNothing);
-    expect(find.text(MafiaLeaveCopy.leave), findsNothing);
+    expect(find.textContaining(arabic.mafiaYourRole('')), findsNothing);
+    // The waiting room is leaveable now, and the button says so honestly
+    // rather than pretending the player is stuck.
+    expect(find.text(arabic.mafiaLeave), findsOneWidget);
     mafia.dispose();
   });
 
-  testWidgets('mafia leave confirms mid-game elimination without role reassignment', (
+  testWidgets(
+    'mafia leave confirms mid-game elimination without role reassignment',
+    (tester) async {
+      final auth = await _auth();
+      final repository = _FakeMafiaRepository(status: 'NIGHT', phase: 'NIGHT');
+      final mafia = MafiaProvider(repository: repository);
+      addTearDown(mafia.dispose);
+      addTearDown(auth.dispose);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+            ChangeNotifierProvider<MafiaProvider>.value(value: mafia),
+          ],
+          child: const MaterialApp(home: MafiaGameScreen(gameId: 'm1')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final copy = AppStrings.forLocale(const Locale('en'));
+      expect(find.text(copy.mafiaLeave), findsOneWidget);
+      await tester.tap(find.text(copy.mafiaLeave));
+      await tester.pump();
+      expect(find.text(copy.mafiaLeaveTitle), findsOneWidget);
+      expect(find.text(copy.mafiaLeaveBodyFor('NIGHT')), findsOneWidget);
+      // The app bar and the dialog both read "Leave"; only the dialog confirms.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text(copy.mafiaLeaveConfirm),
+        ),
+      );
+      await tester.pump();
+      expect(repository.leaveCalls, 1);
+      mafia.dispose();
+    },
+  );
+
+  testWidgets('guess character selection offers the catalog, not free text', (
     tester,
   ) async {
-    final auth = await _auth();
-    final repository = _FakeMafiaRepository(status: 'NIGHT', phase: 'NIGHT');
-    final mafia = MafiaProvider(repository: repository);
-    addTearDown(mafia.dispose);
-    addTearDown(auth.dispose);
-
+    final repository = _LiveGameRepository();
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<MafiaProvider>.value(value: mafia),
-        ],
-        child: const MaterialApp(home: MafiaGameScreen(gameId: 'm1')),
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: ChangeNotifierProvider<GameCatalogProvider>(
+          create: (_) => GameCatalogProvider(repository: repository),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GuessCharacterPlay(game: _guessGame(), userId: 'alice'),
+            ),
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(MafiaLeaveCopy.leave), findsOneWidget);
-    await tester.tap(find.text(MafiaLeaveCopy.leave));
-    await tester.pump();
-    expect(find.text(MafiaLeaveCopy.title), findsOneWidget);
-    expect(find.text(MafiaLeaveCopy.bodyFor('NIGHT')), findsOneWidget);
-    await tester.tap(find.text(MafiaLeaveCopy.confirm));
-    await tester.pump();
-    expect(repository.leaveCalls, 1);
-    mafia.dispose();
+    expect(find.text('Choose your secret character'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'luffy');
+    // The catalog answer is debounced, so settle past the debounce window.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Monkey D. Luffy'), findsOneWidget);
+
+    await tester.tap(find.text('Monkey D. Luffy'));
+    await tester.pumpAndSettle();
+    // Only a real catalog ID may become game state.
+    expect(repository.actions.single.actionType, GameActionTypes.select);
+    expect(
+      repository.actions.single.payload['characterId'],
+      'chr_onepiece_luffy',
+    );
   });
 
-  testWidgets('guess character play locks a submitted answer', (tester) async {
+  testWidgets('guess character locks a player who already chose', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
     await tester.pumpWidget(
       ChangeNotifierProvider<GameProvider>(
-        create: (_) => GameProvider(repository: _LiveGameRepository()),
+        create: (_) => GameProvider(repository: repository),
+        child: ChangeNotifierProvider<GameCatalogProvider>(
+          create: (_) => GameCatalogProvider(repository: repository),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GuessCharacterPlay(
+                game: _guessGame(phase: 'selection', selected: true),
+                userId: 'alice',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Secret locked in. Waiting for the other player.'),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsNothing);
+    expect(repository.actions, isEmpty);
+  });
+
+  testWidgets('guess character lets the current player ask or guess', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: ChangeNotifierProvider<GameCatalogProvider>(
+          create: (_) => GameCatalogProvider(repository: repository),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GuessCharacterPlay(
+                game: _guessGame(phase: 'ask', currentPlayerId: 'alice'),
+                userId: 'alice',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your turn'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Is he a pirate?');
+    await tester.tap(find.widgetWithText(PubgetPrimaryButton, 'Ask'));
+    await tester.pumpAndSettle();
+    expect(repository.actions.single.actionType, GameActionTypes.ask);
+    expect(repository.actions.single.payload['question'], 'Is he a pirate?');
+
+    await tester.enterText(find.byType(TextField).last, 'luffy');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monkey D. Luffy'));
+    await tester.pumpAndSettle();
+    expect(repository.actions.last.actionType, GameActionTypes.guess);
+    expect(
+      repository.actions.last.payload['characterId'],
+      'chr_onepiece_luffy',
+    );
+  });
+
+  testWidgets('guess character holds the waiting player out of the turn', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: ChangeNotifierProvider<GameCatalogProvider>(
+          create: (_) => GameCatalogProvider(repository: repository),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GuessCharacterPlay(
+                game: _guessGame(
+                  phase: 'ask',
+                  currentPlayerId: 'alice',
+                  question: 'Is he a pirate?',
+                ),
+                userId: 'bob',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waiting for the other players'), findsOneWidget);
+    expect(find.text('Is he a pirate?'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(repository.actions, isEmpty);
+  });
+
+  testWidgets('guess character answers yes or no for the answerer only', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: ChangeNotifierProvider<GameCatalogProvider>(
+          create: (_) => GameCatalogProvider(repository: repository),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GuessCharacterPlay(
+                game: _guessGame(
+                  phase: 'answer',
+                  currentPlayerId: 'alice',
+                  answeringPlayerId: 'bob',
+                  question: 'Is he a pirate?',
+                ),
+                userId: 'bob',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(PubgetPrimaryButton, 'Yes'));
+    await tester.pumpAndSettle();
+    expect(repository.actions.single.actionType, GameActionTypes.answer);
+    expect(repository.actions.single.payload['answer'], 'yes');
+  });
+
+  testWidgets('emoji clue owner cannot guess its own clue', (tester) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
         child: MaterialApp(
           home: Scaffold(
-            body: GuessCharacterPlay(
-              game: _guessGame(),
+            body: EmojiGuessPlay(
+              game: _emojiGame(currentPlayerId: 'alice'),
               userId: 'alice',
             ),
           ),
@@ -153,14 +418,62 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Who is this character?'), findsOneWidget);
-    expect(find.text('Luffy'), findsOneWidget);
-    expect(find.text('Original Pubget silhouette'), findsOneWidget);
-    expect(find.byType(CustomPaint), findsWidgets);
-    expect(
-      find.text('Answer locked in. Waiting for the round to resolve.'),
-      findsOneWidget,
+    expect(find.text('You own this clue. Wait for a guess.'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(repository.actions, isEmpty);
+  });
+
+  testWidgets('emoji guesser is locked out after answering the round', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: MaterialApp(
+          home: Scaffold(
+            body: EmojiGuessPlay(
+              game: _emojiGame(
+                currentPlayerId: 'alice',
+                answered: <String>['bob'],
+              ),
+              userId: 'bob',
+            ),
+          ),
+        ),
+      ),
     );
+    await tester.pumpAndSettle();
+
+    expect(find.text('You already guessed this round.'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(repository.actions, isEmpty);
+  });
+
+  testWidgets('emoji guesser submits a real catalog title once', (
+    tester,
+  ) async {
+    final repository = _LiveGameRepository();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<GameProvider>(
+        create: (_) => GameProvider(repository: repository),
+        child: MaterialApp(
+          home: Scaffold(
+            body: EmojiGuessPlay(
+              game: _emojiGame(currentPlayerId: 'alice'),
+              userId: 'bob',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'One Piece');
+    await tester.tap(find.widgetWithText(PubgetPrimaryButton, 'Submit guess'));
+    await tester.pumpAndSettle();
+    expect(repository.actions.single.actionType, GameActionTypes.guess);
+    expect(repository.actions.single.payload['title'], 'One Piece');
   });
 
   testWidgets('guess character artwork falls back to the clue', (tester) async {
@@ -179,7 +492,9 @@ void main() {
     expect(find.text('Original Pubget silhouette'), findsNothing);
   });
 
-  testWidgets('guess character artwork paints a licensed silhouette', (tester) async {
+  testWidgets('guess character artwork paints a licensed silhouette', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -266,7 +581,9 @@ void main() {
 
   testWidgets('completed game result offers a next action', (tester) async {
     final auth = await _auth();
-    final games = GameProvider(repository: _LiveGameRepository(completed: true));
+    final games = GameProvider(
+      repository: _LiveGameRepository(completed: true),
+    );
     addTearDown(games.dispose);
     addTearDown(auth.dispose);
 
@@ -298,14 +615,21 @@ Future<AuthProvider> _auth() async {
   return auth;
 }
 
-PubgetGame _guessGame({bool completed = false}) {
+PubgetGame _guessGame({
+  bool completed = false,
+  String phase = 'selection',
+  bool selected = false,
+  String? currentPlayerId,
+  String? answeringPlayerId,
+  String? question,
+}) {
   return PubgetGame(
     id: 'g1',
     type: GameType.guessCharacter,
     title: 'Guess',
     description: '',
     version: 1,
-    status: completed ? GameStatus.completed : GameStatus.active,
+    status: completed ? GameStatus.completed : GameStatus.inProgress,
     creatorId: 'alice',
     groupId: 'group-1',
     configuration: const GameConfiguration(
@@ -323,39 +647,54 @@ PubgetGame _guessGame({bool completed = false}) {
         : null,
     publicState: <String, dynamic>{
       'engine': 'guessCharacter',
-      'roundNumber': 1,
-      'totalRounds': 5,
-      'answeredPlayerIds': <String>['alice'],
-      'scores': <String, int>{'alice': 1, 'bob': 0},
-      'prompt': <String, dynamic>{
-        'question': 'Who is this character?',
-        'clue': 'Straw hat pirate',
-        'artwork': <String, dynamic>{
-          'assetId': 'pgart_3f8c1a92b4e0',
-          'license': 'pubget-original',
-          'attribution': 'Original Pubget silhouette',
-          'source': 'pubget',
-          'version': 1,
-          'portrait': <String, dynamic>{
-            'background': '#4C1D95',
-            'shapes': <Map<String, Object>>[
-              <String, Object>{
-                'type': 'rect',
-                'x': 8,
-                'y': 8,
-                'w': 84,
-                'h': 84,
-                'r': 18,
-                'color': '#4C1D95',
-              },
-            ],
-          },
-        },
-        'choices': <Map<String, String>>[
-          <String, String>{'id': 'a', 'name': 'Luffy'},
-          <String, String>{'id': 'b', 'name': 'Zoro'},
-        ],
+      'phase': phase,
+      'players': <String, dynamic>{
+        'alice': <String, dynamic>{'selected': selected},
+        'bob': <String, dynamic>{'selected': selected},
       },
+      'currentPlayerId': currentPlayerId,
+      'answeringPlayerId': answeringPlayerId,
+      'question': question,
+      'answerOptions': question == null ? null : <String>['yes', 'no'],
+      'lastAction': null,
+      'result': null,
+    },
+  );
+}
+
+PubgetGame _emojiGame({
+  required String currentPlayerId,
+  List<String> answered = const <String>[],
+}) {
+  return PubgetGame(
+    id: 'g2',
+    type: GameType.emojiAnimeGuess,
+    title: 'Emoji',
+    description: '',
+    version: 1,
+    status: GameStatus.inProgress,
+    creatorId: 'alice',
+    groupId: 'group-1',
+    configuration: const GameConfiguration(
+      minPlayers: 2,
+      maxPlayers: 4,
+      usesRounds: true,
+      roundCount: 1,
+      timerSeconds: 25,
+    ),
+    participantsCount: 2,
+    createdAt: DateTime.utc(2026, 9, 1),
+    updatedAt: DateTime.utc(2026, 9, 1),
+    publicState: <String, dynamic>{
+      'engine': 'emojiAnimeGuess',
+      'phase': 'guess',
+      'emojis': <String>['🏴‍☠️', '🍖'],
+      'currentPlayerId': currentPlayerId,
+      'turnIndex': 0,
+      'totalTurns': 2,
+      'scores': <String, int>{'alice': 0, 'bob': 0},
+      'answeredPlayerIds': answered,
+      'lastReveal': null,
     },
   );
 }
@@ -391,10 +730,7 @@ final class _FakeAchievementRepository implements AchievementRepository {
 }
 
 final class _FakeMafiaRepository implements MafiaRepository {
-  _FakeMafiaRepository({
-    this.status = 'WAITING',
-    this.phase = 'WAITING',
-  });
+  _FakeMafiaRepository({this.status = 'WAITING', this.phase = 'WAITING'});
 
   final String status;
   final String phase;
@@ -403,8 +739,8 @@ final class _FakeMafiaRepository implements MafiaRepository {
   @override
   Future<Result<String>> create({
     required String groupId,
-    int minPlayers = 4,
-    int maxPlayers = 8,
+    int minPlayers = 7,
+    int maxPlayers = 15,
   }) async => const Success('m1');
 
   @override
@@ -475,8 +811,8 @@ final class _FakeMafiaRepository implements MafiaRepository {
             status: status,
             currentPhase: phase,
             playersCount: status == 'WAITING' ? 1 : 5,
-            minPlayers: 4,
-            maxPlayers: 8,
+            minPlayers: 7,
+            maxPlayers: 15,
           ),
         ),
       );
@@ -510,16 +846,25 @@ final class _FakeMafiaRepository implements MafiaRepository {
       );
 
   @override
-  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(String gameId) =>
-      Stream<Result<List<Map<String, dynamic>>>>.value(
-        const Success(<Map<String, dynamic>>[]),
-      );
+  Stream<Result<List<Map<String, dynamic>>>> watchMafiaMessages(
+    String gameId,
+  ) => Stream<Result<List<Map<String, dynamic>>>>.value(
+    const Success(<Map<String, dynamic>>[]),
+  );
+}
+
+final class _SubmittedAction {
+  const _SubmittedAction(this.actionType, this.payload);
+
+  final String actionType;
+  final Map<String, dynamic> payload;
 }
 
 final class _LiveGameRepository implements GameRepository {
   _LiveGameRepository({this.completed = false});
 
   final bool completed;
+  final List<_SubmittedAction> actions = <_SubmittedAction>[];
 
   @override
   Future<Result<void>> cancel(String gameId) async => const Success<void>(null);
@@ -548,6 +893,25 @@ final class _LiveGameRepository implements GameRepository {
   }) async => const Success(<PubgetGame>[]);
 
   @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => const Success(<AnimeSearchItem>[]);
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => const Success(<CharacterSearchItem>[
+    CharacterSearchItem(
+      id: 'chr_onepiece_luffy',
+      name: 'Monkey D. Luffy',
+      animeIds: <String>['mal_onepiece'],
+    ),
+  ]);
+
+  @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>
       const Success(<GameParticipant>[]);
 
@@ -566,12 +930,6 @@ final class _LiveGameRepository implements GameRepository {
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
   @override
-  Future<Result<void>> pause(String gameId) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> resume(String gameId) async => const Success<void>(null);
-
-  @override
   Future<Result<void>> start(String gameId) async => const Success<void>(null);
 
   @override
@@ -580,11 +938,22 @@ final class _LiveGameRepository implements GameRepository {
     required String actionType,
     Map<String, dynamic> payload = const <String, dynamic>{},
     String? clientActionId,
-  }) async => const Success<void>(null);
+  }) async {
+    actions.add(_SubmittedAction(actionType, payload));
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
 
   @override
   Stream<Result<PubgetGame>> watchGame(String gameId) =>
-      Stream<Result<PubgetGame>>.value(Success(_guessGame(completed: completed)));
+      Stream<Result<PubgetGame>>.value(
+        Success(_guessGame(completed: completed)),
+      );
 
   @override
   Stream<Result<List<GameParticipant>>> watchParticipants(String gameId) =>
@@ -798,8 +1167,10 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
-      const Success<void>(null);
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
@@ -832,11 +1203,11 @@ final class _FakeGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-

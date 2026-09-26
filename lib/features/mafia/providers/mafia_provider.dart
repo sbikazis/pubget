@@ -25,8 +25,7 @@ final class MafiaProvider extends ChangeNotifier {
   MafiaPrivateState _private = const MafiaPrivateState();
   List<Map<String, dynamic>> _events = const <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _chat = const <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _mafiaChat =
-      const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _mafiaChat = const <Map<String, dynamic>>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _busy = false;
@@ -64,6 +63,7 @@ final class MafiaProvider extends ChangeNotifier {
           _game = game;
           _state = LoadingState.loaded;
           _failure = null;
+          _syncHeartbeat(game);
         },
         onFailure: (failure) {
           _failure = failure;
@@ -75,7 +75,16 @@ final class MafiaProvider extends ChangeNotifier {
       notifyListeners();
     });
     _playersSub = _repository.watchPlayers(gameId).listen((result) {
-      result.fold(onSuccess: (value) => _players = value, onFailure: (_) {});
+      result.fold(
+        onSuccess: (value) {
+          _players = value;
+          final me = self;
+          // A player who left or whose game is over has nothing left to prove
+          // they are connected, and the server rejects the beat anyway.
+          if (_game != null && (me?.hasLeft ?? false)) _stopHeartbeat();
+        },
+        onFailure: (_) {},
+      );
       notifyListeners();
     });
     _privateSub = _repository
@@ -100,15 +109,36 @@ final class MafiaProvider extends ChangeNotifier {
       result.fold(onSuccess: (value) => _mafiaChat = value, onFailure: (_) {});
       notifyListeners();
     });
+    _startHeartbeat(gameId);
+  }
+
+  /// Master Spec 13.8: a player is marked disconnected when they stop being
+  /// seen. The beat stops once the game is over or the player has left, because
+  /// a cleared `isDisconnected` flag on a finished game is noise at best.
+  void _startHeartbeat(String gameId) {
+    _heartbeat?.cancel();
     _heartbeat = Timer.periodic(const Duration(seconds: 25), (_) {
       unawaited(_repository.heartbeat(gameId));
     });
   }
 
+  void _syncHeartbeat(MafiaGame game) {
+    if (game.isFinished) {
+      _stopHeartbeat();
+      return;
+    }
+    if (_heartbeat == null && _gameId != null) _startHeartbeat(_gameId!);
+  }
+
+  void _stopHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = null;
+  }
+
   Future<Result<String>> create({
     required String groupId,
-    int minPlayers = 4,
-    int maxPlayers = 8,
+    int minPlayers = 7,
+    int maxPlayers = 15,
   }) {
     return _repository.create(
       groupId: groupId,
@@ -145,8 +175,7 @@ final class MafiaProvider extends ChangeNotifier {
     );
   }
 
-  Future<Result<void>> endTurn() =>
-      _run(() => _repository.endTurn(_gameId!));
+  Future<Result<void>> endTurn() => _run(() => _repository.endTurn(_gameId!));
 
   Future<Result<void>> submitLastWords(String text) =>
       _run(() => _repository.submitLastWords(_gameId!, text));
@@ -206,7 +235,7 @@ final class MafiaProvider extends ChangeNotifier {
   }
 
   Future<void> _cancel() async {
-    _heartbeat?.cancel();
+    _stopHeartbeat();
     await _gameSub?.cancel();
     await _playersSub?.cancel();
     await _privateSub?.cancel();

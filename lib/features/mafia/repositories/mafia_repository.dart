@@ -4,8 +4,8 @@ import '../models/mafia_models.dart';
 abstract interface class MafiaRepository {
   Future<Result<String>> create({
     required String groupId,
-    int minPlayers = 4,
-    int maxPlayers = 8,
+    int minPlayers = 7,
+    int maxPlayers = 15,
   });
 
   Future<Result<void>> join(String gameId);
@@ -30,9 +30,17 @@ abstract interface class MafiaRepository {
 
   Future<Result<void>> endTurn(String gameId, {String? actionId});
 
-  Future<Result<void>> submitLastWords(String gameId, String text, {String? actionId});
+  Future<Result<void>> submitLastWords(
+    String gameId,
+    String text, {
+    String? actionId,
+  });
 
-  Future<Result<void>> sendMafiaMessage(String gameId, String text, {String? actionId});
+  Future<Result<void>> sendMafiaMessage(
+    String gameId,
+    String text, {
+    String? actionId,
+  });
 
   Future<Result<void>> sendChat({
     required String gameId,

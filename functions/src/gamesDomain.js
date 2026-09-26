@@ -19,7 +19,17 @@
 const { ROLE_PERMISSIONS, normalizeRole } = require("./groupsDomain");
 const { hasPermission } = require("./pubgetRanks");
 const { engineFor } = require("./gameEngines");
-const { secretRef, isExpired } = require("./gameEngines/helpers");
+const {
+  secretRef,
+  isExpired,
+  resolveCharacter,
+  resolveAnime,
+  resolveAnimeByText,
+  loadAnimePool,
+  animeIdFromPayload,
+  animeTextFromPayload,
+  characterIdFromPayload,
+} = require("./gameEngines/helpers");
 const { postFromActivity } = require("./chatCardWriter");
 
 const TITLE_MAX = 80;
@@ -161,10 +171,10 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeConfiguration(raw, spec, type) {
-  if (type === "mafia") {
-    return validateMafiaConfig(raw, spec.capabilities || {});
-  }
+// Mafia is an independent domain (Master Spec 13) and is never created here,
+// so the games registry below is the single source of truth for the three
+// Games of Axis 12.
+function normalizeConfiguration(raw, spec) {
   const input = raw && typeof raw === "object" ? raw : {};
   const caps = spec.capabilities || {};
   const extra = input.extra && typeof input.extra === "object" &&
@@ -357,7 +367,7 @@ function writeEvent(transaction, db, FieldValue, {
 
 function createGamesDomain({
   db, FieldValue, HttpsError, notificationBuilder, economy, achievements,
-  clock, random, postChatCard,
+  clock, random, postChatCard, catalog,
 }) {
   const nowOf = () => (clock && typeof clock.now === "function" ? clock.now() : new Date());
   const rng = typeof random === "function" ? random : Math.random;
@@ -427,8 +437,36 @@ function createGamesDomain({
     return uniqueRecipientIds(await listActiveParticipantIds(db, gameId)).sort();
   }
 
+  // Master Spec 12.1: rewards are server-side and idempotent — once, ever.
+  //
+  // The Economy ledger is itself idempotent: every grant is keyed by
+  // `type_userId_referenceId`, so replaying a grant cannot credit twice. That
+  // makes it safe to grant first and mark afterwards, and it is the only
+  // ordering that cannot lose a reward: a provider or ledger failure leaves the
+  // game unmarked, so a later completion pass still pays. Marking first would
+  // burn the claim and silently forfeit the reward.
+  async function alreadySettledRewards(gameId) {
+    const snapshot = await gameRef(db, gameId).get();
+    if (!snapshot.exists) return true;
+    return (snapshot.data() || {}).rewardsDistributed === true;
+  }
+
+  async function markRewardsSettled(gameId) {
+    await db.runTransaction(async (transaction) => {
+      const ref = gameRef(db, gameId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) return;
+      if ((snapshot.data() || {}).rewardsDistributed === true) return;
+      transaction.update(ref, {
+        rewardsDistributed: true,
+        rewardsDistributedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   async function afterComplete(gameId, game, result) {
     if (!game) return;
+    if (await alreadySettledRewards(gameId)) return;
     await notifyGame({
       kind: "completed",
       gameId,
@@ -498,6 +536,9 @@ function createGamesDomain({
         metadata: { gameId, winnerIds },
       });
     }
+    // Marked only after every grant succeeded, so a failure above leaves the
+    // reward owed instead of forfeited.
+    await markRewardsSettled(gameId);
     await emitChatCard(
       buildGameEvent({
         eventId: `${gameId}_completed`,
@@ -514,13 +555,36 @@ function createGamesDomain({
     );
   }
 
+  async function resolveSubmission(ctx, payload) {
+    const id = animeIdFromPayload(payload);
+    if (id) return resolveAnime(ctx, id);
+    return resolveAnimeByText(ctx, animeTextFromPayload(payload));
+  }
+
+  function needsAnimePool(type) {
+    return type === "animeChain" || type === "emojiAnimeGuess";
+  }
+
+  async function animePoolFor(type) {
+    if (!needsAnimePool(type)) return undefined;
+    try {
+      return await loadAnimePool({ catalog }, 24);
+    } catch (_) {
+      // helpers falls back to the offline snapshot when the pool is short.
+      return undefined;
+    }
+  }
+
   async function initializeEngine(gameId) {
     const playerIds = await activePlayerIds(gameId);
+    const snapshot = await gameRef(db, gameId).get();
+    if (!snapshot.exists) return;
+    const seedPool = await animePoolFor((snapshot.data() || {}).type);
     await db.runTransaction(async (transaction) => {
       const ref = gameRef(db, gameId);
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists) return;
-      const current = snapshot.data() || {};
+      const currentSnap = await transaction.get(ref);
+      if (!currentSnap.exists) return;
+      const current = currentSnap.data() || {};
       if (current.status !== "IN_PROGRESS") return;
       if (current.publicState && current.publicState.engine) return;
       const engine = engineFor(current.type);
@@ -535,12 +599,49 @@ function createGamesDomain({
         playerIds,
         random: rng,
         now: nowOf(),
+        animePool: seedPool,
       });
     });
   }
 
+  // Catalog lookups happen here, before any transaction opens: a Firestore
+  // transaction must never wait on an external provider.
+  async function resolveActionCatalog(game, action) {
+    const type = game && game.type;
+    const payload = (action && action.payload) || {};
+    const actionType = action && action.actionType;
+    if (type === "guessCharacter" &&
+        (actionType === "select" || actionType === "guess")) {
+      return {
+        resolvedCharacter: await resolveCharacter({ catalog },
+          characterIdFromPayload(payload)),
+      };
+    }
+    if (type === "emojiAnimeGuess") {
+      const submitted = await resolveSubmission({ catalog }, payload);
+      return { resolvedAnime: submitted };
+    }
+    if (type === "animeChain") {
+      const submitted = await resolveSubmission({ catalog }, payload);
+      const chain = (game.publicState && game.publicState.chain) || [];
+      const last = chain[chain.length - 1];
+      const previous = last
+        ? await resolveAnime({ catalog }, last.animeId)
+        : null;
+      let chainValid = false;
+      if (previous && submitted && catalog &&
+          typeof catalog.validateChainSubmission === "function") {
+        chainValid = catalog.validateChainSubmission(previous, submitted).ok === true;
+      }
+      return { resolvedAnime: submitted, resolvedPreviousAnime: previous, chainValid };
+    }
+    return {};
+  }
+
   async function resolveExpiredGame(gameId) {
     const playerIds = await activePlayerIds(gameId);
+    const snapshot = await gameRef(db, gameId).get();
+    const timeoutPool = await animePoolFor((snapshot.data() || {}).type);
     let outcome = { completed: false, result: null, game: null };
     await db.runTransaction(async (transaction) => {
       const ref = gameRef(db, gameId);
@@ -566,6 +667,7 @@ function createGamesDomain({
         random: rng,
         now: nowOf(),
         secretSnap,
+        animePool: timeoutPool,
       }) || { completed: false };
       outcome = {
         completed: result.completed === true,
@@ -702,18 +804,6 @@ function createGamesDomain({
         endedAt: null,
         searchName: searchNameOf(title),
       };
-      if (input.type === "mafia") {
-        created.mafia = {
-          phase: "setup",
-          roundNumber: 0,
-          phaseStartedAt: now,
-          phaseEndsAt: null,
-          deadUserIds: [],
-          lastNight: null,
-          lastVote: null,
-          winner: null,
-        };
-      }
       transaction.create(ref, created);
       if (!asDraft) {
         transaction.create(participantRef(db, ref.id, uid), {
@@ -861,6 +951,8 @@ function createGamesDomain({
           actorId: current.creatorId,
           payload: { reason: "waiting_timeout" },
         });
+        await clearWaitingAnnouncement(transaction, { ...current, id: ref.id },
+          "waiting_timeout");
         expiredGame = { ...current, id: ref.id };
         return;
       }
@@ -948,13 +1040,6 @@ function createGamesDomain({
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
       if (existing.data().status === "left" || existing.data().leftAt) return;
-      if (current.type === "mafia" &&
-          (current.status === "active" || current.status === "paused")) {
-        throw new HttpsError(
-          "failed-precondition",
-          "You cannot leave an in-progress Mafia game.",
-        );
-      }
       const now = FieldValue.serverTimestamp();
       transaction.update(person, {
         status: "left",
@@ -1057,19 +1142,6 @@ function createGamesDomain({
       extra: (current, now) => ({
         startedAt: current.startedAt || now,
       }),
-      after: async (transaction, ctx) => {
-        if (ctx.current.type !== "mafia") return null;
-        if (!mafia || typeof mafia.onStart !== "function") {
-          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
-        }
-        return mafia.onStart(transaction, {
-          ref: ctx.ref,
-          current: ctx.current,
-          uid: ctx.uid,
-          now: ctx.now,
-          gameId: ctx.ref.id,
-        });
-      },
     });
     if (!result.skipped && result.game) {
       await db.runTransaction(async (transaction) => {
@@ -1094,13 +1166,6 @@ function createGamesDomain({
         title: result.game.title,
         type: result.game.type,
       });
-      if (result.game.type === "mafia" && mafia && typeof mafia.notifyMafia === "function") {
-        await mafia.notifyMafia("night", {
-          gameId: request.data.gameId.trim(),
-          actorId: request.auth.uid,
-          roundNumber: 1,
-        });
-      }
     }
     await initializeEngine(request.data.gameId.trim());
     return { ok: true };
@@ -1164,6 +1229,33 @@ function createGamesDomain({
     let completedGame = null;
     let replay = false;
     let priorResult = null;
+    // Resolve the submitted catalog entity once, before the transaction, so the
+    // engine receives a validated real ID and no provider call happens under
+    // transaction locks.
+    // The catalog is only worth resolving for a caller who may actually play.
+    // Anything else is rejected by the authoritative checks inside the
+    // transaction below, so a non-participant or a finished game never turns
+    // into provider traffic or a misleading `catalog_unavailable` error.
+    const [preRead, prePerson, preStored] = await Promise.all([
+      ref.get(),
+      person.get(),
+      stored.get(),
+    ]);
+    const preGame = preRead.exists ? preRead.data() || {} : {};
+    const preParticipant = prePerson.exists ? prePerson.data() || {} : null;
+    const mayAct = preRead.exists
+      && !preStored.exists
+      && preGame.status === "IN_PROGRESS"
+      && preParticipant
+      && preParticipant.status !== "left"
+      && !preParticipant.leftAt
+      && action.actionType !== "resign";
+    // Rounds that advance on an action need the next title, so the pool is
+    // resolved here too — never inside the transaction.
+    const actionPool = mayAct ? await animePoolFor(preGame.type) : [];
+    const catalogContext = mayAct
+      ? { ...(await resolveActionCatalog(preGame, action)), animePool: actionPool }
+      : {};
     await db.runTransaction(async (transaction) => {
       const [snapshot, existing, prior, secretSnap] = await Promise.all([
         transaction.get(ref),
@@ -1195,21 +1287,6 @@ function createGamesDomain({
         throw new HttpsError("permission-denied", "You are not a participant in this game.");
       }
       const now = FieldValue.serverTimestamp();
-      if (current.type === "mafia") {
-        if (!mafia || typeof mafia.submitAction !== "function") {
-          throw new HttpsError("failed-precondition", "Mafia domain is not wired.");
-        }
-        await mafia.submitAction(transaction, {
-          gameId,
-          uid,
-          actionType: action.actionType,
-          payload: action.payload,
-          current,
-          person: existing.data() || {},
-        });
-        transaction.update(ref, { updatedAt: now });
-        return;
-      }
       transaction.create(stored, {
         actionId,
         gameId,
@@ -1270,6 +1347,7 @@ function createGamesDomain({
             now: nowOf(),
             secretSnap,
             random: rng,
+            ...catalogContext,
           }) || {};
           if (outcome.completed) {
             completed = outcome.result;
@@ -1287,6 +1365,112 @@ function createGamesDomain({
     return { ok: true, actionId, replay, result: replay ? priorResult : (completed || null) };
   }
 
+  // Real catalog lookups for the pickers. Master Spec 12.2/12.4 require a real
+  // Character/Anime ID, so the client searches the same canonical repository
+  // the server validates against instead of shipping its own list.
+  async function searchAnimeCatalog(request) {
+    requireAuth(request, HttpsError);
+    const input = request.data || {};
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    const limit = Math.min(25, Math.max(1, Number(input.limit) || 12));
+    if (!catalog) {
+      throw new HttpsError(
+        "unavailable",
+        "The anime catalog is temporarily unavailable.",
+      );
+    }
+    const items = await catalog.searchAnime(query, { limit });
+    return { items: items.map(catalog.animeToPublicSearchItem).filter(Boolean) };
+  }
+
+  async function searchCharacterCatalog(request) {
+    requireAuth(request, HttpsError);
+    const input = request.data || {};
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    const animeId = typeof input.animeId === "string" && input.animeId.trim()
+      ? input.animeId.trim()
+      : null;
+    const limit = Math.min(25, Math.max(1, Number(input.limit) || 20));
+    if (!catalog) {
+      throw new HttpsError(
+        "unavailable",
+        "The character catalog is temporarily unavailable.",
+      );
+    }
+    if (!query && !animeId) return { items: [] };
+    const items = await catalog.searchCharacters(query, { limit, animeId });
+    return { items: items.map(catalog.characterToPublicItem).filter(Boolean) };
+  }
+
+  // Master Spec 12.1: a waiting room that times out must leave nothing behind.
+  // The active announcement in the group chat and the group pointer are part
+  // of the same cleanup, otherwise the lobby becomes an orphan.
+  async function clearWaitingAnnouncement(transaction, game, reason) {
+    if (!game || typeof game.groupId !== "string" || !game.groupId) return;
+    const group = groupRef(db, game.groupId);
+    const snapshot = await transaction.get(group);
+    if (!snapshot.exists) return;
+    const data = snapshot.data() || {};
+    if (data.activeGameId !== game.id) return;
+    transaction.update(group, {
+      activeGameId: FieldValue.delete(),
+      gameStatus: FieldValue.delete(),
+      hasRunningGame: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  async function cancelExpiredWaitingGame(gameId, reason) {
+    let cancelled = null;
+    await db.runTransaction(async (transaction) => {
+      const ref = gameRef(db, gameId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() || {};
+      if (current.status !== "WAITING") return;
+      const now = FieldValue.serverTimestamp();
+      transaction.update(ref, {
+        status: "CANCELLED",
+        currentPhase: "CANCELLED",
+        joinLocked: true,
+        waitingDeadlineAt: null,
+        endedAt: now,
+        updatedAt: now,
+        stateVersion: (Number(current.stateVersion) || 0) + 1,
+        cancellationReason: reason,
+        // No rewards: a cancelled waiting room was never played.
+        result: {
+          kind: current.type,
+          winnerIds: [],
+          scores: {},
+          summary: { reason },
+        },
+      });
+      writeEvent(transaction, db, FieldValue, {
+        gameId,
+        eventId: `${gameId}_cancelled`,
+        type: "game_cancelled",
+        actorId: current.creatorId || null,
+        payload: { reason },
+      });
+      await clearWaitingAnnouncement(transaction, { ...current, id: gameId }, reason);
+      cancelled = { ...current, id: gameId };
+    });
+    if (cancelled) {
+      await emitChatCard(
+        buildGameEvent({
+          eventId: `${cancelled.id}_cancelled`,
+          gameId: cancelled.id,
+          type: "game_cancelled",
+          actorId: cancelled.creatorId || null,
+          payload: { reason },
+        }),
+        cancelled,
+      );
+    }
+    return cancelled;
+  }
+
   async function processExpiredGames() {
     const now = nowOf();
     const waitingSnapshot = await db.collection("games")
@@ -1297,29 +1481,7 @@ function createGamesDomain({
       .get();
     let cancelled = 0;
     for (const doc of (waitingSnapshot.docs || [])) {
-      let cancelledGame = null;
-      await db.runTransaction(async (transaction) => {
-        const ref = gameRef(db, doc.id);
-        const snap = await transaction.get(ref);
-        if (!snap.exists || snap.data().status !== "WAITING") return;
-        cancelledGame = snap.data();
-        transaction.update(ref, {
-          status: "CANCELLED",
-          currentPhase: "CANCELLED",
-          joinLocked: true,
-          stateVersion: (snap.data().stateVersion || 0) + 1,
-          endedAt: now,
-          updatedAt: FieldValue.serverTimestamp(),
-          cancellationReason: "WAITING_TIMEOUT",
-        });
-        writeEvent(transaction, db, FieldValue, {
-          gameId: doc.id,
-          eventId: `${doc.id}_waiting_timeout`,
-          type: "game_cancelled",
-          actorId: null,
-          payload: { reason: "WAITING_TIMEOUT" },
-        });
-      });
+      const cancelledGame = await cancelExpiredWaitingGame(doc.id, "waiting_timeout");
       if (cancelledGame) cancelled += 1;
     }
     const progressSnapshot = await db.collection("games")
@@ -1352,6 +1514,8 @@ function createGamesDomain({
     submitGameAction,
     endGame,
     cancelGame,
+    searchAnimeCatalog,
+    searchCharacterCatalog,
     processExpiredGames,
   };
 }
