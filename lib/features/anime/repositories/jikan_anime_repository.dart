@@ -63,6 +63,38 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) async {
+    final cleaned = <String>[
+      for (final id in ids)
+        if (id.trim().isNotEmpty) id.trim(),
+    ];
+    if (cleaned.isEmpty) return const Success(<Anime>[]);
+    final unique = cleaned.toSet();
+    final size = chunkSize.clamp(1, 100);
+    final collected = <Anime>[];
+    var failure = <Failure>[];
+    for (var index = 0; index < unique.length; index += size) {
+      final chunk = unique.toList().sublist(
+        index,
+        (index + size).clamp(0, unique.length),
+      );
+      final result = await _list<Anime>(
+        _uri('anime/ids', <String, String>{'ids': chunk.join(',')}),
+        mapJikanAnimeList,
+        priority: AnimeRequestPriority.catalog,
+      );
+      result.fold(onSuccess: collected.addAll, onFailure: failure.add);
+    }
+    if (collected.isEmpty && failure.isNotEmpty) {
+      return FailureResult<List<Anime>>(failure.first);
+    }
+    return Success<List<Anime>>(collected);
+  }
+
+  @override
   Future<Result<AnimePage>> getTrending({int page = 1, int limit = 20}) =>
       _page(
         _uri('top/anime', <String, String>{

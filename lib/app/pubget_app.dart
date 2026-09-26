@@ -71,17 +71,21 @@ import '../features/anime/repositories/cached_anime_repository.dart';
 import '../features/anime/repositories/firestore_cached_anime_repository.dart';
 import '../features/anime/repositories/jikan_anime_repository.dart';
 import '../features/anime/repositories/provider_chain_anime_repository.dart';
+import '../features/anime/theme/anime_hub_colors.dart';
 import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
+import '../features/anime/screens/anime_favorite_characters_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
 import '../features/anime/screens/anime_my_page.dart';
 import '../features/anime/screens/anime_popular_characters_page.dart';
 import '../features/anime/screens/anime_ratings_page.dart';
+import '../features/anime/screens/anime_search_page.dart';
 import '../features/anime/providers/anime_hub_social_provider.dart';
 import '../features/anime/providers/anime_library_provider.dart';
+import '../features/anime/providers/anime_my_list_provider.dart';
 import '../features/anime/repositories/anime_hub_social_repository.dart';
 import '../features/anime/repositories/anime_library_repository.dart';
 import '../features/anime/repositories/firebase_anime_hub_social_repository.dart';
@@ -171,6 +175,18 @@ import 'app_shell_scope.dart';
 import 'design_system_showcase_page.dart';
 import 'firebase_bootstrap.dart';
 import 'unknown_link_page.dart';
+
+/// Attaches the Anime Hub's own palette to the shared app theme. Core stays
+/// feature-agnostic; the hub's colors only exist where the feature does.
+ThemeData _withAnimeHub(ThemeData theme) {
+  final hub = theme.brightness == Brightness.dark
+      ? AnimeHubColors.dark
+      : AnimeHubColors.light;
+  if (theme.extension<AnimeHubColors>() == hub) return theme;
+  return theme.copyWith(
+    extensions: <ThemeExtension<dynamic>>[...theme.extensions.values, hub],
+  );
+}
 
 class PubgetApp extends StatelessWidget {
   const PubgetApp({required this.firebaseState, super.key});
@@ -461,6 +477,22 @@ class PubgetApp extends StatelessWidget {
           create: (context) => AnimeHubSocialProvider(
             repository: context.read<AnimeHubSocialRepository>(),
           ),
+        ),
+        provider.ChangeNotifierProxyProvider2<
+          AnimeLibraryProvider,
+          AnimeRepository,
+          AnimeMyListProvider
+        >(
+          create: (context) => AnimeMyListProvider(
+            repository: context.read<AnimeRepository>(),
+            entries: () => context.read<AnimeLibraryProvider>().entries,
+          ),
+          update: (_, library, repository, previous) =>
+              previous ??
+              AnimeMyListProvider(
+                repository: repository,
+                entries: () => library.entries,
+              ),
         ),
         provider.ChangeNotifierProxyProvider2<
           AuthProvider,
@@ -840,8 +872,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
     final settings = context.watch<SettingsProvider>();
     return MaterialApp.router(
       title: 'Pubget',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: _withAnimeHub(AppTheme.light),
+      darkTheme: _withAnimeHub(AppTheme.dark),
       themeMode: settings.themeMode,
       locale: settings.locale,
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
@@ -908,9 +940,17 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/joined': const AppShell(),
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
+        '/anime/search': const AnimeSearchPage(),
+        '/anime/updated': const AnimeBrowsePage(latest: true),
         '/anime/library': const AnimeLibraryPage(),
-        '/anime/ratings': const AnimeRatingsPage(),
+        '/anime/ratings': const AnimeRatingsPage(
+          source: AnimeRankingSource.mal,
+        ),
+        '/anime/ratings/pubget': const AnimeRatingsPage(
+          source: AnimeRankingSource.pubget,
+        ),
         '/anime/characters': const AnimePopularCharactersPage(),
+        '/anime/characters/favorites': const AnimeFavoriteCharactersPage(),
         '/fan-works': const FanWorkFeedPage(),
         '/store': const StorePage(),
         '/inventory': const InventoryPage(),
@@ -991,9 +1031,15 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           year: int.tryParse(parameters['year'] ?? ''),
           season: AnimeSeason.tryParse(parameters['season']),
         ),
+        '/anime/updated': (parameters) => const AnimeBrowsePage(latest: true),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
-        '/anime/ratings': (parameters) => const AnimeRatingsPage(),
+        '/anime/ratings': (parameters) =>
+            const AnimeRatingsPage(source: AnimeRankingSource.mal),
+        '/anime/ratings/pubget': (parameters) =>
+            const AnimeRatingsPage(source: AnimeRankingSource.pubget),
         '/anime/characters': (parameters) => const AnimePopularCharactersPage(),
+        '/anime/characters/favorites': (parameters) =>
+            const AnimeFavoriteCharactersPage(),
         '/anime/character': (parameters) =>
             AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),

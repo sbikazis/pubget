@@ -1197,7 +1197,8 @@ class _StartChatAction extends StatelessWidget {
         return;
       }
       final message =
-          result.failureOrNull?.message ?? AppStrings.of(context).couldNotStartChat;
+          result.failureOrNull?.message ??
+          AppStrings.of(context).couldNotStartChat;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -1300,8 +1301,9 @@ class _FriendAction extends StatelessWidget {
     }
     if (relation?.status == FriendshipStatus.blocked) {
       return PubgetSecondaryButton(
-        onPressed:
-            relation?.blockedBy == me ? () => social.unblockUser(profileId) : null,
+        onPressed: relation?.blockedBy == me
+            ? () => social.unblockUser(profileId)
+            : null,
         semanticLabel: copy.unblockUser,
         child: Text(copy.unblock),
       );
@@ -1366,13 +1368,7 @@ class _StandardListsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statuses = [
-      AnimeListStatus.watching,
-      AnimeListStatus.completed,
-      AnimeListStatus.onHold,
-      AnimeListStatus.dropped,
-      AnimeListStatus.planToWatch,
-    ];
+    const statuses = AnimeListStatus.tabs;
     return Wrap(
       spacing: AppSpacing.sm,
       runSpacing: AppSpacing.sm,
@@ -1452,37 +1448,23 @@ class _StandardListChip extends StatelessWidget {
   }
 
   IconData _iconForStatus(AnimeListStatus status) {
-    switch (status) {
-      case AnimeListStatus.watching:
-        return Icons.play_circle_outline;
-      case AnimeListStatus.completed:
-        return Icons.check_circle_outline;
-      case AnimeListStatus.onHold:
-        return Icons.pause_circle_outline;
-      case AnimeListStatus.dropped:
-        return Icons.cancel_outlined;
-      case AnimeListStatus.planToWatch:
-        return Icons.schedule_outlined;
-      case AnimeListStatus.favorites:
-        return Icons.favorite_outline;
-    }
+    return switch (status) {
+      AnimeListStatus.wantToWatch => Icons.bookmark_border,
+      AnimeListStatus.watching => Icons.play_circle_outline,
+      AnimeListStatus.completed => Icons.check_circle_outline,
+      AnimeListStatus.watchLater => Icons.schedule_outlined,
+      AnimeListStatus.notInterested => Icons.cancel_outlined,
+    };
   }
 
   Color _colorForStatus(AnimeListStatus status, BuildContext context) {
-    switch (status) {
-      case AnimeListStatus.watching:
-        return AppColors.royalPurple;
-      case AnimeListStatus.completed:
-        return AppColors.success;
-      case AnimeListStatus.onHold:
-        return AppColors.warning;
-      case AnimeListStatus.dropped:
-        return AppColors.error;
-      case AnimeListStatus.planToWatch:
-        return AppColors.info;
-      case AnimeListStatus.favorites:
-        return AppColors.gold;
-    }
+    return switch (status) {
+      AnimeListStatus.wantToWatch => AppColors.info,
+      AnimeListStatus.watching => AppColors.royalPurple,
+      AnimeListStatus.completed => AppColors.success,
+      AnimeListStatus.watchLater => AppColors.warning,
+      AnimeListStatus.notInterested => AppColors.error,
+    };
   }
 
   String _labelForStatus(AnimeListStatus status, AnimeCopy copy) {

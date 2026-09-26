@@ -53,6 +53,9 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   List<AnimeListEntry> byStatus(AnimeListStatus status) =>
       entries.where((entry) => entry.status == status).toList(growable: false);
 
+  List<AnimeListEntry> get favoriteAnime =>
+      entries.where((entry) => entry.favorite).toList(growable: false);
+
   List<AnimeCustomList> get customLists =>
       List<AnimeCustomList>.unmodifiable(_customListsById.values);
 
@@ -137,6 +140,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async {
     _saving = true;
     _safeNotify();
@@ -145,6 +149,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
       status: status,
       title: title,
       rating: rating,
+      favorite: favorite,
     );
     if (_disposed) return _asVoid(result);
     result.fold(
@@ -162,6 +167,21 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     _safeNotify();
     return _asVoid(result);
   }
+
+  /// Flips only the heart, leaving the personal status untouched.
+  Future<Result<void>> setFavorite({
+    required String animeId,
+    required bool favorite,
+    String title = '',
+  }) => setStatus(
+    animeId: animeId,
+    status: entryFor(animeId)?.status ?? AnimeListStatus.wantToWatch,
+    title: title,
+    rating: entryFor(animeId)?.rating,
+    favorite: favorite,
+  );
+
+  bool isFavorite(String animeId) => entryFor(animeId)?.favorite ?? false;
 
   Future<Result<void>> remove(String animeId) async {
     _saving = true;
@@ -284,8 +304,7 @@ final class AnimeLibraryProvider extends ChangeNotifier {
           _customListsById[list.id] = list;
           for (final animeId in animeIds) {
             final current =
-                _membershipsByAnime[animeId] ??
-                const <CustomListMembership>[];
+                _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
             if (!current.any((item) => item.listId == list.id)) {
               _membershipsByAnime[animeId] = <CustomListMembership>[
                 CustomListMembership(listId: list.id, name: list.name),
@@ -361,7 +380,10 @@ final class AnimeLibraryProvider extends ChangeNotifier {
   }
 
   Future<void> loadCustomList(String listId, {String? userId}) async {
-    final result = await _repository.getCustomList(listId: listId, userId: userId);
+    final result = await _repository.getCustomList(
+      listId: listId,
+      userId: userId,
+    );
     if (_disposed) return;
     result.fold(
       onSuccess: (detail) {
@@ -396,7 +418,8 @@ final class AnimeLibraryProvider extends ChangeNotifier {
       listId: listId,
       name: _customListsById[listId]?.name ?? '',
     );
-    final current = _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
+    final current =
+        _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
     if (!current.any((item) => item.listId == listId)) {
       _membershipsByAnime[animeId] = <CustomListMembership>[
         membership,
@@ -430,16 +453,15 @@ final class AnimeLibraryProvider extends ChangeNotifier {
     required String listId,
     required String animeId,
   }) async {
-    final current = _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
+    final current =
+        _membershipsByAnime[animeId] ?? const <CustomListMembership>[];
     _membershipsByAnime[animeId] = current
         .where((item) => item.listId != listId)
         .toList(growable: false);
     final list = _customListsById[listId];
     if (list != null) {
       final next = list.itemsCount - 1;
-      _customListsById[listId] = list.copyWith(
-        itemsCount: next < 0 ? 0 : next,
-      );
+      _customListsById[listId] = list.copyWith(itemsCount: next < 0 ? 0 : next);
     }
     _safeNotify();
     final result = await _repository.removeFromCustomList(

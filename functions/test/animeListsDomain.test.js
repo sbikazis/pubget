@@ -417,3 +417,100 @@ test("getCustomListsForAnime returns only lists containing the anime", async () 
     (error) => error.code === "invalid-argument",
   );
 });
+
+test("all five personal states are accepted and nothing else is", async () => {
+  const { lists, db } = domain();
+  for (const status of [
+    "want_to_watch",
+    "watching",
+    "completed",
+    "watch_later",
+    "not_interested",
+  ]) {
+    const result = await lists.setAnimeListEntry({
+      auth: { uid: "alice" },
+      data: { animeId: `id-${status}`, status },
+    });
+    assert.equal(result.status, status);
+    assert.equal(db.store.get(`users/alice/anime_lists/id-${status}`).status, status);
+  }
+  for (const status of ["paused", "on hold", "Plan to Watch", ""]) {
+    await assert.rejects(
+      lists.setAnimeListEntry({
+        auth: { uid: "alice" },
+        data: { animeId: "9", status },
+      }),
+      (error) => error.code === "invalid-argument",
+    );
+  }
+});
+
+test("documents written before the five-state model still load", async () => {
+  const { lists, db } = domain();
+  const legacy = {
+    "1": { animeId: "1", status: "plan_to_watch", title: "A" },
+    "2": { animeId: "2", status: "on_hold", title: "B" },
+    "3": { animeId: "3", status: "dropped", title: "C" },
+    "4": { animeId: "4", status: "favorites", title: "D" },
+  };
+  for (const [id, data] of Object.entries(legacy)) {
+    db.store.set(`users/alice/anime_lists/${id}`, { ...data });
+  }
+  const page = await lists.getAnimeList({ auth: { uid: "alice" }, data: { limit: 50 } });
+  const byId = Object.fromEntries(page.items.map((item) => [item.id, item.status]));
+  assert.equal(byId["1"], "plan_to_watch");
+  assert.equal(byId["2"], "on_hold");
+  assert.equal(byId["3"], "dropped");
+  assert.equal(byId["4"], "favorites");
+  // The client maps the legacy values; the server does not rewrite documents
+  // on read, so an untouched account keeps its original data.
+});
+
+test("favourite is a separate flag from the personal state", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "21", status: "watching", favorite: true },
+  });
+  let stored = db.store.get("users/alice/anime_lists/21");
+  assert.equal(stored.status, "watching");
+  assert.equal(stored.favorite, true);
+
+  // Changing the state leaves the heart alone.
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "21", status: "completed" },
+  });
+  stored = db.store.get("users/alice/anime_lists/21");
+  assert.equal(stored.status, "completed");
+  assert.equal(stored.favorite, false);
+
+  // Un-favouriting does not move the title out of its state.
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "21", status: "not_interested", favorite: true },
+  });
+  const result = await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "21", status: "not_interested", favorite: false },
+  });
+  assert.equal(result.status, "not_interested");
+  assert.equal(result.favorite, false);
+  assert.equal(db.store.get("users/alice/anime_lists/21").status, "not_interested");
+});
+
+test("the list comes back newest edit first", async () => {
+  const { lists } = domain();
+  for (const [animeId, status] of [
+    ["1", "want_to_watch"],
+    ["2", "watching"],
+    ["3", "completed"],
+  ]) {
+    await lists.setAnimeListEntry({ auth: { uid: "alice" }, data: { animeId, status } });
+  }
+  const page = await lists.getAnimeList({ auth: { uid: "alice" }, data: { limit: 50 } });
+  assert.equal(page.items.length, 3);
+  for (const item of page.items) {
+    assert.ok(item.updatedAt, "each entry carries the edit time the client sorts by");
+  }
+});

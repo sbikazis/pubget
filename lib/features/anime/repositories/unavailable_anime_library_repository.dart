@@ -24,6 +24,7 @@ final class UnavailableAnimeLibraryRepository
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async => _fail();
 
   @override
@@ -43,8 +44,9 @@ final class UnavailableAnimeLibraryRepository
   }) async => _fail();
 
   @override
-  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) async =>
-      _fail();
+  Future<Result<List<AnimeCustomList>>> getCustomLists({
+    String? userId,
+  }) async => _fail();
 
   @override
   Future<Result<AnimeCustomListDetail>> getCustomList({

@@ -14,6 +14,8 @@ import 'package:pubget/features/anime/models/anime_rating_models.dart';
 import 'package:pubget/features/anime/providers/anime_character_provider.dart';
 import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
+import 'package:pubget/features/anime/screens/anime_search_page.dart';
+import 'package:pubget/features/anime/widgets/anime_hub_widgets.dart';
 import 'package:pubget/features/anime/repositories/anime_hub_social_repository.dart';
 import 'package:pubget/features/anime/screens/anime_browse_page.dart';
 import 'package:pubget/features/anime/screens/anime_character_page.dart';
@@ -217,7 +219,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AnimeStrings.tabCharacters));
+    await tester.tap(find.text(AnimeStrings.tabCharactersCast));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('character-10')));
     await tester.pumpAndSettle();
@@ -326,8 +328,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AnimeStrings.tabRelated));
-    await tester.pumpAndSettle();
+    // The hub keeps exactly three tabs, so related content shares the details
+    // tab and has to be scrolled to.
+    await tester.scrollUntilVisible(
+      find.text(AnimeStrings.relatedTitle),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.text(AnimeStrings.relatedTitle), findsWidgets);
     expect(find.text('Frieren Season 2'), findsWidgets);
@@ -383,6 +390,64 @@ void main() {
     expect(find.byKey(const Key('character-discussion-input')), findsOneWidget);
     expect(find.byKey(const Key('character-discussion-post')), findsOneWidget);
     expect(find.text('Best commander.'), findsOneWidget);
+  });
+
+  testWidgets('hub search opens a dedicated search screen', (tester) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('anime-hub-search')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('hub-open-search')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnimeSearchPage), findsOneWidget);
+    expect(find.byKey(const Key('anime-hub-search')), findsOneWidget);
+    expect(find.text(AnimeStrings.openSearch), findsWidgets);
+  });
+
+  testWidgets('details page keeps exactly three tabs', (tester) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Tab), findsNWidgets(3));
+    final tabBar = find.byType(TabBar);
+    final tabs = find.descendant(of: tabBar, matching: find.byType(Text));
+    expect(
+      tester.widgetList<Text>(tabs).map((widget) => widget.data).toList(),
+      <String>[
+        AnimeStrings.tabDetails,
+        AnimeStrings.tabCharactersCast,
+        AnimeStrings.tabStatistics,
+      ],
+    );
+  });
+
+  testWidgets('statistics tab charts the community scores', (tester) async {
+    final socialRepository = _FakeStatsSocialRepository();
+    final social = AnimeHubSocialProvider(repository: socialRepository);
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AnimeStrings.scoreDistribution), findsOneWidget);
+    expect(find.byType(AnimeVoteDistribution), findsOneWidget);
+    expect(find.text(AnimeStrings.criteriaBreakdown), findsOneWidget);
   });
 }
 
@@ -597,29 +662,28 @@ final class _FakeHomeRepository implements HomeRepository {
   }) async => const Success(<Group>[]);
 
   @override
-  Future<Result<DiscoverySearchResults>> search(String query) async =>
-      Success(
-        DiscoverySearchResults(
-          groups: <Group>[
-            Group(
-              id: 'g1',
-              name: 'Frieren fans',
-              description: '',
-              type: GroupType.public,
-              animeId: null,
-              founderId: 'u1',
-              membersCount: 1,
-              maxMembers: 100,
-              joinPolicy: JoinPolicy.open,
-              isSearchable: true,
-              createdAt: DateTime(2026),
-              chatBackgroundUrl: null,
-              rules: '',
-              activityScore: 0,
-            ),
-          ],
+  Future<Result<DiscoverySearchResults>> search(String query) async => Success(
+    DiscoverySearchResults(
+      groups: <Group>[
+        Group(
+          id: 'g1',
+          name: 'Frieren fans',
+          description: '',
+          type: GroupType.public,
+          animeId: null,
+          founderId: 'u1',
+          membersCount: 1,
+          maxMembers: 100,
+          joinPolicy: JoinPolicy.open,
+          isSearchable: true,
+          createdAt: DateTime(2026),
+          chatBackgroundUrl: null,
+          rules: '',
+          activityScore: 0,
         ),
-      );
+      ],
+    ),
+  );
 
   @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({
@@ -627,4 +691,59 @@ final class _FakeHomeRepository implements HomeRepository {
     String? cursor,
     int limit = 8,
   }) async => const Success(DiscoveryFeed(coldStart: true));
+}
+
+/// Social data shaped for the statistics tab: two rated reviews so the
+/// histogram and the criteria bars have something real to draw.
+final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
+  @override
+  Future<Result<AnimeCommunityStats?>> getAnimeStats(String animeId) async =>
+      Success(
+        AnimeCommunityStats(
+          animeId: animeId,
+          averageScore: 8.4,
+          ratingCount: 2,
+          listedCount: 120,
+        ),
+      );
+
+  @override
+  Future<Result<AnimeReview?>> getMyRating(String animeId) async =>
+      Success<AnimeReview?>(null);
+
+  @override
+  Future<Result<List<AnimeReview>>> listReviews(
+    String animeId, {
+    int limit = 30,
+  }) async => Success(<AnimeReview>[
+    AnimeReview(
+      animeId: animeId,
+      userId: 'user-1',
+      criteria: const AnimeCriteriaScores(
+        story: 9,
+        art: 8,
+        characters: 9,
+        action: 6,
+        sound: 8,
+        enjoyment: 9,
+      ),
+      overall: 9,
+    ),
+    AnimeReview(
+      animeId: animeId,
+      userId: 'user-2',
+      criteria: const AnimeCriteriaScores(
+        story: 7,
+        art: 9,
+        characters: 8,
+        action: 7,
+        sound: 6,
+        enjoyment: 8,
+      ),
+      overall: 8,
+    ),
+  ]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

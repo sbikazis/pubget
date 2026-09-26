@@ -199,7 +199,7 @@ final class AnimeHubProvider extends ChangeNotifier {
     if (_disposed) return;
     result.fold(
       onSuccess: (seasons) {
-        _seasons = seasons;
+        _seasons = seasons.toList()..sort(AnimeSeasonYear.compareNewestFirst);
         _seasonsState = seasons.isEmpty
             ? LoadingState.empty
             : LoadingState.loaded;
@@ -265,6 +265,7 @@ final class AnimeListProvider extends ChangeNotifier {
   String? _inflightKey;
   String _title = AnimeStrings.hubTitle;
   AnimeCatalogKind? _catalog;
+  bool _latest = false;
   String? _genreId;
   String? _studioId;
   String? _studioName;
@@ -335,6 +336,15 @@ final class AnimeListProvider extends ChangeNotifier {
       'anime_season_open',
       parameters: {'year': year, 'season': season.name},
     );
+    return _load(page: 1);
+  }
+
+  /// Drawer "Latest Updates": the whole catalog newest first, not a text search.
+  Future<void> openLatest() {
+    _reset();
+    _latest = true;
+    _title = 'Latest Updates';
+    _analytics?.logEvent('anime_latest_open');
     return _load(page: 1);
   }
 
@@ -550,7 +560,9 @@ final class AnimeListProvider extends ChangeNotifier {
         _genreId == null &&
         _studioId == null &&
         _year == null &&
-        (_filter.hasNonTextConstraints || query.length >= minQueryLength);
+        (_latest ||
+            _filter.hasNonTextConstraints ||
+            query.length >= minQueryLength);
     if (searching) {
       return _repository.searchAnime(
         query,
@@ -583,7 +595,7 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   String _requestKey({required int page, required String searchQuery}) =>
-      '${_catalog?.name}|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
+      '${_catalog?.name}|$_latest|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
 
   List<Anime> _merge(List<Anime> current, List<Anime> incoming) {
     final seen = current.map((item) => item.id).toSet();
@@ -602,6 +614,7 @@ final class AnimeListProvider extends ChangeNotifier {
     _fromCache = false;
     _inflightKey = null;
     _catalog = null;
+    _latest = false;
     _genreId = null;
     _studioId = null;
     _studioName = null;

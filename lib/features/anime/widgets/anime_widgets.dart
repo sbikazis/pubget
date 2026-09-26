@@ -12,6 +12,7 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/anime_models.dart';
+import 'anime_hub_widgets.dart';
 import '../models/anime_rating_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
@@ -238,13 +239,26 @@ class AnimePosterCard extends StatelessWidget {
 }
 
 class AnimeResultTile extends StatelessWidget {
-  const AnimeResultTile({required this.anime, super.key});
+  const AnimeResultTile({required this.anime, this.grid = false, super.key});
 
   final Anime anime;
+
+  /// Hub layout: a poster tile that fills one cell of the three column grid.
+  final bool grid;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (grid) {
+      return AnimeHubPosterCard(
+        title: anime.title,
+        imageUrl: anime.images.thumbnailUrl ?? anime.images.largeUrl ?? '',
+        year: anime.year,
+        subtitle: anime.score?.toStringAsFixed(1),
+        heroTag: animePosterHeroTag(anime.id),
+        onTap: () => AnimeLinks.openDetails(context, anime.id),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -514,44 +528,69 @@ class AnimePaginatedList extends StatelessWidget {
         }
         return false;
       },
-      child: ListView.builder(
-        itemCount: list.items.length + 2 + (header == null ? 0 : 1),
-        itemBuilder: (context, index) {
-          if (index == 0 && header != null) return header!;
-          final cursor = header == null ? index : index - 1;
-          if (cursor == 0) {
-            if (!list.fromCache) return const SizedBox.shrink();
-            return AnimeCachedBanner(
-              offline: list.state == LoadingState.offline,
-            );
-          }
-          if (cursor == list.items.length + 1) {
-            if (list.state == LoadingState.loadingMore) {
-              return const Padding(
-                padding: EdgeInsets.all(AppSpacing.lg),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (list.pageFailure != null) {
-              return PubgetErrorState(
-                title: AnimeCopy.of(context).unableToLoad,
-                message: list.pageFailure!.message,
-                onRetry: list.retryLoadMore,
-                retryLabel: AnimeCopy.of(context).retry,
-              );
-            }
-            if (!list.hasNextPage && list.items.isNotEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Center(child: Text(AnimeCopy.of(context).endOfList)),
-              );
-            }
-            return const SizedBox.shrink();
-          }
-          return AnimeResultTile(anime: list.items[cursor - 1]);
-        },
+      // Spec: three columns with infinite scroll. The header, the cached
+      // banner and the footer states stay full width above and below the grid.
+      child: CustomScrollView(
+        slivers: <Widget>[
+          if (header != null) SliverToBoxAdapter(child: header!),
+          if (list.fromCache)
+            SliverToBoxAdapter(
+              child: AnimeCachedBanner(
+                offline: list.state == LoadingState.offline,
+              ),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: AppSpacing.md,
+                crossAxisSpacing: AppSpacing.md,
+                childAspectRatio: 0.56,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) =>
+                    AnimeResultTile(anime: list.items[index], grid: true),
+                childCount: list.items.length,
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(child: _PaginationFooter(list: list)),
+        ],
       ),
     );
+  }
+}
+
+/// End-of-list, loading-more and page-failure states for a paginated grid.
+class _PaginationFooter extends StatelessWidget {
+  const _PaginationFooter({required this.list});
+
+  final AnimeListProvider list;
+
+  @override
+  Widget build(BuildContext context) {
+    if (list.state == LoadingState.loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.all(AppSpacing.lg),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (list.pageFailure != null) {
+      return PubgetErrorState(
+        title: AnimeCopy.of(context).unableToLoad,
+        message: list.pageFailure!.message,
+        onRetry: list.retryLoadMore,
+        retryLabel: AnimeCopy.of(context).retry,
+      );
+    }
+    if (!list.hasNextPage && list.items.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Center(child: Text(AnimeCopy.of(context).endOfList)),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

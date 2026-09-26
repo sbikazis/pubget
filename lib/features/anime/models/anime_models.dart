@@ -65,6 +65,16 @@ enum AnimeSearchSort { members, title, newest, favorites }
 
 enum AnimeTypeFilter { tv, movie, ova, special, ona }
 
+extension AnimeTypeFilterCodec on AnimeTypeFilter {
+  String get wireValue => switch (this) {
+    AnimeTypeFilter.tv => 'TV',
+    AnimeTypeFilter.movie => 'Movie',
+    AnimeTypeFilter.ova => 'OVA',
+    AnimeTypeFilter.special => 'Special',
+    AnimeTypeFilter.ona => 'ONA',
+  };
+}
+
 enum AnimeAiringFilter { airing, finished, upcoming }
 
 enum AnimeAgeFilter { allAges, teens, adult }
@@ -129,7 +139,7 @@ final class AnimeSearchFilter {
           anime.airing == true || status.contains('currently'),
         AnimeAiringFilter.finished =>
           (anime.airing == false && status.isNotEmpty) ||
-            status.contains('finished'),
+              status.contains('finished'),
         AnimeAiringFilter.upcoming => status.contains('not yet'),
       };
       if (!matching) return false;
@@ -241,6 +251,10 @@ final class AnimeSeasonYear {
 
   final int year;
   final List<AnimeSeason> seasons;
+
+  /// Hub order: the most recent season first, so the newest titles lead.
+  static int compareNewestFirst(AnimeSeasonYear a, AnimeSeasonYear b) =>
+      b.year.compareTo(a.year);
 }
 
 final class VoiceActor {
@@ -517,10 +531,7 @@ final class Anime {
     return AnimeAgeFilter.allAges;
   }
 
-  Anime copyWith({
-    bool? fromCache,
-    String? titleArabic,
-  }) => Anime(
+  Anime copyWith({bool? fromCache, String? titleArabic}) => Anime(
     id: id,
     title: title,
     titleArabic: titleArabic ?? this.titleArabic,
@@ -655,7 +666,12 @@ abstract final class AnimeStrings {
   static const entityCharacter = 'Character';
   static const entityReel = 'Reel';
   static const tabInfo = 'Info';
+  static const tabDetails = 'Details';
   static const tabCharacters = 'Characters';
+  static const tabCharactersCast = 'Characters & cast';
+  static const tabStatistics = 'Statistics';
+  static const scoreDistribution = 'Score distribution';
+  static const criteriaBreakdown = 'What members rated';
   static const tabRelated = 'Related';
   static const favoriteCharactersTab = 'Favorite characters';
   static const favoriteAnimeTab = 'Favorite anime';

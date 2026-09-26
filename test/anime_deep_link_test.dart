@@ -52,6 +52,27 @@ void main() {
     expect(me.parameters['uid'], 'alice');
   });
 
+  test('route parser maps the drawer anime destinations', () async {
+    final parser = AppRouteInformationParser();
+    Future<String> pathOf(String uri) async {
+      final route = await parser.parseRouteInformation(
+        RouteInformation(uri: Uri.parse(uri)),
+      );
+      expect(route, isA<ParameterizedRoute>());
+      return (route as ParameterizedRoute).path;
+    }
+
+    expect(await pathOf('/anime/updated'), '/anime/updated');
+    expect(await pathOf('/anime/library'), '/anime/library');
+    expect(await pathOf('/anime/ratings'), '/anime/ratings');
+    expect(await pathOf('/anime/ratings/pubget'), '/anime/ratings/pubget');
+    expect(await pathOf('/anime/characters'), '/anime/characters');
+    expect(
+      await pathOf('/anime/characters/favorites'),
+      '/anime/characters/favorites',
+    );
+  });
+
   test('pending anime deep link is restored after the guard allows it', () async {
     var authenticated = false;
     final delegate = AppRouterDelegate(
