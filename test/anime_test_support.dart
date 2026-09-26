@@ -92,6 +92,7 @@ Anime sampleAnime({
   String id = '52991',
   String title = 'Frieren',
   String type = 'TV',
+  int year = 2023,
   List<AnimeRelated> relations = const <AnimeRelated>[],
 }) => Anime(
   id: id,
@@ -100,7 +101,7 @@ Anime sampleAnime({
   type: type,
   status: 'Finished Airing',
   score: 9.3,
-  year: 2023,
+  year: year,
   season: AnimeSeason.fall,
   images: const AnimeImages(thumbnailUrl: 'https://example.test/thumb.jpg'),
   relations: relations,
@@ -197,6 +198,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   List<AnimeGenre> genres;
   List<AnimeStudio> studios;
   List<AnimeSeasonYear> seasons;
+  List<Anime> summaries = <Anime>[];
   Failure? failure;
   Failure? detailsFailure;
   Failure? charactersFailure;
@@ -223,6 +225,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   int seasonsCalls = 0;
   int seasonListCalls = 0;
   final List<int> requestedPages = <int>[];
+  final List<List<String>> summaryBatches = <List<String>>[];
   AnimeSearchFilter? lastFilter;
 
   Future<Result<AnimePage>> _pageResult(int pageNumber) async {
@@ -340,6 +343,21 @@ final class FakeAnimeRepository implements AnimeRepository {
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) async {
     thisSeasonCalls++;
     return _pageResult(page);
+  }
+
+  @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) async {
+    summaryBatches.add(List<String>.of(ids));
+    if (ids.isEmpty) return const Success<List<Anime>>(<Anime>[]);
+    final wanted = ids.toSet();
+    return Success<List<Anime>>(
+      summaries
+          .where((anime) => wanted.contains(anime.id))
+          .toList(growable: false),
+    );
   }
 
   @override

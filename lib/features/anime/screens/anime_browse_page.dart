@@ -18,6 +18,7 @@ class AnimeBrowsePage extends StatefulWidget {
     this.studioName,
     this.year,
     this.season,
+    this.latest = false,
     super.key,
   });
 
@@ -28,6 +29,9 @@ class AnimeBrowsePage extends StatefulWidget {
   final String? studioName;
   final int? year;
   final AnimeSeason? season;
+
+  /// Drawer "Latest Updates": the whole catalog newest first.
+  final bool latest;
 
   @override
   State<AnimeBrowsePage> createState() => _AnimeBrowsePageState();
@@ -51,6 +55,9 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
       return list.openStudio(
         AnimeStudio(id: widget.studioId!, name: widget.studioName ?? 'Studio'),
       );
+    }
+    if (widget.latest) {
+      return list.openLatest();
     }
     if (widget.year != null && widget.season != null) {
       return list.openSeason(year: widget.year!, season: widget.season!);

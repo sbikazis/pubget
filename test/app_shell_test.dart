@@ -69,17 +69,26 @@ void main() {
       await tester.tap(find.byKey(const Key('app-shell-menu')));
       await tester.pumpAndSettle();
       final finder = find.byKey(Key('drawer-$id'));
-      if (!tester.any(finder)) {
-        await tester.scrollUntilVisible(
-          finder,
-          120,
-          scrollable: find.descendant(
-            of: find.byType(Drawer),
-            matching: find.byType(Scrollable),
-          ),
-        );
+      final list = find.descendant(
+        of: find.byType(Drawer),
+        matching: find.byType(Scrollable),
+      );
+      // The drawer is longer than the test viewport, so bring the row fully
+      // inside it before tapping instead of relying on a single drag.
+      for (var attempt = 0; attempt < 12; attempt++) {
+        if (finder.evaluate().isEmpty) {
+          await tester.drag(list, const Offset(0, -120));
+          await tester.pumpAndSettle();
+          continue;
+        }
+        final box = tester.getRect(finder);
+        final viewport = tester.view.physicalSize.height /
+            tester.view.devicePixelRatio;
+        if (box.top >= 0 && box.bottom <= viewport) break;
+        final shift = box.top < 0 ? box.top + 48 : box.bottom - viewport + 48;
+        await tester.drag(list, Offset(0, shift));
+        await tester.pumpAndSettle();
       }
-      await tester.ensureVisible(finder);
       await tester.tap(finder);
       await tester.pumpAndSettle();
     }
@@ -135,7 +144,7 @@ void main() {
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(15));
+    expect(AppShellDrawerDestinations.items, hasLength(19));
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {

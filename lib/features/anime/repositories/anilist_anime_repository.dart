@@ -71,9 +71,7 @@ isAdult''';
     }
     return _page(
       extra: _searchFilters(resolved),
-      template: <String, Object?>{
-        if (text.isNotEmpty) 'search': text,
-      },
+      template: <String, Object?>{if (text.isNotEmpty) 'search': text},
       page: page,
       limit: limit,
       sort: text.isNotEmpty ? 'SEARCH_MATCH' : _sort(resolved.sort),
@@ -91,28 +89,45 @@ isAdult''';
 
   @override
   Future<Result<AnimePage>> getTrending({int page = 1, int limit = 20}) =>
-      _page(extra: const <String, Object?>{}, page: page, limit: limit,
-          sort: 'TRENDING_DESC');
+      _page(
+        extra: const <String, Object?>{},
+        page: page,
+        limit: limit,
+        sort: 'TRENDING_DESC',
+      );
 
   @override
-  Future<Result<AnimePage>> getPopular({int page = 1, int limit = 20}) =>
-      _page(extra: const <String, Object?>{}, page: page, limit: limit,
-          sort: 'POPULARITY_DESC');
+  Future<Result<AnimePage>> getPopular({int page = 1, int limit = 20}) => _page(
+    extra: const <String, Object?>{},
+    page: page,
+    limit: limit,
+    sort: 'POPULARITY_DESC',
+  );
 
   @override
-  Future<Result<AnimePage>> getTop({int page = 1, int limit = 20}) =>
-      _page(extra: const <String, Object?>{}, page: page, limit: limit,
-          sort: 'SCORE_DESC');
+  Future<Result<AnimePage>> getTop({int page = 1, int limit = 20}) => _page(
+    extra: const <String, Object?>{},
+    page: page,
+    limit: limit,
+    sort: 'SCORE_DESC',
+  );
 
   @override
-  Future<Result<AnimePage>> getAiring({int page = 1, int limit = 20}) =>
-      _page(extra: const <String, Object?>{'status': 'RELEASING'},
-          page: page, limit: limit, sort: 'POPULARITY_DESC');
+  Future<Result<AnimePage>> getAiring({int page = 1, int limit = 20}) => _page(
+    extra: const <String, Object?>{'status': 'RELEASING'},
+    page: page,
+    limit: limit,
+    sort: 'POPULARITY_DESC',
+  );
 
   @override
   Future<Result<AnimePage>> getUpcoming({int page = 1, int limit = 20}) =>
-      _page(extra: const <String, Object?>{'status': 'NOT_YET_RELEASED'},
-          page: page, limit: limit, sort: 'POPULARITY_DESC');
+      _page(
+        extra: const <String, Object?>{'status': 'NOT_YET_RELEASED'},
+        page: page,
+        limit: limit,
+        sort: 'POPULARITY_DESC',
+      );
 
   @override
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) {
@@ -127,6 +142,68 @@ isAdult''';
       limit: limit,
       sort: 'POPULARITY_DESC',
     );
+  }
+
+  @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) async {
+    final cleaned = <int>{
+      for (final id in ids)
+        if (int.tryParse(id.trim()) case final int value) value,
+    };
+    if (cleaned.isEmpty) return const Success(<Anime>[]);
+    final collected = <Anime>[];
+    var firstFailure = <Failure>[];
+    final idsList = cleaned.toList();
+    final size = chunkSize.clamp(1, 50);
+    for (var index = 0; index < idsList.length; index += size) {
+      final chunk = idsList.sublist(
+        index,
+        (index + size).clamp(0, idsList.length),
+      );
+      final query =
+          '''
+query Summaries(\$_ids: [Int]) {
+  Page(perPage: ${chunk.length}) {
+    media(id_in: \$_ids, type: ANIME) {
+      id
+      idMal
+      title { romaji english native }
+      format
+      status
+      season
+      seasonYear
+      averageScore
+      popularity
+      episodes
+      genres
+      coverImage { extraLarge large medium }
+      bannerImage
+      trailer { site id }
+    }
+  }
+}''';
+      final result = await _graphQl(query, <String, dynamic>{'ids': chunk});
+      result.fold(
+        onSuccess: (json) {
+          try {
+            final media = _map(_map(json['data'])?['Page'])?['media'];
+            collected.addAll(
+              mapAniListAnimeList(media as List<Object?>? ?? const <Object?>[]),
+            );
+          } on Object catch (error) {
+            firstFailure.add(NetworkError('$error'));
+          }
+        },
+        onFailure: (failure) => firstFailure.add(failure),
+      );
+    }
+    if (collected.isEmpty && firstFailure.isNotEmpty) {
+      return FailureResult<List<Anime>>(firstFailure.first);
+    }
+    return Success<List<Anime>>(List<Anime>.unmodifiable(collected));
   }
 
   @override
@@ -223,9 +300,9 @@ query Character(\$_id: Int, \$_idMal: Int) {
         try {
           final genres = _map(json['data'])?['GenreCollection'];
           if (genres is! List) return const Success(<AnimeGenre>[]);
-          final items = mapAniListGenres(genres)
-              .where((genre) => genre.kind == AnimeTagKind.genre)
-              .toList();
+          final items = mapAniListGenres(
+            genres,
+          ).where((genre) => genre.kind == AnimeTagKind.genre).toList();
           return Success<List<AnimeGenre>>(
             List<AnimeGenre>.unmodifiable(items),
           );
@@ -340,12 +417,7 @@ query Studios(\$page: Int, \$perPage: Int) {
           ),
         );
       } else {
-        years.add(
-          AnimeSeasonYear(
-            year: year,
-            seasons: allSeasons,
-          ),
-        );
+        years.add(AnimeSeasonYear(year: year, seasons: allSeasons));
       }
     }
     years.sort((a, b) => b.year.compareTo(a.year));
@@ -358,16 +430,15 @@ query Studios(\$page: Int, \$perPage: Int) {
     required AnimeSeason season,
     int page = 1,
     int limit = 20,
-  }) =>
-      _page(
-        extra: <String, Object?>{
-          'season': season.name.toUpperCase(),
-          'seasonYear': year,
-        },
-        page: page,
-        limit: limit,
-        sort: 'POPULARITY_DESC',
-      );
+  }) => _page(
+    extra: <String, Object?>{
+      'season': season.name.toUpperCase(),
+      'seasonYear': year,
+    },
+    page: page,
+    limit: limit,
+    sort: 'POPULARITY_DESC',
+  );
 
   Future<Result<AnimePage>> _page({
     required Map<String, Object?> extra,
@@ -384,7 +455,8 @@ query Studios(\$page: Int, \$perPage: Int) {
       ...?template,
       ...extra,
     };
-    final query = '''
+    final query =
+        '''
 query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSeason, \$seasonYear: Int, \$format_in: [MediaFormat], \$genre_in: [String], \$studioId: Int, \$status: MediaStatus, \$sort: [MediaSort], \$isAdult: Boolean) {
   Page(page: \$page, perPage: \$perPage) {
     pageInfo { currentPage hasNextPage }
@@ -415,7 +487,8 @@ query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSe
   }
 
   Future<Result<Anime>> _object(String id) async {
-    final query = '''
+    final query =
+        '''
 query Media(\$_id: Int, \$_idMal: Int) {
   Media(id: \$_id, idMal: \$_idMal, type: ANIME) {
     $mediaFields
@@ -487,10 +560,7 @@ query Media(\$_id: Int, \$_idMal: Int) {
     try {
       final response = await _http.post(
         _baseUri,
-        body: <String, Object?>{
-          'query': query,
-          'variables': ?variables,
-        },
+        body: <String, Object?>{'query': query, 'variables': ?variables},
         priority: AnimeRequestPriority.interactive,
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {

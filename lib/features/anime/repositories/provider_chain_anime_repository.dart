@@ -35,13 +35,10 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
     int page = 1,
     int limit = 20,
     AnimeSearchFilter? filter,
-  }) =>
-      _run((provider) => provider.searchAnime(
-            query,
-            page: page,
-            limit: limit,
-            filter: filter,
-          ));
+  }) => _run(
+    (provider) =>
+        provider.searchAnime(query, page: page, limit: limit, filter: filter),
+  );
 
   @override
   Future<Result<Anime>> getAnimeDetails(String id) =>
@@ -76,6 +73,13 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
       _run((provider) => provider.getCharacters(animeId));
 
   @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) =>
+      _run((provider) => provider.getAnimeSummaries(ids, chunkSize: chunkSize));
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) =>
       _run((provider) => provider.getCharacterDetails(characterId));
 
@@ -88,10 +92,9 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
     String genreId, {
     int page = 1,
     int limit = 20,
-  }) =>
-      _run(
-        (provider) => provider.getByGenre(genreId, page: page, limit: limit),
-      );
+  }) => _run(
+    (provider) => provider.getByGenre(genreId, page: page, limit: limit),
+  );
 
   @override
   Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) =>
@@ -102,10 +105,9 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
     String studioId, {
     int page = 1,
     int limit = 20,
-  }) =>
-      _run(
-        (provider) => provider.getByStudio(studioId, page: page, limit: limit),
-      );
+  }) => _run(
+    (provider) => provider.getByStudio(studioId, page: page, limit: limit),
+  );
 
   @override
   Future<Result<List<AnimeSeasonYear>>> getAvailableSeasons() =>
@@ -117,13 +119,14 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
     required AnimeSeason season,
     int page = 1,
     int limit = 20,
-  }) =>
-      _run((provider) => provider.getBySeason(
-            year: year,
-            season: season,
-            page: page,
-            limit: limit,
-          ));
+  }) => _run(
+    (provider) => provider.getBySeason(
+      year: year,
+      season: season,
+      page: page,
+      limit: limit,
+    ),
+  );
 
   Future<Result<T>> _run<T>(
     Future<Result<T>> Function(AnimeRepository provider) call,
@@ -158,10 +161,7 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
       }
     }
     _updateStatus(primary: false, failure: failure);
-    return lastResult ??
-        FailureResult<T>(
-          const UnavailableError(),
-        );
+    return lastResult ?? FailureResult<T>(const UnavailableError());
   }
 
   void _updateStatus({required bool primary, required Failure? failure}) {

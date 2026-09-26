@@ -107,6 +107,24 @@ final class CachedAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) => _cached(
+    'summaries:${_summaryKey(ids)}',
+    AnimeCacheTtl.summaries,
+    () => _inner.getAnimeSummaries(ids, chunkSize: chunkSize),
+  );
+
+  String _summaryKey(List<String> ids) {
+    final sorted = <String>[
+      for (final id in ids)
+        if (id.trim().isNotEmpty) id.trim(),
+    ]..sort();
+    return sorted.join('_');
+  }
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) {
     return _cached(
       'character:${characterId.trim()}',

@@ -13,6 +13,7 @@ abstract interface class AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   });
 
   Future<Result<void>> removeEntry(String animeId);

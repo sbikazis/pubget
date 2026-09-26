@@ -235,8 +235,15 @@ final class _FakeAnimeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async => Success<AnimeListEntry>(
-    AnimeListEntry(animeId: animeId, status: status),
+    AnimeListEntry(
+      animeId: animeId,
+      status: status,
+      title: title,
+      rating: rating,
+      favorite: favorite ?? false,
+    ),
   );
 
   @override
