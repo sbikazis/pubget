@@ -22,8 +22,8 @@ All gates that run in this workspace pass:
 |------|--------|
 | `flutter analyze --no-pub lib` | No issues found |
 | `flutter analyze --no-pub test` | No issues found |
-| Flutter tests for every changed Games/Mafia file | 40 passing |
-| Full `flutter test` | 629 passing, 0 failing (see §L) |
+| Flutter tests for every changed Games/Mafia file | 41 passing |
+| Full `flutter test` | 632 passing, 0 failing (see §L) |
 | `functions/npm run check` | Passed |
 | `functions/npm test` | 305/305 passed |
 
@@ -182,8 +182,8 @@ Live / Waiting / Mine.
 | `flutter analyze --no-pub lib` | No issues found |
 | `flutter analyze --no-pub test` | No issues found |
 | `dart format --line-length 80` on changed Dart files | Clean (v2 files reverted, not in scope) |
-| `flutter test test/game_engine_test.dart test/game_screens_test.dart test/game_providers_test.dart test/product_engines_screens_test.dart` | 40 passing |
-| `flutter test` (full suite) | 629 passing, 0 failing |
+| `flutter test test/game_engine_test.dart test/game_screens_test.dart test/game_providers_test.dart test/product_engines_screens_test.dart` | 41 passing |
+| `flutter test` (full suite) | 632 passing, 0 failing |
 | `functions/npm run check` | Passed |
 | `functions/npm test` | 305/305 passed |
 | `npm run test:rules` (repo root) | NOT VERIFIED — see §B/§K |
@@ -210,7 +210,7 @@ assertion that a client cannot write `game_history` still holds, but a reviewer 
 ## L. Full Flutter suite
 
 The full suite completed inside a background run rather than the foreground command cap:
-629 passing, 0 failing. Two failures surfaced during development and were fixed rather than
+632 passing, 0 failing. Two failures surfaced during development and were fixed rather than
 waived:
 
 1. `game_engine_test.dart` asserted Mafia's client configuration was 4 players. The registry now
