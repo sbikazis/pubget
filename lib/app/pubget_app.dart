@@ -101,6 +101,8 @@ import '../features/achievements/repositories/achievement_repository.dart';
 import '../features/achievements/repositories/firebase_achievement_repository.dart';
 import '../features/achievements/repositories/unavailable_achievement_repository.dart';
 import '../features/achievements/screens/achievements_page.dart';
+import '../features/games/models/game_models.dart';
+import '../features/games/providers/game_catalog_provider.dart';
 import '../features/games/providers/game_providers.dart';
 import '../features/games/repositories/firebase_game_repository.dart';
 import '../features/games/repositories/game_repository.dart';
@@ -471,11 +473,13 @@ class PubgetApp extends StatelessWidget {
             userId: context.read<AuthProvider>().currentUser?.id ?? '',
           ),
           update: (_, auth, social, previous) {
-            return previous ?? AnimeRecommendationProvider(
-              social: social,
-              repository: context.read<AnimeRepository>(),
-              userId: auth.currentUser?.id ?? '',
-            )..bindUser(auth.currentUser?.id ?? '');
+            return previous ??
+                  AnimeRecommendationProvider(
+                    social: social,
+                    repository: context.read<AnimeRepository>(),
+                    userId: auth.currentUser?.id ?? '',
+                  )
+              ..bindUser(auth.currentUser?.id ?? '');
           },
         ),
         provider.ChangeNotifierProvider<GameListProvider>(
@@ -495,6 +499,10 @@ class PubgetApp extends StatelessWidget {
             games!.bindUser(auth.currentUser?.id);
             return games;
           },
+        ),
+        provider.ChangeNotifierProvider<GameCatalogProvider>(
+          create: (context) =>
+              GameCatalogProvider(repository: context.read<GameRepository>()),
         ),
         provider.ChangeNotifierProvider<GameCreateProvider>(
           create: (context) => GameCreateProvider(
@@ -1017,6 +1025,9 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/games/create': (parameters) => GameCreatePage(
           groupId: parameters['groupId'],
           creationSource: parameters['source'] ?? 'unknown',
+          initialType: GameType.values
+              .where((type) => type.name == parameters['type'])
+              .firstOrNull,
         ),
         '/fan-work': (parameters) {
           final workId = parameters['workId'] ?? '';

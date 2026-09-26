@@ -52,16 +52,11 @@ abstract final class GameLinks {
       if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
       if (fromChat) 'source': 'group_chat',
     };
-    final suffix = query.isEmpty
-        ? ''
-        : '?${Uri(queryParameters: query).query}';
+    final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
     AppNavigation.go(context, '/games/create$suffix');
   }
 
-  static void openCenter(
-    BuildContext context, {
-    required String groupId,
-  }) {
+  static void openCenter(BuildContext context, {required String groupId}) {
     final query = Uri(
       queryParameters: <String, String>{
         'groupId': groupId,
@@ -98,9 +93,7 @@ class GameCard extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         leading: Icon(spec.icon),
         title: Text(game.title),
-        subtitle: Text(
-          '${spec.name} · ${game.participantsCount} players',
-        ),
+        subtitle: Text('${spec.name} · ${game.participantsCount} players'),
         trailing: GameStatusBadge(status: game.status),
       ),
     );
@@ -311,10 +304,7 @@ class GameHomeStrip extends StatelessWidget {
                     const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  return SizedBox(
-                    width: 220,
-                    child: GameCard(game: game),
-                  );
+                  return SizedBox(width: 220, child: GameCard(game: game));
                 },
               ),
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -11,6 +12,16 @@ import '../../games/widgets/game_widgets.dart';
 import '../models/mafia_leave_copy.dart';
 import '../models/mafia_models.dart';
 import '../providers/mafia_provider.dart';
+
+/// Master Spec 13.3: only these five roles exist. `canUseAbility` is true for
+/// every living player, so the night UI has to gate on the role itself —
+/// otherwise a Citizen is offered a night action the server will reject.
+const Set<String> _abilityRoles = <String>{
+  'mafia',
+  'don',
+  'detective',
+  'doctor',
+};
 
 class MafiaGameScreen extends StatefulWidget {
   const MafiaGameScreen({required this.gameId, super.key});
@@ -56,25 +67,26 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final state = context.watch<MafiaProvider>();
     final game = state.game;
     final uid = context.watch<AuthProvider>().currentUser?.id;
-    final canLeave = game != null &&
-        !game.isFinished &&
-        MafiaLeaveCopy.canLeave(game.status) &&
+    final canLeave =
+        game != null &&
+        game.canLeaveViaServer &&
         state.self != null &&
         !state.self!.hasLeft;
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('مافيا'),
+        title: Text(copy.mafiaTitle),
         actions: <Widget>[
           if (canLeave)
             TextButton(
               onPressed: state.busy
                   ? null
                   : () => _confirmLeave(context, game.status),
-              child: const Text(MafiaLeaveCopy.leave),
+              child: Text(copy.mafiaLeave),
             ),
         ],
       ),
@@ -86,13 +98,13 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                 gameId: widget.gameId,
                 userId: uid,
               ),
-        empty: const PubgetEmptyState(
+        empty: PubgetEmptyState(
           title: GameStrings.missing,
           message: GameStrings.missing,
         ),
         error: PubgetErrorState(
-          title: 'تعذر تحميل المافيا',
-          message: state.failure?.message ?? 'تحقق من الاتصال وحاول مجددًا.',
+          title: copy.mafiaCouldNotLoad,
+          message: state.failure?.message ?? copy.tryLoadingProfileAgain,
           onRetry: uid == null
               ? null
               : () => context.read<MafiaProvider>().open(
@@ -112,44 +124,61 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                   if (game.isLobby) _LobbyActions(game: game, userId: uid),
                   if (!game.isLobby && !game.isFinished)
                     _PlayActions(game: game, userId: uid),
-                  if (game.isFinished) _Result(game: game),
+                  if (game.isFinished)
+                    _Result(game: game, players: state.players),
                   const SizedBox(height: AppSpacing.lg),
-                  Text('سجل اللعبة', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    copy.mafiaLog,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   for (final event in state.events.take(8))
                     ListTile(
                       dense: true,
-                      title: Text(event['message'] as String? ?? event['type'] as String? ?? ''),
+                      title: Text(
+                        event['message'] as String? ??
+                            event['type'] as String? ??
+                            '',
+                      ),
                     ),
-                  if (_canChat(game, state.self)) ...[
-                    PubgetTextField(controller: _chat, label: 'النقاش'),
+                  if (_canChat(game, state.self)) ...<Widget>[
+                    PubgetTextField(
+                      controller: _chat,
+                      label: copy.mafiaDiscussionLabel,
+                    ),
                     PubgetSecondaryButton(
-                      onPressed: state.busy
+                      onPressed: state.busy || _chat.text.trim().isEmpty
                           ? null
                           : () {
-                              context.read<MafiaProvider>().sendChat(_chat.text);
+                              context.read<MafiaProvider>().sendChat(
+                                _chat.text,
+                              );
                               _chat.clear();
                             },
-                      semanticLabel: 'إرسال',
-                      child: const Text('إرسال'),
+                      semanticLabel: copy.mafiaLastWordsSend,
+                      child: Text(copy.mafiaLastWordsSend),
                     ),
                     for (final line in state.chat.take(12))
                       Text('${line['sender']}: ${line['text']}'),
                   ],
                   if (state.privateState.assigned &&
-                      state.privateState.team == 'mafias') ...[
+                      state.privateState.team == 'mafias') ...<Widget>[
                     const Divider(),
-                    const Text('القناة السرية للمافيا'),
-                    PubgetTextField(controller: _mafiaChat, label: 'رسالة سرية'),
+                    Text(copy.mafiaSecretChannel),
+                    PubgetTextField(
+                      controller: _mafiaChat,
+                      label: copy.mafiaSecretMessage,
+                    ),
                     PubgetSecondaryButton(
                       onPressed: state.busy || _mafiaChat.text.trim().isEmpty
                           ? null
                           : () {
-                              context.read<MafiaProvider>()
-                                  .sendMafiaMessage(_mafiaChat.text);
+                              context.read<MafiaProvider>().sendMafiaMessage(
+                                _mafiaChat.text,
+                              );
                               _mafiaChat.clear();
                             },
-                      semanticLabel: 'إرسال رسالة سرية',
-                      child: const Text('إرسال'),
+                      semanticLabel: copy.mafiaSendSecretSemantic,
+                      child: Text(copy.mafiaLastWordsSend),
                     ),
                     for (final line in state.mafiaChat.take(12))
                       Text('${line['senderId']}: ${line['text']}'),
@@ -162,20 +191,21 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
   }
 
   Future<void> _confirmLeave(BuildContext context, String status) async {
+    final copy = AppStrings.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(MafiaLeaveCopy.title),
-          content: Text(MafiaLeaveCopy.bodyFor(status)),
+          title: Text(copy.mafiaLeaveTitle),
+          content: Text(copy.mafiaLeaveBodyFor(status)),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text(MafiaLeaveCopy.stay),
+              child: Text(copy.mafiaLeaveStay),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text(MafiaLeaveCopy.confirm),
+              child: Text(copy.mafiaLeaveConfirm),
             ),
           ],
         );
@@ -202,17 +232,27 @@ class _LobbyHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('مافيا', style: Theme.of(context).textTheme.titleLarge),
+          Text(copy.mafiaTitle, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppSpacing.sm),
-          Text(_phaseLabel(game.currentPhase),
-              style: Theme.of(context).textTheme.titleMedium),
-          Text('${game.playersCount}/${game.maxPlayers} لاعبين · الحد الأدنى ${game.minPlayers}'),
+          Text(
+            copy.mafiaPhaseLabel(game.currentPhase),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          Text(
+            copy.mafiaRosterCount(
+              game.playersCount,
+              game.maxPlayers,
+              game.minPlayers,
+            ),
+          ),
           GameDeadlineTimer(
-            deadlineAt: game.serverEndsAt ?? game.phaseEndsAt ?? game.countdownEndsAt,
+            deadlineAt:
+                game.serverEndsAt ?? game.phaseEndsAt ?? game.countdownEndsAt,
           ),
         ],
       ),
@@ -228,7 +268,9 @@ class _PlayerStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final private = context.watch<MafiaProvider>().privateState;
+    final finished = context.watch<MafiaProvider>().game?.isFinished ?? false;
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,32 +279,51 @@ class _PlayerStrip extends StatelessWidget {
             Card(
               color: Theme.of(context).colorScheme.primaryContainer,
               child: ListTile(
-                title: Text('دورك: ${_roleLabel(private.role)}'),
+                title: Text(
+                  copy.mafiaYourRole(copy.mafiaRoleLabel(private.role)),
+                ),
                 subtitle: Text(
-                  'الفريق: ${private.team == 'mafias' ? 'المافيا' : 'المدينة'}',
+                  copy.mafiaYourTeam(
+                    private.team == 'mafias'
+                        ? copy.mafiaTeamMafia
+                        : copy.mafiaTeamTown,
+                  ),
                 ),
                 leading: const Icon(Icons.shield_outlined),
               ),
             ),
           if (private.mafiaTeammateIds.isNotEmpty)
-            Text('زملاؤك في المافيا: ${private.mafiaTeammateIds.join('، ')}'),
+            Text(copy.mafiaTeammates(private.mafiaTeammateIds.join(', '))),
           if (private.lastInvestigationResult != null)
-            Text('نتيجة التحقيق: ${private.lastInvestigationResult!['result']}'),
+            Text(
+              copy.mafiaInvestigationResult(
+                private.lastInvestigationResult!['result'] as String? ?? '',
+              ),
+            ),
           if (private.lastDonInvestigationResult != null)
-            Text('نتيجة تحقق الدون: ${private.lastDonInvestigationResult!['result']}'),
+            Text(
+              copy.mafiaDonResult(
+                private.lastDonInvestigationResult!['result'] as String? ?? '',
+              ),
+            ),
           const SizedBox(height: AppSpacing.sm),
           for (final player in players)
             ListTile(
               dense: true,
               leading: Icon(
-                player.isAlive ? Icons.person_outline : Icons.person_off_outlined,
+                player.isAlive
+                    ? Icons.person_outline
+                    : Icons.person_off_outlined,
               ),
               title: Text(player.username),
               subtitle: Text(
-                [
-                  if (!player.isAlive) 'مقصى',
-                  if (player.isDisconnected) 'غير متصل',
-                  if (player.userId == userId) 'أنت',
+                <String>[
+                  if (!player.isAlive) copy.mafiaEliminated,
+                  if (player.isDisconnected) copy.mafiaDisconnected,
+                  if (player.userId == userId) copy.mafiaYou,
+                  // Master Spec 13.10: the board is public once the game ends.
+                  if (finished && player.role != null)
+                    copy.mafiaRoleLabel(player.role!),
                 ].join(' · '),
               ),
             ),
@@ -280,29 +341,30 @@ class _LobbyActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final provider = context.watch<MafiaProvider>();
     final joined = provider.players.any((item) => item.userId == userId);
-    final canStart = userId == game.createdBy &&
-        game.playersCount >= game.minPlayers;
+    final canStart =
+        userId == game.createdBy && game.playersCount >= game.minPlayers;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         if (!joined)
           PubgetPrimaryButton(
             onPressed: provider.busy ? null : () => provider.join(),
-            semanticLabel: 'انضمام',
-            child: const Text('انضمام'),
+            semanticLabel: copy.mafiaJoin,
+            child: Text(copy.mafiaJoin),
           ),
         if (userId == game.createdBy)
           PubgetPrimaryButton(
-            onPressed: provider.busy || !canStart ? null : () => provider.start(),
-            semanticLabel: 'بدء',
-            child: const Text('بدء اللعبة'),
+            onPressed: provider.busy || !canStart
+                ? null
+                : () => provider.start(),
+            semanticLabel: copy.mafiaStartSemantic,
+            child: Text(copy.mafiaStart),
           ),
         if (userId == game.createdBy && !canStart)
-          Text(
-            'تحتاج اللعبة إلى ${game.minPlayers} لاعبين. المنضم الآن: ${game.playersCount}.',
-          ),
+          Text(copy.mafiaNeedMorePlayers(game.minPlayers, game.playersCount)),
       ],
     );
   }
@@ -316,43 +378,59 @@ class _PlayActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final provider = context.watch<MafiaProvider>();
     final self = provider.self;
-    final alive = provider.players.where((item) => item.isAlive && !item.hasLeft);
+    final alive = provider.players
+        .where((item) => item.isAlive && !item.hasLeft)
+        .toList(growable: false);
     if (self == null || !self.isAlive) {
-      if (self != null && !self.isAlive && self.hasLeft == false) {
-        return const _LastWordsPanel();
+      if (self != null && !self.isAlive && !self.hasLeft) {
+        return _LastWordsPanel(player: self);
       }
-      return const Text('أنت تشاهد اللعبة كمشاهد.');
+      return Text(copy.mafiaYouAreSpectator);
     }
     if (game.currentPhase == 'DISCUSSION') {
       final isTurn = game.currentSpeakerId == userId;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(isTurn ? 'حان دورك للكلام.' : 'بانتظار دور اللاعب الحالي.'),
+          Text(isTurn ? copy.mafiaYourTurn : copy.mafiaWaitingForSpeaker),
           if (isTurn)
             PubgetPrimaryButton(
               onPressed: provider.busy ? null : () => provider.endTurn(),
-              semanticLabel: 'إنهاء الدور',
-              child: const Text('إنهاء دوري'),
+              semanticLabel: copy.mafiaEndTurnSemantic,
+              child: Text(copy.mafiaEndTurn),
             ),
         ],
       );
     }
-    if (game.currentPhase == 'NIGHT' && self.canUseAbility) {
+    if (game.currentPhase == 'NIGHT' &&
+        self.canUseAbility &&
+        _abilityRoles.contains(provider.privateState.role)) {
+      final role = provider.privateState.role;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('قدرة ${_roleLabel(provider.privateState.role)} الليلية'),
+          Text(copy.mafiaNightAbility(copy.mafiaRoleLabel(role))),
           for (final player in alive)
-            if (player.userId != userId ||
-                provider.privateState.role == 'doctor')
-              ListTile(
-                title: Text(player.username),
-                onTap: provider.busy
-                    ? null
-                    : () => provider.nightAction(player.userId),
+            if (player.userId != userId || role == 'doctor')
+              Builder(
+                builder: (context) {
+                  // Master Spec 13.3: the Doctor may protect anyone, including
+                  // themselves, but never the same player two nights running.
+                  final blocked =
+                      role == 'doctor' &&
+                      provider.privateState.lastDoctorTargetId == player.userId;
+                  return ListTile(
+                    title: Text(player.username),
+                    subtitle: blocked ? Text(copy.mafiaDoctorSameTarget) : null,
+                    enabled: !provider.busy && !blocked,
+                    onTap: provider.busy || blocked
+                        ? null
+                        : () => provider.nightAction(player.userId),
+                  );
+                },
               ),
         ],
       );
@@ -363,8 +441,8 @@ class _PlayActions extends StatelessWidget {
         children: <Widget>[
           Text(
             game.revoteCandidates.isNotEmpty
-                ? 'إعادة تصويت سرية بين المتعادلين فقط.'
-                : 'تصويت سري. لا يمكنك التصويت لنفسك.',
+                ? copy.mafiaSecretVoteRevote
+                : copy.mafiaSecretVote,
           ),
           for (final player in alive)
             if (player.userId != userId &&
@@ -372,17 +450,21 @@ class _PlayActions extends StatelessWidget {
                     game.revoteCandidates.contains(player.userId)))
               ListTile(
                 title: Text(player.username),
-                onTap: provider.busy ? null : () => provider.vote(player.userId),
+                onTap: provider.busy
+                    ? null
+                    : () => provider.vote(player.userId),
               ),
         ],
       );
     }
-    return Text(_phaseLabel(game.currentPhase));
+    return Text(copy.mafiaPhaseLabel(game.currentPhase));
   }
 }
 
 class _LastWordsPanel extends StatefulWidget {
-  const _LastWordsPanel();
+  const _LastWordsPanel({required this.player});
+
+  final MafiaPlayer player;
 
   @override
   State<_LastWordsPanel> createState() => _LastWordsPanelState();
@@ -410,35 +492,49 @@ class _LastWordsPanelState extends State<_LastWordsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final provider = context.watch<MafiaProvider>();
+    final player = provider.self ?? widget.player;
+    final spoken = player.lastWords;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text('أنت الآن مشاهد. يمكنك كتابة كلماتك الأخيرة مرة واحدة.'),
-        PubgetTextField(controller: _controller, label: 'كلمات أخيرة'),
-        PubgetSecondaryButton(
-          onPressed: provider.busy || _controller.text.trim().isEmpty
-              ? null
-              : () => provider.submitLastWords(_controller.text.trim()),
-          semanticLabel: 'إرسال الكلمات الأخيرة',
-          child: const Text('إرسال'),
-        ),
+        Text(copy.mafiaLastWordsIntro),
+        // The server closes last words after one submission, so the input is
+        // replaced by the text rather than left there to fail a second time.
+        if (spoken != null && spoken.isNotEmpty)
+          Text('${copy.mafiaLastWordsSpoken}$spoken')
+        else if (player.canSayLastWords) ...<Widget>[
+          PubgetTextField(
+            controller: _controller,
+            label: copy.mafiaLastWordsLabel,
+          ),
+          PubgetSecondaryButton(
+            onPressed: provider.busy || _controller.text.trim().isEmpty
+                ? null
+                : () => provider.submitLastWords(_controller.text.trim()),
+            semanticLabel: copy.mafiaLastWordsSendSemantic,
+            child: Text(copy.mafiaLastWordsSend),
+          ),
+        ],
       ],
     );
   }
 }
 
 class _Result extends StatelessWidget {
-  const _Result({required this.game});
+  const _Result({required this.game, required this.players});
 
   final MafiaGame game;
+  final List<MafiaPlayer> players;
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final label = switch (game.winner) {
-      'mafias' => 'فازت المافيا',
-      'citizens' => 'فازت المدينة',
-      _ => 'انتهت اللعبة',
+      'mafias' => copy.mafiaMafiaWon,
+      'citizens' => copy.mafiaTownWon,
+      _ => copy.mafiaGameEnded,
     };
     return PubgetCard(
       child: Column(
@@ -446,38 +542,25 @@ class _Result extends StatelessWidget {
         children: <Widget>[
           Text(label, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppSpacing.sm),
+          // Master Spec 13.10: the final reveal. Every role is public now, so
+          // the board is spelled out instead of only announced in the log.
+          for (final player in players)
+            if (player.role != null)
+              ListTile(
+                dense: true,
+                title: Text(player.username),
+                trailing: Text(copy.mafiaRoleLabel(player.role!)),
+              ),
+          const SizedBox(height: AppSpacing.sm),
           PubgetSecondaryButton(
             onPressed: game.groupId.isEmpty
                 ? null
                 : () => GameLinks.openCreate(context, groupId: game.groupId),
             semanticLabel: GameStrings.playAgain,
-            child: const Text('العب مجددًا'),
+            child: Text(copy.mafiaPlayAgain),
           ),
         ],
       ),
     );
   }
 }
-
-String _phaseLabel(String phase) => switch (phase) {
-      'WAITING' => 'غرفة الانتظار',
-      'STARTING' => 'جاري بدء اللعبة',
-      'ROLE_REVEAL' => 'كشف دورك',
-      'NIGHT' => 'الليل',
-      'DAY' => 'النهار',
-      'DISCUSSION' => 'النقاش',
-      'VOTING' => 'التصويت',
-      'VOTE_RESULT' => 'نتيجة التصويت',
-      'RESOLUTION' => 'معالجة النتيجة',
-      'GAME_OVER' || 'CANCELLED' => 'انتهت اللعبة',
-      _ => phase,
-    };
-
-String _roleLabel(String role) => switch (role) {
-      'mafia' => 'مافيا',
-      'don' => 'الدون',
-      'detective' => 'المحقق',
-      'doctor' => 'الطبيب',
-      'citizen' => 'مواطن',
-      _ => role.isEmpty ? 'غير معروف' : role,
-    };

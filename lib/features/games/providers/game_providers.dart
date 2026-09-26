@@ -22,14 +22,22 @@ final class GameListProvider extends ChangeNotifier {
   List<PubgetGame> _waiting = const <PubgetGame>[];
   List<PubgetGame> _groupGames = const <PubgetGame>[];
   List<PubgetGame> _mine = const <PubgetGame>[];
+  List<GameHistoryEntry> _history = const <GameHistoryEntry>[];
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
   bool _disposed = false;
+
+  static const recentLimit = 5;
 
   List<PubgetGame> get active => _active;
   List<PubgetGame> get waiting => _waiting;
   List<PubgetGame> get groupGames => _groupGames;
   List<PubgetGame> get mine => _mine;
+  List<GameHistoryEntry> get history => _history;
+
+  /// The most recent finished games, for the Game Center Recent section.
+  List<GameHistoryEntry> get recent =>
+      _history.take(recentLimit).toList(growable: false);
   LoadingState get state => _state;
   Failure? get failure => _failure;
 
@@ -83,6 +91,30 @@ final class GameListProvider extends ChangeNotifier {
     _safeNotify();
   }
 
+  /// Recent and History both come from the server-written history, so a
+  /// client can never show a result the server did not record.
+  Future<void> loadHistory(String userId) async {
+    final result = await _repository.getHistory(userId: userId);
+    result.fold(
+      onSuccess: (entries) {
+        // Newest first, so Recent is a prefix of History regardless of the
+        // order the documents arrived in.
+        _history = entries.toList()
+          ..sort((a, b) {
+            final left = a.endedAt;
+            final right = b.endedAt;
+            if (left == null && right == null) return 0;
+            if (left == null) return 1;
+            if (right == null) return -1;
+            return right.compareTo(left);
+          });
+        _failure = null;
+      },
+      onFailure: (failure) => _failure = failure,
+    );
+    _safeNotify();
+  }
+
   void _safeNotify() {
     if (!_disposed) notifyListeners();
   }
@@ -125,9 +157,8 @@ final class GameProvider extends ChangeNotifier {
   bool get busy => _busy;
   String? get actionFeedback => _actionFeedback;
 
-  bool isParticipant(String userId) => _participants.any(
-    (item) => item.userId == userId && item.isActive,
-  );
+  bool isParticipant(String userId) =>
+      _participants.any((item) => item.userId == userId && item.isActive);
 
   Future<void> open(String gameId, {String? userId}) async {
     _state = LoadingState.loading;
@@ -216,7 +247,10 @@ final class GameProvider extends ChangeNotifier {
     onSuccess: () {
       _analytics.logEvent('game_joined', parameters: {'gameId': gameId});
       if (_game?.type == GameType.mafia) {
-        _analytics.logEvent('mafia_game_joined', parameters: {'gameId': gameId});
+        _analytics.logEvent(
+          'mafia_game_joined',
+          parameters: {'gameId': gameId},
+        );
       }
     },
   );
@@ -227,10 +261,7 @@ final class GameProvider extends ChangeNotifier {
   Future<Result<void>> start(String gameId) => _run(
     () => _repository.start(gameId),
     onSuccess: () {
-      _analytics.logEvent(
-        'game_started',
-        parameters: {'gameId': gameId},
-      );
+      _analytics.logEvent('game_started', parameters: {'gameId': gameId});
       if (_game?.type == GameType.mafia) {
         _analytics.logEvent(
           'mafia_game_started',
@@ -239,12 +270,6 @@ final class GameProvider extends ChangeNotifier {
       }
     },
   );
-
-  Future<Result<void>> pause(String gameId) =>
-      _run(() => _repository.pause(gameId));
-
-  Future<Result<void>> resume(String gameId) =>
-      _run(() => _repository.resume(gameId));
 
   Future<Result<void>> end(String gameId) =>
       _run(() => _repository.end(gameId));

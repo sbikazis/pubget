@@ -145,6 +145,12 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/private/alice").set({
       note: "alice-only",
     });
+    await admin.doc("game_history/game1").set({
+      gameId: "game1", type: "guessCharacter", groupId: "g1",
+      participants: ["alice", "bob"],
+      result: { kind: "guessCharacter", winnerIds: ["alice"], scores: { alice: 1, bob: 0 } },
+      endedAt: new Date(),
+    });
     await admin.doc("user_achievements/alice/items/first_game_win").set({
       achievementId: "first_game_win", title: "First Victory",
     });
@@ -397,6 +403,21 @@ test("games are readable by group members and never client-writable", async () =
     targetValue: 1,
   }));
   await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
+});
+
+test("game history is readable only by the players who played it", async () => {
+  // Game Center Recent/History read the server-written history documents.
+  await assertSucceeds(db("alice").doc("game_history/game1").get());
+  await assertSucceeds(db("bob").doc("game_history/game1").get());
+  await assertFails(db("charlie").doc("game_history/game1").get());
+  await assertFails(db("mallory").doc("game_history/game1").get());
+  // A result can never be rewritten by a client.
+  await assertFails(db("bob").doc("game_history/game1").update({
+    result: { kind: "guessCharacter", winnerIds: ["bob"], scores: { bob: 99 } },
+  }));
+  await assertFails(db("bob").doc("game_history/forged").set({
+    participants: ["bob"], result: { winnerIds: ["bob"] },
+  }));
 });
 test("mafia hidden state is protected from clients", async () => {
   // Attack 1: Player A cannot read Player B's private role.

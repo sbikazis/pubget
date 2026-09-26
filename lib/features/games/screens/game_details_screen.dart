@@ -70,11 +70,8 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
         actions: [
           IconButton(
             tooltip: GameStrings.share,
-            onPressed: () => GameLinks.share(
-              context,
-              widget.gameId,
-              title: game?.title,
-            ),
+            onPressed: () =>
+                GameLinks.share(context, widget.gameId, title: game?.title),
             icon: const Icon(Icons.share_outlined),
           ),
           IconButton(
@@ -86,26 +83,20 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
       ),
       body: PubgetLoadingStateView(
         state: state.state,
-        onRetry: () => context.read<GameProvider>().open(
-          widget.gameId,
-          userId: uid,
-        ),
+        onRetry: () =>
+            context.read<GameProvider>().open(widget.gameId, userId: uid),
         empty: const PubgetEmptyState(
           title: GameStrings.missing,
           message: GameStrings.missing,
         ),
         error: GameErrorState(
           message: state.failure?.message,
-          onRetry: () => context.read<GameProvider>().open(
-            widget.gameId,
-            userId: uid,
-          ),
+          onRetry: () =>
+              context.read<GameProvider>().open(widget.gameId, userId: uid),
         ),
         offline: PubgetOfflineState(
-          onRetry: () => context.read<GameProvider>().open(
-            widget.gameId,
-            userId: uid,
-          ),
+          onRetry: () =>
+              context.read<GameProvider>().open(widget.gameId, userId: uid),
         ),
         child: game == null
             ? const SizedBox.shrink()
@@ -114,16 +105,26 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
                 children: <Widget>[
                   GameHeader(game: game),
                   const SizedBox(height: AppSpacing.sm),
-                  if (spec != null)
+                  if (spec != null) ...[
                     Text(
                       '${spec.name} · ${game.participantsCount}/${game.configuration.maxPlayers} players'
                       ' · ${game.configuration.timerSeconds}s'
                       '${game.configuration.usesRounds ? ' · ${game.configuration.roundCount} rounds' : ''}',
                     ),
+                    const SizedBox(height: AppSpacing.xs),
+                    // The Game Center has to show each game's duration,
+                    // difficulty, win condition, and type.
+                    Text(
+                      'Difficulty: ${game.configuration.difficulty}'
+                      ' · Win: ${spec.winCondition}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const SizedBox(height: AppSpacing.md),
                   ParticipantList(participants: state.participants),
                   const SizedBox(height: AppSpacing.md),
-                  if (uid != null) ..._lobbyActions(context, game, uid, canManage),
+                  if (uid != null)
+                    ..._lobbyActions(context, game, uid, canManage),
                   if (uid != null && (game.isPlayable || game.isTerminal))
                     GamePlayArea(game: game, userId: uid),
                   if (state.failure != null)
@@ -150,9 +151,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     if (game.isJoinable && !joined) {
       widgets.add(
         PubgetPrimaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.join(widget.gameId),
+          onPressed: provider.busy ? null : () => provider.join(widget.gameId),
           semanticLabel: GameStrings.join,
           child: const Text(GameStrings.join),
         ),
@@ -161,17 +160,14 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     if (game.isJoinable && joined && game.creatorId != uid) {
       widgets.add(
         PubgetSecondaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.leave(widget.gameId),
+          onPressed: provider.busy ? null : () => provider.leave(widget.gameId),
           semanticLabel: GameStrings.leave,
           child: const Text(GameStrings.leave),
         ),
       );
     }
     if (canManage && game.status == GameStatus.waiting) {
-      final canStart =
-          game.participantsCount >= game.configuration.minPlayers;
+      final canStart = game.participantsCount >= game.configuration.minPlayers;
       widgets.add(
         PubgetPrimaryButton(
           onPressed: provider.busy || !canStart

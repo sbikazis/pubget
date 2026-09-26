@@ -23,8 +23,8 @@ final class FirebaseMafiaRepository implements MafiaRepository {
   @override
   Future<Result<String>> create({
     required String groupId,
-    int minPlayers = 4,
-    int maxPlayers = 8,
+    int minPlayers = 7,
+    int maxPlayers = 15,
   }) => _guard(() async {
     final result = await _functions.httpsCallable('createMafiaGame').call({
       'groupId': groupId,
@@ -57,7 +57,8 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     'gameId': gameId,
     'type': 'night_action',
     'targetId': targetId,
-    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-night-$targetId',
+    'actionId':
+        actionId ?? '${DateTime.now().microsecondsSinceEpoch}-night-$targetId',
   });
 
   @override
@@ -70,7 +71,8 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     'gameId': gameId,
     'type': 'vote',
     'targetId': targetId,
-    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-vote-$targetId',
+    'actionId':
+        actionId ?? '${DateTime.now().microsecondsSinceEpoch}-vote-$targetId',
   });
 
   @override
@@ -90,7 +92,8 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     'gameId': gameId,
     'type': 'last_words',
     'text': text.trim(),
-    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-last-words',
+    'actionId':
+        actionId ?? '${DateTime.now().microsecondsSinceEpoch}-last-words',
   });
 
   @override
@@ -102,7 +105,8 @@ final class FirebaseMafiaRepository implements MafiaRepository {
     'gameId': gameId,
     'type': 'mafia_message',
     'text': text.trim(),
-    'actionId': actionId ?? '${DateTime.now().microsecondsSinceEpoch}-mafia-chat',
+    'actionId':
+        actionId ?? '${DateTime.now().microsecondsSinceEpoch}-mafia-chat',
   });
 
   @override
@@ -129,9 +133,7 @@ final class FirebaseMafiaRepository implements MafiaRepository {
           }
           return Success(MafiaGame.fromMap(snapshot.data()!, id: snapshot.id));
         })
-        .handleError(
-          (Object error) => FailureResult<MafiaGame>(_fail(error)),
-        );
+        .handleError((Object error) => FailureResult<MafiaGame>(_fail(error)));
   }
 
   @override
@@ -218,9 +220,11 @@ final class FirebaseMafiaRepository implements MafiaRepository {
         .orderBy('createdAt')
         .limit(80)
         .snapshots()
-        .map((snapshot) => Success(
-              snapshot.docs.map((doc) => doc.data()).toList(growable: false),
-            ))
+        .map(
+          (snapshot) => Success(
+            snapshot.docs.map((doc) => doc.data()).toList(growable: false),
+          ),
+        )
         .handleError(
           (Object error) =>
               FailureResult<List<Map<String, dynamic>>>(_fail(error)),

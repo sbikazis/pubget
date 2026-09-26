@@ -10,23 +10,22 @@ void main() {
   group('Game status machine', () {
     test('allows the documented transitions', () {
       expect(
-        GameLifecycle.canTransition(GameStatus.draft, GameStatus.waiting),
+        GameLifecycle.canTransition(GameStatus.created, GameStatus.waiting),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.starting),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.paused),
+        GameLifecycle.canTransition(GameStatus.starting, GameStatus.inProgress),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.paused, GameStatus.active),
-        isTrue,
-      );
-      expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.completed),
+        GameLifecycle.canTransition(
+          GameStatus.inProgress,
+          GameStatus.completed,
+        ),
         isTrue,
       );
       expect(
@@ -34,18 +33,52 @@ void main() {
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.cancelled),
+        GameLifecycle.canTransition(
+          GameStatus.inProgress,
+          GameStatus.cancelled,
+        ),
         isTrue,
       );
     });
 
+    test('has no paused state to suspend or resume', () {
+      // Master Spec 12.2. A game that could be paused could also be resumed,
+      // and neither the enum nor the transition table may offer it.
+      expect(
+        GameStatus.values.map((value) => value.name),
+        isNot(contains('paused')),
+      );
+      expect(
+        GameStatus.values.map((value) => value.name),
+        isNot(contains('draft')),
+      );
+      for (final status in GameStatus.values) {
+        for (final target
+            in GameLifecycle.allowed[status] ?? const <GameStatus>{}) {
+          expect(
+            <String>[target.name],
+            everyElement(isNot(anyOf(contains('paused'), contains('draft')))),
+            reason: 'no transition may point at a removed state',
+          );
+        }
+      }
+    });
+
     test('rejects invalid and terminal-state transitions', () {
       expect(
-        GameLifecycle.canTransition(GameStatus.draft, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.created, GameStatus.inProgress),
         isFalse,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.completed, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.inProgress),
+        isFalse,
+        reason: 'the lobby must pass through STARTING first',
+      );
+      expect(
+        GameLifecycle.canTransition(
+          GameStatus.completed,
+          GameStatus.inProgress,
+        ),
         isFalse,
       );
       expect(
@@ -54,11 +87,11 @@ void main() {
       );
       expect(GameLifecycle.isTerminal(GameStatus.completed), isTrue);
       expect(GameLifecycle.isTerminal(GameStatus.cancelled), isTrue);
-      expect(GameLifecycle.isTerminal(GameStatus.active), isFalse);
+      expect(GameLifecycle.isTerminal(GameStatus.inProgress), isFalse);
       expect(
         () => GameLifecycle.assertTransition(
           GameStatus.completed,
-          GameStatus.active,
+          GameStatus.inProgress,
         ),
         throwsA(
           isA<GameException>().having(
@@ -87,10 +120,9 @@ void main() {
         GameTypeRegistry.configurationFor(GameType.guessCharacter).minPlayers,
         2,
       );
-      expect(
-        GameTypeRegistry.configurationFor(GameType.mafia).minPlayers,
-        4,
-      );
+      // Mafia is 7-15; the same numbers the server clamps to.
+      expect(GameTypeRegistry.configurationFor(GameType.mafia).minPlayers, 7);
+      expect(GameTypeRegistry.configurationFor(GameType.mafia).maxPlayers, 15);
     });
 
     test('unknown game type lookup returns null', () {
@@ -111,8 +143,14 @@ void main() {
   group('Participants', () {
     test('join, duplicate join, and leave', () {
       final roster = ParticipantRoster(gameId: 'g1');
-      final first = roster.join(userId: 'alice', gameStatus: GameStatus.waiting);
-      final again = roster.join(userId: 'alice', gameStatus: GameStatus.waiting);
+      final first = roster.join(
+        userId: 'alice',
+        gameStatus: GameStatus.waiting,
+      );
+      final again = roster.join(
+        userId: 'alice',
+        gameStatus: GameStatus.waiting,
+      );
       expect(identical(first, again) || first.userId == again.userId, isTrue);
       expect(roster.activeCount, 1);
       roster.leave(userId: 'alice');
@@ -123,7 +161,7 @@ void main() {
     test('rejects join after start and leave of a missing player', () {
       final roster = ParticipantRoster(gameId: 'g1');
       expect(
-        () => roster.join(userId: 'bob', gameStatus: GameStatus.active),
+        () => roster.join(userId: 'bob', gameStatus: GameStatus.inProgress),
         throwsA(
           isA<GameException>().having(
             (error) => error.code,
@@ -199,19 +237,23 @@ void main() {
         clientActionId: 'idem-1',
       );
       expect(
-        log.submit(
-          action: first,
-          gameStatus: GameStatus.active,
-          roster: roster,
-        ).id,
+        log
+            .submit(
+              action: first,
+              gameStatus: GameStatus.inProgress,
+              roster: roster,
+            )
+            .id,
         'a1',
       );
       expect(
-        log.submit(
-          action: second,
-          gameStatus: GameStatus.active,
-          roster: roster,
-        ).id,
+        log
+            .submit(
+              action: second,
+              gameStatus: GameStatus.inProgress,
+              roster: roster,
+            )
+            .id,
         'a1',
       );
       expect(log.all, hasLength(1));
@@ -245,7 +287,7 @@ void main() {
         title: 'Guess',
         description: '',
         version: 1,
-        status: GameStatus.active,
+        status: GameStatus.inProgress,
         creatorId: 'alice',
         configuration: const GameConfiguration(),
         participantsCount: 1,
@@ -259,7 +301,10 @@ void main() {
         actionType: 'guess',
         payload: const <String, dynamic>{},
       );
-      expect(ScoringStrategyRegistry.forType(game.type), isA<NoOpScoringStrategy>());
+      expect(
+        ScoringStrategyRegistry.forType(game.type),
+        isA<NoOpScoringStrategy>(),
+      );
       expect(GameEngine.scoreAction(action: action, game: game), 0);
     });
   });

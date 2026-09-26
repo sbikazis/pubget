@@ -14,6 +14,13 @@ enum MafiaPhase {
   cancelled,
 }
 
+/// Mafia is 7-15 players. The server owns the real clamp, so the client uses
+/// these values instead of repeating a number that can drift.
+abstract final class MafiaLimits {
+  static const minPlayers = 7;
+  static const maxPlayers = 15;
+}
+
 final class MafiaGame {
   const MafiaGame({
     required this.id,
@@ -60,9 +67,12 @@ final class MafiaGame {
   final List<String> revoteCandidates;
 
   bool get isLobby => status == 'WAITING' || status == 'STARTING';
-  bool get isFinished =>
-      status == 'GAME_OVER' || status == 'CANCELLED';
+  bool get isFinished => status == 'GAME_OVER' || status == 'CANCELLED';
+  // Master Spec 13.7: a player may leave the waiting room too. Dropping below
+  // the minimum cancels the lobby instead of starting it short, so the button
+  // is offered from the moment the game exists.
   bool get canLeaveViaServer =>
+      status == 'WAITING' ||
       status == 'STARTING' ||
       status == 'ROLE_REVEAL' ||
       status == 'NIGHT' ||
@@ -80,8 +90,12 @@ final class MafiaGame {
       status: map['status'] as String? ?? 'WAITING',
       currentPhase: map['currentPhase'] as String? ?? 'WAITING',
       playersCount: (map['playersCount'] as num?)?.toInt() ?? 0,
-      minPlayers: (map['minPlayers'] as num?)?.toInt() ?? 4,
-      maxPlayers: (map['maxPlayers'] as num?)?.toInt() ?? 8,
+      // Master Spec 13.2: a Mafia lobby is 7-15 players. These defaults are the
+      // floor and the ceiling, not a wish: the server clamps to the same range.
+      minPlayers:
+          (map['minPlayers'] as num?)?.toInt() ?? MafiaLimits.minPlayers,
+      maxPlayers:
+          (map['maxPlayers'] as num?)?.toInt() ?? MafiaLimits.maxPlayers,
       currentDay: (map['currentDay'] as num?)?.toInt() ?? 0,
       currentNight: (map['currentNight'] as num?)?.toInt() ?? 0,
       winner: map['winner'] as String?,
@@ -112,6 +126,11 @@ final class MafiaPlayer {
     this.canVote = true,
     this.canUseAbility = true,
     this.revealedRole = false,
+    this.role,
+    this.canSayLastWords = false,
+    this.lastWords,
+    this.lastWordsAt,
+    this.eliminatedBy,
   });
 
   final String userId;
@@ -125,6 +144,17 @@ final class MafiaPlayer {
   final bool canUseAbility;
   final bool revealedRole;
 
+  /// Only ever set once the role is public: on this player's own elimination
+  /// (Master Spec 13.7) or for everyone when the game ends (13.10). Nobody
+  /// else's role is readable while the game is running.
+  final String? role;
+
+  /// True while the player is still allowed to submit last words.
+  final bool canSayLastWords;
+  final String? lastWords;
+  final DateTime? lastWordsAt;
+  final String? eliminatedBy;
+
   factory MafiaPlayer.fromMap(Map<String, dynamic> map, {required String id}) {
     return MafiaPlayer(
       userId: map['userId'] as String? ?? id,
@@ -137,6 +167,11 @@ final class MafiaPlayer {
       canVote: map['canVote'] != false,
       canUseAbility: map['canUseAbility'] != false,
       revealedRole: map['revealedRole'] == true,
+      role: map['role'] as String?,
+      canSayLastWords: map['canSayLastWords'] == true,
+      lastWords: map['lastWords'] as String?,
+      lastWordsAt: _date(map['lastWordsAt']),
+      eliminatedBy: map['eliminatedBy'] as String?,
     );
   }
 }
@@ -149,6 +184,7 @@ final class MafiaPrivateState {
     this.mafiaTeammateIds = const <String>[],
     this.lastInvestigationResult,
     this.lastDonInvestigationResult,
+    this.lastDoctorTargetId,
   });
 
   final String role;
@@ -157,6 +193,11 @@ final class MafiaPrivateState {
   final List<String> mafiaTeammateIds;
   final Map<String, dynamic>? lastInvestigationResult;
   final Map<String, dynamic>? lastDonInvestigationResult;
+
+  /// Master Spec 13.3: the Doctor may protect themselves but never the same
+  /// player two nights running. Kept client-side so the picker can grey it out;
+  /// the server rejects it regardless.
+  final String? lastDoctorTargetId;
 
   factory MafiaPrivateState.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const MafiaPrivateState();
@@ -172,6 +213,7 @@ final class MafiaPrivateState {
           ?.cast<String, dynamic>(),
       lastDonInvestigationResult: (map['lastDonInvestigationResult'] as Map?)
           ?.cast<String, dynamic>(),
+      lastDoctorTargetId: map['lastDoctorTargetId'] as String?,
     );
   }
 }

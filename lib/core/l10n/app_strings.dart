@@ -1029,9 +1029,136 @@ final class AppStrings {
   String get chooseAvatarSemantic =>
       pick('Choose a new profile photo', 'اختر صورة ملف جديدة');
 
+  // ── Group Games and Mafia (spec §12-13) ────────────────────────────────
+  String get mafiaTitle => pick('Mafia', 'مافيا');
+  String get mafiaCouldNotLoad =>
+      pick('Could not load Mafia', 'تعذّر تحميل المافيا');
+  String get mafiaLog => pick('Game log', 'سجل اللعبة');
+  String get mafiaDiscussionLabel => pick('Discussion', 'النقاش');
+  String get mafiaSecretChannel =>
+      pick('Mafia secret channel', 'القناة السرية للمافيا');
+  String get mafiaSecretMessage => pick('Secret message', 'رسالة سرية');
+  String get mafiaSendSecretSemantic =>
+      pick('Send a secret message', 'إرسال رسالة سرية');
+  String get mafiaLeave => pick('Leave', 'مغادرة');
+  String get mafiaJoin => pick('Join', 'انضمام');
+  String get mafiaStart => pick('Start game', 'بدء اللعبة');
+  String get mafiaStartSemantic => pick('Start', 'بدء');
+  String mafiaNeedMorePlayers(int minimum, int joined) => pick(
+    'You need $minimum players to start. Joined now: $joined.',
+    'تحتاج اللعبة إلى $minimum لاعبين. المنضم الآن: $joined.',
+  );
+  String mafiaRosterCount(int joined, int maximum, int minimum) => pick(
+    '$joined/$maximum players · minimum $minimum',
+    '$joined/$maximum لاعبين · الحد الأدنى $minimum',
+  );
+  String get mafiaYouAreSpectator =>
+      pick('You are watching this game.', 'أنت تشاهد اللعبة كمشاهد.');
+  String get mafiaYourTurn =>
+      pick('It is your turn to speak.', 'حان دورك للكلام.');
+  String get mafiaWaitingForSpeaker =>
+      pick('Waiting for the current player.', 'بانتظار دور اللاعب الحالي.');
+  String get mafiaEndTurn => pick('End my turn', 'إنهاء دوري');
+  String get mafiaEndTurnSemantic => pick('End turn', 'إنهاء الدور');
+  String mafiaNightAbility(String role) =>
+      pick('$role night ability', 'قدرة $role الليلية');
+  String get mafiaSecretVoteRevote => pick(
+    'Secret re-vote: only the tied players.',
+    'إعادة تصويت سرية بين المتعادلين فقط.',
+  );
+  String get mafiaSecretVote => pick(
+    'Secret vote. You cannot vote for yourself.',
+    'تصويت سري. لا يمكنك التصويت لنفسك.',
+  );
+  String get mafiaLastWordsIntro => pick(
+    'You are out. You may write last words once.',
+    'أنت الآن خارج اللعبة. يمكنك كتابة كلماتك الأخيرة مرة واحدة.',
+  );
+  String get mafiaLastWordsLabel => pick('Last words', 'كلمات أخيرة');
+  String get mafiaLastWordsSend => pick('Send', 'إرسال');
+  String get mafiaLastWordsSendSemantic =>
+      pick('Send last words', 'إرسال الكلمات الأخيرة');
+  String get mafiaLastWordsSpoken => pick('Last words: ', 'الكلمات الأخيرة: ');
+  String mafiaYourRole(String role) => pick('Your role: $role', 'دورك: $role');
+  String mafiaYourTeam(String team) => pick('Team: $team', 'الفريق: $team');
+  String get mafiaTeamMafia => pick('Mafia', 'المافيا');
+  String get mafiaTeamTown => pick('Town', 'المدينة');
+  String mafiaTeammates(String names) =>
+      pick('Your Mafia allies: $names', 'زملاؤك في المافيا: $names');
+  String mafiaInvestigationResult(String result) =>
+      pick('Investigation result: $result', 'نتيجة التحقيق: $result');
+  String mafiaDonResult(String result) =>
+      pick('Don check: $result', 'نتيجة تحقق الدون: $result');
+  String get mafiaEliminated => pick('eliminated', 'مقصى');
+  String get mafiaDisconnected => pick('disconnected', 'غير متصل');
+  String get mafiaYou => pick('you', 'أنت');
+  String get mafiaMafiaWon => pick('The Mafia won', 'فازت المافيا');
+  String get mafiaTownWon => pick('The town won', 'فازت المدينة');
+  String get mafiaGameEnded => pick('The game ended', 'انتهت اللعبة');
+  String get mafiaPlayAgain => pick('Play again', 'العب مجددًا');
+  String get mafiaProtectedLastNight =>
+      pick('Saved last night', 'تم إنقاذه الليلة الماضية');
+  String get mafiaDead => pick('dead', 'ميت');
+  String get mafiaDoctorSameTarget => pick(
+    'You already protected this player last night.',
+    'لقد حمت هذا اللاعب الليلة الماضية.',
+  );
+  String get mafiaRoleUnknown => pick('Unknown', 'غير معروف');
+
+  String mafiaPhaseLabel(String phase) =>
+      pick(_mafiaPhasesEn[phase] ?? phase, _mafiaPhasesAr[phase] ?? phase);
+  String mafiaRoleLabel(String role) => pick(
+    _mafiaRolesEn[role] ?? (role.isEmpty ? 'Unknown' : role),
+    _mafiaRolesAr[role] ?? (role.isEmpty ? 'غير معروف' : role),
+  );
+
   String userNameWelcome(String name) =>
       pick('Welcome, $name', 'مرحباً، $name');
   String stepOf(int step, int total) =>
       pick('Step $step of $total', 'الخطوة $step من $total');
   String memberSince(String month) => pick('Since $month', 'منذ $month');
 }
+
+const Map<String, String> _mafiaPhasesEn = <String, String>{
+  'WAITING': 'Waiting room',
+  'STARTING': 'Starting',
+  'ROLE_REVEAL': 'Role reveal',
+  'NIGHT': 'Night',
+  'DAY': 'Day',
+  'DISCUSSION': 'Discussion',
+  'VOTING': 'Voting',
+  'VOTE_RESULT': 'Vote result',
+  'RESOLUTION': 'Resolving',
+  'GAME_OVER': 'The game is over',
+  'CANCELLED': 'The game was cancelled',
+};
+
+const Map<String, String> _mafiaPhasesAr = <String, String>{
+  'WAITING': 'غرفة الانتظار',
+  'STARTING': 'جاري بدء اللعبة',
+  'ROLE_REVEAL': 'كشف دورك',
+  'NIGHT': 'الليل',
+  'DAY': 'النهار',
+  'DISCUSSION': 'النقاش',
+  'VOTING': 'التصويت',
+  'VOTE_RESULT': 'نتيجة التصويت',
+  'RESOLUTION': 'معالجة النتيجة',
+  'GAME_OVER': 'انتهت اللعبة',
+  'CANCELLED': 'أُلغيت اللعبة',
+};
+
+const Map<String, String> _mafiaRolesEn = <String, String>{
+  'mafia': 'Mafia',
+  'don': 'Don',
+  'detective': 'Detective',
+  'doctor': 'Doctor',
+  'citizen': 'Citizen',
+};
+
+const Map<String, String> _mafiaRolesAr = <String, String>{
+  'mafia': 'مافيا',
+  'don': 'الدون',
+  'detective': 'المحقق',
+  'doctor': 'الطبيب',
+  'citizen': 'مواطن',
+};

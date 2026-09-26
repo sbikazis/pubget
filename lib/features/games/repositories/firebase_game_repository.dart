@@ -52,14 +52,6 @@ final class FirebaseGameRepository implements GameRepository {
       _call('startGame', {'gameId': gameId});
 
   @override
-  Future<Result<void>> pause(String gameId) =>
-      _call('pauseGame', {'gameId': gameId});
-
-  @override
-  Future<Result<void>> resume(String gameId) =>
-      _call('resumeGame', {'gameId': gameId});
-
-  @override
   Future<Result<void>> submitAction({
     required String gameId,
     required String actionType,
@@ -91,9 +83,7 @@ final class FirebaseGameRepository implements GameRepository {
               NotFoundError('This game no longer exists.'),
             );
           }
-          return Success(
-            PubgetGame.fromMap(snapshot.data()!, id: snapshot.id),
-          );
+          return Success(PubgetGame.fromMap(snapshot.data()!, id: snapshot.id));
         })
         .handleError(
           (Object error) => FailureResult<PubgetGame>(_gameFailure(error)),
@@ -108,9 +98,7 @@ final class FirebaseGameRepository implements GameRepository {
         .snapshots()
         .map((snapshot) {
           final people = snapshot.docs
-              .map(
-                (doc) => GameParticipant.fromMap(doc.data(), userId: doc.id),
-              )
+              .map((doc) => GameParticipant.fromMap(doc.data(), userId: doc.id))
               .toList(growable: false);
           return Success(people);
         })
@@ -167,7 +155,13 @@ final class FirebaseGameRepository implements GameRepository {
         .where('groupId', isEqualTo: groupId)
         .where(
           'status',
-          whereIn: <String>['waiting', 'active', 'paused', 'completed'],
+          whereIn: <String>[
+            'CREATED',
+            'WAITING',
+            'STARTING',
+            'IN_PROGRESS',
+            'COMPLETED',
+          ],
         )
         .orderBy('updatedAt', descending: true)
         .limit(limit),
@@ -197,6 +191,70 @@ final class FirebaseGameRepository implements GameRepository {
             .map((doc) => GameParticipant.fromMap(doc.data(), userId: doc.id))
             .toList(growable: false);
       });
+
+  @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('searchAnimeCatalog').call(
+      <String, dynamic>{'query': query, 'limit': limit},
+    );
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (data['items'] as List<Object?>? ?? const <Object?>[])
+        .whereType<Map>()
+        .map((item) => AnimeSearchItem.fromMap(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('searchCharacterCatalog')
+        .call(<String, dynamic>{
+          'query': query,
+          'limit': limit,
+          'animeId': ?animeId,
+        });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (data['items'] as List<Object?>? ?? const <Object?>[])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              CharacterSearchItem.fromMap(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) => _guard(() async {
+    // No orderBy: a composite index would be required for
+    // `array-contains` + ordering, and the newest-first order is applied
+    // from the already loaded documents.
+    final snapshot = await _firestore
+        .collection('game_history')
+        .where('participants', arrayContains: userId)
+        .limit(limit)
+        .get();
+    final entries = snapshot.docs
+        .map((doc) => GameHistoryEntry.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+    return entries.toList()..sort((a, b) {
+      final left = a.endedAt;
+      final right = b.endedAt;
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+      return right.compareTo(left);
+    });
+  });
 
   Future<Result<List<PubgetGame>>> _query(Query<Map<String, dynamic>> query) =>
       _guard(() async {

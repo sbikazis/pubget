@@ -75,6 +75,31 @@ void main() {
     expect(provider.state, LoadingState.loaded);
     expect(provider.active, isEmpty);
   });
+
+  test(
+    'history is server supplied and Recent only shows the newest games',
+    () async {
+      final repository = _FakeGameRepository();
+      repository.history = <GameHistoryEntry>[
+        for (var day = 1; day <= 7; day++)
+          GameHistoryEntry(
+            gameId: 'g$day',
+            type: GameType.emojiAnimeGuess.name,
+            endedAt: DateTime.utc(2026, 9, day),
+          ),
+      ];
+      final provider = GameListProvider(repository: repository);
+      addTearDown(provider.dispose);
+      await provider.loadHistory('alice');
+      expect(provider.history, hasLength(7));
+      expect(provider.recent, hasLength(GameListProvider.recentLimit));
+      expect(provider.recent.first.gameId, 'g7');
+      // A failure must not wipe what the server already returned.
+      repository.history = <GameHistoryEntry>[];
+      await provider.loadHistory('alice');
+      expect(provider.history, isEmpty);
+    },
+  );
 }
 
 final class _FakeGameRepository implements GameRepository {
@@ -83,6 +108,7 @@ final class _FakeGameRepository implements GameRepository {
   int actionCalls = 0;
   int joinCalls = 0;
   int createCalls = 0;
+  List<GameHistoryEntry> history = const <GameHistoryEntry>[];
 
   @override
   Future<Result<void>> cancel(String gameId) async => const Success<void>(null);
@@ -113,6 +139,19 @@ final class _FakeGameRepository implements GameRepository {
   }) async => const Success(<PubgetGame>[]);
 
   @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => const Success(<AnimeSearchItem>[]);
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => const Success(<CharacterSearchItem>[]);
+
+  @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>
       const Success(<GameParticipant>[]);
 
@@ -131,13 +170,13 @@ final class _FakeGameRepository implements GameRepository {
   }
 
   @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => Success(history);
+
+  @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> pause(String gameId) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
   Future<Result<void>> start(String gameId) async => const Success<void>(null);

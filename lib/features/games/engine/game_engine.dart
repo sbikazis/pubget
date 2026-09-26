@@ -15,34 +15,29 @@ abstract final class GameEngine {
     return GameStatus.waiting;
   }
 
+  /// The lobby closing and the first turn beginning are one step on the server
+  /// (`WAITING → STARTING → IN_PROGRESS`), so the client walks both.
+  static GameStatus openLobby(GameStatus status) {
+    GameLifecycle.assertTransition(status, GameStatus.starting);
+    return GameStatus.starting;
+  }
+
   static GameStatus start({
     required GameStatus status,
     required int participantsCount,
     required GameConfiguration configuration,
   }) {
-    if (status == GameStatus.active) {
-      return GameStatus.active;
+    if (status == GameStatus.inProgress) {
+      return GameStatus.inProgress;
     }
-    GameLifecycle.assertTransition(status, GameStatus.active);
+    GameLifecycle.assertTransition(status, GameStatus.inProgress);
     if (participantsCount < configuration.minPlayers) {
       throw const GameException(
         GameErrorCode.invalidTransition,
         'Not enough players to start.',
       );
     }
-    return GameStatus.active;
-  }
-
-  static GameStatus pause(GameStatus status) {
-    if (status == GameStatus.paused) return GameStatus.paused;
-    GameLifecycle.assertTransition(status, GameStatus.paused);
-    return GameStatus.paused;
-  }
-
-  static GameStatus resume(GameStatus status) {
-    if (status == GameStatus.active) return GameStatus.active;
-    GameLifecycle.assertTransition(status, GameStatus.active);
-    return GameStatus.active;
+    return GameStatus.inProgress;
   }
 
   static GameStatus end(GameStatus status) {
@@ -122,8 +117,7 @@ final class ParticipantRoster {
   final String gameId;
   final Map<String, GameParticipant> _participants;
 
-  List<GameParticipant> get all =>
-      _participants.values.toList(growable: false);
+  List<GameParticipant> get all => _participants.values.toList(growable: false);
   List<GameParticipant> get active =>
       all.where((item) => item.isActive).toList(growable: false);
   int get activeCount => active.length;
@@ -138,19 +132,13 @@ final class ParticipantRoster {
     DateTime? at,
     int? maxPlayers,
   }) {
-    if (gameStatus == GameStatus.active ||
-        gameStatus == GameStatus.paused ||
-        GameLifecycle.isTerminal(gameStatus)) {
+    // Master Spec 12.2: joining is forbidden for good once the game has
+    // started. There is no paused state to re-open.
+    if (gameStatus != GameStatus.waiting && gameStatus != GameStatus.created) {
       throw GameException(
-        gameStatus == GameStatus.active || gameStatus == GameStatus.paused
+        gameStatus == GameStatus.starting || gameStatus == GameStatus.inProgress
             ? GameErrorCode.alreadyStarted
             : GameErrorCode.notJoinable,
-        GameStrings.notJoinable,
-      );
-    }
-    if (gameStatus != GameStatus.waiting && gameStatus != GameStatus.draft) {
-      throw const GameException(
-        GameErrorCode.notJoinable,
         GameStrings.notJoinable,
       );
     }
@@ -175,10 +163,7 @@ final class ParticipantRoster {
     return joined;
   }
 
-  GameParticipant leave({
-    required String userId,
-    DateTime? at,
-  }) {
+  GameParticipant leave({required String userId, DateTime? at}) {
     final existing = _participants[userId];
     if (existing == null) {
       throw const GameException(
@@ -224,7 +209,7 @@ final class ActionLog {
     required GameStatus gameStatus,
     required ParticipantRoster roster,
   }) {
-    if (gameStatus != GameStatus.active) {
+    if (gameStatus != GameStatus.inProgress) {
       throw GameException(
         GameLifecycle.isTerminal(gameStatus)
             ? GameErrorCode.alreadyCompleted
@@ -251,7 +236,8 @@ final class ActionLog {
 
 final class RoundSequence {
   RoundSequence({List<GameRound>? rounds})
-    : _rounds = [...?rounds]..sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
+    : _rounds = [...?rounds]
+        ..sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
 
   final List<GameRound> _rounds;
 
@@ -333,7 +319,9 @@ final class RoundSequence {
   }
 
   int _indexOf(int roundNumber) {
-    final index = _rounds.indexWhere((round) => round.roundNumber == roundNumber);
+    final index = _rounds.indexWhere(
+      (round) => round.roundNumber == roundNumber,
+    );
     if (index < 0) {
       throw const GameException(GameErrorCode.notFound, 'Round not found.');
     }

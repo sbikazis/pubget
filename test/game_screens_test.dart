@@ -42,7 +42,48 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The Available section always lists the four implemented games, so the
+    // empty copy belongs to the list tabs.
+    expect(find.text('Guess the Character'), findsOneWidget);
+    await _scrollTo(tester, find.text('Mafia'));
+
+    await tester.tap(find.text('Live'));
+    await tester.pumpAndSettle();
     expect(find.text(GameStrings.noGamesTitle), findsWidgets);
+  });
+
+  testWidgets('game center keeps all four games and their rules visible', (
+    tester,
+  ) async {
+    final auth = await _auth();
+    final repository = _FakeGameRepository();
+    final list = GameListProvider(repository: repository);
+    addTearDown(list.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<GameListProvider>.value(value: list),
+          ChangeNotifierProvider<GroupProvider>(
+            create: (_) => GroupProvider(repository: _FakeGroupRepository()),
+          ),
+        ],
+        child: const MaterialApp(home: GameListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final spec in GameTypeRegistry.all) {
+      await _scrollTo(tester, find.text(spec.name));
+    }
+
+    await tester.tap(find.text('Rules'));
+    await tester.pumpAndSettle();
+    for (final spec in GameTypeRegistry.all) {
+      await _scrollTo(tester, find.text('Win condition: ${spec.winCondition}'));
+    }
   });
 
   testWidgets('game details shows a missing-game empty state', (tester) async {
@@ -108,6 +149,25 @@ final class _FakeGameRepository implements GameRepository {
   }) async => const Success(<PubgetGame>[]);
 
   @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => const Success(<AnimeSearchItem>[]);
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => const Success(<CharacterSearchItem>[]);
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
+
+  @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>
       const Success(<GameParticipant>[]);
 
@@ -124,12 +184,6 @@ final class _FakeGameRepository implements GameRepository {
 
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> pause(String gameId) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
   Future<Result<void>> start(String gameId) async => const Success<void>(null);
@@ -194,8 +248,10 @@ final class _FakeGroupRepository implements GroupRepository {
       const Success<void>(null);
 
   @override
-  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
-      const Success<void>(null);
+  Future<Result<void>> requestToJoin({
+    required String groupId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<List<Group>>> searchGroups(String query) async =>
@@ -228,11 +284,23 @@ final class _FakeGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
 
+/// Section lists are lazy, so a row further down has to be scrolled into view.
+Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 8; attempt++) {
+    await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    if (finder.evaluate().isNotEmpty) return;
+    await tester.drag(find.byType(ListView).last, const Offset(0, 300));
+    await tester.pumpAndSettle();
+  }
+  expect(finder, findsWidgets);
+}
