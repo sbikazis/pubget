@@ -1,380 +1,478 @@
 import 'package:flutter/widgets.dart';
 
-import '../../../core/l10n/app_strings.dart';
+import '../../../core/l10n/anime_mapping.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../models/anime_rating_models.dart';
 
-/// Localized Anime Hub chrome and mapped catalog terms.
+/// Feature-scoped view over [AppTranslationMapping].
 ///
-/// Original titles, MAL IDs, and Jikan narrative stay in the source language.
+/// Every Anime Hub string resolves through [AppTranslationMapping]; this class
+/// only adapts feature enums to the mapping's string keys so widgets keep a
+/// typed, readable API. Original titles, MAL ids and Jikan narrative stay in
+/// the source language.
 final class AnimeCopy {
-  const AnimeCopy(this._s);
+  const AnimeCopy(this._t);
 
-  final AppStrings _s;
+  final AppTranslationMapping _t;
 
   static AnimeCopy of(BuildContext context) =>
-      AnimeCopy(AppStrings.of(context));
+      AnimeCopy(AppTranslationMapping.of(context));
 
   static AnimeCopy forLocale(Locale? locale) =>
-      AnimeCopy(AppStrings.forLocale(locale));
+      AnimeCopy(AppTranslationMapping.forLocale(locale));
 
-  String get hubTitle => _ui(AnimeStrings.hubTitle, 'مركز الأنمي');
-  String get seeAll => _ui(AnimeStrings.seeAll, 'عرض الكل');
-  String get searchHint => _ui(AnimeStrings.searchHint, 'ابحث عن أنمي');
-  String get openSearch => _ui(AnimeStrings.openSearch, 'بحث');
-  String get closeSearch => _ui(AnimeStrings.closeSearch, 'إغلاق البحث');
-  String get nothingFound => _ui(AnimeStrings.nothingFound, 'لا يوجد أنمي');
-  String get nothingFoundMessage =>
-      _ui(AnimeStrings.nothingFoundMessage, 'جرّب اسماً آخر أو صفّح الكتالوج.');
-  String get unableToLoad =>
-      _ui(AnimeStrings.unableToLoad, 'تعذّر تحميل الأنمي الآن.');
-  String get checkConnection =>
-      _ui(AnimeStrings.checkConnection, 'تحقق من الاتصال وحاول مرة أخرى.');
-  String get retry => _ui(AnimeStrings.retry, 'إعادة المحاولة');
-  String get cachedBanner =>
-      _ui(AnimeStrings.cachedBanner, 'عرض بيانات محفوظة');
-  String get offlineCached =>
-      _ui(AnimeStrings.offlineCached, 'أنت غير متصل. عرض بيانات محفوظة.');
-  String get genresTitle => _ui(AnimeStrings.genresTitle, 'تصفح حسب التصنيف');
-  String get seasonsTitle => _ui(AnimeStrings.seasonsTitle, 'تصفح حسب الموسم');
-  String get charactersTitle => _ui(AnimeStrings.charactersTitle, 'الشخصيات');
-  String get synopsisTitle => _ui(AnimeStrings.synopsisTitle, 'القصة');
-  String get detailsMissing =>
-      _ui(AnimeStrings.detailsMissing, 'تعذّر العثور على هذا الأنمي.');
-  String get emptyCatalog =>
-      _ui(AnimeStrings.emptyCatalog, 'لا شيء في هذه القائمة بعد.');
-  String get endOfList =>
-      _ui(AnimeStrings.endOfList, 'وصلت إلى نهاية القائمة.');
-  String get favorite => _ui(AnimeStrings.favorite, 'المفضلة');
-  String get favorited => _ui(AnimeStrings.favorited, 'في المفضلة');
-  String get trailer => _ui(AnimeStrings.trailer, 'الإعلان');
-  String get links => _ui(AnimeStrings.links, 'روابط خارجية');
-  String get copied => _ui(AnimeStrings.copied, 'تم نسخ الرابط');
-  String get share => _ui(AnimeStrings.share, 'مشاركة الأنمي');
-  String get favoriteLimit =>
-      _ui(AnimeStrings.favoriteLimit, 'يمكنك حفظ حتى 50 أنمي في المفضلة.');
-  String get libraryTitle => _ui(AnimeStrings.libraryTitle, 'قوائمي');
-  String get libraryEmpty =>
-      _ui(AnimeStrings.libraryEmpty, 'لا عناوين في هذه القائمة بعد');
-  String get libraryEmptyMessage => _ui(
-    AnimeStrings.libraryEmptyMessage,
-    'أضف أنمي من صفحة التفاصيل. تُحفظ القوائم على الخادم.',
-  );
-  String get listStatus => _ui(AnimeStrings.listStatus, 'قائمتك');
-  String get removeFromList =>
-      _ui(AnimeStrings.removeFromList, 'إزالة من القائمة');
-  String get rateAnime => _ui(AnimeStrings.rateAnime, 'قيّم هذا الأنمي');
-  String get editRating => _ui(AnimeStrings.editRating, 'تعديل التقييم');
-  String get communityScore => _ui(AnimeStrings.communityScore, 'تقييم Pubget');
-  String get malScore => _ui(AnimeStrings.malScore, 'MAL');
-  String get ratingsTitle => _ui(AnimeStrings.ratingsTitle, 'التقييمات');
-  String get popularCharactersTitle =>
-      _ui(AnimeStrings.popularCharactersTitle, 'الشخصيات الشائعة');
-  String get myAnimeTitle => _ui(AnimeStrings.myAnimeTitle, 'أنميّاتي');
-  String get theirAnimeTitle => _ui(AnimeStrings.theirAnimeTitle, 'أنمي');
-  String get reviewsTitle => _ui(AnimeStrings.reviewsTitle, 'المراجعات');
-  String get relatedTitle => _ui(AnimeStrings.relatedTitle, 'مرتبط');
-  String get relatedFanWorksTitle =>
-      _ui(AnimeStrings.relatedFanWorksTitle, 'أعمال معجبين مرتبطة');
-  String get relatedGroupsTitle =>
-      _ui(AnimeStrings.relatedGroupsTitle, 'مجموعات مرتبطة');
-  String get writeReview => _ui(AnimeStrings.writeReview, 'اكتب مراجعة');
-  String get reviewHint => _ui(AnimeStrings.reviewHint, 'شارك رأيك (اختياري)');
-  String get submitRating => _ui(AnimeStrings.submitRating, 'حفظ التقييم');
-  String get favoriteCharacter =>
-      _ui(AnimeStrings.favoriteCharacter, 'تفضيل الشخصية');
-  String get filterGenre => _ui(AnimeStrings.filterGenre, 'التصنيف');
-  String get filterStudio => _ui(AnimeStrings.filterStudio, 'الاستوديو');
-  String get filterStatus => _ui(AnimeStrings.filterStatus, 'الحالة');
-  String get filterAgeRating =>
-      _ui(AnimeStrings.filterAgeRating, 'التصنيف العمري');
+  AppTranslationMapping get mapping => _t;
 
-  String statusFilter(AnimeAiringFilter value) => switch (value) {
-    AnimeAiringFilter.airing => _ui(AnimeStrings.statusAiring, 'يُعرض الآن'),
-    AnimeAiringFilter.finished => _ui(AnimeStrings.statusFinished, 'منتهٍ'),
-    AnimeAiringFilter.upcoming => _ui(AnimeStrings.statusUpcoming, 'قادم'),
-  };
+  // ---------------------------------------------------------------------------
+  // Hub chrome
+  // ---------------------------------------------------------------------------
 
+  String get hubTitle => _t.hubTitle;
+  String get latestUpdates => _t.latestUpdates;
+  String get seeAll => _t.seeAll;
+  String get searchHint => _t.searchHint;
+  String get openSearch => _t.openSearch;
+  String get closeSearch => _t.closeSearch;
+  String get nothingFound => _t.nothingFound;
+  String get nothingFoundMessage => _t.nothingFoundMessage;
+  String get unableToLoad => _t.unableToLoad;
+  String get checkConnection => _t.checkConnection;
+  String get retry => _t.retry;
+  String get cachedBanner => _t.cachedBanner;
+  String get offlineCached => _t.offlineCached;
+  String get genresTitle => _t.genresTitle;
+  String get seasonsTitle => _t.seasonsTitle;
+  String get charactersTitle => _t.charactersTitle;
+  String get synopsisTitle => _t.synopsisTitle;
+  String get detailsSection => _t.detailsSection;
+  String get detailsMissing => _t.detailsMissing;
+  String get emptyCatalog => _t.emptyCatalog;
+  String get emptyLibrary => _t.emptyLibrary;
+  String get charactersEmpty => _t.charactersEmpty;
+  String get endOfList => _t.endOfList;
+  String get favorite => _t.favorite;
+  String get favorited => _t.favorited;
+  String get addFavorite => _t.addFavorite;
+  String get removeFavorite => _t.removeFavorite;
+  String get trailer => _t.trailer;
+  String get links => _t.links;
+  String get copied => _t.copied;
+  String get share => _t.share;
+  String get shareAnime => _t.shareAnime;
+  String get favoriteLimit => _t.favoriteLimit;
+  String get sensitiveContent => _t.sensitiveContent;
+  String get sensitiveContentBody => _t.sensitiveContentBody;
+  String get reportLabel => _t.reportLabel;
+  String get reportTitle => _t.reportTitle;
+  String get recommendations => _t.recommendations;
+  String get downloads => _t.downloads;
+  String get showMore => _t.showMore;
+  String get showLess => _t.showLess;
+  String get rankLabel => _t.rankLabel;
+  String get popularityLabel => _t.popularityLabel;
+  String get membersLabel => _t.membersLabel;
+  String get broadcastLabel => _t.broadcastLabel;
+  String get episodesLabel => _t.episodesLabel;
+  String get statusLabel => _t.statusLabel;
+  String get seasonLabel => _t.seasonLabel;
+  String get ageRatingLabel => _t.ageRatingLabel;
+  String get genreLabel => _t.genreLabel;
+  String get sourceLabel => _t.sourceLabel;
+  String get durationLabel => _t.durationLabel;
+  String get airedLabel => _t.airedLabel;
+  String get studiosLabel => _t.studiosLabel;
+  String get producersLabel => _t.producersLabel;
+  String get appliedFilters => _t.applyFilters;
+
+  String get factType => _t.factType;
+  String get factEpisodes => _t.factEpisodes;
+  String get factDuration => _t.factDuration;
+  String get factAired => _t.factAired;
+  String get factStudios => _t.factStudios;
+  String get factSource => _t.factSource;
+  String get factBroadcast => _t.factBroadcast;
+
+  String get englishName => _t.englishName;
+  String get arabicName => _t.arabicName;
+  String get age => _t.age;
+  String get birthday => _t.birthday;
+  String get height => _t.height;
+  String get weight => _t.weight;
+  String get bloodType => _t.bloodType;
+  String get hairColor => _t.hairColor;
+  String get eyeColor => _t.eyeColor;
+  String get gender => _t.gender;
+  String get species => _t.species;
+  String get affiliation => _t.affiliation;
+  String get occupation => _t.occupation;
+
+  // ---------------------------------------------------------------------------
+  // Tabs
+  // ---------------------------------------------------------------------------
+
+  String get tabInfo => _t.tabDetails;
+  String get tabCharactersCast => _t.tabCharactersCast;
+  String get tabStatistics => _t.tabStatistics;
+  String get tabCharacters => _t.tabCharacters;
+  String get tabRelated => _t.tabRelated;
+  String get tabLibrary => _t.tabLibrary;
+  String get tabRatings => _t.tabRatings;
+  String get tabLists => _t.tabLists;
+  String get tabCustomList => _t.tabCustomList;
+  String get customListTab => _t.tabCustomList;
+  String get tabFavorites => _t.tabFavorites;
+  String get tabPopular => _t.tabPopular;
+  String get favoriteCharactersTab => _t.favoriteCharactersTab;
+  String get favoriteAnimeTab => _t.favoriteAnimeTab;
+  String get listsTab => _t.listsTab;
+  String get ratingsTab => _t.ratingsTab;
+  String get reportReview => _t.reportReview;
+
+  // ---------------------------------------------------------------------------
+  // Ratings and statistics
+  // ---------------------------------------------------------------------------
+
+  String get rateAnime => _t.rateAnime;
+  String get editRating => _t.editRating;
+  String get communityScore => _t.communityScore;
+  String get malScore => _t.malScore;
+  String get ratingsTitle => _t.ratingsTitle;
+  String get votesTitle => _t.votesTitle;
+  String get communityStats => _t.communityStats;
+  String get statusDistribution => _t.statusDistribution;
+  String get ratingCountLabel => _t.ratingCountLabel;
+  String get listedCountLabel => _t.listedCountLabel;
+  String get noRatingsYet => _t.noRatingsYet;
+  String get noStatsYet => _t.noStatsYet;
+  String get overallScoreLabel => _t.overallScoreLabel;
+  String get scoreSourceApp => _t.scoreSourceApp;
+  String get scoreSourceMal => _t.scoreSourceMal;
+  String overallScore(String value) => _t.overallScore(value);
+  String criterion(AnimeRatingCriterion value) => _t.criterion(value.id);
+  String get ratingAppBadge => 'A';
+  String get ratingMalBadge => 'M';
+
+  // ---------------------------------------------------------------------------
+  // My list
+  // ---------------------------------------------------------------------------
+
+  String get libraryTitle => _t.libraryTitle;
+  String get libraryEmpty => _t.libraryEmpty;
+  String get libraryEmptyMessage => _t.libraryEmptyMessage;
+  String get listStatus => _t.listStatus;
+  String get removeFromList => _t.removeFromList;
+  String get changeStatus => _t.changeStatus;
+  String get addToList => _t.addToList;
+  String get searchInList => _t.searchInList;
+  String get viewGrid => _t.viewGrid;
+  String get viewNetwork => _t.viewNetwork;
+  String get sortBy => _t.sortBy;
+  String get sortRecentlyUpdated => _t.sortRecentlyUpdated;
+  String get sortTitleAsc => _t.sortTitleAsc;
+  String get sortTitleDesc => _t.sortTitleDesc;
+  String get sortRatingDesc => _t.sortRatingDesc;
+  String get sortRatingAsc => _t.sortRatingAsc;
+  String get sortPopularityDesc => _t.sortPopularityDesc;
+  String get sortYearDesc => _t.sortYearDesc;
+  String get sortYearAsc => _t.sortYearAsc;
+  String get formatFilter => _t.formatFilter;
+  String get formatAll => _t.formatAll;
+  String get signInToSaveList => _t.signInToSaveList;
+  String get statusWantToWatch => _t.statusWantToWatch;
+  String get statusWatching => _t.statusWatching;
+  String get statusCompleted => _t.statusCompleted;
+  String get statusWatchLater => _t.statusWatchLater;
+  String get statusNotInterested => _t.statusNotInterested;
+  String get removedFromList => _t.removedFromList;
+  String get statusUpdated => _t.statusUpdated;
+
+  // ---------------------------------------------------------------------------
+  // Characters
+  // ---------------------------------------------------------------------------
+
+  String get popularCharactersTitle => _t.popularCharactersTitle;
+  String get favoriteCharactersTitle => _t.favoriteCharactersTitle;
+  String get characterAbout => _t.characterAbout;
+  String get characterNicknames => _t.characterNicknames;
+  String get characterAnime => _t.characterAnime;
+  String get characterManga => _t.characterManga;
+  String get characterVoices => _t.characterVoices;
+  String get characterFacts => _t.characterFacts;
+  String get characterMalId => _t.characterMalId;
+  String get characterRole => _t.characterRole;
+  String get characterRank => _t.characterRank;
+  String get characterYourRating => _t.characterYourRating;
+  String get characterReels => _t.characterReels;
+  String get characterDiscussions => _t.characterDiscussions;
+  String get characterDiscussionHint => _t.characterDiscussionHint;
+  String get characterDiscussionEmpty => _t.characterDiscussionEmpty;
+  String get characterNotFound => _t.characterNotFound;
+  String get characterFavorites => _t.characterFavorites;
+  String get characterOptional => _t.characterOptional;
+  String get noFavoriteCharacters => _t.noFavoriteCharacters;
+  String get noFavoriteCharactersMessage => _t.noFavoriteCharactersMessage;
+  String get noCharactersFound => _t.noCharactersFound;
+  String get searchCharacters => _t.searchCharacters;
+  String get viewAllCharacters => _t.viewAllCharacters;
+  String get favoriteCharacter => _t.favoriteCharacter;
+  String get roleplay => _t.roleplay;
+  String get reels => _t.reels;
+  String get post => _t.post;
+  String get delete => _t.delete;
+  String get removedFromFavorites => _t.removedFromFavorites;
+  String get loadingProfile => _t.loadingProfile;
+  String get malFavorites => _t.malFavorites;
+  String get pubgetFavorites => _t.pubgetFavorites;
+
+  // ---------------------------------------------------------------------------
+  // Rankings, sections, search, custom lists
+  // ---------------------------------------------------------------------------
+
+  String get malRankingTitle => _t.malRankingTitle;
+  String get communityRankingTitle => _t.communityRankingTitle;
+  String get myAnimeTitle => _t.myAnimeTitle;
+  String get theirAnimeTitle => _t.theirAnimeTitle;
+  String get reviewsTitle => _t.reviewsTitle;
+  String get relatedTitle => _t.relatedTitle;
+  String get relatedReels => _t.relatedReels;
+  String get relatedEvents => _t.relatedEvents;
+  String get noReelsFound => _t.noReelsFound;
+  String get noEventsFound => _t.noEventsFound;
+  String get relatedFanWorksTitle => _t.relatedFanWorksTitle;
+  String get relatedGroupsTitle => _t.relatedGroupsTitle;
+  String get writeReview => _t.writeReview;
+  String get reviewHint => _t.reviewHint;
+  String get submitRating => _t.submitRating;
+  String get thisSeasonSubtitle => _t.thisSeasonSubtitle;
+  String get popularSubtitle => _t.popularSubtitle;
+  String get mostListed => _t.mostListed;
+  String get seasonalCharacters => _t.seasonalCharacters;
+  String get aggregatedResults => _t.aggregatedResults;
+  String get entityGroup => _t.entityGroup;
+  String get entityPerson => _t.entityPerson;
+  String get entityEvent => _t.entityEvent;
+  String get entityAnime => _t.entityAnime;
+  String get entityFanWork => _t.entityFanWork;
+  String get entityCharacter => _t.entityCharacter;
+  String get entityReel => _t.entityReel;
+
+  String get searchHomeHint => _t.searchHomeHint;
+  String get searchFiltersHint => _t.searchFiltersHint;
+  String get filterGenre => _t.filterGenre;
+  String get filterStudio => _t.filterStudio;
+  String get filterStatus => _t.filterStatus;
+  String get filterAgeRating => _t.filterAgeRating;
+  String get filterType => _t.filterType;
+  String get filterSeason => _t.filterSeason;
+  String get filterSort => _t.filterSort;
+  String get filterAll => _t.filterAll;
+  String get applyFilters => _t.applyFilters;
+  String get resetFilters => _t.resetFilters;
+  String get filters => _t.filters;
+  String get resultsCount => _t.resultsCount;
+  String get sortMembers => _t.sortMembers;
+  String get sortTitle => _t.sortTitle;
+  String get sortNewest => _t.sortNewest;
+  String get sortFavorites => _t.sortFavorites;
+  String get sortHighestRated => _t.sortHighestRated;
+  String get sortLowestRated => _t.sortLowestRated;
+
+  String get myLibrary => _t.myLibrary;
+  String get customLists => _t.customLists;
+  String get customListsTitle => _t.customListsTitle;
+  String get recommendedForYou => _t.recommendedForYou;
+  String get newCustomList => _t.newCustomList;
+  String get customListName => _t.customListName;
+  String get customListDescription => _t.customListDescription;
+  String get privateList => _t.privateList;
+  String get privateListHint => _t.privateListHint;
+  String get customListsEmpty => _t.customListsEmpty;
+  String get customListsEmptyMessage => _t.customListsEmptyMessage;
+  String get createList => _t.createList;
+  String get customList => _t.customList;
+  String get listNameRequired => _t.listNameRequired;
+  String get editList => _t.editList;
+  String get deleteList => _t.deleteList;
+
+  // ---------------------------------------------------------------------------
+  // Catalog lookups
+  // ---------------------------------------------------------------------------
+
+  String genre(String? raw) => _t.genre(raw);
+  String status(String? raw) => _t.status(raw);
+  String get statusAiring => _t.statusAiring;
+  String get statusFinished => _t.statusFinished;
+  String get statusUpcoming => _t.statusUpcoming;
+  String get ageAllAges => _t.ageAllAges;
+  String get ageTeens => _t.ageTeens;
+  String get ageAdult => _t.ageAdult;
+  String source(String? raw) => _t.source(raw);
+  String season(AnimeSeason value) => _t.season(value.label);
+  String seasonTitle(AnimeSeason value, int year) => '${season(value)} $year';
+  String typeLabel(String? raw) => _t.format(raw);
+  String typeFilter(AnimeTypeFilter value) => typeLabel(value.wireValue);
+  String ageRating(String? raw) => _t.ageRating(raw);
   String ageFilter(AnimeAgeFilter value) => switch (value) {
-    AnimeAgeFilter.allAges => _ui(AnimeStrings.ageAllAges, 'جميع الأعمار'),
-    AnimeAgeFilter.teens => _ui(AnimeStrings.ageTeens, 'مراهقون 13+'),
-    AnimeAgeFilter.adult => _ui(AnimeStrings.ageAdult, '17+'),
+    AnimeAgeFilter.allAges => _t.ageAllAges,
+    AnimeAgeFilter.teens => _t.ageTeens,
+    AnimeAgeFilter.adult => _t.ageAdult,
   };
-
-  String get aggregatedResults =>
-      _ui(AnimeStrings.aggregatedResults, 'نتائج إضافية في Pubget');
-
-  String get entityGroup => _ui(AnimeStrings.entityGroup, 'مجموعة');
-  String get entityPerson => _ui(AnimeStrings.entityPerson, 'شخص');
-  String get entityEvent => _ui(AnimeStrings.entityEvent, 'حدث');
-  String get entityAnime => _ui(AnimeStrings.entityAnime, 'أنمي');
-  String get entityFanWork => _ui(AnimeStrings.entityFanWork, 'عمل خاص');
-  String get entityCharacter => _ui(AnimeStrings.entityCharacter, 'شخصية');
-  String get entityReel => _ui(AnimeStrings.entityReel, 'ريل');
-  String get tabInfo => _ui(AnimeStrings.tabInfo, 'معلومات');
-  String get tabCharacters => _ui(AnimeStrings.tabCharacters, 'شخصيات');
-  String get tabRelated => _ui(AnimeStrings.tabRelated, 'مرتبط');
-  String get favoriteCharactersTab =>
-      _ui(AnimeStrings.favoriteCharactersTab, 'شخصيات مفضلة');
-  String get favoriteAnimeTab =>
-      _ui(AnimeStrings.favoriteAnimeTab, 'أنمي مفضل');
-  String get listsTab => _ui(AnimeStrings.listsTab, 'قوائم');
-  String get ratingsTab => _ui(AnimeStrings.ratingsTab, 'تقييمات');
-  String get reportLabel => _ui(AnimeStrings.reportLabel, 'إبلاغ');
-  String get reportReview =>
-      _ui(AnimeStrings.reportReview, 'مراجعة الإبلاغ');
-  String get relatedReels => _ui(AnimeStrings.relatedReels, 'ريلز مرتبط');
-  String get relatedEvents => _ui(AnimeStrings.relatedEvents, 'أحداث مرتبط');
-  String get noReelsFound => _ui(AnimeStrings.noReelsFound, 'لا توجد ريلز');
-  String get noEventsFound => _ui(AnimeStrings.noEventsFound, 'لا توجد أحداث');
-  String get myLibrary => _ui(AnimeStrings.myLibrary, 'مكتبتي');
-  String get customListsTitle => _ui(AnimeStrings.customListsTitle, 'قوائم مخصصة');
-  String get recommendedForYou => _ui(AnimeStrings.recommendedForYou, 'موصى بها لك');
-  String get filterType => _ui(AnimeStrings.filterType, 'النوع');
-  String get filterSeason => _ui(AnimeStrings.filterSeason, 'الموسم');
-  String get filterSort => _ui(AnimeStrings.filterSort, 'الترتيب');
-  String get sortMembers => _ui(AnimeStrings.sortMembers, 'الشعبية');
-  String get sortTitle => _ui(AnimeStrings.sortTitle, 'العنوان');
-  String get sortNewest => _ui(AnimeStrings.sortNewest, 'الأحدث');
-  String get sortFavorites => _ui(AnimeStrings.sortFavorites, 'الأكثر تفضيلاً');
-  String get searchFiltersHint => _ui(
-    AnimeStrings.searchFiltersHint,
-    'ابحث بالاسم أو صفّ حسب الموسم والتصنيف.',
-  );
-  String get noRatingsYet =>
-      _ui(AnimeStrings.noRatingsYet, 'كن أول من يقيّم هذا الأنمي على Pubget.');
-  String get characterAbout => _ui(AnimeStrings.characterAbout, 'نبذة');
-  String get characterNicknames =>
-      _ui(AnimeStrings.characterNicknames, 'ألقاب');
-  String get characterAnime =>
-      _ui(AnimeStrings.characterAnime, 'ظهور في الأنمي');
-  String get characterManga =>
-      _ui(AnimeStrings.characterManga, 'ظهور في المانغا');
-  String get characterVoices => _ui(AnimeStrings.characterVoices, 'أداء صوتي');
-  String get characterFacts =>
-      _ui(AnimeStrings.characterFacts, 'بيانات الشخصية');
-  String get characterMalId => _ui(AnimeStrings.characterMalId, 'معرف MAL');
-  String get characterRole => _ui(AnimeStrings.characterRole, 'الدور');
-  String get loadingProfile =>
-      _ui(AnimeStrings.loadingProfile, 'جاري تحميل الملف الكامل…');
-  String get malFavorites => _ui(AnimeStrings.malFavorites, 'مفضلات MAL');
-  String get pubgetFavorites =>
-      _ui(AnimeStrings.pubgetFavorites, 'مفضلات Pubget');
-  String get characterRank => _ui(AnimeStrings.characterRank, 'الترتيب');
-  String get characterYourRating =>
-      _ui(AnimeStrings.characterYourRating, 'تقييمك');
-  String get characterReels => _ui(AnimeStrings.characterReels, 'ريلز مرتبطة');
-  String get characterDiscussions =>
-      _ui(AnimeStrings.characterDiscussions, 'نقاشات المجتمع');
-  String get characterDiscussionHint =>
-      _ui(AnimeStrings.characterDiscussionHint, 'شارك رأيك في هذه الشخصية');
-  String get characterDiscussionEmpty => _ui(
-    AnimeStrings.characterDiscussionEmpty,
-    'لا يوجد نقاش بعد. ابدأ الحديث.',
-  );
-  String get characterNotFound =>
-      _ui(AnimeStrings.characterNotFound, 'تعذّر العثور على هذه الشخصية.');
-  String get post => _ui(AnimeStrings.post, 'نشر');
-  String get delete => _ui(AnimeStrings.delete, 'حذف');
-  String get thisSeasonSubtitle =>
-      _ui(AnimeStrings.thisSeasonSubtitle, 'أبرز عناوين الموسم الحالي.');
-  String get popularSubtitle =>
-      _ui(AnimeStrings.popularSubtitle, 'الأكثر شعبية الآن.');
-  String get detailsSection => _ui('Details', 'التفاصيل');
-  String get factType => _ui('Type', 'النوع');
-  String get factEpisodes => _ui('Episodes', 'الحلقات');
-  String get factDuration => _ui('Duration', 'المدة');
-  String get factAired => _ui('Aired', 'العرض');
-  String get factStudios => _ui('Studios', 'الاستوديو');
-  String get factSource => _ui('Source', 'المصدر');
-  String get factBroadcast => _ui('Broadcast', 'البث');
-  String get englishName => _ui('English name', 'الاسم الإنجليزي');
-  String get arabicName => _ui('Arabic name', 'الاسم العربي');
-  String get age => _ui('Age', 'العمر');
-  String get birthday => _ui('Birthday', 'تاريخ الميلاد');
-  String get height => _ui('Height', 'الطول');
-  String get weight => _ui('Weight', 'الوزن');
-  String get searchHomeHint => _ui(
-    AnimeStrings.searchHomeHint,
-    'ابحث في المجموعات والأشخاص والفعاليات والأنمي وأعمال المعجبين',
-  );
-  String get customLists => _ui(AnimeStrings.customLists, 'قوائم مخصصة');
-  String get customListTab => _ui(AnimeStrings.customListTab, 'مخصصة');
-  String get newCustomList => _ui(AnimeStrings.newCustomList, 'قائمة جديدة');
-  String get customListName => _ui(AnimeStrings.customListName, 'اسم القائمة');
-  String get customListDescription =>
-      _ui(AnimeStrings.customListDescription, 'وصف (اختياري)');
-  String get privateList => _ui(AnimeStrings.privateList, 'خاصة');
-  String get privateListHint =>
-      _ui(AnimeStrings.privateListHint, 'أنت فقط من يرى هذه القائمة');
-  String get customListsEmpty =>
-      _ui(AnimeStrings.customListsEmpty, 'لا قوائم مخصصة بعد');
-  String get customListsEmptyMessage => _ui(
-    AnimeStrings.customListsEmptyMessage,
-    'أنشئ قوائمك الخاصة لتنظيم الأنمي على طريقتك.',
-  );
-  String get createList => _ui(AnimeStrings.createList, 'إنشاء القائمة');
-  String get customList => _ui(AnimeStrings.customList, 'قائمة مخصصة');
-  String get addToList => _ui(AnimeStrings.addToList, 'أضف إلى القائمة');
-  String get listNameRequired =>
-      _ui(AnimeStrings.listNameRequired, 'اسم القائمة مطلوب.');
-  String get editList => _ui(AnimeStrings.editList, 'تعديل القائمة');
-  String get deleteList => _ui(AnimeStrings.deleteList, 'حذف القائمة');
-
-  String customListItemCount(int count) {
-    final label = count == 1 ? '1 title' : '$count titles';
-    return _s.pick(label, '$count عنواناً');
-  }
-
-  String get communityStats => _ui(AnimeStrings.communityStats, 'إحصاءات المجتمع');
-  String get mostListed =>
-      _ui(AnimeStrings.mostListed, 'الأكثر في قوائم المستخدمين');
-  String get seasonalCharacters =>
-      _ui(AnimeStrings.seasonalCharacters, 'شخصيات هذا الموسم');
-
-  String listedCount(int count) {
-    final label = count == 1 ? '1 listed' : '$count listed';
-    return _s.pick(label, '$count في القوائم');
-  }
-
-  String characterFavoritesCount(int count) {
-    final label = count == 1 ? '1 favorite' : '$count favorites';
-    return _s.pick(label, '$count تفضيل');
-  }
-
-  String ratingsCount(int count) =>
-      _s.pick('$count Pubget ratings', '$count تقييم على Pubget');
-
-  String overallScore(String value) =>
-      _s.pick('Overall $value', 'الإجمالي $value');
-
-  String criterion(AnimeRatingCriterion value) => switch (value) {
-    AnimeRatingCriterion.story => _ui('Story', 'القصة'),
-    AnimeRatingCriterion.art => _ui('Art', 'الرسم'),
-    AnimeRatingCriterion.characters => _ui('Characters', 'الشخصيات'),
-    AnimeRatingCriterion.action => _ui('Action', 'أكشن'),
-    AnimeRatingCriterion.sound => _ui('Sound', 'الصوت'),
-    AnimeRatingCriterion.enjoyment => _ui('Enjoyment', 'المتعة'),
+  String statusFilter(AnimeAiringFilter value) => switch (value) {
+    AnimeAiringFilter.airing => _t.statusAiring,
+    AnimeAiringFilter.finished => _t.statusFinished,
+    AnimeAiringFilter.upcoming => _t.statusUpcoming,
   };
+  String role(String? raw) => _t.role(raw);
+  String relation(String? raw) => _t.relation(raw);
+  String voiceLanguage(String? raw) => _t.voiceLanguage(raw);
+  String characterAttribute(String? raw) => _t.characterAttribute(raw);
+  String factLabel(String raw) => _t.characterAttribute(raw);
 
-  String ui(String english) {
-    return switch (english) {
-      AnimeStrings.hubTitle => hubTitle,
-      AnimeStrings.seeAll => seeAll,
-      AnimeStrings.searchHint => searchHint,
-      AnimeStrings.openSearch => openSearch,
-      AnimeStrings.closeSearch => closeSearch,
-      AnimeStrings.nothingFound => nothingFound,
-      AnimeStrings.nothingFoundMessage => nothingFoundMessage,
-      AnimeStrings.unableToLoad => unableToLoad,
-      AnimeStrings.checkConnection => checkConnection,
-      AnimeStrings.retry => retry,
-      AnimeStrings.cachedBanner => cachedBanner,
-      AnimeStrings.offlineCached => offlineCached,
-      AnimeStrings.genresTitle => genresTitle,
-      AnimeStrings.seasonsTitle => seasonsTitle,
-      AnimeStrings.charactersTitle => charactersTitle,
-      AnimeStrings.synopsisTitle => synopsisTitle,
-      AnimeStrings.detailsMissing => detailsMissing,
-      AnimeStrings.emptyCatalog => emptyCatalog,
-      AnimeStrings.endOfList => endOfList,
-      AnimeStrings.favorite => favorite,
-      AnimeStrings.favorited => favorited,
-      AnimeStrings.trailer => trailer,
-      AnimeStrings.links => links,
-      AnimeStrings.copied => copied,
-      AnimeStrings.share => share,
-      AnimeStrings.favoriteLimit => favoriteLimit,
-      AnimeStrings.libraryTitle => libraryTitle,
-      AnimeStrings.libraryEmpty => libraryEmpty,
-      AnimeStrings.libraryEmptyMessage => libraryEmptyMessage,
-      AnimeStrings.listStatus => listStatus,
-      AnimeStrings.removeFromList => removeFromList,
-      AnimeStrings.rateAnime => rateAnime,
-      AnimeStrings.editRating => editRating,
-      AnimeStrings.communityScore => communityScore,
-      AnimeStrings.malScore => malScore,
-      AnimeStrings.ratingsTitle => ratingsTitle,
-      AnimeStrings.popularCharactersTitle => popularCharactersTitle,
-      AnimeStrings.communityStats => communityStats,
-      AnimeStrings.mostListed => mostListed,
-      AnimeStrings.seasonalCharacters => seasonalCharacters,
-      AnimeStrings.myAnimeTitle => myAnimeTitle,
-      AnimeStrings.theirAnimeTitle => theirAnimeTitle,
-      AnimeStrings.reviewsTitle => reviewsTitle,
-      AnimeStrings.relatedTitle => relatedTitle,
-      AnimeStrings.relatedFanWorksTitle => relatedFanWorksTitle,
-      AnimeStrings.relatedGroupsTitle => relatedGroupsTitle,
-      AnimeStrings.writeReview => writeReview,
-      AnimeStrings.reviewHint => reviewHint,
-      AnimeStrings.submitRating => submitRating,
-      AnimeStrings.favoriteCharacter => favoriteCharacter,
-      AnimeStrings.filterGenre => filterGenre,
-      AnimeStrings.filterStudio => filterStudio,
-      AnimeStrings.filterStatus => filterStatus,
-      AnimeStrings.filterAgeRating => filterAgeRating,
-      AnimeStrings.aggregatedResults => aggregatedResults,
-      AnimeStrings.entityGroup => entityGroup,
-      AnimeStrings.filterType => filterType,
-      AnimeStrings.filterSeason => filterSeason,
-      AnimeStrings.filterSort => filterSort,
-      AnimeStrings.sortMembers => sortMembers,
-      AnimeStrings.sortTitle => sortTitle,
-      AnimeStrings.sortNewest => sortNewest,
-      AnimeStrings.sortFavorites => sortFavorites,
-      AnimeStrings.searchFiltersHint => searchFiltersHint,
-      AnimeStrings.noRatingsYet => noRatingsYet,
-      AnimeStrings.characterAbout => characterAbout,
-      AnimeStrings.characterNicknames => characterNicknames,
-      AnimeStrings.characterAnime => characterAnime,
-      AnimeStrings.characterManga => characterManga,
-      AnimeStrings.characterVoices => characterVoices,
-      AnimeStrings.characterFacts => characterFacts,
-      AnimeStrings.characterMalId => characterMalId,
-      AnimeStrings.characterRole => characterRole,
-      AnimeStrings.loadingProfile => loadingProfile,
-      AnimeStrings.malFavorites => malFavorites,
-      AnimeStrings.pubgetFavorites => pubgetFavorites,
-      AnimeStrings.characterRank => characterRank,
-      AnimeStrings.characterYourRating => characterYourRating,
-      AnimeStrings.characterReels => characterReels,
-      AnimeStrings.characterDiscussions => characterDiscussions,
-      AnimeStrings.characterDiscussionHint => characterDiscussionHint,
-      AnimeStrings.characterDiscussionEmpty => characterDiscussionEmpty,
-      AnimeStrings.characterNotFound => characterNotFound,
-      AnimeStrings.post => post,
-      AnimeStrings.delete => delete,
-      AnimeStrings.thisSeasonSubtitle => thisSeasonSubtitle,
-      AnimeStrings.popularSubtitle => popularSubtitle,
-      AnimeStrings.searchHomeHint => searchHomeHint,
-      AnimeStrings.customLists => customLists,
-      AnimeStrings.customListTab => customListTab,
-      AnimeStrings.newCustomList => newCustomList,
-      AnimeStrings.customListName => customListName,
-      AnimeStrings.customListDescription => customListDescription,
-      AnimeStrings.privateList => privateList,
-      AnimeStrings.privateListHint => privateListHint,
-      AnimeStrings.customListsEmpty => customListsEmpty,
-      AnimeStrings.customListsEmptyMessage => customListsEmptyMessage,
-      AnimeStrings.createList => createList,
-      AnimeStrings.customList => customList,
-      AnimeStrings.addToList => addToList,
-      AnimeStrings.listNameRequired => listNameRequired,
-      AnimeStrings.editList => editList,
-      AnimeStrings.deleteList => deleteList,
-      'Details' => detailsSection,
-      _ => catalogPhrase(english),
-    };
-  }
+  String listStatusLabel(AnimeListStatus status) =>
+      _t.personalState(status.wireValue);
 
   String catalog(AnimeCatalogKind kind) => switch (kind) {
-    AnimeCatalogKind.trending => _ui('Trending', 'الرائج'),
-    AnimeCatalogKind.popular => _ui('Most popular', 'الأكثر شعبية'),
-    AnimeCatalogKind.top => _ui('Top rated', 'الأعلى تقييماً'),
-    AnimeCatalogKind.airing => _ui('Currently airing', 'يعرض الآن'),
-    AnimeCatalogKind.thisSeason => _ui('This season', 'هذا الموسم'),
-    AnimeCatalogKind.upcoming => _ui('Upcoming', 'قادم'),
+    AnimeCatalogKind.trending => _t.pick('Trending', 'الرائج'),
+    AnimeCatalogKind.popular => _t.pick('Most popular', 'الأكثر شعبية'),
+    AnimeCatalogKind.top => _t.pick('Top rated', 'الأعلى تقييماً'),
+    AnimeCatalogKind.airing => _t.statusAiring,
+    AnimeCatalogKind.thisSeason => _t.pick('This season', 'هذا الموسم'),
+    AnimeCatalogKind.upcoming => _t.statusUpcoming,
+  };
+
+  String customListItemCount(int count) => _t.customListItemCount(count);
+  String listedCount(int count) => _t.listedCount(count);
+  String characterFavoritesCount(int count) =>
+      _t.characterFavoritesCount(count);
+  String ratingsCount(int count) => _t.ratingsCount(count);
+  String votesCount(int count) => _t.votesCount(count);
+  String episodeCount(int count) => _t.episodeCount(count);
+
+  /// Bridges the legacy English literals kept in `AnimeStrings` so older
+  /// call-sites keep resolving to the same localized copy.
+  String ui(String english) => switch (english) {
+    AnimeStrings.hubTitle => hubTitle,
+    AnimeStrings.seeAll => seeAll,
+    AnimeStrings.searchHint => searchHint,
+    AnimeStrings.openSearch => openSearch,
+    AnimeStrings.closeSearch => closeSearch,
+    AnimeStrings.nothingFound => nothingFound,
+    AnimeStrings.nothingFoundMessage => nothingFoundMessage,
+    AnimeStrings.unableToLoad => unableToLoad,
+    AnimeStrings.checkConnection => checkConnection,
+    AnimeStrings.retry => retry,
+    AnimeStrings.cachedBanner => cachedBanner,
+    AnimeStrings.offlineCached => offlineCached,
+    AnimeStrings.genresTitle => genresTitle,
+    AnimeStrings.seasonsTitle => seasonsTitle,
+    AnimeStrings.charactersTitle => charactersTitle,
+    AnimeStrings.synopsisTitle => synopsisTitle,
+    AnimeStrings.detailsMissing => detailsMissing,
+    AnimeStrings.emptyCatalog => emptyCatalog,
+    AnimeStrings.endOfList => endOfList,
+    AnimeStrings.favorite => favorite,
+    AnimeStrings.favorited => favorited,
+    AnimeStrings.trailer => trailer,
+    AnimeStrings.links => links,
+    AnimeStrings.copied => copied,
+    AnimeStrings.share => share,
+    AnimeStrings.favoriteLimit => favoriteLimit,
+    AnimeStrings.libraryTitle => libraryTitle,
+    AnimeStrings.libraryEmpty => libraryEmpty,
+    AnimeStrings.libraryEmptyMessage => libraryEmptyMessage,
+    AnimeStrings.listStatus => listStatus,
+    AnimeStrings.removeFromList => removeFromList,
+    AnimeStrings.rateAnime => rateAnime,
+    AnimeStrings.editRating => editRating,
+    AnimeStrings.communityScore => communityScore,
+    AnimeStrings.malScore => malScore,
+    AnimeStrings.ratingsTitle => ratingsTitle,
+    AnimeStrings.popularCharactersTitle => popularCharactersTitle,
+    AnimeStrings.communityStats => communityStats,
+    AnimeStrings.mostListed => mostListed,
+    AnimeStrings.seasonalCharacters => seasonalCharacters,
+    AnimeStrings.myAnimeTitle => myAnimeTitle,
+    AnimeStrings.theirAnimeTitle => theirAnimeTitle,
+    AnimeStrings.reviewsTitle => reviewsTitle,
+    AnimeStrings.relatedTitle => relatedTitle,
+    AnimeStrings.relatedFanWorksTitle => relatedFanWorksTitle,
+    AnimeStrings.relatedGroupsTitle => relatedGroupsTitle,
+    AnimeStrings.writeReview => writeReview,
+    AnimeStrings.reviewHint => reviewHint,
+    AnimeStrings.submitRating => submitRating,
+    AnimeStrings.favoriteCharacter => favoriteCharacter,
+    AnimeStrings.filterGenre => filterGenre,
+    AnimeStrings.filterStudio => filterStudio,
+    AnimeStrings.filterStatus => filterStatus,
+    AnimeStrings.filterAgeRating => filterAgeRating,
+    AnimeStrings.aggregatedResults => aggregatedResults,
+    AnimeStrings.entityGroup => entityGroup,
+    AnimeStrings.filterType => filterType,
+    AnimeStrings.filterSeason => filterSeason,
+    AnimeStrings.filterSort => filterSort,
+    AnimeStrings.sortMembers => sortMembers,
+    AnimeStrings.sortTitle => sortTitle,
+    AnimeStrings.sortNewest => sortNewest,
+    AnimeStrings.sortFavorites => sortFavorites,
+    AnimeStrings.searchFiltersHint => searchFiltersHint,
+    AnimeStrings.noRatingsYet => noRatingsYet,
+    AnimeStrings.characterAbout => characterAbout,
+    AnimeStrings.characterNicknames => characterNicknames,
+    AnimeStrings.characterAnime => characterAnime,
+    AnimeStrings.characterManga => characterManga,
+    AnimeStrings.characterVoices => characterVoices,
+    AnimeStrings.characterFacts => characterFacts,
+    AnimeStrings.characterMalId => characterMalId,
+    AnimeStrings.characterRole => characterRole,
+    AnimeStrings.loadingProfile => loadingProfile,
+    AnimeStrings.malFavorites => malFavorites,
+    AnimeStrings.pubgetFavorites => pubgetFavorites,
+    AnimeStrings.characterRank => characterRank,
+    AnimeStrings.characterYourRating => characterYourRating,
+    AnimeStrings.characterReels => characterReels,
+    AnimeStrings.characterDiscussions => characterDiscussions,
+    AnimeStrings.characterDiscussionHint => characterDiscussionHint,
+    AnimeStrings.characterDiscussionEmpty => characterDiscussionEmpty,
+    AnimeStrings.characterNotFound => characterNotFound,
+    AnimeStrings.post => post,
+    AnimeStrings.delete => delete,
+    AnimeStrings.thisSeasonSubtitle => thisSeasonSubtitle,
+    AnimeStrings.popularSubtitle => popularSubtitle,
+    AnimeStrings.searchHomeHint => searchHomeHint,
+    AnimeStrings.customLists => customLists,
+    AnimeStrings.customListTab => tabCustomList,
+    AnimeStrings.newCustomList => newCustomList,
+    AnimeStrings.customListName => customListName,
+    AnimeStrings.customListDescription => customListDescription,
+    AnimeStrings.privateList => privateList,
+    AnimeStrings.privateListHint => privateListHint,
+    AnimeStrings.customListsEmpty => customListsEmpty,
+    AnimeStrings.customListsEmptyMessage => customListsEmptyMessage,
+    AnimeStrings.createList => createList,
+    AnimeStrings.customList => customList,
+    AnimeStrings.addToList => addToList,
+    AnimeStrings.listNameRequired => listNameRequired,
+    AnimeStrings.editList => editList,
+    AnimeStrings.deleteList => deleteList,
+    AnimeStrings.statusAiring => statusAiring,
+    AnimeStrings.statusFinished => statusFinished,
+    AnimeStrings.statusUpcoming => statusUpcoming,
+    AnimeStrings.ageAllAges => ageAllAges,
+    AnimeStrings.ageTeens => ageTeens,
+    AnimeStrings.ageAdult => ageAdult,
+    'Details' => detailsSection,
+    _ => catalogPhrase(english),
+  };
+
+  String catalogPhrase(String english) => switch (english) {
+    'Trending' => catalog(AnimeCatalogKind.trending),
+    'Most popular' => catalog(AnimeCatalogKind.popular),
+    'Top rated' => catalog(AnimeCatalogKind.top),
+    'Currently airing' => catalog(AnimeCatalogKind.airing),
+    'This season' => catalog(AnimeCatalogKind.thisSeason),
+    'Upcoming' => catalog(AnimeCatalogKind.upcoming),
+    _ => typeStatusOrSelf(english),
   };
 
   String pageTitle(String english) {
@@ -390,261 +488,15 @@ final class AnimeCopy {
     return ui(english);
   }
 
-  String catalogPhrase(String english) => switch (english) {
-    'Trending' => catalog(AnimeCatalogKind.trending),
-    'Most popular' => catalog(AnimeCatalogKind.popular),
-    'Top rated' => catalog(AnimeCatalogKind.top),
-    'Currently airing' => catalog(AnimeCatalogKind.airing),
-    'This season' => catalog(AnimeCatalogKind.thisSeason),
-    'Upcoming' => catalog(AnimeCatalogKind.upcoming),
-    _ => typeStatusOrSelf(english),
-  };
-
-  String season(AnimeSeason season) => switch (season) {
-    AnimeSeason.winter => _ui('Winter', 'شتاء'),
-    AnimeSeason.spring => _ui('Spring', 'ربيع'),
-    AnimeSeason.summer => _ui('Summer', 'صيف'),
-    AnimeSeason.fall => _ui('Fall', 'خريف'),
-  };
-
-  String seasonTitle(AnimeSeason season, int year) =>
-      '${this.season(season)} $year';
-
-  String listStatusLabel(AnimeListStatus status) => switch (status) {
-    AnimeListStatus.watching => _ui('Watching', 'أشاهد'),
-    AnimeListStatus.completed => _ui('Completed', 'مكتمل'),
-    AnimeListStatus.planToWatch => _ui('Plan to watch', 'أخطط للمشاهدة'),
-    AnimeListStatus.dropped => _ui('Dropped', 'متروك'),
-    AnimeListStatus.onHold => _ui('On hold', 'معلّق'),
-    AnimeListStatus.favorites => _ui('Favorites', 'المفضلة'),
-  };
-
-  String typeFilter(AnimeTypeFilter type) => switch (type) {
-    AnimeTypeFilter.tv => typeLabel('TV'),
-    AnimeTypeFilter.movie => typeLabel('Movie'),
-    AnimeTypeFilter.ova => typeLabel('OVA'),
-    AnimeTypeFilter.special => typeLabel('Special'),
-    AnimeTypeFilter.ona => typeLabel('ONA'),
-  };
-
-  String typeLabel(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'tv' => _ui('TV', 'تلفزيون'),
-      'movie' => _ui('Movie', 'فيلم'),
-      'ova' => _ui('OVA', 'أوفا'),
-      'ona' => _ui('ONA', 'أونا'),
-      'special' => _ui('Special', 'خاص'),
-      'music' => _ui('Music', 'موسيقى'),
-      'pv' => _ui('PV', 'إعلان'),
-      _ => raw ?? '',
-    };
-  }
-
-  String status(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'finished airing' || 'finished' => _ui('Finished Airing', 'مكتمل'),
-      'currently airing' || 'airing' => _ui('Currently Airing', 'يعرض الآن'),
-      'not yet aired' || 'upcoming' => _ui('Not yet aired', 'لم يُعرض بعد'),
-      _ => raw ?? '',
-    };
-  }
-
-  String genre(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'action' => _ui('Action', 'أكشن'),
-      'adventure' => _ui('Adventure', 'مغامرة'),
-      'comedy' => _ui('Comedy', 'كوميديا'),
-      'drama' => _ui('Drama', 'دراما'),
-      'fantasy' => _ui('Fantasy', 'فانتازيا'),
-      'horror' => _ui('Horror', 'رعب'),
-      'mystery' => _ui('Mystery', 'غموض'),
-      'romance' => _ui('Romance', 'رومانسية'),
-      'sci-fi' || 'sci fi' || 'science fiction' => _ui('Sci-Fi', 'خيال علمي'),
-      'slice of life' => _ui('Slice of Life', 'شريحة من الحياة'),
-      'sports' => _ui('Sports', 'رياضة'),
-      'supernatural' => _ui('Supernatural', 'خارق'),
-      'suspense' || 'thriller' => _ui('Suspense', 'إثارة'),
-      'avant garde' => _ui('Avant Garde', 'طليعي'),
-      'gourmet' => _ui('Gourmet', 'طعام'),
-      'boys love' => _ui('Boys Love', 'حب فتيان'),
-      'girls love' => _ui('Girls Love', 'حب فتيات'),
-      'ecchi' => _ui('Ecchi', 'إيتشي'),
-      'erotica' => _ui('Erotica', 'إروتيكا'),
-      'hentai' => _ui('Hentai', 'هنتاي'),
-      'award winning' => _ui('Award Winning', 'حائز على جوائز'),
-      'adult cast' => _ui('Adult Cast', 'طاقم بالغ'),
-      'anthropomorphic' => _ui('Anthropomorphic', 'مجسّم'),
-      'cgdct' => _ui('CGDCT', 'فتيات لطيفات'),
-      'childcare' => _ui('Childcare', 'رعاية أطفال'),
-      'combat sports' => _ui('Combat Sports', 'رياضات قتالية'),
-      'delinquents' => _ui('Delinquents', 'منحرفون'),
-      'detective' => _ui('Detective', 'تحقيق'),
-      'educational' => _ui('Educational', 'تعليمي'),
-      'gag humor' => _ui('Gag Humor', 'كوميديا سريعة'),
-      'gore' => _ui('Gore', 'دموي'),
-      'harem' => _ui('Harem', 'حريم'),
-      'high stakes game' => _ui('High Stakes Game', 'لعبة عالية المخاطر'),
-      'historical' => _ui('Historical', 'تاريخي'),
-      'idols (female)' => _ui('Idols (Female)', 'آيدول (إناث)'),
-      'idols (male)' => _ui('Idols (Male)', 'آيدول (ذكور)'),
-      'isekai' => _ui('Isekai', 'إيسكاي'),
-      'iyashikei' => _ui('Iyashikei', 'إياشيكي'),
-      'love polygon' => _ui('Love Polygon', 'مثلث حب'),
-      'magical sex shift' => _ui('Magical Sex Shift', 'تحول سحري'),
-      'mahou shoujo' => _ui('Mahou Shoujo', 'فتاة سحرية'),
-      'martial arts' => _ui('Martial Arts', 'فنون قتالية'),
-      'mecha' => _ui('Mecha', 'ميكا'),
-      'medical' => _ui('Medical', 'طبي'),
-      'military' => _ui('Military', 'عسكري'),
-      'music' => _ui('Music', 'موسيقى'),
-      'mythology' => _ui('Mythology', 'أساطير'),
-      'organized crime' => _ui('Organized Crime', 'جريمة منظمة'),
-      'otaku culture' => _ui('Otaku Culture', 'ثقافة الأوتاكو'),
-      'parody' => _ui('Parody', 'محاكاة ساخرة'),
-      'performing arts' => _ui('Performing Arts', 'فنون أدائية'),
-      'pets' => _ui('Pets', 'حيوانات أليفة'),
-      'psychological' => _ui('Psychological', 'نفسي'),
-      'racing' => _ui('Racing', 'سباق'),
-      'reincarnation' => _ui('Reincarnation', 'تناسخ'),
-      'reverse harem' => _ui('Reverse Harem', 'حريم عكسي'),
-      'romantic subtext' => _ui('Romantic Subtext', 'إيحاء رومانسي'),
-      'samurai' => _ui('Samurai', 'ساموراي'),
-      'school' => _ui('School', 'مدرسي'),
-      'showbiz' => _ui('Showbiz', 'عرض فني'),
-      'space' => _ui('Space', 'فضاء'),
-      'strategy game' => _ui('Strategy Game', 'لعبة استراتيجية'),
-      'super power' => _ui('Super Power', 'قوى خارقة'),
-      'survival' => _ui('Survival', 'بقاء'),
-      'team sports' => _ui('Team Sports', 'رياضات جماعية'),
-      'time travel' => _ui('Time Travel', 'سفر عبر الزمن'),
-      'urban fantasy' => _ui('Urban Fantasy', 'فانتازيا حضرية'),
-      'vampire' => _ui('Vampire', 'مصاص دماء'),
-      'video game' => _ui('Video Game', 'لعبة فيديو'),
-      'villainess' => _ui('Villainess', 'شريرة'),
-      'visual arts' => _ui('Visual Arts', 'فنون بصرية'),
-      'workplace' => _ui('Workplace', 'مكان عمل'),
-      'josei' => _ui('Josei', 'جوسي'),
-      'kids' => _ui('Kids', 'أطفال'),
-      'seinen' => _ui('Seinen', 'سينين'),
-      'shoujo' => _ui('Shoujo', 'شوجو'),
-      'shounen' => _ui('Shounen', 'شونين'),
-      _ => raw ?? '',
-    };
-  }
-
-  String source(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'manga' => _ui('Manga', 'مانغا'),
-      'light novel' => _ui('Light novel', 'رواية خفيفة'),
-      'novel' => _ui('Novel', 'رواية'),
-      'original' => _ui('Original', 'أصلي'),
-      'visual novel' => _ui('Visual novel', 'رواية بصرية'),
-      'web manga' => _ui('Web manga', 'مانغا ويب'),
-      'web novel' => _ui('Web novel', 'رواية ويب'),
-      'game' => _ui('Game', 'لعبة'),
-      'card game' => _ui('Card game', 'لعبة بطاقات'),
-      'book' => _ui('Book', 'كتاب'),
-      'picture book' => _ui('Picture book', 'كتاب مصور'),
-      'music' => _ui('Music', 'موسيقى'),
-      'radio' => _ui('Radio', 'راديو'),
-      'other' => _ui('Other', 'أخرى'),
-      _ => raw ?? '',
-    };
-  }
-
-  String role(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'main' => _ui('Main', 'رئيسية'),
-      'supporting' => _ui('Supporting', 'مساعدة'),
-      'background' => _ui('Background', 'خلفية'),
-      _ => raw ?? '',
-    };
-  }
-
-  String relation(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    return switch (key) {
-      'sequel' => _ui('Sequel', 'تكملة'),
-      'prequel' => _ui('Prequel', 'مقدمة'),
-      'parent story' => _ui('Parent story', 'القصة الأم'),
-      'side story' => _ui('Side story', 'قصة جانبية'),
-      'spin-off' => _ui('Spin-off', 'عمل متفرّع'),
-      'alternative setting' => _ui('Alternative setting', 'إعداد بديل'),
-      'alternative version' => _ui('Alternative version', 'نسخة بديلة'),
-      'full story' => _ui('Full story', 'القصة الكاملة'),
-      'summary' => _ui('Summary', 'ملخّص'),
-      'adaptation' => _ui('Adaptation', 'اقتباس'),
-      'character' => _ui('Character', 'شخصية'),
-      'other' => _ui('Other', 'أخرى'),
-      _ => raw ?? '',
-    };
-  }
-
-  String factLabel(String raw) {
-    final key = raw.trim().toLowerCase();
-    return switch (key) {
-      'age' => age,
-      'birthday' || 'birth date' || 'birthdate' => birthday,
-      'height' => height,
-      'weight' => weight,
-      'arabic' || 'arabic name' || 'الاسم' || 'الاسم العربي' => arabicName,
-      'english' || 'english name' => englishName,
-      'blood type' => _ui('Blood type', 'فصيلة الدم'),
-      'hair color' => _ui('Hair color', 'لون الشعر'),
-      'eye color' => _ui('Eye color', 'لون العين'),
-      'gender' => _ui('Gender', 'الجنس'),
-      'species' => _ui('Species', 'النوع'),
-      'affiliation' => _ui('Affiliation', 'الانتماء'),
-      'occupation' => _ui('Occupation', 'المهنة'),
-      _ => raw,
-    };
-  }
-
-  String voiceLanguage(String? raw) {
-    final key = raw?.trim().toLowerCase() ?? '';
-    final localized = switch (key) {
-      'japanese' => _ui('Japanese', 'اليابانية'),
-      'english' => _ui('English', 'الإنجليزية'),
-      'korean' => _ui('Korean', 'الكورية'),
-      'chinese' || 'mandarin' => _ui('Chinese', 'الصينية'),
-      'spanish' => _ui('Spanish', 'الإسبانية'),
-      'french' => _ui('French', 'الفرنسية'),
-      'german' => _ui('German', 'الألمانية'),
-      'italian' => _ui('Italian', 'الإيطالية'),
-      'portuguese' ||
-      'brazilian' ||
-      'portuguese (br)' => _ui('Portuguese', 'البرتغالية'),
-      'arabic' => _ui('Arabic', 'العربية'),
-      'hungarian' => _ui('Hungarian', 'المجرية'),
-      'hebrew' => _ui('Hebrew', 'العبرية'),
-      'filipino' || 'tagalog' => _ui('Filipino', 'الفلبينية'),
-      _ => raw ?? '',
-    };
-    if (_s.isArabic && raw != null && raw.trim().isNotEmpty) {
-      final original = raw.trim();
-      if (localized != original) return '$localized / $original';
-    }
-    return localized;
-  }
-
+  /// Tries format, airing status, season, then genre before giving up and
+  /// echoing the original API term back.
   String typeStatusOrSelf(String english) {
     final typed = typeLabel(english);
     if (typed != english && typed.isNotEmpty) return typed;
     final stated = status(english);
     if (stated != english && stated.isNotEmpty) return stated;
-    final seasonal = switch (english.toLowerCase()) {
-      'winter' => season(AnimeSeason.winter),
-      'spring' => season(AnimeSeason.spring),
-      'summer' => season(AnimeSeason.summer),
-      'fall' || 'autumn' => season(AnimeSeason.fall),
-      _ => english,
-    };
-    if (seasonal != english) return seasonal;
+    final seasonal = _t.season(english);
+    if (seasonal != english && seasonal.isNotEmpty) return seasonal;
     final genred = genre(english);
     if (genred != english && genred.isNotEmpty) return genred;
     return english;
@@ -669,6 +521,4 @@ final class AnimeCopy {
     ];
     return parts.join(' · ');
   }
-
-  String _ui(String en, String ar) => _s.pick(en, ar);
 }

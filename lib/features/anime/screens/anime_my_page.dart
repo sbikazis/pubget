@@ -188,9 +188,7 @@ class _ListsTab extends StatelessWidget {
     final social = maybeAnimeHubSocial(context);
     final library = maybeAnimeLibrary(context);
     final copy = AnimeCopy.of(context);
-    final statuses = AnimeListStatus.values
-        .where((status) => status != AnimeListStatus.favorites)
-        .toList(growable: false);
+    const statuses = AnimeListStatus.tabs;
     final customLists = own
         ? library?.customLists ?? const <AnimeCustomList>[]
         : social?.userCustomLists ?? const <AnimeCustomList>[];

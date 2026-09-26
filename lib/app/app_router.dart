@@ -395,10 +395,27 @@ AppRoute _routeFromUri(Uri uri) {
             )
           : const ParameterizedRoute(path: '/unknown');
     }
+    if (second == 'ratings' &&
+        segments.length >= 3 &&
+        segments[2] == 'pubget') {
+      return ParameterizedRoute(
+        path: '/anime/ratings/pubget',
+        parameters: query,
+      );
+    }
+    if (second == 'characters' &&
+        segments.length >= 3 &&
+        segments[2] == 'favorites') {
+      return ParameterizedRoute(
+        path: '/anime/characters/favorites',
+        parameters: query,
+      );
+    }
     if (second == 'browse' ||
         second == 'genre' ||
         second == 'studio' ||
         second == 'season' ||
+        second == 'updated' ||
         second == 'library' ||
         second == 'ratings' ||
         second == 'characters' ||

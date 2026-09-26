@@ -27,6 +27,14 @@ abstract interface class AnimeRepository {
 
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId);
 
+  /// Lightweight catalog metadata for a set of ids, used to decorate the
+  /// member's own list without a request per title. Ids that cannot be
+  /// resolved are simply absent from the result.
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  });
+
   Future<Result<List<AnimeGenre>>> getGenres();
 
   Future<Result<AnimePage>> getByGenre(
@@ -57,6 +65,7 @@ abstract final class AnimeCacheTtl {
   static const details = Duration(hours: 12);
   static const characters = Duration(hours: 12);
   static const characterDetails = Duration(hours: 12);
+  static const summaries = Duration(hours: 24);
   static const genres = Duration(hours: 24);
   static const seasonsIndex = Duration(hours: 24);
   static const seasonList = Duration(hours: 6);

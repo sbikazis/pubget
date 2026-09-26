@@ -34,22 +34,29 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('setAnimeListEntry').call(
-      <String, dynamic>{
-        'animeId': animeId,
-        'status': status.wireValue,
-        'title': title,
-        'rating': ?rating,
-      },
-    );
+    final result = await _functions
+        .httpsCallable('setAnimeListEntry')
+        .call(<String, dynamic>{
+          'animeId': animeId,
+          'status': status.wireValue,
+          'title': title,
+          'rating': ?rating,
+          'favorite': ?favorite,
+        });
     final data = Map<String, dynamic>.from(result.data as Map);
     return AnimeListEntry(
       animeId: data['animeId'] as String? ?? animeId,
       status:
           AnimeListStatusCodec.tryParse(data['status'] as String?) ?? status,
-      title: title,
+      title: data['title'] as String? ?? title,
       rating: (data['rating'] as num?)?.toInt() ?? rating,
+      favorite: data['favorite'] == true || favorite == true,
+      // The callable writes a server timestamp it does not echo back, so the
+      // local clock stands in until the next read confirms it.
+      updatedAt:
+          readAnimeTimestamp(data['updatedAt']) ?? DateTime.now().toUtc(),
     );
   });
 
@@ -106,14 +113,17 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
   @override
   Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) =>
       _guard(() async {
-        final result = await _functions.httpsCallable('getCustomAnimeLists').call(
-          <String, dynamic>{'userId': ?userId},
-        );
+        final result = await _functions
+            .httpsCallable('getCustomAnimeLists')
+            .call(<String, dynamic>{'userId': ?userId});
         final data = Map<String, dynamic>.from(result.data as Map);
         final raw = data['items'] as List<Object?>? ?? const <Object?>[];
         return raw
             .whereType<Map>()
-            .map((item) => AnimeCustomList.fromMap(Map<String, dynamic>.from(item)))
+            .map(
+              (item) =>
+                  AnimeCustomList.fromMap(Map<String, dynamic>.from(item)),
+            )
             .toList(growable: false);
       });
 

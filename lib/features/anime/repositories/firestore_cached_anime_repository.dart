@@ -118,6 +118,26 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) => _durable(
+    'summaries:${_summaryKey(ids)}',
+    AnimeCacheTtl.summaries,
+    () => _inner.getAnimeSummaries(ids, chunkSize: chunkSize),
+    encode: AnimeCacheCodec.summariesToMap,
+    decode: AnimeCacheCodec.summariesFromMap,
+  );
+
+  String _summaryKey(List<String> ids) {
+    final sorted = <String>[
+      for (final id in ids)
+        if (id.trim().isNotEmpty) id.trim(),
+    ]..sort();
+    return sorted.join('_');
+  }
+
+  @override
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId) =>
       _durable(
         'characters:${animeId.trim()}',

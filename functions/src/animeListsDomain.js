@@ -1,13 +1,29 @@
 "use strict";
 
+// The five personal states a member can give a title. Favouriting is a
+// separate boolean flag on the entry, not a status, so a title can be a
+// favourite while it is still being watched.
 const STATUSES = Object.freeze([
+  "want_to_watch",
   "watching",
   "completed",
-  "plan_to_watch",
-  "dropped",
-  "on_hold",
-  "favorites",
+  "watch_later",
+  "not_interested",
 ]);
+
+// Documents written before the five-state model are still readable.
+const LEGACY_STATUS_ALIASES = Object.freeze({
+  plan_to_watch: "want_to_watch",
+  on_hold: "watch_later",
+  dropped: "not_interested",
+  favorites: "want_to_watch",
+});
+
+function normalizeStatus(status) {
+  if (typeof status !== "string") return null;
+  if (STATUSES.includes(status)) return status;
+  return LEGACY_STATUS_ALIASES[status] || null;
+}
 
 const MAX_CUSTOM_LISTS = 30;
 const MAX_CUSTOM_LIST_ITEMS = 500;
@@ -67,9 +83,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     const animeId = validString(request.data && request.data.animeId, 64)
       ? request.data.animeId.trim()
       : null;
-    const status = STATUSES.includes(request.data && request.data.status)
-      ? request.data.status
-      : null;
+    const status = normalizeStatus(request.data && request.data.status);
     const title = validString(request.data && request.data.title, 200)
       ? request.data.title.trim()
       : "";
@@ -81,6 +95,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     if (rating != null && (!Number.isInteger(rating) || rating < 1 || rating > 10)) {
       throw new HttpsError("invalid-argument", "Rating must be an integer from 1 to 10.");
     }
+    const favorite = request.data && request.data.favorite === true;
     const ref = entryRef(userId, animeId);
     const stats = statsRef(animeId);
     await db.runTransaction(async (tx) => {
@@ -91,6 +106,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
         status,
         title,
         rating,
+        favorite,
         updatedAt: FieldValue.serverTimestamp(),
       };
       if (!existing.exists) {
@@ -109,7 +125,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       }
       tx.update(ref, payload);
     });
-    return { animeId, status, rating };
+    return { animeId, status, title, rating, favorite };
   }
 
   async function removeAnimeListEntry(request) {
@@ -146,7 +162,8 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     let query = db.collection("users").doc(userId).collection("anime_lists")
       .orderBy("updatedAt", "desc")
       .limit(limit);
-    if (STATUSES.includes(status)) query = query.where("status", "==", status);
+    const normalizedStatus = normalizeStatus(status);
+    if (normalizedStatus) query = query.where("status", "==", normalizedStatus);
     if (cursor) {
       const cursorSnap = await entryRef(userId, cursor).get();
       if (cursorSnap.exists) query = query.startAfter(cursorSnap);

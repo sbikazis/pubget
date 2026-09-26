@@ -132,6 +132,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async {
     writeCount += 1;
     final entry = AnimeListEntry(
@@ -139,6 +140,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
       status: status,
       title: title,
       rating: rating,
+      favorite: favorite ?? false,
     );
     entries[animeId] = entry;
     return Success(entry);

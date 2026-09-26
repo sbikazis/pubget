@@ -237,9 +237,15 @@ final class AppStrings {
   String get drawerEvents => pick('Events', 'الفعاليات');
   String get drawerGames => pick('Games', 'الألعاب');
   String get drawerAnime => pick('Anime List', 'قائمة الأنمي');
+  String get drawerAnimeUpdated => pick('Latest Updates', 'آخر التحديثات');
   String get drawerAnimeRatings => pick('Ratings', 'التقييمات');
+  String get drawerAnimeMalRanking => pick('MAL Ranking', 'ترتيب MAL');
+  String get drawerAnimePubgetRating => pick('Pubget Rating', 'تقييم Pubget');
+  String get drawerAnimeLibrary => pick('My Anime Lists', 'قوائمي');
   String get drawerAnimeCharacters =>
-      pick('Popular Characters', 'الشخصيات الشائعة');
+      pick('Most Popular Characters', 'الشخصيات الأكثر شعبية');
+  String get drawerAnimeCharacterFavorites =>
+      pick('My Favorite Characters', 'شخصياتي المفضلة');
   String get myAnime => pick('My Anime', 'أنميّاتي');
   String get notifications => pick('Notifications', 'الإشعارات');
 
@@ -250,8 +256,13 @@ final class AppStrings {
     'joined' => drawerJoined,
     'suggested' => drawerSuggested,
     'anime' => drawerAnime,
+    'anime-updated' => drawerAnimeUpdated,
     'anime-ratings' => drawerAnimeRatings,
+    'anime-ratings-mal' => drawerAnimeMalRanking,
+    'anime-ratings-pubget' => drawerAnimePubgetRating,
+    'anime-library' => drawerAnimeLibrary,
     'anime-characters' => drawerAnimeCharacters,
+    'anime-characters-favorites' => drawerAnimeCharacterFavorites,
     'store' => drawerStore,
     'premium' => drawerPremium,
     'achievements' => achievements,

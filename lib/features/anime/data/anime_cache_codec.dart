@@ -305,6 +305,22 @@ abstract final class AnimeCacheCodec {
     };
   }
 
+  static List<Anime> summariesFromMap(Map<String, dynamic> map) {
+    return (map['items'] as List? ?? const [])
+        .map(
+          (item) => AnimeCacheCodec.animeFromMap(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static Map<String, dynamic> summariesToMap(List<Anime> items) {
+    return <String, dynamic>{
+      'items': items.map(AnimeCacheCodec.animeToMap).toList(),
+    };
+  }
+
   static List<AnimeGenre> genresFromMap(Map<String, dynamic> map) {
     return (map['items'] as List? ?? const [])
         .map(

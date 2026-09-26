@@ -65,6 +65,16 @@ enum AnimeSearchSort { members, title, newest, favorites }
 
 enum AnimeTypeFilter { tv, movie, ova, special, ona }
 
+extension AnimeTypeFilterCodec on AnimeTypeFilter {
+  String get wireValue => switch (this) {
+    AnimeTypeFilter.tv => 'TV',
+    AnimeTypeFilter.movie => 'Movie',
+    AnimeTypeFilter.ova => 'OVA',
+    AnimeTypeFilter.special => 'Special',
+    AnimeTypeFilter.ona => 'ONA',
+  };
+}
+
 enum AnimeAiringFilter { airing, finished, upcoming }
 
 enum AnimeAgeFilter { allAges, teens, adult }
@@ -129,7 +139,7 @@ final class AnimeSearchFilter {
           anime.airing == true || status.contains('currently'),
         AnimeAiringFilter.finished =>
           (anime.airing == false && status.isNotEmpty) ||
-            status.contains('finished'),
+              status.contains('finished'),
         AnimeAiringFilter.upcoming => status.contains('not yet'),
       };
       if (!matching) return false;
@@ -517,10 +527,7 @@ final class Anime {
     return AnimeAgeFilter.allAges;
   }
 
-  Anime copyWith({
-    bool? fromCache,
-    String? titleArabic,
-  }) => Anime(
+  Anime copyWith({bool? fromCache, String? titleArabic}) => Anime(
     id: id,
     title: title,
     titleArabic: titleArabic ?? this.titleArabic,
