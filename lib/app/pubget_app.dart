@@ -82,6 +82,7 @@ import '../features/anime/screens/anime_library_page.dart';
 import '../features/anime/screens/anime_my_page.dart';
 import '../features/anime/screens/anime_popular_characters_page.dart';
 import '../features/anime/screens/anime_ratings_page.dart';
+import '../features/anime/screens/anime_search_page.dart';
 import '../features/anime/providers/anime_hub_social_provider.dart';
 import '../features/anime/providers/anime_library_provider.dart';
 import '../features/anime/providers/anime_my_list_provider.dart';
@@ -939,6 +940,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/joined': const AppShell(),
         '/private': const AppShell(),
         '/anime': const AnimeHubPage(),
+        '/anime/search': const AnimeSearchPage(),
         '/anime/updated': const AnimeBrowsePage(latest: true),
         '/anime/library': const AnimeLibraryPage(),
         '/anime/ratings': const AnimeRatingsPage(

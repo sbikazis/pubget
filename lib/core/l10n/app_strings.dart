@@ -238,7 +238,6 @@ final class AppStrings {
   String get drawerGames => pick('Games', 'الألعاب');
   String get drawerAnime => pick('Anime List', 'قائمة الأنمي');
   String get drawerAnimeUpdated => pick('Latest Updates', 'آخر التحديثات');
-  String get drawerAnimeRatings => pick('Ratings', 'التقييمات');
   String get drawerAnimeMalRanking => pick('MAL Ranking', 'ترتيب MAL');
   String get drawerAnimePubgetRating => pick('Pubget Rating', 'تقييم Pubget');
   String get drawerAnimeLibrary => pick('My Anime Lists', 'قوائمي');
@@ -257,7 +256,7 @@ final class AppStrings {
     'suggested' => drawerSuggested,
     'anime' => drawerAnime,
     'anime-updated' => drawerAnimeUpdated,
-    'anime-ratings' => drawerAnimeRatings,
+    'anime-ratings' => drawerAnimeMalRanking,
     'anime-ratings-mal' => drawerAnimeMalRanking,
     'anime-ratings-pubget' => drawerAnimePubgetRating,
     'anime-library' => drawerAnimeLibrary,

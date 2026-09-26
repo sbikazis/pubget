@@ -113,9 +113,19 @@ final class AnimeCopy {
 
   String get tabInfo => _t.tabDetails;
   String get tabCharactersCast => _t.tabCharactersCast;
+  String get tabDetails => _t.tabDetails;
   String get tabStatistics => _t.tabStatistics;
   String get tabCharacters => _t.tabCharacters;
   String get tabRelated => _t.tabRelated;
+  String get scoreDistribution => _t.scoreDistribution;
+  String get criteriaBreakdown => _t.criteriaBreakdown;
+  String get criteriaStory => _t.criteriaStory;
+  String get criteriaArt => _t.criteriaArt;
+  String get criteriaCharacters => _t.criteriaCharacters;
+  String get criteriaAction => _t.criteriaAction;
+  String get criteriaSound => _t.criteriaSound;
+  String get criteriaEnjoyment => _t.criteriaEnjoyment;
+  String get inMyList => _t.inMyList;
   String get tabLibrary => _t.tabLibrary;
   String get tabRatings => _t.tabRatings;
   String get tabLists => _t.tabLists;

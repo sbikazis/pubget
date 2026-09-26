@@ -634,6 +634,16 @@ final class AppTranslationMapping {
   String get tabInfo => pick('Info', 'معلومات');
   String get tabCharacters => pick('Characters', 'شخصيات');
   String get tabRelated => pick('Related', 'مرتبط');
+  String get scoreDistribution => pick('Score distribution', 'توزيع التقييمات');
+  String get criteriaBreakdown =>
+      pick('What members rated', 'ما الذي يقيّمه الأعضاء');
+  String get inMyList => pick('In my list', 'في قائمتي');
+  String get criteriaStory => pick('Story', 'القصة');
+  String get criteriaArt => pick('Art', 'الرسم');
+  String get criteriaCharacters => pick('Characters', 'الشخصيات');
+  String get criteriaAction => pick('Action', 'الحركة');
+  String get criteriaSound => pick('Sound', 'الصوت');
+  String get criteriaEnjoyment => pick('Enjoyment', 'الاستمتاع');
   String get tabLibrary => pick('My list', 'قائمتي');
   String get tabRatings => pick('Ratings', 'تقييمات');
   String get tabLists => pick('Lists', 'قوائم');

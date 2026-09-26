@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../providers/anime_hub_social_provider.dart';
@@ -46,7 +48,10 @@ class _AnimeFavoriteCharactersPageState
   void _load() {
     if (!mounted) return;
     final social = maybeAnimeHubSocial(context, listen: false);
-    final userId = widget.userId;
+    // The route passes no id, so fall back to the signed-in viewer: this page
+    // is only ever the current user's own favorites.
+    final userId =
+        widget.userId ?? context.read<AuthProvider>().currentUser?.id;
     if (social == null || userId == null || userId.isEmpty) return;
     social.loadUser(userId);
   }

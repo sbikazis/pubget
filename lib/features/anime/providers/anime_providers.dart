@@ -199,7 +199,7 @@ final class AnimeHubProvider extends ChangeNotifier {
     if (_disposed) return;
     result.fold(
       onSuccess: (seasons) {
-        _seasons = seasons;
+        _seasons = seasons.toList()..sort(AnimeSeasonYear.compareNewestFirst);
         _seasonsState = seasons.isEmpty
             ? LoadingState.empty
             : LoadingState.loaded;

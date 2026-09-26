@@ -223,6 +223,9 @@ class AnimeHubGrid extends StatelessWidget {
   }
 }
 
+/// Shared hero tag so a poster keeps its identity from grid to details page.
+String animePosterHeroTag(String animeId) => 'anime-poster-$animeId';
+
 /// Three-column shimmer placeholder that matches [AnimeHubGrid].
 class AnimeHubGridSkeleton extends StatelessWidget {
   const AnimeHubGridSkeleton({this.itemCount = 9, super.key});

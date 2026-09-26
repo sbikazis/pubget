@@ -25,10 +25,12 @@ import '../../groups/widgets/group_list_card.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
+import '../theme/anime_hub_colors.dart';
 import '../models/anime_rating_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_widgets.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeDetailsPage extends StatefulWidget {
@@ -85,7 +87,9 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
       Future<void>.microtask(() async {
         if (!mounted) return;
         setState(() => _loadingEvents = true);
-        final result = await eventRepo.getEventsByAnime(animeId: widget.animeId);
+        final result = await eventRepo.getEventsByAnime(
+          animeId: widget.animeId,
+        );
         if (!mounted) return;
         setState(() {
           _relatedEvents = result.valueOrNull ?? const <PubgetEvent>[];
@@ -138,7 +142,8 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(anime?.title ?? copy.hubTitle),
+        centerTitle: true,
+        title: _MarqueeTitle(text: anime?.title ?? copy.hubTitle),
         actions: <Widget>[
           if (anime != null) ...<Widget>[
             PubgetIconButton(
@@ -159,10 +164,11 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
             ? TabBar(
                 controller: _tabController,
                 isScrollable: false,
+                // Spec: exactly three tabs (details, characters & cast, statistics).
                 tabs: <Widget>[
-                  Tab(text: copy.tabInfo),
-                  Tab(text: copy.tabCharacters),
-                  Tab(text: copy.tabRelated),
+                  Tab(text: copy.tabDetails),
+                  Tab(text: copy.tabCharactersCast),
+                  Tab(text: copy.tabStatistics),
                 ],
               )
             : null,
@@ -194,11 +200,6 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
                     details: details,
                     social: social,
                     network: network,
-                  ),
-                  _CharactersTab(details: details),
-                  _RelatedTab(
-                    anime: anime,
-                    social: social,
                     relatedFanWorks: _relatedFanWorks,
                     relatedGroups: _relatedGroups,
                     relatedReels: _relatedReels,
@@ -206,8 +207,73 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
                     loadingReels: _loadingReels,
                     loadingEvents: _loadingEvents,
                   ),
+                  _CharactersTab(details: details),
+                  _StatsTab(anime: anime, details: details, social: social),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// Anime titles run long, so the app bar keeps the text in one line and lets
+/// it be dragged sideways instead of cutting the name short.
+class _MarqueeTitle extends StatefulWidget {
+  const _MarqueeTitle({required this.text});
+
+  final String text;
+
+  @override
+  State<_MarqueeTitle> createState() => _MarqueeTitleState();
+}
+
+class _MarqueeTitleState extends State<_MarqueeTitle> {
+  final _controller = ScrollController();
+  var _overflows = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  @override
+  void didUpdateWidget(_MarqueeTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) _measure();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _measure() {
+    if (!mounted) return;
+    final overflows =
+        MediaQuery.sizeOf(context).width * 0.55 < widget.text.length * 7.5;
+    if (overflows == _overflows) return;
+    setState(() {
+      _overflows = overflows;
+      if (overflows) _controller.jumpTo(0);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Text(
+      widget.text,
+      maxLines: 1,
+      overflow: _overflows ? TextOverflow.visible : TextOverflow.ellipsis,
+    );
+    if (!_overflows) return title;
+    return ClipRect(
+      child: SingleChildScrollView(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        child: title,
       ),
     );
   }
@@ -219,20 +285,31 @@ class _InfoTab extends StatelessWidget {
     required this.details,
     required this.social,
     required this.network,
+    required this.relatedFanWorks,
+    required this.relatedGroups,
+    required this.relatedReels,
+    required this.relatedEvents,
+    required this.loadingReels,
+    required this.loadingEvents,
   });
 
   final Anime anime;
   final AnimeDetailsProvider details;
   final AnimeHubSocialProvider? social;
   final NetworkService network;
+  final FanWorkFeedProvider? relatedFanWorks;
+  final List<Group> relatedGroups;
+  final List<Edit> relatedReels;
+  final List<PubgetEvent> relatedEvents;
+  final bool loadingReels;
+  final bool loadingEvents;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
-        if (details.fromCache)
-          AnimeCachedBanner(offline: !network.isOnline),
+        if (details.fromCache) AnimeCachedBanner(offline: !network.isOnline),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.lg,
@@ -243,11 +320,11 @@ class _InfoTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              SizedBox(
-                width: 148,
-                child: AnimePoster(
-                  images: anime.images,
-                  memCacheWidth: 360,
+              Hero(
+                tag: animePosterHeroTag(anime.id),
+                child: SizedBox(
+                  width: 148,
+                  child: AnimePoster(images: anime.images, memCacheWidth: 360),
                 ),
               ),
               const SizedBox(width: AppSpacing.lg),
@@ -293,8 +370,7 @@ class _InfoTab extends StatelessWidget {
                   PubgetSelectionChip(
                     label: AnimeCopy.of(context).genre(genre.name),
                     selected: false,
-                    onSelected: (_) =>
-                        AnimeLinks.openGenre(context, genre),
+                    onSelected: (_) => AnimeLinks.openGenre(context, genre),
                   ),
               ],
             ),
@@ -334,8 +410,7 @@ class _InfoTab extends StatelessWidget {
               0,
             ),
             child: PubgetSecondaryButton(
-              onPressed: () =>
-                  AnimeLinks.copyUrl(context, anime.trailerUrl!),
+              onPressed: () => AnimeLinks.copyUrl(context, anime.trailerUrl!),
               semanticLabel: AnimeCopy.of(context).trailer,
               child: Text(AnimeCopy.of(context).trailer),
             ),
@@ -366,13 +441,18 @@ class _InfoTab extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      onTap: () =>
-                          AnimeLinks.copyUrl(context, link.url),
+                      onTap: () => AnimeLinks.copyUrl(context, link.url),
                     ),
                 ],
               ),
             ),
           ),
+        _ReviewsSection(social: social, anime: anime),
+        _RelatedWorksSection(anime: anime),
+        _RelatedFanWorksSection(feed: relatedFanWorks),
+        _RelatedGroupsSection(groups: relatedGroups),
+        _RelatedReelsSection(reels: relatedReels, loading: loadingReels),
+        _RelatedEventsSection(events: relatedEvents, loading: loadingEvents),
       ],
     );
   }
@@ -389,54 +469,211 @@ class _CharactersTab extends StatelessWidget {
   }
 }
 
-class _RelatedTab extends StatelessWidget {
-  const _RelatedTab({
+/// Third tab: the numbers behind the title, never invented from the catalog.
+/// Every value comes from the MAL payload or from Pubget community data.
+class _StatsTab extends StatelessWidget {
+  const _StatsTab({
     required this.anime,
+    required this.details,
     required this.social,
-    required this.relatedFanWorks,
-    required this.relatedGroups,
-    required this.relatedReels,
-    required this.relatedEvents,
-    required this.loadingReels,
-    required this.loadingEvents,
   });
 
   final Anime anime;
+  final AnimeDetailsProvider details;
   final AnimeHubSocialProvider? social;
-  final FanWorkFeedProvider? relatedFanWorks;
-  final List<Group> relatedGroups;
-  final List<Edit> relatedReels;
-  final List<PubgetEvent> relatedEvents;
-  final bool loadingReels;
-  final bool loadingEvents;
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final theme = Theme.of(context);
+    final stats = social?.statsFor(anime.id);
+    final reviews = social?.reviews ?? const <AnimeReview>[];
+    final histogram = List<int>.filled(10, 0);
+    for (final review in reviews) {
+      final score = review.overall.round();
+      if (score >= 1 && score <= 10) histogram[score - 1] += 1;
+    }
+    final hasHistogram =
+        histogram.fold<int>(0, (sum, value) => sum + value) > 0;
+    final criteria = hasHistogram
+        ? _averageCriteria(reviews)
+        : AnimeCriteriaScores.empty;
     return ListView(
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
-        _ReviewsSection(social: social, anime: anime),
-        _RelatedWorksSection(anime: anime),
-        _RelatedFanWorksSection(feed: relatedFanWorks),
-        _RelatedGroupsSection(groups: relatedGroups),
-        _RelatedReelsSection(
-          reels: relatedReels,
-          loading: loadingReels,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+            0,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: AnimeHubScorePair(malScore: anime.score, community: stats),
+          ),
         ),
-        _RelatedEventsSection(
-          events: relatedEvents,
-          loading: loadingEvents,
+        const SizedBox(height: AppSpacing.lg),
+        AnimeHubFactGrid(
+          facts: <AnimeHubFactTile>[
+            AnimeHubFactTile(
+              icon: Icons.star_outline,
+              label: copy.malScore,
+              value: anime.score?.toStringAsFixed(2) ?? '--',
+            ),
+            AnimeHubFactTile(
+              icon: Icons.groups_outlined,
+              label: copy.membersLabel,
+              value: _formatCount(anime.popularity),
+            ),
+            AnimeHubFactTile(
+              icon: Icons.bar_chart_outlined,
+              label: copy.ratingCountLabel,
+              value: '${stats?.ratingCount ?? 0}',
+            ),
+            AnimeHubFactTile(
+              icon: Icons.bookmark_outline,
+              label: copy.listedCountLabel,
+              value: '${stats?.listedCount ?? 0}',
+            ),
+          ],
         ),
+        if (hasHistogram) ...<Widget>[
+          const SizedBox(height: AppSpacing.xl),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Text(
+              copy.scoreDistribution,
+              style: theme.textTheme.titleLarge,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: AnimeVoteDistribution(counts: histogram),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Text(
+              copy.criteriaBreakdown,
+              style: theme.textTheme.titleLarge,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: _CriteriaBars(criteria: criteria),
+          ),
+        ],
+        if (details.fromCache) const AnimeCachedBanner(),
+      ],
+    );
+  }
+
+  static AnimeCriteriaScores _averageCriteria(List<AnimeReview> reviews) {
+    var count = 0;
+    var story = 0;
+    var art = 0;
+    var characters = 0;
+    var action = 0;
+    var sound = 0;
+    var enjoyment = 0;
+    for (final review in reviews) {
+      final criteria = review.criteria;
+      if (criteria == AnimeCriteriaScores.empty) continue;
+      count += 1;
+      story += criteria.story;
+      art += criteria.art;
+      characters += criteria.characters;
+      action += criteria.action;
+      sound += criteria.sound;
+      enjoyment += criteria.enjoyment;
+    }
+    if (count == 0) return AnimeCriteriaScores.empty;
+    return AnimeCriteriaScores(
+      story: story ~/ count,
+      art: art ~/ count,
+      characters: characters ~/ count,
+      action: action ~/ count,
+      sound: sound ~/ count,
+      enjoyment: enjoyment ~/ count,
+    );
+  }
+
+  static String _formatCount(int? value) {
+    if (value == null) return '--';
+    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
+    return '$value';
+  }
+}
+
+/// Renders the six community criteria as labelled progress bars.
+class _CriteriaBars extends StatelessWidget {
+  const _CriteriaBars({required this.criteria});
+
+  final AnimeCriteriaScores criteria;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final hub = AnimeHubColors.of(context);
+    final rows = <(String, int)>[
+      (copy.criteriaStory, criteria.story),
+      (copy.criteriaArt, criteria.art),
+      (copy.criteriaCharacters, criteria.characters),
+      (copy.criteriaAction, criteria.action),
+      (copy.criteriaSound, criteria.sound),
+      (copy.criteriaEnjoyment, criteria.enjoyment),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (final (label, value) in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: <Widget>[
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: (value / 10).clamp(0, 1),
+                      minHeight: 8,
+                      backgroundColor: hub.royalPurple.withValues(alpha: 0.12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    '$value',
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
 }
 
 class _RelatedReelsSection extends StatelessWidget {
-  const _RelatedReelsSection({
-    required this.reels,
-    required this.loading,
-  });
+  const _RelatedReelsSection({required this.reels, required this.loading});
 
   final List<Edit> reels;
   final bool loading;
@@ -567,10 +804,7 @@ class _ReelCard extends StatelessWidget {
 }
 
 class _RelatedEventsSection extends StatelessWidget {
-  const _RelatedEventsSection({
-    required this.events,
-    required this.loading,
-  });
+  const _RelatedEventsSection({required this.events, required this.loading});
 
   final List<PubgetEvent> events;
   final bool loading;
@@ -614,8 +848,7 @@ class _RelatedEventsSection extends StatelessWidget {
           else
             Column(
               children: <Widget>[
-                for (final event in events)
-                  HomeEventCard(event: event),
+                for (final event in events) HomeEventCard(event: event),
               ],
             ),
         ],
@@ -644,7 +877,8 @@ class _HeroCopy extends StatelessWidget {
             height: 1.15,
           ),
         ),
-        if (anime.titleArabic != null && anime.titleArabic!.isNotEmpty) ...<Widget>[
+        if (anime.titleArabic != null &&
+            anime.titleArabic!.isNotEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.xs),
           Text(
             anime.titleArabic!,
@@ -1588,10 +1822,7 @@ class _CustomListControls extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const SizedBox(height: AppSpacing.xl),
-          Text(
-            copy.addToList,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text(copy.addToList, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           Wrap(
             key: const Key('custom-list-controls'),

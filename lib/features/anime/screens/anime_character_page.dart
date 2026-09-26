@@ -19,6 +19,7 @@ import '../models/anime_rating_models.dart';
 import '../providers/anime_character_provider.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
+import '../widgets/anime_hub_widgets.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeCharacterPage extends StatefulWidget {
@@ -195,27 +196,10 @@ class _CharacterHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        SizedBox(
-          width: 128,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: ColoredBox(
-              color: AppColors.royalNight,
-              child: AspectRatio(
-                aspectRatio: 3 / 4,
-                child: character.imageUrl == null
-                    ? const Icon(Icons.person_outline, size: 48)
-                    : AnimePoster(
-                        images: AnimeImages(
-                          thumbnailUrl: character.imageUrl,
-                          largeUrl: character.imageUrl,
-                        ),
-                        fit: BoxFit.cover,
-                        memCacheWidth: 480,
-                      ),
-              ),
-            ),
-          ),
+        // Spec: 220x220 with a 32 radius, not a poster ratio.
+        AnimeCharacterPortrait(
+          imageUrl: character.imageUrl ?? '',
+          name: displayName,
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
@@ -272,6 +256,29 @@ class _CharacterHeader extends StatelessWidget {
                   if (character.favorites != null)
                     _StatChip(
                       icon: Icons.favorite_border,
+                      label: copy.malFavorites,
+                      value: '${character.favorites}',
+                    ),
+                ],
+              ),
+              // Composite: what Pubget counts against what MAL counts.
+              AnimeHubFactGrid(
+                facts: <AnimeHubFactTile>[
+                  if (stats != null && stats.favoritesCount > 0)
+                    AnimeHubFactTile(
+                      icon: Icons.favorite,
+                      label: copy.pubgetFavorites,
+                      value: '${stats.favoritesCount}',
+                    ),
+                  if (rank != null)
+                    AnimeHubFactTile(
+                      icon: Icons.leaderboard_outlined,
+                      label: copy.characterRank,
+                      value: '#$rank',
+                    ),
+                  if (character.favorites != null)
+                    AnimeHubFactTile(
+                      icon: Icons.groups_outlined,
                       label: copy.malFavorites,
                       value: '${character.favorites}',
                     ),

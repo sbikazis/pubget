@@ -251,6 +251,10 @@ final class AnimeSeasonYear {
 
   final int year;
   final List<AnimeSeason> seasons;
+
+  /// Hub order: the most recent season first, so the newest titles lead.
+  static int compareNewestFirst(AnimeSeasonYear a, AnimeSeasonYear b) =>
+      b.year.compareTo(a.year);
 }
 
 final class VoiceActor {
@@ -662,7 +666,12 @@ abstract final class AnimeStrings {
   static const entityCharacter = 'Character';
   static const entityReel = 'Reel';
   static const tabInfo = 'Info';
+  static const tabDetails = 'Details';
   static const tabCharacters = 'Characters';
+  static const tabCharactersCast = 'Characters & cast';
+  static const tabStatistics = 'Statistics';
+  static const scoreDistribution = 'Score distribution';
+  static const criteriaBreakdown = 'What members rated';
   static const tabRelated = 'Related';
   static const favoriteCharactersTab = 'Favorite characters';
   static const favoriteAnimeTab = 'Favorite anime';
