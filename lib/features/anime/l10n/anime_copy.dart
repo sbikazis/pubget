@@ -316,6 +316,7 @@ final class AnimeCopy {
 
   String genre(String? raw) => _t.genre(raw);
   String status(String? raw) => _t.status(raw);
+  String characterFact(String? raw) => _t.characterFact(raw);
   String get statusAiring => _t.statusAiring;
   String get statusFinished => _t.statusFinished;
   String get statusUpcoming => _t.statusUpcoming;

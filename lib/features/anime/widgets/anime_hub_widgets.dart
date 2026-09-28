@@ -525,6 +525,7 @@ class AnimeExpandableText extends StatefulWidget {
     required this.text,
     this.collapsedLines = 4,
     this.style,
+    this.selectable = false,
     super.key,
   });
 
@@ -532,25 +533,27 @@ class AnimeExpandableText extends StatefulWidget {
   final int collapsedLines;
   final TextStyle? style;
 
+  /// Selectable body text, for bios the member may want to copy.
+  final bool selectable;
+
   @override
   State<AnimeExpandableText> createState() => _AnimeExpandableTextState();
 }
 
 class _AnimeExpandableTextState extends State<AnimeExpandableText> {
   bool _expanded = false;
-  bool _clipped = false;
 
-  /// Laid out with the real width and font, so the toggle appears for text that
-  /// is genuinely cut off and stays away for text that fits.
-  bool _isClipped(BuildContext context) {
+  /// Laid out at the real width and font, so the toggle appears for text that
+  /// is genuinely cut off and stays away for text that fits. The width comes
+  /// from the incoming constraints because the size of this render object is
+  /// not known during build.
+  bool _isClipped(double maxWidth, TextStyle? style) {
+    if (!maxWidth.isFinite) return false;
     final painter = TextPainter(
-      text: TextSpan(
-        text: widget.text.trim(),
-        style: widget.style ?? Theme.of(context).textTheme.bodyMedium,
-      ),
+      text: TextSpan(text: widget.text.trim(), style: style),
       maxLines: widget.collapsedLines,
-      textDirection: Directionality.of(context),
-    )..layout(maxWidth: context.size?.width ?? double.infinity);
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
     return painter.didExceedMaxLines;
   }
 
@@ -560,34 +563,48 @@ class _AnimeExpandableTextState extends State<AnimeExpandableText> {
     final theme = Theme.of(context);
     final text = widget.text.trim();
     if (text.isEmpty) return const SizedBox.shrink();
+    final style = widget.style ?? theme.textTheme.bodyMedium;
     // `_expanded` is intentionally sticky: a parent rebuild must not slam the
-    // text the member just opened back to four lines.
-    if (!_expanded) _clipped = _isClipped(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          text,
-          maxLines: _expanded ? null : widget.collapsedLines,
-          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-          style: widget.style ?? theme.textTheme.bodyMedium,
-        ),
-        if (_clipped) ...<Widget>[
-          const SizedBox(height: AppSpacing.xs),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
-              key: const Key('anime-expandable-toggle'),
-              onPressed: () => setState(() => _expanded = !_expanded),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    // text the member just opened back to a few lines.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final clipped = !_expanded && _isClipped(constraints.maxWidth, style);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (widget.selectable)
+              SelectableText(
+                text,
+                maxLines: _expanded ? null : widget.collapsedLines,
+                style: style,
+              )
+            else
+              Text(
+                text,
+                maxLines: _expanded ? null : widget.collapsedLines,
+                overflow: _expanded
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
+                style: style,
               ),
-              child: Text(_expanded ? copy.showLess : copy.showMore),
-            ),
-          ),
-        ],
-      ],
+            if (clipped) ...<Widget>[
+              const SizedBox(height: AppSpacing.xs),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  key: const Key('anime-expandable-toggle'),
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(copy.showMore),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
