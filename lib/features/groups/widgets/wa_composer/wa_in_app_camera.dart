@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
@@ -250,15 +251,16 @@ class _CameraScreenState extends State<CameraScreen>
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     final local = details.localPosition;
-    final point = Offset(
-      (local.dx / viewSize.width).clamp(0.0, 1.0),
-      (local.dy / viewSize.height).clamp(0.0, 1.0),
-    );
     setState(() => _focusPoint = local);
     _focusPulse
       ..reset()
       ..forward();
     HapticFeedback.selectionClick();
+    final point = _focusPointForCoveredView(
+      value: controller.value,
+      local: local,
+      viewSize: viewSize,
+    );
     try {
       await controller.setFocusPoint(point);
       await controller.setExposurePoint(point);
@@ -266,6 +268,7 @@ class _CameraScreenState extends State<CameraScreen>
       await controller.setExposureMode(ExposureMode.auto);
     } catch (_) {}
   }
+
 
   /// Small preview-only thumb — never replaces the original send bytes.
   Future<Uint8List?> _thumbnailForPreview(Uint8List fullBytes) async {
@@ -689,7 +692,89 @@ class _CameraScreenState extends State<CameraScreen>
   }
 }
 
+/// Maps a tap inside the cover-fitted preview back onto the sensor's normalised
+/// coordinate space.
+///
+/// The preview is scaled with `BoxFit.cover`, so on the cropped axis the sensor
+/// fraction the user is actually looking at is only a sub-range of `0..1`.
+/// Dividing the raw viewport fraction by `1.0` would bias the focus point
+/// towards whichever edge is cropped — visible as focus landing next to, not
+/// under, the finger. Undo the crop explicitly instead.
+Offset _focusPointForCoveredView({
+  required CameraValue value,
+  required Offset local,
+  required Size viewSize,
+}) {
+  final fallback = Offset(
+    (local.dx / viewSize.width).clamp(0.0, 1.0),
+    (local.dy / viewSize.height).clamp(0.0, 1.0),
+  );
+  if (viewSize.isEmpty) return fallback;
+  final display = _previewDisplaySize(value);
+  if (display == null) return fallback;
+
+  // Cover scale: the box is grown until it fills the view on both axes.
+  final scale = math.max(
+    viewSize.width / display.width,
+    viewSize.height / display.height,
+  );
+  final visibleWidth = (display.width * scale / viewSize.width).clamp(
+    0.0,
+    1.0,
+  );
+  final visibleHeight = (display.height * scale / viewSize.height).clamp(
+    0.0,
+    1.0,
+  );
+  final u = local.dx / viewSize.width;
+  final v = local.dy / viewSize.height;
+  return Offset(
+    ((u - (1 - visibleWidth) / 2) / visibleWidth).clamp(0.0, 1.0),
+    ((v - (1 - visibleHeight) / 2) / visibleHeight).clamp(0.0, 1.0),
+  );
+}
+
+/// Mirrors `CameraPreview._isLandscape()` — the plugin resolves orientation
+/// from `recordingOrientation`, then `previewPauseOrientation`, then
+/// `lockedCaptureOrientation`, then `deviceOrientation`, in that order.
+bool _previewIsLandscape(CameraValue value) {
+  final orientation = value.isRecordingVideo && value.recordingOrientation != null
+      ? value.recordingOrientation!
+      : (value.previewPauseOrientation ??
+            value.lockedCaptureOrientation ??
+            value.deviceOrientation);
+  return orientation == DeviceOrientation.landscapeLeft ||
+      orientation == DeviceOrientation.landscapeRight;
+}
+
+/// Display-oriented width/height of the preview box, i.e. the sensor buffer
+/// with the 90-degree device rotation already applied.
+({double width, double height})? _previewDisplaySize(CameraValue value) {
+  final size = value.previewSize;
+  if (size == null || size.width <= 0 || size.height <= 0) return null;
+  return _previewIsLandscape(value)
+      ? (width: size.width, height: size.height)
+      : (width: size.height, height: size.width);
+}
+
 /// Full-bleed camera preview that never stretches the sensor image.
+///
+/// Two hard constraints from `camera` 0.11.x drive this widget:
+///
+/// 1. [CameraPreview] is *itself* an `AspectRatio`, and it already flips the
+///    ratio to `1 / aspectRatio` in portrait and applies its own `RotatedBox` on
+///    Android. Wrapping it in another `AspectRatio` — or handing it tight
+///    constraints — makes `RenderAspectRatio` return `constraints.smallest`,
+///    which silently discards the ratio and lets the underlying `Texture`
+///    stretch to whatever box it is given. That is the squashed-preview bug.
+/// 2. The `Texture` render object has no `BoxFit`: its rect *is* the widget's
+///    size. So the only way to fill the screen without distortion is to hand
+///    [CameraPreview] a box that already matches its display-oriented ratio and
+///    then cover-fit that box.
+///
+/// The box is therefore built in display space (short side x long side for
+/// portrait) and [CameraPreview] is placed inside it under *loose* constraints
+/// so its own ratio can size itself.
 class _UnstretchedCameraPreview extends StatelessWidget {
   const _UnstretchedCameraPreview({required this.controller});
 
@@ -697,38 +782,23 @@ class _UnstretchedCameraPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewSize = controller.value.previewSize;
-    final aspect = controller.value.aspectRatio;
-
     return ColoredBox(
       color: Colors.black,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Prefer native previewSize when available so cover math matches sensor.
-          final childWidth = previewSize?.height ?? constraints.maxWidth;
-          final childHeight = previewSize == null
-              ? childWidth / aspect
-              : previewSize.width;
-
-          return ClipRRect(
-            borderRadius: BorderRadius.zero,
-            child: OverflowBox(
-              maxWidth: double.infinity,
-              maxHeight: double.infinity,
-              alignment: Alignment.center,
-              child: FittedBox(
-                fit: BoxFit.cover,
-                clipBehavior: Clip.hardEdge,
-                child: SizedBox(
-                  width: childWidth,
-                  height: childHeight,
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: aspect,
-                      child: CameraPreview(controller),
-                    ),
-                  ),
-                ),
+      child: ValueListenableBuilder<CameraValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final display = _previewDisplaySize(value);
+          if (display == null) return CameraPreview(controller);
+          return ClipRect(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: display.width,
+                height: display.height,
+                // Center hands down loose constraints, so CameraPreview's own
+                // AspectRatio stays in charge of the geometry.
+                child: Center(child: CameraPreview(controller)),
               ),
             ),
           );
@@ -1348,7 +1418,7 @@ class _CaptureReview extends StatelessWidget {
                             child: FilledButton(
                               onPressed: onSend,
                               style: FilledButton.styleFrom(
-                                backgroundColor: WaColors.cursorGreen,
+                                backgroundColor: WaColors.onDark,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,

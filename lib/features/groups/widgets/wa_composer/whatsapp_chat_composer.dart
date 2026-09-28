@@ -858,7 +858,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                     fontSize: 16,
                     color: WaColors.fieldText(context),
                   ),
-                  cursorColor: WaColors.cursorGreen,
+                  cursorColor: WaColors.accent(context),
                   cursorWidth: 2,
                   onTap: () {
                     if (_panelOpen) setState(() => _panelOpen = false);
@@ -1054,7 +1054,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                     onPressed: () => unawaited(_togglePreviewPlayback()),
                     icon: Icon(
                       _previewPlaying ? Icons.stop : Icons.play_arrow,
-                      color: WaColors.cursorGreen,
+                      color: WaColors.onDark,
                     ),
                   ),
                 Expanded(child: _waveform()),
@@ -1103,7 +1103,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
                     decoration: BoxDecoration(
                       color: _slideCancel
                           ? WaColors.recordRed.withValues(alpha: 0.85)
-                          : WaColors.cursorGreen,
+                          : WaColors.onDark,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
