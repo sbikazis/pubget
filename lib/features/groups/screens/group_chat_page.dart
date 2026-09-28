@@ -15,7 +15,6 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../events/widgets/event_widgets.dart';
 import '../../games/widgets/game_widgets.dart';
-import '../../private_chat/providers/private_chat_list_provider.dart';
 import '../data/sticker_store.dart';
 import '../data/user_sticker_store.dart';
 import '../models/chat_models.dart';
@@ -26,6 +25,7 @@ import '../services/chat_audio_player.dart';
 import '../services/default_voice_capture.dart';
 import '../services/voice_capture.dart';
 import '../widgets/chat_contrast_theme.dart';
+import '../widgets/chat_action_sheets.dart';
 import '../widgets/chat_message_actions_overlay.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_special_cards.dart';
@@ -61,6 +61,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final _scrollController = ScrollController();
   final _stars = ChatStarStore();
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+
+  /// Drives the list's reveal/highlight API (reply quote taps, pinned banner).
+  final GlobalKey<_MessageListState> _messageListKey =
+      GlobalKey<_MessageListState>();
   ChatProvider? _chatProvider;
   late final UserStickerStore _userStickers =
       widget.userStickerStore ?? UserStickerStore();
@@ -190,13 +194,24 @@ class _GroupChatPageState extends State<GroupChatPage> {
           child: SafeArea(
             top: false,
             child: Selector<ChatProvider, _ChatChromeSlice>(
-              selector: (_, chat) => _ChatChromeSlice(
-                revision: chat.contentRevision,
-                state: chat.state,
-                hasMore: chat.hasMore,
-                failureMessage: chat.failure?.message,
-                replyId: chat.replyTarget?.id,
-              ),
+              selector: (_, chat) {
+                // Derived here, not in the enclosing build: the enclosing build
+                // only runs on provider *changes*, so capturing a pin outside
+                // the selector would leave the banner stale after a pin/unpin.
+                final pinned = newestPinnedMessage(chat.messages);
+                return _ChatChromeSlice(
+                  revision: chat.contentRevision,
+                  state: chat.state,
+                  hasMore: chat.hasMore,
+                  failureMessage: chat.failure?.message,
+                  replyId: chat.replyTarget?.id,
+                  pinnedId: pinned?.id,
+                  pinnedSender: pinned?.senderName,
+                  pinnedPreview: pinned == null
+                      ? null
+                      : pinnedPreviewText(pinned, AppStrings.of(context)),
+                );
+              },
               builder: (context, slice, _) {
                 final chat = context.read<ChatProvider>();
                 _syncScrollAndReadReceipts(chat);
@@ -210,6 +225,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       child: Stack(
                         children: <Widget>[
                           _MessageList(
+                            key: _messageListKey,
                             chat: chat,
                             contrast: contrast,
                             currentUserId:
@@ -244,6 +260,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             onGameTap: _openGameCard,
                             onLoadMore: _loadMorePreservingAnchor,
                             messageKeys: _messageKeys,
+                            listKey: _messageListKey,
                           ),
                           if (_newMessagesCount > 0)
                             Positioned(
@@ -290,6 +307,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         ],
                       ),
                     ),
+                    if (slice.pinnedId != null)
+                      _PinnedMessageBar(
+                        senderName: slice.pinnedSender ?? '',
+                        preview: slice.pinnedPreview ?? '',
+                        onTap: () =>
+                            _messageListKey.currentState?.revealMessage(
+                              slice.pinnedId!,
+                            ),
+                        onUnpin: () => unawaited(
+                          context.read<ChatProvider>().pinMessage(
+                            slice.pinnedId!,
+                            false,
+                          ),
+                        ),
+                      ),
                     if (chat.replyTarget != null)
                       _ReplyComposerBar(
                         message: chat.replyTarget!,
@@ -757,6 +789,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
         await _showMessageInfo(message);
         return;
       case ChatMessageAction.delete:
+        final confirmed = await confirmDeleteMessage(context);
+        if (confirmed != true || !mounted) return;
         final result = await chat.deleteMessage(message.id);
         if (!mounted || result.isSuccess) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -902,99 +936,45 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _editMessage(ChatMessage message) async {
     final copy = AppStrings.of(context);
-    final controller = TextEditingController(text: message.text ?? '');
-    final next = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        var saving = false;
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: Text(copy.editMessage),
-            content: TextField(
-              key: const Key('chat-edit-field'),
-              controller: controller,
-              autofocus: true,
-              maxLines: 4,
-              enabled: !saving,
-              decoration: InputDecoration(hintText: copy.updateYourMessage),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(dialogContext),
-                child: Text(copy.cancel),
-              ),
-              TextButton(
-                onPressed: () async {
-                  final value = controller.text.trim();
-                  if (value.isEmpty || value == message.text?.trim()) return;
-                  setState(() => saving = true);
-                  final result = await context.read<ChatProvider>().editMessage(
-                    messageId: message.id,
-                    text: value,
-                  );
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext, result.isSuccess);
-                  }
-                },
-                child: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(copy.save),
-              ),
-            ],
-          ),
+    final text = await showEditMessageDialog(
+      context,
+      message: message,
+      onSave: (value) async {
+        final result = await context.read<ChatProvider>().editMessage(
+          messageId: message.id,
+          text: value,
         );
+        return result.isSuccess;
       },
     );
-    controller.dispose();
-    if (next == null || !mounted || next) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(copy.messageEditFailed)));
+    if (text == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(copy.messageEditSuccess)),
+    );
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
-    final groups = context.read<GroupProvider>();
-    final chats = context.read<PrivateChatListProvider>();
-    await Future.wait<void>([groups.loadJoined(user.id), chats.open(user.id)]);
-    if (!mounted) return;
-    final destination = await PubgetBottomSheet.present<_ForwardTarget>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _ForwardSheet(
-        currentGroupId: widget.groupId,
-        groups: groups,
-        chats: chats,
-        currentUserId: user.id,
-      ),
-    );
-    if (destination == null || !mounted) return;
-    final result = await context.read<ChatProvider>().forwardMessage(
-      messageId: message.id,
-      destinationGroupId: destination.groupId,
-      destinationChatId: destination.chatId,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.isSuccess
-              ? AppStrings.of(context).messageForwarded
-              : result.failureOrNull?.message ??
-                    AppStrings.of(context).forwardFailed,
-        ),
-      ),
+    await runForwardFlow(
+      context,
+      currentUserId: user.id,
+      currentGroupId: widget.groupId,
+      onForward: (target) async {
+        final result = await context.read<ChatProvider>().forwardMessage(
+          messageId: message.id,
+          destinationGroupId: target.groupId,
+          destinationChatId: target.chatId,
+        );
+        return result.isSuccess;
+      },
     );
   }
 }
 
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   const _MessageList({
+    super.key,
     required this.chat,
     required this.contrast,
     required this.currentUserId,
@@ -1010,6 +990,7 @@ class _MessageList extends StatelessWidget {
     required this.onGameTap,
     required this.onLoadMore,
     required this.messageKeys,
+    required this.listKey,
   });
 
   final ChatProvider chat;
@@ -1028,8 +1009,223 @@ class _MessageList extends StatelessWidget {
   final VoidCallback onLoadMore;
   final Map<String, GlobalKey> messageKeys;
 
+  /// Lets the owning screen call [revealMessage] without another GlobalKey.
+  final GlobalKey<_MessageListState> listKey;
+
+  @override
+  State<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<_MessageList> {
+
+  /// Row model is derived from [ChatProvider.messages], so it only has to be
+  /// recomputed when that list actually changes. Rebuilding it on every chrome
+  /// update (send progress, read receipts, reply bar) walked every loaded
+  /// message and allocated a [DateTime] per row — the "chat gets heavy the more
+  /// you scroll" behaviour.
+  List<_ChatListRow>? _cachedRows;
+  DateTime? _cachedDay;
+  // Fingerprint of the row inputs. `chat.messages` hands out a fresh
+  // unmodifiable wrapper on every call and the backing list is mutated in
+  // place, so identity and length alone both miss changes: the provider's
+  // revision covers field updates (pin, reactions, send state) and the bounds
+  // cover adds and removes.
+  int _cachedRevision = -1;
+  int _cachedCount = -1;
+  String? _cachedFirstId;
+  String? _cachedLastId;
+
+  /// messageId -> row index, produced by the same pass so jumping to a replied
+  /// message needs no second scan.
+  Map<String, int> _rowIndexById = const <String, int>{};
+
+  /// Message to flash after an automatic jump (reply quote, pinned banner).
+  String? _highlightedId;
+  Timer? _highlightTimer;
+
+  static const Duration _highlightDuration = Duration(milliseconds: 1400);
+
+  /// Reveal in flight, if any. A single slot is enough: jumps replace each
+  /// other, and two competing seeks would fight over the scroll position.
+  _RevealRequest? _reveal;
+  Timer? _seekTimer;
+
+  /// How many proportional seeks to try before giving up on a target that the
+  /// viewport never manages to build.
+  static const int _maxSeekAttempts = 5;
+  static const double _revealAlignment = 0.16;
+  static const Duration _revealDuration = Duration(milliseconds: 320);
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    _seekTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Row model derived from [ChatProvider.messages]; recomputed only when that
+  /// list changes. Walking every message (and allocating a [DateTime] per row)
+  /// on every chrome update was the "chat gets heavier the more you scroll" part.
+  List<_ChatListRow> _rowsFor() {
+    final messages = widget.chat.messages;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final count = messages.length;
+    final firstId = count == 0 ? null : messages.first.id;
+    final lastId = count == 0 ? null : messages.last.id;
+    // Day dividers are relative ("Today"/"Yesterday"), so the cache has to
+    // expire when the calendar day rolls over or the label reads stale.
+    if (_cachedRows != null &&
+        _cachedRevision == widget.chat.contentRevision &&
+        _cachedCount == count &&
+        _cachedFirstId == firstId &&
+        _cachedLastId == lastId &&
+        _cachedDay == today) {
+      return _cachedRows!;
+    }
+    final chat = widget.chat;
+    // item slots: [encryption] + optional load-more + (date? + message)*
+    final rows = <_ChatListRow>[];
+    final indexById = <String, int>{};
+    rows.add(const _ChatListRow.encryption());
+    if (chat.hasMore) rows.add(const _ChatListRow.loadMore());
+    DateTime? lastDay;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      final createdAt = message.createdAt;
+      final day = createdAt == null
+          ? null
+          : DateTime(createdAt.year, createdAt.month, createdAt.day);
+      if (day != null && (lastDay == null || day != lastDay)) {
+        rows.add(_ChatListRow.date(chatDayLabel(createdAt, now: now)));
+        lastDay = day;
+      }
+      final prev = i > 0 ? messages[i - 1] : null;
+      final next = i + 1 < messages.length ? messages[i + 1] : null;
+      final samePrev =
+          prev != null && _sameChatCluster(prev, message) && !message.isDeleted;
+      final sameNext =
+          next != null && _sameChatCluster(message, next) && !next.isDeleted;
+      indexById[message.id] = rows.length;
+      rows.add(
+        _ChatListRow.message(
+          message,
+          showAvatar: !sameNext,
+          showHeader: !samePrev,
+          showTail: !sameNext,
+        ),
+      );
+    }
+
+    // A key is only useful while its row exists. Without this the map kept a
+    // GlobalKey for every message ever scrolled past, for the life of the screen.
+    if (widget.messageKeys.length > rows.length) {
+      final live = indexById.keys.toSet();
+      widget.messageKeys.removeWhere((id, _) => !live.contains(id));
+    }
+    _cachedRows = rows;
+    _cachedDay = today;
+    _cachedRevision = widget.chat.contentRevision;
+    _cachedCount = count;
+    _cachedFirstId = firstId;
+    _cachedLastId = lastId;
+    _rowIndexById = indexById;
+    return rows;
+  }
+
+  /// Scrolls [messageId] into view and flashes it. Backs both the reply-quote
+  /// tap and the pinned banner.
+  ///
+  /// The target may be far outside the built window, and Flutter only reveals
+  /// elements that exist, so this alternates a proportional seek (which moves
+  /// the cache window toward the target) with [Scrollable.ensureVisible] for the
+  /// final, exact landing. Two or three rounds are enough in practice because
+  /// the seek is proportional to the real scroll extent, not a guess.
+  void revealMessage(String messageId) {
+    _rowsFor();
+    final index = _rowIndexById[messageId];
+    if (index == null) {
+      // Target predates the loaded window: pull the next page in, then retry.
+      final alreadyPullingOlder = _reveal?.loadingOlder ?? false;
+      if (widget.chat.hasMore && !alreadyPullingOlder) {
+        _seekTimer?.cancel();
+        _seekTimer = Timer(const Duration(milliseconds: 500), () {
+          if (!mounted) return;
+          widget.onLoadMore();
+          _seekTimer = Timer(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
+            revealMessage(messageId);
+          });
+        });
+      }
+      return;
+    }
+    _seekTimer?.cancel();
+    _reveal = _RevealRequest(id: messageId, index: index, attempt: 0);
+    _highlightedId = messageId;
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(_highlightDuration, () {
+      if (!mounted) return;
+      if (_highlightedId == null) return;
+      setState(() => _highlightedId = null);
+    });
+    if (mounted) setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => _stepReveal());
+  }
+
+  void _stepReveal() {
+    final request = _reveal;
+    if (request == null || !mounted) return;
+    final controller = widget.controller;
+    if (!controller.hasClients) return;
+
+    final target = widget.messageKeys[request.id]?.currentContext;
+    if (target != null && target.mounted) {
+      _reveal = null;
+      unawaited(
+        Scrollable.ensureVisible(
+          target,
+          alignment: _revealAlignment,
+          duration: _revealDuration,
+          curve: Curves.easeOutCubic,
+        ),
+      );
+      return;
+    }
+
+    if (request.attempt >= _maxSeekAttempts) {
+      _reveal = null;
+      return;
+    }
+    final position = controller.position;
+    if (position.maxScrollExtent <= 0) {
+      _reveal = null;
+      return;
+    }
+    // Rows include date dividers and banners, but they are a small share of the
+    // list, so the message index is a good enough fraction of the extent.
+    final total = _rowIndexById.length;
+    if (total <= 1) {
+      _reveal = null;
+      return;
+    }
+    final fraction = (request.index + 0.5) / total;
+    final estimate = (position.maxScrollExtent * fraction).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    controller.jumpTo(estimate);
+    _reveal = _RevealRequest(
+      id: request.id,
+      index: request.index,
+      attempt: request.attempt + 1,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _stepReveal());
+  }
+
   @override
   Widget build(BuildContext context) {
+    final chat = widget.chat;
     if (chat.messages.isEmpty) {
       final copy = AppStrings.of(context);
       if (chat.state == LoadingState.loading) {
@@ -1051,44 +1247,11 @@ class _MessageList extends StatelessWidget {
         icon: Icons.forum_outlined,
       );
     }
-    final messages = chat.messages;
-    final now = DateTime.now();
-    // item slots: [encryption?] + optional load-more + (date? + message)*
-    final rows = <_ChatListRow>[];
-    rows.add(const _ChatListRow.encryption());
-    if (chat.hasMore) rows.add(const _ChatListRow.loadMore());
-    DateTime? lastDay;
-    for (var i = 0; i < messages.length; i++) {
-      final message = messages[i];
-      final day = message.createdAt == null
-          ? null
-          : DateTime(
-              message.createdAt!.year,
-              message.createdAt!.month,
-              message.createdAt!.day,
-            );
-      if (day != null && (lastDay == null || day != lastDay)) {
-        rows.add(_ChatListRow.date(chatDayLabel(message.createdAt, now: now)));
-        lastDay = day;
-      }
-      final prev = i > 0 ? messages[i - 1] : null;
-      final next = i + 1 < messages.length ? messages[i + 1] : null;
-      final samePrev =
-          prev != null && _sameChatCluster(prev, message) && !message.isDeleted;
-      final sameNext =
-          next != null && _sameChatCluster(message, next) && !next.isDeleted;
-      rows.add(
-        _ChatListRow.message(
-          message,
-          showAvatar: !sameNext,
-          showHeader: !samePrev,
-          showTail: !sameNext,
-        ),
-      );
-    }
+    final rows = _rowsFor();
+    final highlightId = _highlightedId;
 
     return ListView.builder(
-      controller: controller,
+      controller: widget.controller,
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       itemCount: rows.length,
       itemBuilder: (context, index) {
@@ -1099,7 +1262,7 @@ class _MessageList extends StatelessWidget {
           case _ChatListKind.loadMore:
             final loading = chat.state == LoadingState.loadingMore;
             return TextButton.icon(
-              onPressed: loading ? null : onLoadMore,
+              onPressed: loading ? null : widget.onLoadMore,
               icon: loading
                   ? const SizedBox(
                       width: 18,
@@ -1116,27 +1279,28 @@ class _MessageList extends StatelessWidget {
             if (message.sendState == ChatSendState.failed) {
               return _FailedMessage(message: message);
             }
-            return ChatMessageBubble(
-              key: messageKeys.putIfAbsent(message.id, GlobalKey.new),
+            final bubble = ChatMessageBubble(
+              key: widget.messageKeys.putIfAbsent(message.id, GlobalKey.new),
               message: message,
-              isMine: message.senderId == currentUserId,
-              contrast: contrast,
+              isMine: message.senderId == widget.currentUserId,
+              contrast: widget.contrast,
               showAvatar: row.showAvatar,
               showHeader: row.showHeader,
               showTail: row.showTail,
-              isStarred: stars.isStarred(message.id),
-              onLongPress: (rect) => onAction(message, rect),
-              onSwipeReply: () => onSwipeReply(message),
-              onAvatarTap: () => onAvatarTap(message),
+              isStarred: widget.stars.isStarred(message.id),
+              onLongPress: (rect) => widget.onAction(message, rect),
+              onSwipeReply: () => widget.onSwipeReply(message),
+              onReplyQuoteTap: (id) => revealMessage(id),
+              onAvatarTap: () => widget.onAvatarTap(message),
               onMediaTap:
                   message.isMedia && message.type != ChatMessageType.sticker
-                  ? () => onMediaTap(message)
+                  ? () => widget.onMediaTap(message)
                   : null,
               onStickerTap: message.type == ChatMessageType.sticker
-                  ? () => onStickerTap(message)
+                  ? () => widget.onStickerTap(message)
                   : null,
               onAudioTap: message.type == ChatMessageType.audio
-                  ? () => onAudioTap(message)
+                  ? () => widget.onAudioTap(message)
                   : null,
               onWelcomeMember: message.isMemberJoinedCard
                   ? () async {
@@ -1159,18 +1323,29 @@ class _MessageList extends StatelessWidget {
               onEventTap:
                   message.type == ChatMessageType.event &&
                       (message.mediaId ?? '').isNotEmpty
-                  ? () => onEventTap(message.mediaId!)
+                  ? () => widget.onEventTap(message.mediaId!)
                   : null,
               onGameTap:
                   message.type == ChatMessageType.game &&
                       (message.mediaId ?? '').isNotEmpty
-                  ? () => onGameTap(message)
+                  ? () => widget.onGameTap(message)
                   : null,
             );
+            if (message.id != highlightId) return bubble;
+            return ChatJumpHighlight(child: bubble);
         }
       },
     );
   }
+}
+
+final class _RevealRequest {
+  const _RevealRequest({required this.id, required this.index, this.attempt = 0});
+
+  final String id;
+  final int index;
+  final int attempt;
+  final bool loadingOlder = false;
 }
 
 bool _sameChatCluster(ChatMessage first, ChatMessage second) {
@@ -1587,6 +1762,88 @@ class _MarqueeTitleState extends State<_MarqueeTitle>
   }
 }
 
+/// One-line summary of a pinned message for the banner.
+
+/// Sticky notice for the newest pinned message.
+///
+/// It sits outside the scroll view, so revealing a pin never changes the list's
+/// scroll extent — the earlier banner stole a row and nudged the thread.
+class _PinnedMessageBar extends StatelessWidget {
+  const _PinnedMessageBar({
+    required this.senderName,
+    required this.preview,
+    required this.onTap,
+    required this.onUnpin,
+  });
+
+  final String senderName;
+  final String preview;
+  final VoidCallback onTap;
+  final VoidCallback onUnpin;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      child: InkWell(
+        key: const Key('pinned-message-bar'),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: scheme.outlineVariant),
+            ),
+          ),
+          padding: const EdgeInsetsDirectional.only(
+            start: 14,
+            end: 4,
+            top: 8,
+            bottom: 8,
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.push_pin_outlined, size: 16, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      copy.pick('Pinned message', 'رسالة مثبتة'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      senderName.isEmpty ? preview : '$senderName: $preview',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                key: const Key('pinned-message-unpin'),
+                tooltip: copy.pick('Unpin', 'إلغاء التثبيت'),
+                visualDensity: VisualDensity.compact,
+                onPressed: onUnpin,
+                icon: const Icon(Icons.close, size: 18),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ReplyComposerBar extends StatelessWidget {
   const _ReplyComposerBar({required this.message, required this.onClear});
 
@@ -1622,68 +1879,6 @@ class _ReplyComposerBar extends StatelessWidget {
   }
 }
 
-final class _ForwardTarget {
-  const _ForwardTarget({this.groupId, this.chatId});
-
-  final String? groupId;
-  final String? chatId;
-}
-
-class _ForwardSheet extends StatelessWidget {
-  const _ForwardSheet({
-    required this.currentGroupId,
-    required this.groups,
-    required this.chats,
-    required this.currentUserId,
-  });
-
-  final String currentGroupId;
-  final GroupProvider groups;
-  final PrivateChatListProvider chats;
-  final String currentUserId;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: ListenableBuilder(
-        listenable: Listenable.merge(<Listenable>[groups, chats]),
-        builder: (context, _) {
-          final copy = AppStrings.of(context);
-          final destinations = <Widget>[
-            ListTile(title: Text(copy.forwardTo)),
-            ...groups.joinedGroups
-                .where((group) => group.id != currentGroupId)
-                .map(
-                  (group) => ListTile(
-                    key: Key('forward-group-${group.id}'),
-                    leading: const Icon(Icons.groups_outlined),
-                    title: Text(group.name),
-                    onTap: () => Navigator.pop(
-                      context,
-                      _ForwardTarget(groupId: group.id),
-                    ),
-                  ),
-                ),
-            ...chats.chats.map(
-              (chat) => ListTile(
-                key: Key('forward-chat-${chat.id}'),
-                leading: const Icon(Icons.chat_bubble_outline),
-                title: Text(chat.otherDisplayName(currentUserId)),
-                onTap: () =>
-                    Navigator.pop(context, _ForwardTarget(chatId: chat.id)),
-              ),
-            ),
-          ];
-          if (destinations.length == 1) {
-            destinations.add(ListTile(title: Text(copy.noForwardTargets)));
-          }
-          return ListView(shrinkWrap: true, children: destinations);
-        },
-      ),
-    );
-  }
-}
-
 class _ChatChromeSlice {
   const _ChatChromeSlice({
     required this.revision,
@@ -1691,6 +1886,9 @@ class _ChatChromeSlice {
     required this.hasMore,
     required this.failureMessage,
     required this.replyId,
+    required this.pinnedId,
+    required this.pinnedSender,
+    required this.pinnedPreview,
   });
 
   final int revision;
@@ -1699,6 +1897,11 @@ class _ChatChromeSlice {
   final String? failureMessage;
   final String? replyId;
 
+  /// Newest live pinned message, surfaced as a banner above the composer.
+  final String? pinnedId;
+  final String? pinnedSender;
+  final String? pinnedPreview;
+
   @override
   bool operator ==(Object other) =>
       other is _ChatChromeSlice &&
@@ -1706,11 +1909,22 @@ class _ChatChromeSlice {
       state == other.state &&
       hasMore == other.hasMore &&
       failureMessage == other.failureMessage &&
-      replyId == other.replyId;
+      replyId == other.replyId &&
+      pinnedId == other.pinnedId &&
+      pinnedSender == other.pinnedSender &&
+      pinnedPreview == other.pinnedPreview;
 
   @override
-  int get hashCode =>
-      Object.hash(revision, state, hasMore, failureMessage, replyId);
+  int get hashCode => Object.hash(
+    revision,
+    state,
+    hasMore,
+    failureMessage,
+    replyId,
+    pinnedId,
+    pinnedSender,
+    pinnedPreview,
+  );
 }
 
 class _OfflineBanner extends StatelessWidget {

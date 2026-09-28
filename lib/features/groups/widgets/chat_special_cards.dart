@@ -791,3 +791,32 @@ String chatDayLabel(DateTime? date, {required DateTime now}) {
   ];
   return '${local.day} ${months[local.month - 1]} ${local.year}';
 }
+
+/// Short-lived wash behind a message that was jumped to, so the eye lands on it.
+class ChatJumpHighlight extends StatelessWidget {
+  const ChatJumpHighlight({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        // Bloom in fast, fade out over the rest of the window.
+        final alpha = value < 0.25 ? value / 0.25 : 1 - (value - 0.25) / 0.75;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: (alpha * 0.22).clamp(0.0, 1.0)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: child,
+        );
+      },
+      child: child,
+    );
+  }
+}
