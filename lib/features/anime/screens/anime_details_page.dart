@@ -32,6 +32,7 @@ import '../providers/anime_providers.dart';
 import '../widgets/anime_hub_widgets.dart';
 import '../widgets/anime_details_hero.dart';
 import '../widgets/anime_list_status_sheet.dart';
+import '../widgets/anime_trailer.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeDetailsPage extends StatefulWidget {
@@ -397,11 +398,7 @@ class _InfoTab extends StatelessWidget {
               AppSpacing.lg,
               0,
             ),
-            child: PubgetSecondaryButton(
-              onPressed: () => AnimeLinks.copyUrl(context, anime.trailerUrl!),
-              semanticLabel: AnimeCopy.of(context).trailer,
-              child: Text(AnimeCopy.of(context).trailer),
-            ),
+            child: AnimeTrailerTile(trailerUrl: anime.trailerUrl!),
           ),
         if (anime.externalLinks.isNotEmpty)
           Padding(

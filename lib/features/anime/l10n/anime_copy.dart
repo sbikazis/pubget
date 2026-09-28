@@ -56,6 +56,7 @@ final class AnimeCopy {
   String get addFavorite => _t.addFavorite;
   String get removeFavorite => _t.removeFavorite;
   String get trailer => _t.trailer;
+  String get trailerUnavailable => _t.trailerUnavailable;
   String get links => _t.links;
   String get copied => _t.copied;
   String get share => _t.share;
