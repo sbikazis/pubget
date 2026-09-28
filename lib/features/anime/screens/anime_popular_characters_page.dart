@@ -8,6 +8,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimePopularCharactersPage extends StatefulWidget {
@@ -35,6 +36,7 @@ class _AnimePopularCharactersPageState
         leading: AppBackButton.maybeOf(context),
         title: Text(AnimeCopy.of(context).popularCharactersTitle),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/characters'),
       body: PubgetLoadingStateView(
         state: social?.popularCharactersState ?? LoadingState.empty,
         onRetry: social?.loadPopularCharacters,

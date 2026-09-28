@@ -82,8 +82,8 @@ void main() {
           continue;
         }
         final box = tester.getRect(finder);
-        final viewport = tester.view.physicalSize.height /
-            tester.view.devicePixelRatio;
+        final viewport =
+            tester.view.physicalSize.height / tester.view.devicePixelRatio;
         if (box.top >= 0 && box.bottom <= viewport) break;
         final shift = box.top < 0 ? box.top + 48 : box.bottom - viewport + 48;
         await tester.drag(list, Offset(0, shift));
@@ -104,9 +104,7 @@ void main() {
     expect(profile.parameters['uid'], 'alice');
     expect(find.textContaining('Profile'), findsWidgets);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('private');
     expect(find.text('Private body count 0'), findsOneWidget);
@@ -123,28 +121,30 @@ void main() {
     await openAndTap('store');
     expect(find.text('Store page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('premium');
     expect(find.text('Premium page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('settings');
     expect(find.text('Settings page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(19));
+    expect(AppShellDrawerDestinations.items, hasLength(13));
+    // The main drawer keeps exactly one Anime entry; the six hub pages live in
+    // the hub's own drawer instead of being flattened into the global one.
+    expect(
+      AppShellDrawerDestinations.items.where(
+        (i) => i.path.startsWith('/anime'),
+      ),
+      hasLength(1),
+    );
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {
@@ -227,7 +227,8 @@ Future<_ShellEnv> _pumpShell(
       '/guide': const Text('Guide page'),
     },
     parameterizedPages: <String, ParameterizedPageBuilder>{
-      '/profile': (parameters) => Text('Profile ${parameters['uid'] ?? 'self'}'),
+      '/profile': (parameters) =>
+          Text('Profile ${parameters['uid'] ?? 'self'}'),
     },
     initialRoute: const ParameterizedRoute(path: '/home'),
   );

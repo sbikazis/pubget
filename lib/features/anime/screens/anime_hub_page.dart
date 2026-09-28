@@ -14,6 +14,7 @@ import '../models/anime_models.dart';
 import '../models/anime_rating_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 import 'anime_search_page.dart';
 
@@ -64,6 +65,7 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
           ),
         ],
       ),
+      drawer: AnimeHubDrawer(current: '/anime'),
       body: PubgetAtmosphere(child: _hubBody(hub, network)),
     );
   }

@@ -10,6 +10,7 @@ import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 /// Drawer "MAL Ranking" and "Pubget Rating".
@@ -67,6 +68,7 @@ class _PubgetRankingBody extends StatelessWidget {
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.communityRankingTitle),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/ratings/pubget'),
       body: PubgetLoadingStateView(
         state: social?.topState ?? LoadingState.empty,
         onRetry: onRetry,
@@ -145,6 +147,7 @@ class _MalRankingBody extends StatelessWidget {
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.malRankingTitle),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/ratings'),
       body: PubgetLoadingStateView(
         state:
             list.state == LoadingState.loadingMore ||

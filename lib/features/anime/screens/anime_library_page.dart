@@ -11,6 +11,7 @@ import '../models/anime_list_models.dart';
 import '../providers/anime_library_provider.dart';
 import '../providers/anime_my_list_provider.dart';
 import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 /// "My list": the five personal states, searchable, sortable and renderable
@@ -212,6 +213,7 @@ class _AnimeLibraryPageState extends State<AnimeLibraryPage>
             ),
           ),
         ),
+        drawer: AnimeHubDrawer(current: '/anime/library'),
         body: !signedIn
             ? PubgetEmptyState(
                 title: copy.signInToSaveList,

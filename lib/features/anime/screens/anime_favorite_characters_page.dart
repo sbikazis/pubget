@@ -11,6 +11,7 @@ import '../models/anime_list_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
 import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 /// Drawer "My Favorite Characters".
@@ -81,6 +82,7 @@ class _AnimeFavoriteCharactersPageState
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.favoriteCharactersTitle),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/characters/favorites'),
       body: AnimeHubBackdrop(
         child: Column(
           children: <Widget>[
