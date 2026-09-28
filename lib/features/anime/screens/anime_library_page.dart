@@ -11,6 +11,7 @@ import '../models/anime_list_models.dart';
 import '../providers/anime_library_provider.dart';
 import '../providers/anime_my_list_provider.dart';
 import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_list_status_sheet.dart';
 import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
@@ -435,14 +436,12 @@ class _StatusTab extends StatelessWidget {
       await library.remove(entry.animeId);
       return;
     }
-    final next = await showAnimeStatusSheet(context, current: entry.status);
-    if (next == null || next == entry.status) return;
-    await library.setStatus(
+    // The same sheet the details page opens, so the five statuses have one
+    // home: it preselects the current status and saves the change itself.
+    await showAnimeListStatusSheet(
+      context,
       animeId: entry.animeId,
-      status: next,
       title: entry.title,
-      rating: entry.rating,
-      favorite: entry.favorite,
     );
   }
 }

@@ -504,6 +504,19 @@ void main() {
 
     expect(find.text(AnimeStrings.scoreDistribution), findsOneWidget);
     expect(find.byType(AnimeVoteDistribution), findsOneWidget);
+    // The donut shares the selected score with the bars it sits above.
+    expect(find.byType(AnimeDonutChart), findsOneWidget);
+    final statsScroller = find
+        .descendant(
+          of: find.byKey(const Key('anime-stats-tab')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text(AnimeStrings.criteriaBreakdown),
+      300,
+      scrollable: statsScroller,
+    );
     expect(find.text(AnimeStrings.criteriaBreakdown), findsOneWidget);
   });
 }

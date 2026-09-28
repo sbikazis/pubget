@@ -381,8 +381,8 @@ class _InfoTab extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  Text(
-                    anime.synopsis!,
+                  AnimeExpandableText(
+                    text: anime.synopsis!,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ],
@@ -459,7 +459,7 @@ class _CharactersTab extends StatelessWidget {
 
 /// Third tab: the numbers behind the title, never invented from the catalog.
 /// Every value comes from the MAL payload or from Pubget community data.
-class _StatsTab extends StatelessWidget {
+class _StatsTab extends StatefulWidget {
   const _StatsTab({
     required this.anime,
     required this.details,
@@ -469,6 +469,53 @@ class _StatsTab extends StatelessWidget {
   final Anime anime;
   final AnimeDetailsProvider details;
   final AnimeHubSocialProvider? social;
+
+  @override
+  State<_StatsTab> createState() => _StatsTabState();
+}
+
+class _StatsTabState extends State<_StatsTab> {
+  /// The score the member last tapped in the distribution, shared by the donut
+  /// and the bars so both read as one control.
+  int? _selected;
+
+  Anime get anime => widget.anime;
+  AnimeDetailsProvider get details => widget.details;
+  AnimeHubSocialProvider? get social => widget.social;
+
+  /// Three bands rather than ten slices: a donut with ten segments is noise.
+  static const int _lowBand = 4;
+  static const int _midBand = 7;
+
+  List<AnimeDonutSlice> _donutSlices(List<int> histogram) {
+    final hub = AnimeHubColors.of(context);
+    var low = 0;
+    var mid = 0;
+    var high = 0;
+    for (var index = 0; index < histogram.length; index++) {
+      final score = index + 1;
+      if (score <= _lowBand) {
+        low += histogram[index];
+      } else if (score <= _midBand) {
+        mid += histogram[index];
+      } else {
+        high += histogram[index];
+      }
+    }
+    return <AnimeDonutSlice>[
+      AnimeDonutSlice(
+        label: '1-$_lowBand',
+        value: low,
+        color: hub.royalPurple.withValues(alpha: 0.5),
+      ),
+      AnimeDonutSlice(
+        label: '$_lowBand+1-$_midBand',
+        value: mid,
+        color: hub.royalPurple,
+      ),
+      AnimeDonutSlice(label: '$_midBand+1-10', value: high, color: hub.gold),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,6 +534,7 @@ class _StatsTab extends StatelessWidget {
         ? _averageCriteria(reviews)
         : AnimeCriteriaScores.empty;
     return ListView(
+      key: const Key('anime-stats-tab'),
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
         Padding(
@@ -538,7 +586,24 @@ class _StatsTab extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: AnimeVoteDistribution(counts: histogram),
+            child: Column(
+              children: <Widget>[
+                AnimeDonutChart(
+                  centerLabel: _selected == null
+                      ? (stats?.averageScore ?? 0).toStringAsFixed(2)
+                      : '$_selected',
+                  slices: _donutSlices(histogram),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AnimeVoteDistribution(
+                  counts: histogram,
+                  selectedScore: _selected,
+                  onScoreTapped: (score) => setState(
+                    () => _selected = _selected == score ? null : score,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
           Padding(

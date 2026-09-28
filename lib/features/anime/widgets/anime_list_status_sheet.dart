@@ -77,6 +77,7 @@ class _AnimeListStatusSheetState extends State<_AnimeListStatusSheet> {
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: _StatusOption(
+                  key: ValueKey<String>('anime-status-${status.wireValue}'),
                   status: status,
                   selected: _pending == status,
                   accent: hub.gold,
@@ -139,6 +140,7 @@ class _AnimeListStatusSheetState extends State<_AnimeListStatusSheet> {
 class _StatusOption extends StatelessWidget {
   const _StatusOption({
     required this.status,
+    super.key,
     required this.selected,
     required this.onTap,
     required this.accent,
