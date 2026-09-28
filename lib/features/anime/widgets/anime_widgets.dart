@@ -512,11 +512,55 @@ class AnimeHomeStrip extends StatelessWidget {
   }
 }
 
-class AnimePaginatedList extends StatelessWidget {
+class AnimePaginatedList extends StatefulWidget {
   const AnimePaginatedList({required this.list, this.header, super.key});
 
   final AnimeListProvider list;
   final Widget? header;
+
+  @override
+  State<AnimePaginatedList> createState() => _AnimePaginatedListState();
+}
+
+class _AnimePaginatedListState extends State<AnimePaginatedList> {
+  final ScrollController _controller = ScrollController();
+  bool _autoFilling = false;
+
+  AnimeListProvider get list => widget.list;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_maybeAutoFill);
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_maybeAutoFill)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// Keeps pulling pages until the grid is taller than the viewport.
+  ///
+  /// Without this, a page that arrives while the device is offline, or a
+  /// provider that returns a short first page, leaves the user staring at blank
+  /// space with no scrollbar to trigger the next page. Guarded so only one
+  /// extra request is ever in flight.
+  void _maybeAutoFill() {
+    if (_autoFilling) return;
+    if (!_controller.hasClients) return;
+    if (list.state != LoadingState.loaded) return;
+    if (!list.hasNextPage) return;
+    if (_controller.position.maxScrollExtent > 0) return;
+    _autoFilling = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await list.loadMore();
+      _autoFilling = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -531,8 +575,9 @@ class AnimePaginatedList extends StatelessWidget {
       // Spec: three columns with infinite scroll. The header, the cached
       // banner and the footer states stay full width above and below the grid.
       child: CustomScrollView(
+        controller: _controller,
         slivers: <Widget>[
-          if (header != null) SliverToBoxAdapter(child: header!),
+          if (widget.header != null) SliverToBoxAdapter(child: widget.header!),
           if (list.fromCache)
             SliverToBoxAdapter(
               child: AnimeCachedBanner(

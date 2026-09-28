@@ -145,6 +145,15 @@ isAdult''';
   }
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) => _page(
+    extra: const <String, Object?>{},
+    page: page,
+    limit: limit,
+    // Newest broadcast entries first, mirroring the Jikan start-date sort.
+    sort: 'START_DATE_DESC',
+  );
+
+  @override
   Future<Result<List<Anime>>> getAnimeSummaries(
     List<String> ids, {
     int chunkSize = 100,

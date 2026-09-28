@@ -69,6 +69,10 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
       _run((provider) => provider.getThisSeason(page: page, limit: limit));
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) =>
+      _run((provider) => provider.getLatest(page: page, limit: limit));
+
+  @override
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId) =>
       _run((provider) => provider.getCharacters(animeId));
 

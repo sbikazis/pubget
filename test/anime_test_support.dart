@@ -216,6 +216,8 @@ final class FakeAnimeRepository implements AnimeRepository {
   int airingCalls = 0;
   int upcomingCalls = 0;
   int thisSeasonCalls = 0;
+  int latestCalls = 0;
+  final List<int> latestPages = <int>[];
   int charactersCalls = 0;
   int characterDetailsCalls = 0;
   int genresCalls = 0;
@@ -342,6 +344,13 @@ final class FakeAnimeRepository implements AnimeRepository {
   @override
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) async {
     thisSeasonCalls++;
+    return _pageResult(page);
+  }
+
+  @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) async {
+    latestCalls++;
+    latestPages.add(page);
     return _pageResult(page);
   }
 

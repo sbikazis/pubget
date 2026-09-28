@@ -593,6 +593,10 @@ final class AnimePage {
 
 abstract final class AnimeStrings {
   static const hubTitle = 'Anime Hub';
+
+  /// Stable English key for the hub's "Latest updates" page. The visible label
+  /// is always resolved through the translation map, never shown from here.
+  static const latestUpdates = 'Latest updates';
   static const seeAll = 'See all';
   static const searchHint = 'Search anime';
   static const openSearch = 'Search';

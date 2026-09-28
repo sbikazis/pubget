@@ -363,6 +363,7 @@ final class AnimeCopy {
   /// call-sites keep resolving to the same localized copy.
   String ui(String english) => switch (english) {
     AnimeStrings.hubTitle => hubTitle,
+    AnimeStrings.latestUpdates => latestUpdates,
     AnimeStrings.seeAll => seeAll,
     AnimeStrings.searchHint => searchHint,
     AnimeStrings.openSearch => openSearch,

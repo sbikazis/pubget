@@ -17,6 +17,15 @@ void main() {
     expect(copy.ui('Frieren'), 'Frieren');
   });
 
+  test('latest updates title resolves in both locales', () {
+    // Regression: the provider emitted a hand-typed 'Latest Updates' that no
+    // map entry matched, so the page title stayed English in Arabic.
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+    expect(ar.pageTitle(AnimeStrings.latestUpdates), 'آخر التحديثات');
+    expect(en.pageTitle(AnimeStrings.latestUpdates), AnimeStrings.latestUpdates);
+  });
+
   test('English locale keeps Jikan term spelling', () {
     final copy = AnimeCopy.forLocale(const Locale('en'));
     expect(copy.status('Finished Airing'), 'Finished Airing');
