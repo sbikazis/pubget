@@ -696,6 +696,8 @@ final class AppTranslationMapping {
   );
   String get listStatus => pick('Your list', 'حالتك');
   String get removeFromList => pick('Remove from list', 'إزالة من القائمة');
+  String get save => pick('Save', 'حفظ');
+  String get myRating => pick('My rating', 'تقييمي');
   String get changeStatus => pick('Change status', 'تغيير الحالة');
   String get addToList => pick('Add to list', 'أضف إلى القائمة');
   String get searchInList => pick('Search in your list', 'ابحث في قائمتك');

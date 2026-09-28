@@ -39,6 +39,14 @@ import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
 import 'social_test_support.dart';
 
+/// The scroller that actually holds the details tab content.
+///
+/// `find.byType(Scrollable).first` is the TabBarView's PageView, so scrolling
+/// it moves nothing; the tab body is the Scrollable inside the details list.
+Finder detailsTabScroller() => find
+    .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+    .first;
+
 void main() {
   testWidgets('both ranking pages share one ranked anime card', (tester) async {
     for (final source in AnimeRankingSource.values) {
@@ -230,7 +238,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('favorite-anime')));
     await tester.pump();
-    expect(find.text(AnimeStrings.favorited), findsWidgets);
+    // The heart is the only favourite affordance on the page, so its filled
+    // state and its tooltip are what carry the feedback.
+    final heart = tester.widget<IconButton>(
+      find.byKey(const Key('favorite-anime')),
+    );
+    expect(heart.tooltip, AnimeStrings.favorited);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('favorite-anime')),
+        matching: find.byIcon(Icons.favorite),
+      ),
+      findsOneWidget,
+    );
     await tester.pumpAndSettle();
     expect(profiles.lastUpdate?.favoriteAnimeIds, contains('52991'));
   });
@@ -370,7 +390,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
 
     expect(find.text(AnimeStrings.relatedTitle), findsWidgets);
@@ -380,7 +400,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedFanWorksTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
     expect(find.text(AnimeStrings.relatedFanWorksTitle), findsOneWidget);
     expect(find.text('My Fan Art'), findsWidgets);
@@ -388,7 +408,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedGroupsTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
     expect(find.text(AnimeStrings.relatedGroupsTitle), findsOneWidget);
     expect(find.text('Anime Club'), findsWidgets);
@@ -789,23 +809,24 @@ final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
 /// characters list, so the shared ranked cards can be asserted on either one.
 final class _FakeRankingSocialRepository implements AnimeHubSocialRepository {
   @override
-  Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 50}) async =>
-      Success(<AnimeCommunityStats>[
-        AnimeCommunityStats(
-          animeId: '52991',
-          title: 'Frieren',
-          averageScore: 9.1,
-          ratingCount: 42,
-          listedCount: 300,
-        ),
-        AnimeCommunityStats(
-          animeId: '51179',
-          title: 'Steins Gate',
-          averageScore: 8.4,
-          ratingCount: 12,
-          listedCount: 90,
-        ),
-      ]);
+  Future<Result<List<AnimeCommunityStats>>> listTopRated({
+    int limit = 50,
+  }) async => Success(<AnimeCommunityStats>[
+    AnimeCommunityStats(
+      animeId: '52991',
+      title: 'Frieren',
+      averageScore: 9.1,
+      ratingCount: 42,
+      listedCount: 300,
+    ),
+    AnimeCommunityStats(
+      animeId: '51179',
+      title: 'Steins Gate',
+      averageScore: 8.4,
+      ratingCount: 12,
+      listedCount: 90,
+    ),
+  ]);
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({

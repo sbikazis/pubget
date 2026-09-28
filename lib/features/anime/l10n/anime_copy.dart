@@ -174,6 +174,8 @@ final class AnimeCopy {
   String get libraryEmptyMessage => _t.libraryEmptyMessage;
   String get listStatus => _t.listStatus;
   String get removeFromList => _t.removeFromList;
+  String get save => _t.save;
+  String get myRating => _t.myRating;
   String get changeStatus => _t.changeStatus;
   String get addToList => _t.addToList;
   String get searchInList => _t.searchInList;
