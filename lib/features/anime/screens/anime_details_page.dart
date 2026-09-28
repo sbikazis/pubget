@@ -23,7 +23,6 @@ import '../../groups/models/group_models.dart';
 import '../../groups/repositories/group_repository.dart';
 import '../../groups/widgets/group_list_card.dart';
 import '../l10n/anime_copy.dart';
-import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../theme/anime_hub_colors.dart';
 import '../models/anime_rating_models.dart';
@@ -31,6 +30,9 @@ import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
 import '../providers/anime_providers.dart';
 import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_details_hero.dart';
+import '../widgets/anime_list_status_sheet.dart';
+import '../widgets/anime_trailer.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeDetailsPage extends StatefulWidget {
@@ -310,34 +312,21 @@ class _InfoTab extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
         if (details.fromCache) AnimeCachedBanner(offline: !network.isOnline),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.lg,
-            AppSpacing.lg,
-            0,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Hero(
-                tag: animePosterHeroTag(anime.id),
-                child: SizedBox(
-                  width: 148,
-                  child: AnimePoster(images: anime.images, memCacheWidth: 360),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: _HeroCopy(anime: anime, social: social),
-              ),
-            ],
+        AnimeDetailsHero(
+          anime: anime,
+          stats: social?.stats,
+          isFavorite: details.isFavorite,
+          busy: details.savingFavorite,
+          onToggleFavorite: details.toggleFavorite,
+          onAddToList: () => showAnimeListStatusSheet(
+            context,
+            animeId: anime.id,
+            title: anime.title,
           ),
         ),
-        const SizedBox(height: AppSpacing.xl),
+        const SizedBox(height: AppSpacing.lg),
         _ActionRow(anime: anime, details: details, social: social),
         const SizedBox(height: AppSpacing.xl),
-        _AnimeListControls(anime: anime),
         _CustomListControls(anime: anime),
         if (anime.alternativeTitles.isNotEmpty)
           Padding(
@@ -393,8 +382,8 @@ class _InfoTab extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  Text(
-                    anime.synopsis!,
+                  AnimeExpandableText(
+                    text: anime.synopsis!,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ],
@@ -409,11 +398,7 @@ class _InfoTab extends StatelessWidget {
               AppSpacing.lg,
               0,
             ),
-            child: PubgetSecondaryButton(
-              onPressed: () => AnimeLinks.copyUrl(context, anime.trailerUrl!),
-              semanticLabel: AnimeCopy.of(context).trailer,
-              child: Text(AnimeCopy.of(context).trailer),
-            ),
+            child: AnimeTrailerTile(trailerUrl: anime.trailerUrl!),
           ),
         if (anime.externalLinks.isNotEmpty)
           Padding(
@@ -471,7 +456,7 @@ class _CharactersTab extends StatelessWidget {
 
 /// Third tab: the numbers behind the title, never invented from the catalog.
 /// Every value comes from the MAL payload or from Pubget community data.
-class _StatsTab extends StatelessWidget {
+class _StatsTab extends StatefulWidget {
   const _StatsTab({
     required this.anime,
     required this.details,
@@ -481,6 +466,53 @@ class _StatsTab extends StatelessWidget {
   final Anime anime;
   final AnimeDetailsProvider details;
   final AnimeHubSocialProvider? social;
+
+  @override
+  State<_StatsTab> createState() => _StatsTabState();
+}
+
+class _StatsTabState extends State<_StatsTab> {
+  /// The score the member last tapped in the distribution, shared by the donut
+  /// and the bars so both read as one control.
+  int? _selected;
+
+  Anime get anime => widget.anime;
+  AnimeDetailsProvider get details => widget.details;
+  AnimeHubSocialProvider? get social => widget.social;
+
+  /// Three bands rather than ten slices: a donut with ten segments is noise.
+  static const int _lowBand = 4;
+  static const int _midBand = 7;
+
+  List<AnimeDonutSlice> _donutSlices(List<int> histogram) {
+    final hub = AnimeHubColors.of(context);
+    var low = 0;
+    var mid = 0;
+    var high = 0;
+    for (var index = 0; index < histogram.length; index++) {
+      final score = index + 1;
+      if (score <= _lowBand) {
+        low += histogram[index];
+      } else if (score <= _midBand) {
+        mid += histogram[index];
+      } else {
+        high += histogram[index];
+      }
+    }
+    return <AnimeDonutSlice>[
+      AnimeDonutSlice(
+        label: '1-$_lowBand',
+        value: low,
+        color: hub.royalPurple.withValues(alpha: 0.5),
+      ),
+      AnimeDonutSlice(
+        label: '$_lowBand+1-$_midBand',
+        value: mid,
+        color: hub.royalPurple,
+      ),
+      AnimeDonutSlice(label: '$_midBand+1-10', value: high, color: hub.gold),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -499,6 +531,7 @@ class _StatsTab extends StatelessWidget {
         ? _averageCriteria(reviews)
         : AnimeCriteriaScores.empty;
     return ListView(
+      key: const Key('anime-stats-tab'),
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
         Padding(
@@ -550,7 +583,24 @@ class _StatsTab extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: AnimeVoteDistribution(counts: histogram),
+            child: Column(
+              children: <Widget>[
+                AnimeDonutChart(
+                  centerLabel: _selected == null
+                      ? (stats?.averageScore ?? 0).toStringAsFixed(2)
+                      : '$_selected',
+                  slices: _donutSlices(histogram),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AnimeVoteDistribution(
+                  counts: histogram,
+                  selectedScore: _selected,
+                  onScoreTapped: (score) => setState(
+                    () => _selected = _selected == score ? null : score,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
           Padding(
@@ -857,71 +907,6 @@ class _RelatedEventsSection extends StatelessWidget {
   }
 }
 
-class _HeroCopy extends StatelessWidget {
-  const _HeroCopy({required this.anime, required this.social});
-
-  final Anime anime;
-  final AnimeHubSocialProvider? social;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final stats = social?.stats;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          anime.title,
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            height: 1.15,
-          ),
-        ),
-        if (anime.titleArabic != null &&
-            anime.titleArabic!.isNotEmpty) ...<Widget>[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            anime.titleArabic!,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: AppColors.goldPale,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        AnimeScoreBadge(malScore: anime.score, community: stats, large: true),
-        if (stats != null && stats.hasRatings) ...<Widget>[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            AnimeCopy.of(context).ratingsCount(stats.ratingCount),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-        if (anime.subtitle.isNotEmpty) ...<Widget>[
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            AnimeCopy.of(context).subtitle(anime),
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-        if (anime.status != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            AnimeCopy.of(context).status(anime.status),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.anime,
@@ -954,43 +939,6 @@ class _ActionRow extends StatelessWidget {
                   : AnimeCopy.of(context).editRating,
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          details.isFavorite
-              ? DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: AppColors.royalPurple.withValues(alpha: 0.48),
-                        blurRadius: 16,
-                      ),
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.36),
-                        blurRadius: 10,
-                      ),
-                    ],
-                  ),
-                  child: PubgetPrimaryButton(
-                    key: const Key('favorite-anime'),
-                    onPressed: details.savingFavorite
-                        ? null
-                        : details.toggleFavorite,
-                    semanticLabel: AnimeCopy.of(context).favorited,
-                    leadingIcon: Icons.favorite,
-                    loading: details.savingFavorite,
-                    child: Text(AnimeCopy.of(context).favorited),
-                  ),
-                )
-              : PubgetSecondaryButton(
-                  key: const Key('favorite-anime'),
-                  onPressed: details.savingFavorite
-                      ? null
-                      : details.toggleFavorite,
-                  semanticLabel: AnimeCopy.of(context).favorite,
-                  leadingIcon: Icons.favorite_border,
-                  loading: details.savingFavorite,
-                  child: Text(AnimeCopy.of(context).favorite),
-                ),
         ],
       ),
     );
@@ -1742,63 +1690,6 @@ class _ReviewsSection extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _AnimeListControls extends StatelessWidget {
-  const _AnimeListControls({required this.anime});
-
-  final Anime anime;
-
-  @override
-  Widget build(BuildContext context) {
-    final library = maybeAnimeLibrary(context);
-    if (library == null) return const SizedBox.shrink();
-    final current = library.entryFor(anime.id);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: PubgetCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              AnimeCopy.of(context).listStatus,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                for (final status in AnimeListStatus.values)
-                  PubgetSelectionChip(
-                    label: AnimeCopy.of(context).listStatusLabel(status),
-                    selected: current?.status == status,
-                    onSelected: library.saving
-                        ? null
-                        : (_) => library.setStatus(
-                            animeId: anime.id,
-                            status: status,
-                            title: anime.title,
-                            rating: current?.rating,
-                          ),
-                  ),
-              ],
-            ),
-            if (current != null) ...<Widget>[
-              const SizedBox(height: AppSpacing.sm),
-              PubgetTextButton(
-                onPressed: library.saving
-                    ? null
-                    : () => library.remove(anime.id),
-                semanticLabel: AnimeCopy.of(context).removeFromList,
-                child: Text(AnimeCopy.of(context).removeFromList),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

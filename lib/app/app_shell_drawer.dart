@@ -72,42 +72,6 @@ abstract final class AppShellDrawerDestinations {
       path: '/anime',
     ),
     (
-      id: 'anime-updated',
-      label: 'Latest Updates',
-      icon: Icons.new_releases_outlined,
-      path: '/anime/updated',
-    ),
-    (
-      id: 'anime-ratings',
-      label: 'MAL Ranking',
-      icon: Icons.emoji_events_outlined,
-      path: '/anime/ratings',
-    ),
-    (
-      id: 'anime-ratings-pubget',
-      label: 'Pubget Rating',
-      icon: Icons.star_outline,
-      path: '/anime/ratings/pubget',
-    ),
-    (
-      id: 'anime-library',
-      label: 'My Anime Lists',
-      icon: Icons.bookmarks_outlined,
-      path: '/anime/library',
-    ),
-    (
-      id: 'anime-characters-favorites',
-      label: 'My Favorite Characters',
-      icon: Icons.favorite_outline,
-      path: '/anime/characters/favorites',
-    ),
-    (
-      id: 'anime-characters',
-      label: 'Most Popular Characters',
-      icon: Icons.people_outline,
-      path: '/anime/characters',
-    ),
-    (
       id: 'store',
       label: 'Dragon Store',
       icon: Icons.storefront_outlined,

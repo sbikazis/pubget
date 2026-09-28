@@ -56,6 +56,7 @@ final class AnimeCopy {
   String get addFavorite => _t.addFavorite;
   String get removeFavorite => _t.removeFavorite;
   String get trailer => _t.trailer;
+  String get trailerUnavailable => _t.trailerUnavailable;
   String get links => _t.links;
   String get copied => _t.copied;
   String get share => _t.share;
@@ -146,6 +147,8 @@ final class AnimeCopy {
   String get rateAnime => _t.rateAnime;
   String get editRating => _t.editRating;
   String get communityScore => _t.communityScore;
+  String get unnamedAnime => _t.unnamedAnime;
+  String get unnamedCharacter => _t.unnamedCharacter;
   String get malScore => _t.malScore;
   String get ratingsTitle => _t.ratingsTitle;
   String get votesTitle => _t.votesTitle;
@@ -172,6 +175,8 @@ final class AnimeCopy {
   String get libraryEmptyMessage => _t.libraryEmptyMessage;
   String get listStatus => _t.listStatus;
   String get removeFromList => _t.removeFromList;
+  String get save => _t.save;
+  String get myRating => _t.myRating;
   String get changeStatus => _t.changeStatus;
   String get addToList => _t.addToList;
   String get searchInList => _t.searchInList;
@@ -311,6 +316,7 @@ final class AnimeCopy {
 
   String genre(String? raw) => _t.genre(raw);
   String status(String? raw) => _t.status(raw);
+  String characterFact(String? raw) => _t.characterFact(raw);
   String get statusAiring => _t.statusAiring;
   String get statusFinished => _t.statusFinished;
   String get statusUpcoming => _t.statusUpcoming;
@@ -356,6 +362,8 @@ final class AnimeCopy {
   String characterFavoritesCount(int count) =>
       _t.characterFavoritesCount(count);
   String ratingsCount(int count) => _t.ratingsCount(count);
+  String likesCount(int count) => _t.likesCount(count);
+  String compactCount(int count) => _t.compactCount(count);
   String votesCount(int count) => _t.votesCount(count);
   String episodeCount(int count) => _t.episodeCount(count);
 
@@ -363,6 +371,7 @@ final class AnimeCopy {
   /// call-sites keep resolving to the same localized copy.
   String ui(String english) => switch (english) {
     AnimeStrings.hubTitle => hubTitle,
+    AnimeStrings.latestUpdates => latestUpdates,
     AnimeStrings.seeAll => seeAll,
     AnimeStrings.searchHint => searchHint,
     AnimeStrings.openSearch => openSearch,

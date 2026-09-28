@@ -13,6 +13,7 @@ import '../../search/search_hit.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 /// Dedicated search surface for the anime hub: a name field, the shared
@@ -56,6 +57,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
         centerTitle: true,
         title: Text(copy.openSearch),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/search'),
       body: PubgetAtmosphere(
         child: Column(
           children: <Widget>[

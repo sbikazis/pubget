@@ -145,6 +145,18 @@ final class JikanAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) => _page(
+    _uri('anime', <String, String>{
+      'sfw': 'true',
+      'order_by': 'start_date',
+      'sort': 'desc',
+      'page': '$page',
+      'limit': '${_limit(limit)}',
+    }),
+    page: page,
+  );
+
+  @override
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) =>
       _page(
         _uri('seasons/now', <String, String>{

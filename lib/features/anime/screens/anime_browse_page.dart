@@ -7,6 +7,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeBrowsePage extends StatefulWidget {
@@ -74,6 +75,7 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.pageTitle(list.title)),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/updated'),
       body: PubgetLoadingStateView(
         state:
             list.state == LoadingState.loadingMore ||

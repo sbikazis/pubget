@@ -118,6 +118,16 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) =>
+      _durable(
+        'latest:$page:$limit',
+        AnimeCacheTtl.latest,
+        () => _inner.getLatest(page: page, limit: limit),
+        encode: AnimeCacheCodec.pageToMap,
+        decode: AnimeCacheCodec.pageFromMap,
+      );
+
+  @override
   Future<Result<List<Anime>>> getAnimeSummaries(
     List<String> ids, {
     int chunkSize = 100,

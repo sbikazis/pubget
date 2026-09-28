@@ -6,7 +6,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_skeleton.dart';
 import '../l10n/anime_copy.dart';
-import '../models/anime_list_models.dart';
 import '../models/anime_rating_models.dart';
 import '../theme/anime_hub_colors.dart';
 
@@ -225,6 +224,10 @@ class AnimeHubGrid extends StatelessWidget {
 
 /// Shared hero tag so a poster keeps its identity from grid to details page.
 String animePosterHeroTag(String animeId) => 'anime-poster-$animeId';
+
+/// Shared hero tag for a character portrait moving from a grid to its page.
+String animeCharacterHeroTag(String characterId) =>
+    'anime-character-$characterId';
 
 /// Three-column shimmer placeholder that matches [AnimeHubGrid].
 class AnimeHubGridSkeleton extends StatelessWidget {
@@ -520,12 +523,18 @@ const double animeHubTileRadius = 14;
 class AnimeExpandableText extends StatefulWidget {
   const AnimeExpandableText({
     required this.text,
-    this.collapsedLines = 3,
+    this.collapsedLines = 4,
+    this.style,
+    this.selectable = false,
     super.key,
   });
 
   final String text;
   final int collapsedLines;
+  final TextStyle? style;
+
+  /// Selectable body text, for bios the member may want to copy.
+  final bool selectable;
 
   @override
   State<AnimeExpandableText> createState() => _AnimeExpandableTextState();
@@ -534,141 +543,186 @@ class AnimeExpandableText extends StatefulWidget {
 class _AnimeExpandableTextState extends State<AnimeExpandableText> {
   bool _expanded = false;
 
+  /// Laid out at the real width and font, so the toggle appears for text that
+  /// is genuinely cut off and stays away for text that fits. The width comes
+  /// from the incoming constraints because the size of this render object is
+  /// not known during build.
+  bool _isClipped(double maxWidth, TextStyle? style) {
+    if (!maxWidth.isFinite) return false;
+    final painter = TextPainter(
+      text: TextSpan(text: widget.text.trim(), style: style),
+      maxLines: widget.collapsedLines,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
+    return painter.didExceedMaxLines;
+  }
+
   @override
   Widget build(BuildContext context) {
     final copy = AnimeCopy.of(context);
+    final theme = Theme.of(context);
     final text = widget.text.trim();
     if (text.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          text,
-          maxLines: _expanded ? null : widget.collapsedLines,
-          overflow: _expanded ? null : TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        TextButton(
-          onPressed: () => setState(() => _expanded = !_expanded),
-          child: Text(_expanded ? copy.showLess : copy.showMore),
-        ),
-      ],
+    final style = widget.style ?? theme.textTheme.bodyMedium;
+    // `_expanded` is intentionally sticky: a parent rebuild must not slam the
+    // text the member just opened back to a few lines.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final clipped = !_expanded && _isClipped(constraints.maxWidth, style);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (widget.selectable)
+              SelectableText(
+                text,
+                maxLines: _expanded ? null : widget.collapsedLines,
+                style: style,
+              )
+            else
+              Text(
+                text,
+                maxLines: _expanded ? null : widget.collapsedLines,
+                overflow: _expanded
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
+                style: style,
+              ),
+            if (clipped) ...<Widget>[
+              const SizedBox(height: AppSpacing.xs),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  key: const Key('anime-expandable-toggle'),
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(copy.showMore),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-/// The five personal states, offered as a bottom sheet from a title page or
-/// from a long press on a list card.
-Future<AnimeListStatus?> showAnimeStatusSheet(
-  BuildContext context, {
-  AnimeListStatus? current,
-}) {
-  return showModalBottomSheet<AnimeListStatus>(
-    context: context,
-    showDragHandle: true,
-    builder: (context) {
-      final copy = AnimeCopy.of(context);
-      final hub = AnimeHubColors.of(context);
-      return SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        copy.listStatus,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              for (final status in AnimeListStatus.tabs)
-                ListTile(
-                  key: ValueKey<String>('anime-status-${status.wireValue}'),
-                  leading: Icon(
-                    _iconForStatus(status),
-                    color: status == current ? hub.royalPurple : null,
-                  ),
-                  title: Text(copy.listStatusLabel(status)),
-                  trailing: status == current
-                      ? Icon(Icons.check, color: hub.gold)
-                      : null,
-                  selected: status == current,
-                  onTap: () => Navigator.of(context).pop(status),
-                ),
-              const SizedBox(height: AppSpacing.sm),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-IconData _iconForStatus(AnimeListStatus status) => switch (status) {
-  AnimeListStatus.wantToWatch => Icons.bookmark_border,
-  AnimeListStatus.watching => Icons.play_circle_outline,
-  AnimeListStatus.completed => Icons.check_circle_outline,
-  AnimeListStatus.watchLater => Icons.schedule_outlined,
-  AnimeListStatus.notInterested => Icons.cancel_outlined,
-};
-
-/// 1–10 vote distribution bars, drawn from community data only.
+/// 1–10 vote distribution, drawn from community data only.
+///
+/// Each row is a gradient bar and tappable, so the bar and the donut above it
+/// stay two views of the same numbers: tapping a score reports it upward, and
+/// the caller decides what to do with it. The bars themselves stay presentational
+/// so the histogram remains readable even where the tap is not wired.
 class AnimeVoteDistribution extends StatelessWidget {
-  const AnimeVoteDistribution({required this.counts, super.key});
+  const AnimeVoteDistribution({
+    required this.counts,
+    this.onScoreTapped,
+    this.selectedScore,
+    super.key,
+  });
 
   /// Index 0 holds the votes for score 1, index 9 for score 10.
   final List<int> counts;
+
+  /// Fired with the 1-based score the member tapped.
+  final ValueChanged<int>? onScoreTapped;
+
+  /// The score currently in focus, highlighted in the bars and the donut.
+  final int? selectedScore;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hub = AnimeHubColors.of(context);
     final total = counts.fold<int>(0, (sum, value) => sum + value);
+    final tappable = onScoreTapped != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         for (var index = 0; index < counts.length; index++)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: <Widget>[
-                SizedBox(
-                  width: 20,
-                  child: Text('${index + 1}', style: theme.textTheme.bodySmall),
-                ),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      value: total == 0 ? 0 : counts[index] / total,
-                      minHeight: 8,
-                      backgroundColor:
-                          theme.colorScheme.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        index + 1 >= 8 ? hub.gold : hub.royalPurple,
+            child: InkWell(
+              onTap: tappable ? () => onScoreTapped!(index + 1) : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 20,
+                      child: Text(
+                        '${index + 1}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: selectedScore == index + 1
+                              ? FontWeight.w900
+                              : null,
+                        ),
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: _GradientBar(
+                        value: total == 0 ? 0 : counts[index] / total,
+                        // Gold for the scores that mean "worth watching".
+                        accent: index + 1 >= 8 ? hub.gold : hub.royalPurple,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        '${counts[index]}',
+                        textAlign: TextAlign.end,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: selectedScore == index + 1
+                              ? FontWeight.w900
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  width: 36,
-                  child: Text(
-                    '${counts[index]}',
-                    textAlign: TextAlign.end,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A single distribution bar filled with a horizontal gradient so the
+/// histogram reads as one continuous shape rather than ten flat rectangles.
+class _GradientBar extends StatelessWidget {
+  const _GradientBar({required this.value, required this.accent});
+
+  final double value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: Stack(
+        children: <Widget>[
+          Container(
+            height: 8,
+            color: theme.colorScheme.surfaceContainerHighest,
+          ),
+          FractionallySizedBox(
+            widthFactor: value.clamp(0.0, 1.0),
+            child: Container(
+              height: 8,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[accent.withValues(alpha: 0.55), accent],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
