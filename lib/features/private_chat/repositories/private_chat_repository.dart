@@ -41,6 +41,39 @@ abstract interface class PrivateChatRepository {
     required String messageId,
   });
 
+  Future<Result<ChatMessage>> editMessage({
+    required String chatId,
+    required String messageId,
+    required String text,
+  });
+
+  Future<Result<void>> pinMessage({
+    required String chatId,
+    required String messageId,
+    required bool pinned,
+  });
+
+  Future<Result<void>> addReaction({
+    required String chatId,
+    required String messageId,
+    required String reaction,
+  });
+
+  Future<Result<void>> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String details,
+  });
+
+  /// Forwards a private message to a group thread or another conversation.
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceChatId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  });
+
   Future<Result<void>> markAsRead({
     required String chatId,
     required List<String> messageIds,

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/media/image_dimensions.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../models/chat_models.dart';
@@ -348,6 +349,11 @@ final class ChatProvider extends ChangeNotifier {
       type: type,
       text: null,
       mediaId: mediaId,
+      // Measure from the header so the bubble is laid out at its true shape from
+      // the first frame. Guessing a ratio here and correcting it when the server
+      // answers is what made sent images visibly resize and shove the list.
+      mediaWidth: _localMediaSize(bytes, type)?.width,
+      mediaHeight: _localMediaSize(bytes, type)?.height,
       replyToMessageId: replyId,
       replyPreview: replyPreview,
     );
@@ -370,6 +376,17 @@ final class ChatProvider extends ChangeNotifier {
     }
     unawaited(_persistPending(pending, groupId: groupId));
     await _performMediaUpload(mediaId, generation: generation);
+  }
+
+  /// Intrinsic size of locally picked bytes, or null when it is not a raster
+  /// image or the header cannot be read (e.g. HEIC on iOS).
+  ({int width, int height})? _localMediaSize(Uint8List bytes, ChatMessageType type) {
+    if (type != ChatMessageType.image && type != ChatMessageType.gif) return null;
+    try {
+      return readImageDimensions(bytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _beginLocalMediaPreview(String mediaId, Uint8List bytes) {
@@ -501,6 +518,10 @@ final class ChatProvider extends ChangeNotifier {
       mediaUrl: media.mediaUrl,
       thumbnailUrl: media.thumbnailUrl,
       mediaId: media.mediaId,
+      // Server-measured dimensions win: they cover the formats the local header
+      // reader does not understand (HEIC/HEIF on iOS).
+      mediaWidth: media.width ?? _localMediaSize(payload.bytes, type)?.width,
+      mediaHeight: media.height ?? _localMediaSize(payload.bytes, type)?.height,
       stickerCreatorId: payload.stickerCreatorId,
       stickerCreatorName: payload.stickerCreatorName,
       replyToMessageId: payload.replyToMessageId,
@@ -623,6 +644,9 @@ final class ChatProvider extends ChangeNotifier {
     _messageIndex.remove(messageId);
     _reindexFrom(index);
     _pendingUploads.remove(messageId);
+    // The chrome Selector rebuilds on the revision only, so a removal that
+    // skipped it left the failed bubble on screen.
+    _contentRevision++;
     final groupId = _groupId;
     if (groupId != null) {
       unawaited(_outbox.remove(groupId, messageId));

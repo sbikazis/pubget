@@ -71,6 +71,8 @@ final class ChatMessage {
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.mediaId,
+    this.mediaWidth,
+    this.mediaHeight,
     required this.replyToMessageId,
     this.replyPreview,
     this.stickerKey,
@@ -106,6 +108,8 @@ final class ChatMessage {
     String? mediaUrl,
     String? thumbnailUrl,
     String? mediaId,
+    int? mediaWidth,
+    int? mediaHeight,
     String? replyToMessageId,
     String? replyPreview,
     String? stickerKey,
@@ -124,6 +128,8 @@ final class ChatMessage {
       mediaUrl: mediaUrl,
       thumbnailUrl: thumbnailUrl,
       mediaId: mediaId,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
@@ -177,6 +183,8 @@ final class ChatMessage {
       mediaUrl: map['mediaUrl'] as String?,
       thumbnailUrl: map['thumbnailUrl'] as String?,
       mediaId: map['mediaId'] as String?,
+      mediaWidth: _positiveInt(map['mediaWidth']),
+      mediaHeight: _positiveInt(map['mediaHeight']),
       replyToMessageId:
           (map['replyToMessageId'] ?? map['replyToId']) as String?,
       replyPreview: map['replyPreview'] as String?,
@@ -214,6 +222,11 @@ final class ChatMessage {
   final String? mediaUrl;
   final String? thumbnailUrl;
   final String? mediaId;
+  /// Display-oriented pixel size of [mediaUrl], recorded by the media pipeline.
+  /// Null for legacy media, in which case the bubble falls back to a neutral
+  /// ratio instead of probing (which would mean a full decode per bubble).
+  final int? mediaWidth;
+  final int? mediaHeight;
   final String? replyToMessageId;
   final String? replyPreview;
   final String? stickerKey;
@@ -259,6 +272,28 @@ final class ChatMessage {
       type == ChatMessageType.gif ||
       (type == ChatMessageType.sticker && !isCatalogSticker);
 
+  /// True when the media pipeline recorded a usable pixel size.
+  bool get hasMediaSize => mediaWidth != null && mediaHeight != null;
+
+  /// True when the bubble renders a raster/stream frame and therefore can be
+  /// given a concrete box up front instead of an intrinsic layout pass.
+  bool get hasDisplayMedia =>
+      type == ChatMessageType.image ||
+      type == ChatMessageType.video ||
+      type == ChatMessageType.gif;
+
+  /// Aspect ratio the bubble should render at.
+  ///
+  /// Clamped so a very tall screenshot or a panorama cannot dominate the
+  /// viewport; the bubble always crops with `BoxFit.cover` inside these bounds.
+  double get mediaAspectRatio {
+    final w = mediaWidth;
+    final h = mediaHeight;
+    if (w == null || h == null || w <= 0 || h <= 0) return kChatMediaFallbackAspect;
+    final ratio = w / h;
+    return ratio.clamp(kChatMediaMinAspect, kChatMediaMaxAspect);
+  }
+
   ChatDeliveryState get deliveryState {
     if (readCount >= recipientCount && recipientCount > 0) {
       return ChatDeliveryState.read;
@@ -274,6 +309,9 @@ final class ChatMessage {
     bool clearFailureMessage = false,
     DateTime? createdAt,
     DateTime? deletedAt,
+    DateTime? pinnedAt,
+    bool clearPinnedAt = false,
+    Map<String, int>? reactions,
   }) {
     return ChatMessage(
       id: id,
@@ -286,6 +324,8 @@ final class ChatMessage {
       mediaUrl: mediaUrl,
       thumbnailUrl: thumbnailUrl,
       mediaId: mediaId,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
@@ -295,8 +335,8 @@ final class ChatMessage {
       createdAt: createdAt ?? this.createdAt,
       editedAt: editedAt,
       deletedAt: deletedAt ?? this.deletedAt,
-      pinnedAt: pinnedAt,
-      reactions: reactions,
+      pinnedAt: clearPinnedAt ? null : (pinnedAt ?? this.pinnedAt),
+      reactions: reactions ?? this.reactions,
       recipientCount: recipientCount,
       deliveredCount: deliveredCount,
       readCount: readCount,
@@ -388,12 +428,32 @@ final class ChatMediaUpload {
     required this.thumbnailUrl,
     required this.mediaId,
     required this.type,
+    this.width,
+    this.height,
   });
 
   final String mediaUrl;
   final String? thumbnailUrl;
   final String mediaId;
   final ChatMessageType type;
+  final int? width;
+  final int? height;
+}
+
+/// Fallback ratio for media the pipeline never measured. Landscape-leaning so a
+/// portrait screenshot does not become a letterboxed sliver before its real size
+/// is known, and so the box does not jump when the dimensions arrive.
+const double kChatMediaFallbackAspect = 4 / 3;
+
+/// A bubble is never wider than roughly three quarters of the viewport and never
+/// taller than this, so extreme ratios stay readable.
+const double kChatMediaMinAspect = 0.5;
+const double kChatMediaMaxAspect = 2.4;
+
+int? _positiveInt(dynamic value) {
+  if (value is! num) return null;
+  final rounded = value.toInt();
+  return rounded > 0 ? rounded : null;
 }
 
 Map<String, String>? _stringMap(dynamic value) {
@@ -416,4 +476,20 @@ DateTime? _date(dynamic value) {
   } catch (_) {
     return null;
   }
+}
+
+/// Newest live pinned message in [messages].
+///
+/// Tombstones are skipped so a pinned banner never jumps to a deleted message,
+/// and a missing `pinnedAt` (older documents) is treated as "not pinned".
+ChatMessage? newestPinnedMessage(List<ChatMessage> messages) {
+  ChatMessage? newest;
+  for (final message in messages) {
+    final pinnedAt = message.pinnedAt;
+    if (pinnedAt == null || message.isDeleted) continue;
+    if (newest == null || pinnedAt.isAfter(newest.pinnedAt!)) {
+      newest = message;
+    }
+  }
+  return newest;
 }

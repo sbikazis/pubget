@@ -58,6 +58,43 @@ final class UnavailablePrivateChatRepository implements PrivateChatRepository {
   }) async => _fail();
 
   @override
+  Future<Result<ChatMessage>> editMessage({
+    required String chatId,
+    required String messageId,
+    required String text,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> pinMessage({
+    required String chatId,
+    required String messageId,
+    required bool pinned,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> addReaction({
+    required String chatId,
+    required String messageId,
+    required String reaction,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) async => _fail();
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceChatId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async => _fail();
+
+  @override
   Future<Result<void>> markAsRead({
     required String chatId,
     required List<String> messageIds,

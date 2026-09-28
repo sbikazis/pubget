@@ -26,6 +26,12 @@ final class PrivateChatProvider extends ChangeNotifier {
   final PendingChatOutbox _outbox;
   final NetworkService? _network;
   final List<ChatMessage> _messages = <ChatMessage>[];
+
+  int _contentRevision = 0;
+
+  /// Changes whenever [messages] changes in any way. The list is mutated in
+  /// place, so widgets that memoise work against it need an explicit token.
+  int get contentRevision => _contentRevision;
   final Map<String, int> _messageIndex = <String, int>{};
   final Map<String, double> _uploadProgress = <String, double>{};
   final Map<String, _PendingMediaUpload> _pendingUploads =
@@ -60,6 +66,10 @@ final class PrivateChatProvider extends ChangeNotifier {
   String? get chatId => _chatId;
   ChatMessage? get replyTarget => _replyTarget;
 
+  /// Newest pinned message, or null when nothing is pinned. The server stores
+  /// `pinnedAt`, so a pin survives every client and every device.
+  ChatMessage? get pinnedMessage => newestPinnedMessage(_messages);
+
   void setReplyTarget(ChatMessage? message) {
     final next = message == null || message.isDeleted ? null : message;
     if (_replyTarget?.id == next?.id) return;
@@ -88,6 +98,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     _currentUserId = currentUserId;
     _pageActive = true;
     _messages.clear();
+    _contentRevision++;
     _messageIndex.clear();
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
@@ -414,6 +425,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     }
     _cancelAutoRetry(messageId);
     _messages.removeAt(index);
+    _contentRevision++;
     _messageIndex.remove(messageId);
     _reindexFrom(index);
     _pendingUploads.remove(messageId);
@@ -436,6 +448,101 @@ final class PrivateChatProvider extends ChangeNotifier {
       _removeOrMarkDeleted(messageId);
     }
     return result;
+  }
+
+  Future<Result<ChatMessage>> editMessage(String messageId, String text) async {
+    final chatId = _chatId;
+    final generation = _sessionGeneration;
+    if (chatId == null) return const FailureResult(UnknownError());
+    final result = await _repository.editMessage(
+      chatId: chatId,
+      messageId: messageId,
+      text: text,
+    );
+    if (result.isSuccess && _isCurrent(chatId, generation)) {
+      _upsert(result.valueOrNull!);
+    }
+    return result;
+  }
+
+  Future<Result<void>> pinMessage(String messageId, bool pinned) async {
+    final chatId = _chatId;
+    final generation = _sessionGeneration;
+    if (chatId == null) return const FailureResult(UnknownError());
+    final result = await _repository.pinMessage(
+      chatId: chatId,
+      messageId: messageId,
+      pinned: pinned,
+    );
+    if (result.isSuccess && _isCurrent(chatId, generation)) {
+      _patchLocally(
+        messageId,
+        pinnedAt: pinned ? DateTime.now() : null,
+        clearPinnedAt: !pinned,
+      );
+    }
+    return result;
+  }
+
+  Future<Result<void>> addReaction(String messageId, String reaction) {
+    final chatId = _chatId;
+    if (chatId == null) {
+      return Future.value(const FailureResult(UnknownError()));
+    }
+    final result = _repository.addReaction(
+      chatId: chatId,
+      messageId: messageId,
+      reaction: reaction,
+    );
+    // The server is the source of truth; the watch stream delivers the new
+    // counts, so there is nothing to guess locally.
+    return result;
+  }
+
+  Future<Result<void>> reportMessage(
+    String messageId, {
+    required String reason,
+    String details = '',
+  }) {
+    final chatId = _chatId;
+    if (chatId == null) return Future.value(const FailureResult(UnknownError()));
+    return _repository.reportMessage(
+      chatId: chatId,
+      messageId: messageId,
+      reason: reason,
+      details: details,
+    );
+  }
+
+  Future<Result<ChatMessage>> forwardMessage(
+    String messageId, {
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async {
+    final chatId = _chatId;
+    if (chatId == null) return const FailureResult(UnknownError());
+    return _repository.forwardMessage(
+      sourceChatId: chatId,
+      messageId: messageId,
+      destinationGroupId: destinationGroupId,
+      destinationChatId: destinationChatId,
+    );
+  }
+
+  /// Applies a local field patch so the UI reacts immediately; the watch stream
+  /// reconciles it moments later.
+  void _patchLocally(
+    String messageId, {
+    DateTime? pinnedAt,
+    bool clearPinnedAt = false,
+  }) {
+    final index = _messageIndex[messageId];
+    if (index == null) return;
+    final message = _messages[index];
+    _messages[index] = clearPinnedAt
+        ? message.copyWith(clearPinnedAt: true)
+        : message.copyWith(pinnedAt: pinnedAt);
+    notifyListeners();
   }
 
   Future<void> markAsRead(List<ChatMessage> visibleMessages) async {
@@ -554,6 +661,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       }
     }
     _messages.insert(low, message);
+    _contentRevision++;
     _reindexFrom(low);
   }
 
@@ -561,6 +669,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     final current = _messages[index];
     if (_compareMessages(current, message) == 0) {
       _messages[index] = message;
+      _contentRevision++;
       return;
     }
     _messages.removeAt(index);
