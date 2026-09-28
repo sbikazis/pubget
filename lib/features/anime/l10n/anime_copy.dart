@@ -146,6 +146,8 @@ final class AnimeCopy {
   String get rateAnime => _t.rateAnime;
   String get editRating => _t.editRating;
   String get communityScore => _t.communityScore;
+  String get unnamedAnime => _t.unnamedAnime;
+  String get unnamedCharacter => _t.unnamedCharacter;
   String get malScore => _t.malScore;
   String get ratingsTitle => _t.ratingsTitle;
   String get votesTitle => _t.votesTitle;
@@ -356,6 +358,8 @@ final class AnimeCopy {
   String characterFavoritesCount(int count) =>
       _t.characterFavoritesCount(count);
   String ratingsCount(int count) => _t.ratingsCount(count);
+  String likesCount(int count) => _t.likesCount(count);
+  String compactCount(int count) => _t.compactCount(count);
   String votesCount(int count) => _t.votesCount(count);
   String episodeCount(int count) => _t.episodeCount(count);
 

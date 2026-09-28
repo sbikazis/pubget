@@ -513,10 +513,19 @@ class AnimeHomeStrip extends StatelessWidget {
 }
 
 class AnimePaginatedList extends StatefulWidget {
-  const AnimePaginatedList({required this.list, this.header, super.key});
+  const AnimePaginatedList({
+    required this.list,
+    this.header,
+    this.itemBuilder,
+    super.key,
+  });
 
   final AnimeListProvider list;
   final Widget? header;
+
+  /// Overrides the default poster-wall tile. Ranking pages pass a list-shaped
+  /// card here instead of forking the whole paginated scroller.
+  final NullableIndexedWidgetBuilder? itemBuilder;
 
   @override
   State<AnimePaginatedList> createState() => _AnimePaginatedListState();
@@ -586,19 +595,34 @@ class _AnimePaginatedListState extends State<AnimePaginatedList> {
             ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                childAspectRatio: 0.56,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) =>
-                    AnimeResultTile(anime: list.items[index], grid: true),
-                childCount: list.items.length,
-              ),
-            ),
+            // A custom item builder means a row-shaped card, which cannot live
+            // in the three-column poster grid, so the sliver switches shape.
+            sliver: widget.itemBuilder == null
+                ? SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: AppSpacing.md,
+                          crossAxisSpacing: AppSpacing.md,
+                          childAspectRatio: 0.56,
+                        ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) =>
+                          AnimeResultTile(anime: list.items[index], grid: true),
+                      childCount: list.items.length,
+                    ),
+                  )
+                : SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                        ),
+                        child: widget.itemBuilder!(context, index),
+                      ),
+                      childCount: list.items.length,
+                    ),
+                  ),
           ),
           SliverToBoxAdapter(child: _PaginationFooter(list: list)),
         ],

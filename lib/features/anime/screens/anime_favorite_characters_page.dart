@@ -10,8 +10,9 @@ import '../l10n/anime_copy.dart';
 import '../models/anime_list_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
-import '../widgets/anime_hub_widgets.dart';
 import '../widgets/anime_hub_drawer.dart';
+import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_ranked_cards.dart';
 import '../widgets/anime_widgets.dart';
 
 /// Drawer "My Favorite Characters".
@@ -130,103 +131,32 @@ class _AnimeFavoriteCharactersPageState
                       )
                     : AnimeHubGrid(
                         itemCount: items.length,
-                        itemBuilder: (context, index) => _CharacterCell(
-                          item: items[index],
-                          onTap: () => AnimeLinks.openCharacter(
-                            context,
-                            items[index].characterId,
-                          ),
-                          onLongPress: library == null
-                              ? null
-                              : () => library.toggleCharacter(
-                                  characterId: items[index].characterId,
-                                  name: items[index].name,
-                                  imageUrl: items[index].imageUrl,
-                                ),
-                        ),
+                        // The same ranked character card the popular-characters
+                        // page uses, so favourites are visually identical.
+                        itemBuilder: (context, index) =>
+                            AnimeRankedCharacterCard(
+                              key: Key('character-fav-$index'),
+                              name: items[index].name,
+                              imageUrl: items[index].imageUrl ?? '',
+                              heroTag: animeCharacterHeroTag(
+                                items[index].characterId,
+                              ),
+                              onTap: () => AnimeLinks.openCharacter(
+                                context,
+                                items[index].characterId,
+                              ),
+                              onLongPress: library == null
+                                  ? null
+                                  : () => library.toggleCharacter(
+                                      characterId: items[index].characterId,
+                                      name: items[index].name,
+                                      imageUrl: items[index].imageUrl,
+                                    ),
+                            ),
                       ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CharacterCell extends StatelessWidget {
-  const _CharacterCell({required this.item, this.onTap, this.onLongPress});
-
-  final CharacterFavorite item;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AnimeCopy.of(context);
-    final name = item.name.isEmpty ? item.characterId : item.name;
-    return Semantics(
-      button: true,
-      label: name,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  AnimeCharacterPortrait(
-                    imageUrl: item.imageUrl ?? '',
-                    name: name,
-                  ),
-                  Positioned(
-                    top: AppSpacing.xs,
-                    right: AppSpacing.xs,
-                    child: _HeartBadge(tooltip: copy.favorited),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            Text(
-              copy.favorite,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeartBadge extends StatelessWidget {
-  const _HeartBadge({required this.tooltip});
-
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          shape: BoxShape.circle,
-        ),
-        child: const Padding(
-          padding: EdgeInsets.all(AppSpacing.xs),
-          child: Icon(Icons.favorite, size: 14, color: Colors.white),
         ),
       ),
     );

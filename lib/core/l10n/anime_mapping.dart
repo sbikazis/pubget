@@ -664,6 +664,8 @@ final class AppTranslationMapping {
   String get rateAnime => pick('Rate this anime', 'قيّم هذا الأنمي');
   String get editRating => pick('Edit rating', 'تعديل تقييمك');
   String get communityScore => pick('Pubget score', 'تقييم Pubget');
+  String get unnamedAnime => pick('Anime', 'أنمي');
+  String get unnamedCharacter => pick('Character', 'شخصية');
   String get malScore => pick('MAL', 'تقييم MAL');
   String get ratingsTitle => pick('Ratings', 'التقييمات');
   String get votesTitle => pick('Vote distribution', 'توزيع الأصوات');
@@ -907,6 +909,15 @@ final class AppTranslationMapping {
       pick('$count Pubget ratings', '$count تقييم على Pubget');
 
   String votesCount(int count) => pick('$count votes', '$count صوت');
+  String likesCount(int count) => pick('$count likes', '$count إعجاب');
+
+  /// Compact form for badges: 840, 12K, 3.4M. Latin digits in both locales
+  /// because the count is data, not copy.
+  String compactCount(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return '$count';
+  }
 
   String episodeCount(int count) => pick(
     count == 1 ? '1 episode' : '$count episodes',

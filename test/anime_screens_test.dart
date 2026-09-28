@@ -16,8 +16,11 @@ import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/anime/screens/anime_search_page.dart';
 import 'package:pubget/features/anime/widgets/anime_hub_widgets.dart';
+import 'package:pubget/features/anime/widgets/anime_ranked_cards.dart';
 import 'package:pubget/features/anime/repositories/anime_hub_social_repository.dart';
 import 'package:pubget/features/anime/screens/anime_browse_page.dart';
+import 'package:pubget/features/anime/screens/anime_popular_characters_page.dart';
+import 'package:pubget/features/anime/screens/anime_ratings_page.dart';
 import 'package:pubget/features/anime/screens/anime_character_page.dart';
 import 'package:pubget/features/anime/screens/anime_details_page.dart';
 import 'package:pubget/features/anime/screens/anime_hub_page.dart';
@@ -37,6 +40,40 @@ import 'authentication_test_support.dart';
 import 'social_test_support.dart';
 
 void main() {
+  testWidgets('both ranking pages share one ranked anime card', (tester) async {
+    for (final source in AnimeRankingSource.values) {
+      await tester.pumpWidget(
+        _harness(
+          repository: FakeAnimeRepository(),
+          social: AnimeHubSocialProvider(
+            repository: _FakeRankingSocialRepository(),
+          )..loadTopRated(),
+          child: AnimeRatingsPage(source: source),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Regression: each page hand-rolled its own row, so the two rankings
+      // disagreed on badge, score colour and caption.
+      expect(find.byType(AnimeRankedCard), findsWidgets, reason: '$source');
+    }
+  });
+
+  testWidgets('popular characters use the shared ranked character card', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(),
+        social: AnimeHubSocialProvider(
+          repository: _FakeRankingSocialRepository(),
+        )..loadPopularCharacters(),
+        child: const AnimePopularCharactersPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AnimeRankedCharacterCard), findsWidgets);
+  });
+
   testWidgets('hub shows loading then trending titles', (tester) async {
     final repository = FakeAnimeRepository()..gate = Completer<void>();
     await tester.pumpWidget(
@@ -741,6 +778,48 @@ final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
         enjoyment: 8,
       ),
       overall: 8,
+    ),
+  ]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Feeds both ranking pages: the community top-rated list and the popular
+/// characters list, so the shared ranked cards can be asserted on either one.
+final class _FakeRankingSocialRepository implements AnimeHubSocialRepository {
+  @override
+  Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 50}) async =>
+      Success(<AnimeCommunityStats>[
+        AnimeCommunityStats(
+          animeId: '52991',
+          title: 'Frieren',
+          averageScore: 9.1,
+          ratingCount: 42,
+          listedCount: 300,
+        ),
+        AnimeCommunityStats(
+          animeId: '51179',
+          title: 'Steins Gate',
+          averageScore: 8.4,
+          ratingCount: 12,
+          listedCount: 90,
+        ),
+      ]);
+
+  @override
+  Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
+    int limit = 40,
+  }) async => const Success(<CharacterCommunityStats>[
+    CharacterCommunityStats(
+      characterId: 'erwin',
+      name: 'Erwin Smith',
+      favoritesCount: 900,
+    ),
+    CharacterCommunityStats(
+      characterId: 'frieren',
+      name: 'Frieren',
+      favoritesCount: 800,
     ),
   ]);
 
