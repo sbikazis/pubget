@@ -659,6 +659,8 @@ final class AppStrings {
     'إرسال بلاغ عن هذه الرسالة بسبب «$reason»؟',
   );
   String get submitReport => pick('Submit report', 'إرسال البلاغ');
+  String get messageDetails => pick('Message details', 'تفاصيل الرسالة');
+  String get messageEditSuccess => pick('Message updated', 'تم تحديث الرسالة');
   String reportReasonLabel(String key) => switch (key) {
     'inappropriate' => pick('Inappropriate content', 'محتوى غير مناسب'),
     'spam' => pick('Spam', 'سبام'),
