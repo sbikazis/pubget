@@ -223,7 +223,7 @@ class _StickerDetailSheetState extends State<StickerDetailSheet> {
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   color: canOpenProfile
-                      ? WaColors.cursorGreen
+                      ? WaColors.onDark
                       : WaColors.textPrimary,
                   decoration: canOpenProfile
                       ? TextDecoration.underline
@@ -245,7 +245,7 @@ class _StickerDetailSheetState extends State<StickerDetailSheet> {
                   key: const Key('sticker-detail-save'),
                   onPressed: (_saving || _alreadySaved) ? null : _save,
                   style: FilledButton.styleFrom(
-                    backgroundColor: WaColors.cursorGreen,
+                    backgroundColor: WaColors.onDark,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: WaColors.segmentActive,
                   ),

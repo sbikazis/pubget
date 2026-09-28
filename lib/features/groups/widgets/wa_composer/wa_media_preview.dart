@@ -211,7 +211,7 @@ class _WaMediaPreviewPageState extends State<WaMediaPreviewPage> {
                     ),
                   ),
                   Material(
-                    color: WaColors.cursorGreen,
+                    color: WaColors.onDark,
                     shape: const CircleBorder(),
                     child: InkWell(
                       key: const Key('media-preview-send'),

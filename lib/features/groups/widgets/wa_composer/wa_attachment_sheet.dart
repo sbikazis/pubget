@@ -447,7 +447,7 @@ class _WaGamesSheet extends StatelessWidget {
                   ),
                   trailing: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: WaColors.cursorGreen,
+                      backgroundColor: WaColors.onDark,
                     ),
                     onPressed: () {
                       Navigator.pop(context);

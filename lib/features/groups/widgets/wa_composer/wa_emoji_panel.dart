@@ -166,7 +166,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         uiSettings: <PlatformUiSettings>[
           AndroidUiSettings(
             toolbarTitle: 'قص الملصق',
-            toolbarColor: WaColors.cursorGreen,
+            toolbarColor: WaColors.onDark,
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.square,
             lockAspectRatio: false,
@@ -359,7 +359,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
         controller: _search,
         autofocus: true,
         style: const TextStyle(color: WaColors.textPrimary),
-        cursorColor: WaColors.cursorGreen,
+        cursorColor: WaColors.onDark,
         onChanged: (value) => setState(() => _query = value),
         decoration: InputDecoration(
           hintText: 'بحث',
@@ -425,7 +425,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
   Widget _stickerBody() {
     if (_loadingStickers) {
       return const Center(
-        child: CircularProgressIndicator(color: WaColors.cursorGreen),
+        child: CircularProgressIndicator(color: WaColors.onDark),
       );
     }
     final items = _filteredStickers;
@@ -531,7 +531,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
               Icons.star_border,
               color: _favorites.isEmpty
                   ? WaColors.iconMuted
-                  : WaColors.cursorGreen,
+                  : WaColors.onDark,
               size: 26,
             ),
           ),
@@ -613,7 +613,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           children: <Widget>[
             CircleAvatar(
               radius: 24,
-              backgroundColor: WaColors.cursorGreen,
+              backgroundColor: WaColors.onDark,
               child: Icon(Icons.edit, color: Colors.white, size: 22),
             ),
             SizedBox(height: 6),
@@ -621,7 +621,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
               'إنشاء\nملصق',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: WaColors.cursorGreen,
+                color: WaColors.onDark,
                 fontSize: 13,
                 height: 1.1,
                 fontWeight: FontWeight.w600,
@@ -754,8 +754,8 @@ class _StickerPreviewSheet extends StatelessWidget {
                     onPressed: () =>
                         Navigator.pop(context, _StickerSaveAction.save),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: WaColors.cursorGreen,
-                      side: const BorderSide(color: WaColors.cursorGreen),
+                      foregroundColor: WaColors.onDark,
+                      side: const BorderSide(color: WaColors.onDark),
                       minimumSize: const Size.fromHeight(46),
                     ),
                     child: const Text('حفظ'),
@@ -768,7 +768,7 @@ class _StickerPreviewSheet extends StatelessWidget {
                     onPressed: () =>
                         Navigator.pop(context, _StickerSaveAction.saveAndSend),
                     style: FilledButton.styleFrom(
-                      backgroundColor: WaColors.cursorGreen,
+                      backgroundColor: WaColors.onDark,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(46),
                     ),

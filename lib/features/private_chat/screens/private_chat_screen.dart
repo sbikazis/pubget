@@ -14,9 +14,11 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/models/chat_models.dart';
 import '../../groups/screens/media_viewer_page.dart';
+import '../../groups/widgets/chat_action_sheets.dart';
 import '../../groups/widgets/chat_contrast_theme.dart';
 import '../../groups/widgets/chat_message_bubble.dart';
 import '../../groups/widgets/chat_message_actions_overlay.dart';
+import '../../groups/widgets/chat_special_cards.dart';
 import '../providers/private_chat_list_provider.dart';
 import '../providers/private_chat_provider.dart';
 
@@ -31,9 +33,14 @@ class PrivateChatScreen extends StatefulWidget {
 }
 
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
+  /// Device-local favourites, shared with the group chat so a saved message is
+  /// saved everywhere it appears.
+  final ChatStarStore _stars = ChatStarStore();
+
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+  final GlobalKey<_MessageListState> _messageListKey = GlobalKey<_MessageListState>();
   bool _initialized = false;
   bool _wasNearBottom = true;
   int _lastSeenMessageCount = 0;
@@ -41,9 +48,14 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   String? _lastNewestMessageId;
   int _newMessagesCount = 0;
 
+  /// Captured while the tree is still active: reading a provider from
+  /// `dispose()` looks up an ancestor on a deactivated element, which throws.
+  PrivateChatProvider? _chatProvider;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _chatProvider = context.read<PrivateChatProvider>();
     if (_initialized) return;
     _initialized = true;
     final user = context.read<AuthProvider>().currentUser;
@@ -59,7 +71,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   @override
   void dispose() {
-    unawaited(context.read<PrivateChatProvider>().leaveChat());
+    unawaited(_chatProvider?.leaveChat());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -144,6 +156,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                         },
                         onMediaTap: _openMedia,
                         messageKeys: _messageKeys,
+                        stars: _stars,
+                        listKey: _messageListKey,
                       ),
                       if (_newMessagesCount > 0)
                         Positioned(
@@ -193,6 +207,14 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 if (chat.uploadProgress.isNotEmpty)
                   LinearProgressIndicator(
                     value: chat.uploadProgress.values.first,
+                  ),
+                if (chat.pinnedMessage case final ChatMessage pinned?)
+                  ChatPinnedBanner(
+                    senderName: pinned.senderName,
+                    preview: pinnedPreviewText(pinned, copy),
+                    onTap: () =>
+                        _messageListKey.currentState?.revealMessage(pinned.id),
+                    onUnpin: () => chat.pinMessage(pinned.id, false),
                   ),
                 if (chat.replyTarget != null)
                   _ReplyComposerBar(
@@ -388,18 +410,29 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       isMine: isMine,
       contrast: ChatContrastTheme.fromBackground(null),
       bubbleRect: bubbleRect,
-      canEdit: false,
+      // Editing is limited to your own sent text inside the 15-minute window,
+      // which the server enforces; the UI avoids offering the impossible cases.
+      canEdit:
+          isMine &&
+          !message.isDeleted &&
+          message.type == ChatMessageType.text &&
+          !message.isOptimistic &&
+          (message.text ?? '').trim().isNotEmpty &&
+          message.createdAt != null &&
+          DateTime.now().difference(message.createdAt!) <=
+              const Duration(minutes: 15),
       canCopy:
           message.text?.trim().isNotEmpty == true &&
           !message.isDeleted &&
           !message.isMedia,
       canReply: !message.isDeleted,
-      canForward: false,
+      canForward: !message.isDeleted,
       canDelete: isMine && !message.isDeleted,
-      canPin: false,
-      canReport: false,
-      canReact: false,
-      isStarred: false,
+      // A 1:1 has no moderator, so only the sender may pin.
+      canPin: isMine && !message.isDeleted,
+      canReport: !isMine && !message.isDeleted,
+      canReact: message.sendState == ChatSendState.sent,
+      isStarred: _stars.isStarred(message.id),
     );
     if (!mounted || result == null) return;
     final chat = context.read<PrivateChatProvider>();
@@ -445,20 +478,138 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           ),
         );
         return;
-      case ChatMessageAction.dismiss:
       case ChatMessageAction.forward:
+        final user2 = context.read<AuthProvider>().currentUser;
+        if (user2 == null) return;
+        await runForwardFlow(
+          context,
+          currentUserId: user2.id,
+          currentChatId: widget.chatId,
+          onForward: (target) async {
+            final forwarded = await chat.forwardMessage(
+              message.id,
+              destinationGroupId: target.groupId,
+              destinationChatId: target.chatId,
+            );
+            return forwarded.isSuccess;
+          },
+        );
+        return;
       case ChatMessageAction.pin:
+        final pinResult = await chat.pinMessage(
+          message.id,
+          message.pinnedAt == null,
+        );
+        if (!mounted || pinResult.isSuccess) return;
+        _showActionError(
+          pinResult.failureOrNull?.message ??
+              copy.pick('Unable to update pin', 'تعذر تحديث التثبيت'),
+        );
+        return;
       case ChatMessageAction.star:
+        await _stars.toggle(message.id);
+        if (mounted) setState(() {});
+        return;
       case ChatMessageAction.edit:
+        await _editMessage(message);
+        return;
       case ChatMessageAction.info:
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) {
+            final infoCopy = AppStrings.of(dialogContext);
+            return AlertDialog(
+              title: Text(infoCopy.messageDetails),
+              content: ListTile(
+                dense: true,
+                title: Text(
+                  message.text?.trim().isNotEmpty == true
+                      ? message.text!.trim()
+                      : chatMessageSummary(message, infoCopy),
+                ),
+                subtitle: Text(
+                  '${message.senderName} · '
+                  '${_formatTimestamp(message.createdAt, infoCopy)}',
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(infoCopy.cancel),
+                ),
+              ],
+            );
+          },
+        );
+        return;
       case ChatMessageAction.react:
+        final reactionResult = await chat.addReaction(
+          message.id,
+          result.reaction ?? '❤️',
+        );
+        if (!mounted || reactionResult.isSuccess) return;
+        _showActionError(
+          reactionResult.failureOrNull?.message ??
+              copy.pick('Unable to react', 'تعذر إضافة التفاعل'),
+        );
+        return;
       case ChatMessageAction.report:
+        final reported = await runReportFlow(
+          context,
+          onSubmit: (reason) async {
+            final reportResult = await chat.reportMessage(
+              message.id,
+              reason: reason,
+            );
+            return reportResult.isSuccess;
+          },
+        );
+        if (!mounted || !reported) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(copy.pick('Report sent', 'تم إرسال البلاغ'))),
+        );
+        return;
+      case ChatMessageAction.dismiss:
         return;
     }
   }
+
+  Future<void> _editMessage(ChatMessage message) async {
+    final copy = AppStrings.of(context);
+    final text = await showEditMessageDialog(
+      context,
+      message: message,
+      onSave: (value) async {
+        final result = await context.read<PrivateChatProvider>().editMessage(
+          message.id,
+          value,
+        );
+        return result.isSuccess;
+      },
+    );
+    if (text == null || !mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(copy.messageEditSuccess)));
+  }
+
+  void _showActionError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  static String _formatTimestamp(DateTime? value, AppStrings copy) {
+    if (value == null) return copy.pick('Sending…', 'جارٍ الإرسال…');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${value.year}-${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')} $hour:$minute';
+  }
 }
 
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   const _MessageList({
     required this.chat,
     required this.contrast,
@@ -468,19 +619,177 @@ class _MessageList extends StatelessWidget {
     required this.onSwipeReply,
     required this.onMediaTap,
     required this.messageKeys,
+    required this.stars,
+    required this.listKey,
   });
 
   final PrivateChatProvider chat;
   final ChatContrastTheme contrast;
   final String currentUserId;
   final ScrollController controller;
-    final void Function(ChatMessage message, Rect rect) onAction;
+  final void Function(ChatMessage message, Rect rect) onAction;
   final ValueChanged<ChatMessage> onSwipeReply;
   final ValueChanged<ChatMessage> onMediaTap;
   final Map<String, GlobalKey> messageKeys;
+  final ChatStarStore stars;
+  final GlobalKey<_MessageListState> listKey;
+
+  @override
+  State<_MessageList> createState() => _MessageListState();
+}
+
+/// Message list for a 1:1 conversation.
+///
+/// Mirrors the group list: rows (with day dividers) are cached against the
+/// message list identity, keys are pruned, and a reveal API lets a reply quote
+/// or the pinned banner scroll to and flash the original message.
+class _MessageListState extends State<_MessageList> {
+  List<_PrivateRow>? _cachedRows;
+  DateTime? _cachedDay;
+  // See the group list: `chat.messages` returns a new unmodifiable wrapper on
+  // every call, so the cache is keyed on revision plus list bounds.
+  int _cachedRevision = -1;
+  int _cachedCount = -1;
+  String? _cachedFirstId;
+  String? _cachedLastId;
+  Map<String, int> _rowIndexById = const <String, int>{};
+
+  String? _highlightedId;
+  _RevealRequest? _reveal;
+  Timer? _seekTimer;
+  Timer? _highlightTimer;
+
+  static const Duration _highlightDuration = Duration(milliseconds: 1400);
+  static const int _maxSeekAttempts = 5;
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    _seekTimer?.cancel();
+    super.dispose();
+  }
+
+  List<_PrivateRow> _rowsFor() {
+    final messages = widget.chat.messages;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final count = messages.length;
+    final firstId = count == 0 ? null : messages.first.id;
+    final lastId = count == 0 ? null : messages.last.id;
+    if (_cachedRows != null &&
+        _cachedRevision == widget.chat.contentRevision &&
+        _cachedCount == count &&
+        _cachedFirstId == firstId &&
+        _cachedLastId == lastId &&
+        _cachedDay == today) {
+      return _cachedRows!;
+    }
+    final rows = <_PrivateRow>[];
+    final indexById = <String, int>{};
+    if (widget.chat.hasMore) rows.add(const _PrivateRow.loadMore());
+    DateTime? lastDay;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      final createdAt = message.createdAt;
+      final day = createdAt == null
+          ? null
+          : DateTime(createdAt.year, createdAt.month, createdAt.day);
+      if (day != null && (lastDay == null || day != lastDay)) {
+        rows.add(_PrivateRow.date(chatDayLabel(createdAt, now: now)));
+        lastDay = day;
+      }
+      indexById[message.id] = rows.length;
+      rows.add(_PrivateRow.message(message));
+    }
+    if (widget.messageKeys.length > rows.length) {
+      final live = indexById.keys.toSet();
+      widget.messageKeys.removeWhere((id, _) => !live.contains(id));
+    }
+    _cachedRows = rows;
+    _cachedDay = today;
+    _cachedRevision = widget.chat.contentRevision;
+    _cachedCount = count;
+    _cachedFirstId = firstId;
+    _cachedLastId = lastId;
+    _rowIndexById = indexById;
+    return rows;
+  }
+
+  /// Scrolls [messageId] into view and flashes it. Flutter only reveals
+  /// elements that exist, so this alternates a proportional seek with
+  /// [Scrollable.ensureVisible] for the exact landing.
+  void revealMessage(String messageId) {
+    _rowsFor();
+    final index = _rowIndexById[messageId];
+    if (index == null) {
+      // Target predates the loaded window: pull the next page in, then retry.
+      if (widget.chat.hasMore) {
+        _seekTimer?.cancel();
+        _seekTimer = Timer(const Duration(milliseconds: 450), () {
+          if (!mounted) return;
+          unawaited(widget.chat.loadMore());
+          _seekTimer = Timer(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
+            revealMessage(messageId);
+          });
+        });
+      }
+      return;
+    }
+    _seekTimer?.cancel();
+    _reveal = _RevealRequest(id: messageId, index: index, attempt: 0);
+    _highlightedId = messageId;
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(_highlightDuration, () {
+      if (!mounted || _highlightedId == null) return;
+      setState(() => _highlightedId = null);
+    });
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => _stepReveal());
+  }
+
+  void _stepReveal() {
+    final request = _reveal;
+    if (request == null || !mounted) return;
+    if (!widget.controller.hasClients) return;
+
+    final target = widget.messageKeys[request.id]?.currentContext;
+    if (target != null && target.mounted) {
+      _reveal = null;
+      unawaited(
+        Scrollable.ensureVisible(
+          target,
+          alignment: 0.16,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+      return;
+    }
+    if (request.attempt >= _maxSeekAttempts) {
+      _reveal = null;
+      return;
+    }
+    final position = widget.controller.position;
+    final total = _rowIndexById.length;
+    if (position.maxScrollExtent <= 0 || total <= 1) {
+      _reveal = null;
+      return;
+    }
+    final estimate = (position.maxScrollExtent * ((request.index + 0.5) / total))
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    widget.controller.jumpTo(estimate);
+    _reveal = _RevealRequest(
+      id: request.id,
+      index: request.index,
+      attempt: request.attempt + 1,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _stepReveal());
+  }
 
   @override
   Widget build(BuildContext context) {
+    final chat = widget.chat;
     if (chat.messages.isEmpty) {
       if (chat.state == LoadingState.loading) {
         return const Center(child: CircularProgressIndicator());
@@ -507,12 +816,18 @@ class _MessageList extends StatelessWidget {
         icon: Icons.forum_outlined,
       );
     }
+    final rows = _rowsFor();
+    final highlightId = _highlightedId;
     return ListView.builder(
-      controller: controller,
+      controller: widget.controller,
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: chat.messages.length + (chat.hasMore ? 1 : 0),
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        if (index == 0 && chat.hasMore) {
+        final row = rows[index];
+        if (row.dateLabel != null) {
+          return ChatDateDivider(label: row.dateLabel!);
+        }
+        if (row.isLoadMore) {
           final loading = chat.state == LoadingState.loadingMore;
           return TextButton.icon(
             onPressed: loading ? null : chat.loadMore,
@@ -526,23 +841,54 @@ class _MessageList extends StatelessWidget {
             label: Text(AppStrings.of(context).loadOlderMessages),
           );
         }
-        final message = chat.messages[index - (chat.hasMore ? 1 : 0)];
+        final message = row.message!;
         if (message.sendState == ChatSendState.failed) {
           return _FailedMessage(message: message);
         }
-        return ChatMessageBubble(
-          key: messageKeys.putIfAbsent(message.id, GlobalKey.new),
+        final bubble = ChatMessageBubble(
+          key: widget.messageKeys.putIfAbsent(message.id, GlobalKey.new),
           message: message,
-          isMine: message.senderId == currentUserId,
-          contrast: contrast,
+          isMine: message.senderId == widget.currentUserId,
+          contrast: widget.contrast,
           showSenderRole: false,
-           onLongPress: (rect) => onAction(message, rect),
-          onSwipeReply: () => onSwipeReply(message),
-          onMediaTap: message.isMedia ? () => onMediaTap(message) : null,
+          isStarred: widget.stars.isStarred(message.id),
+          onLongPress: (rect) => widget.onAction(message, rect),
+          onSwipeReply: () => widget.onSwipeReply(message),
+          onReplyQuoteTap: (id) => revealMessage(id),
+          onMediaTap: message.isMedia ? () => widget.onMediaTap(message) : null,
         );
+        if (message.id != highlightId) return bubble;
+        return ChatJumpHighlight(child: bubble);
       },
     );
   }
+}
+
+final class _RevealRequest {
+  const _RevealRequest({required this.id, required this.index, this.attempt = 0});
+
+  final String id;
+  final int index;
+  final int attempt;
+}
+
+final class _PrivateRow {
+  const _PrivateRow.loadMore()
+    : dateLabel = null,
+      message = null,
+      isLoadMore = true;
+  const _PrivateRow.date(String label)
+    : dateLabel = label,
+      message = null,
+      isLoadMore = false;
+  const _PrivateRow.message(ChatMessage value)
+    : dateLabel = null,
+      message = value,
+      isLoadMore = false;
+
+  final String? dateLabel;
+  final ChatMessage? message;
+  final bool isLoadMore;
 }
 
 class _FailedMessage extends StatelessWidget {

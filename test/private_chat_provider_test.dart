@@ -589,6 +589,43 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
     required String chatId,
     required String mediaId,
   }) async => readyMedia;
+
+  @override
+  Future<Result<ChatMessage>> editMessage({
+    required String chatId,
+    required String messageId,
+    required String text,
+  }) async => const Success<ChatMessage>(_stubMessage);
+
+  @override
+  Future<Result<void>> pinMessage({
+    required String chatId,
+    required String messageId,
+    required bool pinned,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> addReaction({
+    required String chatId,
+    required String messageId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceChatId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) async => const Success<ChatMessage>(_stubMessage);
 }
 
 final class _TestNetworkService extends NetworkService {
@@ -599,3 +636,28 @@ final class _TestNetworkService extends NetworkService {
 
   void pulse() => notifyListeners();
 }
+
+/// Shared placeholder for action stubs in fakes.
+const ChatMessage _stubMessage = ChatMessage(
+  id: 'stub',
+  senderId: 'stub',
+  senderName: 'Stub',
+  senderAvatar: '',
+  senderRole: '',
+  type: ChatMessageType.text,
+  text: 'stub',
+  mediaUrl: null,
+  thumbnailUrl: null,
+  mediaId: null,
+  replyToMessageId: null,
+  createdAt: null,
+  editedAt: null,
+  deletedAt: null,
+  pinnedAt: null,
+  reactions: <String, int>{},
+  recipientCount: 0,
+  deliveredCount: 0,
+  readCount: 0,
+  isOptimistic: false,
+  sendState: ChatSendState.sent,
+);
