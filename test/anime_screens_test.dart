@@ -9,7 +9,6 @@ import 'package:pubget/core/network/network_service.dart';
 import 'package:pubget/core/theme/app_theme.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/anime/models/anime_list_models.dart';
-import 'package:pubget/features/anime/l10n/anime_copy.dart';
 import 'package:pubget/features/anime/providers/anime_library_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
