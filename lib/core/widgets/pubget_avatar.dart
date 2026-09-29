@@ -62,8 +62,9 @@ class PubgetAvatar extends StatelessWidget {
                 imageUrl: imageUrl!,
                 width: size.value,
                 height: size.value,
-                memCacheWidth: size.value.round(),
-                memCacheHeight: size.value.round(),
+                // The loader derives the decode budget from the painted box and
+                // the screen ratio, so a 3x phone is not handed a 48px decode
+                // for a 48dp slot and then asked to scale it up.
                 errorWidget: Icon(Icons.person_outline, size: size.value * 0.5),
               ),
             ),

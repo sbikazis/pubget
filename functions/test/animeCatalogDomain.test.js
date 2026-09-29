@@ -280,11 +280,17 @@ test("public projections never carry provider internals", async () => {
   const [anime] = await catalog.searchAnime("one piece");
   const [character] = await catalog.searchCharacters("luffy");
   const animeItem = catalog.animeToPublicSearchItem(anime);
+  // A group picker shows a title, its year, its season, its format, its status
+  // and its episode count, so the projection carries them. Provider internals
+  // (the source id namespace, the raw payload) still never leave the server.
   assert.deepEqual(Object.keys(animeItem).sort(), [
     "alternativeTitles",
+    "episodes",
     "genres",
     "id",
     "imageUrl",
+    "season",
+    "status",
     "studios",
     "title",
     "type",
@@ -330,4 +336,127 @@ test("a detail entry keeps its longer TTL in memory", async () => {
   clockMs += 5000;
   await catalog.getAnime("jikan:21");
   assert.equal(calls, 1, "the detail entry must not expire with the search TTL");
+});
+
+test("a page is asked for, not a longer list of the same page", async () => {
+  const asked = [];
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: async (url) => {
+      asked.push(String(url));
+      return { data: [JIKAN_ANIME] };
+    },
+  });
+
+  await catalog.searchAnime("one piece", { page: 3, limit: 25 });
+  await catalog.searchAnime("one piece", { page: 4, limit: 25 });
+
+  assert.ok(asked[0].includes("page=3"), asked[0]);
+  assert.ok(asked[0].includes("limit=25"), asked[0]);
+  assert.ok(asked[1].includes("page=4"), asked[1]);
+});
+
+test("a browse rank is a catalog answer, and a page beyond the catalog is empty", async () => {
+  const asked = [];
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: async (url) => {
+      asked.push(String(url));
+      return { data: [JIKAN_ANIME] };
+    },
+  });
+
+  const airing = await catalog.browseAnime({ kind: "airing", page: 1, limit: 25 });
+  assert.equal(airing.length, 1);
+  assert.equal(airing[0].id, "jikan:21");
+  assert.ok(asked[0].includes("airing"), asked[0]);
+
+  const ranked = await catalog.browseAnime({ kind: "top", page: 1, limit: 25 });
+  assert.equal(ranked.length, 1);
+  assert.ok(asked[1].includes("top/anime"), asked[1]);
+});
+
+test("a browse falls back to the other provider instead of returning nothing", async () => {
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: async (url, init) => {
+      if (String(url).includes("api.jikan.moe")) return { data: [] };
+      assert.equal(init.method, "POST");
+      return { data: { Page: { media: [ANILIST_ANIME] } } };
+    },
+  });
+
+  const items = await catalog.browseAnime({ kind: "trending", page: 1, limit: 25 });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, "anilist:100");
+});
+
+test("a character of an AniList title is a real character, not an empty cast", async () => {
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: async (url, init) => {
+      assert.equal(init.method, "POST");
+      return {
+        data: {
+          Media: {
+            characters: {
+              edges: [
+                {
+                  node: {
+                    id: 40,
+                    name: { full: "Spike Spiegel" },
+                    image: { large: "https://cdn.example/spike.jpg" },
+                    media: { edges: [{ node: { id: 1 } }] },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+    },
+  });
+
+  const characters = await catalog.charactersOfAnime("anilist:100");
+  assert.equal(characters.length, 1);
+  assert.equal(characters[0].name, "Spike Spiegel");
+  // The per-title cast is authoritative, so the character is tied to the title
+  // the picker asked about even if its own profile lists another.
+  assert.ok(characters[0].animeIds.includes("anilist:100"));
+});
+
+test("a work's roster covers every season of it, tagged with where each appears", async () => {
+  const secondSeason = {
+    ...JIKAN_ANIME,
+    mal_id: 10015,
+    title: "One Piece: Clockwork Island Adventure",
+    title_english: "One Piece: Clockwork Island Adventure",
+    year: 2001,
+    season: "winter",
+  };
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: jikanRouter({
+      "/anime/21/full": { data: JIKAN_ANIME },
+      "/anime/10015/full": { data: secondSeason },
+      "/anime/21/characters": { data: [{ character: JIKAN_CHARACTER }] },
+      "/anime/10015/characters": { data: [] },
+    }),
+  });
+
+  const answer = await catalog.familyCharacters("jikan:21", { page: 1, limit: 25 });
+  assert.equal(answer.items.length, 1);
+  assert.equal(answer.items[0].name, "Monkey D. Luffy");
+  // Every season of the work is listed, pinned season first.
+  assert.deepEqual(answer.seasons.map((season) => season.id), ["jikan:21", "jikan:10015"]);
+  assert.equal(answer.items[0].seasons[0].year, 1999);
+  assert.equal(answer.items[0].seasons[0].season, "fall");
+});
+
+test("an open roleplay roster searches the character catalog, not a social table", async () => {
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: jikanRouter({
+      "/characters": { data: [JIKAN_CHARACTER] },
+    }),
+  });
+
+  const answer = await catalog.searchRoleplayCharacters({ query: "luffy", page: 1, limit: 25 });
+  assert.equal(answer.items.length, 1);
+  assert.equal(answer.items[0].id, "jikan:141391");
+  assert.deepEqual(answer.seasons, []);
 });

@@ -1,20 +1,28 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../../anime/data/anime_search_ranker.dart';
-import '../../anime/l10n/anime_copy.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/providers/anime_providers.dart';
-import '../../anime/repositories/anime_repository.dart';
 import '../l10n/group_copy.dart';
+import '../models/group_catalog_models.dart';
+import '../providers/group_catalog_provider.dart';
+import '../repositories/group_catalog_repository.dart';
 
+/// Picks the anime a group is bound to out of the whole catalog.
+///
+/// The previous version held one page of "most popular" titles and ranked them
+/// on the device, so any title outside the top twenty was unreachable and a
+/// search only ever searched what was already on screen. Every list here comes
+/// from the server catalog with a page number, and the next page is fetched
+/// when the end comes into view.
 class GroupAnimePickerPage extends StatefulWidget {
-  const GroupAnimePickerPage({super.key});
+  const GroupAnimePickerPage({super.key, this.initialYear, this.initialSeason});
+
+  /// Preselects a broadcast season, so opening the picker from a season list
+  /// keeps the axis the user came from.
+  final int? initialYear;
+  final String? initialSeason;
 
   @override
   State<GroupAnimePickerPage> createState() => _GroupAnimePickerPageState();
@@ -22,290 +30,388 @@ class GroupAnimePickerPage extends StatefulWidget {
 
 class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
   final _search = TextEditingController();
-  AnimeListProvider? _owned;
-  bool _requested = false;
+  final _scroll = ScrollController();
+  GroupCatalogProvider? _owned;
+  bool _opened = false;
+  GroupCatalogRequest? _request;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_requested) return;
-    _requested = true;
-    AnimeRepository? repo;
-    try {
-      repo = context.read<AnimeRepository>();
-    } on ProviderNotFoundException {
-      repo = null;
-    }
-    if (repo != null) {
-      _owned = AnimeListProvider(
-        repository: repo,
-        debounce: const Duration(milliseconds: 400),
-      )..addListener(_onList);
-      Future<void>.microtask(() => _owned!.openCatalog(AnimeCatalogKind.popular));
-      return;
-    }
-    AnimeListProvider? existing;
-    try {
-      existing = context.read<AnimeListProvider>();
-    } on ProviderNotFoundException {
-      existing = null;
-    }
-    if (existing != null && existing.items.isEmpty && existing.query.isEmpty) {
-      Future<void>.microtask(() => existing!.openCatalog(AnimeCatalogKind.popular));
-    }
+    if (_opened) return;
+    _opened = true;
+    final provider = _own(context);
+    final request = _initialRequest();
+    _request = request;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) provider.openAnime(request);
+    });
   }
 
-  void _onList() {
-    if (mounted) setState(() {});
+  GroupCatalogRequest _initialRequest() {
+    if (widget.initialYear != null &&
+        (widget.initialSeason ?? '').isNotEmpty) {
+      return GroupCatalogRequest.seasonOf(
+        widget.initialYear!,
+        widget.initialSeason!,
+      );
+    }
+    return const GroupCatalogRequest();
+  }
+
+  GroupCatalogProvider _own(BuildContext context) {
+    if (_owned != null) return _owned!;
+    GroupCatalogRepository repository;
+    try {
+      repository = context.read<GroupCatalogRepository>();
+    } on ProviderNotFoundException {
+      repository = const UnavailableGroupCatalogRepository();
+    }
+    final provider = GroupCatalogProvider(repository: repository)
+      ..addListener(_onChange);
+    _owned = provider;
+    return provider;
+  }
+
+  void _onChange() {
+    if (!mounted) return;
+    // Reaching the end asks for the next page; the provider guards against a
+    // duplicate request, so scrolling back and forth cannot double-fetch.
+    if (_scroll.hasClients && _scroll.position.extentAfter < 320) {
+      final provider = _owned;
+      if (provider != null && provider.animeHasNextPage) {
+        provider.loadMoreAnime();
+      }
+    }
+    setState(() {});
   }
 
   @override
   void dispose() {
     _search.dispose();
-    _owned?.removeListener(_onList);
+    _scroll.dispose();
+    _owned?.removeListener(_onChange);
     _owned?.dispose();
     super.dispose();
   }
 
-  AnimeListProvider? _listOf(BuildContext context) {
-    if (_owned != null) return _owned;
-    try {
-      return context.watch<AnimeListProvider>();
-    } on ProviderNotFoundException {
-      return null;
-    }
-  }
-
-  AnimeHubProvider? _hub(BuildContext context) {
-    try {
-      return context.watch<AnimeHubProvider>();
-    } on ProviderNotFoundException {
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final copy = GroupCopy.of(context);
-    final list = _listOf(context);
-    final hub = _hub(context);
-    final items = _visible(list);
-    final searching = _search.text.trim().isNotEmpty ||
-        (list?.filter.hasNonTextConstraints ?? false);
+    final provider = _own(context);
+    final items = provider.anime;
+    final hasQuery = _search.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.selectAnime),
-        actions: <Widget>[
-          PubgetIconButton(
-            key: const Key('group-anime-filter'),
-            icon: Icons.filter_list,
-            tooltip: copy.filters,
-            onPressed: list == null
-                ? null
-                : () => _openFilters(context, list, hub),
-          ),
-        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: <Widget>[
-            PubgetSearchField(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.md,
+              AppSpacing.lg,
+              0,
+            ),
+            child: PubgetSearchField(
               key: const Key('group-anime-search'),
               controller: _search,
               hint: copy.searchAnime,
               onChanged: (value) {
-                list?.searchChanged(value);
                 setState(() {});
+                provider.searchAnime(value);
               },
               onClear: () {
                 _search.clear();
-                list?.clearSearch();
-                if (list != null && list.items.isEmpty) {
-                  Future<void>.microtask(
-                    () => list.openCatalog(AnimeCatalogKind.popular),
-                  );
-                }
                 setState(() {});
+                _open(provider, _initialRequest());
               },
             ),
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: list == null
-                  ? PubgetEmptyState(
-                      title: copy.noAnime,
-                      message: copy.noAnimeHint,
-                    )
-                  : PubgetLoadingStateView(
-                      state: list.state,
-                      onRetry: () => _retry(list, searching),
-                      empty: PubgetEmptyState(
-                        key: const Key('group-anime-empty'),
-                        title: copy.noAnime,
-                        message: copy.noAnimeHint,
-                        icon: Icons.search_off_outlined,
-                      ),
-                      error: PubgetErrorState(
-                        message: list.failure?.message ?? copy.noAnime,
-                        onRetry: () => _retry(list, searching),
-                      ),
-                      offline: PubgetOfflineState(
-                        onRetry: () => _retry(list, searching),
-                      ),
-                      child: ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: AppSpacing.sm),
-                        itemBuilder: (context, index) {
-                          final anime = items[index];
-                          return PubgetCard(
-                            key: Key('group-anime-${anime.id}'),
-                            onTap: () => Navigator.pop(context, anime),
-                            child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: SizedBox(
-                                width: 48,
-                                height: 64,
-                                child: anime.images.displayUrl == null
-                                    ? const ColoredBox(
-                                        color: Color(0x332C1654),
-                                        child: Icon(Icons.movie_outlined),
-                                      )
-                                    : AppImageLoader(
-                                        imageUrl: anime.images.displayUrl!,
-                                        fit: BoxFit.cover,
-                                      ),
-                              ),
-                              title: Text(anime.title),
-                              subtitle: Text(
-                                [
-                                  if (anime.year != null) '${anime.year}',
-                                  if (anime.type != null) anime.type!,
-                                ].join(' · '),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+          ),
+          if (!hasQuery) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                0,
+              ),
+              child: _AxisBar(
+                selected: _request,
+                onSelected: (request) => _open(provider, request),
+              ),
             ),
+            if (_request?.kind == GroupCatalogKind.season)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  0,
+                ),
+                child: _SeasonPicker(
+                  year: _request?.year,
+                  season: _request?.season,
+                  onChanged: (year, season) => _open(
+                    provider,
+                    GroupCatalogRequest.seasonOf(year, season),
+                  ),
+                ),
+              ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _retry(AnimeListProvider list, bool searching) {
-    if (searching) return list.retrySearch();
-    return list.openCatalog(AnimeCatalogKind.popular);
-  }
-
-  List<Anime> _visible(AnimeListProvider? list) {
-    if (list == null) return const <Anime>[];
-    final query = _search.text;
-    final catalog = list.items
-        .where((anime) => list.filter.matchesCatalog(anime))
-        .toList(growable: false);
-    if (query.trim().isEmpty) return catalog;
-    // Rank by exact → prefix → contains (+ score/popularity). Never use
-    // loose subsequence fuzzy matching that surfaces unrelated titles.
-    return AnimeSearchRanker.rank(catalog, query);
-  }
-
-  Future<void> _openFilters(
-    BuildContext context,
-    AnimeListProvider list,
-    AnimeHubProvider? hub,
-  ) async {
-    final copy = GroupCopy.of(context);
-    final anime = AnimeCopy.of(context);
-    await PubgetBottomSheet.show<void>(
-      context,
-      title: copy.filters,
-      isScrollControlled: true,
-      child: _AnimeFilterSheet(list: list, hub: hub, anime: anime),
-    );
-  }
-}
-
-class _AnimeFilterSheet extends StatelessWidget {
-  const _AnimeFilterSheet({
-    required this.list,
-    required this.hub,
-    required this.anime,
-  });
-
-  final AnimeListProvider list;
-  final AnimeHubProvider? hub;
-  final AnimeCopy anime;
-
-  @override
-  Widget build(BuildContext context) {
-    final filter = list.filter;
-    final years = hub?.seasons.take(8).map((item) => item.year).toList() ??
-        <int>[DateTime.now().year];
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: <Widget>[
-              for (final type in AnimeTypeFilter.values)
-                PubgetSelectionChip(
-                  label: anime.typeFilter(type),
-                  selected: filter.type == type,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      type: type,
-                      clearType: filter.type == type,
-                    ),
+          const SizedBox(height: AppSpacing.md),
+          Expanded(
+            child: PubgetLoadingStateView(
+              state: provider.animeState,
+              onRetry: provider.retryAnime,
+              empty: PubgetEmptyState(
+                key: const Key('group-anime-empty'),
+                title: copy.noAnime,
+                message: hasQuery ? copy.catalogSearchHint : copy.noAnimeHint,
+                icon: Icons.search_off_outlined,
+              ),
+              error: PubgetErrorState(
+                key: const Key('group-anime-error'),
+                message: provider.animeFailure?.message ?? copy.noAnime,
+                onRetry: provider.retryAnime,
+              ),
+              offline: PubgetOfflineState(
+                key: const Key('group-anime-offline'),
+                message: copy.catalogUnavailable,
+                onRetry: provider.retryAnime,
+              ),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification.metrics.extentAfter < 320) {
+                    provider.loadMoreAnime();
+                  }
+                  return false;
+                },
+                child: ListView.separated(
+                  key: const Key('group-anime-list'),
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    0,
+                    AppSpacing.lg,
+                    AppSpacing.lg,
                   ),
-                ),
-              for (final season in AnimeSeason.values)
-                PubgetSelectionChip(
-                  label: anime.season(season),
-                  selected: filter.season == season,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      season: season,
-                      year: filter.year ?? DateTime.now().year,
-                      clearSeason: filter.season == season,
-                      clearYear: filter.season == season,
-                    ),
-                  ),
-                ),
-              for (final year in years)
-                PubgetSelectionChip(
-                  label: '$year',
-                  selected: filter.year == year,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      year: year,
-                      season: filter.season ?? AnimeSeason.fromDate(DateTime.now()),
-                      clearYear: filter.year == year,
-                      clearSeason: filter.year == year,
-                    ),
-                  ),
-                ),
-              if (hub != null)
-                for (final genre in hub!.genres.take(16))
-                  PubgetSelectionChip(
-                    label: anime.genre(genre.name),
-                    selected: filter.genreId == genre.id,
-                    onSelected: (_) => list.applyFilter(
-                      filter.copyWith(
-                        genreId: genre.id,
-                        clearGenre: filter.genreId == genre.id,
+                  itemCount: items.length + 1,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
+                  itemBuilder: (context, index) {
+                    if (index == items.length) {
+                      return _AnimeFooter(
+                        loading: provider.animeLoadingMore,
+                        failure: provider.animePageFailure,
+                        hasNextPage: provider.animeHasNextPage,
+                        onRetry: provider.retryAnimePage,
+                        onLoadMore: provider.loadMoreAnime,
+                      );
+                    }
+                    final anime = items[index];
+                    return PubgetCard(
+                      key: Key('group-anime-${anime.id}'),
+                      onTap: () => Navigator.pop(
+                        context,
+                        anime.toAnime(),
                       ),
-                    ),
-                  ),
-            ],
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: SizedBox(
+                          width: 48,
+                          height: 64,
+                          child: anime.imageUrl.isEmpty
+                              ? const ColoredBox(
+                                  color: Color(0x332C1654),
+                                  child: Icon(Icons.movie_outlined),
+                                )
+                              : AppImageLoader(
+                                  imageUrl: anime.imageUrl,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                        title: Text(anime.title),
+                        subtitle: Text(
+                          anime.subtitleParts.isEmpty
+                              ? anime.genres.take(3).join(' · ')
+                              : anime.subtitleParts,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+
+  void _open(GroupCatalogProvider provider, GroupCatalogRequest request) {
+    if (_search.text.trim().isNotEmpty) _search.clear();
+    setState(() => _request = request);
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    provider.openAnime(request);
+  }
+}
+
+/// The tail of the list. A failed page keeps the rows above it and offers a
+/// retry; it never blanks the list it failed to extend.
+class _AnimeFooter extends StatelessWidget {
+  const _AnimeFooter({
+    required this.loading,
+    required this.failure,
+    required this.hasNextPage,
+    required this.onRetry,
+    required this.onLoadMore,
+  });
+
+  final bool loading;
+  final Object? failure;
+  final bool hasNextPage;
+  final VoidCallback onRetry;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
+    if (failure != null) {
+      return PubgetCard(
+        key: const Key('group-anime-page-failure'),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                copy.pageLoadFailed,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            TextButton(
+              key: const Key('group-anime-page-retry'),
+              onPressed: onRetry,
+              child: Text(copy.retry),
+            ),
+          ],
+        ),
+      );
+    }
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (hasNextPage) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Center(
+          child: TextButton(
+            key: const Key('group-anime-load-more'),
+            onPressed: onLoadMore,
+            child: Text(copy.loadMore),
+          ),
+        ),
+      );
+    }
+    return const SizedBox(height: AppSpacing.lg);
+  }
+}
+
+class _AxisBar extends StatelessWidget {
+  const _AxisBar({required this.selected, required this.onSelected});
+
+  final GroupCatalogRequest? selected;
+  final ValueChanged<GroupCatalogRequest> onSelected;
+
+  static const _axes = <GroupCatalogKind>[
+    GroupCatalogKind.trending,
+    GroupCatalogKind.popular,
+    GroupCatalogKind.top,
+    GroupCatalogKind.airing,
+    GroupCatalogKind.upcoming,
+    GroupCatalogKind.thisSeason,
+    GroupCatalogKind.season,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _axes.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, index) {
+          final kind = _axes[index];
+          final isSelected = selected?.kind == kind && !_isSearch(selected);
+          return PubgetSelectionChip(
+            key: Key('group-anime-axis-${kind.name}'),
+            label: copy.catalogAxisLabel(kind.name),
+            selected: isSelected,
+            onSelected: (_) => onSelected(GroupCatalogRequest(kind: kind)),
+          );
+        },
+      ),
+    );
+  }
+
+  bool _isSearch(GroupCatalogRequest? request) =>
+      (request?.query.trim() ?? '').isNotEmpty;
+}
+
+class _SeasonPicker extends StatelessWidget {
+  const _SeasonPicker({
+    required this.year,
+    required this.season,
+    required this.onChanged,
+  });
+
+  final int? year;
+  final String? season;
+  final void Function(int year, String season) onChanged;
+
+  static const _seasons = <String>['winter', 'spring', 'summer', 'fall'];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final years = <int>[now.year, now.year - 1, now.year - 2, now.year - 3];
+    final selectedYear = year ?? now.year;
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        for (final option in years)
+          PubgetSelectionChip(
+            key: Key('group-anime-year-$option'),
+            label: '$option',
+            selected: selectedYear == option,
+            onSelected: (_) => onChanged(
+              option,
+              season ?? _current(now),
+            ),
+          ),
+        for (final option in _seasons)
+          PubgetSelectionChip(
+            key: Key('group-anime-season-$option'),
+            label: option,
+            selected: selectedYear == (year ?? now.year) && season == option,
+            onSelected: (_) => onChanged(selectedYear, option),
+          ),
+      ],
+    );
+  }
+
+  static String _current(DateTime now) => switch (now.month) {
+    >= 12 => 'winter',
+    >= 9 => 'fall',
+    >= 6 => 'summer',
+    _ => 'spring',
+  };
 }

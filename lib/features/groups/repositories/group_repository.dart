@@ -124,3 +124,28 @@ abstract interface class AnimeLinkedGroupRepository {
     int limit = 20,
   });
 }
+
+/// What the signed-in account is entitled to create. The wizard renders the
+/// member limit from this, so it can never offer a number the server would
+/// quietly reduce.
+final class GroupEntitlements {
+  const GroupEntitlements({
+    required this.maxMembers,
+    this.canCreateGroups = true,
+  });
+
+  /// The server's own default, used only when the entitlement could not be
+  /// read. The wizard shows the member limit as adjustable up to this, so a
+  /// failed read narrows the field instead of widening it.
+  static const GroupEntitlements fallback = GroupEntitlements(maxMembers: 100);
+
+  final int maxMembers;
+  final bool canCreateGroups;
+}
+
+/// Optional capability: repositories that can answer what the account may
+/// create. Kept separate so existing [GroupRepository] implementers (and test
+/// fakes) are not forced to change.
+abstract interface class GroupEntitlementsRepository {
+  Future<Result<GroupEntitlements>> createGroupEntitlements();
+}

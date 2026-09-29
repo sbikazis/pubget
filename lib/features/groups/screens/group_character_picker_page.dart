@@ -2,17 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
-import '../../../core/errors/failure.dart';
-import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
-import '../../anime/models/anime_models.dart';
-import '../../anime/providers/anime_hub_social_provider.dart';
-import '../../anime/repositories/anime_repository.dart';
-import '../data/group_fuzzy.dart';
 import '../l10n/group_copy.dart';
+import '../models/group_catalog_models.dart';
 import '../models/group_models.dart';
+import '../providers/group_catalog_provider.dart';
+import '../repositories/group_catalog_repository.dart';
 
+/// Picks the character a member will play, or that a founder reserves.
+///
+/// A group bound to an anime answers with the cast of the whole work — every
+/// season of it, each character tagged with the seasons it is credited in — so
+/// a character that only appears in a later season is still reachable, and a
+/// title whose cast is split across a cour is not treated as two different
+/// groups. A group that is not bound to one anime answers with the character
+/// catalog itself. The previous version read a single anime's characters
+/// through the client repository, or a social "popular" table that is empty on
+/// a new product, and then filtered that list on the device; both paths are
+/// gone.
 class GroupCharacterPickerPage extends StatefulWidget {
   const GroupCharacterPickerPage({
     this.animeId,
@@ -32,171 +40,216 @@ class GroupCharacterPickerPage extends StatefulWidget {
 
 class _GroupCharacterPickerPageState extends State<GroupCharacterPickerPage> {
   final _search = TextEditingController();
-  List<RoleplayCharacter> _items = const <RoleplayCharacter>[];
-  LoadingState _state = LoadingState.initial;
-  Failure? _failure;
-  bool _requested = false;
+  final _scroll = ScrollController();
+  GroupCatalogProvider? _owned;
+  bool _opened = false;
+
+  bool get _open =>
+      widget.animeId != null && widget.animeId!.trim().isNotEmpty;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_requested) return;
-    _requested = true;
-    Future<void>.microtask(_load);
+    if (_opened) return;
+    _opened = true;
+    final provider = _own(context);
+    if (widget.reservedKeys.isNotEmpty) provider.reserve(widget.reservedKeys);
+    if (widget.catalog != null) {
+      // A roster handed in by the caller is used as-is: it is already the
+      // group's own list, and re-asking the catalog would only reorder it.
+      _seeded = widget.catalog!;
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) provider.openCharacters(_request());
+      });
+    }
+  }
+
+  late List<RoleplayCharacter> _seeded = const <RoleplayCharacter>[];
+
+  GroupCharacterRequest _request() => _open
+      ? GroupCharacterRequest.forAnime(widget.animeId!.trim())
+      : const GroupCharacterRequest.open();
+
+  GroupCatalogProvider _own(BuildContext context) {
+    if (_owned != null) return _owned!;
+    GroupCatalogRepository repository;
+    try {
+      repository = context.read<GroupCatalogRepository>();
+    } on ProviderNotFoundException {
+      repository = const UnavailableGroupCatalogRepository();
+    }
+    final provider = GroupCatalogProvider(repository: repository)
+      ..addListener(_onChange);
+    _owned = provider;
+    return provider;
+  }
+
+  void _onChange() {
+    if (!mounted) return;
+    if (_scroll.hasClients && _scroll.position.extentAfter < 320) {
+      final provider = _owned;
+      if (provider != null && provider.charactersHasNextPage) {
+        provider.loadMoreCharacters();
+      }
+    }
+    setState(() {});
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _scroll.dispose();
+    _owned?.removeListener(_onChange);
+    _owned?.dispose();
     super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _state = LoadingState.loading;
-      _failure = null;
-    });
-    if (widget.catalog != null) {
-      _apply(widget.catalog!);
-      return;
-    }
-    if (widget.animeId != null && widget.animeId!.trim().isNotEmpty) {
-      try {
-        final repo = context.read<AnimeRepository>();
-        final result = await repo.getCharacters(widget.animeId!);
-        if (!mounted) return;
-        result.fold(onSuccess: _fromAnime, onFailure: _fail);
-        return;
-      } on ProviderNotFoundException {
-        _fail(const UnknownError('Anime catalog is unavailable.'));
-        return;
-      }
-    }
-    try {
-      final social = context.read<AnimeHubSocialProvider>();
-      await social.loadPopularCharacters();
-      if (!mounted) return;
-      _apply(
-        social.popularCharacters
-            .map(
-              (item) => RoleplayCharacter(
-                key: item.characterId,
-                name: item.name,
-                avatarUrl: item.imageUrl ?? '',
-              ),
-            )
-            .toList(growable: false),
-      );
-      if (social.popularCharactersState == LoadingState.error) {
-        _fail(
-          social.popularCharactersFailure ??
-              const UnknownError('Characters could not load.'),
-        );
-      }
-    } on ProviderNotFoundException {
-      _fail(const UnknownError('Character catalog is unavailable.'));
-    }
-  }
-
-  void _fromAnime(List<AnimeCharacter> characters) {
-    _apply(
-      characters
-          .map(
-            (item) => RoleplayCharacter(
-              key: item.id,
-              name: item.name,
-              avatarUrl: item.imageUrl ?? '',
-            ),
-          )
-          .toList(growable: false),
-    );
-  }
-
-  void _apply(List<RoleplayCharacter> items) {
-    final reserved = widget.reservedKeys;
-    setState(() {
-      _items = items
-          .map(
-            (item) => reserved.contains(item.key) ? item.asReserved() : item,
-          )
-          .toList(growable: false);
-      _state = _items.isEmpty ? LoadingState.empty : LoadingState.loaded;
-      _failure = null;
-    });
-  }
-
-  void _fail(Failure failure) {
-    setState(() {
-      _failure = failure;
-      _state = failure is NetworkError
-          ? LoadingState.offline
-          : LoadingState.error;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final copy = GroupCopy.of(context);
-    final visible = _items
-        .where((item) => GroupFuzzy.matches(_search.text, item.name))
-        .toList(growable: false);
-    final empty = _state == LoadingState.loaded && visible.isEmpty;
+    final provider = _own(context);
+    final seeded = _seeded;
+    final reserved = widget.reservedKeys;
+    final items = seeded.isNotEmpty
+        ? seeded
+              .map(
+                (item) => reserved.contains(item.key) ? item.asReserved() : item,
+              )
+              .toList(growable: false)
+        : provider.characters
+              .map(
+                (item) => reserved.contains(item.key) ? item.asReserved() : item,
+              )
+              .toList(growable: false);
+    final searching = _search.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.selectCharacter),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.lg,
+        ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             PubgetSearchField(
               key: const Key('group-character-search'),
               controller: _search,
               hint: copy.searchCharacters,
-              onChanged: (_) => setState(() {}),
+              onChanged: (value) {
+                setState(() {});
+                if (seeded.isEmpty) provider.searchCharacters(value);
+              },
               onClear: () {
                 _search.clear();
                 setState(() {});
+                if (seeded.isEmpty) provider.searchCharacters('');
               },
             ),
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: PubgetLoadingStateView(
-                state: empty ? LoadingState.empty : _state,
-                onRetry: _load,
-                empty: PubgetEmptyState(
-                  key: const Key('group-character-empty'),
-                  title: copy.noCharacters,
-                  message: copy.noCharactersHint,
-                  icon: Icons.person_off_outlined,
-                ),
-                error: PubgetErrorState(
-                  message: _failure?.message ?? copy.noCharacters,
-                  onRetry: _load,
-                ),
-                offline: PubgetOfflineState(onRetry: _load),
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 200,
-                    mainAxisSpacing: AppSpacing.md,
-                    crossAxisSpacing: AppSpacing.md,
-                    childAspectRatio: 0.78,
-                  ),
-                  itemCount: visible.length,
-                  itemBuilder: (context, index) {
-                    final character = visible[index];
-                    return _CharacterTile(
-                      character: character,
-                      onTap: () => _select(character),
-                    );
-                  },
-                ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _open ? copy.wholeWorkHint : copy.freeRosterHint,
+              key: const Key('group-character-hint'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (provider.seasons.isNotEmpty) ...<Widget>[
+              const SizedBox(height: AppSpacing.sm),
+              _SeasonStrip(
+                title: copy.seasonsOfWork,
+                seasons: provider.seasons,
               ),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            Expanded(
+              child: seeded.isNotEmpty
+                  ? _grid(items, const <Widget>[])
+                  : PubgetLoadingStateView(
+                      state: provider.charactersState,
+                      onRetry: provider.retryCharacters,
+                      empty: PubgetEmptyState(
+                        key: const Key('group-character-empty'),
+                        title: copy.noCharacters,
+                        message: searching
+                            ? copy.catalogSearchHint
+                            : copy.noCharactersHint,
+                        icon: Icons.person_off_outlined,
+                      ),
+                      error: PubgetErrorState(
+                        key: const Key('group-character-error'),
+                        message:
+                            provider.charactersFailure?.message ??
+                            copy.roleplayCharactersLoadFailed,
+                        onRetry: provider.retryCharacters,
+                      ),
+                      offline: PubgetOfflineState(
+                        key: const Key('group-character-offline'),
+                        message: copy.catalogUnavailable,
+                        onRetry: provider.retryCharacters,
+                      ),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.metrics.extentAfter < 320) {
+                            provider.loadMoreCharacters();
+                          }
+                          return false;
+                        },
+                        child: _grid(items, <Widget>[
+                          _CharacterFooter(
+                            loading: provider.charactersLoadingMore,
+                            failure: provider.charactersPageFailure,
+                            hasNextPage: provider.charactersHasNextPage,
+                            onRetry: provider.retryCharactersPage,
+                            onLoadMore: provider.loadMoreCharacters,
+                          ),
+                        ]),
+                      ),
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _grid(List<RoleplayCharacter> items, List<Widget> footer) {
+    if (items.isEmpty && footer.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return CustomScrollView(
+      controller: _scroll,
+      slivers: <Widget>[
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
+              mainAxisSpacing: AppSpacing.md,
+              crossAxisSpacing: AppSpacing.md,
+              childAspectRatio: 0.78,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _CharacterTile(
+                character: items[index],
+                onTap: () => _select(items[index]),
+              ),
+              childCount: items.length,
+            ),
+          ),
+        ),
+        for (final child in footer)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: child,
+            ),
+          ),
+      ],
     );
   }
 
@@ -210,6 +263,97 @@ class _GroupCharacterPickerPageState extends State<GroupCharacterPickerPage> {
   }
 }
 
+/// The seasons of the linked work, so a member can see that a cast member
+/// belongs to a later season before claiming them.
+class _SeasonStrip extends StatelessWidget {
+  const _SeasonStrip({required this.title, required this.seasons});
+
+  final String title;
+  final List<CatalogSeason> seasons;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(title, style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(height: AppSpacing.xs),
+        SizedBox(
+          height: 34,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: seasons.length,
+            separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+            itemBuilder: (context, index) {
+              final season = seasons[index];
+              return PubgetSelectionChip(
+                key: Key('group-season-${season.id}'),
+                label: season.label.isEmpty ? season.title : season.label,
+                selected: false,
+                onSelected: (_) {},
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CharacterFooter extends StatelessWidget {
+  const _CharacterFooter({
+    required this.loading,
+    required this.failure,
+    required this.hasNextPage,
+    required this.onRetry,
+    required this.onLoadMore,
+  });
+
+  final bool loading;
+  final Object? failure;
+  final bool hasNextPage;
+  final VoidCallback onRetry;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
+    if (failure != null) {
+      return PubgetCard(
+        key: const Key('group-character-page-failure'),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                copy.pageLoadFailed,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            TextButton(
+              key: const Key('group-character-page-retry'),
+              onPressed: onRetry,
+              child: Text(copy.retry),
+            ),
+          ],
+        ),
+      );
+    }
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (hasNextPage) {
+      return Center(
+        child: TextButton(
+          key: const Key('group-character-load-more'),
+          onPressed: onLoadMore,
+          child: Text(copy.loadMore),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
 class _CharacterTile extends StatelessWidget {
   const _CharacterTile({required this.character, required this.onTap});
 
@@ -218,6 +362,7 @@ class _CharacterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = GroupCopy.of(context);
     return PubgetCard(
       key: Key('group-character-${character.key}'),
       onTap: onTap,
@@ -240,20 +385,56 @@ class _CharacterTile extends StatelessWidget {
               ),
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
-                child: Text(
-                  character.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      character.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (character.seasons.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.xs),
+                        child: Text(
+                          character.seasons.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
           if (character.reserved)
-            const DecoratedBox(
-              decoration: BoxDecoration(color: Color(0x99210F2E)),
+            DecoratedBox(
+              decoration: const BoxDecoration(color: Color(0x99210F2E)),
               child: Center(
-                child: Icon(Icons.lock_outline, color: Colors.white70, size: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.lock_outline,
+                      color: Colors.white70,
+                      size: 32,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xs),
+                      child: Text(
+                        copy.reservedByOthers,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

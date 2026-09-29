@@ -122,12 +122,13 @@ class _GroupMediaPageState extends State<GroupMediaPage> {
                           fit: StackFit.expand,
                           children: <Widget>[
                             if (message.isMedia)
+                              // The decode budget is left to the loader, which
+                              // derives it from the tile and the screen ratio.
+                              // A fixed 320 was a third of what a 3x tile needs,
+                              // which is what made the shared media blurry.
                               AppImageLoader(
-                                imageUrl: message.thumbnailUrl ??
-                                    message.mediaUrl ??
-                                    '',
-                                memCacheWidth: 320,
-                                memCacheHeight: 320,
+                                imageUrl:
+                                    message.thumbnailUrl ?? message.mediaUrl ?? '',
                               )
                             else
                               ColoredBox(

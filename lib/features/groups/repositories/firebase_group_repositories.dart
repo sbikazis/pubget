@@ -10,7 +10,10 @@ import 'group_repository.dart';
 import 'roleplay_repository.dart';
 
 final class FirebaseGroupRepository
-    implements GroupRepository, AnimeLinkedGroupRepository {
+    implements
+        GroupRepository,
+        AnimeLinkedGroupRepository,
+        GroupEntitlementsRepository {
   FirebaseGroupRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
@@ -24,6 +27,18 @@ final class FirebaseGroupRepository
   @override
   Future<Result<Group>> createGroup(GroupDraft draft) =>
       _guard(() => _callGroup('createGroup', draft.toMap()));
+
+  @override
+  Future<Result<GroupEntitlements>> createGroupEntitlements() => _guard(() async {
+    final data = await _callGroupData('createGroupEntitlements', <String, dynamic>{});
+    final maxMembers = (data['maxMembers'] as num?)?.toInt();
+    return GroupEntitlements(
+      maxMembers: maxMembers == null || maxMembers < 2
+          ? GroupEntitlements.fallback.maxMembers
+          : maxMembers,
+      canCreateGroups: data['canCreateGroups'] != false,
+    );
+  });
 
   @override
   Future<Result<Group>> getGroup(String groupId) => _guard(() async {
@@ -242,12 +257,24 @@ final class FirebaseGroupRepository
   });
 
   Future<Group> _callGroup(String name, Map<String, dynamic> data) async {
-    final result = await _functions.httpsCallable(name).call(data);
-    final group = result.data['group'] as Map<dynamic, dynamic>;
+    final payload = await _callGroupData(name, data);
+    final group = payload['group'] as Map<dynamic, dynamic>;
     return Group.fromMap(
       Map<String, dynamic>.from(group),
-      id: result.data['groupId'] as String,
+      id: payload['groupId'] as String,
     );
+  }
+
+  Future<Map<String, dynamic>> _callGroupData(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    final result = await _functions.httpsCallable(name).call(data);
+    final payload = result.data;
+    if (payload is! Map) {
+      throw const FormatException('Unexpected group response.');
+    }
+    return Map<String, dynamic>.from(payload);
   }
 
   Future<void> _callVoid(String name, Map<String, dynamic> data) async {

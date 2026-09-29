@@ -269,7 +269,11 @@ class _VisitorDetails extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final member = members!.members[index];
                   return PubgetAvatar(
-                    name: member.uid,
+                    // The member row already carries the photo the server
+                    // resolved for them; showing initials here is what made
+                    // the member strip look like images were missing.
+                    imageUrl: member.avatarUrl,
+                    name: member.displayName ?? member.username ?? member.uid,
                     size: PubgetAvatarSize.medium,
                   );
                 },

@@ -304,6 +304,48 @@ final class GroupCopy {
   String get searchAnime => _s.pick('Search anime', 'ابحث عن أنمي');
   String get searchCharacters => _s.pick('Search characters', 'ابحث عن شخصية');
   String get filters => _s.pick('Filters', 'تصفية');
+
+  /// Browse axes for the group catalog. The picker used to say "most popular"
+  /// and stop, which hid every title that is not in the top twenty.
+  String catalogAxisLabel(String kind) => switch (kind) {
+    'trending' => _s.pick('Trending', 'الأكثر رواجاً'),
+    'popular' => popularAnime,
+    'top' => _s.pick('Highest rated', 'الأعلى تقييماً'),
+    'airing' => _s.pick('Airing now', 'يُعرض حالياً'),
+    'upcoming' => _s.pick('Upcoming', 'قريباً'),
+    'thisSeason' => _s.pick('This season', 'هذا الموسم'),
+    _ => _s.pick('By season', 'حسب الموسم'),
+  };
+  String get catalogAxesTitle => _s.pick('Browse', 'تصفح');
+  String get catalogSeasonTitle => _s.pick('Season', 'الموسم');
+  String get loadMore => _s.pick('Load more', 'تحميل المزيد');
+  String get loadingMore => _s.pick('Loading more…', 'جاري تحميل المزيد');
+  String get pageLoadFailed => _s.pick(
+    'This page could not load.',
+    'تعذّر تحميل هذه الصفحة.',
+  );
+  String get catalogUnavailable => _s.pick(
+    'The catalog is unreachable right now. Check your connection and try again.',
+    'الكتالوج غير متاح حالياً. تحقق من اتصالك وأعد المحاولة.',
+  );
+  String get seasonsOfWork => _s.pick('Seasons', 'المواسم');
+  String get wholeWorkHint => _s.pick(
+    'Every season of the linked anime, with the characters credited in each.',
+    'كل مواسم الأنمي المرتبط، مع الشخصيات الظاهرة في كل موسم.',
+  );
+  String get freeRosterHint => _s.pick(
+    'This group is not bound to one anime, so any character in the catalog can '
+        'be reserved.',
+    'هذه المجموعة غير مرتبطة بأنمي محدد، لذلك يمكن حجز أي شخصية في الكتالوج.',
+  );
+  String get reservedByOthers => _s.pick(
+    'Already reserved',
+    'محجوزة بالفعل',
+  );
+  String get catalogSearchHint => _s.pick(
+    'Searching the whole catalog, not the titles already on screen.',
+    'بحث في الكتالوج كاملاً، وليس في العناوين المعروضة فقط.',
+  );
   String get noAnime => _s.noAnimeResults;
   String get noAnimeHint => _s.noAnimeResultsHint;
   String get noCharacters => _s.noCharacterResults;

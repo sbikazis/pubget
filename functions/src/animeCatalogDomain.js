@@ -37,6 +37,46 @@ const REQUEST_TIMEOUT_MS = 8000;
 const PROVIDER_RETRY_MS = 400;
 const PROVIDER_MAX_RETRIES = 2;
 
+// Browsing guards. The catalog is the whole of MyAnimeList, not a shortlist:
+// a client may walk `MAX_PAGE` pages of `SEARCH_PAGE_SIZE` entries per query,
+// which is 500 titles — enough to reach any title, bounded enough that one
+// client cannot become a crawler.
+const MAX_PAGE = 20;
+const MAX_FAMILY_ENTRIES = 24;
+const MAX_FAMILY_CHARACTERS = 1500;
+const MAX_ANILIST_CHARACTER_PAGE = 50;
+
+// The browse axes a roleplay group can be scoped to. `season` requires a year
+// and a season; every other axis is a standalone ranking.
+const ANIME_BROWSE_KINDS = Object.freeze([
+  "trending",
+  "popular",
+  "top",
+  "airing",
+  "upcoming",
+  "thisSeason",
+  "season",
+]);
+
+const BROWSE_RANKINGS = Object.freeze({
+  trending: { jikanFilter: "favorite", anilistSort: "TRENDING_DESC" },
+  popular: { jikanFilter: "bypopularity", anilistSort: "POPULARITY_DESC" },
+  top: { jikanFilter: null, anilistSort: "SCORE_DESC" },
+  airing: { jikanFilter: "airing", anilistStatus: "RELEASING" },
+  upcoming: { jikanPath: "seasons/upcoming", anilistStatus: "NOT_YET_RELEASED" },
+  thisSeason: { jikanPath: "seasons/now", anilistCurrentSeason: true },
+  season: { anilistSeason: true },
+});
+
+const ANIME_TYPE_VALUES = Object.freeze({
+  tv: "TV",
+  movie: "Movie",
+  ova: "OVA",
+  ona: "ONA",
+  special: "Special",
+  music: "Music",
+});
+
 const GENRE_EMOJI = Object.freeze({
   action: "⚔️",
   adventure: "🗺️",
@@ -114,11 +154,32 @@ function clampLimit(value, fallback) {
   return Math.min(MAX_LIMIT, Math.max(1, n));
 }
 
+function clampPage(value) {
+  const n = Number.isInteger(value) ? value : Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(MAX_PAGE, n);
+}
+
 function firstNonEmpty(...values) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+// A character matches when every whitespace-separated word of the query
+// appears in the name or its native spelling, so "naruto uzumaki" and
+// "Gon" behave the way a player expects while the search stays cheap.
+function matchesCharacterQuery(character, normalizedQuery) {
+  if (!character || !normalizedQuery) return false;
+  const haystack = normalizeText(
+    `${firstNonEmpty(character.name)} ${firstNonEmpty(character.nameKanji)}`,
+  );
+  if (!haystack) return false;
+  return normalizedQuery
+    .split(" ")
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
 }
 
 function isJikanId(id) {
@@ -483,7 +544,10 @@ function animeToPublicSearchItem(anime) {
     alternativeTitles: anime.alternativeTitles || [],
     imageUrl: anime.imageUrl || "",
     year: anime.year || null,
+    season: anime.season || null,
     type: anime.type || null,
+    status: anime.status || null,
+    episodes: Number.isInteger(anime.episodes) ? anime.episodes : null,
     genres: anime.genres || [],
     studios: anime.studios || [],
   };
@@ -625,15 +689,17 @@ function createAnimeCatalogDomain(options = {}) {
     media(perPage: 20) { edges { node { id } } }
   `;
 
-  async function searchAnime(query, { limit = 12 } = {}) {
+  async function searchAnime(query, { limit = 12, page = 1 } = {}) {
     const text = normalizeText(query);
     if (!text) return [];
     const size = clampLimit(limit, 12);
-    const key = `search:anime:${text}:${size}`;
+    const index = clampPage(page);
+    const key = `search:anime:${text}:${size}:${index}`;
     const value = await cached(key, async () => {
       const jikanItems = await (async () => {
         const body = await jikan("anime", {
           q: text,
+          page: String(index),
           limit: size,
           order_by: "members",
           sort: "desc",
@@ -642,20 +708,122 @@ function createAnimeCatalogDomain(options = {}) {
         return (Array.isArray(body.data) ? body.data : [])
           .map((item) => mapJikanAnime(item))
           .filter(Boolean);
-      })();
+      })().catch(() => []);
       if (jikanItems.length > 0) return jikanItems;
       const body = await anilist(
-        `query ($search: String, $perPage: Int) {
-           Page(page: 1, perPage: $perPage) {
-             media(search: $search, type: ANIME, sort: POPULARITY_DESC) { ${ANIME_FIELDS} }
+        `query ($search: String, $page: Int, $perPage: Int) {
+           Page(page: $page, perPage: $perPage) {
+             media(search: $search, type: ANIME, isAdult: false, sort: POPULARITY_DESC) { ${ANIME_FIELDS} }
            }
          }`,
-        { search: query, perPage: size },
+        { search: query, page: index, perPage: size },
       );
       const nodes = body && body.data && body.data.Page && body.data.Page.media;
       return (Array.isArray(nodes) ? nodes : []).map(mapAniListAnime).filter(Boolean);
     });
     return (Array.isArray(value) ? value : []).slice(0, size);
+  }
+
+  // Paginated browse over the whole catalog, not a shortlist. `kind` selects
+  // the ranking; `year` + `season` narrow it to one broadcast season; `genre`
+  // and `type` are applied by whichever provider can serve them. Jikan answers
+  // first, AniList answers when Jikan has nothing, exactly like the search.
+  async function browseAnime(options = {}) {
+    const kind = ANIME_BROWSE_KINDS.includes(options.kind) ? options.kind : "popular";
+    const index = clampPage(options.page);
+    const size = clampLimit(options.limit, SEARCH_PAGE_SIZE);
+    const year = Number.isInteger(options.year) && options.year >= 1917 && options.year <= 2200
+      ? options.year
+      : null;
+    const season = normalizeText(options.season) || null;
+    const genre = firstNonEmpty(options.genre);
+    const type = ANIME_TYPE_VALUES[normalizeText(options.type)] || null;
+    if (kind === "season" && (!year || !season)) {
+      throw new Error("season_year_required");
+    }
+    const key = `browse:anime:${kind}:${index}:${size}:${year || ""}:${season || ""}:${normalizeText(genre)}:${type || ""}`;
+    const value = await cached(key, async () => {
+      const items = await browseFromJikan({ kind, index, size, year, season, genre, type })
+        .catch(() => []);
+      if (items.length > 0) return items;
+      return browseFromAniList({ kind, index, size, year, season, genre, type });
+    });
+    return Array.isArray(value) ? value.slice(0, size) : [];
+  }
+
+  async function browseFromJikan({ kind, index, size, year, season, genre, type }) {
+    const ranking = BROWSE_RANKINGS[kind] || BROWSE_RANKINGS.popular;
+    const genreId = genre ? await jikanGenreId(genre) : null;
+    const query = {
+      page: String(index),
+      limit: String(size),
+      sfw: "true",
+    };
+    let path;
+    if (kind === "season") {
+      path = `seasons/${year}/${season}`;
+    } else if (ranking.jikanPath) {
+      path = ranking.jikanPath;
+    } else {
+      path = "top/anime";
+      if (ranking.jikanFilter) query.filter = ranking.jikanFilter;
+    }
+    if (type) query.type = type;
+    if (genreId) {
+      query.genres = genreId;
+      query.order_by = "members";
+      query.sort = "desc";
+    }
+    const body = await jikan(path, query);
+    return (Array.isArray(body && body.data) ? body.data : [])
+      .map((item) => mapJikanAnime(item))
+      .filter(Boolean);
+  }
+
+  async function browseFromAniList({ kind, index, size, year, season, genre, type }) {
+    const ranking = BROWSE_RANKINGS[kind] || BROWSE_RANKINGS.popular;
+    const variables = { page: index, perPage: size, type: type ? "ANIME" : null };
+    const filters = ["type: ANIME", "isAdult: false"];
+    if (ranking.anilistSort) filters.push(`sort: [${ranking.anilistSort}]`);
+    if (ranking.anilistStatus) filters.push(`status: ${ranking.anilistStatus}`);
+    if (ranking.anilistCurrentSeason) filters.push("seasonYear: $year");
+    if (ranking.anilistSeason) filters.push("season: $season", "seasonYear: $year");
+    if (genre) {
+      filters.push('genre_in: ["' + genre.replace(/["\\]/g, "") + '"]');
+    }
+    if (year) variables.year = year;
+    if (season) variables.season = firstNonEmpty(String(season).toUpperCase());
+    const body = await anilist(
+      `query ($page: Int, $perPage: Int, $year: Int, $season: MediaSeason) {
+         Page(page: $page, perPage: $perPage) {
+           media(${filters.join(", ")}) { ${ANIME_FIELDS} }
+         }
+       }`,
+      variables,
+    );
+    const nodes = body && body.data && body.data.Page && body.data.Page.media;
+    return (Array.isArray(nodes) ? nodes : []).map(mapAniListAnime).filter(Boolean);
+  }
+
+  // Jikan addresses genres by MAL id while the product speaks genre names.
+  // The name -> id index is itself cached, so this costs one request per
+  // catalog refresh rather than one per browse.
+  async function jikanGenreId(name) {
+    const text = normalizeText(name);
+    if (!text) return null;
+    const value = await cached("index:genres", async () => {
+      const body = await jikan("genres/anime", { filter: "genres" });
+      return (Array.isArray(body && body.data) ? body.data : [])
+        .filter((entry) => entry && Number.isInteger(Number(entry.mal_id)))
+        .map((entry) => ({
+          name: normalizeText(firstNonEmpty(entry.name)),
+          id: Number(entry.mal_id),
+        }))
+        .filter((entry) => entry.name);
+    });
+    if (!Array.isArray(value)) return null;
+    const hit = value.find((entry) => entry.name === text);
+    return hit ? hit.id : null;
   }
 
   async function getAnime(id) {
@@ -680,46 +848,299 @@ function createAnimeCatalogDomain(options = {}) {
     return value || null;
   }
 
-  async function searchCharacters(query, { limit = 20, animeId = null } = {}) {
+  // Every character credited in one anime, from whichever provider owns that
+  // id. A title resolved from AniList used to return nothing at all, which
+  // silently emptied the roleplay roster for half the catalog.
+  async function charactersOfAnime(animeId) {
+    const parsed = splitId(animeId);
+    if (!parsed) return [];
+    const key = `characters:anime:${animeId}:all`;
+    const value = await cached(key, async () => {
+      if (parsed.source === "jikan") {
+        const body = await jikan(`anime/${parsed.sourceId}/characters`);
+        return (Array.isArray(body && body.data) ? body.data : [])
+          .map((entry) => mapJikanCharacter(entry && entry.character))
+          .filter(Boolean)
+          .map((character) => ({
+            ...character,
+            // Trust the per-title roster: a character credited in this anime
+            // belongs to it, whatever its own profile lists.
+            animeIds: character.animeIds.includes(animeId)
+              ? character.animeIds
+              : [animeId, ...character.animeIds],
+          }));
+      }
+      const collected = [];
+      for (let page = 1; page <= 5 && collected.length < MAX_FAMILY_CHARACTERS; page += 1) {
+        const body = await anilist(
+          `query ($id: Int, $page: Int) {
+             Media(id: $id, type: ANIME) {
+               characters(page: $page, perPage: ${MAX_ANILIST_CHARACTER_PAGE}, sort: [RELEVANCE, ID]) {
+                 edges { node { ${CHARACTER_FIELDS} } }
+               }
+             }
+           }`,
+          { id: parsed.sourceId, page },
+        );
+        const edges =
+          body && body.data && body.data.Media && body.data.Media.characters &&
+          body.data.Media.characters.edges;
+        const batch = (Array.isArray(edges) ? edges : [])
+          .map((edge) => mapAniListCharacter(edge && edge.node))
+          .filter(Boolean)
+          .map((character) => ({
+            ...character,
+            animeIds: character.animeIds.includes(animeId)
+              ? character.animeIds
+              : [animeId, ...character.animeIds],
+          }));
+        collected.push(...batch);
+        if (batch.length < MAX_ANILIST_CHARACTER_PAGE) break;
+      }
+      return collected;
+    }).catch(() => []);
+    return Array.isArray(value) ? value : [];
+  }
+
+  async function searchCharacters(query, { limit = 20, animeId = null, page = 1 } = {}) {
     const text = normalizeText(query);
     const size = clampLimit(limit, 20);
-    if (!text && !animeId) return [];
-    const key = animeId
-      ? `characters:anime:${animeId}:${size}`
-      : `search:character:${text}:${size}`;
+    if (animeId) {
+      const all = await charactersOfAnime(animeId);
+      const filtered = text
+        ? all.filter((character) => matchesCharacterQuery(character, text))
+        : all;
+      const index = clampPage(page);
+      return filtered.slice((index - 1) * size, index * size);
+    }
+    if (!text) return [];
+    const index = clampPage(page);
+    const key = `search:character:${text}:${size}:${index}`;
     const value = await cached(key, async () => {
-      if (animeId) {
-        const anime = await getAnime(animeId);
-        if (!anime || anime.source !== "jikan") return [];
-        const body = await jikan(`anime/${anime.sourceId}/characters`);
-        return (Array.isArray(body && body.data) ? body.data : [])
-          .map((entry) => {
-            const character = mapJikanCharacter(entry && entry.character);
-            if (!character) return null;
-            return { ...character, animeIds: [anime.id] };
-          })
-          .filter(Boolean)
-          .slice(0, size);
-      }
       const jikanItems = await (async () => {
-        const body = await jikan("characters", { q: text, limit: size, order_by: "favorites", sort: "desc" });
+        const body = await jikan("characters", {
+          q: text,
+          page: String(index),
+          limit: size,
+          order_by: "favorites",
+          sort: "desc",
+        });
         return (Array.isArray(body.data) ? body.data : [])
           .map((item) => mapJikanCharacter(item))
           .filter(Boolean);
-      })();
+      })().catch(() => []);
       if (jikanItems.length > 0) return jikanItems;
       const body = await anilist(
-        `query ($search: String, $perPage: Int) {
-           Page(page: 1, perPage: $perPage) {
+        `query ($search: String, $page: Int, $perPage: Int) {
+           Page(page: $page, perPage: $perPage) {
              characters(search: $search, sort: FAVOURITES_DESC) { ${CHARACTER_FIELDS} }
            }
          }`,
-        { search: query, perPage: size },
+        { search: query, page: index, perPage: size },
       );
       const nodes = body && body.data && body.data.Page && body.data.Page.characters;
       return (Array.isArray(nodes) ? nodes : []).map(mapAniListCharacter).filter(Boolean);
     });
     return (Array.isArray(value) ? value : []).slice(0, size);
+  }
+
+  // Master Spec 7.3 + 11: a group may pin one season of a work, but the roster
+  // must still be the whole work. `animeFamily` walks the relation graph so a
+  // cast that only appears in season 2 or 3 stays reachable from season 1.
+  async function animeFamily(animeId) {
+    const root = await getAnime(animeId);
+    if (!root) return { rootId: null, entryIds: [] };
+    const key = `family:anime:${root.id}`;
+    return cached(key, async () => {
+      const byId = new Map();
+      byId.set(root.id, root);
+      const take = async (relations) => {
+        for (const relation of Array.isArray(relations) ? relations : []) {
+          if (byId.size >= MAX_FAMILY_ENTRIES) return;
+          if (!relation || typeof relation.id !== "string" || byId.has(relation.id)) continue;
+          const record = await getAnime(relation.id);
+          if (record) byId.set(record.id, record);
+        }
+      };
+      const direct = (root.relations || []).filter((item) => item && item.id);
+      // A season's siblings are listed under the parent story, not under the
+      // season, so the parent is expanded before the direct relations.
+      const parents = [];
+      const rest = [];
+      for (const relation of direct) {
+        const kind = normalizeText(relation.relation);
+        if (kind === "parent story" || kind === "full story") parents.push(relation);
+        else rest.push(relation);
+      }
+      const parentRecords = [];
+      for (const parent of parents) {
+        if (byId.size >= MAX_FAMILY_ENTRIES) break;
+        if (byId.has(parent.id)) continue;
+        const record = await getAnime(parent.id);
+        if (!record) continue;
+        byId.set(record.id, record);
+        parentRecords.push(record);
+      }
+      for (const record of parentRecords) {
+        await take((record.relations || []).filter((item) => !byId.has(item.id)));
+      }
+      await take(rest);
+      return {
+        rootId: root.id,
+        entryIds: [...byId.values()]
+          .filter((entry) => entry.id !== root.id)
+          .map((entry) => entry.id),
+      };
+    }, detailTtlMs).catch(() => ({ rootId: root.id, entryIds: [] }));
+  }
+
+  // The union of every season's cast, each character tagged with the family
+  // entries it appears in, ordered so the pinned season leads and the rest of
+  // the work follows alphabetically.
+  async function familyCharacters(animeId, { page = 1, limit = 25, query = "" } = {}) {
+    const size = clampLimit(limit, SEARCH_PAGE_SIZE);
+    const index = clampPage(page);
+    const family = await animeFamily(animeId);
+    if (!family.rootId) {
+      return { items: [], page: index, hasNextPage: false, seasons: [] };
+    }
+    const seasons = await animeFamilyEntries(family);
+    const cast = await allFamilyCharacters(family);
+    const rootId = family.rootId;
+    const text = normalizeText(query);
+    const filtered = text
+      ? cast.filter((character) => matchesCharacterQuery(character, text))
+      : cast.slice();
+    filtered.sort((left, right) => {
+      const leftInRoot = (left.appearsIn || []).includes(rootId) ? 0 : 1;
+      const rightInRoot = (right.appearsIn || []).includes(rootId) ? 0 : 1;
+      if (leftInRoot !== rightInRoot) return leftInRoot - rightInRoot;
+      const byAppearances = (right.appearsIn || []).length - (left.appearsIn || []).length;
+      if (byAppearances !== 0) return byAppearances;
+      return left.name.localeCompare(right.name);
+    });
+    const start = (index - 1) * size;
+    const items = filtered.slice(start, start + size);
+    return {
+      items: items.map((character) => publicRoleplayCharacter(character, seasons)),
+      page: index,
+      hasNextPage: start + size < filtered.length,
+      seasons: seasons.map(publicFamilyEntry),
+    };
+  }
+
+  async function animeFamilyEntries(family) {
+    const ids = [family.rootId, ...(family.entryIds || [])].filter(Boolean);
+    const records = [];
+    for (const id of ids.slice(0, MAX_FAMILY_ENTRIES)) {
+      const record = await getAnime(id);
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
+  async function allFamilyCharacters(family) {
+    const key = `family-characters:${family.rootId}`;
+    return cached(key, async () => {
+      const ids = [family.rootId, ...(family.entryIds || [])]
+        .filter(Boolean)
+        .slice(0, MAX_FAMILY_ENTRIES);
+      const merged = new Map();
+      for (const id of ids) {
+        if (merged.size >= MAX_FAMILY_CHARACTERS) break;
+        const cast = await charactersOfAnime(id);
+        for (const character of cast) {
+          const existing = merged.get(character.id);
+          if (existing) {
+            const appearances = new Set([...(existing.appearsIn || []), id]);
+            for (const animeId of character.animeIds || []) appearances.add(animeId);
+            merged.set(character.id, { ...existing, appearsIn: [...appearances] });
+            continue;
+          }
+          const appearances = new Set(character.animeIds || []);
+          appearances.add(id);
+          merged.set(character.id, { ...character, appearsIn: [...appearances] });
+        }
+      }
+      return [...merged.values()].map((character) => ({
+        id: character.id,
+        name: character.name,
+        nameKanji: character.nameKanji || "",
+        imageUrl: character.imageUrl || "",
+        animeIds: character.animeIds || [],
+        appearsIn: character.appearsIn || [],
+      }));
+    }).catch(() => []);
+  }
+
+  // Open roleplay has no linked anime, so the roster is searched directly
+  // across the whole character catalog instead of whatever the community has
+  // happened to favourite so far.
+  async function searchRoleplayCharacters({ query = "", page = 1, limit = 25 } = {}) {
+    const size = clampLimit(limit, SEARCH_PAGE_SIZE);
+    const index = clampPage(page);
+    const text = normalizeText(query);
+    if (!text) {
+      const value = await cached(
+        `browse:characters:${size}:${index}`,
+        async () => {
+          const body = await jikan("characters", {
+            page: String(index),
+            limit: String(size),
+            order_by: "favorites",
+            sort: "desc",
+          });
+          return (Array.isArray(body && body.data) ? body.data : [])
+            .map((item) => mapJikanCharacter(item))
+            .filter(Boolean)
+            .map((character) => ({ ...character, appearsIn: character.animeIds || [] }));
+        },
+      ).catch(() => []);
+      return {
+        items: (Array.isArray(value) ? value : []).map((character) => ({
+          ...publicRoleplayCharacter(character, []),
+        })),
+        page: index,
+        hasNextPage: (Array.isArray(value) ? value : []).length === size,
+        // An open group is not bound to one work, so it has no seasons to
+        // offer. The field is present anyway so a caller never has to know
+        // which kind of roster it asked for.
+        seasons: [],
+      };
+    }
+    const items = await searchCharacters(text, { limit: size, page: index });
+    return {
+      items: items.map((character) => ({
+        ...publicRoleplayCharacter(character, []),
+      })),
+      page: index,
+      hasNextPage: items.length === size,
+      seasons: [],
+    };
+  }
+
+  function publicRoleplayCharacter(character, seasons) {
+    const appearances = (character && character.appearsIn) || [];
+    const byId = new Map((seasons || []).map((entry) => [entry.id, entry]));
+    const item = characterToPublicItem(character) || {};
+    return Object.assign(item, {
+      appearsIn: appearances,
+      seasons: appearances
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map(publicFamilyEntry),
+    });
+  }
+
+  function publicFamilyEntry(entry) {
+    if (!entry) return null;
+    return {
+      id: entry.id,
+      title: entry.title,
+      year: entry.year || null,
+      season: entry.season || null,
+      imageUrl: entry.imageUrl || "",
+    };
   }
 
   async function getCharacter(id) {
@@ -792,9 +1213,15 @@ function createAnimeCatalogDomain(options = {}) {
 
   return {
     searchAnime,
+    browseAnime,
     getAnime,
     searchCharacters,
+    charactersOfAnime,
     getCharacter,
+    animeFamily,
+    animeFamilyEntries,
+    familyCharacters,
+    searchRoleplayCharacters,
     animePool,
     emojiCluesFor,
     sharesRelation,
@@ -854,9 +1281,11 @@ module.exports = {
   sharesRelation,
   sharesTag,
   normalizeText,
+  matchesCharacterQuery,
   splitId,
   isJikanId,
   isAniListId,
+  ANIME_BROWSE_KINDS,
   CHAIN_RULE_TEXT: "The next title must share a studio, a genre, or be a direct story relation of the previous title.",
   CACHE_COLLECTION,
 };
