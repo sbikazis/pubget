@@ -387,6 +387,69 @@ service cloud.firestore {
          exists(/databases/$(database)/documents/privateChats/$(chatId)/messages/$(request.resource.data.replyToId)));
     }
 
+    // ------------------------------------------------------------------
+    // Self-owned presentation fields the Flutter app writes directly to
+    // users/{uid}. These were missing from the create/update allow-lists,
+    // which made signup, profile save and cover save fail with
+    // permission-denied. Validation mirrors the updateSocialProfile
+    // callable (functions/src/avatarPrivacy.js) so the direct-write path is
+    // never laxer than the server-authorized one.
+    // ------------------------------------------------------------------
+    function optionalShortString(data, field, max) {
+      return !data.keys().hasAny([field]) ||
+        data[field] == null ||
+        (data[field] is string && data[field].size() <= max);
+    }
+
+    function optionalHttpUrl(data, field) {
+      return !data.keys().hasAny([field]) ||
+        data[field] == null ||
+        (data[field] is string &&
+         data[field].size() <= 1024 &&
+         (data[field] == '' ||
+          data[field].matches('https://.*') ||
+          data[field].matches('http://.*')));
+    }
+
+    // Security rules cannot iterate list elements, so only the aggregate
+    // shape is enforced. Entries are self-owned presentation data.
+    function optionalSocialLinks(data) {
+      return !data.keys().hasAny(['socialLinks']) ||
+        data.socialLinks == null ||
+        (data.socialLinks is list && data.socialLinks.size() <= 20);
+    }
+
+    // The client model (ProfileSectionPrivacy.toMap) always emits all nine
+    // toggles; require exactly that set so partial writes cannot slip in.
+    function optionalSectionPrivacy(data) {
+      let keys = [
+        'favorites', 'activity', 'friends', 'fans',
+        'works', 'groups', 'ratings', 'achievements', 'lists'
+      ];
+      return !data.keys().hasAny(['sectionPrivacy']) ||
+        data.sectionPrivacy == null ||
+        (data.sectionPrivacy is map &&
+         data.sectionPrivacy.keys().hasOnly(keys) &&
+         data.sectionPrivacy.keys().hasAll(keys) &&
+         data.sectionPrivacy.favorites is bool &&
+         data.sectionPrivacy.activity is bool &&
+         data.sectionPrivacy.friends is bool &&
+         data.sectionPrivacy.fans is bool &&
+         data.sectionPrivacy.works is bool &&
+         data.sectionPrivacy.groups is bool &&
+         data.sectionPrivacy.ratings is bool &&
+         data.sectionPrivacy.achievements is bool &&
+         data.sectionPrivacy.lists is bool);
+    }
+
+    function validSelfProfilePresentation(data) {
+      return optionalShortString(data, 'favoriteQuote', 200) &&
+        optionalShortString(data, 'animeTwin', 80) &&
+        optionalHttpUrl(data, 'coverUrl') &&
+        optionalSocialLinks(data) &&
+        optionalSectionPrivacy(data);
+    }
+
     match /users/{uid} {
       // The root user document contains credentials-adjacent and account
       // state. Display data for other users lives in public_profiles.
@@ -401,7 +464,8 @@ service cloud.firestore {
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
           'customMaxCreatedGroupsLimit','hasClaimedReferral',
           'favoriteAnimeIds','profileVisibility','activityVisibility',
-          'hasSkippedOnboarding','whoCanMessageMe','language'
+          'hasSkippedOnboarding','whoCanMessageMe','language',
+          'coverUrl','favoriteQuote','animeTwin','socialLinks','sectionPrivacy'
         ]) &&
         request.resource.data.keys().hasAll([
           'email','createdAt','isProfileCompleted'
@@ -429,13 +493,17 @@ service cloud.firestore {
         (!request.resource.data.keys().hasAny(['displayName']) ||
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
-          request.resource.data.displayName.size() <= 80));
+          request.resource.data.displayName.size() <= 80)) &&
+        validSelfProfilePresentation(request.resource.data);
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
         ((changedOnly([
-          'username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age','country',
-          'favoriteAnimeIds','activityVisibility','whoCanMessageMe',
+          'username','nickname','displayName','avatarUrl','coverUrl','bio',
+          'favoriteAnimes','age','country',
+          'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
+          'sectionPrivacy','activityVisibility',
+          'whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
           (!request.resource.data.keys().hasAny(['username']) ||
@@ -459,7 +527,8 @@ service cloud.firestore {
           request.resource.data.get('activityVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('whoCanMessageMe', 'related')
-            in ['related','friends']) ||
+            in ['related','friends'] &&
+          validSelfProfilePresentation(request.resource.data)) ||
          false);
       allow delete: if false;
 

@@ -202,9 +202,16 @@ service firebase.storage {
           signedIn() && isGroupMember(groupId) &&
           isNewUploader() && chatMediaUpload() &&
           fileName.matches('.*_original\\.[a-zA-Z0-9]+');
-      // Original uploads are immutable. Thumb/medium variants are written
-      // only by the Admin SDK media pipeline.
-      allow update: if false;
+      // putData/putFile uses a resumable protocol that requires UPDATE after
+      // CREATE (same root cause as /edits above). Denying update produced
+      // "User is not authorized to perform the desired action" on every real
+      // group-media upload. The object stays effectively immutable: only the
+      // original uploader may resume/overwrite it, and they may not reassign
+      // `uploadedBy` to another uid. Thumb/medium variants are written only by
+      // the Admin SDK media pipeline.
+      allow update: if signedIn() && isGroupMember(groupId) &&
+          isExistingUploader() && isNewUploader() && chatMediaUpload() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
       allow delete: if signedIn() && isGroupMember(groupId) &&
           isExistingUploader() &&
           fileName.matches('.*_original\\.[a-zA-Z0-9]+');
@@ -251,7 +258,11 @@ service firebase.storage {
           signedIn() && isPrivateParticipant(chatId) &&
           isNewUploader() && chatMediaUpload() &&
           fileName.matches('.*_original\\.[a-zA-Z0-9]+');
-      allow update: if false;
+      // Resumable putData needs UPDATE after CREATE; restricted to the
+      // original uploader so one participant cannot replace another's media.
+      allow update: if signedIn() && isPrivateParticipant(chatId) &&
+          isExistingUploader() && isNewUploader() && chatMediaUpload() &&
+          fileName.matches('.*_original\\.[a-zA-Z0-9]+');
       allow delete: if signedIn() && isPrivateParticipant(chatId) &&
           isExistingUploader() &&
           fileName.matches('.*_original\\.[a-zA-Z0-9]+');
@@ -344,7 +355,15 @@ service firebase.storage {
           fanWorkDocument(workId).data.status == 'draft' &&
           imageUpload(10 * 1024 * 1024) &&
           request.resource.metadata.uploadedBy == request.auth.uid;
-      allow update: if false;
+      // Resumable putData needs UPDATE after CREATE. Still owner-only, still
+      // draft-only, and `uploadedBy` may not be reassigned to another uid.
+      allow update: if signedIn() &&
+          request.auth.uid == userId &&
+          firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
+          fanWorkDocument(workId).data.creatorId == request.auth.uid &&
+          fanWorkDocument(workId).data.status == 'draft' &&
+          imageUpload(10 * 1024 * 1024) &&
+          isExistingUploader() && isNewUploader();
       allow delete: if signedIn() && request.auth.uid == userId &&
           firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
           fanWorkDocument(workId).data.creatorId == request.auth.uid;
