@@ -1414,6 +1414,9 @@ test("anime hub aggregates are readable but never client-writable", async () => 
     const admin = context.firestore();
     await admin.doc("anime_stats/16498").set({
       animeId: "16498", averageScore: 8.5, ratingCount: 2, scoreSum: 17,
+      listedCount: 3,
+      scoreDistribution: { "8": 1, "9": 1 },
+      statusCounts: { watching: 1, completed: 2 },
     });
     await admin.doc("anime_stats/16498/reviews/alice").set({
       userId: "alice", overall: 8.5, comment: "Great",
@@ -1441,6 +1444,49 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
     lastAt: new Date(),
   }));
+});
+
+test("a client cannot forge the score distribution or the five-state breakdown", async () => {
+  // The Anime Hub charts are required to read these server-side aggregates
+  // rather than inferring them, which only holds if a client cannot write a
+  // flattering number into them.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("anime_stats/16498").set({
+      animeId: "16498",
+      ratingCount: 2,
+      listedCount: 1,
+      scoreDistribution: { "9": 1 },
+      statusCounts: { completed: 1 },
+    });
+  });
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    ratingCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    listedCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").delete());
+  // A merge that only touches the aggregates is still a write.
+  await assertFails(db("alice").doc("anime_stats/16498").set(
+    { statusCounts: { completed: 5000 } },
+    { merge: true },
+  ));
+  // The legitimate view still works after all of those attempts.
+  const snap = await assertSucceeds(db("bob").doc("anime_stats/16498").get());
+  assert.equal(snap.data().scoreDistribution["9"], 1);
+  assert.equal(snap.data().statusCounts.completed, 1);
 });
 
 test("character discussions are readable by signed-in users and never client-writable", async () => {

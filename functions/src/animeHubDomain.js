@@ -1,6 +1,12 @@
 "use strict";
 
 const { scanText } = require("./contentFilter");
+const {
+  readScoreDistribution,
+  applyScoreDelta,
+  scoreBucket,
+  SCORE_BUCKETS,
+} = require("./animeStats");
 
 const CRITERIA = Object.freeze([
   "story",
@@ -146,14 +152,22 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
       ]);
       assertCooldown(rateSnap);
       const previous = existing.exists ? Number(existing.data()?.overall) || 0 : 0;
-      let count = Number(statsSnap.data()?.ratingCount) || 0;
-      let sum = Number(statsSnap.data()?.scoreSum) || 0;
+      const statsData = statsSnap.data() || {};
+      let count = Number(statsData.ratingCount) || 0;
+      let sum = Number(statsData.scoreSum) || 0;
+      // The distribution is server-authoritative, so it is moved by the same
+      // transaction that moves the mean: leave the previous bucket, enter the
+      // new one. Re-rating with an unchanged score nets to zero, which is what
+      // makes a replay of this callable harmless.
+      let distribution = readScoreDistribution(statsData);
       if (existing.exists) {
         sum -= previous;
+        distribution = applyScoreDelta(distribution, scoreBucket(previous), -1);
       } else {
         count += 1;
       }
       sum += parsed.overall;
+      distribution = applyScoreDelta(distribution, scoreBucket(parsed.overall), 1);
       if (count < 0) count = 0;
       if (sum < 0) sum = 0;
       const averageScore = count === 0 ? 0 : round1(sum / count);
@@ -161,8 +175,8 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         animeId,
         userId,
         username,
-        title: title || (statsSnap.data()?.title || ""),
-        imageUrl: imageUrl || (statsSnap.data()?.imageUrl || ""),
+        title: title || (statsData.title || ""),
+        imageUrl: imageUrl || (statsData.imageUrl || ""),
         criteria: parsed.criteria,
         overall: parsed.overall,
         comment,
@@ -179,6 +193,7 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         scoreSum: sum,
         ratingCount: count,
         averageScore,
+        scoreDistribution: distribution,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       tx.set(cooldown, { lastAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -214,9 +229,18 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         throw new HttpsError("permission-denied", "This rating belongs to another account.");
       }
       const previous = Number(existing.data()?.overall) || 0;
-      let count = Math.max(0, (Number(statsSnap.data()?.ratingCount) || 0) - 1);
-      let sum = Math.max(0, (Number(statsSnap.data()?.scoreSum) || 0) - previous);
+      const statsData = statsSnap.data() || {};
+      let count = Math.max(0, (Number(statsData.ratingCount) || 0) - 1);
+      let sum = Math.max(0, (Number(statsData.scoreSum) || 0) - previous);
       const averageScore = count === 0 ? 0 : round1(sum / count);
+      // Leaving the bucket the deleted rating occupied keeps the distribution
+      // in step with the count. The `!existing.exists` guard above makes a
+      // repeated delete a no-op, so the counter cannot be walked below zero.
+      const distribution = applyScoreDelta(
+        readScoreDistribution(statsData),
+        scoreBucket(previous),
+        -1,
+      );
       tx.delete(userRating);
       tx.delete(review);
       if (statsSnap.exists) {
@@ -224,6 +248,7 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
           scoreSum: sum,
           ratingCount: count,
           averageScore,
+          scoreDistribution: distribution,
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
@@ -352,10 +377,12 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
     CRITERIA,
     ACTION_COOLDOWN_MS,
     REPORT_REASONS,
+    SCORE_BUCKETS,
   };
 }
 
 module.exports = {
   createAnimeHubDomain,
   ANIME_RATING_CRITERIA: CRITERIA,
+  ANIME_SCORE_BUCKETS: SCORE_BUCKETS,
 };

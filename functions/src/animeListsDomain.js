@@ -25,6 +25,13 @@ function normalizeStatus(status) {
   return LEGACY_STATUS_ALIASES[status] || null;
 }
 
+const {
+  readStatusCounts,
+  applyStatusDelta,
+  canonicalStatus,
+  LIST_STATUSES,
+} = require("./animeStats");
+
 const MAX_CUSTOM_LISTS = 30;
 const MAX_CUSTOM_LIST_ITEMS = 500;
 const MAX_CUSTOM_LIST_SEED_ITEMS = 200;
@@ -109,13 +116,23 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
         favorite,
         updatedAt: FieldValue.serverTimestamp(),
       };
+      const statsData = statsSnap.data() || {};
+      // The five-state breakdown is server-authoritative, so a status change
+      // moves the previous bucket out and the new one in inside the same
+      // transaction. `listedCount` only moves when the entry itself appears or
+      // disappears — re-filing a title must not double-count it. The stored
+      // status is canonicalised first, so an entry still carrying a legacy
+      // spelling leaves the bucket it was actually counted in.
+      let statusCounts = readStatusCounts(statsData);
       if (!existing.exists) {
         payload.createdAt = FieldValue.serverTimestamp();
         tx.create(ref, payload);
+        statusCounts = applyStatusDelta(statusCounts, status, 1);
         tx.set(stats, {
           animeId,
           title,
-          listedCount: (Number(statsSnap.data()?.listedCount) || 0) + 1,
+          listedCount: (Number(statsData.listedCount) || 0) + 1,
+          statusCounts,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         return;
@@ -123,7 +140,17 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       if (existing.data()?.userId && existing.data().userId !== userId) {
         throw new HttpsError("permission-denied", "This list entry belongs to another account.");
       }
+      const previousStatus = canonicalStatus(existing.data()?.status);
+      if (previousStatus) statusCounts = applyStatusDelta(statusCounts, previousStatus, -1);
+      statusCounts = applyStatusDelta(statusCounts, status, 1);
       tx.update(ref, payload);
+      if (statsSnap.exists) {
+        tx.set(stats, {
+          animeId,
+          statusCounts,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
     });
     return { animeId, status, title, rating, favorite };
   }
@@ -142,11 +169,24 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       if (existing.data()?.userId && existing.data().userId !== userId) {
         throw new HttpsError("permission-denied", "This list entry belongs to another account.");
       }
+      // Read the stored status before the delete so the bucket released is the
+      // one this entry was counted in, legacy spellings included.
+      const previousStatus = canonicalStatus(existing.data()?.status);
       tx.delete(ref);
       if (statsSnap.exists) {
+        const statsData = statsSnap.data() || {};
+        // Release the status bucket this entry was counted in. The early
+        // `!existing.exists` return makes a repeated delete a no-op, so the
+        // counter converges at zero instead of going negative.
+        const statusCounts = applyStatusDelta(
+          readStatusCounts(statsData),
+          previousStatus,
+          -1,
+        );
         tx.set(stats, {
           animeId,
-          listedCount: Math.max(0, (Number(statsSnap.data()?.listedCount) || 0) - 1),
+          listedCount: Math.max(0, (Number(statsData.listedCount) || 0) - 1),
+          statusCounts,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       }
@@ -524,10 +564,12 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     getCustomAnimeList,
     getCustomListsForAnime,
     STATUSES,
+    LIST_STATUSES,
   };
 }
 
 module.exports = {
   createAnimeListsDomain,
   ANIME_LIST_STATUSES: STATUSES,
+  ANIME_LIST_STATUS_KEYS: LIST_STATUSES,
 };

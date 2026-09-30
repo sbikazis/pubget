@@ -313,3 +313,134 @@ test("deleting a missing character discussion post is not found", async () => {
     (error) => error.code === "not-found",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Server-authoritative score distribution
+// ---------------------------------------------------------------------------
+
+test("a new rating lands in its own 1-10 bucket", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  const expected = String(Math.round(overallOf(fullCriteria)));
+  assert.equal(stats.scoreDistribution[expected], 1);
+  assert.equal(stats.ratingCount, 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 1);
+});
+
+test("the distribution buckets every rating from every member", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: { ...fullCriteria, story: 10, action: 10 } },
+  });
+  await hub.upsertAnimeRating({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", criteria: { ...fullCriteria, story: 1, art: 1, characters: 1, action: 1, sound: 1, enjoyment: 1 } },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 2);
+  assert.equal(stats.scoreDistribution["9"], 1);
+  assert.equal(stats.scoreDistribution["1"], 1);
+});
+
+test("changing a rating moves the count between buckets and never double-counts", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  const next = { ...fullCriteria, story: 1, art: 1, characters: 1, action: 1, sound: 1, enjoyment: 1 };
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: next },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1, "a re-rate must not add a rating");
+  assert.equal(stats.scoreDistribution["1"], 1);
+  assert.equal(stats.scoreDistribution["9"], 0, "the old bucket must be released");
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, stats.ratingCount);
+});
+
+test("re-rating with the same score is idempotent for the distribution", async () => {
+  const { hub, db } = domain();
+  const rate = () => hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  await rate();
+  db.store.delete("users/alice/animeHubRate/write");
+  await rate();
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1);
+  assert.equal(stats.scoreDistribution["9"], 1);
+});
+
+test("deleting a rating releases its bucket", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 0);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 0, "a deleted rating must leave no plotted score");
+});
+
+test("repeating a delete never drives the distribution below zero", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  for (const [bucket, count] of Object.entries(stats.scoreDistribution)) {
+    assert.equal(count, 0, `bucket ${bucket} went negative`);
+  }
+});
+
+test("a pre-migration stats document is seeded, not skipped", async () => {
+  const { hub, db } = domain();
+  // Exactly the shape an older deploy left behind: counts, but no distribution.
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    scoreSum: 8.5,
+    ratingCount: 1,
+    averageScore: 8.5,
+  });
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.scoreDistribution["9"], 1, "the new rating must be counted");
+});
+
+test("a zero overall is rated but never plotted", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: {
+      animeId: "16498",
+      criteria: { story: 0, art: 0, characters: 0, action: 0, sound: 0, enjoyment: 0 },
+    },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 0, "1-10 has no bucket for a zero score");
+});
