@@ -534,12 +534,18 @@ final class RoleplayCharacter {
     required this.name,
     required this.avatarUrl,
     this.reserved = false,
+    this.seasons = const <String>[],
   });
 
   final String key;
   final String name;
   final String avatarUrl;
   final bool reserved;
+
+  /// The broadcast seasons of the linked work this character is credited in,
+  /// as short labels (`2023 · spring`). Empty when the catalog cannot say —
+  /// never a guess, so the picker only labels what the catalog confirmed.
+  final List<String> seasons;
 
   factory RoleplayCharacter.fromMap(Map<String, dynamic> map, {String? key}) {
     return RoleplayCharacter(
@@ -550,11 +556,37 @@ final class RoleplayCharacter {
     );
   }
 
+  /// Built from the server catalog. [seasons] comes from the catalog entries
+  /// the server attached, so the client never derives a season of its own.
+  factory RoleplayCharacter.fromCatalogMap(Map<String, dynamic> map) {
+    final labels = <String>[
+      for (final entry in (map['seasons'] as List<Object?>? ?? const <Object?>[]))
+        if (entry is Map) _seasonLabel(Map<String, dynamic>.from(entry)),
+    ];
+    return RoleplayCharacter(
+      key: (map['id'] as String? ?? '').trim(),
+      name: (map['name'] as String? ?? '').trim(),
+      avatarUrl: (map['imageUrl'] as String? ?? '').trim(),
+      seasons: labels,
+    );
+  }
+
+  static String _seasonLabel(Map<String, dynamic> entry) {
+    final year = (entry['year'] as num?)?.toInt();
+    final season = (entry['season'] as String? ?? '').trim();
+    final parts = <String>[
+      if (year != null) '$year',
+      if (season.isNotEmpty) season,
+    ];
+    return parts.join(' · ');
+  }
+
   RoleplayCharacter asReserved() => RoleplayCharacter(
     key: key,
     name: name,
     avatarUrl: avatarUrl,
     reserved: true,
+    seasons: seasons,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{

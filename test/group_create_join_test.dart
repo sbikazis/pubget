@@ -1,24 +1,29 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pubget/app/app_shell_create_sheet.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/l10n/app_strings.dart';
-import 'package:pubget/features/anime/models/anime_models.dart';
-import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/groups/data/group_fuzzy.dart';
+import 'package:pubget/features/groups/data/group_create_draft_store.dart';
+import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/features/groups/data/group_image_uploader.dart';
+import 'package:pubget/features/groups/models/group_catalog_models.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
+import 'package:pubget/features/groups/repositories/group_catalog_repository.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
 import 'package:pubget/features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import 'package:pubget/features/groups/screens/group_anime_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_character_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_details_page.dart';
 
-import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
 
 void main() {
@@ -27,7 +32,10 @@ void main() {
     expect(AppStrings.arabic.joinedGroupsTab, 'المجموعات المنضم إليها');
     expect(AppStrings.english.createdGroupsTab, 'Groups I created');
     expect(AppStrings.arabic.characterReserved, contains('محجوزة'));
-    expect(AppStrings.english.groupCapacityReached, 'This group is at capacity');
+    expect(
+      AppStrings.english.groupCapacityReached,
+      'This group is at capacity',
+    );
   });
 
   test('fuzzy matcher accepts light misspellings', () {
@@ -142,29 +150,49 @@ void main() {
     expect(next.onPressed, isNull);
   });
 
-  testWidgets('anime picker shows popular titles and a no-results state', (
-    tester,
-  ) async {
-    final repository = FakeAnimeRepository(
-      filterSearchByQuery: true,
-      page: AnimePage(items: <Anime>[sampleAnime()], page: 1),
-    );
-    final list = AnimeListProvider(repository: repository);
+  testWidgets('the anime picker asks the catalog, so a search it does not '
+      'match is an empty answer rather than a filtered page', (tester) async {
+    final repository = _RecordingCatalogRepository();
     await tester.pumpWidget(
-      ChangeNotifierProvider<AnimeListProvider>.value(
-        value: list,
+      Provider<GroupCatalogRepository>.value(
+        value: repository,
         child: const MaterialApp(home: GroupAnimePickerPage()),
       ),
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('Frieren'), findsOneWidget);
+    // The opening screen asked the catalog for a browse of its own.
+    expect(repository.queries, <String>['']);
+    expect(find.text("Frieren: Beyond Journey's End"), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('group-anime-search')), 'zzzzz');
+    await tester.enterText(
+      find.byKey(const Key('group-anime-search')),
+      'zzzzz',
+    );
+    // The picker waits for a pause in typing before asking, so the query is
+    // only sent once the user stops.
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('Frieren'), findsNothing);
+    expect(repository.queries, <String>['', 'zzzzz']);
     expect(find.byKey(const Key('group-anime-empty')), findsOneWidget);
+  });
+
+  testWidgets('a catalog that cannot be reached says so instead of showing '
+      'an empty catalog', (tester) async {
+    await tester.pumpWidget(
+      Provider<GroupCatalogRepository>.value(
+        value: _RecordingCatalogRepository(fail: true),
+        child: const MaterialApp(home: GroupAnimePickerPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    // A catalog that cannot be read is an error with a retry, not an empty
+    // catalog: the two mean very different things to a founder picking a work.
+    expect(find.byKey(const Key('group-anime-error')), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-empty')), findsNothing);
+    expect(find.text(const UnavailableError().message), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-empty')), findsNothing);
   });
 
   testWidgets('reserved character stays locked without revealing the owner', (
@@ -186,10 +214,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('group-character-hero')));
     await tester.pump();
-    expect(
-      find.text(AppStrings.english.characterReserved),
-      findsOneWidget,
-    );
+    expect(find.text(AppStrings.english.characterReserved), findsOneWidget);
     expect(find.textContaining('alice'), findsNothing);
   });
 
@@ -208,21 +233,110 @@ void main() {
     expect(find.text('Join group'), findsNothing);
     expect(find.text(AppStrings.english.groupCapacityReached), findsOneWidget);
   });
+  testWidgets('a restored draft cannot outrank the founder entitlement', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'group_create_draft_v1_public': jsonEncode(<String, dynamic>{
+        'name': 'Crew',
+        'imageUrl': 'https://example.test/a.png',
+        'maxMembers': 500,
+      }),
+    });
+    final preferences = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      await _wizardHarness(
+        GroupType.public,
+        repository: _EntitledGroupRepository(maxMembers: 40),
+        draftStore: GroupCreateDraftStore(preferences: preferences),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The draft's own name and avatar are enough to leave the first step, so
+    // the restore really did land.
+    final firstStep = tester.widget<ElevatedButton>(
+      find.descendant(
+        of: find.byKey(const Key('group-create-next')),
+        matching: find.byType(ElevatedButton),
+      ),
+    );
+    expect(firstStep.onPressed, isNotNull);
+
+    for (var step = 0; step < 2; step += 1) {
+      await tester.tap(find.byKey(const Key('group-create-next')));
+      await tester.pumpAndSettle();
+    }
+
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(const Key('group-create-max-members')),
+        matching: find.byType(TextField),
+      ),
+    );
+    // The draft is restored first, then the entitlement is applied to whatever
+    // the founder had left behind, so the field cannot sit above the ceiling.
+    expect(field.controller!.text, '40');
+  });
+
+  testWidgets('the default join policy is approval, not a closed door', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(await _wizardHarness(GroupType.public));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.enterText(
+      find.byKey(const Key('group-create-image-url')),
+      'https://example.test/a.png',
+    );
+    await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
+    await tester.pump();
+    for (var step = 0; step < 2; step += 1) {
+      await tester.tap(find.byKey(const Key('group-create-next')));
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('join-policy-approval')))
+          .hasFlag(SemanticsFlag.isSelected),
+      isTrue,
+    );
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('join-policy-inviteOnly')))
+          .hasFlag(SemanticsFlag.isSelected),
+      isFalse,
+    );
+    semantics.dispose();
+  });
 }
 
-Future<Widget> _wizardHarness(GroupType type) async {
+Future<Widget> _wizardHarness(
+  GroupType type, {
+  GroupRepository? repository,
+  GroupCreateDraftStore? draftStore,
+}) async {
   final authRepository = FakeAuthRepository(
     user: const AuthUser(id: 'alice', email: 'alice@example.com'),
   );
   final auth = AuthProvider(repository: authRepository);
   await auth.initialize();
-  final groups = GroupProvider(repository: _JourneyGroupRepository());
+  final groupsRepository = repository ?? _JourneyGroupRepository();
+  final groups = GroupProvider(repository: groupsRepository);
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
+      Provider<GroupRepository>.value(value: groupsRepository),
       ChangeNotifierProvider<GroupProvider>.value(value: groups),
     ],
-    child: MaterialApp(home: CreateGroupWizardPage(type: type)),
+    child: MaterialApp(
+      home: CreateGroupWizardPage(type: type, draftStore: draftStore),
+    ),
   );
 }
 
@@ -244,7 +358,59 @@ Future<Widget> _detailsHarness({bool banned = false, bool full = false}) async {
   );
 }
 
-final class _JourneyGroupRepository implements GroupRepository {
+final class _EntitledGroupRepository extends _JourneyGroupRepository
+    implements GroupEntitlementsRepository {
+  _EntitledGroupRepository({required this.maxMembers});
+
+  final int maxMembers;
+
+  @override
+  Future<Result<GroupEntitlements>> createGroupEntitlements() async =>
+      Success(GroupEntitlements(maxMembers: maxMembers));
+}
+
+final class _RecordingCatalogRepository implements GroupCatalogRepository {
+  _RecordingCatalogRepository({this.fail = false});
+
+  /// Makes the catalog unreachable, so the picker has to say so rather than
+  /// pretend a working catalog found nothing.
+  final bool fail;
+
+  final List<String> queries = <String>[];
+
+  @override
+  Future<Result<GroupCatalogPage>> browseAnime(
+    GroupCatalogRequest request, {
+    int page = 1,
+  }) async {
+    queries.add(request.query);
+    if (fail) return const FailureResult(UnavailableError());
+    final items = request.query.isEmpty
+        ? const <CatalogAnime>[
+            CatalogAnime(
+              id: 'jikan:52991',
+              title: "Frieren: Beyond Journey's End",
+              year: 2023,
+              type: 'TV',
+            ),
+          ]
+        : const <CatalogAnime>[];
+    return Success(
+      GroupCatalogPage(items: items, page: page, hasNextPage: false),
+    );
+  }
+
+  @override
+  Future<Result<GroupCharacterPage>> browseCharacters(
+    GroupCharacterRequest request, {
+    int page = 1,
+  }) async {
+    if (fail) return const FailureResult(UnavailableError());
+    return Success(GroupCharacterPage.empty());
+  }
+}
+
+class _JourneyGroupRepository implements GroupRepository {
   _JourneyGroupRepository({this.banned = false, this.full = false});
 
   final bool banned;
@@ -331,11 +497,11 @@ final class _JourneyGroupRepository implements GroupRepository {
   }) async => const Success(false);
 
   @override
-  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
-      const Success(<RoleplayCharacter>[]);
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(
+    String groupId,
+  ) async => const Success(<RoleplayCharacter>[]);
 
   @override
   Future<Result<void>> promoteGroup(String groupId) async =>
       const Success<void>(null);
 }
-

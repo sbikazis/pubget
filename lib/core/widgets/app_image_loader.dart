@@ -63,10 +63,13 @@ class _AppImageLoaderState extends State<AppImageLoader> {
       widget.imageUrl.startsWith('https://');
 
   /// Physical-pixel decode target for the width, or null when unknown.
-  int? _targetWidth(BuildContext context) {
+  ///
+  /// [logicalWidth] is the painted width: the one the caller asked for, or the
+  /// one the parent laid this image out at when the caller named no size.
+  int? _targetWidth(BuildContext context, double? logicalWidth) {
     final requested = widget.memCacheWidth;
     if (requested != null) return requested;
-    final logical = widget.width;
+    final logical = logicalWidth;
     if (logical == null || !logical.isFinite || logical <= 0) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     // Ceil, then leave headroom: an off-by-one here shows up as a soft image.
@@ -74,10 +77,10 @@ class _AppImageLoaderState extends State<AppImageLoader> {
   }
 
   /// Physical-pixel decode target for the height, or null when unknown.
-  int? _targetHeight(BuildContext context) {
+  int? _targetHeight(BuildContext context, double? logicalHeight) {
     final requested = widget.memCacheHeight;
     if (requested != null) return requested;
-    final logical = widget.height;
+    final logical = logicalHeight;
     if (logical == null || !logical.isFinite || logical <= 0) return null;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     return (logical * dpr).ceil();
@@ -125,53 +128,69 @@ class _AppImageLoaderState extends State<AppImageLoader> {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: CircularProgressIndicator()),
         );
-    // Passing both forces an exact-size decode; keep only the known axis.
-    final cacheWidth = _targetWidth(context);
-    final cacheHeight = cacheWidth == null ? _targetHeight(context) : null;
+    // A grid tile or a stack names no size and hands the image whatever box it
+    // is given, so the painted constraints are the only place a decode budget
+    // can come from. Without this the shared-media tile decoded a full sensor
+    // photo into a 120px square, which is what made it heavy and soft.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final logicalWidth =
+            widget.width ??
+            (constraints.hasBoundedWidth ? constraints.maxWidth : null);
+        final logicalHeight =
+            widget.height ??
+            (constraints.hasBoundedHeight ? constraints.maxHeight : null);
+        // Passing both forces an exact-size decode; keep only the known axis.
+        final cacheWidth = _targetWidth(context, logicalWidth);
+        final cacheHeight = cacheWidth == null
+            ? _targetHeight(context, logicalHeight)
+            : null;
 
-    final image = _isRemoteUrl
-        ? Image.network(
-            widget.imageUrl,
-            width: widget.width,
-            height: widget.height,
-            fit: widget.fit,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
-            filterQuality: FilterQuality.medium,
-            // Rows are recycled as the list scrolls; without this every recycle
-            // blinks to blank while the new frame decodes.
-            gaplessPlayback: true,
-            frameBuilder: (context, child, frame, synchronouslyLoaded) {
-              if (synchronouslyLoaded || frame != null) return child;
-              return loading;
-            },
-            errorBuilder: (_, _, _) => fallback,
-          )
-        : FutureBuilder<Uint8List?>(
-            future: _bytesForStorageUrl(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return loading;
-              }
-              if (snapshot.hasError) return fallback;
-              final bytes = snapshot.data;
-              if (bytes == null || bytes.isEmpty) return fallback;
-              return Image.memory(
-                bytes,
+        final image = _isRemoteUrl
+            ? Image.network(
+                widget.imageUrl,
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
                 cacheWidth: cacheWidth,
                 cacheHeight: cacheHeight,
                 filterQuality: FilterQuality.medium,
+                // Rows are recycled as the list scrolls; without this every
+                // recycle blinks to blank while the new frame decodes.
                 gaplessPlayback: true,
+                frameBuilder: (context, child, frame, synchronouslyLoaded) {
+                  if (synchronouslyLoaded || frame != null) return child;
+                  return loading;
+                },
                 errorBuilder: (_, _, _) => fallback,
+              )
+            : FutureBuilder<Uint8List?>(
+                future: _bytesForStorageUrl(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return loading;
+                  }
+                  if (snapshot.hasError) return fallback;
+                  final bytes = snapshot.data;
+                  if (bytes == null || bytes.isEmpty) return fallback;
+                  return Image.memory(
+                    bytes,
+                    width: widget.width,
+                    height: widget.height,
+                    fit: widget.fit,
+                    cacheWidth: cacheWidth,
+                    cacheHeight: cacheHeight,
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, _, _) => fallback,
+                  );
+                },
               );
-            },
-          );
-    if (widget.borderRadius != null) {
-      return ClipRRect(borderRadius: widget.borderRadius!, child: image);
-    }
-    return image;
+        if (widget.borderRadius != null) {
+          return ClipRRect(borderRadius: widget.borderRadius!, child: image);
+        }
+        return image;
+      },
+    );
   }
 }

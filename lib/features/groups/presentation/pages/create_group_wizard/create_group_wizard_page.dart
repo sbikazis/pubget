@@ -27,11 +27,7 @@ import 'step6_preview.dart';
 import 'step7_publish.dart';
 
 class CreateGroupWizardPage extends StatefulWidget {
-  const CreateGroupWizardPage({
-    this.type,
-    this.draftStore,
-    super.key,
-  });
+  const CreateGroupWizardPage({this.type, this.draftStore, super.key});
 
   final GroupType? type;
   final GroupCreateDraftStore? draftStore;
@@ -43,7 +39,7 @@ class CreateGroupWizardPage extends StatefulWidget {
 class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   late final PageController _pageController;
   int _currentStep = 0;
-  
+
   // Controllers
   final _name = TextEditingController();
   final _description = TextEditingController();
@@ -53,10 +49,14 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   final _welcomeMessage = TextEditingController();
   final _chatBackgroundUrl = TextEditingController();
   final _rules = <TextEditingController>[TextEditingController()];
-  
+
   // State
   GroupType? _type;
-  JoinPolicy _policy = JoinPolicy.inviteOnly; // Default per spec
+  // Owner override: a group is request-to-join unless the founder says
+  // otherwise. Invite-only is opt-in, so a group is never locked shut by
+  // a default nobody chose.
+  JoinPolicy _policy = JoinPolicy.approval;
+  GroupEntitlements _entitlements = GroupEntitlements.fallback;
   String? _animeId;
   String? _animeTitle;
   RoleplayCharacter? _character;
@@ -64,6 +64,11 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   late final GroupCreateDraftStore _store;
   bool _submitting = false;
   bool _hydrated = false;
+
+  /// Set once the draft has been read, whether or not there was one. Nothing
+  /// is written to storage before then, or opening the wizard would erase the
+  /// draft it is in the middle of restoring.
+  bool _hydrationDone = false;
 
   @override
   void initState() {
@@ -73,8 +78,11 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     _store = widget.draftStore ?? GroupCreateDraftStore();
     _idempotencyKey =
         'create-${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(this)}';
-    
-    // Add listeners
+
+    // The default is set before anything is listening: a listener attached
+    // first would save this empty form over a draft the founder left behind.
+    _maxMembers.text = '${GroupEntitlements.fallback.maxMembers}';
+
     _name.addListener(_persist);
     _description.addListener(_persist);
     _imageUrl.addListener(_persist);
@@ -82,11 +90,12 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     _maxMembers.addListener(_persist);
     _welcomeMessage.addListener(_persist);
     _chatBackgroundUrl.addListener(_persist);
-    
-    // Initialize max members
-    _maxMembers.text = '100';
-    
-    Future<void>.microtask(_restore);
+
+    // The draft is restored first and the entitlement read second, so the
+    // ceiling is applied to the number the founder actually left behind. The
+    // other order would clamp a default that the draft is about to overwrite,
+    // and a raised draft would survive past the ceiling.
+    Future<void>.microtask(_hydrate);
   }
 
   @override
@@ -105,35 +114,85 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     super.dispose();
   }
 
+  // The member limit is the account's entitlement, not a number this screen
+  // made up. Until the answer lands the field is the server's own default, and
+  // a value the founder had raised is brought back inside whatever they are
+  // actually entitled to.
+  Future<void> _hydrate() async {
+    await _restore();
+    if (!mounted) return;
+    await _loadEntitlements();
+  }
+
+  Future<void> _loadEntitlements() async {
+    // The entitlement is an optional capability: a screen rendered without a
+    // group backend (a preview, a test) keeps the server's own default rather
+    // than failing to open.
+    final GroupRepository repository;
+    try {
+      repository = context.read<GroupRepository>();
+    } on ProviderNotFoundException {
+      return;
+    }
+    if (repository is! GroupEntitlementsRepository) return;
+    final entitlementsRepository = repository as GroupEntitlementsRepository;
+    final result = await entitlementsRepository.createGroupEntitlements();
+    if (!mounted) return;
+    final entitlements = result.valueOrNull;
+    // A repository that could not be reached leaves the fallback ceiling in
+    // place. The field is narrowed to match, so what the founder sees and what
+    // the wizard will accept are the same number rather than a value it
+    // refuses to submit.
+    final ceiling =
+        entitlements?.maxMembers ?? GroupEntitlements.fallback.maxMembers;
+    final current = int.tryParse(_maxMembers.text) ?? ceiling;
+    final clamped = current.clamp(2, ceiling);
+    setState(() {
+      if (entitlements != null) _entitlements = entitlements;
+      if (clamped != current) _maxMembers.text = '$clamped';
+    });
+  }
+
   Future<void> _restore() async {
     final type = _type;
     if (type == null) return;
     final draft = await _store.load(type);
-    if (!mounted || draft == null || _hydrated) return;
-    _hydrated = true;
+    if (!mounted) return;
+    if (draft != null && !_hydrated) {
+      _hydrated = true;
+      _applyDraft(draft);
+    }
+    _hydrationDone = true;
+  }
+
+  void _applyDraft(Map<String, dynamic> draft) {
     _name.text = draft['name'] as String? ?? _name.text;
     _description.text = draft['description'] as String? ?? _description.text;
     _imageUrl.text = draft['imageUrl'] as String? ?? _imageUrl.text;
     _coverUrl.text = draft['coverUrl'] as String? ?? _coverUrl.text;
-    _welcomeMessage.text = draft['welcomeMessage'] as String? ?? _welcomeMessage.text;
-    _chatBackgroundUrl.text = draft['chatBackgroundUrl'] as String? ?? _chatBackgroundUrl.text;
-    _maxMembers.text = (draft['maxMembers'] as int? ?? 100).toString();
-    
+    _welcomeMessage.text =
+        draft['welcomeMessage'] as String? ?? _welcomeMessage.text;
+    _chatBackgroundUrl.text =
+        draft['chatBackgroundUrl'] as String? ?? _chatBackgroundUrl.text;
+    _maxMembers.text =
+        (draft['maxMembers'] as int? ?? GroupEntitlements.fallback.maxMembers)
+            .toString();
+
     if (!isRemoteHttpUrl(_imageUrl.text)) _imageUrl.clear();
     if (!isRemoteHttpUrl(_coverUrl.text)) _coverUrl.clear();
-    
+
     _animeId = draft['animeId'] as String? ?? _animeId;
     _animeTitle = draft['animeTitle'] as String? ?? _animeTitle;
     _idempotencyKey = draft['idempotencyKey'] as String? ?? _idempotencyKey;
-    
+
     final policy = draft['joinPolicy'] as String?;
     if (policy != null) {
       _policy = JoinPolicy.values.firstWhere(
         (value) => value.name == policy,
-        orElse: () => JoinPolicy.inviteOnly,
+        orElse: () => _policy,
       );
     }
-    
+
     final rules = draft['rules'];
     if (rules is List && rules.isNotEmpty) {
       for (final controller in _rules) {
@@ -143,18 +202,20 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         ..clear()
         ..addAll(rules.map((item) => TextEditingController(text: '$item')));
     }
-    
+
     final character = draft['character'];
     if (character is Map) {
-      _character = RoleplayCharacter.fromMap(Map<String, dynamic>.from(character));
+      _character = RoleplayCharacter.fromMap(
+        Map<String, dynamic>.from(character),
+      );
     }
-    
+
     setState(() {});
   }
 
   void _persist() {
     final type = _type;
-    if (type == null) return;
+    if (type == null || !_hydrationDone) return;
     unawaited(
       _store.save(
         type: type,
@@ -165,7 +226,9 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
           'coverUrl': _coverUrl.text,
           'welcomeMessage': _welcomeMessage.text,
           'chatBackgroundUrl': _chatBackgroundUrl.text,
-          'maxMembers': int.tryParse(_maxMembers.text) ?? 100,
+          'maxMembers':
+              int.tryParse(_maxMembers.text) ??
+              GroupEntitlements.fallback.maxMembers,
           'joinPolicy': _policy.name,
           'animeId': _animeId,
           'animeTitle': _animeTitle,
@@ -211,7 +274,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
         return true;
       case 2: // Step 3: Rules
         final maxMembers = int.tryParse(_maxMembers.text) ?? 0;
-        return maxMembers >= 2 && maxMembers <= 500;
+        return maxMembers >= 2 && maxMembers <= _entitlements.maxMembers;
       case 3: // Step 4: Customization
         return true; // Optional fields
       case 4: // Step 5: Permissions
@@ -230,7 +293,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
     if (_name.text.trim().isEmpty) return false;
     if (!isRemoteHttpUrl(_imageUrl.text)) return false;
     final maxMembers = int.tryParse(_maxMembers.text) ?? 0;
-    if (maxMembers < 2 || maxMembers > 500) return false;
+    if (maxMembers < 2 || maxMembers > _entitlements.maxMembers) return false;
     if (_type == GroupType.animeRoleplay &&
         (_animeId == null || _animeId!.isEmpty || _character == null)) {
       return false;
@@ -242,9 +305,10 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   Future<void> _createGroup(GroupProvider provider) async {
     if (!_canPublish || _submitting || provider.creating) return;
     setState(() => _submitting = true);
-    
-    final maxMembers = int.tryParse(_maxMembers.text) ?? 100;
-    
+
+    final maxMembers =
+        int.tryParse(_maxMembers.text) ?? GroupEntitlements.fallback.maxMembers;
+
     final result = await provider.create(
       GroupDraft(
         name: _name.text,
@@ -259,18 +323,23 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             .join('\n'),
         maxMembers: maxMembers,
         imageUrl: isRemoteHttpUrl(_imageUrl.text) ? _imageUrl.text.trim() : '',
-        coverUrl:
-            isRemoteHttpUrl(_coverUrl.text) ? _coverUrl.text.trim() : null,
+        coverUrl: isRemoteHttpUrl(_coverUrl.text)
+            ? _coverUrl.text.trim()
+            : null,
         character: _type == GroupType.public ? null : _character,
         idempotencyKey: _idempotencyKey,
-        welcomeMessage: _welcomeMessage.text.trim().isEmpty ? null : _welcomeMessage.text.trim(),
-        chatBackgroundUrl: _chatBackgroundUrl.text.trim().isEmpty ? null : _chatBackgroundUrl.text.trim(),
+        welcomeMessage: _welcomeMessage.text.trim().isEmpty
+            ? null
+            : _welcomeMessage.text.trim(),
+        chatBackgroundUrl: _chatBackgroundUrl.text.trim().isEmpty
+            ? null
+            : _chatBackgroundUrl.text.trim(),
       ),
     );
-    
+
     if (!mounted) return;
     setState(() => _submitting = false);
-    
+
     if (!result.isSuccess) {
       PubgetSnackbars.showError(
         context,
@@ -278,17 +347,17 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       );
       return;
     }
-    
+
     final group = result.valueOrNull!;
     await _store.clear(_type!);
-    
+
     if (!mounted) return;
     await GroupCreateSuccessSheet.show(
       context,
       groupId: group.id,
       groupName: group.name,
     );
-    
+
     if (!mounted) return;
     await AppNavigation.go(context, '/group?groupId=${group.id}');
   }
@@ -321,7 +390,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
     final copy = GroupCopy.of(context);
-    
+
     final steps = <_WizardStep>[
       _WizardStep(
         title: copy.step1Title,
@@ -381,7 +450,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
             });
             _persist();
           },
-          maxMembersLimit: 500, // Will be updated from user entitlements later
+          maxMembersLimit: _entitlements.maxMembers,
         ),
       ),
       _WizardStep(
@@ -394,9 +463,7 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       ),
       _WizardStep(
         title: copy.step5Title,
-        child: Step5Permissions(
-          groupType: _type ?? GroupType.public,
-        ),
+        child: Step5Permissions(groupType: _type ?? GroupType.public),
       ),
       _WizardStep(
         title: copy.step6Title,
@@ -407,7 +474,9 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
           animeId: _animeId,
           animeTitle: _animeTitle,
           joinPolicy: _policy,
-          maxMembers: int.tryParse(_maxMembers.text) ?? 100,
+          maxMembers:
+              int.tryParse(_maxMembers.text) ??
+              GroupEntitlements.fallback.maxMembers,
           rules: _rules
               .map((item) => item.text.trim())
               .where((item) => item.isNotEmpty)
@@ -435,15 +504,16 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
       backgroundColor: const Color(0xFF0B0714),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        leading: _currentStep > 0
-            ? AppBackButton.maybeOf(context)
-            : null,
+        leading: _currentStep > 0 ? AppBackButton.maybeOf(context) : null,
         title: Text(copy.createTitle),
         actions: [
           if (_currentStep > 0 && _currentStep < 6)
             TextButton(
               onPressed: _previousStep,
-              child: Text(copy.back, style: const TextStyle(color: AppColors.gold)),
+              child: Text(
+                copy.back,
+                style: const TextStyle(color: AppColors.gold),
+              ),
             ),
         ],
       ),
@@ -497,10 +567,13 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
                       child: PubgetPrimaryButton(
                         key: const Key('group-create-next'),
                         onPressed: _canProceed ? _nextStep : null,
-                        semanticLabel:
-                            _currentStep == 5 ? copy.review : copy.next,
+                        semanticLabel: _currentStep == 5
+                            ? copy.review
+                            : copy.next,
                         loading: _submitting && _currentStep == 6,
-                        child: Text(_currentStep == 5 ? copy.review : copy.next),
+                        child: Text(
+                          _currentStep == 5 ? copy.review : copy.next,
+                        ),
                       ),
                     ),
                   ],
@@ -514,20 +587,14 @@ class _CreateGroupWizardPageState extends State<CreateGroupWizardPage> {
 }
 
 class _WizardStep {
-  const _WizardStep({
-    required this.title,
-    required this.child,
-  });
+  const _WizardStep({required this.title, required this.child});
 
   final String title;
   final Widget child;
 }
 
 class _StepIndicator extends StatelessWidget {
-  const _StepIndicator({
-    required this.currentStep,
-    required this.steps,
-  });
+  const _StepIndicator({required this.currentStep, required this.steps});
 
   final int currentStep;
   final List<String> steps;
@@ -566,7 +633,9 @@ class _StepIndicator extends StatelessWidget {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       height: 2,
-                      color: index < currentStep ? AppColors.gold : Colors.white24,
+                      color: index < currentStep
+                          ? AppColors.gold
+                          : Colors.white24,
                     ),
                   ),
               ],

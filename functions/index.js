@@ -150,12 +150,17 @@ const socialGraph = createSocialGraph({
   HttpsError,
   achievements: achievementsDomain,
 });
+// Canonical Anime/Character repository (Master Spec 16.2). Games validate every
+// submitted ID through it, and the roleplay group pickers read it, so no engine
+// and no picker ever decides from a local table.
+const animeCatalog = createAnimeCatalogDomain({ db: getFirestore() });
 const groupsDomain = createGroupsDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   randomUUID,
   achievements: achievementsDomain,
+  catalog: animeCatalog,
 });
 const eventsDomain = createEventsDomain({
   db: getFirestore(),
@@ -167,7 +172,6 @@ const eventsDomain = createEventsDomain({
 });
 // Canonical Anime/Character repository (Master Spec 16.2). Games validate every
 // submitted ID through it, so no engine ever decides from a local table.
-const animeCatalog = createAnimeCatalogDomain({ db: getFirestore() });
 const gamesDomain = createGamesDomain({
   db: getFirestore(),
   FieldValue,
@@ -600,6 +604,22 @@ exports.searchAnimeCatalog = onCall(
 exports.searchCharacterCatalog = onCall(
   { region: "us-central1" },
   gamesDomain.searchCharacterCatalog,
+);
+exports.browseAnimeCatalog = onCall(
+  { region: "us-central1" },
+  groupsDomain.browseAnimeCatalog,
+);
+exports.browseRoleplayCharacters = onCall(
+  { region: "us-central1" },
+  groupsDomain.browseRoleplayCharacters,
+);
+exports.reservedGroupCharacters = onCall(
+  { region: "us-central1" },
+  groupsDomain.reservedCharacterKeys,
+);
+exports.createGroupEntitlements = onCall(
+  { region: "us-central1" },
+  groupsDomain.createGroupEntitlements,
 );
 exports.processExpiredGames = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

@@ -7,6 +7,7 @@ const {
   createGroupsDomain,
   entitledMaxMembers,
   normalizeRole,
+  resolveMaxMembers,
 } = require("../src/groupsDomain");
 const { computeAutoSeatAssignments } = require("../src/pubgetRanks");
 
@@ -476,4 +477,139 @@ test("acceptJoinRequest writes the welcome message for the accepted member", asy
   assert.equal(messages[0].type, "system");
   assert.equal(messages[0].text, "Glad you joined!");
   assert.equal(messages[0].senderId, "system");
+});
+test("a founder may ask for a smaller group than they are entitled to, never a larger one", () => {
+  const account = { customMaxMembersLimit: 350 };
+  assert.equal(resolveMaxMembers(account, 200), 200);
+  assert.equal(resolveMaxMembers(account, 999), 350);
+  assert.equal(resolveMaxMembers(account, undefined), 350);
+  assert.equal(resolveMaxMembers(account, "not-a-number"), 350);
+  assert.equal(resolveMaxMembers(account, 1), 2);
+  assert.equal(resolveMaxMembers({}, 999), 100);
+});
+
+test("the member limit a wizard renders is the account's own entitlement", async () => {
+  const domain = createGroupsDomain({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: true, data: () => ({ customMaxMembersLimit: 250 }) }),
+        }),
+      }),
+    },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  const answer = await domain.createGroupEntitlements({ auth: { uid: "alice" } });
+  assert.equal(answer.maxMembers, 250);
+  assert.equal(answer.canCreateGroups, true);
+});
+
+test("catalog browsing authenticates and is unavailable without a catalog", async () => {
+  const domain = handlers();
+  await assert.rejects(
+    domain.browseAnimeCatalog({ data: {} }),
+    (error) => error.code === "unauthenticated",
+  );
+  await assert.rejects(
+    domain.browseAnimeCatalog({ auth: { uid: "alice" }, data: {} }),
+    (error) => error.code === "unavailable",
+  );
+  await assert.rejects(
+    domain.browseRoleplayCharacters({ auth: { uid: "alice" }, data: {} }),
+    (error) => error.code === "unavailable",
+  );
+});
+
+test("a browse page is bounded and the catalog is asked, not the device", async () => {
+  const seen = [];
+  const domain = createGroupsDomain({
+    db: {},
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+    catalog: {
+      browseAnime: async (request) => {
+        seen.push(request);
+        return [
+          { id: "jikan:1", title: "One Piece", type: "TV", year: 1999, genres: [] },
+        ];
+      },
+      animeToPublicSearchItem: (anime) => ({ id: anime.id, title: anime.title }),
+    },
+  });
+
+  const answer = await domain.browseAnimeCatalog({
+    auth: { uid: "alice" },
+    data: { kind: "airing", page: 900, limit: 900 },
+  });
+
+  assert.equal(seen[0].page, 20);
+  assert.equal(seen[0].limit, 25);
+  assert.equal(seen[0].kind, "airing");
+  assert.equal(answer.page, 20);
+  assert.deepEqual(answer.items, [{ id: "jikan:1", title: "One Piece" }]);
+});
+
+test("a bound group asks for the whole work, an open one for the catalog", async () => {
+  const seen = [];
+  const domain = createGroupsDomain({
+    db: {},
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+    catalog: {
+      familyCharacters: async (animeId, options) => {
+        seen.push({ animeId, options });
+        return { items: [{ id: "luffy", name: "Luffy" }], page: 1, hasNextPage: false, seasons: [] };
+      },
+      searchRoleplayCharacters: async (options) => {
+        seen.push({ open: true, options });
+        return { items: [], page: 1, hasNextPage: false };
+      },
+    },
+  });
+
+  await domain.browseRoleplayCharacters({
+    auth: { uid: "alice" },
+    data: { animeId: "jikan:21", page: 3, limit: 900, query: "luffy" },
+  });
+  await domain.browseRoleplayCharacters({
+    auth: { uid: "alice" },
+    data: { query: "luffy" },
+  });
+
+  assert.equal(seen[0].animeId, "jikan:21");
+  assert.equal(seen[0].options.page, 3);
+  assert.equal(seen[0].options.limit, 25);
+  assert.equal(seen[0].options.query, "luffy");
+  assert.equal(seen[1].open, true);
+});
+
+test("the reserved roster reveals keys only, never who holds them", async () => {
+  const domain = createGroupsDomain({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          collection: () => ({
+            get: async () => ({
+              docs: [{ id: "hero" }, { id: "rival" }],
+            }),
+          }),
+        }),
+      }),
+    },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+
+  const answer = await domain.reservedCharacterKeys({
+    auth: { uid: "alice" },
+    data: { groupId: "g1" },
+  });
+
+  assert.deepEqual(answer.reservedKeys, ["hero", "rival"]);
+  assert.equal(Object.keys(answer).length, 1);
 });

@@ -65,7 +65,14 @@ class _RoleplayCharacterPageState extends State<RoleplayCharacterPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  PubgetAvatar(name: character.name),
+                  PubgetAvatar(
+                    // The catalog's own portrait for this character. Falling
+                    // back to the initial here hid every character image.
+                    imageUrl: character.avatarUrl.isEmpty
+                        ? null
+                        : character.avatarUrl,
+                    name: character.name,
+                  ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(character.name),
                   const SizedBox(height: AppSpacing.md),

@@ -205,23 +205,30 @@ class ChatGameLobbyCard extends StatelessWidget {
                             for (var i = 0; i < avatars.take(5).length; i++)
                               Positioned(
                                 left: i * 18.0,
-                                child: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: _gameAccent,
-                                  backgroundImage: avatars[i].startsWith('http')
-                                      ? NetworkImage(avatars[i])
-                                      : null,
-                                  child: avatars[i].startsWith('http')
-                                      ? null
-                                      : Text(
-                                          avatars[i].isEmpty
-                                              ? '?'
-                                              : avatars[i][0].toUpperCase(),
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.white,
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  // The stack lays these out 18px apart, so
+                                  // the box is pinned to the avatar's own size
+                                  // rather than left to the Positioned parent.
+                                  child: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: _gameAccent,
+                                    backgroundImage: avatars[i].startsWith('http')
+                                        ? NetworkImage(avatars[i])
+                                        : null,
+                                    child: avatars[i].startsWith('http')
+                                        ? null
+                                        : Text(
+                                            avatars[i].isEmpty
+                                                ? '?'
+                                                : avatars[i][0].toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white,
+                                            ),
                                           ),
-                                        ),
+                                  ),
                                 ),
                               ),
                           ],

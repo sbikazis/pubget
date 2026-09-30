@@ -47,16 +47,16 @@ class _Step3RulesState extends State<Step3Rules> {
           Text(
             copy.rulesAndPrivacy,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: AppColors.gold,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: AppColors.gold,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
             copy.rulesAndPrivacyHint,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white70,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: AppSpacing.lg),
           _SectionCard(
@@ -65,15 +65,18 @@ class _Step3RulesState extends State<Step3Rules> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 _JoinPolicyTile(
+                  key: const Key('join-policy-inviteOnly'),
                   policy: JoinPolicy.inviteOnly,
                   selected: widget.joinPolicy == JoinPolicy.inviteOnly,
-                  onTap: () => widget.onJoinPolicyChanged(JoinPolicy.inviteOnly),
+                  onTap: () =>
+                      widget.onJoinPolicyChanged(JoinPolicy.inviteOnly),
                   icon: Icons.lock_outline,
                   title: copy.joinInviteOnly,
                   subtitle: copy.joinInviteOnlyHint,
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 _JoinPolicyTile(
+                  key: const Key('join-policy-approval'),
                   policy: JoinPolicy.approval,
                   selected: widget.joinPolicy == JoinPolicy.approval,
                   onTap: () => widget.onJoinPolicyChanged(JoinPolicy.approval),
@@ -83,6 +86,7 @@ class _Step3RulesState extends State<Step3Rules> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 _JoinPolicyTile(
+                  key: const Key('join-policy-open'),
                   policy: JoinPolicy.open,
                   selected: widget.joinPolicy == JoinPolicy.open,
                   onTap: () => widget.onJoinPolicyChanged(JoinPolicy.open),
@@ -110,9 +114,9 @@ class _Step3RulesState extends State<Step3Rules> {
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   copy.maxMembersRange(2, widget.maxMembersLimit),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white54,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.white54),
                 ),
               ],
             ),
@@ -168,6 +172,7 @@ class _Step3RulesState extends State<Step3Rules> {
 
 class _JoinPolicyTile extends StatelessWidget {
   const _JoinPolicyTile({
+    super.key,
     required this.policy,
     required this.selected,
     required this.onTap,
@@ -186,67 +191,77 @@ class _JoinPolicyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? const Color(0xFF1A0F2E) : const Color(0xFFF5F0FA);
-    final borderColor = selected ? AppColors.gold : AppColors.gold.withValues(alpha: 0.3);
+    final surfaceColor = isDark
+        ? const Color(0xFF1A0F2E)
+        : const Color(0xFFF5F0FA);
+    final borderColor = selected
+        ? AppColors.gold
+        : AppColors.gold.withValues(alpha: 0.3);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            color: surfaceColor,
-            border: Border.all(color: borderColor, width: selected ? 2 : 1),
-          ),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: selected
-                      ? AppColors.gold.withValues(alpha: 0.2)
-                      : Colors.white.withValues(alpha: 0.05),
+    // One of these is the group's policy, so the choice is announced as well
+    // as drawn.
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              color: surfaceColor,
+              border: Border.all(color: borderColor, width: selected ? 2 : 1),
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected
+                        ? AppColors.gold.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.05),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: selected ? AppColors.gold : Colors.white70,
+                    size: 20,
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  color: selected ? AppColors.gold : Colors.white70,
-                  size: 20,
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: selected ? AppColors.gold : Colors.white,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.white54),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: selected ? AppColors.gold : Colors.white,
-                          ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.white54,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_circle,
-                  color: AppColors.gold,
-                  size: 24,
-                ),
-            ],
+                if (selected)
+                  const Icon(
+                    Icons.check_circle,
+                    color: AppColors.gold,
+                    size: 24,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -283,9 +298,9 @@ class _SectionCard extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.gold,
-                    fontWeight: FontWeight.w800,
-                  ),
+                color: AppColors.gold,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             child,

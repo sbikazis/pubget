@@ -38,6 +38,7 @@ import '../features/groups/repositories/firebase_group_repositories.dart';
 import '../features/groups/repositories/chat_repository.dart';
 import '../features/groups/repositories/firebase_chat_repository.dart';
 import '../features/groups/repositories/group_members_repository.dart';
+import '../features/groups/repositories/group_catalog_repository.dart';
 import '../features/groups/repositories/group_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
@@ -210,6 +211,18 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<ProfileRepository>.value(value: repositories.$3),
         provider.Provider<SocialRepository>.value(value: repositories.$4),
         provider.Provider<GroupRepository>.value(value: repositories.$5),
+        // The catalog the group pickers read. Server-resolved, so the anime a
+        // group is bound to and the cast it can draw from are the catalog's
+        // answers rather than whatever twenty titles a device had cached.
+        provider.Provider<GroupCatalogRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseGroupCatalogRepository(
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : const UnavailableGroupCatalogRepository(),
+        ),
         provider.Provider<GroupImageUploader>(
           create: (_) => firebaseState.isReady
               ? FirebaseGroupImageUploader()
@@ -334,8 +347,7 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<RoleplayProvider>(
           create: (context) => RoleplayProvider(
             repository: context.read<RoleplayRepository>(),
-            animeRepository: context.read<AnimeRepository>(),
-            socialRepository: context.read<AnimeHubSocialRepository>(),
+            catalogRepository: context.read<GroupCatalogRepository>(),
           ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
