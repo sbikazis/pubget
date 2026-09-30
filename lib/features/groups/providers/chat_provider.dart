@@ -12,7 +12,7 @@ import '../repositories/chat_repository.dart';
 import '../services/chat_send_reliability.dart';
 import '../services/pending_chat_outbox.dart';
 
-final class ChatProvider extends ChangeNotifier {
+final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
   ChatProvider({
     required ChatRepository repository,
     PendingChatOutbox? outbox,
@@ -59,10 +59,12 @@ final class ChatProvider extends ChangeNotifier {
   int get contentRevision => _contentRevision;
 
   /// Local camera/gallery bytes for optimistic media bubbles (not for progress).
+  @override
   Uint8List? localPreviewBytes(String messageId) => _localPreviews[messageId];
 
   /// Per-message upload UI; listen with [ValueListenableBuilder], do not
   /// [watch] the whole [ChatProvider] for progress.
+  @override
   ValueListenable<MediaUploadUiState>? uploadUiListenable(String messageId) =>
       _uploadUi[messageId];
 

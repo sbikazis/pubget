@@ -93,6 +93,7 @@ abstract interface class PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   });
 
   /// Returns the ready media doc for [mediaId] if one already exists, without
