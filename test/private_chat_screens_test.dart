@@ -186,6 +186,7 @@ final class _FakeListRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) async => const FailureResult(UnknownError());
 
   @override

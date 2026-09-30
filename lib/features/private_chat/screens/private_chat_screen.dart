@@ -204,10 +204,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     ],
                   ),
                 ),
-                if (chat.uploadProgress.isNotEmpty)
-                  LinearProgressIndicator(
-                    value: chat.uploadProgress.values.first,
-                  ),
                 if (chat.pinnedMessage case final ChatMessage pinned?)
                   ChatPinnedBanner(
                     senderName: pinned.senderName,
@@ -852,6 +848,8 @@ class _MessageListState extends State<_MessageList> {
           contrast: widget.contrast,
           showSenderRole: false,
           isStarred: widget.stars.isStarred(message.id),
+          mediaHost: widget.chat,
+          onRetryMedia: widget.chat.retry,
           onLongPress: (rect) => widget.onAction(message, rect),
           onSwipeReply: () => widget.onSwipeReply(message),
           onReplyQuoteTap: (id) => revealMessage(id),

@@ -5,13 +5,15 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../../core/media/image_dimensions.dart';
 import '../../../core/network/network_service.dart';
 import '../../groups/models/chat_models.dart';
 import '../../groups/services/chat_send_reliability.dart';
 import '../../groups/services/pending_chat_outbox.dart';
 import '../repositories/private_chat_repository.dart';
 
-final class PrivateChatProvider extends ChangeNotifier {
+final class PrivateChatProvider extends ChangeNotifier
+    implements ChatMediaUploadHost {
   PrivateChatProvider({
     required PrivateChatRepository repository,
     PendingChatOutbox? outbox,
@@ -33,7 +35,9 @@ final class PrivateChatProvider extends ChangeNotifier {
   /// place, so widgets that memoise work against it need an explicit token.
   int get contentRevision => _contentRevision;
   final Map<String, int> _messageIndex = <String, int>{};
-  final Map<String, double> _uploadProgress = <String, double>{};
+  final Map<String, ValueNotifier<MediaUploadUiState>> _uploadUi =
+      <String, ValueNotifier<MediaUploadUiState>>{};
+  final Map<String, Uint8List> _localPreviews = <String, Uint8List>{};
   final Map<String, _PendingMediaUpload> _pendingUploads =
       <String, _PendingMediaUpload>{};
   final Set<String> _deliveredMessageIds = <String>{};
@@ -59,7 +63,17 @@ final class PrivateChatProvider extends ChangeNotifier {
   ChatMessage? _replyTarget;
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
-  Map<String, double> get uploadProgress => Map.unmodifiable(_uploadProgress);
+
+  /// Local camera/gallery bytes for optimistic media bubbles (not for progress).
+  @override
+  Uint8List? localPreviewBytes(String messageId) => _localPreviews[messageId];
+
+  /// Per-message upload UI; listen with [ValueListenableBuilder], do not
+  /// [watch] the whole [PrivateChatProvider] for progress.
+  @override
+  ValueListenable<MediaUploadUiState>? uploadUiListenable(String messageId) =>
+      _uploadUi[messageId];
+
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get hasMore => _hasMore;
@@ -229,9 +243,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (!_isCurrent(chatId, generation)) return;
     final replyId = _replyTarget?.id;
     final replyPreview = _previewFor(_replyTarget);
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
+    final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final pending = ChatMessage.optimistic(
       id: mediaId,
       senderId: senderId,
@@ -241,6 +253,10 @@ final class PrivateChatProvider extends ChangeNotifier {
       type: type,
       text: null,
       mediaId: mediaId,
+      // Measure from the header so the bubble is laid out at its true shape from
+      // the first frame instead of resizing when the server answers.
+      mediaWidth: _localMediaSize(bytes, type)?.width,
+      mediaHeight: _localMediaSize(bytes, type)?.height,
       replyToMessageId: replyId,
       replyPreview: replyPreview,
     );
@@ -257,11 +273,67 @@ final class PrivateChatProvider extends ChangeNotifier {
       replyPreview: replyPreview,
     );
     _replyTarget = null;
+    _beginLocalMediaPreview(mediaId, bytes);
     _upsert(pending);
     // Persist the metadata before the upload so a restart mid-upload keeps
     // the pending bubble durable; findReadyMedia validates the server doc.
     unawaited(_persistPending(chatId, pending));
     await _performMediaUpload(mediaId, generation: generation);
+  }
+
+  /// Intrinsic size of locally picked bytes, or null when it is not a raster
+  /// image or the header cannot be read (e.g. HEIC on iOS).
+  ({int width, int height})? _localMediaSize(
+    Uint8List bytes,
+    ChatMessageType type,
+  ) {
+    if (type != ChatMessageType.image && type != ChatMessageType.gif) {
+      return null;
+    }
+    try {
+      return readImageDimensions(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _beginLocalMediaPreview(String mediaId, Uint8List bytes) {
+    _localPreviews[mediaId] = bytes;
+    _uploadUi
+            .putIfAbsent(
+              mediaId,
+              () => ValueNotifier<MediaUploadUiState>(
+                MediaUploadUiState.uploadingStart,
+              ),
+            )
+            .value =
+        MediaUploadUiState.uploadingStart;
+  }
+
+  void _setUploadProgress(String mediaId, double progress) {
+    if (_disposed) return;
+    final notifier = _uploadUi[mediaId];
+    if (notifier == null) return;
+    notifier.value = MediaUploadUiState(
+      phase: MediaUploadPhase.uploading,
+      progress: progress.clamp(0, 1),
+    );
+    // Intentionally no notifyListeners - bubbles listen via ValueListenable, so
+    // a progress tick never rebuilds the private chat list.
+  }
+
+  void _setUploadProcessing(String mediaId) {
+    if (_disposed) return;
+    final notifier = _uploadUi[mediaId];
+    if (notifier == null) return;
+    notifier.value = const MediaUploadUiState(
+      phase: MediaUploadPhase.processing,
+    );
+  }
+
+  void _clearUploadUi(String mediaId, {bool clearPreview = true}) {
+    _uploadUi.remove(mediaId)?.dispose();
+    if (clearPreview) _localPreviews.remove(mediaId);
   }
 
   Future<void> _performMediaUpload(
@@ -283,8 +355,7 @@ final class PrivateChatProvider extends ChangeNotifier {
       await _completeMediaSend(mediaId, existing.valueOrNull!, payload, generation);
       return;
     }
-    _uploadProgress[mediaId] = 0;
-    notifyListeners();
+    _setUploadProgress(mediaId, 0);
     final upload = await _repository.uploadMedia(
       chatId: payload.chatId,
       mediaId: mediaId,
@@ -292,38 +363,53 @@ final class PrivateChatProvider extends ChangeNotifier {
       fileName: payload.fileName,
       contentType: payload.contentType,
       onProgress: (progress) {
-        if (!_isCurrent(payload.chatId, generation)) return;
-        _uploadProgress[mediaId] = progress;
-        _safeNotify();
+        if (_isCurrent(payload.chatId, generation)) {
+          _setUploadProgress(mediaId, progress);
+        }
+      },
+      onBytesUploaded: () {
+        if (_isCurrent(payload.chatId, generation)) {
+          _setUploadProcessing(mediaId);
+        }
       },
     );
-    _uploadProgress.remove(mediaId);
     if (_disposed || !_isCurrent(payload.chatId, generation)) return;
     upload.fold(
       onSuccess: (media) async {
         await _completeMediaSend(mediaId, media, payload, generation);
       },
       onFailure: (failure) {
+        // Keep local bytes so a failed/retry bubble still shows what was sent.
+        _clearUploadUi(mediaId, clearPreview: false);
         final index = _messages.indexWhere((item) => item.id == mediaId);
         if (index != -1) {
           if (isTransientChatFailure(failure)) {
-            _messages[index] = _messages[index].copyWith(
-              sendState: ChatSendState.pending,
-              clearFailureMessage: true,
+            _replaceInPlace(
+              index,
+              _messages[index].copyWith(
+                sendState: ChatSendState.pending,
+                clearFailureMessage: true,
+              ),
             );
             if ((_autoRetryAttempt[mediaId] ?? 0) <
                 kChatSendMaxAggressiveRetries) {
               _scheduleAutoRetry(mediaId);
             } else {
-              _messages[index] = _messages[index].copyWith(
-                sendState: ChatSendState.failed,
-                failureMessage: chatFailureCode(failure),
+              _replaceInPlace(
+                index,
+                _messages[index].copyWith(
+                  sendState: ChatSendState.failed,
+                  failureMessage: chatFailureCode(failure),
+                ),
               );
             }
           } else {
-            _messages[index] = _messages[index].copyWith(
-              sendState: ChatSendState.failed,
-              failureMessage: chatFailureCode(failure),
+            _replaceInPlace(
+              index,
+              _messages[index].copyWith(
+                sendState: ChatSendState.failed,
+                failureMessage: chatFailureCode(failure),
+              ),
             );
           }
         }
@@ -331,7 +417,6 @@ final class PrivateChatProvider extends ChangeNotifier {
         _safeNotify();
       },
     );
-    notifyListeners();
   }
 
   Future<void> _completeMediaSend(
@@ -351,9 +436,17 @@ final class PrivateChatProvider extends ChangeNotifier {
       mediaUrl: media.mediaUrl,
       thumbnailUrl: media.thumbnailUrl,
       mediaId: media.mediaId,
+      // Server-measured dimensions win: they cover the formats the local header
+      // reader does not understand (HEIC/HEIF on iOS).
+      mediaWidth: media.width ?? _localMediaSize(payload.bytes, media.type)?.width,
+      mediaHeight:
+          media.height ?? _localMediaSize(payload.bytes, media.type)?.height,
       replyToMessageId: payload.replyToMessageId,
       replyPreview: payload.replyPreview,
     );
+    // Drop the progress overlay but keep the local bytes as the image loader
+    // placeholder until the remote frame paints (no empty-bubble flicker).
+    _clearUploadUi(mediaId, clearPreview: false);
     if (_isCurrent(payload.chatId, generation)) _upsert(pending);
     unawaited(_persistPending(payload.chatId, pending));
     final result = await _repository.sendMessage(
@@ -389,6 +482,12 @@ final class PrivateChatProvider extends ChangeNotifier {
     _autoRetryAttempt[message.id] = 0;
     if (_pendingUploads.containsKey(message.id) &&
         (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
+      final payload = _pendingUploads[message.id];
+      if (payload != null) {
+        // A previous attempt disposed the progress notifier; re-arm it so the
+        // retry shows progress again instead of a frozen pending bubble.
+        _beginLocalMediaPreview(message.id, payload.bytes);
+      }
       _upsert(
         message.copyWith(
           sendState: ChatSendState.pending,
@@ -429,6 +528,7 @@ final class PrivateChatProvider extends ChangeNotifier {
     _messageIndex.remove(messageId);
     _reindexFrom(index);
     _pendingUploads.remove(messageId);
+    _clearUploadUi(messageId);
     final chatId = _chatId;
     if (chatId != null) {
       unawaited(_outbox.remove(chatId, messageId));
@@ -632,6 +732,15 @@ final class PrivateChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Replaces a message already in the list. The list object identity does not
+  /// change, so anything memoised against it needs [contentRevision] to move or
+  /// a failed/tombstoned row keeps painting its previous state forever.
+  void _replaceInPlace(int index, ChatMessage message) {
+    if (index < 0 || index >= _messages.length) return;
+    _messages[index] = message;
+    _contentRevision++;
+  }
+
   void _upsert(ChatMessage message) {
     final index = _messageIndex[message.id];
     if (index == null) {
@@ -832,6 +941,12 @@ final class PrivateChatProvider extends ChangeNotifier {
     try {
       if (_pendingUploads.containsKey(id) &&
           (message.mediaUrl == null || message.mediaUrl!.isEmpty)) {
+        final payload = _pendingUploads[id];
+        if (payload != null) {
+          // Same as the manual path: restore the preview and progress notifier
+          // that the failed attempt tore down.
+          _beginLocalMediaPreview(id, payload.bytes);
+        }
         await _performMediaUpload(id, generation: generation);
         return;
       }
@@ -1006,6 +1121,11 @@ final class PrivateChatProvider extends ChangeNotifier {
     _network?.removeListener(_onNetworkChanged);
     _cancelAllAutoRetries();
     _receiptRetryTimer?.cancel();
+    for (final notifier in _uploadUi.values) {
+      notifier.dispose();
+    }
+    _uploadUi.clear();
+    _localPreviews.clear();
     unawaited(_subscription?.cancel());
     super.dispose();
   }

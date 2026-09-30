@@ -117,6 +117,7 @@ final class UnavailablePrivateChatRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) async => _fail();
 
   @override

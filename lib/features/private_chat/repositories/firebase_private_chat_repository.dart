@@ -277,11 +277,12 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) => _guard(() async {
     final extension = _extension(fileName, contentType);
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
+    // GIF and voice notes must not be flattened to image: the bubble and the
+    // client-side player branch on the type.
+    final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final path = 'privateChats/$chatId/media/${mediaId}_original.$extension';
     final reference = _storage.ref(path);
     final task = reference.putData(
@@ -302,6 +303,7 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     });
     await task;
     onProgress(1);
+    onBytesUploaded?.call();
     final mediaSnapshot = await _chats
         .doc(chatId)
         .collection('media')
@@ -312,7 +314,14 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
               snapshot.data()?['status'] == 'ready' ||
               snapshot.data()?['status'] == 'failed',
         )
-        .timeout(const Duration(minutes: 3));
+        .timeout(
+          // Transcoding a video (ffmpeg) needs a real window; images and voice
+          // notes finish far sooner, so do not make the user stare at a
+          // "processing" bubble for three minutes.
+          contentType.startsWith('video/')
+              ? const Duration(minutes: 3)
+              : const Duration(minutes: 1),
+        );
     final data = mediaSnapshot.data() ?? const <String, dynamic>{};
     if (data['status'] != 'ready') {
       throw StateError('Media processing failed.');

@@ -50,6 +50,10 @@ void main() {
               contrast: ChatContrastTheme.fromBackground(null),
               onLongPress: (_) {},
               onMediaTap: () {},
+              // The bubble no longer reaches for a global provider; the owning
+              // screen hands it the conversation's upload surface and retry.
+              mediaHost: provider,
+              onRetryMedia: provider.retry,
             ),
           ),
         ),

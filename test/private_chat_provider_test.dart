@@ -163,6 +163,200 @@ void main() {
     expect(repository.receiptChatIds, orderedEquals(<String>['a', 'b', 'b']));
   });
 
+  test('private media exposes a local preview before the upload finishes', () async {
+    final repository = _FakePrivateChatRepository()..holdUpload = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final bytes = Uint8List.fromList(<int>[7, 8, 9]);
+    final send = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: bytes,
+      fileName: 'photo.jpg',
+      contentType: 'image/jpeg',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final pending = provider.messages.single;
+    // The sender must see their own image straight away, not a placeholder box
+    // that only fills in once the network round trip finishes.
+    expect(provider.localPreviewBytes(pending.id), bytes);
+    final listenable = provider.uploadUiListenable(pending.id);
+    expect(listenable, isNotNull);
+    expect(listenable!.value.phase, MediaUploadPhase.uploading);
+
+    repository.uploadGate.complete(const FailureResult(NetworkError()));
+    await send;
+  });
+
+  test('private upload progress never notifies the provider', () async {
+    final repository = _FakePrivateChatRepository()..holdUpload = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final send = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1, 2]),
+      fileName: 'clip.mp4',
+      contentType: 'video/mp4',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final mediaId = provider.messages.single.id;
+    var notifications = 0;
+    provider.addListener(() => notifications++);
+
+    repository.emitProgress(0.25);
+    repository.emitProgress(0.5);
+    // Bytes are on the server now: the bubble switches to the processing stage.
+    repository.emitBytesUploaded();
+
+    // Every byte tick used to call notifyListeners, which rebuilt the whole
+    // private chat list and moved the composer on each callback.
+    expect(notifications, 0);
+    final listenable = provider.uploadUiListenable(mediaId)!;
+    expect(listenable.value.phase, MediaUploadPhase.processing);
+
+    repository.uploadGate.complete(const FailureResult(NetworkError()));
+    await send;
+  });
+
+  test('private media reports uploading progress through the listenable', () async {
+    final repository = _FakePrivateChatRepository()..holdUpload = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final send = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1, 2]),
+      fileName: 'clip.mp4',
+      contentType: 'video/mp4',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final listenable = provider.uploadUiListenable(provider.messages.single.id)!;
+    repository.emitProgress(0.4);
+    expect(listenable.value.phase, MediaUploadPhase.uploading);
+    expect(listenable.value.progress, closeTo(0.4, 0.001));
+
+    repository.uploadGate.complete(const FailureResult(NetworkError()));
+    await send;
+  });
+
+  test('a retried private media upload shows progress again', () async {
+    final repository = _FakePrivateChatRepository();
+    // NetworkError is transient, so the row goes back to pending and the
+    // provider tears the progress notifier down with the failed attempt.
+    repository.uploadResults.add(const FailureResult(NetworkError()));
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final send = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1, 2, 3]),
+      fileName: 'clip.mp4',
+      contentType: 'video/mp4',
+    );
+    await send;
+
+    // Park the retry so its progress state can be inspected mid-flight.
+    repository.holdUpload = true;
+    final mediaId = provider.messages.single.id;
+    // The failed attempt disposed the overlay.
+    expect(provider.uploadUiListenable(mediaId), isNull);
+    // A retry that never restores it leaves a pending bubble frozen with no
+    // progress feedback for the whole upload.
+    expect(provider.localPreviewBytes(mediaId), isNotNull);
+
+    final retry = provider.retry(provider.messages.single);
+    await Future<void>.delayed(Duration.zero);
+
+    final listenable = provider.uploadUiListenable(mediaId);
+    expect(listenable, isNotNull);
+    expect(listenable!.value.phase, MediaUploadPhase.uploading);
+
+    repository.uploadGate.complete(const FailureResult(NetworkError()));
+    await retry;
+  });
+
+  test('a permanently failed private media send bumps contentRevision', () async {
+    final repository = _FakePrivateChatRepository();
+    // ValidationError is permanent, so the row lands in the failed state
+    // instead of staying pending on auto-retry.
+    repository.uploadResults.add(const FailureResult(ValidationError('nope')));
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+    final before = provider.contentRevision;
+
+    await provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1]),
+      fileName: 'photo.jpg',
+      contentType: 'image/jpeg',
+    );
+
+    expect(provider.messages.single.sendState, ChatSendState.failed);
+    // The row was mutated in place, so only an explicit token move can repaint
+    // the memoised bubble as failed.
+    expect(provider.contentRevision, greaterThan(before));
+  });
+
+  test('private media keeps its real type for gif and voice notes', () async {
+    final repository = _FakePrivateChatRepository()..holdUpload = true;
+    final provider = PrivateChatProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.open(chatId: 'c1', currentUserId: 'alice');
+
+    final gif = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[1]),
+      fileName: 'loop.gif',
+      contentType: 'image/gif',
+    );
+    final voice = provider.sendMedia(
+      chatId: 'c1',
+      senderId: 'alice',
+      senderName: 'Alice',
+      senderAvatar: '',
+      bytes: Uint8List.fromList(<int>[2]),
+      fileName: 'note.m4a',
+      contentType: 'audio/mp4',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Everything that is not a video used to be flattened to image, so an
+    // animated GIF lost its animation and a voice note lost its player.
+    final types = provider.messages.map((m) => m.type).toSet();
+    expect(types, contains(ChatMessageType.gif));
+    expect(types, contains(ChatMessageType.audio));
+
+    repository.uploadGate.complete(const FailureResult(NetworkError()));
+    await Future.wait<void>(<Future<void>>[gif, voice]);
+  });
+
   test('a failed media upload remains manually retryable', () async {
     final repository = _FakePrivateChatRepository();
     repository.uploadResults.add(const FailureResult(NetworkError()));
@@ -483,6 +677,18 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
   bool holdReceipts = false;
   bool delayCancel = false;
 
+  /// Set when [holdUpload] keeps uploadMedia open so a test can drive progress
+  /// and the bytes-uploaded signal by hand.
+  void Function(double progress)? onProgress;
+  void Function()? onBytesUploaded;
+  final uploadGate = Completer<Result<ChatMediaUpload>>();
+
+  /// Keep uploadMedia pending until the test completes [uploadGate].
+  bool holdUpload = false;
+
+  void emitProgress(double value) => onProgress?.call(value);
+  void emitBytesUploaded() => onBytesUploaded?.call();
+
   void completeNext(Result<ChatMessage> result) {
     final next = pendingCompleters.firstWhere((c) => !c.isCompleted);
     next.complete(result);
@@ -577,8 +783,14 @@ final class _FakePrivateChatRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
+    void Function()? onBytesUploaded,
   }) async {
     uploadCalls++;
+    if (holdUpload) {
+      this.onProgress = onProgress;
+      this.onBytesUploaded = onBytesUploaded;
+      return uploadGate.future;
+    }
     return uploadResults.isEmpty
         ? const FailureResult(NetworkError())
         : uploadResults.removeAt(0);

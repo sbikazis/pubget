@@ -312,6 +312,16 @@ final class FakeGroupRepository implements GroupRepository {
 }
 
 final class FakePrivateRepository implements PrivateChatRepository {
+  /// When set, [uploadMedia] parks on this completer so a test can drive upload
+  /// progress and the bytes-uploaded signal by hand.
+  Completer<Result<ChatMediaUpload>>? uploadGate;
+  void Function(double progress)? onProgress;
+  void Function()? onBytesUploaded;
+  int uploadCalls = 0;
+
+  void emitProgress(double value) => onProgress?.call(value);
+  void emitBytesUploaded() => onBytesUploaded?.call();
+
   /// What the UI asked the server to do, for assertions.
   final pinCalls = <(String, bool)>[];
   final reports = <(String, String)>[];
@@ -403,7 +413,16 @@ final class FakePrivateRepository implements PrivateChatRepository {
     required String fileName,
     required String contentType,
     required void Function(double progress) onProgress,
-  }) async => const FailureResult(UnknownError());
+    void Function()? onBytesUploaded,
+  }) async {
+    uploadCalls++;
+    this.onProgress = onProgress;
+    this.onBytesUploaded = onBytesUploaded;
+    onProgress(0);
+    final gate = uploadGate;
+    if (gate != null) return gate.future;
+    return const FailureResult(UnknownError());
+  }
 
   @override
   Future<Result<ChatMediaUpload?>> findReadyMedia({

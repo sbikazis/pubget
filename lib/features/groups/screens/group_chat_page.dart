@@ -1288,6 +1288,8 @@ class _MessageListState extends State<_MessageList> {
               showHeader: row.showHeader,
               showTail: row.showTail,
               isStarred: widget.stars.isStarred(message.id),
+              mediaHost: widget.chat,
+              onRetryMedia: widget.chat.retry,
               onLongPress: (rect) => widget.onAction(message, rect),
               onSwipeReply: () => widget.onSwipeReply(message),
               onReplyQuoteTap: (id) => revealMessage(id),

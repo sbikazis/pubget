@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 const int kChatAudioMaxBytes = 10 * 1024 * 1024;
 const int kChatAudioMaxDurationSeconds = 60;
@@ -57,6 +58,20 @@ final class MediaUploadUiState {
   static const uploadingStart = MediaUploadUiState(
     phase: MediaUploadPhase.uploading,
   );
+}
+
+/// Per-message upload surface a bubble needs, independent of which conversation
+/// owns it. Injected into the bubble rather than resolved from a global
+/// provider, so the group and the 1:1 chat share one bubble widget without
+/// either side reading the other's state.
+abstract interface class ChatMediaUploadHost {
+  /// Local camera/gallery bytes for a message whose upload has not produced a
+  /// remote URL yet, so the sender sees their own media immediately.
+  Uint8List? localPreviewBytes(String messageId);
+
+  /// Per-message upload listenable, or null when this message is not uploading.
+  /// Bubbles listen to it directly so progress ticks never rebuild the list.
+  ValueListenable<MediaUploadUiState>? uploadUiListenable(String messageId);
 }
 
 final class ChatMessage {
