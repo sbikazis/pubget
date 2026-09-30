@@ -227,6 +227,9 @@ final class AnimeCopy {
   String get characterOptional => _t.characterOptional;
   String get noFavoriteCharacters => _t.noFavoriteCharacters;
   String get noFavoriteCharactersMessage => _t.noFavoriteCharactersMessage;
+  String get noFavoriteAnime => _t.noFavoriteAnime;
+  String get areYouSure => _t.areYouSure;
+  String get makePublic => _t.makePublic;
   String get noCharactersFound => _t.noCharactersFound;
   String get searchCharacters => _t.searchCharacters;
   String get viewAllCharacters => _t.viewAllCharacters;

@@ -135,7 +135,7 @@ class _EditMenu extends StatelessWidget {
           final confirm = await PubgetConfirmationDialog.show(
             context,
             title: copy.deleteList,
-            message: 'Are you sure?',
+            message: copy.areYouSure,
             confirmLabel: copy.delete,
           );
           if (confirm == true && context.mounted) {
@@ -157,7 +157,7 @@ class _EditMenu extends StatelessWidget {
           value: _MenuAction.togglePrivacy,
           child: Text(
             list.private
-                ? 'Make public'
+                ? copy.makePublic
                 : copy.privateList,
           ),
         ),

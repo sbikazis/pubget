@@ -346,6 +346,7 @@ class _AggregatedSearchStripState extends State<_AggregatedSearchStrip> {
   }
 
   Future<void> _load() async {
+    final copy = AnimeCopy.of(context);
     final query = widget.query.trim();
     final repository = _repositoryOf(context);
     if (query.length < 2 || repository == null) return;
@@ -357,7 +358,7 @@ class _AggregatedSearchStripState extends State<_AggregatedSearchStrip> {
             type: SearchHitType.anime,
             id: anime.id,
             title: anime.title,
-            subtitle: 'Anime',
+            subtitle: copy.entityAnime,
             imageUrl: anime.images.displayUrl,
             route: AnimeLinks.detailsPath(anime.id),
             canonicalUrl: PubgetLinks.anime(anime.id),
