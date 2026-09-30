@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/features/anime/l10n/anime_copy.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/models/anime_rating_models.dart';
+import 'package:pubget/features/anime/widgets/anime_hub_drawer.dart';
 import 'package:pubget/features/anime/widgets/anime_widgets.dart';
 
 void main() {
@@ -24,6 +26,41 @@ void main() {
     final en = AnimeCopy.forLocale(const Locale('en'));
     expect(ar.pageTitle(AnimeStrings.latestUpdates), 'آخر التحديثات');
     expect(en.pageTitle(AnimeStrings.latestUpdates), AnimeStrings.latestUpdates);
+  });
+
+  test('hub drawer rows are all localized', () {
+    // Regression guard: the hub drawer is the only way into most Anime
+    // screens, so a row whose label stays English under Arabic silently
+    // strands an Arabic-speaking user on an untranslated screen.
+    final arStrings = AppStrings.forLocale(const Locale('ar'));
+    final enStrings = AppStrings.forLocale(const Locale('en'));
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+    expect(AnimeHubDestinations.values, isNotEmpty);
+    for (final destination in AnimeHubDestinations.values) {
+      final arabic = destination.label(arStrings, ar);
+      expect(arabic, isNotEmpty, reason: '${destination.id} has no label');
+      expect(
+        arabic,
+        isNot(equals(destination.label(enStrings, en))),
+        reason: '${destination.id} falls back to English in Arabic',
+      );
+    }
+  });
+
+  test('hardcoded English empty states and dialogs are localized', () {
+    // Regression: these three were literal strings inside the widget tree, so
+    // they stayed English in Arabic even though the maps had no key for them.
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+
+    expect(en.noFavoriteAnime, 'No favorite anime yet');
+    expect(en.areYouSure, 'Are you sure?');
+    expect(en.makePublic, 'Make public');
+
+    expect(ar.noFavoriteAnime, isNot(equals(en.noFavoriteAnime)));
+    expect(ar.areYouSure, isNot(equals(en.areYouSure)));
+    expect(ar.makePublic, isNot(equals(en.makePublic)));
   });
 
   test('English locale keeps Jikan term spelling', () {

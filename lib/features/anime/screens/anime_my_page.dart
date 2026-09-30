@@ -85,6 +85,7 @@ class _FavoriteCharactersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     final social = maybeAnimeHubSocial(context);
     final library = maybeAnimeLibrary(context);
     final items = social?.userCharacters ?? const [];
@@ -95,8 +96,8 @@ class _FavoriteCharactersTab extends StatelessWidget {
       );
     }
     if (items.isEmpty) {
-      return const PubgetEmptyState(
-        title: 'No favorite characters yet',
+      return PubgetEmptyState(
+        title: copy.noFavoriteCharacters,
         icon: Icons.people_outline,
       );
     }
@@ -151,14 +152,15 @@ class _FavoriteAnimeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     final ids = own
         ? context.watch<OnboardingProvider>().profile?.favoriteAnimeIds ??
               const <String>[]
         : context.watch<ProfileProvider>().publicProfile?.favoriteAnimeIds ??
               const <String>[];
     if (ids.isEmpty) {
-      return const PubgetEmptyState(
-        title: 'No favorite anime yet',
+      return PubgetEmptyState(
+        title: copy.noFavoriteAnime,
         icon: Icons.favorite_border,
       );
     }

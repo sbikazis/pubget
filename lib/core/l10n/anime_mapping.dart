@@ -814,6 +814,10 @@ final class AppTranslationMapping {
   String get characterOptional => pick('Optional', 'اختياري');
   String get noFavoriteCharacters =>
       pick('No favorite characters yet', 'لا توجد شخصيات مفضلة بعد');
+  String get noFavoriteAnime =>
+      pick('No favorite anime yet', 'لا توجد مسلسلات مفضلة بعد');
+  String get areYouSure => pick('Are you sure?', 'هل أنت متأكد؟');
+  String get makePublic => pick('Make public', 'اجعله عامًا');
   String get noFavoriteCharactersMessage => pick(
     'Tap the heart on any character to keep them here.',
     'اضغط على القلب في أي شخصية للاحتفاظ بها هنا.',
