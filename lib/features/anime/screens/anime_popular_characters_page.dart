@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/anime_copy.dart';
-import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
+import '../widgets/anime_hub_drawer.dart';
+import '../widgets/anime_hub_widgets.dart';
+import '../widgets/anime_ranked_cards.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimePopularCharactersPage extends StatefulWidget {
@@ -35,6 +35,7 @@ class _AnimePopularCharactersPageState
         leading: AppBackButton.maybeOf(context),
         title: Text(AnimeCopy.of(context).popularCharactersTitle),
       ),
+      drawer: AnimeHubDrawer(current: '/anime/characters'),
       body: PubgetLoadingStateView(
         state: social?.popularCharactersState ?? LoadingState.empty,
         onRetry: social?.loadPopularCharacters,
@@ -49,46 +50,18 @@ class _AnimePopularCharactersPageState
               AnimeCopy.of(context).checkConnection,
           onRetry: social?.loadPopularCharacters,
         ),
-        child: ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+        child: AnimeHubGrid(
           itemCount: social?.popularCharacters.length ?? 0,
-          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
           itemBuilder: (context, index) {
             final item = social!.popularCharacters[index];
-            return PubgetCard(
+            return AnimeRankedCharacterCard(
+              key: Key('character-rank-$index'),
+              rank: index + 1,
+              name: item.name,
+              imageUrl: item.imageUrl ?? '',
+              likes: item.favoritesCount,
+              heroTag: animeCharacterHeroTag(item.characterId),
               onTap: () => AnimeLinks.openCharacter(context, item.characterId),
-              child: Row(
-                children: <Widget>[
-                  Text(
-                    '${index + 1}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleLarge?.copyWith(color: AppColors.gold),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  SizedBox(
-                    width: 64,
-                    child: AnimePoster(
-                      images: AnimeImages(thumbnailUrl: item.imageUrl),
-                      memCacheWidth: 140,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          item.name.isEmpty ? 'Character' : item.name,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text('${item.favoritesCount} favorites'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             );
           },
         ),

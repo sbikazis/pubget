@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -23,12 +25,15 @@ class MediaViewerPage extends StatefulWidget {
 class _MediaViewerPageState extends State<MediaViewerPage> {
   late final PageController _pageController;
 
+  /// Only the page the user is looking at may own a decoder. Without this,
+  /// swiping past a video leaves every previous one initialised and playing.
+  late int _visibleIndex;
+
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(
-      initialPage: widget.initialIndex < 0 ? 0 : widget.initialIndex,
-    );
+    _visibleIndex = widget.initialIndex < 0 ? 0 : widget.initialIndex;
+    _pageController = PageController(initialPage: _visibleIndex);
   }
 
   @override
@@ -50,10 +55,15 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
       body: PageView.builder(
         controller: _pageController,
         itemCount: widget.messages.length,
+        onPageChanged: (index) => setState(() => _visibleIndex = index),
         itemBuilder: (context, index) {
           final message = widget.messages[index];
           if (message.type == ChatMessageType.video &&
               message.mediaUrl != null) {
+            if (index != _visibleIndex) {
+              // Teardown happens by leaving the tree, so this is just a poster.
+              return const _VideoPlaceholder();
+            }
             return _VideoViewer(url: message.mediaUrl!);
           }
           return InteractiveViewer(
@@ -87,65 +97,147 @@ class _VideoViewer extends StatefulWidget {
 }
 
 class _VideoViewerState extends State<_VideoViewer> {
-  late final VideoPlayerController _controller;
-  late final Future<void> _initialization;
-  bool _controllerReady = false;
+  VideoPlayerController? _controller;
+  Object? _error;
 
   @override
   void initState() {
     super.initState();
-    _initialization = _initialize();
+    unawaited(_open());
   }
 
-  Future<void> _initialize() async {
-    _controller = await createStorageVideoController(widget.url);
-    await _controller.initialize();
-    _controllerReady = true;
+  @override
+  void didUpdateWidget(_VideoViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      unawaited(_open());
+    }
+  }
+
+  Future<void> _open() async {
+    // Release the previous decoder before opening a new one, so a url change
+    // never leaves the old controller holding a handle.
+    await _close();
+    final controller = await createStorageVideoController(widget.url);
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _controller = controller);
+    try {
+      await controller.initialize();
+    } catch (error) {
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _error = error;
+        _controller = null;
+      });
+      await controller.dispose();
+      return;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    // The widget may have been replaced while the decoder was starting.
+    if (!identical(_controller, controller)) {
+      await controller.dispose();
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _close() async {
+    final controller = _controller;
+    _controller = null;
+    _error = null;
+    await controller?.dispose();
   }
 
   @override
   void dispose() {
-    if (_controllerReady) {
-      _controller.dispose();
-    }
+    // Fire and forget: dispose() must not be async, and nothing may be set.
+    unawaited(_controller?.dispose());
+    _controller = null;
     super.dispose();
+  }
+
+  void _toggle() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    setState(() {
+      controller.value.isPlaying ? controller.pause() : controller.play();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _initialization,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return GestureDetector(
-          onTap: () {
-            setState(() {
-              _controller.value.isPlaying
-                  ? _controller.pause()
-                  : _controller.play();
-            });
-          },
-          child: Center(
-            child: AspectRatio(
-              aspectRatio: _controller.value.aspectRatio,
-              child: Stack(
-                alignment: Alignment.center,
-                children: <Widget>[
-                  VideoPlayer(_controller),
-                  if (!_controller.value.isPlaying)
-                    const Icon(
-                      Icons.play_circle_fill,
-                      color: Colors.white,
-                      size: 72,
-                    ),
-                ],
-              ),
-            ),
+    final controller = _controller;
+    if (_error != null) {
+      return const _VideoMessage(
+        icon: Icons.videocam_off_outlined,
+        label: 'This video could not be played.',
+      );
+    }
+    if (controller == null || !controller.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return GestureDetector(
+      onTap: _toggle,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: controller.value.aspectRatio,
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              VideoPlayer(controller),
+              if (!controller.value.isPlaying)
+                const Icon(
+                  Icons.play_circle_fill,
+                  color: Colors.white,
+                  size: 72,
+                ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoPlaceholder extends StatelessWidget {
+  const _VideoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => const _VideoMessage(
+    icon: Icons.play_circle_outline,
+    label: 'Swipe to load video',
+  );
+}
+
+class _VideoMessage extends StatelessWidget {
+  const _VideoMessage({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, color: Colors.white, size: 56),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ],
+      ),
     );
   }
 }

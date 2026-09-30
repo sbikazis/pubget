@@ -473,6 +473,22 @@ exports.deletePrivateMessage = onCall(
   { region: "us-central1" },
   privateChat.deleteMessage,
 );
+exports.editPrivateMessage = onCall(
+  { region: "us-central1" },
+  privateChat.editMessage,
+);
+exports.pinPrivateMessage = onCall(
+  { region: "us-central1" },
+  privateChat.pinMessage,
+);
+exports.addPrivateMessageReaction = onCall(
+  { region: "us-central1" },
+  privateChat.addReaction,
+);
+exports.reportPrivateMessage = onCall(
+  { region: "us-central1" },
+  privateChat.reportMessage,
+);
 exports.markPrivateMessagesRead = onCall(
   { region: "us-central1" },
   privateChat.markMessagesRead,

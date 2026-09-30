@@ -116,6 +116,51 @@ final class AppTranslationMapping {
             'favorites': 'المفضلة',
           }
         : const <String, String>{};
+    characterFactMap = _ar
+        ? const <String, String>{
+            'birthday': 'عيد الميلاد',
+            'zodiac': 'الأبراج',
+            'blood type': 'فصيلة الدم',
+            'height': 'الطول',
+            'weight': 'الوزن',
+            'gender': 'الجنس',
+            'age': 'العمر',
+            'grade': 'الصف',
+            'species': 'النوع',
+            'status': 'الحالة',
+            'occupation': 'المهنة',
+            'team': 'الفريق',
+            'affiliation': 'الانتماء',
+            'likes': 'التفضيلات',
+            'dislikes': 'ما لا يحبه',
+            'favorite food': 'الطعام المفضل',
+            'least favorite food': 'أقل طعام يفضله',
+            'hobby': 'الهواية',
+            'school': 'المدرسة',
+            'birthplace': 'مكان الميلاد',
+            'alias': 'الاسم المستعار',
+            'aliases': 'الأسماء المستعارة',
+            'nickname': 'اللقب',
+            'nicknames': 'الألقاب',
+            'family': 'العائلة',
+            'significant other': 'الشريك',
+            'occupation and rank': 'المهنة والرتبة',
+            'residence': 'الإقامة',
+            'years active': 'سنوات النشاط',
+            'debut': 'الظهور الأول',
+            'seiyuu': 'الممثل الصوتي',
+            'voice actor': 'الممثل الصوتي',
+            'main character': 'الشخصية الرئيسية',
+            'protagonist': 'البطل',
+          }
+        : const <String, String>{
+            'favorite food': 'Favorite Food',
+            'least favorite food': 'Least Favorite Food',
+            'significant other': 'Significant Other',
+            'occupation and rank': 'Occupation and Rank',
+            'years active': 'Years Active',
+            'main character': 'Main Character',
+          };
     listStatusMap = _ar
         ? const <String, String>{
             'want_to_watch': 'أرغب بمشاهدتها',
@@ -391,6 +436,11 @@ final class AppTranslationMapping {
   /// See [_ar ? 'Arabic' : 'English'] variant, filled in the constructor.
   late final Map<String, String> statusMap;
 
+  /// The biographical facts Jikan puts in a character's `about` blob, keyed by
+  /// their English label. Facts outside this set keep their raw label rather
+  /// than being hidden.
+  late final Map<String, String> characterFactMap;
+
   /// The member's own five personal states, keyed by their wire value.
   /// Unlike [statusMap] this map is never empty in English: these are
   /// interface labels, not API terms, so both sides are spelled out.
@@ -444,6 +494,9 @@ final class AppTranslationMapping {
 
   /// Display name of one of the five personal states.
   String personalState(String? wireValue) => _lookup(listStatusMap, wireValue);
+
+  /// A biographical fact label from a character `about` blob.
+  String characterFact(String? raw) => _lookup(characterFactMap, raw);
 
   String source(String? raw) => _lookup(sourceMap, raw);
 
@@ -567,6 +620,8 @@ final class AppTranslationMapping {
   String get removeFavorite =>
       pick('Remove from favorites', 'إزالة من المفضلة');
   String get trailer => pick('Trailer', 'الإعلان');
+  String get trailerUnavailable =>
+      pick('Trailer unavailable', 'الإعلان غير متاح');
   String get links => pick('External links', 'روابط خارجية');
   String get copied => pick('Link copied', 'تم نسخ الرابط');
   String get share => pick('Share anime', 'مشاركة الأنمي');
@@ -664,6 +719,8 @@ final class AppTranslationMapping {
   String get rateAnime => pick('Rate this anime', 'قيّم هذا الأنمي');
   String get editRating => pick('Edit rating', 'تعديل تقييمك');
   String get communityScore => pick('Pubget score', 'تقييم Pubget');
+  String get unnamedAnime => pick('Anime', 'أنمي');
+  String get unnamedCharacter => pick('Character', 'شخصية');
   String get malScore => pick('MAL', 'تقييم MAL');
   String get ratingsTitle => pick('Ratings', 'التقييمات');
   String get votesTitle => pick('Vote distribution', 'توزيع الأصوات');
@@ -694,6 +751,8 @@ final class AppTranslationMapping {
   );
   String get listStatus => pick('Your list', 'حالتك');
   String get removeFromList => pick('Remove from list', 'إزالة من القائمة');
+  String get save => pick('Save', 'حفظ');
+  String get myRating => pick('My rating', 'تقييمي');
   String get changeStatus => pick('Change status', 'تغيير الحالة');
   String get addToList => pick('Add to list', 'أضف إلى القائمة');
   String get searchInList => pick('Search in your list', 'ابحث في قائمتك');
@@ -907,6 +966,15 @@ final class AppTranslationMapping {
       pick('$count Pubget ratings', '$count تقييم على Pubget');
 
   String votesCount(int count) => pick('$count votes', '$count صوت');
+  String likesCount(int count) => pick('$count likes', '$count إعجاب');
+
+  /// Compact form for badges: 840, 12K, 3.4M. Latin digits in both locales
+  /// because the count is data, not copy.
+  String compactCount(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return '$count';
+  }
 
   String episodeCount(int count) => pick(
     count == 1 ? '1 episode' : '$count episodes',

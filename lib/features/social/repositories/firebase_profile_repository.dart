@@ -87,6 +87,8 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
+    // avatarUrl is in the users/{uid} update allow-list, so a direct write is
+    // correct here.
     return _uploadImage(
       userId: userId,
       bytes: bytes,
@@ -102,13 +104,24 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    return _uploadImage(
-      userId: userId,
-      bytes: bytes,
-      contentType: contentType,
-      path: 'users/$userId/cover.jpg',
-      field: 'coverUrl',
-    );
+    try {
+      final ref = _storage.ref('users/$userId/cover.jpg');
+      final snapshot = await ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+      final url = await snapshot.ref.getDownloadURL();
+      // coverUrl is NOT in the users/{uid} update allow-list, so writing it
+      // directly failed with permission-denied after the upload had already
+      // succeeded. updateSocialProfile is the server-authorized path: it
+      // validates the URL shape exactly like updateProfile does above.
+      await _functions
+          .httpsCallable('updateSocialProfile')
+          .call<void>(<String, dynamic>{'coverUrl': url});
+      return Success<String>(url);
+    } on Object catch (error) {
+      return FailureResult<String>(_mapFailure(error));
+    }
   }
 
   Future<Result<String>> _uploadImage({

@@ -173,6 +173,81 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
       _call('deletePrivateMessage', {'chatId': chatId, 'messageId': messageId});
 
   @override
+  Future<Result<ChatMessage>> editMessage({
+    required String chatId,
+    required String messageId,
+    required String text,
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('editPrivateMessage').call(
+      <String, dynamic>{
+        'chatId': chatId,
+        'messageId': messageId,
+        'text': text,
+      },
+    );
+    return ChatMessage.fromMap(
+      Map<String, dynamic>.from(result.data['message'] as Map),
+      id: messageId,
+    );
+  });
+
+  @override
+  Future<Result<void>> pinMessage({
+    required String chatId,
+    required String messageId,
+    required bool pinned,
+  }) => _call('pinPrivateMessage', {
+    'chatId': chatId,
+    'messageId': messageId,
+    'pinned': pinned,
+  });
+
+  @override
+  Future<Result<void>> addReaction({
+    required String chatId,
+    required String messageId,
+    required String reaction,
+  }) => _call('addPrivateMessageReaction', {
+    'chatId': chatId,
+    'messageId': messageId,
+    'reaction': reaction,
+  });
+
+  @override
+  Future<Result<void>> reportMessage({
+    required String chatId,
+    required String messageId,
+    required String reason,
+    String details = '',
+  }) => _call('reportPrivateMessage', {
+    'chatId': chatId,
+    'messageId': messageId,
+    'reason': reason,
+    'details': details,
+  });
+
+  @override
+  Future<Result<ChatMessage>> forwardMessage({
+    required String sourceChatId,
+    required String messageId,
+    String? destinationGroupId,
+    String? destinationChatId,
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('forwardGroupMessage').call(
+      <String, dynamic>{
+        'sourceChatId': sourceChatId,
+        'messageId': messageId,
+        'destinationGroupId': ?destinationGroupId,
+        'destinationChatId': ?destinationChatId,
+      },
+    );
+    return ChatMessage.fromMap(
+      Map<String, dynamic>.from(result.data['message'] as Map),
+      id: result.data['messageId'] as String,
+    );
+  });
+
+  @override
   Future<Result<void>> markAsRead({
     required String chatId,
     required List<String> messageIds,
@@ -247,6 +322,8 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
       thumbnailUrl: data['thumbnailPath'] as String?,
       mediaId: mediaId,
       type: type,
+      width: (data['width'] as num?)?.toInt(),
+      height: (data['height'] as num?)?.toInt(),
     );
   });
 
@@ -271,6 +348,8 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
         'audio' => ChatMessageType.audio,
         _ => ChatMessageType.image,
       },
+      width: (data['width'] as num?)?.toInt(),
+      height: (data['height'] as num?)?.toInt(),
     );
   });
 

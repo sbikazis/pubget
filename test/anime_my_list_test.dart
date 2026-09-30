@@ -34,7 +34,10 @@ void main() {
       AnimeListStatusCodec.tryParse('plan_to_watch'),
       AnimeListStatus.wantToWatch,
     );
-    expect(AnimeListStatusCodec.tryParse('on_hold'), AnimeListStatus.watchLater);
+    expect(
+      AnimeListStatusCodec.tryParse('on_hold'),
+      AnimeListStatus.watchLater,
+    );
     expect(
       AnimeListStatusCodec.tryParse('dropped'),
       AnimeListStatus.notInterested,
@@ -58,7 +61,10 @@ void main() {
       'status': 'want_to_watch',
       'updatedAt': <String, dynamic>{'_seconds': 1700000000},
     });
-    expect(entry.updatedAt, DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true));
+    expect(
+      entry.updatedAt,
+      DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true),
+    );
     final iso = AnimeListEntry.fromMap(<String, dynamic>{
       'animeId': '2',
       'updatedAt': '2026-01-02T03:04:05Z',
@@ -121,7 +127,9 @@ void main() {
     expect(find.byType(Tab), findsNWidgets(5));
     for (final status in AnimeListStatus.tabs) {
       expect(
-        find.text(AnimeCopy.forLocale(const Locale('en')).listStatusLabel(status)),
+        find.text(
+          AnimeCopy.forLocale(const Locale('en')).listStatusLabel(status),
+        ),
         findsWidgets,
       );
     }
@@ -186,7 +194,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AnimeHubPosterCard), findsNWidgets(2));
 
-    await tester.enterText(find.byKey(const Key('anime-my-list-search')), 'frier');
+    await tester.enterText(
+      find.byKey(const Key('anime-my-list-search')),
+      'frier',
+    );
     await tester.pumpAndSettle();
     expect(find.byType(AnimeHubPosterCard), findsOneWidget);
   });
@@ -264,11 +275,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
-        ValueKey<String>(
-          'anime-status-${AnimeListStatus.completed.wireValue}',
-        ),
+        ValueKey<String>('anime-status-${AnimeListStatus.completed.wireValue}'),
       ),
     );
+    await tester.pumpAndSettle();
+    // The sheet saves itself, so picking a status is not enough; the same flow
+    // the details page opens is what writes the entry.
+    expect(repository.lastStatus, isNull);
+    await tester.tap(find.byKey(const Key('anime-list-save')));
     await tester.pumpAndSettle();
 
     expect(repository.lastStatus, AnimeListStatus.completed);
@@ -304,50 +318,56 @@ void main() {
     expect(find.byType(AnimeHubPosterCard), findsNothing);
   });
 
-  testWidgets('an empty tab explains itself and filters say when they hide all', (
-    tester,
-  ) async {
-    final repository = _FakeLibraryRepository();
-    final library = AnimeLibraryProvider(repository: repository)
-      ..bindUser('user-1');
-    final myList = AnimeMyListProvider(
-      repository: FakeAnimeRepository(),
-      entries: () => library.entries,
-    );
-    await tester.pumpWidget(_harness(library, myList));
-    await tester.pumpAndSettle();
-    expect(find.text(AnimeStrings.libraryEmpty), findsOneWidget);
+  testWidgets(
+    'an empty tab explains itself and filters say when they hide all',
+    (tester) async {
+      final repository = _FakeLibraryRepository();
+      final library = AnimeLibraryProvider(repository: repository)
+        ..bindUser('user-1');
+      final myList = AnimeMyListProvider(
+        repository: FakeAnimeRepository(),
+        entries: () => library.entries,
+      );
+      await tester.pumpWidget(_harness(library, myList));
+      await tester.pumpAndSettle();
+      expect(find.text(AnimeStrings.libraryEmpty), findsOneWidget);
 
-    repository.seed(
-      AnimeListEntry(
-        animeId: '1',
-        status: AnimeListStatus.wantToWatch,
-        title: 'Frieren',
-      ),
-    );
-    await library.load();
-    await tester.pumpAndSettle();
-    expect(find.byType(AnimeHubPosterCard), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'anime-format-${AnimeListFormatFilter.movie.wireValue}',
+      repository.seed(
+        AnimeListEntry(
+          animeId: '1',
+          status: AnimeListStatus.wantToWatch,
+          title: 'Frieren',
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text(AnimeStrings.nothingFound), findsOneWidget);
-  });
+      );
+      await library.load();
+      await tester.pumpAndSettle();
+      expect(find.byType(AnimeHubPosterCard), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(
+          ValueKey<String>(
+            'anime-format-${AnimeListFormatFilter.movie.wireValue}',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(AnimeStrings.nothingFound), findsOneWidget);
+    },
+  );
 
   testWidgets('format chips are offered for every requested format', (
     tester,
   ) async {
     final library = _library(entries: const <AnimeListEntry>[]);
-    await tester.pumpWidget(_harness(library, AnimeMyListProvider(
-      repository: FakeAnimeRepository(),
-      entries: () => library.entries,
-    )));
+    await tester.pumpWidget(
+      _harness(
+        library,
+        AnimeMyListProvider(
+          repository: FakeAnimeRepository(),
+          entries: () => library.entries,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     for (final filter in AnimeListFormatFilter.values) {
       expect(
@@ -398,15 +418,14 @@ Widget _harness(
       ChangeNotifierProvider<AnimeLibraryProvider>.value(value: library),
       ChangeNotifierProvider<AnimeMyListProvider>.value(value: myList),
     ],
-    child: MaterialApp(
-      theme: AppTheme.light,
-      home: const AnimeLibraryPage(),
-    ),
+    child: MaterialApp(theme: AppTheme.light, home: const AnimeLibraryPage()),
   );
 }
 
 final class _FakeLibraryRepository implements AnimeLibraryRepository {
-  _FakeLibraryRepository({List<AnimeListEntry> initial = const <AnimeListEntry>[]}) {
+  _FakeLibraryRepository({
+    List<AnimeListEntry> initial = const <AnimeListEntry>[],
+  }) {
     for (final entry in initial) {
       entries[entry.animeId] = entry;
     }
@@ -470,18 +489,22 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
     String name = '',
     String? imageUrl,
     int? rating,
-  }) async => Success<CharacterFavorite>(CharacterFavorite(characterId: characterId));
+  }) async =>
+      Success<CharacterFavorite>(CharacterFavorite(characterId: characterId));
 
   @override
-  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) async =>
-      const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
+  Future<Result<List<AnimeCustomList>>> getCustomLists({
+    String? userId,
+  }) async => const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
 
   @override
   Future<Result<AnimeCustomListDetail>> getCustomList({
     required String listId,
     String? userId,
   }) async => Success<AnimeCustomListDetail>(
-    AnimeCustomListDetail(list: AnimeCustomList(id: listId, name: 'List')),
+    AnimeCustomListDetail(
+      list: AnimeCustomList(id: listId, name: 'List'),
+    ),
   );
 
   @override
@@ -522,9 +545,8 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
   @override
   Future<Result<List<CustomListMembership>>> getCustomListMembership(
     String animeId,
-  ) async => const Success<List<CustomListMembership>>(
-    <CustomListMembership>[],
-  );
+  ) async =>
+      const Success<List<CustomListMembership>>(<CustomListMembership>[]);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

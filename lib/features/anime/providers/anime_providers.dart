@@ -343,7 +343,7 @@ final class AnimeListProvider extends ChangeNotifier {
   Future<void> openLatest() {
     _reset();
     _latest = true;
-    _title = 'Latest Updates';
+    _title = AnimeStrings.latestUpdates;
     _analytics?.logEvent('anime_latest_open');
     return _load(page: 1);
   }
@@ -555,14 +555,15 @@ final class AnimeListProvider extends ChangeNotifier {
 
   Future<Result<AnimePage>> _fetch({required int page, String? searchQuery}) {
     final query = (searchQuery ?? _query).trim();
+    if (_latest) {
+      return _repository.getLatest(page: page);
+    }
     final searching =
         _catalog == null &&
         _genreId == null &&
         _studioId == null &&
         _year == null &&
-        (_latest ||
-            _filter.hasNonTextConstraints ||
-            query.length >= minQueryLength);
+        (_filter.hasNonTextConstraints || query.length >= minQueryLength);
     if (searching) {
       return _repository.searchAnime(
         query,

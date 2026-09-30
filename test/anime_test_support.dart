@@ -54,7 +54,8 @@ const sampleAnimeJson = '''
 }
 ''';
 
-const samplePageJson = '''
+const samplePageJson =
+    '''
 {
   "pagination": {"last_visible_page": 2, "has_next_page": true, "current_page": 1},
   "data": [$sampleAnimeJson]
@@ -216,6 +217,8 @@ final class FakeAnimeRepository implements AnimeRepository {
   int airingCalls = 0;
   int upcomingCalls = 0;
   int thisSeasonCalls = 0;
+  int latestCalls = 0;
+  final List<int> latestPages = <int>[];
   int charactersCalls = 0;
   int characterDetailsCalls = 0;
   int genresCalls = 0;
@@ -235,7 +238,8 @@ final class FakeAnimeRepository implements AnimeRepository {
       return FailureResult<AnimePage>(nextPageFailure!);
     }
     if (failure != null) return FailureResult<AnimePage>(failure!);
-    final base = page ??
+    final base =
+        page ??
         AnimePage(
           items: <Anime>[sampleAnime()],
           page: pageNumber,
@@ -287,7 +291,10 @@ final class FakeAnimeRepository implements AnimeRepository {
             )
             .toList(growable: false);
         return Success(
-          found.copyWith(items: items, hasNextPage: items.isNotEmpty && found.hasNextPage),
+          found.copyWith(
+            items: items,
+            hasNextPage: items.isNotEmpty && found.hasNextPage,
+          ),
         );
       },
       onFailure: (failure) => FailureResult<AnimePage>(failure),
@@ -340,8 +347,18 @@ final class FakeAnimeRepository implements AnimeRepository {
   }
 
   @override
-  Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) async {
+  Future<Result<AnimePage>> getThisSeason({
+    int page = 1,
+    int limit = 20,
+  }) async {
     thisSeasonCalls++;
+    return _pageResult(page);
+  }
+
+  @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) async {
+    latestCalls++;
+    latestPages.add(page);
     return _pageResult(page);
   }
 
@@ -384,18 +401,16 @@ final class FakeAnimeRepository implements AnimeRepository {
         name: preview?.name ?? 'Frieren',
         imageUrl: preview?.imageUrl,
         role: preview?.role,
-        about: 'An elf mage.',
+        // Respect the fixture's bio when it has one, so a test can drive the
+        // long-form about section; fall back to the short default otherwise.
+        about: preview?.about ?? 'An elf mage.',
         nameKanji: 'フリーレン',
         nicknames: const <String>['Frieren'],
         favorites: 9,
         url: 'https://myanimelist.net/character/10',
         voiceActors: preview?.voiceActors ?? const <VoiceActor>[],
         animeography: const <CharacterAppearance>[
-          CharacterAppearance(
-            id: '52991',
-            title: 'Frieren',
-            role: 'Main',
-          ),
+          CharacterAppearance(id: '52991', title: 'Frieren', role: 'Main'),
         ],
       ),
     );

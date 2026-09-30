@@ -98,6 +98,14 @@ final class CachedAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) =>
+      _cachedPage(
+        'latest:$page:$limit',
+        AnimeCacheTtl.latest,
+        () => _inner.getLatest(page: page, limit: limit),
+      );
+
+  @override
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId) {
     return _cached(
       'characters:${animeId.trim()}',

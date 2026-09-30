@@ -272,6 +272,8 @@ final class FirebaseChatRepository implements ChatRepository {
       thumbnailUrl: data['thumbnailPath'] as String?,
       mediaId: mediaId,
       type: type,
+      width: (data['width'] as num?)?.toInt(),
+      height: (data['height'] as num?)?.toInt(),
     );
   });
 
@@ -297,6 +299,8 @@ final class FirebaseChatRepository implements ChatRepository {
         'audio' => ChatMessageType.audio,
         _ => ChatMessageType.image,
       },
+      width: (data['width'] as num?)?.toInt(),
+      height: (data['height'] as num?)?.toInt(),
     );
   });
 

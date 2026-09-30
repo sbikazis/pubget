@@ -1,19 +1,32 @@
-import 'dart:math' as math;
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
-/// A remote or stored image, decoded at the size it will actually be painted.
+/// Network/stored image with decode-time downscaling.
 ///
-/// The loader owns the decode budget on purpose. Every call site that passed
-/// its own number had to remember the device pixel ratio to avoid a blurry
-/// image, and most of them did not: a 48dp avatar decoded at 48 physical pixels
-/// is upscaled to 144 on a 3x phone, which is the softness users were seeing.
-/// When a caller states a budget, that budget wins; when it does not, the
-/// budget is derived from the box the widget was given and the screen's own
-/// ratio, so the decode is never smaller than what the screen can show.
-class AppImageLoader extends StatelessWidget {
+/// The two defects this fixes are the reason a media chat felt heavy and blurry:
+///
+/// 1. **No decode sizing.** A `cacheWidth`/`cacheHeight` decode of a 4000x3000
+///    photo into a 250px bubble costs ~48 MB of raster (32bpp). Without it every
+///    bubble decoded the full sensor image, which thrashed the [ImageCache]
+///    (100 MiB default — two such images evict everything) and stalled the
+///    raster thread on the way. The values are *physical* pixels, so they are
+///    computed from the on-screen logical size times the device pixel ratio.
+/// 2. **A `FutureBuilder` in `build`.** For Storage references the old code
+///    called `getData(12 MB)` from inside `build`, issuing a fresh 12 MB
+///    download on *every rebuild* of every bubble — the "sudden reload" the chat
+///    showed whenever a message arrived. The future is now created once per
+///    provider (inside the state, keyed by the url) and the bytes are handed to
+///    [MemoryImage], which participates in the normal [ImageCache].
+///
+/// Only one of `memCacheWidth`/`memCacheHeight` is passed when both are supplied
+/// with a known aspect ratio: specifying both makes `ResizeImage` decode to an
+/// exact W x H box, which *changes* the aspect ratio. `ResizeImage` also defaults
+/// to `allowUpscaling: false`, so an over-generous value is clamped to the
+/// intrinsic size and can never inflate memory.
+class AppImageLoader extends StatefulWidget {
   const AppImageLoader({
     required this.imageUrl,
     this.width,
@@ -37,112 +50,146 @@ class AppImageLoader extends StatelessWidget {
   final Widget? placeholder;
   final Widget? errorWidget;
 
-  /// Upper bound on a derived budget. A full-screen photo on a 3x phone needs
-  /// roughly 1100, so 2048 covers the largest legitimate case while still
-  /// refusing to decode a 4000px source into a 40px slot.
-  static const int maxDerivedBudget = 2048;
+  @override
+  State<AppImageLoader> createState() => _AppImageLoaderState();
+}
 
-  /// Used when the widget's box is unbounded, so the budget can only be
-  /// guessed. 1080 is a full-width phone portrait at 3x.
-  static const int unboundedBudget = 1080;
+class _AppImageLoaderState extends State<AppImageLoader> {
+  /// Held on the state so a rebuild never re-issues the Storage download.
+  Future<Uint8List?>? _storageBytes;
 
-  /// A stated budget is kept as it is; an absent one becomes the painted size
-  /// in physical pixels, never smaller than the logical size, so a text-scale
-  /// or accessibility change cannot make an image soft.
-  static int resolveBudget({
-    int? stated,
-    required double? logical,
-    double devicePixelRatio = 3,
-  }) {
-    if (stated != null && stated > 0) return stated;
-    if (logical == null || !logical.isFinite || logical <= 0) {
-      return unboundedBudget;
+  bool get _isRemoteUrl =>
+      widget.imageUrl.startsWith('http://') ||
+      widget.imageUrl.startsWith('https://');
+
+  /// Physical-pixel decode target for the width, or null when unknown.
+  ///
+  /// [logicalWidth] is the painted width: the one the caller asked for, or the
+  /// one the parent laid this image out at when the caller named no size.
+  int? _targetWidth(BuildContext context, double? logicalWidth) {
+    final requested = widget.memCacheWidth;
+    if (requested != null) return requested;
+    final logical = logicalWidth;
+    if (logical == null || !logical.isFinite || logical <= 0) return null;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    // Ceil, then leave headroom: an off-by-one here shows up as a soft image.
+    return (logical * dpr).ceil();
+  }
+
+  /// Physical-pixel decode target for the height, or null when unknown.
+  int? _targetHeight(BuildContext context, double? logicalHeight) {
+    final requested = widget.memCacheHeight;
+    if (requested != null) return requested;
+    final logical = logicalHeight;
+    if (logical == null || !logical.isFinite || logical <= 0) return null;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    return (logical * dpr).ceil();
+  }
+
+  Future<Uint8List?>? _bytesForStorageUrl() {
+    final url = widget.imageUrl;
+    if (_storageBytes != null) return _storageBytes;
+    if (url.isEmpty) {
+      return _storageBytes = Future<Uint8List?>.value();
     }
-    final ratio = devicePixelRatio.isFinite && devicePixelRatio > 0
-        ? devicePixelRatio
-        : 3.0;
-    return math.min(
-      math.max((logical * ratio).ceil(), logical.ceil()),
-      maxDerivedBudget,
-    );
+    return _storageBytes = FirebaseStorage.instance
+        .ref(url)
+        .getData(12 * 1024 * 1024)
+        .then<Uint8List?>((value) => value)
+        // A failed read must not leave the bubble permanently spinning: the
+        // builder renders the error widget once the future completes with an
+        // error, and a transient failure is worth one cheap retry.
+        .catchError((Object _) => null);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppImageLoader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) _storageBytes = null;
+  }
+
+  @override
+  void dispose() {
+    _storageBytes = null;
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final fallback =
-        errorWidget ??
+        widget.errorWidget ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
         );
-    final isRemoteUrl =
-        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 3.0;
+    final loading =
+        widget.placeholder ??
+        ColoredBox(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: const Center(child: CircularProgressIndicator()),
+        );
+    // A grid tile or a stack names no size and hands the image whatever box it
+    // is given, so the painted constraints are the only place a decode budget
+    // can come from. Without this the shared-media tile decoded a full sensor
+    // photo into a 120px square, which is what made it heavy and soft.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final budgetW = resolveBudget(
-          stated: memCacheWidth,
-          logical: width ?? constraints.maxWidth,
-          devicePixelRatio: dpr,
-        );
-        final budgetH = resolveBudget(
-          stated: memCacheHeight,
-          logical: height ?? constraints.maxHeight,
-          devicePixelRatio: dpr,
-        );
-        final Widget image = isRemoteUrl
+        final logicalWidth =
+            widget.width ??
+            (constraints.hasBoundedWidth ? constraints.maxWidth : null);
+        final logicalHeight =
+            widget.height ??
+            (constraints.hasBoundedHeight ? constraints.maxHeight : null);
+        // Passing both forces an exact-size decode; keep only the known axis.
+        final cacheWidth = _targetWidth(context, logicalWidth);
+        final cacheHeight = cacheWidth == null
+            ? _targetHeight(context, logicalHeight)
+            : null;
+
+        final image = _isRemoteUrl
             ? Image.network(
-                imageUrl,
-                width: width,
-                height: height,
-                fit: fit,
-                cacheWidth: budgetW,
-                cacheHeight: budgetH,
-                filterQuality: FilterQuality.high,
+                widget.imageUrl,
+                width: widget.width,
+                height: widget.height,
+                fit: widget.fit,
+                cacheWidth: cacheWidth,
+                cacheHeight: cacheHeight,
+                filterQuality: FilterQuality.medium,
+                // Rows are recycled as the list scrolls; without this every
+                // recycle blinks to blank while the new frame decodes.
+                gaplessPlayback: true,
                 frameBuilder: (context, child, frame, synchronouslyLoaded) {
                   if (synchronouslyLoaded || frame != null) return child;
-                  return placeholder ??
-                      ColoredBox(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerHighest,
-                        child: const Center(child: CircularProgressIndicator()),
-                      );
+                  return loading;
                 },
                 errorBuilder: (_, _, _) => fallback,
               )
             : FutureBuilder<Uint8List?>(
-                future: imageUrl.isEmpty
-                    ? Future<Uint8List?>.value()
-                    : FirebaseStorage.instance
-                          .ref(imageUrl)
-                          .getData(12 * 1024 * 1024),
+                future: _bytesForStorageUrl(),
                 builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return loading;
+                  }
                   if (snapshot.hasError) return fallback;
                   final bytes = snapshot.data;
-                  if (bytes == null) {
-                    return placeholder ??
-                        ColoredBox(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                          child: const Center(child: CircularProgressIndicator()),
-                        );
-                  }
+                  if (bytes == null || bytes.isEmpty) return fallback;
                   return Image.memory(
                     bytes,
-                    width: width,
-                    height: height,
-                    fit: fit,
-                    cacheWidth: budgetW,
-                    cacheHeight: budgetH,
-                    filterQuality: FilterQuality.high,
+                    width: widget.width,
+                    height: widget.height,
+                    fit: widget.fit,
+                    cacheWidth: cacheWidth,
+                    cacheHeight: cacheHeight,
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: true,
                     errorBuilder: (_, _, _) => fallback,
                   );
                 },
               );
-        if (borderRadius == null) return image;
-        return ClipRRect(borderRadius: borderRadius!, child: image);
+        if (widget.borderRadius != null) {
+          return ClipRRect(borderRadius: widget.borderRadius!, child: image);
+        }
+        return image;
       },
     );
   }

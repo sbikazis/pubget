@@ -109,7 +109,16 @@ test("requires group membership and uploader path ownership for group media", as
   ));
 });
 
-test("accepts immutable originals for the server media pipeline", async () => {
+// NOTE ON RESUMABLE UPLOADS
+// The Storage emulator exposes every ref.put() as a create-shaped operation, so
+// an `allow update` branch cannot be exercised from this harness: re-putting an
+// existing object is evaluated against `create` and fails on the
+// `resource == null` guard, not on the update rule. The update branches below
+// exist for the real resumable protocol that production clients use
+// (putData -> CREATE then UPDATE), which is the same root cause already
+// documented and fixed for /edits. These tests therefore cover the guarantees
+// that ARE reachable: first upload by the owner, and denial for everyone else.
+test("keeps group-media originals owner-scoped and server-variants closed", async () => {
   const member = env.authenticatedContext("member");
   const original = "groups/group-owner/media/media1_original.jpg";
   await assertSucceeds(upload(
@@ -120,11 +129,18 @@ test("accepts immutable originals for the server media pipeline", async () => {
     uploaderMetadata("member"),
   ));
   await assertFails(upload(
+    env.authenticatedContext("owner"),
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("owner"),
+  ));
+  await assertFails(upload(
     member,
     original,
     "image/jpeg",
     32,
-    uploaderMetadata("member"),
+    uploaderMetadata("owner"),
   ));
   await assertFails(upload(
     member,
@@ -132,6 +148,31 @@ test("accepts immutable originals for the server media pipeline", async () => {
     "image/jpeg",
     32,
     uploaderMetadata("member"),
+  ));
+});
+
+test("keeps private-chat originals restricted to the uploading participant", async () => {
+  const original = "privateChats/private-1/media/m-resume_original.jpg";
+  await assertSucceeds(upload(
+    env.authenticatedContext("alice"),
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("alice"),
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("bob"),
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("bob"),
+  ));
+  await assertFails(upload(
+    env.authenticatedContext("mallory"),
+    original,
+    "image/jpeg",
+    32,
+    uploaderMetadata("mallory"),
   ));
 });
 
@@ -254,6 +295,21 @@ test("fan work media is owner-writable and public only when the work is publishe
     "image/jpeg",
     32,
     uploaderMetadata("alice"),
+  ));
+  // Only the draft owner may write the media (see the resumable-upload note).
+  await assertFails(upload(
+    bob,
+    "fan_works/alice/w-draft/cover.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("bob"),
+  ));
+  await assertFails(upload(
+    alice,
+    "fan_works/alice/w-draft/cover.jpg",
+    "image/jpeg",
+    32,
+    uploaderMetadata("bob"),
   ));
   await assertFails(upload(
     bob,

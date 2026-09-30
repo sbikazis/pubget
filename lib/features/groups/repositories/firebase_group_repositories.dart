@@ -331,9 +331,16 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
         i,
         i + 10 > members.length ? members.length : i + 10,
       );
+      // Display data for other users lives in public_profiles. Reading
+      // users/{uid} is restricted to the owner by firestore.rules, so this
+      // used to fail with permission-denied for every member except the
+      // viewer and left the member list without names/avatars.
       final docs = await Future.wait(
         chunk.map(
-          (member) => _firestore.collection('users').doc(member.uid).get(),
+          (member) => _firestore
+              .collection('public_profiles')
+              .doc(member.uid)
+              .get(),
         ),
       );
       for (var j = 0; j < chunk.length; j++) {
@@ -563,37 +570,42 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   }) => _guard(() async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return const <GroupMember>[];
-    final byId = await _firestore.collection('users').doc(trimmed).get();
+    // users/{uid} is owner-only and users has no list rule, so both the direct
+    // lookup and the username query were denied. public_profiles/{uid} and the
+    // usernames/{normalized} registry are the client-readable projections.
+    final byId = await _firestore
+        .collection('public_profiles')
+        .doc(trimmed)
+        .get();
     if (byId.exists) {
-      final data = byId.data() ?? <String, dynamic>{};
-      return <GroupMember>[
-        GroupMember(
-          uid: byId.id,
-          role: PubgetRank.ronin,
-          displayName: data['displayName'] as String?,
-          username: data['username'] as String?,
-          avatarUrl: data['avatarUrl'] as String?,
-        ),
-      ];
+      return <GroupMember>[_inviteCandidate(byId.id, byId.data())];
     }
     final handle = trimmed.startsWith('@') ? trimmed.substring(1) : trimmed;
-    final snapshot = await _firestore
-        .collection('users')
-        .where('username', isEqualTo: handle)
-        .limit(limit)
+    final normalized = handle.trim().toLowerCase();
+    if (normalized.isEmpty) return const <GroupMember>[];
+    final registry = await _firestore
+        .collection('usernames')
+        .doc(normalized)
         .get();
-    return snapshot.docs
-        .map(
-          (doc) => GroupMember(
-            uid: doc.id,
-            role: PubgetRank.ronin,
-            displayName: doc.data()['displayName'] as String?,
-            username: doc.data()['username'] as String?,
-            avatarUrl: doc.data()['avatarUrl'] as String?,
-          ),
-        )
-        .toList(growable: false);
+    final uid = registry.data()?['uid'] as String?;
+    if (uid == null || uid.isEmpty) return const <GroupMember>[];
+    final profile = await _firestore
+        .collection('public_profiles')
+        .doc(uid)
+        .get();
+    if (!profile.exists) return const <GroupMember>[];
+    return <GroupMember>[_inviteCandidate(uid, profile.data())];
   });
+
+  GroupMember _inviteCandidate(String uid, Map<String, dynamic>? data) {
+    return GroupMember(
+      uid: uid,
+      role: PubgetRank.ronin,
+      displayName: data?['displayName'] as String?,
+      username: data?['username'] as String?,
+      avatarUrl: data?['avatarUrl'] as String?,
+    );
+  }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {

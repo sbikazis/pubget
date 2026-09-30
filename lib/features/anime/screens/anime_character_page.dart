@@ -14,6 +14,7 @@ import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/repositories/fan_work_repository.dart';
 import '../../fan_works/widgets/fan_work_widgets.dart';
 import '../l10n/anime_copy.dart';
+import '../theme/anime_hub_colors.dart';
 import '../models/anime_models.dart';
 import '../models/anime_rating_models.dart';
 import '../providers/anime_character_provider.dart';
@@ -86,6 +87,14 @@ class _AnimeCharacterPageState extends State<AnimeCharacterPage> {
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         title: Text(character?.name ?? copy.charactersTitle),
+        actions: <Widget>[
+          if (character != null)
+            _CharacterFavoriteAction(
+              characterId: character.id,
+              name: character.name,
+              imageUrl: character.imageUrl,
+            ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -414,7 +423,11 @@ class _CharacterProfileBody extends StatelessWidget {
         if (narrative.isNotEmpty) ...<Widget>[
           Text(copy.characterAbout, style: theme.textTheme.titleLarge),
           const SizedBox(height: AppSpacing.sm),
-          SelectableText(narrative, style: theme.textTheme.bodyLarge),
+          AnimeExpandableText(
+            text: narrative,
+            style: theme.textTheme.bodyLarge,
+            selectable: true,
+          ),
           const SizedBox(height: AppSpacing.lg),
         ],
         if (about.facts.isNotEmpty) ...<Widget>[
@@ -429,7 +442,7 @@ class _CharacterProfileBody extends StatelessWidget {
                   SizedBox(
                     width: 108,
                     child: Text(
-                      fact.label,
+                      copy.characterFact(fact.label),
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: AppColors.goldSheen,
                         fontWeight: FontWeight.w800,
@@ -467,7 +480,7 @@ class _CharacterProfileBody extends StatelessWidget {
             children: <Widget>[
               for (final actor in character.voiceActors.take(12))
                 Chip(
-                  avatar: const Icon(Icons.mic_none, size: 16),
+                  avatar: _VoiceActorAvatar(actor: actor),
                   label: Text(
                     actor.language == null
                         ? actor.name
@@ -803,5 +816,68 @@ CharacterEditsRepository? _characterEditsRepository(BuildContext context) {
         : null;
   } on ProviderNotFoundException {
     return null;
+  }
+}
+
+/// The app bar heart for a character.
+///
+/// This is the only favourite affordance on the page, so its tooltip carries
+/// the state for screen readers the same way the anime hero's heart does.
+class _CharacterFavoriteAction extends StatelessWidget {
+  const _CharacterFavoriteAction({
+    required this.characterId,
+    required this.name,
+    required this.imageUrl,
+  });
+
+  final String characterId;
+  final String name;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final library = maybeAnimeLibrary(context);
+    final favorite = library?.isCharacterFavorite(characterId) ?? false;
+    return IconButton(
+      key: const Key('favorite-character'),
+      tooltip: favorite ? copy.favorited : copy.favorite,
+      onPressed: library == null
+          ? null
+          : () => library.toggleCharacter(
+              characterId: characterId,
+              name: name,
+              imageUrl: imageUrl,
+            ),
+      icon: Icon(
+        favorite ? Icons.favorite : Icons.favorite_border,
+        color: favorite ? AnimeHubColors.of(context).gold : null,
+      ),
+    );
+  }
+}
+
+/// The voice actor portrait, falling back to the mic glyph when the provider
+/// had no image for that language's dub.
+class _VoiceActorAvatar extends StatelessWidget {
+  const _VoiceActorAvatar({required this.actor});
+
+  final VoiceActor actor;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = actor.imageUrl;
+    if (url == null || url.isEmpty) {
+      return const Icon(Icons.mic_none, size: 16);
+    }
+    return ClipOval(
+      child: AppImageLoader(
+        imageUrl: url,
+        width: 24,
+        height: 24,
+        memCacheWidth: 72,
+        placeholder: const Icon(Icons.mic_none, size: 16),
+      ),
+    );
   }
 }

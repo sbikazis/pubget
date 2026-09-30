@@ -144,7 +144,13 @@ void main() {
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
 
-    expect(AppShellDrawerDestinations.items, hasLength(19));
+    expect(AppShellDrawerDestinations.items, hasLength(13));
+    // The main drawer keeps exactly one Anime entry; the six hub pages live in
+    // the hub's own drawer instead of being flattened into the global one.
+    expect(
+      AppShellDrawerDestinations.items.where((i) => i.path.startsWith('/anime')),
+      hasLength(1),
+    );
   });
 
   testWidgets('tab switches keep IndexedStack children alive', (tester) async {

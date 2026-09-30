@@ -107,4 +107,32 @@ void main() {
     await list.loadMore();
     expect(repository.requestedPages, <int>[1]);
   });
+
+  test('latest updates queries the catalog, not a text search', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(repository: repository);
+    addTearDown(list.dispose);
+
+    await list.openLatest();
+
+    // Regression: the route used to send an empty query through searchAnime,
+    // which short-circuited to an empty page and disabled pagination.
+    expect(repository.latestCalls, 1);
+    expect(repository.searchCalls, 0);
+    expect(list.items, isNotEmpty);
+  });
+
+  test('latest updates paginates and reports a next page', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(repository: repository);
+    addTearDown(list.dispose);
+
+    await list.openLatest();
+    expect(list.hasNextPage, isTrue);
+
+    await list.loadMore();
+
+    expect(repository.latestPages, <int>[1, 2]);
+    expect(list.items.length, greaterThan(1));
+  });
 }

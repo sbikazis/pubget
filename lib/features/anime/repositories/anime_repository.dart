@@ -23,6 +23,13 @@ abstract interface class AnimeRepository {
 
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20});
 
+  /// The whole catalog newest first, for the hub's "Latest updates" page.
+  ///
+  /// This is deliberately a separate method rather than a text search: sending
+  /// an empty query through [searchAnime] short-circuits to an empty page, and
+  /// that is what silently broke Latest updates and its pagination.
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20});
+
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId);
 
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId);
@@ -76,6 +83,7 @@ abstract final class AnimeCacheTtl {
   static const upcoming = Duration(hours: 2);
   static const thisSeason = Duration(hours: 1);
   static const search = Duration(minutes: 20);
+  static const latest = Duration(hours: 1);
   static const genreList = Duration(hours: 2);
   static const studiosIndex = Duration(hours: 24);
   static const studioList = Duration(hours: 2);

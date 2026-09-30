@@ -154,9 +154,6 @@ test.beforeEach(async () => {
     await admin.doc("user_achievements/alice/items/first_game_win").set({
       achievementId: "first_game_win", title: "First Victory",
     });
-    await admin.doc("game_history/game1").set({
-      gameId: "game1", type: "guessCharacter", result: { winnerIds: ["alice"] },
-    });
     await admin.doc("fanWorks/fw-public").set({
       creatorId: "alice", type: "drawing", title: "Public drawing",
       status: "published", moderationStatus: "approved", visibility: "public",
@@ -217,6 +214,91 @@ test("users create carries the same language and username guards", async () => {
     ...base, language: "en", username: "okname", coinsBalance: 1,
   }));
 });
+test("self-owned presentation fields are writable on update and validated", async () => {
+  const sectionPrivacy = {
+    favorites: true, activity: false, friends: true, fans: true,
+    works: true, groups: true, ratings: true, achievements: true, lists: true,
+  };
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    coverUrl: "https://firebasestorage.googleapis.com/o/cover.jpg",
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    favoriteQuote: "A quote", animeTwin: "Levi",
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    socialLinks: [{ url: "https://x.example", label: "site" }],
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({ sectionPrivacy }));
+  // profileVisibility stays callable-only: the direct path is not part of the
+  // allow-list, so flipping privacy still goes through updateSocialProfile
+  // (which also rotates the avatar download token).
+  await assertFails(db("alice").doc("users/alice").update({
+    profileVisibility: "private",
+  }));
+  // Server-owned counters stay locked even on the widened allow-list.
+  await assertFails(db("alice").doc("users/alice").update({ totalRespect: 9999 }));
+  await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 1 }));
+  // Another user still cannot touch these fields.
+  await assertFails(db("mallory").doc("users/alice").update({ favoriteQuote: "pwned" }));
+  // Value guards mirror the updateSocialProfile callable.
+  await assertFails(db("alice").doc("users/alice").update({ favoriteQuote: "x".repeat(201) }));
+  await assertFails(db("alice").doc("users/alice").update({ animeTwin: "x".repeat(81) }));
+  await assertFails(db("alice").doc("users/alice").update({ coverUrl: "not-a-url" }));
+  await assertFails(db("alice").doc("users/alice").update({ coverUrl: `https://x/${"y".repeat(1030)}` }));
+  await assertFails(db("alice").doc("users/alice").update({
+    socialLinks: Array.from({ length: 21 }, () => ({ url: "https://x.example" })),
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    sectionPrivacy: { favorites: true },
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    sectionPrivacy: { ...sectionPrivacy, fans: "no" },
+  }));
+});
+
+test("users create accepts the full self-owned presentation payload", async () => {
+  const sectionPrivacy = {
+    favorites: true, activity: true, friends: true, fans: true,
+    works: true, groups: true, ratings: true, achievements: true, lists: true,
+  };
+  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
+  // Mirrors PubgetUser.toMap() as written by createUserProfile.
+  await assertSucceeds(db("newbie").doc("users/newbie").set({
+    ...base,
+    username: "newbie",
+    displayName: "Newbie",
+    avatarUrl: null,
+    coverUrl: "https://firebasestorage.googleapis.com/o/cover.jpg",
+    bio: null,
+    age: null,
+    country: null,
+    favoriteQuote: "Hello",
+    animeTwin: "Levi",
+    socialLinks: [{ url: "https://x.example", platform: "x" }],
+    favoriteAnimes: [],
+    favoriteAnimeIds: [],
+    profileVisibility: "public",
+    activityVisibility: "public",
+    whoCanMessageMe: "related",
+    sectionPrivacy,
+    language: "ar",
+    hasSkippedOnboarding: false,
+  }));
+  await assertFails(db("newbie2").doc("users/newbie2").set({
+    ...base, favoriteQuote: "x".repeat(201),
+  }));
+  await assertFails(db("newbie3").doc("users/newbie3").set({
+    ...base, sectionPrivacy: { favorites: true },
+  }));
+  await assertFails(db("newbie4").doc("users/newbie4").set({
+    ...base, coverUrl: "javascript:alert(1)",
+  }));
+  // Server-owned fields are still rejected at create time.
+  await assertFails(db("newbie5").doc("users/newbie5").set({
+    ...base, totalRespect: 5,
+  }));
+});
+
 test("usernames registry is signed-in readable but never client-writable", async () => {
   await assertSucceeds(db("alice").doc("usernames/fan").get());
   await assertSucceeds(db("mallory").collection("usernames").get());

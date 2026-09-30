@@ -91,6 +91,9 @@ final class _FlakyRepository implements AnimeRepository {
   Never _missing() => throw UnimplementedError();
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) => _missing();
+
+  @override
   Future<Result<AnimePage>> searchAnime(
     String query, {
     int page = 1,

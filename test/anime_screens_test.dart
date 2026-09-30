@@ -9,6 +9,8 @@ import 'package:pubget/core/network/network_service.dart';
 import 'package:pubget/core/theme/app_theme.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/anime/models/anime_list_models.dart';
+import 'package:pubget/features/anime/providers/anime_library_provider.dart';
+import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/models/anime_rating_models.dart';
 import 'package:pubget/features/anime/providers/anime_character_provider.dart';
@@ -16,8 +18,11 @@ import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/anime/screens/anime_search_page.dart';
 import 'package:pubget/features/anime/widgets/anime_hub_widgets.dart';
+import 'package:pubget/features/anime/widgets/anime_ranked_cards.dart';
 import 'package:pubget/features/anime/repositories/anime_hub_social_repository.dart';
 import 'package:pubget/features/anime/screens/anime_browse_page.dart';
+import 'package:pubget/features/anime/screens/anime_popular_characters_page.dart';
+import 'package:pubget/features/anime/screens/anime_ratings_page.dart';
 import 'package:pubget/features/anime/screens/anime_character_page.dart';
 import 'package:pubget/features/anime/screens/anime_details_page.dart';
 import 'package:pubget/features/anime/screens/anime_hub_page.dart';
@@ -36,7 +41,162 @@ import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
 import 'social_test_support.dart';
 
+/// The scroller that actually holds the details tab content.
+///
+/// `find.byType(Scrollable).first` is the TabBarView's PageView, so scrolling
+/// it moves nothing; the tab body is the Scrollable inside the details list.
+Finder detailsTabScroller() => find
+    .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+    .first;
+
+/// Serves the character favourite write path so the app bar heart can be
+/// asserted without the whole library stack.
+final class _FakeCharacterFavoriteRepository implements AnimeLibraryRepository {
+  final List<String> favorites = <String>[];
+
+  @override
+  Future<Result<List<CharacterFavorite>>> getCharacterFavorites() async =>
+      const Success(<CharacterFavorite>[]);
+
+  @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({
+    String? userId,
+  }) async => const Success(<AnimeCustomList>[]);
+
+  @override
+  Future<Result<AnimeListPage>> getList({
+    AnimeListStatus? status,
+    String? cursor,
+    int limit = 50,
+  }) async => const Success(AnimeListPage());
+
+  @override
+  Future<Result<CharacterFavorite>> setCharacterFavorite({
+    required String characterId,
+    required bool favorite,
+    String name = '',
+    String? imageUrl,
+    int? rating,
+  }) async {
+    if (favorite) {
+      favorites.add(characterId);
+    } else {
+      favorites.remove(characterId);
+    }
+    return Success<CharacterFavorite>(
+      CharacterFavorite(
+        characterId: characterId,
+        name: name,
+        imageUrl: imageUrl,
+        rating: rating,
+      ),
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  testWidgets('character page favourites from the app bar and shows portraits', (
+    tester,
+  ) async {
+    final libraryRepository = _FakeCharacterFavoriteRepository();
+    final library = AnimeLibraryProvider(repository: libraryRepository)
+      ..bindUser('user-1');
+    addTearDown(library.dispose);
+    final character = AnimeCharacterProvider(
+      repository: FakeAnimeRepository(
+        characters: <AnimeCharacter>[
+          AnimeCharacter(
+            id: '2816',
+            name: 'Frieren',
+            imageUrl: 'https://example.test/frieren.jpg',
+            about:
+                'Birthday: January 15\n'
+                'Zodiac: Capricorn\n'
+                // A colon-free paragraph, so it lands in the narrative section
+                // and is long enough to need the show more toggle.
+                '${'She spent a thousand years watching her companions fall. ' * 6}',
+            voiceActors: <VoiceActor>[
+              VoiceActor(
+                id: 'v1',
+                name: 'Atsumi Tanezaki',
+                language: 'Japanese',
+                imageUrl: 'https://example.test/va.jpg',
+              ),
+            ],
+          ),
+        ],
+      ),
+      social: _FakeCharacterSocialRepository(),
+    );
+    addTearDown(character.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(),
+        character: character,
+        library: library,
+        child: const AnimeCharacterPage(characterId: '2816'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The heart lives in the app bar and is the only favourite affordance.
+    expect(find.byKey(const Key('favorite-character')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('favorite-character')));
+    await tester.pumpAndSettle();
+    expect(libraryRepository.favorites, contains('2816'));
+    expect(library.isCharacterFavorite('2816'), isTrue);
+
+    // The voice actor portrait is used when the provider has one.
+    expect(find.byType(AppImageLoader), findsWidgets);
+
+    // The biographical fact labels are translated, not raw English. The facts
+    // sit below the fold in the character list, so scroll them into view.
+    final characterScroller = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('anime-expandable-toggle')),
+      300,
+      scrollable: characterScroller,
+    );
+    expect(find.text('Zodiac'), findsWidgets);
+  });
+
+  testWidgets('both ranking pages share one ranked anime card', (tester) async {
+    for (final source in AnimeRankingSource.values) {
+      await tester.pumpWidget(
+        _harness(
+          repository: FakeAnimeRepository(),
+          social: AnimeHubSocialProvider(
+            repository: _FakeRankingSocialRepository(),
+          )..loadTopRated(),
+          child: AnimeRatingsPage(source: source),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Regression: each page hand-rolled its own row, so the two rankings
+      // disagreed on badge, score colour and caption.
+      expect(find.byType(AnimeRankedCard), findsWidgets, reason: '$source');
+    }
+  });
+
+  testWidgets('popular characters use the shared ranked character card', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(),
+        social: AnimeHubSocialProvider(
+          repository: _FakeRankingSocialRepository(),
+        )..loadPopularCharacters(),
+        child: const AnimePopularCharactersPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AnimeRankedCharacterCard), findsWidgets);
+  });
+
   testWidgets('hub shows loading then trending titles', (tester) async {
     final repository = FakeAnimeRepository()..gate = Completer<void>();
     await tester.pumpWidget(
@@ -193,7 +353,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('favorite-anime')));
     await tester.pump();
-    expect(find.text(AnimeStrings.favorited), findsWidgets);
+    // The heart is the only favourite affordance on the page, so its filled
+    // state and its tooltip are what carry the feedback.
+    final heart = tester.widget<IconButton>(
+      find.byKey(const Key('favorite-anime')),
+    );
+    expect(heart.tooltip, AnimeStrings.favorited);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('favorite-anime')),
+        matching: find.byIcon(Icons.favorite),
+      ),
+      findsOneWidget,
+    );
     await tester.pumpAndSettle();
     expect(profiles.lastUpdate?.favoriteAnimeIds, contains('52991'));
   });
@@ -333,7 +505,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
 
     expect(find.text(AnimeStrings.relatedTitle), findsWidgets);
@@ -343,7 +515,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedFanWorksTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
     expect(find.text(AnimeStrings.relatedFanWorksTitle), findsOneWidget);
     expect(find.text('My Fan Art'), findsWidgets);
@@ -351,7 +523,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.text(AnimeStrings.relatedGroupsTitle),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: detailsTabScroller(),
     );
     expect(find.text(AnimeStrings.relatedGroupsTitle), findsOneWidget);
     expect(find.text('Anime Club'), findsWidgets);
@@ -447,6 +619,19 @@ void main() {
 
     expect(find.text(AnimeStrings.scoreDistribution), findsOneWidget);
     expect(find.byType(AnimeVoteDistribution), findsOneWidget);
+    // The donut shares the selected score with the bars it sits above.
+    expect(find.byType(AnimeDonutChart), findsOneWidget);
+    final statsScroller = find
+        .descendant(
+          of: find.byKey(const Key('anime-stats-tab')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text(AnimeStrings.criteriaBreakdown),
+      300,
+      scrollable: statsScroller,
+    );
     expect(find.text(AnimeStrings.criteriaBreakdown), findsOneWidget);
   });
 }
@@ -577,6 +762,7 @@ Widget _harness({
   FanWorkRepository? fanWorks,
   AnimeCharacterProvider? character,
   AnimeHubSocialProvider? social,
+  AnimeLibraryProvider? library,
   HomeRepository? homeRepository,
 }) {
   final network = NetworkService(probe: () async => true);
@@ -617,6 +803,8 @@ Widget _harness({
         ChangeNotifierProvider<AnimeCharacterProvider>.value(value: character),
       if (social != null)
         ChangeNotifierProvider<AnimeHubSocialProvider>.value(value: social),
+      if (library != null)
+        ChangeNotifierProvider<AnimeLibraryProvider>.value(value: library),
       if (groups != null) Provider<GroupRepository>.value(value: groups),
       if (fanWorks != null) Provider<FanWorkRepository>.value(value: fanWorks),
       if (homeRepository != null)
@@ -741,6 +929,49 @@ final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
         enjoyment: 8,
       ),
       overall: 8,
+    ),
+  ]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Feeds both ranking pages: the community top-rated list and the popular
+/// characters list, so the shared ranked cards can be asserted on either one.
+final class _FakeRankingSocialRepository implements AnimeHubSocialRepository {
+  @override
+  Future<Result<List<AnimeCommunityStats>>> listTopRated({
+    int limit = 50,
+  }) async => Success(<AnimeCommunityStats>[
+    AnimeCommunityStats(
+      animeId: '52991',
+      title: 'Frieren',
+      averageScore: 9.1,
+      ratingCount: 42,
+      listedCount: 300,
+    ),
+    AnimeCommunityStats(
+      animeId: '51179',
+      title: 'Steins Gate',
+      averageScore: 8.4,
+      ratingCount: 12,
+      listedCount: 90,
+    ),
+  ]);
+
+  @override
+  Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
+    int limit = 40,
+  }) async => const Success(<CharacterCommunityStats>[
+    CharacterCommunityStats(
+      characterId: 'erwin',
+      name: 'Erwin Smith',
+      favoritesCount: 900,
+    ),
+    CharacterCommunityStats(
+      characterId: 'frieren',
+      name: 'Frieren',
+      favoritesCount: 800,
     ),
   ]);
 

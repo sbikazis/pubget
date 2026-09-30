@@ -188,6 +188,18 @@ void main() {
     expect(query['sort'], 'asc');
   });
 
+  test('latest sorts the catalog by descending start date', () async {
+    final result = await repository.getLatest();
+
+    expect(result.isSuccess, isTrue);
+    final query = http.calls.single.queryParameters;
+    // Regression: this used to go through searchAnime with an empty query.
+    expect(query.containsKey('q'), isFalse);
+    expect(query['order_by'], 'start_date');
+    expect(query['sort'], 'desc');
+    expect(query['sfw'], 'true');
+  });
+
   test('season-only search uses the seasons endpoint', () async {
     final result = await repository.searchAnime(
       '',
