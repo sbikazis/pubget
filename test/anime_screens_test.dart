@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/network/network_service.dart';
+
 import 'package:pubget/core/theme/app_theme.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
+import 'package:pubget/features/anime/l10n/anime_copy.dart';
 import 'package:pubget/features/anime/models/anime_list_models.dart';
 import 'package:pubget/features/anime/providers/anime_library_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
@@ -26,6 +29,7 @@ import 'package:pubget/features/anime/screens/anime_ratings_page.dart';
 import 'package:pubget/features/anime/screens/anime_character_page.dart';
 import 'package:pubget/features/anime/screens/anime_details_page.dart';
 import 'package:pubget/features/anime/screens/anime_hub_page.dart';
+import 'package:pubget/features/anime/widgets/anime_widgets.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
 import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
@@ -197,7 +201,9 @@ void main() {
     expect(find.byType(AnimeRankedCharacterCard), findsWidgets);
   });
 
-  testWidgets('hub shows loading then trending titles', (tester) async {
+  testWidgets('hub opens on latest updates and pages it newest first', (
+    tester,
+  ) async {
     final repository = FakeAnimeRepository()..gate = Completer<void>();
     await tester.pumpWidget(
       _harness(repository: repository, child: const AnimeHubPage()),
@@ -206,12 +212,113 @@ void main() {
     expect(find.byType(PubgetSkeleton), findsWidgets);
     repository.gate!.complete();
     await tester.pumpAndSettle();
+
+    // Latest Updates is the landing destination, not a curated strip.
+    expect(find.byKey(const Key('hub-latest-grid')), findsOneWidget);
+    expect(find.byKey(const Key('hub-this-season-grid')), findsNothing);
+    expect(repository.latestCalls, 1);
+    // Seasonal and popular stay reachable as their own destinations.
+    expect(repository.thisSeasonCalls, 0);
+    expect(repository.popularCalls, 0);
     expect(find.text('Frieren'), findsWidgets);
+    expect(find.text('This season', skipOffstage: false), findsWidgets);
+    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
     expect(find.text('Top rated'), findsNothing);
     expect(find.text('Trending'), findsNothing);
     expect(find.text('Upcoming'), findsNothing);
-    expect(find.text('This season', skipOffstage: false), findsWidgets);
-    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
+  });
+
+  testWidgets('hub destinations keep separate catalogs when switching tabs', (
+    tester,
+  ) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.latestCalls, 1);
+
+    await tester.tap(find.text('This season'));
+    await tester.pumpAndSettle();
+    expect(repository.thisSeasonCalls, 1);
+    expect(repository.latestCalls, 1);
+    expect(find.byKey(Key('hub-${AnimeHubDestination.thisSeason.name}-grid')),
+        findsOneWidget);
+
+    await tester.tap(find.text('Most popular'));
+    await tester.pumpAndSettle();
+    expect(repository.popularCalls, 1);
+    expect(repository.latestCalls, 1);
+
+    // Returning to a destination must not re-fetch it or lose its pages.
+    await tester.tap(find.text(AnimeStrings.latestUpdates));
+    await tester.pumpAndSettle();
+    expect(repository.latestCalls, 1);
+  });
+
+  testWidgets('hub latest updates appends the next page', (tester) async {    // A short surface guarantees the grid overflows, so scrolling really pages.
+    tester.view.physicalSize = const Size(360, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repository = FakeAnimeRepository(
+      page: AnimePage(
+        items: List<Anime>.generate(
+          6,
+          (index) => sampleAnime(id: 'a-$index', title: 'Title $index'),
+        ),
+        hasNextPage: true,
+      ),
+    );
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.latestPages, <int>[1]);
+
+    final landing = Provider.of<AnimeHubCatalogProvider>(
+      tester.element(find.byType(AnimeHubPage)),
+      listen: false,
+    ).catalog(AnimeHubDestination.latest);
+    expect(landing.items.length, 6);
+
+    await tester.drag(find.byType(AnimePaginatedList), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    // Newest-first ordering is preserved across the page boundary: the catalog
+    // query pages forward and the next page is appended, never substituted.
+    expect(repository.latestPages, containsAllInOrder(<int>[1, 2]));
+    expect(landing.items.length, 12);
+    expect(landing.items.first.id, 'a-0');
+    expect(landing.items[6].id, 'a-0-p2');
+    expect(landing.hasNextPage, isFalse);
+  });
+
+  testWidgets('arabic rtl hub lands on latest updates', (tester) async {
+    final repository = FakeAnimeRepository();
+    final arabic = AnimeCopy.forLocale(const Locale('ar'));
+    await tester.pumpWidget(
+      _harness(
+        repository: repository,
+        textDirection: TextDirection.rtl,
+        child: const AnimeHubPage(),
+        locale: const Locale('ar'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Landing tab renders the Arabic label, and the seasonal/popular discovery
+    // destinations stay reachable in Arabic too.
+    expect(
+      find.text(arabic.hubDestination(AnimeHubDestination.latest)),
+      findsWidgets,
+    );
+    expect(
+      find.text(arabic.catalog(AnimeCatalogKind.thisSeason)),
+      findsWidgets,
+    );
+    expect(find.text(arabic.catalog(AnimeCatalogKind.popular)), findsWidgets);
+    expect(repository.latestCalls, 1);
+    expect(find.text('Latest Updates'), findsNothing);
   });
 
   testWidgets('hub empty state', (tester) async {
@@ -764,9 +871,11 @@ Widget _harness({
   AnimeHubSocialProvider? social,
   AnimeLibraryProvider? library,
   HomeRepository? homeRepository,
+  Locale locale = const Locale('en'),
 }) {
   final network = NetworkService(probe: () async => true);
   final hub = AnimeHubProvider(repository: repository);
+  final hubCatalogs = AnimeHubCatalogProvider(repository: repository);
   final list = AnimeListProvider(
     repository: repository,
     debounce: Duration.zero,
@@ -792,6 +901,7 @@ Widget _harness({
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
+      ChangeNotifierProvider<AnimeHubCatalogProvider>.value(value: hubCatalogs),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
       ChangeNotifierProvider<AnimeDetailsProvider>.value(value: details),
       ChangeNotifierProvider<AnimeRecommendationProvider>.value(
@@ -812,6 +922,13 @@ Widget _harness({
     ],
     child: MaterialApp(
       theme: theme ?? AppTheme.light,
+      locale: locale,
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: const <LocalizationsDelegate<Object>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: Directionality(textDirection: textDirection, child: child),
     ),
   );

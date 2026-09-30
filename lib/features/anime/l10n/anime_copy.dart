@@ -360,6 +360,15 @@ final class AnimeCopy {
     AnimeCatalogKind.upcoming => _t.statusUpcoming,
   };
 
+  /// Tab labels for the hub's own destinations. Reuses the catalog copy for the
+  /// seasonal and popular tabs so a title is never spelled two ways.
+  String hubDestination(AnimeHubDestination destination) => switch (destination) {
+    AnimeHubDestination.latest => _t.latestUpdates,
+    AnimeHubDestination.thisSeason => catalog(AnimeCatalogKind.thisSeason),
+    AnimeHubDestination.popular => catalog(AnimeCatalogKind.popular),
+    AnimeHubDestination.community => _t.communityStats,
+  };
+
   String customListItemCount(int count) => _t.customListItemCount(count);
   String listedCount(int count) => _t.listedCount(count);
   String characterFavoritesCount(int count) =>

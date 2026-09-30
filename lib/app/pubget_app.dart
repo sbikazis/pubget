@@ -458,6 +458,12 @@ class PubgetApp extends StatelessWidget {
             debounce: const Duration(milliseconds: 400),
           ),
         ),
+        provider.ChangeNotifierProvider<AnimeHubCatalogProvider>(
+          create: (context) => AnimeHubCatalogProvider(
+            repository: context.read<AnimeRepository>(),
+            analytics: context.read<Analytics>(),
+          ),
+        ),
         provider.ChangeNotifierProvider<AnimeDetailsProvider>(
           create: (context) => AnimeDetailsProvider(
             repository: context.read<AnimeRepository>(),
