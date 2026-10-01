@@ -604,6 +604,13 @@ final class AppTranslationMapping {
   String get seasonsTitle => pick('Browse by season', 'تصفح حسب الموسم');
   String get charactersTitle => pick('Characters', 'الشخصيات');
   String get synopsisTitle => pick('Synopsis', 'القصة');
+
+  /// Labels for the other titles of an anime. The spec asks for the title in
+  /// Arabic, English, Japanese and alternatives, so each one is named rather
+  /// than printed as an anonymous second line.
+  String get titleArabicLabel => pick('Arabic title', 'العنوان بالعربية');
+  String get titleJapaneseLabel => pick('Japanese title', 'العنوان الياباني');
+  String get alsoKnownAs => pick('Also known as', 'يُعرف أيضاً بـ');
   String get detailsSection => pick('Details', 'التفاصيل');
   String get detailsMissing =>
       pick('This anime could not be found.', 'تعذّر العثور على هذا الأنمي.');

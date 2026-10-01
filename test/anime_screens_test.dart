@@ -446,6 +446,38 @@ void main() {
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
   });
 
+  testWidgets('details names every title it shows', (tester) async {
+    // The spec asks for the title in Arabic, English, Japanese and
+    // alternatives. An unlabelled second line cannot say which is which, so
+    // each is named.
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          details: sampleAnime(
+            titleArabic: 'فرييرين: ما بعد نهاية الرحلة',
+            titleJapanese: '葬送のフリーレン',
+          ),
+        ),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    expect(find.text('Frieren'), findsWidgets);
+    expect(find.text('فرييرين: ما بعد نهاية الرحلة'), findsOneWidget);
+    expect(find.text('葬送のフリーレン'), findsOneWidget);
+    expect(find.text(copy.titleArabicLabel), findsOneWidget);
+    expect(find.text(copy.titleJapaneseLabel), findsOneWidget);
+    // The synonyms sit further down the tab, below the fold.
+    await tester.dragUntilVisible(
+      find.text(copy.alsoKnownAs),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.text(copy.alsoKnownAs), findsOneWidget);
+  });
+
   testWidgets('favorite toggle highlights immediately and persists ids', (
     tester,
   ) async {

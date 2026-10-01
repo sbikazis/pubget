@@ -485,6 +485,7 @@ final class Anime {
     required this.id,
     required this.title,
     this.titleArabic,
+    this.titleJapanese,
     this.alternativeTitles = const <String>[],
     this.synopsis,
     this.type,
@@ -514,7 +515,15 @@ final class Anime {
 
   final String id;
   final String title;
+
+  /// The original-language titles, kept apart from [alternativeTitles] because
+  /// the anime page has to be able to name them: the spec asks for the title
+  /// in Arabic, English, Japanese and alternatives, and an unlabelled join of
+  /// the same strings cannot say which is which. Either is null when the
+  /// provider did not supply it.
   final String? titleArabic;
+  final String? titleJapanese;
+
   final List<String> alternativeTitles;
   final String? synopsis;
   final String? type;

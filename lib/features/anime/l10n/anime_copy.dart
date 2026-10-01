@@ -45,6 +45,9 @@ final class AnimeCopy {
   String get seasonsTitle => _t.seasonsTitle;
   String get charactersTitle => _t.charactersTitle;
   String get synopsisTitle => _t.synopsisTitle;
+  String get titleArabicLabel => _t.titleArabicLabel;
+  String get titleJapaneseLabel => _t.titleJapaneseLabel;
+  String get alsoKnownAs => _t.alsoKnownAs;
   String get detailsSection => _t.detailsSection;
   String get detailsMissing => _t.detailsMissing;
   String get emptyCatalog => _t.emptyCatalog;

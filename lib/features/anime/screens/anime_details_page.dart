@@ -309,6 +309,7 @@ class _InfoTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     return ListView(
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
@@ -337,9 +338,21 @@ class _InfoTab extends StatelessWidget {
               AppSpacing.lg,
               0,
             ),
-            child: Text(
-              anime.alternativeTitles.join(' · '),
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  // Named, so a member can tell a synonym from the Japanese
+                  // and Arabic titles the hero already labelled.
+                  copy.alsoKnownAs,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  anime.alternativeTitles.join(' · '),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
         if (anime.genres.isNotEmpty)
