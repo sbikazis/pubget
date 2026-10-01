@@ -182,6 +182,7 @@ void main() {
           value: _FakeCatalogRepository(
             animePages: <Object>[
               const FailureResult<GroupCatalogPage>(NetworkError()),
+              const FailureResult<GroupCatalogPage>(NetworkError()),
             ],
           ),
           child: const MaterialApp(home: GroupAnimePickerPage()),
@@ -190,6 +191,22 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      // Before a keystroke an unreachable catalog is one quiet line on the
+      // starter list: the outage is stated, but it does not replace the page
+      // and claim the feature is broken.
+      expect(find.byKey(const Key('group-anime-starter')), findsOneWidget);
+      expect(find.byKey(const Key('group-anime-offline')), findsNothing);
+      expect(find.byKey(const Key('group-anime-empty')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const Key('group-anime-search')),
+        'naruto',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      // A search the user ran reports the unreachable catalog properly, and
+      // still never claims it found nothing.
       expect(find.byKey(const Key('group-anime-offline')), findsOneWidget);
       expect(find.byKey(const Key('group-anime-empty')), findsNothing);
     });
@@ -207,7 +224,20 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      // An empty roster before anything was asked for is a starter list, not
+      // "no characters found": the work is bound, so only a name can answer.
+      expect(find.byKey(const Key('group-character-starter')), findsOneWidget);
+      expect(find.byKey(const Key('group-character-empty')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const Key('group-character-search')),
+        'nobody',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
       expect(find.byKey(const Key('group-character-empty')), findsOneWidget);
+      expect(find.byKey(const Key('group-character-starter')), findsNothing);
     });
   });
 }

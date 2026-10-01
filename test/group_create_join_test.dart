@@ -177,22 +177,87 @@ void main() {
     expect(find.byKey(const Key('group-anime-empty')), findsOneWidget);
   });
 
-  testWidgets('a catalog that cannot be reached says so instead of showing '
-      'an empty catalog', (tester) async {
+  testWidgets('a catalog that cannot be reached is a quiet line before typing, '
+      'and a real error on a real search', (tester) async {
+    final repository = _RecordingCatalogRepository(fail: true);
     await tester.pumpWidget(
       Provider<GroupCatalogRepository>.value(
-        value: _RecordingCatalogRepository(fail: true),
+        value: repository,
         child: const MaterialApp(home: GroupAnimePickerPage()),
       ),
     );
     await tester.pump();
     await tester.pump();
-    // A catalog that cannot be read is an error with a retry, not an empty
-    // catalog: the two mean very different things to a founder picking a work.
-    expect(find.byKey(const Key('group-anime-error')), findsOneWidget);
+    // Before a keystroke the page invites a search instead of reporting a dead
+    // catalog: the outage is still stated, with a retry, but it no longer
+    // replaces the whole page with an error that reads as a broken feature.
+    expect(find.byKey(const Key('group-anime-starter')), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-error')), findsNothing);
     expect(find.byKey(const Key('group-anime-empty')), findsNothing);
     expect(find.text(const UnavailableError().message), findsOneWidget);
+    expect(find.byKey(const Key('catalog-starter-retry')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('group-anime-search')), 'nar');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    // A search the user actually ran reports the failure properly.
+    expect(find.byKey(const Key('group-anime-error')), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-starter')), findsNothing);
     expect(find.byKey(const Key('group-anime-empty')), findsNothing);
+  });
+
+  testWidgets('the picker opens on a starter list, and one tap runs a real '
+      'search', (tester) async {
+    final repository = _RecordingCatalogRepository(
+      emptyBrowse: true,
+      searchResult: const <CatalogAnime>[_frieren],
+    );
+    await tester.pumpWidget(
+      Provider<GroupCatalogRepository>.value(
+        value: repository,
+        child: const MaterialApp(home: GroupAnimePickerPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    // A browse with nothing in it is not "no anime found": nothing was asked
+    // for yet, so the page offers to start.
+    expect(find.byKey(const Key('group-anime-starter')), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-empty')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('catalog-starter-seed-One Piece')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    // The shortcut is the same search the field runs, and it lands on results.
+    expect(repository.queries.last, 'One Piece');
+    expect(find.text("Frieren: Beyond Journey's End"), findsOneWidget);
+    expect(find.byKey(const Key('group-anime-starter')), findsNothing);
+  });
+
+  testWidgets('an open roleplay character picker opens on a starter list, not '
+      'on "this group is not bound to an anime"', (tester) async {
+    await tester.pumpWidget(
+      Provider<GroupCatalogRepository>.value(
+        value: _RecordingCatalogRepository(),
+        child: const MaterialApp(home: GroupCharacterPickerPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('group-character-starter')), findsOneWidget);
+    expect(find.byKey(const Key('group-character-empty')), findsNothing);
+    // The scope sentence explains a roster; with no roster yet it read as a
+    // fault, so the hint asks for the name instead.
+    expect(
+      find.text(
+        AppStrings.english.pick(
+          'Type a name to search the whole catalog.',
+          'اكتب اسماً للبحث في الكتالوج كاملاً.',
+        ),
+      ),
+      findsNWidgets(2),
+    );
+    expect(find.textContaining('not bound to one anime'), findsNothing);
   });
 
   testWidgets('reserved character stays locked without revealing the owner', (
@@ -369,12 +434,30 @@ final class _EntitledGroupRepository extends _JourneyGroupRepository
       Success(GroupEntitlements(maxMembers: maxMembers));
 }
 
+const _frieren = CatalogAnime(
+  id: 'jikan:52991',
+  title: "Frieren: Beyond Journey's End",
+  year: 2023,
+  type: 'TV',
+);
+
 final class _RecordingCatalogRepository implements GroupCatalogRepository {
-  _RecordingCatalogRepository({this.fail = false});
+  _RecordingCatalogRepository({
+    this.fail = false,
+    this.emptyBrowse = false,
+    this.searchResult = const <CatalogAnime>[],
+  });
 
   /// Makes the catalog unreachable, so the picker has to say so rather than
   /// pretend a working catalog found nothing.
   final bool fail;
+
+  /// Makes the opening browse answer with nothing while searches still work.
+  final bool emptyBrowse;
+
+  /// What a non-blank query answers with. Empty by default, so a search that
+  /// should miss really does miss.
+  final List<CatalogAnime> searchResult;
 
   final List<String> queries = <String>[];
 
@@ -385,16 +468,11 @@ final class _RecordingCatalogRepository implements GroupCatalogRepository {
   }) async {
     queries.add(request.query);
     if (fail) return const FailureResult(UnavailableError());
-    final items = request.query.isEmpty
-        ? const <CatalogAnime>[
-            CatalogAnime(
-              id: 'jikan:52991',
-              title: "Frieren: Beyond Journey's End",
-              year: 2023,
-              type: 'TV',
-            ),
-          ]
-        : const <CatalogAnime>[];
+    final items = request.query.isNotEmpty
+        ? searchResult
+        : emptyBrowse
+        ? const <CatalogAnime>[]
+        : const <CatalogAnime>[_frieren];
     return Success(
       GroupCatalogPage(items: items, page: page, hasNextPage: false),
     );
