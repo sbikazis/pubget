@@ -108,7 +108,7 @@ final class AppTranslationMapping {
             'cancelled': 'ملغى',
             'paused': 'متوقف مؤقتاً',
             'plan to watch': 'أرغب بمشاهدتها',
-            'watching': 'أشهدها حالياً',
+            'watching': 'أشاهدها حالياً',
             'completed': 'تم مشاهدتها',
             'plan to watch later': 'أكملها لاحقاً',
             'dropped': 'لا أرغب بمشاهدتها',

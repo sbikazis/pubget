@@ -740,27 +740,27 @@ class _StatusBars extends StatelessWidget {
     final rows = <(AnimeListStatus, String, Color)>[
       (
         AnimeListStatus.wantToWatch,
-        copy.status(AnimeListStatus.wantToWatch.label),
+        copy.listStatusLabel(AnimeListStatus.wantToWatch),
         hub.royalPurple,
       ),
       (
         AnimeListStatus.watching,
-        copy.status(AnimeListStatus.watching.label),
+        copy.listStatusLabel(AnimeListStatus.watching),
         hub.royalPurple.withValues(alpha: 0.8),
       ),
       (
         AnimeListStatus.completed,
-        copy.status(AnimeListStatus.completed.label),
+        copy.listStatusLabel(AnimeListStatus.completed),
         hub.royalPurple.withValues(alpha: 0.6),
       ),
       (
         AnimeListStatus.watchLater,
-        copy.status(AnimeListStatus.watchLater.label),
+        copy.listStatusLabel(AnimeListStatus.watchLater),
         hub.royalPurple.withValues(alpha: 0.4),
       ),
       (
         AnimeListStatus.notInterested,
-        copy.status(AnimeListStatus.notInterested.label),
+        copy.listStatusLabel(AnimeListStatus.notInterested),
         hub.royalPurple.withValues(alpha: 0.25),
       ),
     ];
