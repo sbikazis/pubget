@@ -21,6 +21,9 @@ Ratings and list entries existed before these fields did, so documents written
 by the previous deploy carry counts with no distribution. Until they are
 rebuilt, the client renders an **unavailable** state for that title — it never
 reconstructs a distribution from the handful of reviews it happened to load.
+Writes landing in that window do not change that: a live rating or list change
+updates the counts it can prove and leaves the aggregate absent (rule 7), so no
+member can turn "unavailable" into a chart covering one action.
 
 ## Why a backfill is needed at all
 
@@ -49,6 +52,13 @@ only honest source is the per-member list entry itself.
 6. **Clients cannot write any of it.** `firestore.rules` denies every write to
    `anime_stats`; see the "a client cannot forge the score distribution" case in
    `test/firestore.rules.test.js`.
+7. **A live write never completes an aggregate it did not build.** An aggregate
+   field is only maintained on a document that already publishes it, so a rating
+   or list change landing between the deploy and the backfill cannot leave a
+   chart that describes just that one member's action. The field stays absent,
+   the client keeps reading it as unavailable, and the backfill publishes the
+   true totals from the source rows. A document the transaction itself creates
+   is the exception: nothing predates it, so its aggregates are already complete.
 
 ## Procedure
 
@@ -56,7 +66,8 @@ only honest source is the per-member list entry itself.
 
 Deploy the functions that read the new fields. They read defensively, so a
 title whose document has no distribution renders unavailable rather than
-erroring. This is why deploying before migrating is the safe order.
+erroring, and a write landing in this window does not invent one (rule 7).
+This is why deploying before migrating is the safe order.
 
 ```bash
 cd functions && npm run deploy
@@ -76,11 +87,13 @@ Read the summary line:
 DRY RUN (pass --apply to write) written=… alreadyCorrect=… skippedNoStatsDoc=…
 ```
 
-- `written` — documents whose recomputed values differ. Each one is a title
-  that would show a wrong or missing chart today.
+- `written` — documents whose recomputed values differ or that do not publish the
+  aggregates yet. Each one is a title that would show a wrong or missing chart
+  today.
 - `skippedNoStatsDoc` — titles with source rows but no `anime_stats` document
   at all. These are **not** created: there is no wrong number on screen to fix,
-  and the next real write seeds the aggregates correctly.
+  and the next real write seeds the aggregates correctly, because nothing
+  predates a document the transaction creates.
 
 ### 2. Apply
 

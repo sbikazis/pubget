@@ -659,8 +659,9 @@ test("repeating a delete never drives the status counts below zero", async () =>
   assert.equal(stats.listedCount, 0);
 });
 
-test("a pre-migration list document is seeded, not skipped", async () => {
+test("a pre-migration list document is not given a partial breakdown", async () => {
   const { lists, db } = domain();
+  // The shape an older deploy left behind: a count, but no per-status totals.
   db.store.set("anime_stats/16498", { animeId: "16498", listedCount: 3 });
   await lists.setAnimeListEntry({
     auth: { uid: "alice" },
@@ -668,6 +669,36 @@ test("a pre-migration list document is seeded, not skipped", async () => {
   });
   const stats = db.store.get("anime_stats/16498");
   assert.equal(stats.listedCount, 4);
+  // A breakdown of one watching out of four listed would be a lie: three older
+  // entries are not in it. Leave it absent so the chart reads as unavailable.
+  assert.equal("statusCounts" in stats, false);
+});
+
+test("a pre-migration list document keeps its absent breakdown on removal", async () => {
+  const { lists, db } = domain();
+  db.store.set("anime_stats/16498", { animeId: "16498", listedCount: 3 });
+  db.store.set("users/alice/anime_lists/16498", {
+    animeId: "16498",
+    userId: "alice",
+    status: "watching",
+  });
+  await lists.removeAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 2);
+  assert.equal("statusCounts" in stats, false);
+});
+
+test("a new list document publishes a complete breakdown at once", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 1);
   assert.equal(stats.statusCounts.watching, 1);
 });
 

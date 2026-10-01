@@ -27,6 +27,7 @@ function normalizeStatus(status) {
 
 const {
   readStatusCounts,
+  hasStatusCounts,
   applyStatusDelta,
   canonicalStatus,
   LIST_STATUSES,
@@ -124,17 +125,25 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       // status is canonicalised first, so an entry still carrying a legacy
       // spelling leaves the bucket it was actually counted in.
       let statusCounts = readStatusCounts(statsData);
+      // A pre-migration document has `listedCount` but no breakdown. Writing
+      // one here would count only this entry and leave the older ones out,
+      // and the client would then show a bar chart of a fraction of the
+      // community. The field stays absent — so the chart keeps reading as
+      // unavailable — until the backfill publishes the true totals. A
+      // document this transaction creates is complete by construction.
+      const maintainStatusCounts = hasStatusCounts(statsData) || !statsSnap.exists;
       if (!existing.exists) {
         payload.createdAt = FieldValue.serverTimestamp();
         tx.create(ref, payload);
         statusCounts = applyStatusDelta(statusCounts, status, 1);
-        tx.set(stats, {
+        const createPayload = {
           animeId,
           title,
           listedCount: (Number(statsData.listedCount) || 0) + 1,
-          statusCounts,
           updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        if (maintainStatusCounts) createPayload.statusCounts = statusCounts;
+        tx.set(stats, createPayload, { merge: true });
         return;
       }
       if (existing.data()?.userId && existing.data().userId !== userId) {
@@ -144,7 +153,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       if (previousStatus) statusCounts = applyStatusDelta(statusCounts, previousStatus, -1);
       statusCounts = applyStatusDelta(statusCounts, status, 1);
       tx.update(ref, payload);
-      if (statsSnap.exists) {
+      if (statsSnap.exists && maintainStatusCounts) {
         tx.set(stats, {
           animeId,
           statusCounts,
@@ -183,12 +192,15 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
           previousStatus,
           -1,
         );
-        tx.set(stats, {
+        const removePayload = {
           animeId,
           listedCount: Math.max(0, (Number(statsData.listedCount) || 0) - 1),
-          statusCounts,
           updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        // Only move a breakdown this document already publishes, so a
+        // pre-migration document is not given a one-entry chart by a delete.
+        if (hasStatusCounts(statsData)) removePayload.statusCounts = statusCounts;
+        tx.set(stats, removePayload, { merge: true });
       }
     });
     return { ok: true };

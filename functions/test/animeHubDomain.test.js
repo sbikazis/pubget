@@ -412,7 +412,7 @@ test("repeating a delete never drives the distribution below zero", async () => 
   }
 });
 
-test("a pre-migration stats document is seeded, not skipped", async () => {
+test("a pre-migration stats document is not given a partial distribution", async () => {
   const { hub, db } = domain();
   // Exactly the shape an older deploy left behind: counts, but no distribution.
   db.store.set("anime_stats/16498", {
@@ -427,7 +427,50 @@ test("a pre-migration stats document is seeded, not skipped", async () => {
     data: { animeId: "16498", criteria: fullCriteria },
   });
   const stats = db.store.get("anime_stats/16498");
-  assert.equal(stats.scoreDistribution["9"], 1, "the new rating must be counted");
+  // The mean moved, because the count is trustworthy...
+  assert.equal(stats.ratingCount, 2);
+  assert.equal(stats.scoreDistribution, undefined, "an absent aggregate must stay absent");
+  // ...but the distribution would now describe one of the two ratings, so the
+  // client must keep reading the chart as unavailable until the backfill runs.
+  assert.equal("scoreDistribution" in stats, false);
+});
+
+test("a pre-migration stats document keeps its absent distribution on delete", async () => {
+  const { hub, db } = domain();
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    scoreSum: 8.5,
+    ratingCount: 1,
+    averageScore: 8.5,
+  });
+  db.store.set("users/alice/anime_ratings/16498", {
+    animeId: "16498",
+    userId: "alice",
+    overall: 8.5,
+    criteria: fullCriteria,
+  });
+  await hub.deleteAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 0);
+  assert.equal("scoreDistribution" in stats, false);
+});
+
+test("a new stats document publishes a complete distribution at once", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  // Nothing predates this document, so every aggregate in it is already the
+  // truth and the chart can be shown immediately.
+  assert.equal(stats.scoreDistribution["9"], 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, stats.ratingCount);
 });
 
 test("a zero overall is rated but never plotted", async () => {

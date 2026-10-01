@@ -78,6 +78,18 @@ function nonNegative(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/** True when a document already publishes a distribution the server maintains. */
+function hasScoreDistribution(data) {
+  const stored = data && data.scoreDistribution;
+  return Boolean(stored) && typeof stored === "object";
+}
+
+/** True when a document already publishes status counts the server maintains. */
+function hasStatusCounts(data) {
+  const stored = data && data.statusCounts;
+  return Boolean(stored) && typeof stored === "object";
+}
+
 /** Reads a stored distribution, tolerating a missing or partial document. */
 function readScoreDistribution(data) {
   const stored = data && data.scoreDistribution;
@@ -192,6 +204,12 @@ function aggregateMatches(current, aggregate) {
   if (nonNegative(data.ratingCount) !== aggregate.ratingCount) return false;
   if (round1(nonNegative(data.scoreSum)) !== round1(aggregate.scoreSum)) return false;
   if (nonNegative(data.listedCount) !== aggregate.listedCount) return false;
+  // Presence is part of the match, not just the numbers. A document with no
+  // distribution field yet is exactly the pre-migration case this script
+  // exists to repair, so reading it as all-zero must not convince the script
+  // there is nothing to publish — otherwise a title whose only ratings are
+  // unplottable would stay permanently "unavailable" in the client.
+  if (!hasScoreDistribution(data) || !hasStatusCounts(data)) return false;
   const storedDistribution = readScoreDistribution(data);
   for (const bucket of SCORE_BUCKETS) {
     if (storedDistribution[bucket] !== aggregate.scoreDistribution[bucket]) return false;
@@ -225,6 +243,8 @@ module.exports = {
   scoreBucket,
   emptyScoreDistribution,
   emptyStatusCounts,
+  hasScoreDistribution,
+  hasStatusCounts,
   readScoreDistribution,
   readStatusCounts,
   applyScoreDelta,

@@ -9,6 +9,8 @@ const {
   scoreBucket,
   emptyScoreDistribution,
   emptyStatusCounts,
+  hasScoreDistribution,
+  hasStatusCounts,
   readScoreDistribution,
   readStatusCounts,
   applyScoreDelta,
@@ -199,11 +201,52 @@ test("a pre-migration document whose legacy key already matches is not rewritten
   const aggregate = emptyAggregate();
   addListEntryRow(aggregate, { status: "on_hold" });
   // The stored key is the legacy spelling, but it normalises to the same
-  // canonical bucket the recompute produced.
+  // canonical bucket the recompute produced, so it must not count as drift.
+  const stored = aggregateFields(aggregate, "NOW");
+  stored.statusCounts = { on_hold: 1 };
+  assert.equal(aggregateMatches(stored, aggregate), true);
+  const canonical = aggregateFields(aggregate, "NOW");
+  canonical.statusCounts = { watch_later: 1 };
+  assert.equal(aggregateMatches(canonical, aggregate), true);
+  // A document that predates the migration has neither field, whatever its
+  // counts say, and is written once to publish them.
   assert.equal(
     aggregateMatches({ listedCount: 1, statusCounts: { on_hold: 1 } }, aggregate),
-    true,
+    false,
   );
+});
+
+test("presence is tracked separately from the numbers", () => {
+  // A missing aggregate and an all-zero one read as the same numbers, so only
+  // an explicit presence check can keep them apart. That distinction is the
+  // whole point: the client shows "not counted yet" for a missing aggregate,
+  // and a real all-zero aggregate is a different fact with a different UI.
+  assert.equal(hasScoreDistribution(undefined), false);
+  assert.equal(hasScoreDistribution({}), false);
+  assert.equal(hasScoreDistribution({ scoreDistribution: null }), false);
+  assert.equal(hasScoreDistribution({ scoreDistribution: "nope" }), false);
+  assert.equal(hasScoreDistribution({ scoreDistribution: emptyScoreDistribution() }), true);
+  assert.equal(hasStatusCounts({}), false);
+  assert.equal(hasStatusCounts({ statusCounts: emptyStatusCounts() }), true);
+});
+
+test("a document whose only ratings are unplottable is still migrated", () => {
+  // Zero scores raise the rating count but land in no bucket. If the script
+  // compared the (absent) numbers against an all-zero recompute it would call
+  // the document converged and never publish, leaving the chart permanently
+  // unavailable for that title.
+  const aggregate = emptyAggregate();
+  addRatingRow(aggregate, { overall: 0 });
+  assert.equal(aggregate.ratingCount, 1);
+  assert.equal(distributionTotal(aggregate.scoreDistribution), 0);
+  assert.equal(
+    aggregateMatches({ ratingCount: 1, scoreSum: 0, averageScore: 0 }, aggregate),
+    false,
+    "the absent distribution must be published even though it is all zero",
+  );
+  const migrated = aggregateFields(aggregate, "NOW");
+  assert.equal(hasScoreDistribution(migrated), true);
+  assert.equal(aggregateMatches(migrated, aggregate), true, "and it converges once written");
 });
 
 test("the recompute never produces a plot count above the rating count", () => {
@@ -216,8 +259,9 @@ test("a doc that only ever collected list entries is not rewritten every run", (
   const aggregate = emptyAggregate();
   addListEntryRow(aggregate, { status: "watching" });
   // No scoreSum / ratingCount at all: absence means zero here, not "unknown".
-  assert.equal(
-    aggregateMatches({ listedCount: 1, statusCounts: { watching: 1 } }, aggregate),
-    true,
-  );
+  // The one write that publishes the aggregates is what makes every later run
+  // a no-op, so this must hold for the canonical document the script writes.
+  const stored = aggregateFields(aggregate, "NOW");
+  assert.equal(aggregateMatches(stored, aggregate), true);
+  assert.equal(aggregateMatches(stored, aggregate), true);
 });
