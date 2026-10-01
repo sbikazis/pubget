@@ -692,6 +692,19 @@ final class AppTranslationMapping {
   String get scoreDistribution => pick('Score distribution', 'توزيع التقييمات');
   String get criteriaBreakdown =>
       pick('What members rated', 'ما الذي يقيّمه الأعضاء');
+  String get listBreakdown =>
+      pick('How members track it', 'كيف يتابع الأعضاء هذا العمل');
+  /// Shown when the server has not published an aggregate yet. The chart must
+  /// say so rather than drawing a partial one built from the reviews this
+  /// client happened to load.
+  String get statisticsUnavailable => pick(
+    'Community statistics are not available yet.',
+    'إحصاءات المجتمع غير متاحة بعد.',
+  );
+  String get statisticsUnavailableMessage => pick(
+    'Ratings and list states are still being counted. Check back shortly.',
+    'لا يزال تجميع التقييمات وحالات القائمة جارياً. عد بعد قليل.',
+  );
   String get inMyList => pick('In my list', 'في قائمتي');
   String get criteriaStory => pick('Story', 'القصة');
   String get criteriaArt => pick('Art', 'الرسم');

@@ -120,6 +120,9 @@ final class AnimeCopy {
   String get tabRelated => _t.tabRelated;
   String get scoreDistribution => _t.scoreDistribution;
   String get criteriaBreakdown => _t.criteriaBreakdown;
+  String get listBreakdown => _t.listBreakdown;
+  String get statisticsUnavailable => _t.statisticsUnavailable;
+  String get statisticsUnavailableMessage => _t.statisticsUnavailableMessage;
   String get criteriaStory => _t.criteriaStory;
   String get criteriaArt => _t.criteriaArt;
   String get criteriaCharacters => _t.criteriaCharacters;

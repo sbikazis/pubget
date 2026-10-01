@@ -119,6 +119,23 @@ void main() {
     expect(find.text('A'), findsNothing);
   });
 
+  test('the statistics unavailable state is explained in both locales', () {
+    // The tab must be able to say "not counted yet" rather than drawing a
+    // partial chart, so the explanation itself cannot be an English leftover.
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+    for (final copy in <AnimeCopy>[ar, en]) {
+      expect(copy.statisticsUnavailable, isNotEmpty);
+      expect(copy.statisticsUnavailableMessage, isNotEmpty);
+      expect(copy.listBreakdown, isNotEmpty);
+    }
+    expect(
+      ar.statisticsUnavailable,
+      isNot(equals(en.statisticsUnavailable)),
+    );
+    expect(ar.listBreakdown, isNot(equals(en.listBreakdown)));
+  });
+
   test('hub destination tabs are localized in both directions', () {
     final ar = AnimeCopy.forLocale(const Locale('ar'));
     final en = AnimeCopy.forLocale(const Locale('en'));

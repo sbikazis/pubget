@@ -741,6 +741,129 @@ void main() {
     );
     expect(find.text(AnimeStrings.criteriaBreakdown), findsOneWidget);
   });
+
+  testWidgets('statistics tab charts the server distribution, not the loaded reviews', (tester) async {
+    final social = AnimeHubSocialProvider(repository: _FakeStatsSocialRepository());
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    final bars = tester.widget<AnimeVoteDistribution>(
+      find.byType(AnimeVoteDistribution),
+    );
+    // The server said 4/3/1 across 8/9/10. The fake returns two reviews that
+    // would imply 1 and 1, so any value here proves the chart came from the
+    // aggregate rather than from the page of reviews.
+    expect(bars.counts, const <int>[0, 0, 0, 0, 0, 0, 0, 4, 3, 1]);
+  });
+
+  testWidgets('statistics tab shows the five-state breakdown from the server', (tester) async {
+    final social = AnimeHubSocialProvider(repository: _FakeStatsSocialRepository());
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    final statsScroller = find
+        .descendant(
+          of: find.byKey(const Key('anime-stats-tab')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('anime-stats-status-bars')),
+      300,
+      scrollable: statsScroller,
+    );
+    expect(find.byKey(const Key('anime-stats-status-bars')), findsOneWidget);
+    for (final status in AnimeListStatus.tabs) {
+      expect(
+        find.byKey(Key('anime-status-bar-${status.wireValue}')),
+        findsOneWidget,
+        reason: '${status.wireValue} has no row',
+      );
+    }
+    expect(find.text('50'), findsOneWidget);
+  });
+
+  testWidgets('statistics tab says so when the server has published no aggregates', (tester) async {
+    // The pre-migration shape: counts exist, the distribution does not. The tab
+    // must not fall back to counting the two reviews it loaded.
+    final social = AnimeHubSocialProvider(
+      repository: _FakeStatsSocialRepository(aggregates: false),
+    );
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('anime-stats-unavailable')), findsOneWidget);
+    expect(find.byType(AnimeVoteDistribution), findsNothing);
+    expect(find.byType(AnimeDonutChart), findsNothing);
+    expect(find.byKey(const Key('anime-stats-status-bars')), findsNothing);
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    expect(find.text(copy.statisticsUnavailable), findsOneWidget);
+  });
+
+  testWidgets(
+    'statistics tab distinguishes an all-zero aggregate from an absent one',
+    (tester) async {
+      // A migrated title nobody has given a plottable score keeps real counts
+      // and a real, empty distribution. That is different from a title the
+      // migration has not reached, and the tab must not collapse the two: one
+      // shows the chart, the other explains itself.
+      final social = AnimeHubSocialProvider(
+        repository: _FakeStatsSocialRepository(unplottableOnly: true),
+      );
+      addTearDown(social.dispose);
+      await tester.pumpWidget(
+        _harness(
+          repository: FakeAnimeRepository(details: sampleAnime()),
+          social: social,
+          child: const AnimeDetailsPage(animeId: '52991'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AnimeStrings.tabStatistics));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('anime-stats-unavailable')), findsNothing);
+      expect(find.byType(AnimeVoteDistribution), findsOneWidget);
+      // The breakdown is still published, so it is still shown further down.
+      await tester.dragUntilVisible(
+        find.byKey(const Key('anime-stats-status-bars')),
+        find.byType(ListView).last,
+        const Offset(0, -120),
+      );
+      expect(find.byKey(const Key('anime-stats-status-bars')), findsOneWidget);
+      expect(
+        find.byKey(const Key('anime-status-bar-watching')),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 final class _FakeCharacterSocialRepository implements AnimeHubSocialRepository {
@@ -1001,14 +1124,51 @@ final class _FakeHomeRepository implements HomeRepository {
 /// Social data shaped for the statistics tab: two rated reviews so the
 /// histogram and the criteria bars have something real to draw.
 final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
+  _FakeStatsSocialRepository({this.aggregates = true, this.unplottableOnly = false});
+
+  /// When false the server has published counts but no aggregates, which is
+  /// exactly what a title written before the migration looks like.
+  final bool aggregates;
+
+  /// A migrated title whose ratings all scored zero: every count is real, but
+  /// no score rounds into 1-10, so the distribution is legitimately all zero.
+  final bool unplottableOnly;
+
   @override
   Future<Result<AnimeCommunityStats?>> getAnimeStats(String animeId) async =>
       Success(
         AnimeCommunityStats(
           animeId: animeId,
           averageScore: 8.4,
-          ratingCount: 2,
+          ratingCount: 8,
           listedCount: 120,
+          // Deliberately not derivable from the two reviews this fake returns:
+          // a client that inferred would show 8:1, 9:1 instead.
+          scoreDistribution: aggregates
+              ? (unplottableOnly
+                    ? const AnimeScoreDistribution.empty()
+                    : const AnimeScoreDistribution(<int>[
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        4,
+                        3,
+                        1,
+                      ]))
+              : null,
+          statusCounts: aggregates
+              ? const AnimeListStatusCounts(<AnimeListStatus, int>{
+                  AnimeListStatus.wantToWatch: 50,
+                  AnimeListStatus.watching: 30,
+                  AnimeListStatus.completed: 25,
+                  AnimeListStatus.watchLater: 10,
+                  AnimeListStatus.notInterested: 5,
+                })
+              : null,
         ),
       );
 
