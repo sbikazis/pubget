@@ -388,6 +388,19 @@ test("a browse falls back to the other provider instead of returning nothing", a
   assert.equal(items[0].id, "anilist:100");
 });
 
+test("a browse whose both providers are down is empty, not an internal error", async () => {
+  // An uncaught AniList failure used to reject the whole browse, and the
+  // picker answered a failed default list with an `internal` error screen.
+  const catalog = createAnimeCatalogDomain({
+    fetchJson: async () => {
+      throw new Error("upstream unreachable");
+    },
+  });
+
+  const items = await catalog.browseAnime({ kind: "popular", page: 1, limit: 25 });
+  assert.deepEqual(items, []);
+});
+
 test("a character of an AniList title is a real character, not an empty cast", async () => {
   const catalog = createAnimeCatalogDomain({
     fetchJson: async (url, init) => {

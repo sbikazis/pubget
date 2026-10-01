@@ -8,6 +8,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/media/image_dimensions.dart';
 import '../../../core/network/network_service.dart';
 import '../../groups/models/chat_models.dart';
+import '../../groups/services/chat_pending_mutations.dart';
 import '../../groups/services/chat_send_reliability.dart';
 import '../../groups/services/pending_chat_outbox.dart';
 import '../repositories/private_chat_repository.dart';
@@ -47,6 +48,8 @@ final class PrivateChatProvider extends ChangeNotifier
   final Set<String> _autoRetryInFlight = <String>{};
   final Set<String> _pendingDeliveredIds = <String>{};
   final Set<String> _pendingReadIds = <String>{};
+  /// Reaction toggles and deletes applied on the device and not yet answered.
+  final ChatPendingMutations _pending = ChatPendingMutations();
   StreamSubscription<Result<List<ChatMessage>>>? _subscription;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
@@ -93,6 +96,13 @@ final class PrivateChatProvider extends ChangeNotifier
 
   void clearReplyTarget() => setReplyTarget(null);
 
+  ChatMessage? messageById(String? id) {
+    if (id == null) return null;
+    final index = _messageIndex[id];
+    if (index == null) return null;
+    return _messages[index];
+  }
+
   Future<void> open({
     required String chatId,
     required String currentUserId,
@@ -104,6 +114,7 @@ final class PrivateChatProvider extends ChangeNotifier
     await _subscription?.cancel();
     if (_disposed || _sessionGeneration != generation) return;
     _cancelAllAutoRetries();
+    _pending.clear();
     _pendingDeliveredIds.clear();
     _pendingReadIds.clear();
     _receiptInFlight = false;
@@ -149,6 +160,7 @@ final class PrivateChatProvider extends ChangeNotifier
     if (_disposed || generation != _sessionGeneration) return;
     _subscription = null;
     _cancelAllAutoRetries();
+    _pending.clear();
     _pendingDeliveredIds.clear();
     _pendingReadIds.clear();
     _receiptInFlight = false;
@@ -540,14 +552,94 @@ final class PrivateChatProvider extends ChangeNotifier
     final chatId = _chatId;
     final generation = _sessionGeneration;
     if (chatId == null) return const FailureResult(UnknownError());
+    // The bubble goes on the confirmation tap, not on the server's answer: the
+    // round trip is the whole delay the user was feeling. The server keeps a
+    // tombstone rather than removing the document, so the watch stream confirms
+    // the same state idempotently instead of bringing the message back.
+    final before = messageById(messageId);
+    final stamp = DateTime.now();
+    final tombstoned = before != null && !before.isDeleted
+        ? _applyDeleted(messageId, stamp)
+        : null;
     final result = await _repository.deleteMessage(
       chatId: chatId,
       messageId: messageId,
     );
-    if (result.isSuccess && _isCurrent(chatId, generation)) {
-      _removeOrMarkDeleted(messageId);
+    if (result.isSuccess || !_isCurrent(chatId, generation)) return result;
+    _pending.confirmDelete(messageId);
+    // Put the message back the way the server last described it, unless the
+    // stream has already answered with something newer than this attempt.
+    if (tombstoned != null) {
+      final current = messageById(messageId);
+      if (current != null && current.deletedAt == stamp) {
+        _replaceMessage(messageId, before!);
+      }
     }
     return result;
+  }
+
+  Future<Result<void>> addReaction(String messageId, String reaction) async {
+    final chatId = _chatId;
+    final uid = _currentUserId;
+    final generation = _sessionGeneration;
+    if (chatId == null || uid == null || uid.isEmpty) {
+      return const FailureResult(UnknownError());
+    }
+    // The server toggles, so the direction comes from the last answer it gave
+    // in `reactionUsers`. A second tap while the first is on the wire is
+    // dropped rather than toggled twice into the opposite state.
+    if (_pending.reactionInFlight(messageId, reaction)) {
+      return const Success(null);
+    }
+    final before = messageById(messageId);
+    if (before == null || before.isDeleted) {
+      return const FailureResult(UnknownError());
+    }
+    final optimistic = before.withReactionToggled(reaction, uid);
+    _pending.expectReaction(messageId, reaction, optimistic);
+    _replaceMessage(messageId, optimistic);
+    final result = await _repository.addReaction(
+      chatId: chatId,
+      messageId: messageId,
+      reaction: reaction,
+    );
+    if (result.isSuccess || !_isCurrent(chatId, generation)) return result;
+    _pending.confirmReaction(messageId, reaction);
+    // The call failed, so the emoji goes back to what the server last said —
+    // unless the stream has already described this message since, in which case
+    // that answer is newer than this attempt and stays.
+    final current = messageById(messageId);
+    if (current != null &&
+        current.reactions[reaction] == optimistic.reactions[reaction] &&
+        current.hasReacted(reaction, uid) ==
+            optimistic.hasReacted(reaction, uid)) {
+      _replaceMessage(messageId, before);
+    }
+    return result;
+  }
+
+  /// Writes a local answer over a message the server has already described.
+  void _replaceMessage(String messageId, ChatMessage message) {
+    final index = _messageIndex[messageId];
+    if (index == null) return;
+    _messages[index] = message;
+    _contentRevision++;
+    notifyListeners();
+  }
+
+  /// Applies the tombstone a confirmed delete shows immediately.
+  ChatMessage? _applyDeleted(String messageId, DateTime stamp) {
+    final index = _messageIndex[messageId];
+    if (index == null) return null;
+    final tombstoned = _messages[index].copyWith(
+      sendState: ChatSendState.sent,
+      deletedAt: stamp,
+    );
+    _messages[index] = tombstoned;
+    _pending.expectDelete(messageId, stamp);
+    _contentRevision++;
+    notifyListeners();
+    return tombstoned;
   }
 
   Future<Result<ChatMessage>> editMessage(String messageId, String text) async {
@@ -581,21 +673,6 @@ final class PrivateChatProvider extends ChangeNotifier
         clearPinnedAt: !pinned,
       );
     }
-    return result;
-  }
-
-  Future<Result<void>> addReaction(String messageId, String reaction) {
-    final chatId = _chatId;
-    if (chatId == null) {
-      return Future.value(const FailureResult(UnknownError()));
-    }
-    final result = _repository.addReaction(
-      chatId: chatId,
-      messageId: messageId,
-      reaction: reaction,
-    );
-    // The server is the source of truth; the watch stream delivers the new
-    // counts, so there is nothing to guess locally.
     return result;
   }
 
@@ -723,7 +800,10 @@ final class PrivateChatProvider extends ChangeNotifier
                 sendState: ChatSendState.sent,
               )
             : message.copyWith(sendState: ChatSendState.sent);
-        _replaceOrdered(index, reconciled);
+        // A reaction or a delete this device has already shown stays on top
+        // until the server's own copy catches up, so a snapshot that predates
+        // the commit cannot make the emoji or the deleted bubble blink back.
+        _replaceOrdered(index, _pending.overlay(message.id, reconciled));
         continue;
       }
       if (local.sendState != ChatSendState.failed) {
@@ -979,17 +1059,6 @@ final class PrivateChatProvider extends ChangeNotifier
     _autoRetryTimers.clear();
     _autoRetryAttempt.clear();
     _autoRetryInFlight.clear();
-  }
-
-  void _removeOrMarkDeleted(String messageId) {
-    final index = _messageIndex[messageId];
-    if (index != null) {
-      _messages[index] = _messages[index].copyWith(
-        sendState: ChatSendState.sent,
-        deletedAt: DateTime.now(),
-      );
-      notifyListeners();
-    }
   }
 
   String _newId() =>

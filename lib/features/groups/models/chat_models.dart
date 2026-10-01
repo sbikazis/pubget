@@ -110,6 +110,7 @@ final class ChatMessage {
     this.senderTitle,
     this.disappearing = false,
     this.cardMeta,
+    this.reactionUsers = const <String, Set<String>>{},
   });
 
   factory ChatMessage.optimistic({
@@ -212,6 +213,7 @@ final class ChatMessage {
       deletedAt: _date(map['deletedAt']),
       pinnedAt: _date(map['pinnedAt']),
       reactions: reactions,
+      reactionUsers: _reactionUsers(map['reactionUsers']),
       recipientCount: (map['recipientCount'] as num?)?.toInt() ?? 0,
       deliveredCount: (map['deliveredCount'] as num?)?.toInt() ?? 0,
       readCount: (map['readCount'] as num?)?.toInt() ?? 0,
@@ -254,6 +256,11 @@ final class ChatMessage {
   final DateTime? deletedAt;
   final DateTime? pinnedAt;
   final Map<String, int> reactions;
+
+  /// Who reacted, per emoji. The server is the source of truth for this and
+  /// reconciles it on the watch stream; the client only reads it to know which
+  /// way a toggle goes before the round trip lands.
+  final Map<String, Set<String>> reactionUsers;
   final int recipientCount;
   final int deliveredCount;
   final int readCount;
@@ -268,6 +275,40 @@ final class ChatMessage {
   final Map<String, dynamic>? cardMeta;
 
   bool get isDeleted => deletedAt != null;
+
+  /// Whether [uid] already reacted with [emoji], as the last server answer said.
+  bool hasReacted(String emoji, String uid) =>
+      reactionUsers[emoji]?.contains(uid) ?? false;
+
+  /// This message with [uid]'s [emoji] reaction toggled, the way the server's
+  /// read-modify-write would leave it.
+  ///
+  /// The server toggles, so the direction has to be known before the call goes
+  /// out — applying the wrong one would visibly flip the pill twice. Documents
+  /// written before `reactionUsers` existed carry counts with no owners; those
+  /// are read as "not mine yet", which is right for a first reaction and heals
+  /// from the stream either way.
+  ChatMessage withReactionToggled(String emoji, String uid) {
+    final users = reactionUsers[emoji];
+    final removing = users?.contains(uid) ?? false;
+    final nextCounts = Map<String, int>.from(reactions);
+    final nextUsers = <String, Set<String>>{...reactionUsers};
+    if (removing) {
+      final remaining = Set<String>.from(users!)..remove(uid);
+      final count = (nextCounts[emoji] ?? 1) - 1;
+      if (remaining.isEmpty || count <= 0) {
+        nextUsers.remove(emoji);
+        nextCounts.remove(emoji);
+      } else {
+        nextUsers[emoji] = remaining;
+        nextCounts[emoji] = count;
+      }
+    } else {
+      nextUsers[emoji] = <String>{...?users, uid};
+      nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
+    }
+    return copyWith(reactions: nextCounts, reactionUsers: nextUsers);
+  }
   bool get isMemberJoinedCard =>
       type == ChatMessageType.system &&
       (systemKind == 'member_joined' ||
@@ -327,6 +368,7 @@ final class ChatMessage {
     DateTime? pinnedAt,
     bool clearPinnedAt = false,
     Map<String, int>? reactions,
+    Map<String, Set<String>>? reactionUsers,
   }) {
     return ChatMessage(
       id: id,
@@ -352,6 +394,7 @@ final class ChatMessage {
       deletedAt: deletedAt ?? this.deletedAt,
       pinnedAt: clearPinnedAt ? null : (pinnedAt ?? this.pinnedAt),
       reactions: reactions ?? this.reactions,
+      reactionUsers: reactionUsers ?? this.reactionUsers,
       recipientCount: recipientCount,
       deliveredCount: deliveredCount,
       readCount: readCount,
@@ -480,6 +523,23 @@ Map<String, String>? _stringMap(dynamic value) {
     }
   }
   return out.isEmpty ? null : out;
+}
+
+/// `reactionUsers` as the server writes it: emoji -> { uid: true }. Read so the
+/// client knows whether *this* account already reacted, which is what makes the
+/// server's toggle predictable enough to apply on the device first.
+Map<String, Set<String>> _reactionUsers(dynamic value) {
+  if (value is! Map) return const <String, Set<String>>{};
+  final out = <String, Set<String>>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || entry.value is! Map) continue;
+    final uids = <String>{
+      for (final uid in (entry.value as Map).keys)
+        if (uid is String) uid,
+    };
+    if (uids.isNotEmpty) out[entry.key as String] = uids;
+  }
+  return out.isEmpty ? const <String, Set<String>>{} : out;
 }
 
 DateTime? _date(dynamic value) {
