@@ -1266,6 +1266,29 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("fanWorks/fw-public").update({
     ratingsAverage: 10,
   }));
+
+  // Reading progress is written by callables, never by a client, and a reader
+  // may read back only their own. Seed it through the Admin SDK, exactly as
+  // `saveFanWorkReadingProgress` would.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/bob").set({
+      page: 7, pageCount: 20, progress: 0.35, completed: false,
+    });
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/alice").set({
+      page: 2, pageCount: 20, progress: 0.1, completed: false,
+    });
+  });
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/readingProgress/bob").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/alice").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").set({
+    page: 40, completed: true,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").update({
+    page: 999,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").delete());
+  // Not even the work's own creator may read somebody else's progress.
+  await assertFails(db("alice").doc("fanWorks/fw-public/readingProgress/bob").get());
 });
 
 test("custom anime lists are readable per privacy and never client-writable", async () => {

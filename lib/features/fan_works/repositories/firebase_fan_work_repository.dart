@@ -1,29 +1,28 @@
-import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
-import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
+import '../services/fan_work_upload_client.dart';
 import 'fan_work_repository.dart';
 
 final class FirebaseFanWorkRepository
     implements FanWorkRepository, CharacterFanWorkRepository {
+  // No storage SDK dependency on purpose: every byte in and out of a Fan Work
+  // goes through a signed upload session or a short-lived read grant, so there
+  // is no client-side path that could mint a permanent `downloadToken`.
   FirebaseFanWorkRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
-  UploadTask? _activeUpload;
+  FanWorkUploadClient? _activeUploadClient;
 
   CollectionReference<Map<String, dynamic>> get _works =>
       _firestore.collection('fanWorks');
@@ -66,16 +65,31 @@ final class FirebaseFanWorkRepository
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
   }) => _guard(() async {
     final result = await _functions
         .httpsCallable('startFanWorkMediaUpload')
-        .call(<String, dynamic>{'workId': workId, 'contentType': contentType});
+        .call(<String, dynamic>{
+          'workId': workId,
+          'role': role.name,
+          'contentType': contentType,
+        });
+    final data = result.data;
     return FanWorkUploadTicket(
-      workId: result.data['workId'] as String,
-      mediaId: result.data['mediaId'] as String,
-      path: result.data['path'] as String,
-      contentType: result.data['contentType'] as String? ?? contentType,
+      workId: data['workId'] as String,
+      mediaId: data['mediaId'] as String,
+      path: data['path'] as String,
+      contentType: data['contentType'] as String? ?? contentType,
+      role: FanWorkMediaRole.values.firstWhere(
+        (value) => value.name == data['role'],
+        orElse: () => role,
+      ),
+      uploadUrl: data['uploadUrl'] as String? ?? '',
+      maxBytes: (data['maxBytes'] as num?)?.toInt() ?? 0,
+      expiresAt:
+          _millis(data['expiresAt']) ??
+          DateTime.now().toUtc().add(const Duration(minutes: 15)),
     );
   });
 
@@ -86,39 +100,51 @@ final class FirebaseFanWorkRepository
     required String contentType,
     FanWorkUploadProgress? onProgress,
   }) => _guard(() async {
-    final task = _storage
-        .ref(ticket.path)
-        .putData(
-          Uint8List.fromList(bytes),
-          SettableMetadata(
-            contentType: contentType,
-            customMetadata: <String, String>{
-              'uploadedBy': ticket.path.split('/')[1],
-            },
-          ),
-        );
-    final subscription = task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
-    });
-    _activeUpload = task;
+    // The server already refused an oversized or wrong-role payload when it
+    // minted the ticket; re-checking here keeps a stale ticket from silently
+    // uploading more than the rules would allow.
+    final limit = ticket.maxBytes > 0
+        ? ticket.maxBytes
+        : FanWorkLifecycle.maxImageBytes;
+    if (bytes.length > limit) {
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: ticket.role == FanWorkMediaRole.document
+            ? 'PDF files must be 50 MB or smaller.'
+            : 'Images must be 12 MB or smaller.',
+      );
+    }
+    // The bytes go through the signed resumable session the server opened, not
+    // through the storage SDK. That is the point of the session: it cannot mint
+    // a permanent `downloadToken`, so the object stays private and readable
+    // only via a short-lived signed grant. A `putData` call would write the
+    // object without ever using the ticket the server validated.
+    _activeUploadClient?.cancel();
+    final client = FanWorkUploadClient();
+    _activeUploadClient = client;
     try {
-      await task;
-      onProgress?.call(1);
+      final result = await client.upload(
+        sessionUrl: ticket.uploadUrl,
+        bytes: bytes,
+        contentType: contentType,
+        onProgress: onProgress,
+      );
+      final failure = result.failureOrNull;
+      if (failure != null) throw failure;
+      return;
     } finally {
-      await subscription.cancel();
-      if (identical(_activeUpload, task)) {
-        _activeUpload = null;
+      client.close();
+      if (identical(_activeUploadClient, client)) {
+        _activeUploadClient = null;
       }
     }
   });
 
   @override
   Future<Result<void>> cancelMediaUpload() => _guard(() async {
-    final task = _activeUpload;
-    if (task == null) return;
-    await task.cancel();
+    // Cancelling stops the chunk loop from starting another request. The
+    // session stays resumable, so the editor can retry the same ticket.
+    _activeUploadClient?.cancel();
   });
 
   @override
@@ -128,13 +154,64 @@ final class FirebaseFanWorkRepository
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) => _call('confirmFanWorkMedia', {
     'workId': workId,
     'mediaId': mediaId,
     'path': path,
     'role': role.name,
     'caption': caption,
+    if (characterId.isNotEmpty) 'characterId': characterId,
+    if (pageCount != null && pageCount > 0) 'pageCount': pageCount,
   });
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getFanWorkDocumentAccess')
+        .call(<String, dynamic>{'workId': workId});
+    final data = result.data;
+    final expiresAt =
+        _millis(data['expiresAt']) ??
+        DateTime.now().toUtc().add(const Duration(minutes: 3));
+    final pageCount = (data['pageCount'] as num?)?.toInt();
+    return FanWorkDocumentAccess(
+      url: data['url'] as String,
+      expiresAt: expiresAt,
+      pageCount: pageCount != null && pageCount > 0 ? pageCount : null,
+    );
+  });
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _works
+        .doc(workId)
+        .collection('readingProgress')
+        .doc(userId)
+        .get();
+    return FanWorkReadingProgress.fromMap(snapshot.data());
+  });
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) => _call('saveFanWorkReadingProgress', {
+    'workId': workId,
+    'page': progress.page,
+    'pageCount': progress.pageCount,
+    'progress': progress.progress,
+  });
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) =>
+      _call('markFanWorkAsRead', {'workId': workId});
 
   @override
   Future<Result<void>> like({required String workId, required bool like}) =>
@@ -506,7 +583,23 @@ final class FirebaseFanWorkRepository
   }
 }
 
+/// Callable timestamps travel as epoch milliseconds; older documents and local
+/// drafts may use a string, so both are accepted here.
+DateTime? _millis(Object? value) {
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+  if (value is String) {
+    final asInt = int.tryParse(value);
+    if (asInt != null) return DateTime.fromMillisecondsSinceEpoch(asInt);
+    return DateTime.tryParse(value);
+  }
+  return null;
+}
+
 Failure _fanWorkFailure(Object error) {
+  // A `Failure` raised further down (for example by the resumable upload
+  // client, which already classifies HTTP status codes) carries a better
+  // message than anything reconstructed here, so it is passed through as-is.
+  if (error is Failure) return error;
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
       'canceled' || 'cancelled' => const CancelledError('Upload canceled.'),

@@ -24,6 +24,20 @@ service firebase.storage {
       return isImage() && request.resource.size <= maxBytes;
     }
 
+    // A Fan Work PDF. The ceiling is 50 MB and the type must be exactly
+    // application/pdf, because a mislabelled payload here would be served
+    // straight into the in-app reader. Reads never come through this rule: a
+    // signed V4 read URL is minted by `fanWorksStorage.js` instead, so this
+    // match only ever authorizes a write by the owning creator.
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function fanWorkUpload() {
+      return imageUpload(12 * 1024 * 1024) ||
+          (isPdf() && request.resource.size <= 50 * 1024 * 1024);
+    }
+
     // Chat paths historically use a .jpg suffix even for audio and video.
     // The suffix is therefore not used as a security signal; the declared MIME
     // type and a media-type-specific size ceiling are enforced instead.
@@ -346,14 +360,21 @@ service firebase.storage {
     }
 
     match /fan_works/{userId}/{workId}/{fileName} {
+      // Images stay directly readable so a viewer can render them with the
+      // SDK. A `.pdf` is deliberately NOT readable here: the in-app reader is
+      // handed a short-lived V4 signed URL by `getFanWorkDocumentAccess`, and a
+      // signed URL is authorized by Cloud Storage rather than by these rules,
+      // so removing the rule-based path leaves the reader working while
+      // removing the "any signed-in user can fetch the whole PDF" path.
       allow read: if signedIn() &&
+          !fileName.matches('.*[.][pP][dD][fF]$') &&
           (request.auth.uid == userId || fanWorkPublic(workId));
       allow create: if signedIn() &&
           request.auth.uid == userId &&
           firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
           fanWorkDocument(workId).data.creatorId == request.auth.uid &&
           fanWorkDocument(workId).data.status == 'draft' &&
-          imageUpload(10 * 1024 * 1024) &&
+          fanWorkUpload() &&
           request.resource.metadata.uploadedBy == request.auth.uid;
       // Resumable putData needs UPDATE after CREATE. Still owner-only, still
       // draft-only, and `uploadedBy` may not be reassigned to another uid.
@@ -362,7 +383,7 @@ service firebase.storage {
           firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
           fanWorkDocument(workId).data.creatorId == request.auth.uid &&
           fanWorkDocument(workId).data.status == 'draft' &&
-          imageUpload(10 * 1024 * 1024) &&
+          fanWorkUpload() &&
           isExistingUploader() && isNewUploader();
       allow delete: if signedIn() && request.auth.uid == userId &&
           firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&

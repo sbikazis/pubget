@@ -46,6 +46,7 @@ const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
+const { createFanWorksSigner } = require("./src/fanWorksStorage");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
@@ -188,12 +189,20 @@ const mafiaDomain = createMafiaDomain({
   HttpsError,
   notificationBuilder,
 });
+// The signer is what turns "a client may upload here" into a short-lived,
+// scoped capability. It is created once and injected into the domain so the
+// callables never touch the bucket directly.
+const fanWorksSigner = createFanWorksSigner({
+  bucket: getStorage().bucket(),
+  HttpsError,
+});
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
   storage: getStorage().bucket(),
+  signer: fanWorksSigner,
   economy: economyDomain,
   achievements: achievementsDomain,
 });
@@ -684,6 +693,18 @@ exports.startFanWorkMediaUpload = onCall(
 exports.confirmFanWorkMedia = onCall(
   { region: "us-central1" },
   fanWorksDomain.confirmFanWorkMedia,
+);
+exports.getFanWorkDocumentAccess = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.getFanWorkDocumentAccess,
+);
+exports.saveFanWorkReadingProgress = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.saveFanWorkReadingProgress,
+);
+exports.markFanWorkAsRead = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.markFanWorkAsRead,
 );
 exports.likeFanWork = onCall(
   { region: "us-central1" },

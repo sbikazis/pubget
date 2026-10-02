@@ -125,6 +125,7 @@ import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
 import '../features/fan_works/repositories/shared_preferences_fan_work_draft_store.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
+import '../features/fan_works/screens/fan_work_reader_page.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
 import '../features/fan_works/screens/profile_fan_works_page.dart';
 import '../features/economy/providers/economy_provider.dart';
@@ -601,6 +602,13 @@ class PubgetApp extends StatelessWidget {
             draftStore: SharedPreferencesFanWorkDraftStore(),
           ),
         ),
+        // Registered once at app scope rather than per reader page so that
+        // reading progress survives navigating into and out of the reader.
+        provider.ChangeNotifierProvider<FanWorkReaderProvider>(
+          create: (context) => FanWorkReaderProvider(
+            repository: context.read<FanWorkRepository>(),
+          ),
+        ),
         provider.ChangeNotifierProxyProvider<AuthProvider, EconomyProvider>(
           create: (context) => EconomyProvider(
             repository: context.read<EconomyRepository>(),
@@ -757,10 +765,11 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
+      // No storage SDK: Fan Work bytes move through a signed upload session or
+      // a short-lived read grant, never through the client storage API.
       FirebaseFanWorkRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseEconomyRepository(
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
@@ -1093,8 +1102,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/fan-work': (parameters) {
           final workId = parameters['workId'] ?? '';
           final view = parameters['view'];
-          if (view == 'manga') return MangaViewerPage(workId: workId);
-          if (view == 'story') return StoryReaderPage(workId: workId);
+          if (view == 'manga') return FanWorkReaderPage(workId: workId);
+          if (view == 'story') return FanWorkReaderPage(workId: workId);
           return FanWorkDetailsPage(workId: workId);
         },
         '/fan-works/create': (parameters) =>

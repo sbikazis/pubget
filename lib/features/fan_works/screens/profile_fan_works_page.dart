@@ -210,7 +210,9 @@ class _FanWorkAnalyticsDashboard extends StatelessWidget {
           );
         }
         if (provider.state == LoadingState.offline) {
-          return PubgetOfflineState(onRetry: () => provider.load(provider.creatorId ?? ''));
+          return PubgetOfflineState(
+            onRetry: () => provider.load(provider.creatorId ?? ''),
+          );
         }
         final analytics = provider.analytics;
         if (analytics == null) {
@@ -250,21 +252,57 @@ class _StatsGrid extends StatelessWidget {
       crossAxisSpacing: AppSpacing.md,
       childAspectRatio: 1.5,
       children: [
-        _StatCard(label: copy.totalWorks, value: '${analytics.totalWorks}', icon: Icons.auto_awesome),
-        _StatCard(label: copy.publishedLabel, value: '${analytics.publishedWorks}', icon: Icons.publish),
-        _StatCard(label: copy.draftsLabel, value: '${analytics.draftWorks}', icon: Icons.drafts),
-        _StatCard(label: copy.totalLikes, value: '${analytics.totalLikes}', icon: Icons.favorite),
-        _StatCard(label: copy.totalSaves, value: '${analytics.totalBookmarks}', icon: Icons.bookmark),
-        _StatCard(label: copy.totalComments, value: '${analytics.totalComments}', icon: Icons.comment),
-        _StatCard(label: copy.avgRating, value: analytics.averageRating.toStringAsFixed(1), icon: Icons.star),
-        _StatCard(label: copy.totalRatings, value: '${analytics.totalRatings}', icon: Icons.star_border),
+        _StatCard(
+          label: copy.totalWorks,
+          value: '${analytics.totalWorks}',
+          icon: Icons.auto_awesome,
+        ),
+        _StatCard(
+          label: copy.publishedLabel,
+          value: '${analytics.publishedWorks}',
+          icon: Icons.publish,
+        ),
+        _StatCard(
+          label: copy.draftsLabel,
+          value: '${analytics.draftWorks}',
+          icon: Icons.drafts,
+        ),
+        _StatCard(
+          label: copy.totalLikes,
+          value: '${analytics.totalLikes}',
+          icon: Icons.favorite,
+        ),
+        _StatCard(
+          label: copy.totalSaves,
+          value: '${analytics.totalBookmarks}',
+          icon: Icons.bookmark,
+        ),
+        _StatCard(
+          label: copy.totalComments,
+          value: '${analytics.totalComments}',
+          icon: Icons.comment,
+        ),
+        _StatCard(
+          label: copy.avgRating,
+          value: analytics.averageRating.toStringAsFixed(1),
+          icon: Icons.star,
+        ),
+        _StatCard(
+          label: copy.totalRatings,
+          value: '${analytics.totalRatings}',
+          icon: Icons.star_border,
+        ),
       ],
     );
   }
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.icon});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
 
   final String label;
   final String value;
@@ -295,39 +333,43 @@ class _WorksByTypeChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final copy = FanWorkCopy.of(context);
-    final rows = analytics.worksByType.entries.map((entry) {
-      final total = analytics.totalWorks;
-      final percentage = total > 0 ? entry.value / total : 0.0;
-      final type = FanWorkType.values
-          .where((t) => t.name == entry.key)
-          .firstOrNull;
-      final label = type == null ? entry.key : copy.typeLabel(type);
-      final caption =
-          '${entry.value} (${(percentage * 100).toStringAsFixed(0)}%)';
-      return Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final rows = analytics.worksByType.entries
+        .map((entry) {
+          final total = analytics.totalWorks;
+          final percentage = total > 0 ? entry.value / total : 0.0;
+          final type = FanWorkType.values
+              .where((t) => t.name == entry.key)
+              .firstOrNull;
+          final label = type == null ? entry.key : copy.typeLabel(type);
+          final caption =
+              '${entry.value} (${(percentage * 100).toStringAsFixed(0)}%)';
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: theme.textTheme.bodyMedium),
-                Text(caption, style: theme.textTheme.bodySmall),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(label, style: theme.textTheme.bodyMedium),
+                    Text(caption, style: theme.textTheme.bodySmall),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: percentage,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    theme.colorScheme.primary,
+                  ),
+                  minHeight: 6,
+                  borderRadius: BorderRadius.circular(3),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: percentage,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ],
-        ),
-      );
-    }).toList(growable: false);
+          );
+        })
+        .toList(growable: false);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,19 +399,30 @@ class _TopWorksSection extends StatelessWidget {
         children: [
           Text(copy.topWorks, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
-          ...analytics.topWorks.map((work) => ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: work.coverPath.isNotEmpty
-                ? SizedBox(
-                    width: 48,
-                    height: 64,
-                    child: AppImageLoader(imageUrl: work.coverPath, fit: BoxFit.cover),
-                  )
-                : const Icon(Icons.auto_awesome_outlined, size: 40),
-            title: Text(work.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${copy.typeLabel(work.type)} · ${work.creatorName}'),
-            onTap: () => FanWorkLinks.open(context, work.id),
-          )),
+          ...analytics.topWorks.map(
+            (work) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: work.coverPath.isNotEmpty
+                  ? SizedBox(
+                      width: 48,
+                      height: 64,
+                      child: AppImageLoader(
+                        imageUrl: work.coverPath,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  : const Icon(Icons.auto_awesome_outlined, size: 40),
+              title: Text(
+                work.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${copy.typeLabel(work.type)} · ${work.creatorName}',
+              ),
+              onTap: () => FanWorkLinks.open(context, work.id),
+            ),
+          ),
         ],
       ),
     );

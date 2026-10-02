@@ -5,6 +5,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/fan_work_copy.dart';
 import '../models/fan_work_models.dart';
 import 'fan_work_widgets.dart';
 
@@ -17,7 +18,7 @@ class HomeFanWorkCard extends StatelessWidget {
     FanWorkType.manga => const Color(0xFF3B82F6),
     FanWorkType.drawing => const Color(0xFFE37AA8),
     FanWorkType.story => AppColors.royalPurpleLight,
-    FanWorkType.character || FanWorkType.aiCharacter => const Color(0xFF3FAE6A),
+    FanWorkType.character => const Color(0xFF3FAE6A),
     FanWorkType.worldbuilding => AppColors.gold,
     FanWorkType.other => const Color(0xFF8E95A8),
   };
@@ -26,7 +27,7 @@ class HomeFanWorkCard extends StatelessWidget {
     FanWorkType.manga => Icons.menu_book_outlined,
     FanWorkType.drawing => Icons.brush_outlined,
     FanWorkType.story => Icons.edit_note_outlined,
-    FanWorkType.character || FanWorkType.aiCharacter => Icons.theater_comedy_outlined,
+    FanWorkType.character => Icons.theater_comedy_outlined,
     FanWorkType.worldbuilding => Icons.public_outlined,
     FanWorkType.other => Icons.more_horiz,
   };
@@ -34,10 +35,11 @@ class HomeFanWorkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    final fanWorkCopy = FanWorkCopy.of(context);
     final theme = Theme.of(context);
-    final characterName = work.content.name.trim().isNotEmpty
-        ? work.content.name
-        : work.title;
+    // A character work is named after the character, and `title` already holds
+    // that name for this type (see `FanWork.title`), so no separate lookup.
+    final characterName = work.title;
     return SizedBox(
       width: 148,
       child: Material(
@@ -84,21 +86,19 @@ class HomeFanWorkCard extends StatelessWidget {
                             label: copy.pagesCount(work.content.pages.length),
                           ),
                         ),
+                      // A new story is a PDF, so reading time cannot be
+                      // estimated from prose length. Show the real page count
+                      // when the creator's upload recorded one, and fall back
+                      // to the legacy estimate only for an old body-backed row.
                       if (work.type == FanWorkType.story)
                         PositionedDirectional(
                           bottom: 8,
                           end: 8,
                           child: _MiniChip(
-                            label: copy.readMinutes(
-                              ((work.content.body.length / 900).ceil()).clamp(
-                                1,
-                                40,
-                              ),
-                            ),
+                            label: _storyLengthLabel(work, fanWorkCopy),
                           ),
                         ),
-                      if (work.type == FanWorkType.character ||
-                          work.type == FanWorkType.aiCharacter)
+                      if (work.type == FanWorkType.character)
                         Positioned(
                           left: 0,
                           right: 0,
@@ -159,11 +159,10 @@ class HomeFanWorkCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleSmall,
               ),
-              if (work.type == FanWorkType.worldbuilding)
+              if (work.content.hasCast)
                 Text(
-                  copy.worldDepth(
-                    work.content.characters.length,
-                    work.content.locations.length,
+                  fanWorkCopy.charactersCount(
+                    work.content.orderedCharacters.length,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -171,7 +170,11 @@ class HomeFanWorkCard extends StatelessWidget {
                 ),
               Row(
                 children: <Widget>[
-                  const Icon(Icons.favorite, size: 13, color: Color(0xFFFF8A9B)),
+                  const Icon(
+                    Icons.favorite,
+                    size: 13,
+                    color: Color(0xFFFF8A9B),
+                  ),
                   const SizedBox(width: 4),
                   Text('${work.likesCount}', style: theme.textTheme.labelSmall),
                 ],
@@ -180,6 +183,16 @@ class HomeFanWorkCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// The page count the creator's upload recorded, or — for a story published
+  /// before the rebuild — the old reading-time estimate.
+  static String _storyLengthLabel(FanWork work, FanWorkCopy fanWorkCopy) {
+    final pages = work.content.document?.pageCount;
+    if (pages != null && pages > 0) return fanWorkCopy.pagesCount(pages);
+    return fanWorkCopy.readMinutes(
+      ((work.content.body.length / 900).ceil()).clamp(1, 40),
     );
   }
 }
@@ -199,9 +212,13 @@ class HomeFanWorksSeeAllCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.lg),
-            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.42),
+            color: Theme.of(
+              context,
+            ).colorScheme.surface.withValues(alpha: 0.42),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.25),
+              color: Theme.of(
+                context,
+              ).colorScheme.outline.withValues(alpha: 0.25),
             ),
           ),
           child: Column(
@@ -227,7 +244,11 @@ class _Cover extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = work.cover?.path ?? '';
     if (path.isNotEmpty) {
-      return AppImageLoader(imageUrl: path, fit: BoxFit.cover, memCacheWidth: 420);
+      return AppImageLoader(
+        imageUrl: path,
+        fit: BoxFit.cover,
+        memCacheWidth: 420,
+      );
     }
     if (work.type == FanWorkType.story) {
       return DecoratedBox(
@@ -284,7 +305,11 @@ class _AiBadge extends StatelessWidget {
       ),
       child: const Text(
         '✦ AI',
-        style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
