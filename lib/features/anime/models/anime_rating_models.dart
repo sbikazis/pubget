@@ -1,3 +1,5 @@
+import 'package:pubget/features/anime/models/anime_list_models.dart';
+
 enum AnimeRatingCriterion {
   story,
   art,
@@ -134,6 +136,51 @@ final class AnimeCriteriaScores {
   }
 }
 
+/// A 1–10 score distribution owned by the server.
+///
+/// [counts] is index 0 for score 1 through index 9 for score 10. This is only
+/// ever built from the aggregate the server publishes — see
+/// [AnimeCommunityStats.scoreDistribution] — because a chart assembled from
+/// the reviews one client happened to load would silently under-report every
+/// member it did not fetch.
+final class AnimeScoreDistribution {
+  /// [counts] must hold exactly [scoreBucketCount] entries: index 0 is score 1
+  /// through index 9 is score 10.
+  const AnimeScoreDistribution(this.counts);
+
+  /// Empty: every bucket zero. A title nobody has rated is not an error.
+  const AnimeScoreDistribution.empty()
+    : counts = const <int>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  static const int scoreBucketCount = 10;
+
+  final List<int> counts;
+
+  int get total => counts.fold<int>(0, (sum, value) => sum + value);
+  bool get isEmpty => total == 0;
+  int countFor(int score) {
+    if (score < 1 || score > scoreBucketCount) return 0;
+    return counts[score - 1];
+  }
+}
+
+/// The five-state list breakdown owned by the server.
+final class AnimeListStatusCounts {
+  const AnimeListStatusCounts(this.counts);
+
+  const AnimeListStatusCounts.empty()
+    : counts = const <AnimeListStatus, int>{};
+
+  /// Keyed by the current wire value, not an enum ordinal, so a stored
+  /// document and a live write can never disagree about which state a count
+  /// belongs to.
+  final Map<AnimeListStatus, int> counts;
+
+  int get total => counts.values.fold<int>(0, (sum, value) => sum + value);
+  bool get isEmpty => total == 0;
+  int countFor(AnimeListStatus status) => counts[status] ?? 0;
+}
+
 final class AnimeCommunityStats {
   const AnimeCommunityStats({
     required this.animeId,
@@ -142,6 +189,8 @@ final class AnimeCommunityStats {
     this.averageScore = 0,
     this.ratingCount = 0,
     this.listedCount = 0,
+    this.scoreDistribution,
+    this.statusCounts,
   });
 
   final String animeId;
@@ -151,8 +200,23 @@ final class AnimeCommunityStats {
   final int ratingCount;
   final int listedCount;
 
+  /// Null means the server has not published this aggregate yet (a title
+  /// written before the migration, or read from a cache that predates it).
+  /// The chart treats null as "unavailable" and says so; it is never a cue to
+  /// derive the distribution from loaded reviews.
+  final AnimeScoreDistribution? scoreDistribution;
+
+  /// Null for the same reason as [scoreDistribution].
+  final AnimeListStatusCounts? statusCounts;
+
   bool get hasRatings => ratingCount > 0;
   bool get hasListings => listedCount > 0;
+
+  /// True when the server published a plottable distribution.
+  bool get hasScoreDistribution =>
+      scoreDistribution != null && !scoreDistribution!.isEmpty;
+
+  bool get hasStatusCounts => statusCounts != null && !statusCounts!.isEmpty;
 
   factory AnimeCommunityStats.fromMap(Map<String, dynamic> map, {String? id}) {
     return AnimeCommunityStats(
@@ -162,7 +226,36 @@ final class AnimeCommunityStats {
       averageScore: (map['averageScore'] as num?)?.toDouble() ?? 0,
       ratingCount: (map['ratingCount'] as num?)?.toInt() ?? 0,
       listedCount: (map['listedCount'] as num?)?.toInt() ?? 0,
+      scoreDistribution: _readScoreDistribution(map['scoreDistribution']),
+      statusCounts: _readStatusCounts(map['statusCounts']),
     );
+  }
+
+  /// Absent or malformed means "unavailable", never "all zero": a title with a
+  /// real aggregate of all zeros and a title nobody has ever rated are
+  /// different facts, and only the server can tell them apart.
+  static AnimeScoreDistribution? _readScoreDistribution(Object? raw) {
+    if (raw is! Map) return null;
+    final counts = List<int>.filled(AnimeScoreDistribution.scoreBucketCount, 0);
+    var sawBucket = false;
+    for (var score = 1; score <= AnimeScoreDistribution.scoreBucketCount; score++) {
+      final value = raw[score.toString()];
+      if (value is num) sawBucket = true;
+      counts[score - 1] = (value as num?)?.toInt() ?? 0;
+    }
+    if (!sawBucket) return null;
+    return AnimeScoreDistribution(counts);
+  }
+
+  static AnimeListStatusCounts? _readStatusCounts(Object? raw) {
+    if (raw is! Map) return null;
+    final counts = <AnimeListStatus, int>{};
+    for (final status in AnimeListStatus.values) {
+      final value = raw[status.wireValue];
+      if (value is num) counts[status] = value.toInt();
+    }
+    if (counts.isEmpty) return null;
+    return AnimeListStatusCounts(counts);
   }
 }
 

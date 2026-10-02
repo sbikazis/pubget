@@ -1,6 +1,13 @@
 "use strict";
 
 const { scanText } = require("./contentFilter");
+const {
+  readScoreDistribution,
+  hasScoreDistribution,
+  applyScoreDelta,
+  scoreBucket,
+  SCORE_BUCKETS,
+} = require("./animeStats");
 
 const CRITERIA = Object.freeze([
   "story",
@@ -146,14 +153,31 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
       ]);
       assertCooldown(rateSnap);
       const previous = existing.exists ? Number(existing.data()?.overall) || 0 : 0;
-      let count = Number(statsSnap.data()?.ratingCount) || 0;
-      let sum = Number(statsSnap.data()?.scoreSum) || 0;
+      const statsData = statsSnap.data() || {};
+      let count = Number(statsData.ratingCount) || 0;
+      let sum = Number(statsData.scoreSum) || 0;
+      // The distribution is server-authoritative, so it is moved by the same
+      // transaction that moves the mean: leave the previous bucket, enter the
+      // new one. Re-rating with an unchanged score nets to zero, which is what
+      // makes a replay of this callable harmless.
+      let distribution = readScoreDistribution(statsData);
+      // A document written before the migration has counts but no distribution.
+      // Publishing one here would record only the rating this request just
+      // made while the older rows stay invisible, and the client would draw
+      // that fraction as if it were the whole community. So the field is left
+      // absent and the chart keeps saying "not counted yet" until the backfill
+      // publishes the real totals. A document this transaction creates is the
+      // one case where the aggregates are known to be complete.
+      const maintainDistribution =
+        hasScoreDistribution(statsData) || !statsSnap.exists;
       if (existing.exists) {
         sum -= previous;
+        distribution = applyScoreDelta(distribution, scoreBucket(previous), -1);
       } else {
         count += 1;
       }
       sum += parsed.overall;
+      distribution = applyScoreDelta(distribution, scoreBucket(parsed.overall), 1);
       if (count < 0) count = 0;
       if (sum < 0) sum = 0;
       const averageScore = count === 0 ? 0 : round1(sum / count);
@@ -161,8 +185,8 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         animeId,
         userId,
         username,
-        title: title || (statsSnap.data()?.title || ""),
-        imageUrl: imageUrl || (statsSnap.data()?.imageUrl || ""),
+        title: title || (statsData.title || ""),
+        imageUrl: imageUrl || (statsData.imageUrl || ""),
         criteria: parsed.criteria,
         overall: parsed.overall,
         comment,
@@ -172,7 +196,7 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
       if (!existing.exists) payload.createdAt = FieldValue.serverTimestamp();
       tx.set(userRating, payload, { merge: true });
       tx.set(review, payload, { merge: true });
-      tx.set(stats, {
+      const statsPayload = {
         animeId,
         title: payload.title,
         imageUrl: payload.imageUrl,
@@ -180,7 +204,9 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         ratingCount: count,
         averageScore,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      };
+      if (maintainDistribution) statsPayload.scoreDistribution = distribution;
+      tx.set(stats, statsPayload, { merge: true });
       tx.set(cooldown, { lastAt: FieldValue.serverTimestamp() }, { merge: true });
       overall = parsed.overall;
     });
@@ -214,18 +240,34 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         throw new HttpsError("permission-denied", "This rating belongs to another account.");
       }
       const previous = Number(existing.data()?.overall) || 0;
-      let count = Math.max(0, (Number(statsSnap.data()?.ratingCount) || 0) - 1);
-      let sum = Math.max(0, (Number(statsSnap.data()?.scoreSum) || 0) - previous);
+      const statsData = statsSnap.data() || {};
+      let count = Math.max(0, (Number(statsData.ratingCount) || 0) - 1);
+      let sum = Math.max(0, (Number(statsData.scoreSum) || 0) - previous);
       const averageScore = count === 0 ? 0 : round1(sum / count);
+      // Leaving the bucket the deleted rating occupied keeps the distribution
+      // in step with the count. The `!existing.exists` guard above makes a
+      // repeated delete a no-op, so the counter cannot be walked below zero.
+      const distribution = applyScoreDelta(
+        readScoreDistribution(statsData),
+        scoreBucket(previous),
+        -1,
+      );
       tx.delete(userRating);
       tx.delete(review);
       if (statsSnap.exists) {
-        tx.update(stats, {
+        const statsPayload = {
           scoreSum: sum,
           ratingCount: count,
           averageScore,
           updatedAt: FieldValue.serverTimestamp(),
-        });
+        };
+        // Same rule as the create path: only move a distribution this document
+        // already publishes, so a pre-migration document is not given a
+        // one-rating chart by a deletion.
+        if (hasScoreDistribution(statsData)) {
+          statsPayload.scoreDistribution = distribution;
+        }
+        tx.update(stats, statsPayload);
       }
       tx.set(cooldown, { lastAt: FieldValue.serverTimestamp() }, { merge: true });
     });
@@ -352,10 +394,12 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
     CRITERIA,
     ACTION_COOLDOWN_MS,
     REPORT_REASONS,
+    SCORE_BUCKETS,
   };
 }
 
 module.exports = {
   createAnimeHubDomain,
   ANIME_RATING_CRITERIA: CRITERIA,
+  ANIME_SCORE_BUCKETS: SCORE_BUCKETS,
 };

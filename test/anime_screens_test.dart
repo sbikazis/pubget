@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/network/network_service.dart';
+
 import 'package:pubget/core/theme/app_theme.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
+import 'package:pubget/features/anime/l10n/anime_copy.dart';
 import 'package:pubget/features/anime/models/anime_list_models.dart';
 import 'package:pubget/features/anime/providers/anime_library_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
@@ -26,6 +29,7 @@ import 'package:pubget/features/anime/screens/anime_ratings_page.dart';
 import 'package:pubget/features/anime/screens/anime_character_page.dart';
 import 'package:pubget/features/anime/screens/anime_details_page.dart';
 import 'package:pubget/features/anime/screens/anime_hub_page.dart';
+import 'package:pubget/features/anime/widgets/anime_widgets.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
 import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
@@ -197,7 +201,9 @@ void main() {
     expect(find.byType(AnimeRankedCharacterCard), findsWidgets);
   });
 
-  testWidgets('hub shows loading then trending titles', (tester) async {
+  testWidgets('hub opens on latest updates and pages it newest first', (
+    tester,
+  ) async {
     final repository = FakeAnimeRepository()..gate = Completer<void>();
     await tester.pumpWidget(
       _harness(repository: repository, child: const AnimeHubPage()),
@@ -206,12 +212,113 @@ void main() {
     expect(find.byType(PubgetSkeleton), findsWidgets);
     repository.gate!.complete();
     await tester.pumpAndSettle();
+
+    // Latest Updates is the landing destination, not a curated strip.
+    expect(find.byKey(const Key('hub-latest-grid')), findsOneWidget);
+    expect(find.byKey(const Key('hub-this-season-grid')), findsNothing);
+    expect(repository.latestCalls, 1);
+    // Seasonal and popular stay reachable as their own destinations.
+    expect(repository.thisSeasonCalls, 0);
+    expect(repository.popularCalls, 0);
     expect(find.text('Frieren'), findsWidgets);
+    expect(find.text('This season', skipOffstage: false), findsWidgets);
+    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
     expect(find.text('Top rated'), findsNothing);
     expect(find.text('Trending'), findsNothing);
     expect(find.text('Upcoming'), findsNothing);
-    expect(find.text('This season', skipOffstage: false), findsWidgets);
-    expect(find.text('Most popular', skipOffstage: false), findsWidgets);
+  });
+
+  testWidgets('hub destinations keep separate catalogs when switching tabs', (
+    tester,
+  ) async {
+    final repository = FakeAnimeRepository();
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.latestCalls, 1);
+
+    await tester.tap(find.text('This season'));
+    await tester.pumpAndSettle();
+    expect(repository.thisSeasonCalls, 1);
+    expect(repository.latestCalls, 1);
+    expect(find.byKey(Key('hub-${AnimeHubDestination.thisSeason.name}-grid')),
+        findsOneWidget);
+
+    await tester.tap(find.text('Most popular'));
+    await tester.pumpAndSettle();
+    expect(repository.popularCalls, 1);
+    expect(repository.latestCalls, 1);
+
+    // Returning to a destination must not re-fetch it or lose its pages.
+    await tester.tap(find.text(AnimeStrings.latestUpdates));
+    await tester.pumpAndSettle();
+    expect(repository.latestCalls, 1);
+  });
+
+  testWidgets('hub latest updates appends the next page', (tester) async {    // A short surface guarantees the grid overflows, so scrolling really pages.
+    tester.view.physicalSize = const Size(360, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repository = FakeAnimeRepository(
+      page: AnimePage(
+        items: List<Anime>.generate(
+          6,
+          (index) => sampleAnime(id: 'a-$index', title: 'Title $index'),
+        ),
+        hasNextPage: true,
+      ),
+    );
+    await tester.pumpWidget(
+      _harness(repository: repository, child: const AnimeHubPage()),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.latestPages, <int>[1]);
+
+    final landing = Provider.of<AnimeHubCatalogProvider>(
+      tester.element(find.byType(AnimeHubPage)),
+      listen: false,
+    ).catalog(AnimeHubDestination.latest);
+    expect(landing.items.length, 6);
+
+    await tester.drag(find.byType(AnimePaginatedList), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    // Newest-first ordering is preserved across the page boundary: the catalog
+    // query pages forward and the next page is appended, never substituted.
+    expect(repository.latestPages, containsAllInOrder(<int>[1, 2]));
+    expect(landing.items.length, 12);
+    expect(landing.items.first.id, 'a-0');
+    expect(landing.items[6].id, 'a-0-p2');
+    expect(landing.hasNextPage, isFalse);
+  });
+
+  testWidgets('arabic rtl hub lands on latest updates', (tester) async {
+    final repository = FakeAnimeRepository();
+    final arabic = AnimeCopy.forLocale(const Locale('ar'));
+    await tester.pumpWidget(
+      _harness(
+        repository: repository,
+        textDirection: TextDirection.rtl,
+        child: const AnimeHubPage(),
+        locale: const Locale('ar'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Landing tab renders the Arabic label, and the seasonal/popular discovery
+    // destinations stay reachable in Arabic too.
+    expect(
+      find.text(arabic.hubDestination(AnimeHubDestination.latest)),
+      findsWidgets,
+    );
+    expect(
+      find.text(arabic.catalog(AnimeCatalogKind.thisSeason)),
+      findsWidgets,
+    );
+    expect(find.text(arabic.catalog(AnimeCatalogKind.popular)), findsWidgets);
+    expect(repository.latestCalls, 1);
+    expect(find.text('Latest Updates'), findsNothing);
   });
 
   testWidgets('hub empty state', (tester) async {
@@ -337,6 +444,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
+  });
+
+  testWidgets('details names every title it shows', (tester) async {
+    // The spec asks for the title in Arabic, English, Japanese and
+    // alternatives. An unlabelled second line cannot say which is which, so
+    // each is named.
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          details: sampleAnime(
+            titleArabic: 'فرييرين: ما بعد نهاية الرحلة',
+            titleJapanese: '葬送のフリーレン',
+          ),
+        ),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    expect(find.text('Frieren'), findsWidgets);
+    expect(find.text('فرييرين: ما بعد نهاية الرحلة'), findsOneWidget);
+    expect(find.text('葬送のフリーレン'), findsOneWidget);
+    expect(find.text(copy.titleArabicLabel), findsOneWidget);
+    expect(find.text(copy.titleJapaneseLabel), findsOneWidget);
+    // The synonyms sit further down the tab, below the fold.
+    await tester.dragUntilVisible(
+      find.text(copy.alsoKnownAs),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.text(copy.alsoKnownAs), findsOneWidget);
   });
 
   testWidgets('favorite toggle highlights immediately and persists ids', (
@@ -634,6 +773,129 @@ void main() {
     );
     expect(find.text(AnimeStrings.criteriaBreakdown), findsOneWidget);
   });
+
+  testWidgets('statistics tab charts the server distribution, not the loaded reviews', (tester) async {
+    final social = AnimeHubSocialProvider(repository: _FakeStatsSocialRepository());
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    final bars = tester.widget<AnimeVoteDistribution>(
+      find.byType(AnimeVoteDistribution),
+    );
+    // The server said 4/3/1 across 8/9/10. The fake returns two reviews that
+    // would imply 1 and 1, so any value here proves the chart came from the
+    // aggregate rather than from the page of reviews.
+    expect(bars.counts, const <int>[0, 0, 0, 0, 0, 0, 0, 4, 3, 1]);
+  });
+
+  testWidgets('statistics tab shows the five-state breakdown from the server', (tester) async {
+    final social = AnimeHubSocialProvider(repository: _FakeStatsSocialRepository());
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    final statsScroller = find
+        .descendant(
+          of: find.byKey(const Key('anime-stats-tab')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('anime-stats-status-bars')),
+      300,
+      scrollable: statsScroller,
+    );
+    expect(find.byKey(const Key('anime-stats-status-bars')), findsOneWidget);
+    for (final status in AnimeListStatus.tabs) {
+      expect(
+        find.byKey(Key('anime-status-bar-${status.wireValue}')),
+        findsOneWidget,
+        reason: '${status.wireValue} has no row',
+      );
+    }
+    expect(find.text('50'), findsOneWidget);
+  });
+
+  testWidgets('statistics tab says so when the server has published no aggregates', (tester) async {
+    // The pre-migration shape: counts exist, the distribution does not. The tab
+    // must not fall back to counting the two reviews it loaded.
+    final social = AnimeHubSocialProvider(
+      repository: _FakeStatsSocialRepository(aggregates: false),
+    );
+    addTearDown(social.dispose);
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(details: sampleAnime()),
+        social: social,
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabStatistics));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('anime-stats-unavailable')), findsOneWidget);
+    expect(find.byType(AnimeVoteDistribution), findsNothing);
+    expect(find.byType(AnimeDonutChart), findsNothing);
+    expect(find.byKey(const Key('anime-stats-status-bars')), findsNothing);
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    expect(find.text(copy.statisticsUnavailable), findsOneWidget);
+  });
+
+  testWidgets(
+    'statistics tab distinguishes an all-zero aggregate from an absent one',
+    (tester) async {
+      // A migrated title nobody has given a plottable score keeps real counts
+      // and a real, empty distribution. That is different from a title the
+      // migration has not reached, and the tab must not collapse the two: one
+      // shows the chart, the other explains itself.
+      final social = AnimeHubSocialProvider(
+        repository: _FakeStatsSocialRepository(unplottableOnly: true),
+      );
+      addTearDown(social.dispose);
+      await tester.pumpWidget(
+        _harness(
+          repository: FakeAnimeRepository(details: sampleAnime()),
+          social: social,
+          child: const AnimeDetailsPage(animeId: '52991'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AnimeStrings.tabStatistics));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('anime-stats-unavailable')), findsNothing);
+      expect(find.byType(AnimeVoteDistribution), findsOneWidget);
+      // The breakdown is still published, so it is still shown further down.
+      await tester.dragUntilVisible(
+        find.byKey(const Key('anime-stats-status-bars')),
+        find.byType(ListView).last,
+        const Offset(0, -120),
+      );
+      expect(find.byKey(const Key('anime-stats-status-bars')), findsOneWidget);
+      expect(
+        find.byKey(const Key('anime-status-bar-watching')),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 final class _FakeCharacterSocialRepository implements AnimeHubSocialRepository {
@@ -764,9 +1026,11 @@ Widget _harness({
   AnimeHubSocialProvider? social,
   AnimeLibraryProvider? library,
   HomeRepository? homeRepository,
+  Locale locale = const Locale('en'),
 }) {
   final network = NetworkService(probe: () async => true);
   final hub = AnimeHubProvider(repository: repository);
+  final hubCatalogs = AnimeHubCatalogProvider(repository: repository);
   final list = AnimeListProvider(
     repository: repository,
     debounce: Duration.zero,
@@ -792,6 +1056,7 @@ Widget _harness({
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
+      ChangeNotifierProvider<AnimeHubCatalogProvider>.value(value: hubCatalogs),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
       ChangeNotifierProvider<AnimeDetailsProvider>.value(value: details),
       ChangeNotifierProvider<AnimeRecommendationProvider>.value(
@@ -812,6 +1077,13 @@ Widget _harness({
     ],
     child: MaterialApp(
       theme: theme ?? AppTheme.light,
+      locale: locale,
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: const <LocalizationsDelegate<Object>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: Directionality(textDirection: textDirection, child: child),
     ),
   );
@@ -884,14 +1156,51 @@ final class _FakeHomeRepository implements HomeRepository {
 /// Social data shaped for the statistics tab: two rated reviews so the
 /// histogram and the criteria bars have something real to draw.
 final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
+  _FakeStatsSocialRepository({this.aggregates = true, this.unplottableOnly = false});
+
+  /// When false the server has published counts but no aggregates, which is
+  /// exactly what a title written before the migration looks like.
+  final bool aggregates;
+
+  /// A migrated title whose ratings all scored zero: every count is real, but
+  /// no score rounds into 1-10, so the distribution is legitimately all zero.
+  final bool unplottableOnly;
+
   @override
   Future<Result<AnimeCommunityStats?>> getAnimeStats(String animeId) async =>
       Success(
         AnimeCommunityStats(
           animeId: animeId,
           averageScore: 8.4,
-          ratingCount: 2,
+          ratingCount: 8,
           listedCount: 120,
+          // Deliberately not derivable from the two reviews this fake returns:
+          // a client that inferred would show 8:1, 9:1 instead.
+          scoreDistribution: aggregates
+              ? (unplottableOnly
+                    ? const AnimeScoreDistribution.empty()
+                    : const AnimeScoreDistribution(<int>[
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        4,
+                        3,
+                        1,
+                      ]))
+              : null,
+          statusCounts: aggregates
+              ? const AnimeListStatusCounts(<AnimeListStatus, int>{
+                  AnimeListStatus.wantToWatch: 50,
+                  AnimeListStatus.watching: 30,
+                  AnimeListStatus.completed: 25,
+                  AnimeListStatus.watchLater: 10,
+                  AnimeListStatus.notInterested: 5,
+                })
+              : null,
         ),
       );
 

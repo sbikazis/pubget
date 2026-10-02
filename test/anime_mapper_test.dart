@@ -13,6 +13,10 @@ void main() {
     expect(anime!.id, '52991');
     expect(anime.title, 'Frieren');
     expect(anime.alternativeTitles, contains("Frieren: Beyond Journey's End"));
+    // The Japanese title is a named field, so the page can label it. It must
+    // not also sit in the anonymous alternatives list.
+    expect(anime.titleJapanese, '葬送のフリーレン');
+    expect(anime.alternativeTitles, isNot(contains('葬送のフリーレン')));
     expect(anime.score, 9.3);
     expect(anime.rank, 1);
     expect(anime.season, AnimeSeason.fall);
