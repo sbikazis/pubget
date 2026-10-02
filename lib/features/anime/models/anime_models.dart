@@ -61,6 +61,41 @@ enum AnimeCatalogKind {
   ];
 }
 
+/// A top-level destination inside the hub, addressed by its own tab.
+///
+/// [AnimeHubDestination.latest] is the landing destination: the spec asks for a
+/// newest-first catalog, not a curated feed, as the first thing a member sees.
+/// Seasonal and popular discovery stay reachable as their own destinations
+/// instead of being folded away, and [AnimeHubDestination.community] keeps the
+/// curated community and recommendation rails that a catalog grid cannot show.
+enum AnimeHubDestination { latest, thisSeason, popular, community }
+
+extension AnimeHubDestinationCatalog on AnimeHubDestination {
+  /// The catalog this destination pages through, or null when it is not a
+  /// catalog view (community rails, and latest, which has no [AnimeCatalogKind]
+  /// because newest-first is its own repository query).
+  AnimeCatalogKind? get catalogKind => switch (this) {
+    AnimeHubDestination.latest => null,
+    AnimeHubDestination.thisSeason => AnimeCatalogKind.thisSeason,
+    AnimeHubDestination.popular => AnimeCatalogKind.popular,
+    AnimeHubDestination.community => null,
+  };
+
+  bool get isCatalog => switch (this) {
+    AnimeHubDestination.community => false,
+    _ => true,
+  };
+
+  /// Stable English source string; the visible label always resolves through
+  /// `AnimeCopy`, never from a literal.
+  String get label => switch (this) {
+    AnimeHubDestination.latest => AnimeStrings.latestUpdates,
+    AnimeHubDestination.thisSeason => 'This season',
+    AnimeHubDestination.popular => 'Most popular',
+    AnimeHubDestination.community => AnimeStrings.communityStats,
+  };
+}
+
 enum AnimeSearchSort { members, title, newest, favorites }
 
 enum AnimeTypeFilter { tv, movie, ova, special, ona }
@@ -450,6 +485,7 @@ final class Anime {
     required this.id,
     required this.title,
     this.titleArabic,
+    this.titleJapanese,
     this.alternativeTitles = const <String>[],
     this.synopsis,
     this.type,
@@ -479,7 +515,15 @@ final class Anime {
 
   final String id;
   final String title;
+
+  /// The original-language titles, kept apart from [alternativeTitles] because
+  /// the anime page has to be able to name them: the spec asks for the title
+  /// in Arabic, English, Japanese and alternatives, and an unlabelled join of
+  /// the same strings cannot say which is which. Either is null when the
+  /// provider did not supply it.
   final String? titleArabic;
+  final String? titleJapanese;
+
   final List<String> alternativeTitles;
   final String? synopsis;
   final String? type;

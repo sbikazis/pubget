@@ -118,6 +118,56 @@ void main() {
     expect(find.text('M'), findsOneWidget);
     expect(find.text('A'), findsNothing);
   });
+
+  test('the statistics unavailable state is explained in both locales', () {
+    // The tab must be able to say "not counted yet" rather than drawing a
+    // partial chart, so the explanation itself cannot be an English leftover.
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+    for (final copy in <AnimeCopy>[ar, en]) {
+      expect(copy.statisticsUnavailable, isNotEmpty);
+      expect(copy.statisticsUnavailableMessage, isNotEmpty);
+      expect(copy.listBreakdown, isNotEmpty);
+    }
+    expect(
+      ar.statisticsUnavailable,
+      isNot(equals(en.statisticsUnavailable)),
+    );
+    expect(ar.listBreakdown, isNot(equals(en.listBreakdown)));
+  });
+
+  test('hub destination tabs are localized in both directions', () {
+    final ar = AnimeCopy.forLocale(const Locale('ar'));
+    final en = AnimeCopy.forLocale(const Locale('en'));
+    // Every hub destination carries a tab, so none may fall back to English.
+    for (final destination in AnimeHubDestination.values) {
+      final arabic = ar.hubDestination(destination);
+      final english = en.hubDestination(destination);
+      expect(arabic, isNotEmpty, reason: '${destination.name} has no label');
+      expect(english, isNotEmpty, reason: '${destination.name} has no label');
+      expect(
+        arabic,
+        isNot(equals(english)),
+        reason: '${destination.name} stayed English under Arabic',
+      );
+    }
+    // Seasonal and popular reuse the catalog copy, so a title is never spelled
+    // two different ways between the hub tab and the browse page.
+    expect(
+      ar.hubDestination(AnimeHubDestination.thisSeason),
+      ar.catalog(AnimeCatalogKind.thisSeason),
+    );
+    expect(
+      ar.hubDestination(AnimeHubDestination.popular),
+      ar.catalog(AnimeCatalogKind.popular),
+    );
+    // The landing destination must be the first tab, so a member lands on it.
+    expect(AnimeHubDestination.values.first, AnimeHubDestination.latest);
+    expect(
+      en.hubDestination(AnimeHubDestination.latest),
+      AnimeStrings.latestUpdates,
+    );
+  });
 }
 
 /// Every legacy English literal in `AnimeStrings` must still resolve to

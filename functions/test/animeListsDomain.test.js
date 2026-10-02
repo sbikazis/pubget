@@ -514,3 +514,205 @@ test("the list comes back newest edit first", async () => {
     assert.ok(item.updatedAt, "each entry carries the edit time the client sorts by");
   }
 });
+
+// ---------------------------------------------------------------------------
+// Server-authoritative five-state breakdown
+// ---------------------------------------------------------------------------
+
+test("a new list entry is counted in its status bucket", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching", title: "Attack on Titan" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 1);
+  assert.equal(stats.statusCounts.watching, 1);
+  assert.equal(stats.statusCounts.completed, 0);
+});
+
+test("each of the five states owns exactly one bucket", async () => {
+  const { lists, db } = domain();
+  const states = ["want_to_watch", "watching", "completed", "watch_later", "not_interested"];
+  const users = ["alice", "bob", "carol", "dave", "eve"];
+  await Promise.all(states.map((status, i) =>
+    lists.setAnimeListEntry({
+      auth: { uid: users[i] },
+      data: { animeId: "16498", status },
+    }),
+  ));
+  const stats = db.store.get("anime_stats/16498");
+  const total = Object.values(stats.statusCounts).reduce((sum, n) => sum + n, 0);
+  assert.equal(stats.listedCount, 5);
+  assert.equal(total, 5);
+  for (const status of states) assert.equal(stats.statusCounts[status], 1, status);
+});
+
+test("changing a status moves the count instead of adding one", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "completed" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 1, "re-filing must not double-count the title");
+  assert.equal(stats.statusCounts.watching, 0);
+  assert.equal(stats.statusCounts.completed, 1);
+  const total = Object.values(stats.statusCounts).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 1);
+});
+
+test("re-sending the same status is idempotent", async () => {
+  const { lists, db } = domain();
+  const send = () => lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watch_later" },
+  });
+  await send();
+  await send();
+  await send();
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 1);
+  assert.equal(stats.statusCounts.watch_later, 1);
+});
+
+test("a legacy status spelling is counted in the bucket it normalises to", async () => {
+  const { lists, db } = domain();
+  // Written by an older client before the five-state model existed.
+  db.store.set("users/alice/anime_lists/16498", {
+    animeId: "16498",
+    userId: "alice",
+    status: "plan_to_watch",
+  });
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    listedCount: 1,
+    statusCounts: { want_to_watch: 1 },
+  });
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "completed" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.statusCounts.want_to_watch, 0, "the legacy bucket must be released");
+  assert.equal(stats.statusCounts.completed, 1);
+  assert.equal(stats.listedCount, 1);
+});
+
+test("a legacy alias on both the entry and the aggregate resolves to one canonical bucket", async () => {
+  const { lists, db } = domain();
+  // A consistent legacy pair: the entry and the count it was tallied under are
+  // both spelled the old way, so canonicalising has to happen on read and the
+  // change has to move exactly one bucket.
+  db.store.set("users/alice/anime_lists/16498", {
+    animeId: "16498",
+    userId: "alice",
+    status: "on_hold",
+  });
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    listedCount: 1,
+    statusCounts: { on_hold: 1 },
+  });
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "completed" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.statusCounts.watch_later, 0, "the legacy bucket must be released");
+  assert.equal(stats.statusCounts.completed, 1);
+  assert.equal(stats.listedCount, 1);
+  const total = Object.values(stats.statusCounts).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 1);
+});
+
+test("deleting an entry releases its status bucket", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  await lists.removeAnimeListEntry({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 0);
+  assert.equal(stats.statusCounts.watching, 0);
+  const total = Object.values(stats.statusCounts).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 0);
+});
+
+test("repeating a delete never drives the status counts below zero", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  await lists.removeAnimeListEntry({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  await lists.removeAnimeListEntry({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  for (const [status, count] of Object.entries(stats.statusCounts)) {
+    assert.equal(count, 0, `${status} went negative`);
+  }
+  assert.equal(stats.listedCount, 0);
+});
+
+test("a pre-migration list document is not given a partial breakdown", async () => {
+  const { lists, db } = domain();
+  // The shape an older deploy left behind: a count, but no per-status totals.
+  db.store.set("anime_stats/16498", { animeId: "16498", listedCount: 3 });
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 4);
+  // A breakdown of one watching out of four listed would be a lie: three older
+  // entries are not in it. Leave it absent so the chart reads as unavailable.
+  assert.equal("statusCounts" in stats, false);
+});
+
+test("a pre-migration list document keeps its absent breakdown on removal", async () => {
+  const { lists, db } = domain();
+  db.store.set("anime_stats/16498", { animeId: "16498", listedCount: 3 });
+  db.store.set("users/alice/anime_lists/16498", {
+    animeId: "16498",
+    userId: "alice",
+    status: "watching",
+  });
+  await lists.removeAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 2);
+  assert.equal("statusCounts" in stats, false);
+});
+
+test("a new list document publishes a complete breakdown at once", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 1);
+  assert.equal(stats.statusCounts.watching, 1);
+});
+
+test("two members on the same title count separately", async () => {
+  const { lists, db } = domain();
+  await lists.setAnimeListEntry({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  await lists.setAnimeListEntry({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", status: "watching" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.listedCount, 2);
+  assert.equal(stats.statusCounts.watching, 2);
+});

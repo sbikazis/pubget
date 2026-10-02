@@ -13,9 +13,11 @@ Anime? mapJikanAnime(Object? raw) {
   final japanese = _string(map['title_japanese']);
   final arabic = _string(map['title_arabic']);
   final synonyms = _stringList(map['title_synonyms']);
+  // The Japanese title has its own field, so the page can label it. It also
+  // leaves `alternativeTitles` when it differs from the primary title, so the
+  // two are never printed twice.
   final alternatives = <String>[
     if (english != null && english != title) english,
-    if (japanese != null && japanese != title) japanese,
     ...synonyms.where((value) => value != title),
   ];
 
@@ -23,6 +25,7 @@ Anime? mapJikanAnime(Object? raw) {
     id: id,
     title: title,
     titleArabic: arabic,
+    titleJapanese: japanese,
     alternativeTitles: List<String>.unmodifiable(alternatives),
     synopsis: _string(map['synopsis']),
     type: _string(map['type']),

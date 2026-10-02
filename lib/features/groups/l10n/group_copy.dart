@@ -305,6 +305,22 @@ final class GroupCopy {
   String get searchCharacters => _s.pick('Search characters', 'ابحث عن شخصية');
   String get filters => _s.pick('Filters', 'تصفية');
 
+  /// What a picker shows before anything has been typed. The search is
+  /// server-backed and instant, so opening the page with nothing in the field
+  /// must invite a keystroke instead of reporting an empty or broken catalog.
+  String get startFromThese => _s.pick(
+    'Start from one of these',
+    'ابدأ من أحد هذه',
+  );
+  String get startTypingToSearch => _s.pick(
+    'Type a name to search the whole catalog.',
+    'اكتب اسماً للبحث في الكتالوج كاملاً.',
+  );
+  String get typeToSearchAnime => _s.pick(
+    'Type a title to search the whole catalog.',
+    'اكتب عنواناً للبحث في الكتالوج كاملاً.',
+  );
+
   /// Browse axes for the group catalog. The picker used to say "most popular"
   /// and stop, which hid every title that is not in the top twenty.
   String catalogAxisLabel(String kind) => switch (kind) {

@@ -746,7 +746,12 @@ function createAnimeCatalogDomain(options = {}) {
       const items = await browseFromJikan({ kind, index, size, year, season, genre, type })
         .catch(() => []);
       if (items.length > 0) return items;
-      return browseFromAniList({ kind, index, size, year, season, genre, type });
+      // The AniList fallback is caught like Jikan is. Left uncaught, one
+      // upstream hiccup failed the whole browse with an `internal` error, and
+      // the picker opened on "Couldn't load this" instead of an empty ranking
+      // the caller already knows how to answer.
+      return browseFromAniList({ kind, index, size, year, season, genre, type })
+        .catch(() => []);
     });
     return Array.isArray(value) ? value.slice(0, size) : [];
   }

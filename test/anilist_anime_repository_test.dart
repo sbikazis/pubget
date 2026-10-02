@@ -75,6 +75,11 @@ void main() {
       expect(anime.id, '16498');
       expect(anime.title, 'Attack on Titan');
       expect(anime.alternativeTitles, contains('Shingeki no Kyojin'));
+      // AniList's native title fills the same labelled slot as Jikan's
+      // Japanese title, so both providers agree on where the original title
+      // belongs.
+      expect(anime.titleJapanese, '進撃の巨人');
+      expect(anime.alternativeTitles, isNot(contains('進撃の巨人')));
       expect(anime.synopsis, 'Humanity fights giants.');
       expect(anime.score, 8.5);
       expect(anime.season, isNotNull);

@@ -124,8 +124,7 @@ void main() {
     expect(list.items.map((item) => item.id), contains('52991-p2'));
   });
 
-  test('character profiles are prefetched and reused instantly', () async {
-    const preview = AnimeCharacter(
+  test('character profiles are prefetched and reused instantly', () async {    const preview = AnimeCharacter(
       id: '10',
       name: 'Frieren',
       role: 'Main',
@@ -143,5 +142,76 @@ void main() {
     expect(profile.nameKanji, 'フリーレン');
     expect(profile.role, 'Main');
     expect(repository.characterDetailsCalls, 1);
+  });
+
+  test('hub landing destination is the newest-first catalog', () async {
+    final repository = FakeAnimeRepository();
+    final catalogs = AnimeHubCatalogProvider(repository: repository);
+    addTearDown(catalogs.dispose);
+    await catalogs.openLanding();
+    expect(repository.latestCalls, 1);
+    expect(repository.searchCalls, 0);
+    expect(repository.latestPages, <int>[1]);
+    expect(
+      catalogs.catalog(AnimeHubDestination.latest).items,
+      isNotEmpty,
+    );
+  });
+
+  test('hub destinations load lazily and only once', () async {
+    final repository = FakeAnimeRepository();
+    final catalogs = AnimeHubCatalogProvider(repository: repository);
+    addTearDown(catalogs.dispose);
+    // Opening the hub costs one request, not one per destination.
+    await catalogs.openLanding();
+    expect(repository.latestCalls, 1);
+    expect(repository.thisSeasonCalls, 0);
+    expect(repository.popularCalls, 0);
+
+    await catalogs.open(AnimeHubDestination.thisSeason);
+    expect(repository.thisSeasonCalls, 1);
+    // Re-opening a destination must not discard the pages already loaded.
+    await catalogs.open(AnimeHubDestination.thisSeason);
+    await catalogs.openLanding();
+    expect(repository.thisSeasonCalls, 1);
+    expect(repository.latestCalls, 1);
+  });
+
+  test('each hub destination keeps its own pages', () async {
+    final repository = FakeAnimeRepository();
+    final catalogs = AnimeHubCatalogProvider(repository: repository);
+    addTearDown(catalogs.dispose);
+    await catalogs.openLanding();
+    await catalogs.catalog(AnimeHubDestination.latest).loadMore();
+    expect(
+      catalogs.catalog(AnimeHubDestination.latest).items.length,
+      greaterThan(1),
+    );
+    await catalogs.open(AnimeHubDestination.popular);
+    expect(catalogs.catalog(AnimeHubDestination.popular).items.length, 1);
+    expect(repository.latestPages, containsAllInOrder(<int>[1, 2]));
+  });
+
+  test('community is not a catalog destination', () async {
+    final catalogs = AnimeHubCatalogProvider(
+      repository: FakeAnimeRepository(),
+    );
+    addTearDown(catalogs.dispose);
+    expect(AnimeHubDestination.community.isCatalog, isFalse);
+    expect(AnimeHubDestination.community.catalogKind, isNull);
+    await catalogs.open(AnimeHubDestination.community);
+    expect(catalogs.catalog(AnimeHubDestination.community).state,
+        LoadingState.initial);
+  });
+
+  test('hub catalog provider notifies while a destination pages', () async {
+    final catalogs = AnimeHubCatalogProvider(
+      repository: FakeAnimeRepository(),
+    );
+    addTearDown(catalogs.dispose);
+    var notifications = 0;
+    catalogs.addListener(() => notifications++);
+    await catalogs.openLanding();
+    expect(notifications, greaterThan(0));
   });
 }

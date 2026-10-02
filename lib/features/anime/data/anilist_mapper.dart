@@ -14,12 +14,15 @@ Anime? mapAniListAnime(Object? raw) {
   if (id == null || title == null || title.isEmpty) return null;
 
   final titleMap = _map(map['title']);
+  // AniList's native title is the original-language one, so it fills the same
+  // labelled slot as Jikan's Japanese title rather than joining the anonymous
+  // alternatives list.
+  final native = _string(titleMap?['native']);
   final alternatives = <String>[
     if (titleMap != null)
       for (final value in <String?>[
         titleMap['romaji'] as String?,
         titleMap['english'] as String?,
-        titleMap['native'] as String?,
       ])
         if (value != null && value.isNotEmpty && value != title) value,
   ];
@@ -27,6 +30,7 @@ Anime? mapAniListAnime(Object? raw) {
   return Anime(
     id: id,
     title: title,
+    titleJapanese: native,
     alternativeTitles: List<String>.unmodifiable(_uniqueStrings(alternatives)),
     synopsis: _stripHtml(_string(map['description'])),
     type: anilistAnimeTypeLabel(map['format']),

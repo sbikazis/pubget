@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/group_copy.dart';
 import '../models/group_catalog_models.dart';
 import '../providers/group_catalog_provider.dart';
 import '../repositories/group_catalog_repository.dart';
+import '../widgets/catalog_starter_list.dart';
 
 /// Picks the anime a group is bound to out of the whole catalog.
 ///
@@ -164,92 +166,120 @@ class _GroupAnimePickerPageState extends State<GroupAnimePickerPage> {
           ],
           const SizedBox(height: AppSpacing.md),
           Expanded(
-            child: PubgetLoadingStateView(
-              state: provider.animeState,
-              onRetry: provider.retryAnime,
-              empty: PubgetEmptyState(
-                key: const Key('group-anime-empty'),
-                title: copy.noAnime,
-                message: hasQuery ? copy.catalogSearchHint : copy.noAnimeHint,
-                icon: Icons.search_off_outlined,
-              ),
-              error: PubgetErrorState(
-                key: const Key('group-anime-error'),
-                message: provider.animeFailure?.message ?? copy.noAnime,
-                onRetry: provider.retryAnime,
-              ),
-              offline: PubgetOfflineState(
-                key: const Key('group-anime-offline'),
-                message: copy.catalogUnavailable,
-                onRetry: provider.retryAnime,
-              ),
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  if (notification.metrics.extentAfter < 320) {
-                    provider.loadMoreAnime();
-                  }
-                  return false;
-                },
-                child: ListView.separated(
-                  key: const Key('group-anime-list'),
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    0,
-                    AppSpacing.lg,
-                    AppSpacing.lg,
+            child: !hasQuery && items.isEmpty
+                ? _starter(provider, copy)
+                : PubgetLoadingStateView(
+                    state: provider.animeState,
+                    onRetry: provider.retryAnime,
+                    empty: PubgetEmptyState(
+                      key: const Key('group-anime-empty'),
+                      title: copy.noAnime,
+                      message: copy.catalogSearchHint,
+                      icon: Icons.search_off_outlined,
+                    ),
+                    error: PubgetErrorState(
+                      key: const Key('group-anime-error'),
+                      message: provider.animeFailure?.message ?? copy.noAnime,
+                      onRetry: provider.retryAnime,
+                    ),
+                    offline: PubgetOfflineState(
+                      key: const Key('group-anime-offline'),
+                      message: copy.catalogUnavailable,
+                      onRetry: provider.retryAnime,
+                    ),
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification.metrics.extentAfter < 320) {
+                          provider.loadMoreAnime();
+                        }
+                        return false;
+                      },
+                      child: ListView.separated(
+                        key: const Key('group-anime-list'),
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          0,
+                          AppSpacing.lg,
+                          AppSpacing.lg,
+                        ),
+                        itemCount: items.length + 1,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: AppSpacing.sm),
+                        itemBuilder: (context, index) {
+                          if (index == items.length) {
+                            return _AnimeFooter(
+                              loading: provider.animeLoadingMore,
+                              failure: provider.animePageFailure,
+                              hasNextPage: provider.animeHasNextPage,
+                              onRetry: provider.retryAnimePage,
+                              onLoadMore: provider.loadMoreAnime,
+                            );
+                          }
+                          final anime = items[index];
+                          return PubgetCard(
+                            key: Key('group-anime-${anime.id}'),
+                            onTap: () => Navigator.pop(
+                              context,
+                              anime.toAnime(),
+                            ),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: SizedBox(
+                                width: 48,
+                                height: 64,
+                                child: anime.imageUrl.isEmpty
+                                    ? const ColoredBox(
+                                        color: Color(0x332C1654),
+                                        child: Icon(Icons.movie_outlined),
+                                      )
+                                    : AppImageLoader(
+                                        imageUrl: anime.imageUrl,
+                                        fit: BoxFit.cover,
+                                      ),
+                              ),
+                              title: Text(anime.title),
+                              subtitle: Text(
+                                anime.subtitleParts.isEmpty
+                                    ? anime.genres.take(3).join(' · ')
+                                    : anime.subtitleParts,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                  itemCount: items.length + 1,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    if (index == items.length) {
-                      return _AnimeFooter(
-                        loading: provider.animeLoadingMore,
-                        failure: provider.animePageFailure,
-                        hasNextPage: provider.animeHasNextPage,
-                        onRetry: provider.retryAnimePage,
-                        onLoadMore: provider.loadMoreAnime,
-                      );
-                    }
-                    final anime = items[index];
-                    return PubgetCard(
-                      key: Key('group-anime-${anime.id}'),
-                      onTap: () => Navigator.pop(
-                        context,
-                        anime.toAnime(),
-                      ),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: SizedBox(
-                          width: 48,
-                          height: 64,
-                          child: anime.imageUrl.isEmpty
-                              ? const ColoredBox(
-                                  color: Color(0x332C1654),
-                                  child: Icon(Icons.movie_outlined),
-                                )
-                              : AppImageLoader(
-                                  imageUrl: anime.imageUrl,
-                                  fit: BoxFit.cover,
-                                ),
-                        ),
-                        title: Text(anime.title),
-                        subtitle: Text(
-                          anime.subtitleParts.isEmpty
-                              ? anime.genres.take(3).join(' · ')
-                              : anime.subtitleParts,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
           ),
         ],
       ),
     );
+  }
+
+  /// The page before anything has been typed. A browse that failed or answered
+  /// with nothing is one quiet line here, not an error screen: the search is
+  /// server-backed and answers from the first letter, so the picker looks ready
+  /// rather than broken. "No results" stays reserved for a search that ran.
+  Widget _starter(GroupCatalogProvider provider, GroupCopy copy) =>
+      CatalogStarterList(
+        key: const Key('group-anime-starter'),
+        subtitle: copy.typeToSearchAnime,
+        seeds: catalogStarterAnimeSearches,
+        onPick: _searchFor,
+        notice: switch (provider.animeState) {
+          LoadingState.error =>
+            provider.animeFailure?.message ?? copy.noAnime,
+          LoadingState.offline => copy.catalogUnavailable,
+          _ => null,
+        },
+        onRetry: provider.retryAnime,
+      );
+
+  void _searchFor(String term) {
+    _search.text = term;
+    _search.selection = TextSelection.collapsed(offset: term.length);
+    setState(() {});
+    _owned?.searchAnime(term);
   }
 
   void _open(GroupCatalogProvider provider, GroupCatalogRequest request) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/group_copy.dart';
@@ -9,6 +10,7 @@ import '../models/group_catalog_models.dart';
 import '../models/group_models.dart';
 import '../providers/group_catalog_provider.dart';
 import '../repositories/group_catalog_repository.dart';
+import '../widgets/catalog_starter_list.dart';
 
 /// Picks the character a member will play, or that a founder reserves.
 ///
@@ -154,7 +156,13 @@ class _GroupCharacterPickerPageState extends State<GroupCharacterPickerPage> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              _open ? copy.wholeWorkHint : copy.freeRosterHint,
+              // Before a keystroke the roster scope explains nothing to a user
+              // who cannot see a roster yet, and "this group is not bound to
+              // one anime" read as a fault. The scope is kept for once there is
+              // a list or a search to explain.
+              searching || items.isNotEmpty
+                  ? (_open ? copy.wholeWorkHint : copy.freeRosterHint)
+                  : copy.startTypingToSearch,
               key: const Key('group-character-hint'),
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -169,15 +177,15 @@ class _GroupCharacterPickerPageState extends State<GroupCharacterPickerPage> {
             Expanded(
               child: seeded.isNotEmpty
                   ? _grid(items, const <Widget>[])
+                  : !searching && items.isEmpty
+                  ? _starter(provider, copy)
                   : PubgetLoadingStateView(
                       state: provider.charactersState,
                       onRetry: provider.retryCharacters,
                       empty: PubgetEmptyState(
                         key: const Key('group-character-empty'),
                         title: copy.noCharacters,
-                        message: searching
-                            ? copy.catalogSearchHint
-                            : copy.noCharactersHint,
+                        message: copy.catalogSearchHint,
                         icon: Icons.person_off_outlined,
                       ),
                       error: PubgetErrorState(
@@ -215,6 +223,35 @@ class _GroupCharacterPickerPageState extends State<GroupCharacterPickerPage> {
         ),
       ),
     );
+  }
+
+  /// The page before anything has been typed. A roster that failed or came back
+  /// with nothing is one quiet line here, not an error screen: the search is
+  /// server-backed and answers from the first letter, so the picker looks ready
+  /// rather than broken. "No results" stays reserved for a search that ran.
+  ///
+  /// A group bound to one work gets no name shortcuts: its roster is filtered
+  /// to that work server-side, so a name from another series would only miss.
+  Widget _starter(GroupCatalogProvider provider, GroupCopy copy) =>
+      CatalogStarterList(
+    key: const Key('group-character-starter'),
+    subtitle: copy.startTypingToSearch,
+    seeds: _open ? const <String>[] : catalogStarterCharacterSearches,
+    onPick: _searchFor,
+    notice: switch (provider.charactersState) {
+      LoadingState.error =>
+        provider.charactersFailure?.message ?? copy.roleplayCharactersLoadFailed,
+      LoadingState.offline => copy.catalogUnavailable,
+      _ => null,
+    },
+    onRetry: provider.retryCharacters,
+  );
+
+  void _searchFor(String term) {
+    _search.text = term;
+    _search.selection = TextSelection.collapsed(offset: term.length);
+    setState(() {});
+    _owned?.searchCharacters(term);
   }
 
   Widget _grid(List<RoleplayCharacter> items, List<Widget> footer) {

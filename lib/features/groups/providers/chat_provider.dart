@@ -9,6 +9,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../models/chat_models.dart';
 import '../repositories/chat_repository.dart';
+import '../services/chat_pending_mutations.dart';
 import '../services/chat_send_reliability.dart';
 import '../services/pending_chat_outbox.dart';
 
@@ -39,6 +40,8 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
   final Map<String, int> _autoRetryAttempt = <String, int>{};
   final Map<String, Timer> _autoRetryTimers = <String, Timer>{};
   final Set<String> _autoRetryInFlight = <String>{};
+  /// Reaction toggles and deletes applied on the device and not yet answered.
+  final ChatPendingMutations _pending = ChatPendingMutations();
   StreamSubscription<Result<List<ChatMessage>>>? _subscription;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
@@ -107,13 +110,13 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     _subscription = null;
     unawaited(oldSubscription?.cancel());
     _cancelAllAutoRetries();
+    _pending.clear();
     _groupId = groupId;
     _currentUserId = currentUserId;
     _messages.clear();
     _messageIndex.clear();
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
-    _pendingReadIds.clear();
     _pendingReadIds.clear();
     _hasMore = true;
     _loadingMore = false;
@@ -152,6 +155,7 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     if (generation != _sessionGeneration) return;
     _cancelAllAutoRetries();
     _pendingReadIds.clear();
+    _pending.clear();
     _groupId = null;
     _currentUserId = null;
     _replyTarget = null;
@@ -658,13 +662,100 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
 
   Future<Result<void>> deleteMessage(String messageId) async {
     final groupId = _groupId;
+    final generation = _sessionGeneration;
     if (groupId == null) return const FailureResult(UnknownError());
+    // The bubble goes on the confirmation tap, not on the server's answer: the
+    // round trip is the whole delay the user was feeling. The server keeps a
+    // tombstone rather than removing the document, so the watch stream confirms
+    // the same state idempotently instead of bringing the message back.
+    final before = messageById(messageId);
+    final stamp = DateTime.now();
+    final tombstoned = before != null && !before.isDeleted
+        ? _applyDeleted(messageId, stamp)
+        : null;
     final result = await _repository.deleteMessage(
       groupId: groupId,
       messageId: messageId,
     );
-    if (result.isSuccess) _removeOrMarkDeleted(messageId);
+    if (result.isSuccess) return result;
+    if (!_isSession(groupId, generation)) return result;
+    _pending.confirmDelete(messageId);
+    // Put the message back the way the server last described it, unless the
+    // stream already answered with something newer than this attempt.
+    if (tombstoned != null) {
+      final current = messageById(messageId);
+      if (current != null && current.deletedAt == stamp) {
+        _replaceMessage(messageId, before!);
+      }
+    }
     return result;
+  }
+
+  Future<Result<void>> addReaction(String messageId, String reaction) async {
+    final groupId = _groupId;
+    final uid = _currentUserId;
+    final generation = _sessionGeneration;
+    if (groupId == null || uid == null || uid.isEmpty) {
+      return const FailureResult(UnknownError());
+    }
+    // The server toggles, so the direction comes from the last answer it gave
+    // in `reactionUsers`. A second tap while the first is on the wire is
+    // dropped rather than toggled twice into the opposite state.
+    if (_pending.reactionInFlight(messageId, reaction)) {
+      return const Success(null);
+    }
+    final before = messageById(messageId);
+    if (before == null || before.isDeleted) {
+      return const FailureResult(UnknownError());
+    }
+    final optimistic = before.withReactionToggled(reaction, uid);
+    _pending.expectReaction(messageId, reaction, optimistic);
+    _replaceMessage(messageId, optimistic);
+    final result = await _repository.addReaction(
+      groupId: groupId,
+      messageId: messageId,
+      reaction: reaction,
+    );
+    if (result.isSuccess || !_isSession(groupId, generation)) return result;
+    _pending.confirmReaction(messageId, reaction);
+    // The call failed, so the emoji goes back to what the server last said —
+    // unless the stream has already described this message since, in which case
+    // that answer is newer than this attempt and stays.
+    final current = messageById(messageId);
+    if (current != null &&
+        current.reactions[reaction] == optimistic.reactions[reaction] &&
+        current.hasReacted(reaction, uid) == optimistic.hasReacted(reaction, uid)) {
+      _replaceMessage(messageId, before);
+    }
+    return result;
+  }
+
+  /// Writes a local answer over a message the server has already described.
+  ///
+  /// The revision moves with it: both chat lists memoise their rows against
+  /// [contentRevision], so a patch without it leaves the previous bubble
+  /// painting.
+  void _replaceMessage(String messageId, ChatMessage message) {
+    final index = _messageIndex[messageId];
+    if (index == null) return;
+    _messages[index] = message;
+    _contentRevision++;
+    notifyListeners();
+  }
+
+  /// Applies the tombstone a confirmed delete shows immediately.
+  ChatMessage? _applyDeleted(String messageId, DateTime stamp) {
+    final index = _messageIndex[messageId];
+    if (index == null) return null;
+    final tombstoned = _messages[index].copyWith(
+      sendState: ChatSendState.sent,
+      deletedAt: stamp,
+    );
+    _messages[index] = tombstoned;
+    _pending.expectDelete(messageId, stamp);
+    _contentRevision++;
+    notifyListeners();
+    return tombstoned;
   }
 
   Future<Result<ChatMessage>> editMessage({
@@ -693,18 +784,6 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
       groupId: groupId,
       messageId: messageId,
       pinned: pinned,
-    );
-  }
-
-  Future<Result<void>> addReaction(String messageId, String reaction) {
-    final groupId = _groupId;
-    if (groupId == null) {
-      return Future.value(const FailureResult(UnknownError()));
-    }
-    return _repository.addReaction(
-      groupId: groupId,
-      messageId: messageId,
-      reaction: reaction,
     );
   }
 
@@ -817,12 +896,16 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
         }
         // Keep local createdAt so serverTimestamp reconcile does not reshuffle
         // the bubble and yank the scroll position.
-        final reconciled = local.createdAt != null
+        var reconciled = local.createdAt != null
             ? message.copyWith(
                 createdAt: local.createdAt,
                 sendState: ChatSendState.sent,
               )
             : message.copyWith(sendState: ChatSendState.sent);
+        // A reaction or a delete this device has already shown stays on top
+        // until the server's own copy catches up, so a snapshot that predates
+        // the commit cannot make the emoji or the deleted bubble blink back.
+        reconciled = _pending.overlay(message.id, reconciled);
         _clearUploadUi(message.id);
         _replaceOrdered(index, reconciled);
         continue;
@@ -1094,17 +1177,6 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
 
   bool _isSession(String groupId, int generation) =>
       !_disposed && _sessionGeneration == generation && _groupId == groupId;
-
-  void _removeOrMarkDeleted(String messageId) {
-    final index = _messageIndex[messageId];
-    if (index != null) {
-      _messages[index] = _messages[index].copyWith(
-        sendState: ChatSendState.sent,
-        deletedAt: DateTime.now(),
-      );
-      notifyListeners();
-    }
-  }
 
   String? _previewFor(ChatMessage? message) {
     if (message == null) return null;

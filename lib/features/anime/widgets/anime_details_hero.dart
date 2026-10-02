@@ -104,7 +104,16 @@ class AnimeDetailsHero extends StatelessWidget {
                 ),
               ),
               if (anime.titleArabic != null && anime.titleArabic!.isNotEmpty)
-                Text(anime.titleArabic!, style: theme.textTheme.bodyMedium),
+                _LabelledTitle(
+                  label: copy.titleArabicLabel,
+                  value: anime.titleArabic!,
+                ),
+              if (anime.titleJapanese != null &&
+                  anime.titleJapanese!.isNotEmpty)
+                _LabelledTitle(
+                  label: copy.titleJapaneseLabel,
+                  value: anime.titleJapanese!,
+                ),
               const SizedBox(height: AppSpacing.md),
               _ChipRow(anime: anime),
               const SizedBox(height: AppSpacing.md),
@@ -177,6 +186,46 @@ class _CoverCard extends StatelessWidget {
 
 /// Status, season and year, episode count and age rating, all through the
 /// translation maps.
+/// One of an anime's other titles, named so the member knows which language
+/// they are looking at.
+class _LabelledTitle extends StatelessWidget {
+  const _LabelledTitle({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.textTheme.bodySmall?.color,
+              letterSpacing: 0.4,
+            ),
+          ),
+          // Original-language titles are written right-to-left for Arabic and
+          // top-to-bottom for Japanese, so they are laid out in their own
+          // direction rather than the app's.
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium,
+            textDirection: value.runes.first < 0x0590 &&
+                    value.runes.first <= 0x08FF
+                ? TextDirection.rtl
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChipRow extends StatelessWidget {
   const _ChipRow({required this.anime});
 

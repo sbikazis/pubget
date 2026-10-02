@@ -886,3 +886,83 @@ AnimeHubProvider? maybeAnimeHub(BuildContext context, {bool listen = true}) {
     return null;
   }
 }
+
+/// Owns one [AnimeListProvider] per hub destination.
+///
+/// The hub is a tabbed surface, so each destination needs its own pages: paging
+/// the newest-first catalog must never reset the seasonal tab, and returning to a
+/// tab must not re-fetch what it already has. Destinations load lazily on first
+/// visit, so opening the hub costs one request rather than four.
+final class AnimeHubCatalogProvider extends ChangeNotifier {
+  AnimeHubCatalogProvider({
+    required AnimeRepository repository,
+    Analytics? analytics,
+  }) : _repository = repository,
+       _analytics = analytics {
+    for (final destination in AnimeHubDestination.values) {
+      final catalog = AnimeListProvider(
+        repository: _repository,
+        analytics: _analytics,
+      );
+      _catalogs[destination] = catalog;
+      _listeners.add(catalog);
+      catalog.addListener(_onCatalogChanged);
+    }
+  }
+
+  final AnimeRepository _repository;
+  final Analytics? _analytics;
+  final Map<AnimeHubDestination, AnimeListProvider> _catalogs =
+      <AnimeHubDestination, AnimeListProvider>{};
+  final List<AnimeListProvider> _listeners = <AnimeListProvider>[];
+  bool _disposed = false;
+
+  /// The catalog backing a destination. Community rails are not a catalog, so
+  /// callers must check [AnimeHubDestination.isCatalog] before paging this.
+  AnimeListProvider catalog(AnimeHubDestination destination) =>
+      _catalogs[destination]!;
+
+  /// Opens a destination once. Repeat calls while it is loaded are no-ops, which
+  /// is what keeps a tab switch from discarding pages already on screen.
+  Future<void> open(AnimeHubDestination destination) async {
+    if (!destination.isCatalog) return;
+    final catalog = _catalogs[destination];
+    if (catalog == null || catalog.state != LoadingState.initial) return;
+    if (destination == AnimeHubDestination.latest) {
+      await catalog.openLatest();
+    } else {
+      await catalog.openCatalog(destination.catalogKind!);
+    }
+  }
+
+  /// The landing destination: the newest-first catalog, loaded eagerly.
+  Future<void> openLanding() => open(AnimeHubDestination.values.first);
+
+  void _onCatalogChanged() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    for (final catalog in _listeners) {
+      catalog.removeListener(_onCatalogChanged);
+      catalog.dispose();
+    }
+    _listeners.clear();
+    _catalogs.clear();
+    super.dispose();
+  }
+}
+
+AnimeHubCatalogProvider? maybeAnimeHubCatalog(
+  BuildContext context, {
+  bool listen = true,
+}) {
+  try {
+    return Provider.of<AnimeHubCatalogProvider>(context, listen: listen);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
