@@ -1,13 +1,29 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'fan_work_taxonomy.dart';
+
+/// The closed, creatable Fan Work types (owner brief: manga · story · drawing ·
+/// character).
+///
+/// [worldbuilding] and [other] are retained read-only so Fan Works published
+/// before the rebuild keep rendering; they are intentionally absent from the
+/// creation catalog. The removed `aiCharacter` type is folded into
+/// [character] + [FanWorkOrigin.aiGenerated] per spec §17.1.
 enum FanWorkType {
   manga,
-  drawing,
   story,
+  drawing,
   character,
-  aiCharacter,
   worldbuilding,
-  other,
+  other;
+
+  /// The four types a creator can publish today, in presentation order.
+  static const creatable = <FanWorkType>[manga, story, drawing, character];
+
+  bool get isCreatable => creatable.contains(this);
+
+  /// True when the reading experience is a protected, in-app document.
+  bool get readsAsDocument => this == manga || this == story;
 }
 
 enum FanWorkStatus { draft, published, archived }
@@ -18,23 +34,37 @@ enum FanWorkVisibility { unpublished, public }
 
 enum FanWorkReportReason { inappropriate, spam, copyright, harassment, other }
 
-enum FanWorkMediaRole { cover, page, image, extra }
+/// Where an uploaded file lands inside the work. Each role has its own storage
+/// slot and its own server-side validation (a PDF may only fill [document], an
+/// image may not).
+enum FanWorkMediaRole {
+  cover,
+  document,
+  artwork,
+  portrait,
+  characterPortrait;
+
+  bool get isDocument => this == document;
+}
 
 final class FanWorkMedia {
   const FanWorkMedia({
     required this.mediaId,
     required this.path,
     this.contentType = 'image/jpeg',
+    this.sizeBytes = 0,
   });
 
   final String mediaId;
   final String path;
   final String contentType;
+  final int sizeBytes;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'mediaId': mediaId,
     'path': path,
     'contentType': contentType,
+    if (sizeBytes > 0) 'sizeBytes': sizeBytes,
   };
 
   factory FanWorkMedia.fromMap(Map<String, dynamic>? map) {
@@ -45,12 +75,208 @@ final class FanWorkMedia {
       mediaId: map['mediaId'] as String? ?? '',
       path: map['path'] as String? ?? '',
       contentType: map['contentType'] as String? ?? 'image/jpeg',
+      sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
     );
   }
 
   bool get isEmpty => path.isEmpty;
+  bool get isPdf => contentType == 'application/pdf';
 }
 
+/// The protected document that backs a manga or a story. It is never exposed as
+/// a URL: readers stream it through a short-lived, server-minted signed URL
+/// (see `FanWorkRepository.getDocumentAccess`).
+final class FanWorkDocument {
+  const FanWorkDocument({
+    required this.mediaId,
+    required this.path,
+    this.contentType = 'application/pdf',
+    this.sizeBytes = 0,
+    this.pageCount,
+  });
+
+  final String mediaId;
+  final String path;
+  final String contentType;
+  final int sizeBytes;
+  final int? pageCount;
+
+  bool get isEmpty => path.isEmpty;
+
+  FanWorkMedia get media => FanWorkMedia(
+    mediaId: mediaId,
+    path: path,
+    contentType: contentType,
+    sizeBytes: sizeBytes,
+  );
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'mediaId': mediaId,
+    'path': path,
+    'contentType': contentType,
+    if (sizeBytes > 0) 'sizeBytes': sizeBytes,
+    if (pageCount != null && pageCount! > 0) 'pageCount': pageCount,
+  };
+
+  factory FanWorkDocument.fromMap(Map<String, dynamic>? map) {
+    if (map == null) {
+      return const FanWorkDocument(mediaId: '', path: '');
+    }
+    final pageCount = (map['pageCount'] as num?)?.toInt();
+    return FanWorkDocument(
+      mediaId: map['mediaId'] as String? ?? '',
+      path: map['path'] as String? ?? '',
+      contentType: map['contentType'] as String? ?? 'application/pdf',
+      sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
+      pageCount: pageCount != null && pageCount > 0 ? pageCount : null,
+    );
+  }
+}
+
+/// One character that appears inside a manga or a story.
+///
+/// The brief requires a `+` sheet that collects an optional portrait, a name
+/// and a short bio, appending to a list until the creator publishes. Entries
+/// stay inside the work document: they are small, they are only ever read with
+/// the work, and a subcollection would cost a fan-out on the detail page.
+final class FanWorkCharacter {
+  const FanWorkCharacter({
+    required this.id,
+    required this.name,
+    this.bio = '',
+    this.imagePath = '',
+    this.imageMediaId = '',
+    this.index = 0,
+  });
+
+  final String id;
+  final String name;
+  final String bio;
+  final String imagePath;
+  final String imageMediaId;
+  final int index;
+
+  bool get hasImage => imagePath.isNotEmpty;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'id': id,
+    'name': name,
+    'bio': bio,
+    'imagePath': imagePath,
+    'imageMediaId': imageMediaId,
+    'index': index,
+  };
+
+  factory FanWorkCharacter.fromMap(Map<String, dynamic> map, {int? index}) {
+    return FanWorkCharacter(
+      id: map['id'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      bio: map['bio'] as String? ?? '',
+      imagePath: map['imagePath'] as String? ?? '',
+      imageMediaId: map['imageMediaId'] as String? ?? '',
+      index: (map['index'] as num?)?.toInt() ?? index ?? 0,
+    );
+  }
+
+  FanWorkCharacter copyWith({
+    String? name,
+    String? bio,
+    String? imagePath,
+    String? imageMediaId,
+    int? index,
+  }) => FanWorkCharacter(
+    id: id,
+    name: name ?? this.name,
+    bio: bio ?? this.bio,
+    imagePath: imagePath ?? this.imagePath,
+    imageMediaId: imageMediaId ?? this.imageMediaId,
+    index: index ?? this.index,
+  );
+}
+
+/// Which reader a work has to be rendered with.
+///
+/// Pre-rebuild works have no PDF, so the reader cannot be chosen from the type
+/// alone: a legacy manga is a list of page images and a legacy story is prose,
+/// while everything written after the rebuild is a single document.
+enum FanWorkReaderShape {
+  /// A single PDF, opened by the document reader.
+  document,
+
+  /// Pre-rebuild image pages, opened by the legacy page reader.
+  legacyPages,
+
+  /// Pre-rebuild prose, opened by the legacy prose reader.
+  legacyProse,
+
+  /// The work has no readable content at all.
+  unknown,
+}
+
+/// Per-reader progress for a document-backed work. Private to its owner.
+final class FanWorkReadingProgress {
+  const FanWorkReadingProgress({
+    this.page = 0,
+    this.pageCount = 0,
+    this.progress = 0,
+    this.completed = false,
+    this.updatedAt,
+  });
+
+  /// Zero-based page index the reader stopped on.
+  final int page;
+  final int pageCount;
+
+  /// 0..1 — a monotonic "how far in" measure, so a shortened re-upload never
+  /// moves a reader backwards past what they already finished.
+  final double progress;
+  final bool completed;
+  final DateTime? updatedAt;
+
+  bool get isStarted => page > 0 || progress > 0;
+
+  String get resumeLabel {
+    if (pageCount > 0) return '$page / $pageCount';
+    return progress > 0 ? '${(progress * 100).round()}%' : '';
+  }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'page': page,
+    'pageCount': pageCount,
+    'progress': progress,
+    'completed': completed,
+  };
+
+  factory FanWorkReadingProgress.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const FanWorkReadingProgress();
+    final rawProgress = (map['progress'] as num?)?.toDouble() ?? 0;
+    return FanWorkReadingProgress(
+      page: (map['page'] as num?)?.toInt() ?? 0,
+      pageCount: (map['pageCount'] as num?)?.toInt() ?? 0,
+      progress: rawProgress.clamp(0.0, 1.0),
+      completed: map['completed'] == true,
+      updatedAt: _date(map['updatedAt']),
+    );
+  }
+}
+
+/// A short-lived grant to stream a work's protected document.
+final class FanWorkDocumentAccess {
+  const FanWorkDocumentAccess({
+    required this.url,
+    required this.expiresAt,
+    this.pageCount,
+  });
+
+  final String url;
+  final DateTime expiresAt;
+  final int? pageCount;
+
+  bool get isExpired => DateTime.now().toUtc().isAfter(expiresAt.toUtc());
+}
+
+/// Legacy image page inside a pre-rebuild manga. Kept so published works keep
+/// rendering; new manga publish a PDF instead.
 final class FanWorkPage {
   const FanWorkPage({
     required this.mediaId,
@@ -81,19 +307,11 @@ final class FanWorkPage {
     return FanWorkPage(
       mediaId: map['mediaId'] as String? ?? '',
       path: map['path'] as String? ?? '',
-      contentType: map['contentType'] as String? ?? 'image/jpeg',
       index: (map['index'] as num?)?.toInt() ?? index,
+      contentType: map['contentType'] as String? ?? 'image/jpeg',
       caption: map['caption'] as String? ?? '',
     );
   }
-
-  FanWorkPage copyWith({String? caption, int? index}) => FanWorkPage(
-    mediaId: mediaId,
-    path: path,
-    contentType: contentType,
-    index: index ?? this.index,
-    caption: caption ?? this.caption,
-  );
 }
 
 final class FanWorkChapter {
@@ -127,68 +345,61 @@ final class FanWorkChapter {
       index: (map['index'] as num?)?.toInt() ?? index,
     );
   }
-
-  FanWorkChapter copyWith({String? title, String? body, int? index}) =>
-      FanWorkChapter(
-        id: id,
-        title: title ?? this.title,
-        body: body ?? this.body,
-        index: index ?? this.index,
-      );
 }
 
-final class FanWorkNamedEntry {
-  const FanWorkNamedEntry({required this.name, this.description = ''});
-
-  final String name;
-  final String description;
-
-  Map<String, dynamic> toMap() => <String, dynamic>{
-    'name': name,
-    'description': description,
-  };
-
-  factory FanWorkNamedEntry.fromMap(Map<String, dynamic> map) {
-    return FanWorkNamedEntry(
-      name: map['name'] as String? ?? '',
-      description: map['description'] as String? ?? '',
-    );
-  }
-}
-
+/// The type-specific body of a work. Only the fields relevant to the work's
+/// type are ever populated; the rest stay at their defaults so a manga document
+/// is not padded with dead keys.
 final class FanWorkContent {
   const FanWorkContent({
-    this.pages = const <FanWorkPage>[],
-    this.images = const <FanWorkMedia>[],
-    this.body = '',
-    this.chapters = const <FanWorkChapter>[],
-    this.name = '',
+    this.document,
+    this.artwork,
+    this.portrait,
+    this.characters = const <FanWorkCharacter>[],
     this.personality = '',
     this.abilities = '',
-    this.background = '',
-    this.image,
+    this.specs = '',
+    this.body = '',
+    this.chapters = const <FanWorkChapter>[],
+    this.pages = const <FanWorkPage>[],
     this.lore = '',
-    this.locations = const <FanWorkNamedEntry>[],
-    this.factions = const <FanWorkNamedEntry>[],
-    this.characters = const <FanWorkNamedEntry>[],
   });
 
-  final List<FanWorkPage> pages;
-  final List<FanWorkMedia> images;
-  final String body;
-  final List<FanWorkChapter> chapters;
-  final String name;
-  final String personality;
-  final String abilities;
-  final String background;
-  final FanWorkMedia? image;
-  final String lore;
-  final List<FanWorkNamedEntry> locations;
-  final List<FanWorkNamedEntry> factions;
-  final List<FanWorkNamedEntry> characters;
+  /// PDF for manga/story.
+  final FanWorkDocument? document;
 
-  List<FanWorkPage> get orderedPages {
-    final copy = [...pages]..sort((a, b) => a.index.compareTo(b.index));
+  /// The single artwork of a drawing.
+  final FanWorkMedia? artwork;
+
+  /// The portrait of a character work.
+  final FanWorkMedia? portrait;
+
+  /// Cast list for manga/story.
+  final List<FanWorkCharacter> characters;
+
+  /// Character-only: personality sketch.
+  final String personality;
+
+  /// Character-only: abilities.
+  final String abilities;
+
+  /// Character-only: specs / measurements / class.
+  final String specs;
+
+  /// Legacy story body, kept so published prose works keep rendering.
+  final String body;
+
+  /// Legacy story chapters.
+  final List<FanWorkChapter> chapters;
+
+  /// Legacy manga image pages.
+  final List<FanWorkPage> pages;
+
+  /// Legacy worldbuilding lore.
+  final String lore;
+
+  List<FanWorkCharacter> get orderedCharacters {
+    final copy = [...characters]..sort((a, b) => a.index.compareTo(b.index));
     return copy;
   }
 
@@ -197,78 +408,78 @@ final class FanWorkContent {
     return copy;
   }
 
+  List<FanWorkPage> get orderedPages {
+    final copy = [...pages]..sort((a, b) => a.index.compareTo(b.index));
+    return copy;
+  }
+
+  bool get hasDocument => document?.isEmpty == false;
+  bool get hasArtwork => artwork?.isEmpty == false;
+  bool get hasPortrait => portrait?.isEmpty == false;
+  bool get hasCast => orderedCharacters.any((entry) => entry.name.isNotEmpty);
+
   Map<String, dynamic> toMap() => <String, dynamic>{
-    'pages': pages.map((page) => page.toMap()).toList(growable: false),
-    'images': images.map((image) => image.toMap()).toList(growable: false),
+    'document': document?.toMap(),
+    'artwork': artwork?.toMap(),
+    'portrait': portrait?.toMap(),
+    'characters': characters
+        .map((entry) => entry.toMap())
+        .toList(growable: false),
+    'personality': personality,
+    'abilities': abilities,
+    'specs': specs,
     'body': body,
     'chapters': chapters
         .map((chapter) => chapter.toMap())
         .toList(growable: false),
-    'name': name,
-    'personality': personality,
-    'abilities': abilities,
-    'background': background,
-    'image': image?.toMap(),
+    'pages': pages.map((page) => page.toMap()).toList(growable: false),
     'lore': lore,
-    'locations': locations
-        .map((entry) => entry.toMap())
-        .toList(growable: false),
-    'factions': factions.map((entry) => entry.toMap()).toList(growable: false),
-    'characters': characters
-        .map((entry) => entry.toMap())
-        .toList(growable: false),
   };
 
   factory FanWorkContent.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const FanWorkContent();
     return FanWorkContent(
-      pages: _pages(map['pages']),
-      images: _mediaList(map['images']),
-      body: map['body'] as String? ?? '',
-      chapters: _chapters(map['chapters']),
-      name: map['name'] as String? ?? '',
+      document: _document(map['document']),
+      artwork: _media(map['artwork']) ?? _media(map['image']),
+      portrait: _media(map['portrait']) ?? _media(map['image']),
+      characters: _characters(map['characters']),
       personality: map['personality'] as String? ?? '',
       abilities: map['abilities'] as String? ?? '',
-      background: map['background'] as String? ?? '',
-      image: map['image'] is Map
-          ? FanWorkMedia.fromMap(Map<String, dynamic>.from(map['image'] as Map))
-          : null,
+      specs: map['specs'] as String? ?? map['background'] as String? ?? '',
+      body: map['body'] as String? ?? '',
+      chapters: _chapters(map['chapters']),
+      pages: _pages(map['pages']),
       lore: map['lore'] as String? ?? '',
-      locations: _entries(map['locations']),
-      factions: _entries(map['factions']),
-      characters: _entries(map['characters']),
     );
   }
 
   FanWorkContent copyWith({
-    List<FanWorkPage>? pages,
-    List<FanWorkMedia>? images,
-    String? body,
-    List<FanWorkChapter>? chapters,
-    String? name,
+    FanWorkDocument? document,
+    bool clearDocument = false,
+    FanWorkMedia? artwork,
+    bool clearArtwork = false,
+    FanWorkMedia? portrait,
+    bool clearPortrait = false,
+    List<FanWorkCharacter>? characters,
     String? personality,
     String? abilities,
-    String? background,
-    FanWorkMedia? image,
-    bool clearImage = false,
+    String? specs,
+    String? body,
+    List<FanWorkChapter>? chapters,
+    List<FanWorkPage>? pages,
     String? lore,
-    List<FanWorkNamedEntry>? locations,
-    List<FanWorkNamedEntry>? factions,
-    List<FanWorkNamedEntry>? characters,
   }) => FanWorkContent(
-    pages: pages ?? this.pages,
-    images: images ?? this.images,
-    body: body ?? this.body,
-    chapters: chapters ?? this.chapters,
-    name: name ?? this.name,
+    document: clearDocument ? null : document ?? this.document,
+    artwork: clearArtwork ? null : artwork ?? this.artwork,
+    portrait: clearPortrait ? null : portrait ?? this.portrait,
+    characters: characters ?? this.characters,
     personality: personality ?? this.personality,
     abilities: abilities ?? this.abilities,
-    background: background ?? this.background,
-    image: clearImage ? null : image ?? this.image,
+    specs: specs ?? this.specs,
+    body: body ?? this.body,
+    chapters: chapters ?? this.chapters,
+    pages: pages ?? this.pages,
     lore: lore ?? this.lore,
-    locations: locations ?? this.locations,
-    factions: factions ?? this.factions,
-    characters: characters ?? this.characters,
   );
 }
 
@@ -292,6 +503,9 @@ final class FanWorkCreatorSnapshot {
   }
 }
 
+/// The light contract every surface (feed, home, search, profile) needs. Home
+/// must not download a whole work document to draw a card, so the preview
+/// carries only what a card can show.
 final class FanWorkPreview {
   const FanWorkPreview({
     required this.id,
@@ -300,6 +514,14 @@ final class FanWorkPreview {
     required this.creatorId,
     this.creatorName = '',
     this.coverPath = '',
+    this.categoryId = '',
+    this.origin = FanWorkOrigin.handmade,
+    this.likesCount = 0,
+    this.commentsCount = 0,
+    this.bookmarksCount = 0,
+    this.hasDocument = false,
+    this.documentPageCount,
+    this.hasCast = false,
     this.publishedAt,
   });
 
@@ -309,7 +531,17 @@ final class FanWorkPreview {
   final String creatorId;
   final String creatorName;
   final String coverPath;
+  final String categoryId;
+  final FanWorkOrigin origin;
+  final int likesCount;
+  final int commentsCount;
+  final int bookmarksCount;
+  final bool hasDocument;
+  final int? documentPageCount;
+  final bool hasCast;
   final DateTime? publishedAt;
+
+  FanWorkCategory? get category => FanWorkCategories.byId(type, categoryId);
 
   factory FanWorkPreview.fromWork(FanWork work) => FanWorkPreview(
     id: work.id,
@@ -317,7 +549,15 @@ final class FanWorkPreview {
     title: work.title,
     creatorId: work.creatorId,
     creatorName: work.creatorSnapshot.username,
-    coverPath: work.cover?.path ?? '',
+    coverPath: work.coverPath,
+    categoryId: work.categoryId,
+    origin: work.origin,
+    likesCount: work.likesCount,
+    commentsCount: work.commentsCount,
+    bookmarksCount: work.bookmarksCount,
+    hasDocument: work.content.hasDocument,
+    documentPageCount: work.content.document?.pageCount,
+    hasCast: work.content.hasCast,
     publishedAt: work.publishedAt,
   );
 
@@ -325,21 +565,32 @@ final class FanWorkPreview {
     Map<String, dynamic> map, {
     required String id,
   }) {
-    final cover = map['cover'] is Map
-        ? FanWorkMedia.fromMap(Map<String, dynamic>.from(map['cover'] as Map))
-        : null;
+    final cover = _media(map['cover']);
+    final document = _document(map['document']);
     final snapshot = map['creatorSnapshot'] is Map
         ? FanWorkCreatorSnapshot.fromMap(
             Map<String, dynamic>.from(map['creatorSnapshot'] as Map),
           )
         : const FanWorkCreatorSnapshot();
+    final content = map['content'] is Map
+        ? Map<String, dynamic>.from(map['content'] as Map)
+        : const <String, dynamic>{};
+    final characters = content['characters'];
     return FanWorkPreview(
       id: id,
       type: fanWorkTypeFrom(map['type']),
       title: map['title'] as String? ?? '',
       creatorId: map['creatorId'] as String? ?? '',
       creatorName: snapshot.username,
-      coverPath: cover?.path ?? '',
+      coverPath: cover?.path ?? _media(content['artwork'])?.path ?? '',
+      categoryId: map['category'] as String? ?? '',
+      origin: FanWorkOrigin.from(map['origin']),
+      likesCount: (map['likesCount'] as num?)?.toInt() ?? 0,
+      commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
+      bookmarksCount: (map['bookmarksCount'] as num?)?.toInt() ?? 0,
+      hasDocument: document?.isEmpty == false,
+      documentPageCount: document?.pageCount,
+      hasCast: characters is List && characters.isNotEmpty,
       publishedAt: _date(map['publishedAt']),
     );
   }
@@ -406,6 +657,9 @@ final class FanWork {
     required this.updatedAt,
     this.creatorSnapshot = const FanWorkCreatorSnapshot(),
     this.cover,
+    this.categoryId = '',
+    this.creatorNote = '',
+    this.origin = FanWorkOrigin.handmade,
     this.tags = const <String>[],
     this.animeId = '',
     this.animeTitle = '',
@@ -427,10 +681,22 @@ final class FanWork {
   final String creatorId;
   final FanWorkCreatorSnapshot creatorSnapshot;
   final FanWorkType type;
+
+  /// For [FanWorkType.character] this is the character's name; for every other
+  /// type it is the work's title. One field keeps search, cards, comments and
+  /// share text uniform across all four types.
   final String title;
+
+  /// For [FanWorkType.character] this is the character's story.
   final String description;
+
   final FanWorkMedia? cover;
   final FanWorkContent content;
+  final String categoryId;
+
+  /// نبذة عن الكاتب/الرسام/صانع الشخصية. Optional on every type.
+  final String creatorNote;
+  final FanWorkOrigin origin;
   final List<String> tags;
   final String animeId;
   final String animeTitle;
@@ -455,11 +721,31 @@ final class FanWork {
   bool get isDraft => status == FanWorkStatus.draft;
   bool get isPublished => status == FanWorkStatus.published;
   bool get isArchived => status == FanWorkStatus.archived;
-  bool get isAiAssisted => type == FanWorkType.aiCharacter;
+  bool get isAiAssisted => origin == FanWorkOrigin.aiGenerated;
+  bool get hasCreatorNote => creatorNote.trim().isNotEmpty;
   bool get isPubliclyListed =>
       status == FanWorkStatus.published &&
       moderationStatus == FanWorkModerationStatus.approved &&
       visibility == FanWorkVisibility.public;
+
+  FanWorkCategory? get category => FanWorkCategories.byId(type, categoryId);
+
+  /// The image a card should draw: artwork, then portrait, then cover.
+  String get coverPath {
+    final artwork = content.artwork?.path ?? '';
+    if (artwork.isNotEmpty) return artwork;
+    final portrait = content.portrait?.path ?? '';
+    if (portrait.isNotEmpty) return portrait;
+    return cover?.path ?? '';
+  }
+
+  /// The reading surface: a PDF for manga/story, legacy image pages for a
+  /// pre-rebuild manga, or the single artwork for a drawing.
+  bool get hasReader =>
+      content.hasDocument ||
+      content.orderedPages.isNotEmpty ||
+      content.hasArtwork ||
+      content.hasPortrait;
 
   FanWorkPreview get preview => FanWorkPreview.fromWork(this);
 
@@ -470,6 +756,9 @@ final class FanWork {
     'title': title,
     'description': description,
     'cover': cover?.toMap(),
+    'category': categoryId,
+    'creatorNote': creatorNote,
+    'origin': origin.name,
     'content': content.toMap(),
     'tags': tags,
     'animeId': animeId,
@@ -495,6 +784,7 @@ final class FanWork {
   };
 
   factory FanWork.fromMap(Map<String, dynamic> map, {required String id}) {
+    final rawType = map['type'] as String?;
     return FanWork(
       id: id,
       creatorId: map['creatorId'] as String? ?? '',
@@ -503,18 +793,22 @@ final class FanWork {
             ? Map<String, dynamic>.from(map['creatorSnapshot'] as Map)
             : null,
       ),
-      type: fanWorkTypeFrom(map['type']),
+      type: fanWorkTypeFrom(rawType),
       title: map['title'] as String? ?? '',
       description: map['description'] as String? ?? '',
-      cover: map['cover'] is Map
-          ? FanWorkMedia.fromMap(Map<String, dynamic>.from(map['cover'] as Map))
-          : null,
+      cover: _media(map['cover']),
+      categoryId: map['category'] as String? ?? '',
+      creatorNote: map['creatorNote'] as String? ?? '',
+      origin: FanWorkOrigin.from(
+        map['origin'] ?? (rawType == 'aiCharacter' ? 'aiGenerated' : null),
+      ),
       content: FanWorkContent.fromMap(
         map['content'] is Map
             ? Map<String, dynamic>.from(map['content'] as Map)
             : null,
       ),
-      tags: (map['tags'] as List<Object?>?)?.whereType<String>().toList() ??
+      tags:
+          (map['tags'] as List<Object?>?)?.whereType<String>().toList() ??
           const <String>[],
       animeId: map['animeId'] as String? ?? '',
       animeTitle: map['animeTitle'] as String? ?? '',
@@ -562,6 +856,9 @@ final class FanWork {
     FanWorkContent? content,
     FanWorkMedia? cover,
     bool clearCover = false,
+    String? categoryId,
+    String? creatorNote,
+    FanWorkOrigin? origin,
     List<String>? tags,
     String? animeId,
     String? animeTitle,
@@ -581,6 +878,9 @@ final class FanWork {
     description: description ?? this.description,
     cover: clearCover ? null : cover ?? this.cover,
     content: content ?? this.content,
+    categoryId: categoryId ?? this.categoryId,
+    creatorNote: creatorNote ?? this.creatorNote,
+    origin: origin ?? this.origin,
     tags: tags ?? this.tags,
     animeId: animeId ?? this.animeId,
     animeTitle: animeTitle ?? this.animeTitle,
@@ -694,29 +994,25 @@ final class FanWorkRevision {
   };
 }
 
+/// The autosaved, device-local shape of an in-progress work. Restored after
+/// the app is killed so a creator never loses typed text (spec §17.2).
 final class FanWorkDraft {
   const FanWorkDraft({
     this.workId,
     required this.type,
     this.title = '',
     this.description = '',
+    this.categoryId = '',
+    this.creatorNote = '',
+    this.origin = FanWorkOrigin.handmade,
     this.tags = const <String>[],
     this.animeId = '',
     this.animeTitle = '',
     this.characterIds = const <String>[],
-    this.body = '',
-    this.name = '',
+    this.characters = const <FanWorkCharacter>[],
     this.personality = '',
     this.abilities = '',
-    this.background = '',
-    this.lore = '',
-    this.chapters = const <FanWorkChapter>[],
-    this.locations = const <FanWorkNamedEntry>[],
-    this.factions = const <FanWorkNamedEntry>[],
-    this.characters = const <FanWorkNamedEntry>[],
-    this.pageIds = const <String>[],
-    this.pageCaptions = const <String, String>{},
-    this.imageIds = const <String>[],
+    this.specs = '',
     this.clearCover = false,
     this.copyright = const FanWorkCopyright(),
   });
@@ -725,76 +1021,123 @@ final class FanWorkDraft {
   final FanWorkType type;
   final String title;
   final String description;
+  final String categoryId;
+  final String creatorNote;
+  final FanWorkOrigin origin;
   final List<String> tags;
   final String animeId;
   final String animeTitle;
   final List<String> characterIds;
-  final String body;
-  final String name;
+  final List<FanWorkCharacter> characters;
   final String personality;
   final String abilities;
-  final String background;
-  final String lore;
-  final List<FanWorkChapter> chapters;
-  final List<FanWorkNamedEntry> locations;
-  final List<FanWorkNamedEntry> factions;
-  final List<FanWorkNamedEntry> characters;
-  final List<String> pageIds;
-  final Map<String, String> pageCaptions;
-  final List<String> imageIds;
+  final String specs;
   final bool clearCover;
   final FanWorkCopyright copyright;
+
+  bool get isNew => workId == null || workId!.isEmpty;
 
   Map<String, dynamic> toCallableMap() => <String, dynamic>{
     if (workId != null && workId!.isNotEmpty) 'workId': workId,
     'type': type.name,
     'title': title,
     'description': description,
+    'category': categoryId,
+    'creatorNote': creatorNote,
+    'origin': origin.name,
     'tags': tags,
     'animeId': animeId,
     'animeTitle': animeTitle,
     'characterIds': characterIds,
-    'body': body,
-    'name': name,
+    'characters': characters.map((entry) => entry.toMap()).toList(),
     'personality': personality,
     'abilities': abilities,
-    'background': background,
-    'lore': lore,
-    'chapters': chapters.map((chapter) => chapter.toMap()).toList(),
-    'locations': locations.map((entry) => entry.toMap()).toList(),
-    'factions': factions.map((entry) => entry.toMap()).toList(),
-    'characters': characters.map((entry) => entry.toMap()).toList(),
-    'pageIds': pageIds,
-    'pageCaptions': pageCaptions,
-    'imageIds': imageIds,
+    'specs': specs,
     'clearCover': clearCover,
     'copyright': copyright.toMap(),
   };
+
+  Map<String, dynamic> toLocalMap() => <String, dynamic>{
+    'workId': workId,
+    'type': type.name,
+    'title': title,
+    'description': description,
+    'categoryId': categoryId,
+    'creatorNote': creatorNote,
+    'origin': origin.name,
+    'tags': tags,
+    'animeId': animeId,
+    'animeTitle': animeTitle,
+    'characterIds': characterIds,
+    'characters': characters.map((entry) => entry.toMap()).toList(),
+    'personality': personality,
+    'abilities': abilities,
+    'specs': specs,
+    'clearCover': clearCover,
+    'copyright': copyright.toMap(),
+  };
+
+  factory FanWorkDraft.fromLocalMap(Map<String, dynamic>? map) {
+    if (map == null) {
+      return const FanWorkDraft(type: FanWorkType.manga);
+    }
+    final characters = map['characters'];
+    return FanWorkDraft(
+      workId: map['workId'] as String?,
+      type: fanWorkTypeFrom(map['type']),
+      title: map['title'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      categoryId: map['categoryId'] as String? ?? '',
+      creatorNote: map['creatorNote'] as String? ?? '',
+      origin: FanWorkOrigin.from(map['origin']),
+      tags:
+          (map['tags'] as List<Object?>?)?.whereType<String>().toList() ??
+          const <String>[],
+      animeId: map['animeId'] as String? ?? '',
+      animeTitle: map['animeTitle'] as String? ?? '',
+      characterIds:
+          (map['characterIds'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[],
+      characters: characters is List
+          ? [
+              for (var i = 0; i < characters.length; i++)
+                if (characters[i] is Map)
+                  FanWorkCharacter.fromMap(
+                    Map<String, dynamic>.from(characters[i] as Map),
+                    index: i,
+                  ),
+            ]
+          : const <FanWorkCharacter>[],
+      personality: map['personality'] as String? ?? '',
+      abilities: map['abilities'] as String? ?? '',
+      specs: map['specs'] as String? ?? '',
+      clearCover: map['clearCover'] == true,
+      copyright: FanWorkCopyright.fromMap(
+        map['copyright'] is Map
+            ? Map<String, dynamic>.from(map['copyright'] as Map)
+            : null,
+      ),
+    );
+  }
 
   factory FanWorkDraft.fromWork(FanWork work) => FanWorkDraft(
     workId: work.id,
     type: work.type,
     title: work.title,
     description: work.description,
+    categoryId: work.categoryId,
+    creatorNote: work.creatorNote,
+    origin: work.origin,
     tags: work.tags,
     animeId: work.animeId,
     animeTitle: work.animeTitle,
     characterIds: work.characterIds,
-    body: work.content.body,
-    name: work.content.name,
+    characters: work.content.orderedCharacters,
     personality: work.content.personality,
     abilities: work.content.abilities,
-    background: work.content.background,
-    lore: work.content.lore,
-    chapters: work.content.orderedChapters,
-    locations: work.content.locations,
-    factions: work.content.factions,
-    characters: work.content.characters,
-    pageIds: work.content.orderedPages.map((page) => page.mediaId).toList(),
-    pageCaptions: {
-      for (final page in work.content.pages) page.mediaId: page.caption,
-    },
-    imageIds: work.content.images.map((image) => image.mediaId).toList(),
+    specs: work.content.specs,
     copyright: work.copyright,
   );
 
@@ -803,23 +1146,17 @@ final class FanWorkDraft {
     FanWorkType? type,
     String? title,
     String? description,
+    String? categoryId,
+    String? creatorNote,
+    FanWorkOrigin? origin,
     List<String>? tags,
     String? animeId,
     String? animeTitle,
     List<String>? characterIds,
-    String? body,
-    String? name,
+    List<FanWorkCharacter>? characters,
     String? personality,
     String? abilities,
-    String? background,
-    String? lore,
-    List<FanWorkChapter>? chapters,
-    List<FanWorkNamedEntry>? locations,
-    List<FanWorkNamedEntry>? factions,
-    List<FanWorkNamedEntry>? characters,
-    List<String>? pageIds,
-    Map<String, String>? pageCaptions,
-    List<String>? imageIds,
+    String? specs,
     bool? clearCover,
     FanWorkCopyright? copyright,
   }) => FanWorkDraft(
@@ -827,23 +1164,17 @@ final class FanWorkDraft {
     type: type ?? this.type,
     title: title ?? this.title,
     description: description ?? this.description,
+    categoryId: categoryId ?? this.categoryId,
+    creatorNote: creatorNote ?? this.creatorNote,
+    origin: origin ?? this.origin,
     tags: tags ?? this.tags,
     animeId: animeId ?? this.animeId,
     animeTitle: animeTitle ?? this.animeTitle,
     characterIds: characterIds ?? this.characterIds,
-    body: body ?? this.body,
-    name: name ?? this.name,
+    characters: characters ?? this.characters,
     personality: personality ?? this.personality,
     abilities: abilities ?? this.abilities,
-    background: background ?? this.background,
-    lore: lore ?? this.lore,
-    chapters: chapters ?? this.chapters,
-    locations: locations ?? this.locations,
-    factions: factions ?? this.factions,
-    characters: characters ?? this.characters,
-    pageIds: pageIds ?? this.pageIds,
-    pageCaptions: pageCaptions ?? this.pageCaptions,
-    imageIds: imageIds ?? this.imageIds,
+    specs: specs ?? this.specs,
     clearCover: clearCover ?? this.clearCover,
     copyright: copyright ?? this.copyright,
   );
@@ -861,64 +1192,31 @@ final class FanWorkListPage {
   final FanWork? cursor;
 }
 
+/// A one-shot grant to upload exactly one file into one work.
 final class FanWorkUploadTicket {
   const FanWorkUploadTicket({
     required this.workId,
     required this.mediaId,
     required this.path,
     required this.contentType,
+    required this.role,
+    required this.uploadUrl,
+    required this.maxBytes,
+    required this.expiresAt,
   });
 
   final String workId;
   final String mediaId;
   final String path;
   final String contentType;
-}
+  final FanWorkMediaRole role;
 
-FanWorkType fanWorkTypeFrom(Object? raw) {
-  return FanWorkType.values.firstWhere(
-    (value) => value.name == raw,
-    orElse: () => FanWorkType.other,
-  );
-}
-
-List<FanWorkPage> _pages(Object? raw) {
-  if (raw is! List) return const <FanWorkPage>[];
-  return [
-    for (var i = 0; i < raw.length; i++)
-      if (raw[i] is Map)
-        FanWorkPage.fromMap(Map<String, dynamic>.from(raw[i] as Map), index: i),
-  ];
-}
-
-List<FanWorkMedia> _mediaList(Object? raw) {
-  if (raw is! List) return const <FanWorkMedia>[];
-  return [
-    for (final item in raw)
-      if (item is Map)
-        FanWorkMedia.fromMap(Map<String, dynamic>.from(item)),
-  ];
-}
-
-List<FanWorkChapter> _chapters(Object? raw) {
-  if (raw is! List) return const <FanWorkChapter>[];
-  return [
-    for (var i = 0; i < raw.length; i++)
-      if (raw[i] is Map)
-        FanWorkChapter.fromMap(
-          Map<String, dynamic>.from(raw[i] as Map),
-          index: i,
-        ),
-  ];
-}
-
-List<FanWorkNamedEntry> _entries(Object? raw) {
-  if (raw is! List) return const <FanWorkNamedEntry>[];
-  return [
-    for (final item in raw)
-      if (item is Map)
-        FanWorkNamedEntry.fromMap(Map<String, dynamic>.from(item)),
-  ];
+  /// A V4 resumable-session URL. Uploading through it never creates a
+  /// permanent `downloadToken` on the object, which is what stops a Fan Work
+  /// file from being shared as a link after the fact.
+  final String uploadUrl;
+  final int maxBytes;
+  final DateTime expiresAt;
 }
 
 final class FanWorkAnalytics {
@@ -957,21 +1255,76 @@ final class FanWorkAnalytics {
       totalRatings: (map['totalRatings'] as num?)?.toInt() ?? 0,
       averageRating: (map['averageRating'] as num?)?.toDouble() ?? 0.0,
       worksByType: Map<String, int>.from(map['worksByType'] ?? {}),
-      topWorks: (map['topWorks'] as List?)
-              ?.map((e) => FanWorkPreview.fromMap(Map<String, dynamic>.from(e as Map), id: e['id'] as String? ?? ''))
+      topWorks:
+          (map['topWorks'] as List?)
+              ?.map(
+                (entry) => FanWorkPreview.fromMap(
+                  Map<String, dynamic>.from(entry as Map),
+                  id: entry['id'] as String? ?? '',
+                ),
+              )
               .toList(growable: false) ??
           const <FanWorkPreview>[],
     );
   }
 }
 
-DateTime? _date(dynamic value) {
+FanWorkType fanWorkTypeFrom(Object? raw) {
+  // `aiCharacter` is a retired type: it is a character with an AI origin.
+  if (raw == 'aiCharacter') return FanWorkType.character;
+  return FanWorkType.values.firstWhere(
+    (value) => value.name == raw,
+    orElse: () => FanWorkType.other,
+  );
+}
+
+FanWorkMedia? _media(Object? raw) {
+  if (raw is! Map) return null;
+  return FanWorkMedia.fromMap(Map<String, dynamic>.from(raw));
+}
+
+FanWorkDocument? _document(Object? raw) {
+  if (raw is! Map) return null;
+  return FanWorkDocument.fromMap(Map<String, dynamic>.from(raw));
+}
+
+List<FanWorkCharacter> _characters(Object? raw) {
+  if (raw is! List) return const <FanWorkCharacter>[];
+  return <FanWorkCharacter>[
+    for (var i = 0; i < raw.length; i++)
+      if (raw[i] is Map)
+        FanWorkCharacter.fromMap(
+          Map<String, dynamic>.from(raw[i] as Map),
+          index: i,
+        ),
+  ];
+}
+
+List<FanWorkPage> _pages(Object? raw) {
+  if (raw is! List) return const <FanWorkPage>[];
+  return <FanWorkPage>[
+    for (var i = 0; i < raw.length; i++)
+      if (raw[i] is Map)
+        FanWorkPage.fromMap(Map<String, dynamic>.from(raw[i] as Map), index: i),
+  ];
+}
+
+List<FanWorkChapter> _chapters(Object? raw) {
+  if (raw is! List) return const <FanWorkChapter>[];
+  return <FanWorkChapter>[
+    for (var i = 0; i < raw.length; i++)
+      if (raw[i] is Map)
+        FanWorkChapter.fromMap(
+          Map<String, dynamic>.from(raw[i] as Map),
+          index: i,
+        ),
+  ];
+}
+
+DateTime? _date(Object? value) {
   if (value is DateTime) return value;
   if (value is Timestamp) return value.toDate();
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
   if (value is String) return DateTime.tryParse(value);
-  try {
-    return value?.toDate() as DateTime?;
-  } catch (_) {
-    return null;
-  }
+  return null;
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/loading/loading_state.dart';
+import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
 import 'package:pubget/features/fan_works/providers/fan_work_providers.dart';
 import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart';
@@ -94,7 +95,7 @@ void main() {
     editor.updateDraft(
       editor.draft.copyWith(
         title: 'Kept locally',
-        body: 'Once upon a time in a village far away.',
+        description: 'Once upon a time in a village far away.',
       ),
     );
     final saved = await editor.saveDraft();
@@ -117,10 +118,10 @@ void main() {
     addTearDown(editor.dispose);
     await editor.start();
 
-    final upload = editor.uploadImage(
+    final upload = editor.uploadMedia(
       bytes: <int>[1, 2, 3],
       contentType: 'image/jpeg',
-      role: FanWorkMediaRole.image,
+      role: FanWorkMediaRole.artwork,
     );
     for (
       var attempt = 0;
@@ -149,7 +150,8 @@ void main() {
     expect(repository.uploadAttempts, 2);
     expect(editor.uploadProgress, 1);
     expect(editor.uploadFailed, isFalse);
-    expect(editor.draft.imageIds, <String>['m1']);
+    // A confirmed slot lands in the refreshed work, not in the draft itself.
+    expect(editor.loaded?.content.artwork, isNotNull);
   });
 
   test(
@@ -161,10 +163,10 @@ void main() {
       addTearDown(editor.dispose);
       await editor.start();
 
-      final first = await editor.uploadImage(
+      final first = await editor.uploadMedia(
         bytes: <int>[1, 2, 3],
         contentType: 'image/jpeg',
-        role: FanWorkMediaRole.image,
+        role: FanWorkMediaRole.artwork,
       );
 
       expect(first.failureOrNull, isA<NetworkError>());
@@ -177,7 +179,8 @@ void main() {
 
       expect(retried.isSuccess, isTrue);
       expect(repository.uploadAttempts, 1);
-      expect(editor.draft.imageIds, <String>['m1']);
+      // A confirmed slot lands in the refreshed work, not in the draft itself.
+      expect(editor.loaded?.content.artwork, isNotNull);
     },
   );
 
@@ -235,7 +238,149 @@ void main() {
     expect(details.myRating, 8);
     expect(repository.storedRating, 8);
   });
+
+  group('the reader picks a reader from the work, not the type', () {
+    test('a work with a document asks for a signed grant', () async {
+      final repository = _FakeFanWorkRepository();
+      final reader = FanWorkReaderProvider(repository: repository);
+      addTearDown(reader.dispose);
+      repository.works['doc-1'] = _workWith(
+        const FanWorkContent(
+          document: FanWorkDocument(
+            mediaId: 'd1',
+            path: 'fan_works/alice/doc-1/d1.pdf',
+          ),
+        ),
+      );
+      repository.documentAccess = FanWorkDocumentAccess(
+        url: 'https://storage.test/read?ticket=abc',
+        expiresAt: _expiry,
+      );
+
+      await reader.open(workId: 'doc-1', userId: 'alice');
+
+      expect(reader.shape, FanWorkReaderShape.document);
+      expect(reader.url, 'https://storage.test/read?ticket=abc');
+    });
+
+    test('a legacy page-image manga is read as pages, with no grant', () async {
+      final repository = _FakeFanWorkRepository();
+      final reader = FanWorkReaderProvider(repository: repository);
+      addTearDown(reader.dispose);
+      repository.works['w1'] = _workWith(
+        const FanWorkContent(
+          pages: <FanWorkPage>[
+            FanWorkPage(mediaId: 'p2', path: 'fan_works/a/w/2.jpg', index: 1),
+            FanWorkPage(mediaId: 'p1', path: 'fan_works/a/w/1.jpg', index: 0),
+          ],
+        ),
+      );
+
+      await reader.open(workId: 'w1', userId: 'alice');
+
+      expect(reader.shape, FanWorkReaderShape.legacyPages);
+      // Asking for a grant would have produced a confusing "not found" for a
+      // work that reads perfectly well.
+      expect(reader.url, isNull);
+      expect(reader.state, LoadingState.loaded);
+      expect(reader.failure, isNull);
+      expect(repository.documentAccessCalls, 0);
+    });
+
+    test('a legacy prose story is read as prose', () async {
+      final repository = _FakeFanWorkRepository();
+      final reader = FanWorkReaderProvider(repository: repository);
+      addTearDown(reader.dispose);
+      repository.works['w1'] = _workWith(
+        const FanWorkContent(body: 'Once upon a time in a village far away.'),
+      );
+
+      await reader.open(workId: 'w1', userId: 'alice');
+
+      expect(reader.shape, FanWorkReaderShape.legacyProse);
+      expect(reader.url, isNull);
+    });
+
+    test('a chaptered legacy work is prose, not pages', () async {
+      final repository = _FakeFanWorkRepository();
+      final reader = FanWorkReaderProvider(repository: repository);
+      addTearDown(reader.dispose);
+      repository.works['w1'] = _workWith(
+        const FanWorkContent(
+          chapters: <FanWorkChapter>[
+            FanWorkChapter(id: 'c1', title: 'One', body: 'It began.', index: 0),
+          ],
+        ),
+      );
+
+      await reader.open(workId: 'w1', userId: 'alice');
+
+      expect(reader.shape, FanWorkReaderShape.legacyProse);
+    });
+
+    test('a work with no readable content is unknown, not a crash', () async {
+      final repository = _FakeFanWorkRepository();
+      final reader = FanWorkReaderProvider(repository: repository);
+      addTearDown(reader.dispose);
+      repository.works['w1'] = _workWith(const FanWorkContent());
+
+      await reader.open(workId: 'w1', userId: 'alice');
+
+      expect(reader.shape, FanWorkReaderShape.unknown);
+      expect(reader.url, isNull);
+    });
+
+    test(
+      'a missing work surfaces the failure instead of an empty reader',
+      () async {
+        final repository = _FakeFanWorkRepository();
+        final reader = FanWorkReaderProvider(repository: repository);
+        addTearDown(reader.dispose);
+
+        await reader.open(workId: 'gone', userId: 'alice');
+
+        expect(reader.work, isNull);
+        expect(reader.state, LoadingState.error);
+        expect(reader.failure, isA<NotFoundError>());
+        // No grant request for a work that does not exist.
+        expect(repository.documentAccessCalls, 0);
+      },
+    );
+
+    test(
+      'an offline load is reported as offline, not as a broken work',
+      () async {
+        final repository = _FakeFanWorkRepository()
+          ..works['w1'] = _workWith(const FanWorkContent())
+          ..offlineGetWork = true;
+        final reader = FanWorkReaderProvider(repository: repository);
+        addTearDown(reader.dispose);
+
+        await reader.open(workId: 'w1', userId: 'alice');
+
+        expect(reader.state, LoadingState.offline);
+        expect(reader.failure, isA<NetworkError>());
+      },
+    );
+  });
 }
+
+final DateTime _expiry = DateTime.utc(2026, 9, 1, 12, 3);
+
+/// A minimal published work; the reader only cares about `content`.
+FanWork _workWith(FanWorkContent content) => FanWork(
+  id: 'w1',
+  creatorId: 'alice',
+  type: FanWorkType.manga,
+  title: 'Legacy work',
+  description: '',
+  content: content,
+  status: FanWorkStatus.published,
+  moderationStatus: FanWorkModerationStatus.approved,
+  visibility: FanWorkVisibility.public,
+  createdAt: DateTime.utc(2026, 9, 1),
+  updatedAt: DateTime.utc(2026, 9, 1),
+);
 
 FanWork _work(String id) => FanWork(
   id: id,
@@ -244,9 +389,7 @@ FanWork _work(String id) => FanWork(
   title: 'Work $id',
   description: 'A drawing',
   content: const FanWorkContent(
-    images: <FanWorkMedia>[
-      FanWorkMedia(mediaId: 'i1', path: 'fan_works/alice/w/i1.jpg'),
-    ],
+    artwork: FanWorkMedia(mediaId: 'i1', path: 'fan_works/alice/w/i1.jpg'),
   ),
   status: FanWorkStatus.published,
   moderationStatus: FanWorkModerationStatus.approved,
@@ -315,10 +458,19 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String mediaId,
     required String path,
     required FanWorkMediaRole role,
+    String characterId = '',
+    int? pageCount,
     String caption = '',
   }) async {
     final failure = confirmMediaFailure;
     if (failure != null) return FailureResult(failure);
+    if (role == FanWorkMediaRole.artwork) {
+      confirmedArtwork[workId] = FanWorkMedia(
+        mediaId: mediaId,
+        path: path,
+        contentType: 'image/jpeg',
+      );
+    }
     return const Success<void>(null);
   }
 
@@ -359,6 +511,12 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
 
   @override
   Future<Result<FanWork>> getWork(String workId) async {
+    getWorkCalls += 1;
+    if (offlineGetWork) {
+      return const FailureResult(NetworkError('offline'));
+    }
+    final published = works[workId];
+    if (published != null) return Success(published);
     final draft = drafts[workId];
     if (draft == null) {
       return const FailureResult(NotFoundError('missing'));
@@ -370,7 +528,9 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
         type: draft.type,
         title: draft.title,
         description: draft.description,
-        content: FanWorkContent(body: draft.body, name: draft.name),
+        // Mirrors what the server returns: a confirmed slot shows up in the
+        // stored content, keyed by the role it was confirmed under.
+        content: FanWorkContent(artwork: confirmedArtwork[workId]),
         status: FanWorkStatus.draft,
         moderationStatus: FanWorkModerationStatus.pending,
         visibility: FanWorkVisibility.unpublished,
@@ -485,13 +645,22 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
   }) async => Success(
     FanWorkUploadTicket(
       workId: workId,
       mediaId: 'm1',
-      path: 'fan_works/alice/$workId/m1.jpg',
+      path:
+          'fan_works/alice/$workId/m1'
+          '${role == FanWorkMediaRole.document ? '.pdf' : '.jpg'}',
       contentType: contentType,
+      role: role,
+      uploadUrl: 'https://storage.test/upload/session/1',
+      maxBytes: role == FanWorkMediaRole.document
+          ? FanWorkLifecycle.maxDocumentBytes
+          : FanWorkLifecycle.maxImageBytes,
+      expiresAt: DateTime.utc(2026, 9, 1, 12, 15),
     ),
   );
 
@@ -532,6 +701,63 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
           topWorks: const <FanWorkPreview>[],
         ),
       );
+
+  /// Artwork slots the fake has "confirmed", so a refreshed read shows them.
+  final Map<String, FanWorkMedia> confirmedArtwork = <String, FanWorkMedia>{};
+
+  /// Works the reader can load. Separate from `drafts` because a reader never
+  /// sees a draft unless it is the owner looking at their own work.
+  final Map<String, FanWork> works = <String, FanWork>{};
+  int getWorkCalls = 0;
+  int documentAccessCalls = 0;
+
+  /// Makes every work read fail as if the device were offline.
+  bool offlineGetWork = false;
+
+  FanWorkDocumentAccess? documentAccess;
+  Failure? documentAccessFailure;
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async {
+    documentAccessCalls += 1;
+    final failure = documentAccessFailure;
+    if (failure != null) return FailureResult(failure);
+    final access = documentAccess;
+    if (access == null) {
+      return const FailureResult(NotFoundError('no document'));
+    }
+    return Success(access);
+  }
+
+  FanWorkReadingProgress storedProgress = const FanWorkReadingProgress();
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => Success(storedProgress);
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async {
+    storedProgress = progress;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) async {
+    storedProgress = FanWorkReadingProgress(
+      page: storedProgress.page,
+      pageCount: storedProgress.pageCount,
+      progress: 1,
+      completed: true,
+    );
+    return const Success<void>(null);
+  }
 
   @override
   Stream<Result<FanWork>> watchWork(String workId) =>

@@ -1,14 +1,47 @@
 "use strict";
 
-const TYPES = Object.freeze([
-  "manga",
-  "drawing",
-  "story",
-  "character",
-  "aiCharacter",
-  "worldbuilding",
-  "other",
-]);
+// The type list, category gate, media roles, MIME table, size ceilings, and
+// content shape all live in `fanWorksSchema.js` so the server has exactly one
+// definition and it is the same one `fanWorksTaxonomy.js` exposes to the picker.
+const {
+  SCHEMA_VERSION,
+  TITLE_MAX,
+  DESCRIPTION_MAX,
+  MAX_TAGS,
+  MAX_ANIME_ID,
+  MAX_ANIME_TITLE,
+  MAX_CAPTION,
+  MEDIA_ROLES,
+  ALLOWED_IMAGE_MIME,
+  DOCUMENT_MIME,
+  IMAGE_MAX_BYTES,
+  DOCUMENT_MAX_BYTES,
+  MAX_CAST,
+  MAX_MEDIA_ID,
+  MAX_PATH,
+  isDocumentRole,
+  maxBytesForMime,
+  allowedMimeForRole,
+  mimeAllowedForRole,
+  extensionForMime,
+  roleAllowedForType,
+  emptyContentFor,
+  mergeContent: mergeTypeContent,
+  upgradeLegacyWork,
+  publishValidationError: typePublishValidationError,
+  canonicalType,
+  normalizeCategory,
+  normalizeOrigin,
+} = require("./fanWorksSchema");
+
+const {
+  CREATABLE_TYPES,
+  isKnownType,
+} = require("./fanWorksTaxonomy");
+
+/** Read-facing type list, including the legacy read-only values. */
+const TYPES = Object.freeze(require("./fanWorksTaxonomy").ALL_TYPES);
+
 const REPORT_REASONS = Object.freeze([
   "inappropriate",
   "spam",
@@ -16,45 +49,11 @@ const REPORT_REASONS = Object.freeze([
   "harassment",
   "other",
 ]);
-const MEDIA_ROLES = Object.freeze(["cover", "page", "image", "extra"]);
-const ALLOWED_MIME = Object.freeze({
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-});
 
 const TITLE_MIN = 3;
-const TITLE_MAX = 80;
-const DESCRIPTION_MAX = 2000;
-const STORY_BODY_MAX = 20000;
-const CHAPTER_BODY_MAX = 8000;
-const CHAPTER_TITLE_MAX = 80;
-const MAX_CHAPTERS = 20;
-const LORE_MAX = 8000;
-const ENTRY_NAME_MAX = 80;
-const ENTRY_DESCRIPTION_MAX = 500;
-const MAX_LOCATIONS = 20;
-const MAX_FACTIONS = 20;
-const MAX_WORLD_CHARACTERS = 20;
-const MAX_TAGS = 8;
 const TAG_MIN = 2;
 const TAG_MAX = 24;
-const MAX_PAGES = 40;
-const MAX_IMAGES = 8;
-const MAX_ANIME_ID = 64;
-const MAX_ANIME_TITLE = 120;
-const MAX_CHARACTER_REFS = 8;
-const MAX_PERSONALITY = 1000;
-const MAX_ABILITIES = 1000;
-const MAX_BACKGROUND = 4000;
-const MAX_CAPTION = 200;
-const MAX_NAME = 80;
-const SCHEMA_VERSION = 1;
-const MAX_MEDIA_ID = 128;
-const MAX_PATH = 256;
 const MIN_STORY_CHARS = 20;
-const MIN_OTHER_CHARS = 20;
 const COMMENT_MAX = 500;
 const COMMENT_COOLDOWN_MS = 2000;
 
@@ -152,54 +151,6 @@ function assertOwnedPath(uid, workId, path, HttpsError) {
   }
 }
 
-function mediaFromExisting(item) {
-  if (!item || typeof item.path !== "string") return null;
-  return {
-    mediaId: typeof item.mediaId === "string" ? item.mediaId : "",
-    path: item.path,
-    contentType: typeof item.contentType === "string" ? item.contentType : "image/jpeg",
-  };
-}
-
-function sanitizePages(existingPages, requestedIds, captions) {
-  const current = Array.isArray(existingPages) ? existingPages : [];
-  const byId = new Map();
-  for (const page of current) {
-    const media = mediaFromExisting(page);
-    if (!media || !media.mediaId) continue;
-    byId.set(media.mediaId, {
-      ...media,
-      caption: typeof page.caption === "string" ? page.caption.slice(0, MAX_CAPTION) : "",
-    });
-  }
-  const order = Array.isArray(requestedIds)
-    ? requestedIds.filter((id) => typeof id === "string" && byId.has(id))
-    : [...byId.keys()];
-  const captionMap = captions && typeof captions === "object" ? captions : {};
-  return order.slice(0, MAX_PAGES).map((mediaId, index) => {
-    const page = byId.get(mediaId);
-    const captionRaw = captionMap[mediaId];
-    const caption = typeof captionRaw === "string"
-      ? captionRaw.trim().slice(0, MAX_CAPTION)
-      : page.caption;
-    return { ...page, index, caption: caption || "" };
-  });
-}
-
-function sanitizeImages(existingImages, requestedIds) {
-  const current = Array.isArray(existingImages) ? existingImages : [];
-  const byId = new Map();
-  for (const image of current) {
-    const media = mediaFromExisting(image);
-    if (!media || !media.mediaId) continue;
-    byId.set(media.mediaId, media);
-  }
-  const order = Array.isArray(requestedIds)
-    ? requestedIds.filter((id) => typeof id === "string" && byId.has(id))
-    : [...byId.keys()];
-  return order.slice(0, MAX_IMAGES).map((mediaId) => byId.get(mediaId));
-}
-
 function sanitizeChapters(raw) {
   if (!Array.isArray(raw)) return [];
   const chapters = [];
@@ -215,148 +166,23 @@ function sanitizeChapters(raw) {
   return chapters;
 }
 
-function sanitizeNamedEntries(raw, max) {
-  if (!Array.isArray(raw)) return [];
-  const entries = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const name = optionalString(item.name, ENTRY_NAME_MAX);
-    const description = optionalString(item.description, ENTRY_DESCRIPTION_MAX);
-    if (!name) continue;
-    if (description === null) continue;
-    entries.push({ name, description: description || "" });
-    if (entries.length >= max) break;
-  }
-  return entries;
+function emptyContent(type) {
+  return emptyContentFor(type);
 }
 
-function emptyContent() {
-  return {
-    pages: [],
-    images: [],
-    body: "",
-    chapters: [],
-    name: "",
-    personality: "",
-    abilities: "",
-    background: "",
-    image: null,
-    lore: "",
-    locations: [],
-    factions: [],
-    characters: [],
-  };
-}
-
+/**
+ * Normalizes the client's draft payload into the stored content for `type`.
+ * The type check and slot assignment both live in the schema module.
+ */
 function mergeContent(existing, input, type) {
-  const current = { ...emptyContent(), ...(existing || {}) };
-  const next = { ...current };
-  if (type === "manga") {
-    next.pages = sanitizePages(current.pages, input.pageIds, input.pageCaptions);
-  }
-  if (type === "drawing" || type === "other") {
-    next.images = sanitizeImages(current.images, input.imageIds);
-  }
-  if (type === "story" || type === "other") {
-    const body = optionalString(input.body ?? current.body, STORY_BODY_MAX);
-    if (body !== null) next.body = body;
-    if (input.chapters !== undefined) next.chapters = sanitizeChapters(input.chapters);
-  }
-  if (type === "character" || type === "aiCharacter") {
-    const name = optionalString(input.name ?? current.name, MAX_NAME);
-    const personality = optionalString(input.personality ?? current.personality, MAX_PERSONALITY);
-    const abilities = optionalString(input.abilities ?? current.abilities, MAX_ABILITIES);
-    const background = optionalString(input.background ?? current.background, MAX_BACKGROUND);
-    if (name !== null) next.name = name;
-    if (personality !== null) next.personality = personality;
-    if (abilities !== null) next.abilities = abilities;
-    if (background !== null) next.background = background;
-  }
-  if (type === "worldbuilding") {
-    const lore = optionalString(input.lore ?? current.lore, LORE_MAX);
-    if (lore !== null) next.lore = lore;
-    if (input.locations !== undefined) {
-      next.locations = sanitizeNamedEntries(input.locations, MAX_LOCATIONS);
-    }
-    if (input.factions !== undefined) {
-      next.factions = sanitizeNamedEntries(input.factions, MAX_FACTIONS);
-    }
-    if (input.characters !== undefined) {
-      next.characters = sanitizeNamedEntries(input.characters, MAX_WORLD_CHARACTERS);
-    }
-  }
-  return next;
+  return mergeTypeContent(existing, input, type);
 }
 
+/**
+ * Publish-time completeness for the v2 shape.
+ */
 function publishValidationError(work) {
-  const title = typeof work.title === "string" ? work.title.trim() : "";
-  if (title.length < TITLE_MIN || title.length > TITLE_MAX) {
-    return "A title between 3 and 80 characters is required.";
-  }
-  if (!TYPES.includes(work.type)) {
-    return "A valid Fan Work type is required.";
-  }
-  const content = work.content || {};
-  const cover = work.cover;
-  const tags = Array.isArray(work.tags) ? work.tags : [];
-  if (tags.length > MAX_TAGS) return "Too many tags.";
-  if (work.visibility && work.visibility !== "public" && work.visibility !== "unpublished") {
-    return "Visibility is invalid.";
-  }
-  if (work.type === "manga") {
-    const pages = Array.isArray(content.pages) ? content.pages : [];
-    if (pages.length < 1) return "Manga needs at least one page.";
-    if (pages.length > MAX_PAGES) return "Manga has too many pages.";
-    for (let i = 0; i < pages.length; i += 1) {
-      if (!pages[i] || !pages[i].path || pages[i].index !== i) {
-        return "Manga pages must be ordered media references.";
-      }
-    }
-  }
-  if (work.type === "drawing") {
-    const images = Array.isArray(content.images) ? content.images : [];
-    if (images.length < 1 && !(cover && cover.path)) {
-      return "A drawing needs at least one image.";
-    }
-    if (images.length > MAX_IMAGES) return "Too many drawing images.";
-  }
-  if (work.type === "story") {
-    const body = typeof content.body === "string" ? content.body.trim() : "";
-    const chapters = Array.isArray(content.chapters) ? content.chapters : [];
-    const chapterText = chapters.some((chapter) =>
-      typeof chapter.body === "string" && chapter.body.trim().length >= MIN_STORY_CHARS);
-    if (body.length < MIN_STORY_CHARS && !chapterText) {
-      return "A story needs written content.";
-    }
-    if (body.length > STORY_BODY_MAX) return "Story content is too long.";
-    if (chapters.length > MAX_CHAPTERS) return "Too many chapters.";
-  }
-  if (work.type === "character" || work.type === "aiCharacter") {
-    const name = typeof content.name === "string" ? content.name.trim() : "";
-    const description = typeof work.description === "string" ? work.description.trim() : "";
-    const background = typeof content.background === "string" ? content.background.trim() : "";
-    if (name.length < 2) return "A character name is required.";
-    if (description.length < 10 && background.length < 10) {
-      return "A character needs a description or background.";
-    }
-  }
-  if (work.type === "worldbuilding") {
-    const lore = typeof content.lore === "string" ? content.lore.trim() : "";
-    const description = typeof work.description === "string" ? work.description.trim() : "";
-    if (lore.length < MIN_STORY_CHARS && description.length < MIN_STORY_CHARS) {
-      return "Worldbuilding needs lore or a description.";
-    }
-  }
-  if (work.type === "other") {
-    const description = typeof work.description === "string" ? work.description.trim() : "";
-    const body = typeof content.body === "string" ? content.body.trim() : "";
-    const images = Array.isArray(content.images) ? content.images : [];
-    const hasMedia = images.length > 0 || (cover && cover.path);
-    if (description.length < MIN_OTHER_CHARS && body.length < MIN_OTHER_CHARS && !hasMedia) {
-      return "This work needs a description, written content, or media.";
-    }
-  }
-  return null;
+  return typePublishValidationError(upgradeLegacyWork(work));
 }
 
 function isPubliclyListed(work) {
@@ -438,16 +264,25 @@ function createFanWorksDomain({
   HttpsError,
   notificationBuilder,
   storage,
+  signer,
   economy,
   achievements,
 }) {
   async function saveFanWorkDraft(request) {
     const uid = requireAuth(request, HttpsError);
     const input = request.data || {};
-    const type = TYPES.includes(input.type) ? input.type : null;
+    // Only the four creatable types may be written. A legacy read-only type in
+    // the payload is refused rather than silently accepted, because accepting
+    // it would let a client create something the picker cannot produce.
+    const type = CREATABLE_TYPES.includes(input.type) ? input.type : null;
     if (!type) {
-      throw new HttpsError("invalid-argument", "A valid Fan Work type is required.");
+      throw new HttpsError(
+        "invalid-argument",
+        "Type must be one of manga, story, drawing, or character.",
+      );
     }
+    const category = normalizeCategory(type, input.category ?? "");
+    const origin = normalizeOrigin(input.origin);
     const title = optionalString(input.title ?? "", TITLE_MAX);
     if (title === null) {
       throw new HttpsError("invalid-argument", "Title is too long.");
@@ -456,10 +291,11 @@ function createFanWorksDomain({
     if (description === null) {
       throw new HttpsError("invalid-argument", "Description is too long.");
     }
+    const creatorNote = optionalString(input.creatorNote ?? "", 1000);
     const animeId = optionalString(input.animeId ?? "", MAX_ANIME_ID);
     const animeTitle = optionalString(input.animeTitle ?? "", MAX_ANIME_TITLE);
-    if (animeId === null || animeTitle === null) {
-      throw new HttpsError("invalid-argument", "Anime reference is invalid.");
+    if (animeId === null || animeTitle === null || creatorNote === null) {
+      throw new HttpsError("invalid-argument", "Fan Work metadata is invalid.");
     }
     const tags = normalizeTags(input.tags);
     const characterIds = normalizeCharacterIds(input.characterIds);
@@ -483,6 +319,9 @@ function createFanWorksDomain({
           type,
           title,
           description,
+          category,
+          origin,
+          creatorNote,
           tags,
           animeId,
           animeTitle,
@@ -506,7 +345,10 @@ function createFanWorksDomain({
         title,
         description,
         cover: null,
-        content: mergeContent(emptyContent(), input, type),
+        content: mergeContent(emptyContent(type), input, type),
+        category,
+        origin,
+        creatorNote,
         tags,
         animeId,
         animeTitle,
@@ -710,34 +552,102 @@ function createFanWorksDomain({
     return { ok: true };
   }
 
+  /**
+   * Opens an upload for one media slot.
+   *
+   * The returned `uploadUrl` is a V4-signed URL (resumable session for a PDF, a
+   * bounded `PUT` for a small image). Nothing here mints a permanent
+   * `downloadToken`, and no ACL is set, so an object stays private by
+   * inheritance and reading it later requires a fresh signed read grant.
+   */
   async function startFanWorkMediaUpload(request) {
     const uid = requireAuth(request, HttpsError);
-    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
-    const contentType = typeof request.data?.contentType === "string"
-      ? request.data.contentType.trim().toLowerCase()
+    const input = request.data || {};
+    const workId = validString(input.workId, 128) ? input.workId.trim() : null;
+    const role = MEDIA_ROLES.includes(input.role) ? input.role : null;
+    const contentType = typeof input.contentType === "string"
+      ? input.contentType.trim().toLowerCase()
       : "";
-    const ext = ALLOWED_MIME[contentType];
+    const characterId = validString(input.characterId, 64)
+      ? input.characterId.trim()
+      : "";
     if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
-    if (!ext) {
-      throw new HttpsError("invalid-argument", "Unsupported image type.");
+    if (!role) throw new HttpsError("invalid-argument", "A valid media role is required.");
+    if (!signer) {
+      throw new HttpsError("failed-precondition", "Fan Work storage is not configured.");
     }
+
+    let workType = null;
     const ref = workRef(db, workId);
     await db.runTransaction(async (transaction) => {
-      const currentSnap = await transaction.get(ref);
-      if (!currentSnap.exists) throw new HttpsError("not-found", "Fan Work not found.");
-      const current = currentSnap.data() || {};
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+      const current = snap.data() || {};
       if (current.creatorId !== uid) {
         throw new HttpsError("permission-denied", "You cannot upload media for this Fan Work.");
       }
       if (current.status !== "draft") {
         throw new HttpsError("failed-precondition", "Media can only be added to drafts.");
       }
+      workType = canonicalType(current.type);
+      if (!roleAllowedForType(workType, role)) {
+        throw new HttpsError(
+          "invalid-argument",
+          `A ${workType} Fan Work cannot have a ${role} file.`,
+        );
+      }
     });
+
+    // A cast portrait must name a member that actually exists, otherwise the
+    // upload would land in the bucket with nothing pointing at it.
+    if (role === "characterPortrait") {
+      if (!characterId) {
+        throw new HttpsError("invalid-argument", "characterId is required for a cast portrait.");
+      }
+      const snap = await ref.get();
+      const content = (snap.data() && snap.data().content) || {};
+      const cast = Array.isArray(content.characters) ? content.characters : [];
+      if (!cast.some((entry) => entry && entry.id === characterId)) {
+        throw new HttpsError("not-found", "That cast member is not on this Fan Work.");
+      }
+    }
+
+    if (!mimeAllowedForRole(role, contentType)) {
+      throw new HttpsError(
+        "invalid-argument",
+        role === "document"
+          ? "A document must be a PDF."
+          : "Only JPEG, PNG, WEBP, or GIF images are allowed.",
+      );
+    }
+
     const mediaId = db.collection("fanWorks").doc().id;
-    const path = `fan_works/${uid}/${workId}/${mediaId}.${ext}`;
-    return { workId, mediaId, path, contentType };
+    const nonce = db.collection("fanWorks").doc().id;
+    const signed = isDocumentRole(role)
+      ? await signer.signResumableUpload({ userId: uid, workId, mediaId, mime: contentType, nonce })
+      : await signer.signWriteUrl({ userId: uid, workId, mediaId, mime: contentType, nonce });
+
+    return {
+      workId,
+      mediaId,
+      role,
+      contentType,
+      path: signed.path,
+      uploadUrl: isDocumentRole(role) ? signed.sessionUri : signed.url,
+      maxBytes: signed.maxBytes || maxBytesForMime(contentType),
+      expiresAt: signed.expiresAt || Date.now() + 15 * 60 * 1000,
+    };
   }
 
+  /**
+   * Attaches a previously uploaded object to its slot.
+   *
+   * The bytes are not re-checked against a client claim: the size and MIME come
+   * from the object's own metadata, so a client cannot lie about either. A
+   * PDF's page count is taken from the metadata when the uploader recorded it
+   * and left null otherwise, because counting pages server-side would mean
+   * parsing an untrusted PDF.
+   */
   async function confirmFanWorkMedia(request) {
     const uid = requireAuth(request, HttpsError);
     const input = request.data || {};
@@ -745,25 +655,42 @@ function createFanWorksDomain({
     const mediaId = validString(input.mediaId, MAX_MEDIA_ID) ? input.mediaId.trim() : null;
     const path = typeof input.path === "string" ? input.path.trim() : "";
     const role = MEDIA_ROLES.includes(input.role) ? input.role : null;
+    const characterId = validString(input.characterId, 64) ? input.characterId.trim() : "";
     const caption = optionalString(input.caption ?? "", MAX_CAPTION);
-    if (!workId || !mediaId || !role) {
+    if (!workId || !mediaId || !role || !path) {
       throw new HttpsError("invalid-argument", "Media confirmation data is invalid.");
     }
     if (caption === null) {
       throw new HttpsError("invalid-argument", "Caption is too long.");
     }
+    if (role === "characterPortrait" && !characterId) {
+      throw new HttpsError("invalid-argument", "characterId is required for a cast portrait.");
+    }
     assertOwnedPath(uid, workId, path, HttpsError);
+
     const meta = await readMediaMetadata(storage, path);
     if (!meta) {
       throw new HttpsError("failed-precondition", "Upload the file before confirming it.");
     }
-    if (!ALLOWED_MIME[meta.contentType]) {
-      throw new HttpsError("invalid-argument", "Unsupported image type.");
+    const actualType = String(meta.contentType || "").toLowerCase();
+    if (role === "document") {
+      if (actualType !== DOCUMENT_MIME) {
+        throw new HttpsError("invalid-argument", "A document must be a PDF.");
+      }
+      if (meta.size > DOCUMENT_MAX_BYTES) {
+        throw new HttpsError("invalid-argument", "A PDF must be 50 MB or smaller.");
+      }
+    } else {
+      if (!ALLOWED_IMAGE_MIME[actualType]) {
+        throw new HttpsError("invalid-argument", "That file is not an allowed image type.");
+      }
+      if (meta.size > IMAGE_MAX_BYTES) {
+        throw new HttpsError("invalid-argument", "An image must be 12 MB or smaller.");
+      }
     }
-    if (meta.size > 10 * 1024 * 1024) {
-      throw new HttpsError("invalid-argument", "That image is too large.");
-    }
+
     const ref = workRef(db, workId);
+    let confirmed = null;
     await db.runTransaction(async (transaction) => {
       const snap = await transaction.get(ref);
       if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
@@ -774,47 +701,203 @@ function createFanWorksDomain({
       if (current.status !== "draft") {
         throw new HttpsError("failed-precondition", "Media can only be added to drafts.");
       }
-      const media = { mediaId, path, contentType: meta.contentType };
-      const content = { ...emptyContent(), ...(current.content || {}) };
+      const type = canonicalType(current.type);
+      if (!roleAllowedForType(type, role)) {
+        throw new HttpsError(
+          "invalid-argument",
+          `A ${type} Fan Work cannot have a ${role} file.`,
+        );
+      }
+      const content = mergeContent(current.content, {}, type);
+      const media = { mediaId, path, contentType: actualType };
+
       if (role === "cover") {
         transaction.update(ref, {
           cover: media,
           updatedAt: FieldValue.serverTimestamp(),
           version: (Number(current.version) || 1) + 1,
         });
+        confirmed = media;
         return;
       }
-      if (role === "page") {
-        const pages = Array.isArray(content.pages) ? [...content.pages] : [];
-        const existingIndex = pages.findIndex((page) => page.mediaId === mediaId);
-        if (existingIndex >= 0) {
-          pages[existingIndex] = { ...media, index: existingIndex, caption };
-        } else {
-          if (pages.length >= MAX_PAGES) {
-            throw new HttpsError("failed-precondition", "Manga has too many pages.");
-          }
-          pages.push({ ...media, index: pages.length, caption });
+
+      if (role === "document") {
+        const pageCount = Number(input.pageCount);
+        content.document = Number.isInteger(pageCount) && pageCount > 0
+          ? { ...media, pageCount }
+          : media;
+      } else if (role === "artwork") {
+        content.artwork = media;
+      } else if (role === "portrait") {
+        content.portrait = media;
+      } else if (role === "characterPortrait") {
+        const cast = Array.isArray(content.characters) ? content.characters : [];
+        const index = cast.findIndex((entry) => entry && entry.id === characterId);
+        if (index < 0) {
+          throw new HttpsError("not-found", "That cast member is not on this Fan Work.");
         }
-        content.pages = pages.map((page, index) => ({ ...page, index }));
-      } else if (role === "image" && (current.type === "character" || current.type === "aiCharacter")) {
-        content.image = media;
-      } else {
-        const images = Array.isArray(content.images) ? [...content.images] : [];
-        if (!images.some((image) => image.mediaId === mediaId)) {
-          if (images.length >= MAX_IMAGES) {
-            throw new HttpsError("failed-precondition", "Too many images.");
-          }
-          images.push(media);
+        if (cast.length >= MAX_CAST && index < 0) {
+          throw new HttpsError("failed-precondition", "This Fan Work has too many cast members.");
         }
-        content.images = images;
+        cast[index] = {
+          ...cast[index],
+          image: { ...media, ...(caption ? { caption } : {}) },
+        };
+        content.characters = cast.map((entry, position) => ({ ...entry, index: position }));
       }
+
       transaction.update(ref, {
         content,
         updatedAt: FieldValue.serverTimestamp(),
         version: (Number(current.version) || 1) + 1,
       });
+      confirmed = media;
     });
-    return { ok: true, mediaId, path };
+    return { ok: true, mediaId, path: confirmed.path, contentType: confirmed.contentType };
+  }
+
+  /**
+   * Mints a short-lived inline read URL for a document.
+   *
+   * Authorization is checked on every call: the owner can read their own draft,
+   * anyone can read a published, approved, public work, and nobody can read a
+   * flagged or removed one. The response is a bearer credential for a few
+   * minutes and is never persisted.
+   */
+  async function getFanWorkDocumentAccess(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    if (!signer) {
+      throw new HttpsError("failed-precondition", "Fan Work storage is not configured.");
+    }
+    const snap = await workRef(db, workId).get();
+    if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+    const work = snap.data() || {};
+    const type = canonicalType(work.type);
+    const content = work.content || {};
+
+    // Legacy page-image manga has no document at all; the client routes those to
+    // the image viewer instead, so refusing here keeps the two paths disjoint.
+    const document = content.document;
+    if (!document || !document.path) {
+      throw new HttpsError("failed-precondition", "This Fan Work has no PDF document.");
+    }
+    if (type !== "manga" && type !== "story") {
+      throw new HttpsError("failed-precondition", "This Fan Work has no PDF document.");
+    }
+
+    const isOwner = work.creatorId === uid;
+    const isReadable = work.status === "published" &&
+      work.moderationStatus === "approved" &&
+      work.visibility === "public";
+    if (!isOwner && !isReadable) {
+      throw new HttpsError("permission-denied", "You cannot read this Fan Work.");
+    }
+    if (work.status === "published" && work.moderationStatus === "removed") {
+      throw new HttpsError("permission-denied", "You cannot read this Fan Work.");
+    }
+
+    const signed = await signer.signReadUrl({ path: document.path, inline: true });
+    return {
+      workId,
+      url: signed.url,
+      expiresAt: signed.expiresAt,
+      pageCount: Number.isInteger(document.pageCount) ? document.pageCount : null,
+    };
+  }
+
+  /**
+   * Records how far the reader got.
+   *
+   * Progress only ever moves forward: a rewind on the client must not lower the
+   * stored value, otherwise "continue reading" would jump backwards after any
+   * correction. The stored page is clamped to the document's page count.
+   */
+  async function saveFanWorkReadingProgress(request) {
+    const uid = requireAuth(request, HttpsError);
+    const input = request.data || {};
+    const workId = validString(input.workId, 128) ? input.workId.trim() : null;
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const snap = await workRef(db, workId).get();
+    if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+    const work = snap.data() || {};
+    if (!canReadWork(work, uid)) {
+      throw new HttpsError("permission-denied", "You cannot read this Fan Work.");
+    }
+    const content = work.content || {};
+    const totalRaw = Number(input.pageCount);
+    const total = Number.isInteger(totalRaw) && totalRaw > 0
+      ? totalRaw
+      : (Number.isInteger(content.document?.pageCount) ? content.document.pageCount : null);
+    let page = Number(input.page);
+    if (!Number.isInteger(page) || page < 0) page = 0;
+    if (total) page = Math.min(page, total - 1);
+    const ratioRaw = Number(input.progress);
+    const progress = total && total > 0
+      ? Math.min(Math.max(page / (total - 1 || 1), 0), 1)
+      : Number.isFinite(ratioRaw) ? Math.min(Math.max(ratioRaw, 0), 1) : 0;
+
+    const ref = workRef(db, workId).collection("readingProgress").doc(uid);
+    const existing = await ref.get();
+    const previous = existing.exists ? (existing.data() || {}) : {};
+    const previousPage = Number(previous.page) || 0;
+    // Monotonic: never move a stored position backwards.
+    const nextPage = Math.max(page, previousPage);
+    const nextProgress = Math.max(progress, Number(previous.progress) || 0);
+    await ref.set({
+      userId: uid,
+      workId,
+      page: nextPage,
+      pageCount: total ?? null,
+      progress: nextProgress,
+      completed: Boolean(previous.completed),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { ok: true, page: nextPage, progress: nextProgress };
+  }
+
+  /**
+   * Flags a work as finished. Sets `completed` rather than clearing progress, so
+   * "read" survives a later rewind.
+   */
+  async function markFanWorkAsRead(request) {
+    const uid = requireAuth(request, HttpsError);
+    const workId = validString(request.data?.workId, 128) ? request.data.workId.trim() : null;
+    if (!workId) throw new HttpsError("invalid-argument", "workId is required.");
+    const snap = await workRef(db, workId).get();
+    if (!snap.exists) throw new HttpsError("not-found", "Fan Work not found.");
+    const work = snap.data() || {};
+    if (!canReadWork(work, uid)) {
+      throw new HttpsError("permission-denied", "You cannot read this Fan Work.");
+    }
+    const ref = workRef(db, workId).collection("readingProgress").doc(uid);
+    const existing = await ref.get();
+    const previous = existing.exists ? (existing.data() || {}) : {};
+    const content = work.content || {};
+    const totalRaw = Number(previous.pageCount);
+    const total = Number.isInteger(totalRaw) && totalRaw > 0
+      ? totalRaw
+      : (Number.isInteger(content.document?.pageCount) ? content.document.pageCount : null);
+    await ref.set({
+      userId: uid,
+      workId,
+      page: total ? total - 1 : Number(previous.page) || 0,
+      pageCount: total ?? null,
+      progress: 1,
+      completed: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { ok: true, completed: true };
+  }
+
+  /** Owner, or a reader on a live public work. Removed works are never readable. */
+  function canReadWork(work, uid) {
+    if (!work) return false;
+    if (work.creatorId === uid) return work.status !== "archived";
+    return work.status === "published" &&
+      work.moderationStatus === "approved" &&
+      work.visibility === "public";
   }
 
   async function likeFanWork(request) {
@@ -1135,6 +1218,9 @@ function createFanWorksDomain({
     deleteFanWorkDraft,
     startFanWorkMediaUpload,
     confirmFanWorkMedia,
+    getFanWorkDocumentAccess,
+    saveFanWorkReadingProgress,
+    markFanWorkAsRead,
     likeFanWork,
     bookmarkFanWork,
     reportFanWork,
@@ -1155,4 +1241,5 @@ module.exports = {
   SCHEMA_VERSION,
   publishValidationError,
   normalizeTags,
+  upgradeLegacyWork,
 };

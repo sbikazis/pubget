@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdfrx/pdfrx.dart' show PdfViewer;
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
@@ -12,6 +13,7 @@ import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
 import 'package:pubget/features/fan_works/providers/fan_work_providers.dart';
 import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart';
+import 'package:pubget/features/fan_works/screens/fan_work_reader_page.dart';
 import 'package:pubget/features/fan_works/screens/fan_work_screens.dart';
 
 import 'authentication_test_support.dart';
@@ -74,15 +76,18 @@ void main() {
       find.text(FanWorkTypeCatalog.label(FanWorkType.manga)),
       findsOneWidget,
     );
-    expect(
-      find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)),
-      findsOneWidget,
-    );
+    // Only the four creatable types are offered; the legacy read-only types are
+    // never selectable.
+    for (final type in FanWorkType.creatable) {
+      expect(find.byKey(Key('fan-work-type-${type.name}')), findsOneWidget);
+    }
+    expect(find.byKey(const Key('fan-work-type-aiCharacter')), findsNothing);
+    expect(find.byKey(const Key('fan-work-type-worldbuilding')), findsNothing);
     await tester.tap(
       find.text(FanWorkTypeCatalog.label(FanWorkType.character)),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
+    expect(find.byKey(const Key('fan-work-title')), findsOneWidget);
   });
 
   testWidgets('editor shows upload progress and retry after cancellation', (
@@ -103,10 +108,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    final upload = editor.uploadImage(
+    final upload = editor.uploadMedia(
       bytes: <int>[1, 2, 3],
       contentType: 'image/jpeg',
-      role: FanWorkMediaRole.image,
+      role: FanWorkMediaRole.artwork,
     );
     for (
       var attempt = 0;
@@ -144,49 +149,85 @@ void main() {
     expect(find.byKey(const Key('fan-work-upload-status')), findsNothing);
   });
 
-  testWidgets('manga viewer keeps page order and an indicator', (tester) async {
+  testWidgets('a legacy page-image manga routes itself to the page reader', (
+    tester,
+  ) async {
     final auth = await _auth();
-    final repository = _FakeFanWorkRepository()
-      ..watchWorkResult = Success(_manga());
-    final details = FanWorkDetailsProvider(repository: repository);
-    addTearDown(details.dispose);
+    // `_manga()` has page images and no PDF, so opening it through the normal
+    // reader route has to land on the legacy page viewer rather than on a PDF
+    // viewer that would find nothing to open.
+    final repository = _FakeFanWorkRepository()..works['manga-1'] = _manga();
+    final reader = FanWorkReaderProvider(repository: repository);
+    addTearDown(reader.dispose);
     addTearDown(auth.dispose);
-    await details.open(workId: 'manga-1', userId: 'alice');
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
         ],
-        child: const MaterialApp(home: MangaViewerPage(workId: 'manga-1')),
+        child: const MaterialApp(home: FanWorkReaderPage(workId: 'manga-1')),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('1 / 2'), findsOneWidget);
+
+    expect(find.byType(LegacyMangaPagesPage), findsOneWidget);
+    expect(find.byType(PdfViewer), findsNothing);
+    expect(find.text('Page 1 of 2'), findsOneWidget);
     expect(find.text('Splash'), findsOneWidget);
+    expect(find.byKey(const Key('fan-work-legacy-pages')), findsOneWidget);
+    // A legacy row has no grant to mint, so none was requested.
+    expect(repository.documentAccessCalls, 0);
   });
 
-  testWidgets('story reader shows body text', (tester) async {
+  testWidgets('a legacy prose story routes itself to the prose reader', (
+    tester,
+  ) async {
     final auth = await _auth();
-    final repository = _FakeFanWorkRepository()
-      ..watchWorkResult = Success(_story());
-    final details = FanWorkDetailsProvider(repository: repository);
-    addTearDown(details.dispose);
+    final repository = _FakeFanWorkRepository()..works['story-1'] = _story();
+    final reader = FanWorkReaderProvider(repository: repository);
+    addTearDown(reader.dispose);
     addTearDown(auth.dispose);
-    await details.open(workId: 'story-1', userId: 'alice');
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
         ],
-        child: const MaterialApp(home: StoryReaderPage(workId: 'story-1')),
+        child: const MaterialApp(home: FanWorkReaderPage(workId: 'story-1')),
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(find.byType(LegacyStoryReaderPage), findsOneWidget);
     expect(find.textContaining('village far away'), findsOneWidget);
+  });
+
+  testWidgets('the document reader explains itself when there is no PDF', (
+    tester,
+  ) async {
+    final auth = await _auth();
+    // No access grant: the callable refused, so the reader must say so rather
+    // than spin forever or render an empty page.
+    final repository = _FakeFanWorkRepository();
+    final reader = FanWorkReaderProvider(repository: repository);
+    addTearDown(reader.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
+        ],
+        child: const MaterialApp(home: FanWorkReaderPage(workId: 'w1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(find.byKey(const Key('fan-work-reader-position')), findsNothing);
   });
 
   testWidgets('details shows comments and accepts a new comment', (
@@ -280,6 +321,53 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Completer<Result<void>>? uploadCompleter;
   int uploadAttempts = 0;
 
+  /// Works the reader can load, keyed by id.
+  final Map<String, FanWork> works = <String, FanWork>{};
+  int documentAccessCalls = 0;
+  FanWorkDocumentAccess? documentAccess;
+  Failure? documentAccessFailure;
+  FanWorkReadingProgress storedProgress = const FanWorkReadingProgress();
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async {
+    documentAccessCalls += 1;
+    final failure = documentAccessFailure;
+    if (failure != null) return FailureResult(failure);
+    final access = documentAccess;
+    if (access == null) {
+      return const FailureResult(NotFoundError('no document'));
+    }
+    return Success(access);
+  }
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => Success(storedProgress);
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async {
+    storedProgress = progress;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) async {
+    storedProgress = FanWorkReadingProgress(
+      page: storedProgress.page,
+      pageCount: storedProgress.pageCount,
+      progress: 1,
+      completed: true,
+    );
+    return const Success<void>(null);
+  }
+
   @override
   Future<Result<void>> archive(String workId) async =>
       const Success<void>(null);
@@ -324,6 +412,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => const Success<void>(null);
 
   @override
@@ -352,8 +442,12 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
       const Success(FanWorkListPage(items: <FanWork>[], hasMore: false));
 
   @override
-  Future<Result<FanWork>> getWork(String workId) async =>
-      watchWorkResult ?? const FailureResult(NotFoundError('missing'));
+  @override
+  Future<Result<FanWork>> getWork(String workId) async {
+    final published = works[workId];
+    if (published != null) return Success(published);
+    return watchWorkResult ?? const FailureResult(NotFoundError('missing'));
+  }
 
   @override
   Future<Result<bool>> hasBookmarked({
@@ -454,13 +548,22 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
   }) async => Success(
     FanWorkUploadTicket(
       workId: workId,
       mediaId: 'm1',
-      path: 'fan_works/alice/$workId/m1.jpg',
+      path:
+          'fan_works/alice/$workId/m1'
+          '${role == FanWorkMediaRole.document ? '.pdf' : '.jpg'}',
       contentType: contentType,
+      role: role,
+      uploadUrl: 'https://storage.test/upload/session/1',
+      maxBytes: role == FanWorkMediaRole.document
+          ? FanWorkLifecycle.maxDocumentBytes
+          : FanWorkLifecycle.maxImageBytes,
+      expiresAt: DateTime.utc(2026, 9, 1, 12, 15),
     ),
   );
 

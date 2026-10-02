@@ -1062,6 +1062,17 @@ service cloud.firestore {
         allow read: if self(uid);
         allow create, update, delete: if false;
       }
+      // Reading progress is written by `saveFanWorkReadingProgress` /
+      // `markFanWorkAsRead` (Admin SDK, so they bypass these rules) and read
+      // back directly by the app to resume where the reader stopped.
+      //
+      // Self-read only, and never client-writable: how far someone got in a
+      // Fan Work is private to them, and it is also server-clamped, so a client
+      // forging a page number would gain nothing even if it could write.
+      match /readingProgress/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
       match /reports/{reportId} {
         allow read: if signedIn() && fanWorkExists() &&
           (fanWorkData().creatorId == request.auth.uid ||
