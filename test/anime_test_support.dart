@@ -95,9 +95,13 @@ Anime sampleAnime({
   String type = 'TV',
   int year = 2023,
   List<AnimeRelated> relations = const <AnimeRelated>[],
+  String? titleArabic,
+  String? titleJapanese,
 }) => Anime(
   id: id,
   title: title,
+  titleArabic: titleArabic,
+  titleJapanese: titleJapanese,
   alternativeTitles: const <String>["Frieren: Beyond Journey's End"],
   type: type,
   status: 'Finished Airing',

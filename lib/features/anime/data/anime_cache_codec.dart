@@ -7,6 +7,8 @@ abstract final class AnimeCacheCodec {
     return Anime(
       id: map['id'] as String,
       title: map['title'] as String? ?? '',
+      titleArabic: map['titleArabic'] as String?,
+      titleJapanese: map['titleJapanese'] as String?,
       alternativeTitles: _stringList(map['alternativeTitles']),
       synopsis: map['synopsis'] as String?,
       type: map['type'] as String?,
@@ -60,6 +62,8 @@ abstract final class AnimeCacheCodec {
     return <String, dynamic>{
       'id': anime.id,
       'title': anime.title,
+      'titleArabic': anime.titleArabic,
+      'titleJapanese': anime.titleJapanese,
       'alternativeTitles': anime.alternativeTitles,
       'synopsis': anime.synopsis,
       'type': anime.type,

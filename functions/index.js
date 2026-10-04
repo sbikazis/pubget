@@ -41,11 +41,13 @@ const { createRecommendationEngine } = require("./src/recommendationEngine");
 const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
+const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
+const { createFanWorksSigner } = require("./src/fanWorksStorage");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
@@ -188,12 +190,20 @@ const mafiaDomain = createMafiaDomain({
   HttpsError,
   notificationBuilder,
 });
+// The signer is what turns "a client may upload here" into a short-lived,
+// scoped capability. It is created once and injected into the domain so the
+// callables never touch the bucket directly.
+const fanWorksSigner = createFanWorksSigner({
+  bucket: getStorage().bucket(),
+  HttpsError,
+});
 const fanWorksDomain = createFanWorksDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   notificationBuilder,
   storage: getStorage().bucket(),
+  signer: fanWorksSigner,
   economy: economyDomain,
   achievements: achievementsDomain,
 });
@@ -368,6 +378,22 @@ exports.finalizeEditUpload = onCall(
   { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
+
+// Axis 15 §15.8 — audio is reachable from the client, not just defined.
+// The domain is built on the same collection the Edit domain uses, so audio
+// attaches to real Reels instead of an empty parallel `reels` collection.
+const audioDomain = createAudioDomain({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+  FieldValue,
+  HttpsError,
+  reelCollection: "edits",
+});
+exports.listReelAudios = onCall({ region: "us-central1" }, audioDomain.listAudios);
+exports.getReelAudio = onCall({ region: "us-central1" }, audioDomain.getAudio);
+exports.useReelAudio = onCall({ region: "us-central1" }, audioDomain.useAudio);
+exports.removeReelAudio = onCall({ region: "us-central1" }, audioDomain.removeAudio);
+exports.searchReelAudios = onCall({ region: "us-central1" }, audioDomain.searchAudios);
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
 // Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
@@ -684,6 +710,18 @@ exports.startFanWorkMediaUpload = onCall(
 exports.confirmFanWorkMedia = onCall(
   { region: "us-central1" },
   fanWorksDomain.confirmFanWorkMedia,
+);
+exports.getFanWorkDocumentAccess = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.getFanWorkDocumentAccess,
+);
+exports.saveFanWorkReadingProgress = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.saveFanWorkReadingProgress,
+);
+exports.markFanWorkAsRead = onCall(
+  { region: "us-central1" },
+  fanWorksDomain.markFanWorkAsRead,
 );
 exports.likeFanWork = onCall(
   { region: "us-central1" },

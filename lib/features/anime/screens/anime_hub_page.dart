@@ -18,8 +18,9 @@ import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 import 'anime_search_page.dart';
 
-/// The hub is a browse page: curated rows, seasons, and community picks.
-/// Searching is a separate screen so the landing page keeps its shape.
+/// The hub is organised by destination: the landing view is the newest-first
+/// catalog, and seasonal, popular, and community discovery each keep their own
+/// tab instead of being collapsed into one long feed.
 class AnimeHubPage extends StatefulWidget {
   const AnimeHubPage({super.key});
 
@@ -27,24 +28,56 @@ class AnimeHubPage extends StatefulWidget {
   State<AnimeHubPage> createState() => _AnimeHubPageState();
 }
 
-class _AnimeHubPageState extends State<AnimeHubPage> {
+class _AnimeHubPageState extends State<AnimeHubPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
   @override
   void initState() {
     super.initState();
-    final hub = context.read<AnimeHubProvider>();
-    Future<void>.microtask(hub.load);
+    _tabs = TabController(
+      length: AnimeHubDestination.values.length,
+      vsync: this,
+    );
+    _tabs.addListener(_onTabChanged);
+    Future<void>.microtask(_bootstrap);
+  }
+
+  @override
+  void dispose() {
+    _tabs
+      ..removeListener(_onTabChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    if (!mounted) return;
+    final catalogs = context.read<AnimeHubCatalogProvider>();
+    // Only the landing destination fetches eagerly; the rest wait for the tab.
+    await catalogs.openLanding();
+    if (!mounted) return;
     final social = maybeAnimeHubSocial(context, listen: false);
     if (social != null) {
-      Future<void>.microtask(social.loadTopRated);
-      Future<void>.microtask(social.loadMostListed);
-      Future<void>.microtask(social.loadPopularCharacters);
+      await Future.wait(<Future<void>>[
+        social.loadTopRated(),
+        social.loadMostListed(),
+        social.loadPopularCharacters(),
+      ]);
     }
+  }
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging) return;
+    if (!mounted) return;
+    context.read<AnimeHubCatalogProvider>().open(
+      AnimeHubDestination.values[_tabs.index],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final hub = context.watch<AnimeHubProvider>();
-    final network = context.watch<NetworkService>();
+    final catalogs = context.watch<AnimeHubCatalogProvider>();
     final copy = AnimeCopy.of(context);
     return Scaffold(
       appBar: AppBar(
@@ -64,9 +97,18 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
             child: Text(copy.libraryTitle),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabs,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: <Widget>[
+            for (final destination in AnimeHubDestination.values)
+              Tab(text: copy.hubDestination(destination)),
+          ],
+        ),
       ),
       drawer: AnimeHubDrawer(current: '/anime'),
-      body: PubgetAtmosphere(child: _hubBody(hub, network)),
+      body: PubgetAtmosphere(child: _hubBody(catalogs)),
     );
   }
 
@@ -76,101 +118,116 @@ class _AnimeHubPageState extends State<AnimeHubPage> {
     ).push(MaterialPageRoute<void>(builder: (_) => const AnimeSearchPage()));
   }
 
-  Widget _hubBody(AnimeHubProvider hub, NetworkService network) {
-    return RefreshIndicator(
-      onRefresh: () => hub.load(refresh: true),
-      child: CustomScrollView(
-        cacheExtent: 800,
-        slivers: <Widget>[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.sm,
-              ),
-              child: PubgetPrimaryButton(
-                key: const Key('hub-search-cta'),
-                onPressed: _openSearch,
-                semanticLabel: AnimeCopy.of(context).openSearch,
-                leadingIcon: Icons.search,
-                child: Text(AnimeCopy.of(context).openSearch),
-              ),
-            ),
+  Widget _hubBody(AnimeHubCatalogProvider catalogs) {
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
           ),
-          if (hub.fromCache)
-            SliverToBoxAdapter(
-              child: AnimeCachedBanner(offline: !network.isOnline),
-            ),
-          if (hub.state == LoadingState.initial ||
-              hub.state == LoadingState.loading && !_hubHasContent(hub))
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(AppSpacing.md),
-                child: PubgetSkeleton.card(height: 220),
-              ),
-            )
-          else if (hub.state == LoadingState.error && !_hubHasContent(hub))
-            SliverToBoxAdapter(
-              child: PubgetErrorState(
-                title: AnimeCopy.of(context).unableToLoad,
-                message:
-                    hub.failure?.message ??
-                    AnimeCopy.of(context).checkConnection,
-                onRetry: hub.retry,
-                retryLabel: AnimeCopy.of(context).retry,
-              ),
-            )
-          else if (hub.state == LoadingState.offline && !_hubHasContent(hub))
-            SliverToBoxAdapter(
-              child: PubgetOfflineState(
-                onRetry: hub.retry,
-                message: AnimeCopy.of(context).checkConnection,
-              ),
-            )
-          else if (hub.state == LoadingState.empty)
-            SliverToBoxAdapter(
-              child: PubgetEmptyState(
-                title: AnimeCopy.of(context).emptyCatalog,
-                icon: Icons.movie_filter_outlined,
-              ),
-            )
-          else ...[
-            if (hub.section(AnimeCatalogKind.thisSeason).items.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _SeasonHero(
-                  anime: hub.section(AnimeCatalogKind.thisSeason).items.first,
-                ),
-              ),
-            for (final kind in AnimeCatalogKind.hubHome)
-              SliverToBoxAdapter(
-                child: AnimeHorizontalStrip(
-                  title: AnimeCopy.of(context).catalog(kind),
-                  subtitle: kind == AnimeCatalogKind.thisSeason
-                      ? AnimeCopy.of(context).thisSeasonSubtitle
-                      : AnimeCopy.of(context).popularSubtitle,
-                  items: hub.section(kind).items,
-                  state: hub.section(kind).state,
-                  failure: hub.section(kind).failure?.message,
-                  posterWidth: 168,
-                  highlightFirst: true,
-                  onSeeAll: () => AnimeLinks.openCatalog(context, kind),
-                  onRetry: hub.retry,
-                ),
-              ),
-            SliverToBoxAdapter(child: _communitySection(context)),
-            SliverToBoxAdapter(child: _recommendationsSection(context)),
-          ],
-        ],
+          child: PubgetPrimaryButton(
+            key: const Key('hub-search-cta'),
+            onPressed: _openSearch,
+            semanticLabel: AnimeCopy.of(context).openSearch,
+            leadingIcon: Icons.search,
+            child: Text(AnimeCopy.of(context).openSearch),
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: <Widget>[
+              for (final destination in AnimeHubDestination.values)
+                _destinationView(catalogs, destination),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _destinationView(
+    AnimeHubCatalogProvider catalogs,
+    AnimeHubDestination destination,
+  ) {
+    if (!destination.isCatalog) return const _CommunityDestination();
+    return _catalogBody(destination, catalogs.catalog(destination));
+  }
+
+  Widget _catalogBody(AnimeHubDestination destination, AnimeListProvider catalog) {
+    return RefreshIndicator(
+      onRefresh: catalog.retry,
+      child: PubgetLoadingStateView(
+        state: _visibleState(catalog),
+        onRetry: catalog.retry,
+        empty: PubgetEmptyState(
+          title: AnimeCopy.of(context).emptyCatalog,
+          message: AnimeCopy.of(context).nothingFoundMessage,
+          icon: Icons.movie_filter_outlined,
+        ),
+        error: PubgetErrorState(
+          title: AnimeCopy.of(context).unableToLoad,
+          message: catalog.failure?.message ?? AnimeCopy.of(context).checkConnection,
+          onRetry: catalog.retry,
+          retryLabel: AnimeCopy.of(context).retry,
+        ),
+        offline: PubgetOfflineState(
+          message: AnimeCopy.of(context).checkConnection,
+          onRetry: catalog.retry,
+        ),
+        child: AnimePaginatedList(
+          key: Key('hub-${destination.name}-grid'),
+          list: catalog,
+          header: _destinationHeader(destination, catalog),
+        ),
       ),
     );
   }
 
-  bool _hubHasContent(AnimeHubProvider hub) => AnimeCatalogKind.hubHome.any(
-    (kind) => hub.section(kind).items.isNotEmpty,
-  );
+  /// The season highlight stays above the seasonal grid, and the cached banner
+  /// stays honest about where the rows came from.
+  Widget? _destinationHeader(
+    AnimeHubDestination destination,
+    AnimeListProvider catalog,
+  ) {
+    if (catalog.fromCache) {
+      final network = context.watch<NetworkService>();
+      return AnimeCachedBanner(offline: !network.isOnline);
+    }
+    if (destination != AnimeHubDestination.thisSeason) return null;
+    if (catalog.items.isEmpty) return null;
+    return _SeasonHero(anime: catalog.items.first);
+  }
+
+
+  /// Paging and refresh keep the loaded rows on screen instead of flashing the
+  /// skeleton over content the member is already reading.
+  LoadingState _visibleState(AnimeListProvider catalog) => switch (catalog.state) {
+    LoadingState.loadingMore || LoadingState.refreshing => LoadingState.loaded,
+    final state => state,
+  };
 }
+
+/// Community rankings and personalised recommendations, kept as their own hub
+/// destination because a paginated catalog grid cannot carry them.
+class _CommunityDestination extends StatelessWidget {
+  const _CommunityDestination();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      children: <Widget>[
+        _communitySection(context),
+        _recommendationsSection(context),
+      ],
+    );
+  }
+}
+
 
 Widget _communitySection(BuildContext context) {
   final social = maybeAnimeHubSocial(context);

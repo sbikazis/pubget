@@ -122,6 +122,123 @@ void main() {
     expect(scores.overall, closeTo(8.5, 0.0001));
     expect(scores.toMap().keys, hasLength(6));
   });
+
+  // -------------------------------------------------------------------------
+  // Server-authoritative aggregates: parsing, and the unavailable state
+  // -------------------------------------------------------------------------
+
+  group('AnimeCommunityStats aggregate parsing', () {
+    test('reads the score distribution and the five-state breakdown', () {
+      final stats = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'animeId': '16498',
+        'scoreDistribution': <String, dynamic>{
+          '1': 0,
+          '7': 2,
+          '9': 5,
+          '10': 1,
+        },
+        'statusCounts': <String, dynamic>{
+          'want_to_watch': 40,
+          'watching': 25,
+          'completed': 30,
+          'watch_later': 3,
+          'not_interested': 2,
+        },
+      }, id: '16498');
+
+      expect(stats.scoreDistribution, isNotNull);
+      expect(stats.scoreDistribution!.countFor(7), 2);
+      expect(stats.scoreDistribution!.countFor(9), 5);
+      expect(stats.scoreDistribution!.countFor(10), 1);
+      expect(stats.scoreDistribution!.countFor(3), 0);
+      expect(stats.scoreDistribution!.total, 8);
+      expect(stats.hasScoreDistribution, isTrue);
+
+      expect(stats.statusCounts, isNotNull);
+      expect(stats.statusCounts!.countFor(AnimeListStatus.completed), 30);
+      expect(stats.statusCounts!.countFor(AnimeListStatus.notInterested), 2);
+      expect(stats.statusCounts!.total, 100);
+      expect(stats.hasStatusCounts, isTrue);
+    });
+
+    test('keys outside 1-10 never leak into a bucket', () {
+      final stats = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'scoreDistribution': <String, dynamic>{
+          '0': 4,
+          '11': 9,
+          'bogus': 3,
+          '7': 2,
+        },
+      });
+      // Only the ten real buckets are read.
+      expect(stats.scoreDistribution!.countFor(7), 2);
+      expect(stats.scoreDistribution!.total, 2);
+      for (var score = 1; score <= 10; score++) {
+        if (score == 7) continue;
+        expect(stats.scoreDistribution!.countFor(score), 0, reason: '$score');
+      }
+      expect(stats.scoreDistribution!.countFor(0), 0);
+      expect(stats.scoreDistribution!.countFor(11), 0);
+    });
+
+    test('a distribution with no valid bucket is unavailable, not all-zero', () {
+      // A real all-zero distribution and a corrupt one are different facts,
+      // and only the shape of the document can tell them apart.
+      final corrupt = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'scoreDistribution': <String, dynamic>{'0': 4, '11': 9, 'bogus': 3},
+      });
+      expect(corrupt.scoreDistribution, isNull);
+      final empty = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'scoreDistribution': <String, dynamic>{
+          for (var score = 1; score <= 10; score++) '$score': 0,
+        },
+      });
+      expect(empty.scoreDistribution, isNotNull);
+      expect(empty.scoreDistribution!.total, 0);
+      expect(empty.hasScoreDistribution, isFalse);
+    });
+
+    test('a missing aggregate is unavailable, not an empty chart', () {
+      // The pre-migration shape: counts but no distribution.
+      final stats = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'animeId': '16498',
+        'ratingCount': 12,
+        'listedCount': 90,
+        'averageScore': 8.8,
+      });
+      expect(stats.scoreDistribution, isNull);
+      expect(stats.statusCounts, isNull);
+      expect(stats.hasScoreDistribution, isFalse);
+      expect(stats.hasStatusCounts, isFalse);
+      // The counts it does have are untouched.
+      expect(stats.ratingCount, 12);
+      expect(stats.listedCount, 90);
+    });
+
+    test('a malformed aggregate is unavailable rather than half-read', () {
+      for (final raw in <Object>[7, 'junk', <String, dynamic>{}, true]) {
+        final stats = AnimeCommunityStats.fromMap(<String, dynamic>{
+          'scoreDistribution': raw,
+          'statusCounts': raw,
+        });
+        expect(stats.scoreDistribution, isNull, reason: '\$raw');
+        expect(stats.statusCounts, isNull, reason: '\$raw');
+      }
+    });
+
+    test('a partial status breakdown is honoured, not padded to zero', () {
+      final stats = AnimeCommunityStats.fromMap(<String, dynamic>{
+        'statusCounts': <String, dynamic>{'watching': 12, 'unknown_state': 5},
+      });
+      expect(stats.statusCounts!.countFor(AnimeListStatus.watching), 12);
+      expect(stats.statusCounts!.countFor(AnimeListStatus.completed), 0);
+      expect(
+        stats.statusCounts!.total,
+        12,
+        reason: 'an unknown key is not counted',
+      );
+    });
+  });
 }
 
 final class _FakeHubSocialRepository implements AnimeHubSocialRepository {

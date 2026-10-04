@@ -45,6 +45,9 @@ final class AnimeCopy {
   String get seasonsTitle => _t.seasonsTitle;
   String get charactersTitle => _t.charactersTitle;
   String get synopsisTitle => _t.synopsisTitle;
+  String get titleArabicLabel => _t.titleArabicLabel;
+  String get titleJapaneseLabel => _t.titleJapaneseLabel;
+  String get alsoKnownAs => _t.alsoKnownAs;
   String get detailsSection => _t.detailsSection;
   String get detailsMissing => _t.detailsMissing;
   String get emptyCatalog => _t.emptyCatalog;
@@ -120,6 +123,9 @@ final class AnimeCopy {
   String get tabRelated => _t.tabRelated;
   String get scoreDistribution => _t.scoreDistribution;
   String get criteriaBreakdown => _t.criteriaBreakdown;
+  String get listBreakdown => _t.listBreakdown;
+  String get statisticsUnavailable => _t.statisticsUnavailable;
+  String get statisticsUnavailableMessage => _t.statisticsUnavailableMessage;
   String get criteriaStory => _t.criteriaStory;
   String get criteriaArt => _t.criteriaArt;
   String get criteriaCharacters => _t.criteriaCharacters;
@@ -358,6 +364,15 @@ final class AnimeCopy {
     AnimeCatalogKind.airing => _t.statusAiring,
     AnimeCatalogKind.thisSeason => _t.pick('This season', 'هذا الموسم'),
     AnimeCatalogKind.upcoming => _t.statusUpcoming,
+  };
+
+  /// Tab labels for the hub's own destinations. Reuses the catalog copy for the
+  /// seasonal and popular tabs so a title is never spelled two ways.
+  String hubDestination(AnimeHubDestination destination) => switch (destination) {
+    AnimeHubDestination.latest => _t.latestUpdates,
+    AnimeHubDestination.thisSeason => catalog(AnimeCatalogKind.thisSeason),
+    AnimeHubDestination.popular => catalog(AnimeCatalogKind.popular),
+    AnimeHubDestination.community => _t.communityStats,
   };
 
   String customListItemCount(int count) => _t.customListItemCount(count);

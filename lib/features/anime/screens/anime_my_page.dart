@@ -198,7 +198,14 @@ class _ListsTab extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: <Widget>[
         for (final status in statuses) ...<Widget>[
-          Text(status.label, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            // The five personal states are keyed by wire value, so they go
+            // through `listStatusLabel`. Printing `AnimeListStatus.label` - the
+            // stable English source string - directly showed "plan to watch"
+            // and "dropped" to an Arabic member.
+            copy.listStatusLabel(status),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: AppSpacing.md),
           ..._entriesFor(
             status,

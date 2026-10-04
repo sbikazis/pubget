@@ -36,6 +36,8 @@ dependencies:
   phosphor_icons: ^3.0.1
   google_mobile_ads: ^6.0.0
   youtube_player_flutter: ^9.1.3
+  pdfrx: ^2.1.5
+  file_selector: ^1.0.4
 
 dev_dependencies:
   flutter_test:

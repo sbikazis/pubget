@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/result.dart';
@@ -11,9 +12,11 @@ import 'package:pubget/features/anime/providers/anime_library_provider.dart';
 import 'package:pubget/features/anime/providers/anime_my_list_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_library_repository.dart';
 import 'package:pubget/features/anime/screens/anime_library_page.dart';
+import 'package:pubget/features/anime/screens/anime_my_page.dart';
 import 'package:pubget/features/anime/widgets/anime_hub_widgets.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
+import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
 
 import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
@@ -382,6 +385,81 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('the profile page localises its five personal states', (
+    tester,
+  ) async {
+    // The profile-embedded copy of this screen is a separate widget from the
+    // library screen above, and it used to print the raw English source string
+    // as its section heading.
+    final library = _library(
+      entries: <AnimeListEntry>[
+        AnimeListEntry(
+          animeId: '1',
+          status: AnimeListStatus.wantToWatch,
+          title: 'Frieren',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      _profileHarness(
+        library,
+        locale: const Locale('ar'),
+        direction: TextDirection.rtl,
+      ),
+    );
+    // The neighbouring tabs hold a shimmering skeleton, so this settles on a
+    // fixed number of frames rather than waiting for the tree to go quiet.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text(AnimeCopy.forLocale(const Locale('ar')).listsTab));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final copy = AnimeCopy.forLocale(const Locale('ar'));
+    for (final status in AnimeListStatus.tabs) {
+      expect(find.text(copy.listStatusLabel(status)), findsOneWidget);
+    }
+    // Not one English heading survived.
+    expect(find.text('plan to watch'), findsNothing);
+    expect(find.text('watching'), findsNothing);
+    expect(find.text('dropped'), findsNothing);
+  });
+}
+
+Widget _profileHarness(
+  AnimeLibraryProvider library, {
+  required Locale locale,
+  required TextDirection direction,
+}) {
+  final auth = AuthProvider(
+    repository: FakeAuthRepository(
+      user: const AuthUser(id: 'user-1', email: 'fan@example.com'),
+    ),
+  )..initialize();
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<NetworkService>.value(
+        value: NetworkService(probe: () async => true),
+      ),
+      ChangeNotifierProvider<AuthProvider>.value(value: auth),
+      ChangeNotifierProvider<AnimeLibraryProvider>.value(value: library),
+      ChangeNotifierProvider<OnboardingProvider>.value(
+        value: OnboardingProvider(repository: FakeUserRepository()),
+      ),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light,
+      locale: locale,
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: const <LocalizationsDelegate<Object>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: Directionality(textDirection: direction, child: const AnimeMyPage()),
+    ),
+  );
 }
 
 AnimeLibraryProvider _library({

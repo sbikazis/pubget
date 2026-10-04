@@ -23,6 +23,7 @@ import '../../groups/models/group_models.dart';
 import '../../groups/repositories/group_repository.dart';
 import '../../groups/widgets/group_list_card.dart';
 import '../l10n/anime_copy.dart';
+import '../models/anime_list_models.dart';
 import '../models/anime_models.dart';
 import '../theme/anime_hub_colors.dart';
 import '../models/anime_rating_models.dart';
@@ -308,6 +309,7 @@ class _InfoTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     return ListView(
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
@@ -336,9 +338,21 @@ class _InfoTab extends StatelessWidget {
               AppSpacing.lg,
               0,
             ),
-            child: Text(
-              anime.alternativeTitles.join(' · '),
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  // Named, so a member can tell a synonym from the Japanese
+                  // and Arabic titles the hero already labelled.
+                  copy.alsoKnownAs,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  anime.alternativeTitles.join(' · '),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
         if (anime.genres.isNotEmpty)
@@ -519,17 +533,14 @@ class _StatsTabState extends State<_StatsTab> {
     final copy = AnimeCopy.of(context);
     final theme = Theme.of(context);
     final stats = social?.statsFor(anime.id);
-    final reviews = social?.reviews ?? const <AnimeReview>[];
-    final histogram = List<int>.filled(10, 0);
-    for (final review in reviews) {
-      final score = review.overall.round();
-      if (score >= 1 && score <= 10) histogram[score - 1] += 1;
-    }
-    final hasHistogram =
-        histogram.fold<int>(0, (sum, value) => sum + value) > 0;
-    final criteria = hasHistogram
-        ? _averageCriteria(reviews)
-        : AnimeCriteriaScores.empty;
+    // The distribution and the five-state breakdown are the server's numbers.
+    // Loaded reviews are never used to rebuild them: a client fetches a page
+    // of reviews, so a chart drawn from them would quietly under-report every
+    // member it did not fetch. When the aggregate is absent the section says
+    // so instead of guessing.
+    final distribution = stats?.scoreDistribution;
+    final statusCounts = stats?.statusCounts;
+    final criteria = _averageCriteria(social?.reviews ?? const <AnimeReview>[]);
     return ListView(
       key: const Key('anime-stats-tab'),
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
@@ -571,7 +582,7 @@ class _StatsTabState extends State<_StatsTab> {
             ),
           ],
         ),
-        if (hasHistogram) ...<Widget>[
+        if (distribution != null) ...<Widget>[
           const SizedBox(height: AppSpacing.xl),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -589,11 +600,11 @@ class _StatsTabState extends State<_StatsTab> {
                   centerLabel: _selected == null
                       ? (stats?.averageScore ?? 0).toStringAsFixed(2)
                       : '$_selected',
-                  slices: _donutSlices(histogram),
+                  slices: _donutSlices(distribution.counts),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AnimeVoteDistribution(
-                  counts: histogram,
+                  counts: distribution.counts,
                   selectedScore: _selected,
                   onScoreTapped: (score) => setState(
                     () => _selected = _selected == score ? null : score,
@@ -602,6 +613,9 @@ class _StatsTabState extends State<_StatsTab> {
               ],
             ),
           ),
+        ] else
+          const _StatisticsUnavailable(key: Key('anime-stats-unavailable')),
+        if (criteria != AnimeCriteriaScores.empty) ...<Widget>[
           const SizedBox(height: AppSpacing.xl),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -614,6 +628,18 @@ class _StatsTabState extends State<_StatsTab> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: _CriteriaBars(criteria: criteria),
+          ),
+        ],
+        if (statusCounts != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.xl),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Text(copy.listBreakdown, style: theme.textTheme.titleLarge),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: _StatusBars(counts: statusCounts),
           ),
         ],
         if (details.fromCache) const AnimeCachedBanner(),
@@ -656,6 +682,151 @@ class _StatsTabState extends State<_StatsTab> {
     if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
     if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
     return '$value';
+  }
+}
+
+/// Shown when the server has not published the aggregates yet.
+///
+/// This is a distinct, explained state rather than an empty chart: the tab
+/// must never render a distribution assembled from the page of reviews this
+/// client loaded, because that would report a fraction of the community as if
+/// it were all of them.
+class _StatisticsUnavailable extends StatelessWidget {
+  const _StatisticsUnavailable({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Column(
+        key: const Key('anime-stats-unavailable-body'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.hourglass_empty,
+                size: 18,
+                color: theme.textTheme.bodySmall?.color,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  copy.statisticsUnavailable,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            copy.statisticsUnavailableMessage,
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The five personal states, as the server counted them.
+class _StatusBars extends StatelessWidget {
+  const _StatusBars({required this.counts});
+
+  final AnimeListStatusCounts counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final theme = Theme.of(context);
+    final hub = AnimeHubColors.of(context);
+    final total = counts.total;
+    // The tab order is the same order "My list" uses, so a member reads the
+    // two screens as one list.
+    final rows = <(AnimeListStatus, String, Color)>[
+      (
+        AnimeListStatus.wantToWatch,
+        copy.listStatusLabel(AnimeListStatus.wantToWatch),
+        hub.royalPurple,
+      ),
+      (
+        AnimeListStatus.watching,
+        copy.listStatusLabel(AnimeListStatus.watching),
+        hub.royalPurple.withValues(alpha: 0.8),
+      ),
+      (
+        AnimeListStatus.completed,
+        copy.listStatusLabel(AnimeListStatus.completed),
+        hub.royalPurple.withValues(alpha: 0.6),
+      ),
+      (
+        AnimeListStatus.watchLater,
+        copy.listStatusLabel(AnimeListStatus.watchLater),
+        hub.royalPurple.withValues(alpha: 0.4),
+      ),
+      (
+        AnimeListStatus.notInterested,
+        copy.listStatusLabel(AnimeListStatus.notInterested),
+        hub.royalPurple.withValues(alpha: 0.25),
+      ),
+    ];
+    return Column(
+      key: const Key('anime-stats-status-bars'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (final (status, label, color) in rows)
+          Padding(
+            key: Key('anime-status-bar-${status.wireValue}'),
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: <Widget>[
+                SizedBox(
+                  width: 110,
+                  child: Text(
+                    label,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      // Scaled against the listed total rather than a fixed
+                      // denominator, so the bar means "share of members who
+                      // listed this" and the states always add up.
+                      value: total == 0
+                          ? 0
+                          : (counts.countFor(status) / total).clamp(0, 1),
+                      minHeight: 8,
+                      backgroundColor: color.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                SizedBox(
+                  width: 32,
+                  child: Text(
+                    '${counts.countFor(status)}',
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.labelMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 

@@ -108,7 +108,7 @@ final class AppTranslationMapping {
             'cancelled': 'ملغى',
             'paused': 'متوقف مؤقتاً',
             'plan to watch': 'أرغب بمشاهدتها',
-            'watching': 'أشهدها حالياً',
+            'watching': 'أشاهدها حالياً',
             'completed': 'تم مشاهدتها',
             'plan to watch later': 'أكملها لاحقاً',
             'dropped': 'لا أرغب بمشاهدتها',
@@ -604,6 +604,13 @@ final class AppTranslationMapping {
   String get seasonsTitle => pick('Browse by season', 'تصفح حسب الموسم');
   String get charactersTitle => pick('Characters', 'الشخصيات');
   String get synopsisTitle => pick('Synopsis', 'القصة');
+
+  /// Labels for the other titles of an anime. The spec asks for the title in
+  /// Arabic, English, Japanese and alternatives, so each one is named rather
+  /// than printed as an anonymous second line.
+  String get titleArabicLabel => pick('Arabic title', 'العنوان بالعربية');
+  String get titleJapaneseLabel => pick('Japanese title', 'العنوان الياباني');
+  String get alsoKnownAs => pick('Also known as', 'يُعرف أيضاً بـ');
   String get detailsSection => pick('Details', 'التفاصيل');
   String get detailsMissing =>
       pick('This anime could not be found.', 'تعذّر العثور على هذا الأنمي.');
@@ -692,6 +699,19 @@ final class AppTranslationMapping {
   String get scoreDistribution => pick('Score distribution', 'توزيع التقييمات');
   String get criteriaBreakdown =>
       pick('What members rated', 'ما الذي يقيّمه الأعضاء');
+  String get listBreakdown =>
+      pick('How members track it', 'كيف يتابع الأعضاء هذا العمل');
+  /// Shown when the server has not published an aggregate yet. The chart must
+  /// say so rather than drawing a partial one built from the reviews this
+  /// client happened to load.
+  String get statisticsUnavailable => pick(
+    'Community statistics are not available yet.',
+    'إحصاءات المجتمع غير متاحة بعد.',
+  );
+  String get statisticsUnavailableMessage => pick(
+    'Ratings and list states are still being counted. Check back shortly.',
+    'لا يزال تجميع التقييمات وحالات القائمة جارياً. عد بعد قليل.',
+  );
   String get inMyList => pick('In my list', 'في قائمتي');
   String get criteriaStory => pick('Story', 'القصة');
   String get criteriaArt => pick('Art', 'الرسم');

@@ -519,7 +519,7 @@ class AnimeHubNetworkTile extends StatelessWidget {
 
 const double animeHubTileRadius = 14;
 
-/// Description that shows three lines and expands on tap.
+/// Description that shows a few lines and expands on tap, then collapses back.
 class AnimeExpandableText extends StatefulWidget {
   const AnimeExpandableText({
     required this.text,
@@ -543,16 +543,21 @@ class AnimeExpandableText extends StatefulWidget {
 class _AnimeExpandableTextState extends State<AnimeExpandableText> {
   bool _expanded = false;
 
-  /// Laid out at the real width and font, so the toggle appears for text that
-  /// is genuinely cut off and stays away for text that fits. The width comes
-  /// from the incoming constraints because the size of this render object is
-  /// not known during build.
-  bool _isClipped(double maxWidth, TextStyle? style) {
+  /// Laid out at the real width, font and reading direction, so the toggle
+  /// appears for text that is genuinely cut off and stays away for text that
+  /// fits. The width comes from the incoming constraints because the size of
+  /// this render object is not known during build.
+  ///
+  /// The direction matters: Arabic wraps at different points than English, so
+  /// measuring left-to-right would offer "show more" for a paragraph that
+  /// already fits in four RTL lines, and hide it for one that does not.
+  bool _isClipped(double maxWidth, TextStyle? style, TextDirection direction) {
     if (!maxWidth.isFinite) return false;
     final painter = TextPainter(
       text: TextSpan(text: widget.text.trim(), style: style),
       maxLines: widget.collapsedLines,
-      textDirection: TextDirection.ltr,
+      textDirection: direction,
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: maxWidth);
     return painter.didExceedMaxLines;
   }
@@ -561,6 +566,7 @@ class _AnimeExpandableTextState extends State<AnimeExpandableText> {
   Widget build(BuildContext context) {
     final copy = AnimeCopy.of(context);
     final theme = Theme.of(context);
+    final direction = Directionality.of(context);
     final text = widget.text.trim();
     if (text.isEmpty) return const SizedBox.shrink();
     final style = widget.style ?? theme.textTheme.bodyMedium;
@@ -568,7 +574,11 @@ class _AnimeExpandableTextState extends State<AnimeExpandableText> {
     // text the member just opened back to a few lines.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final clipped = !_expanded && _isClipped(constraints.maxWidth, style);
+        final clipped = _isClipped(constraints.maxWidth, style, direction);
+        // The toggle stays put once expanded so the text can be folded back
+        // up. Disappearing on expand left a member who opened a long bio
+        // stuck reading it with no way back.
+        final showToggle = clipped || _expanded;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -587,7 +597,7 @@ class _AnimeExpandableTextState extends State<AnimeExpandableText> {
                     : TextOverflow.ellipsis,
                 style: style,
               ),
-            if (clipped) ...<Widget>[
+            if (showToggle) ...<Widget>[
               const SizedBox(height: AppSpacing.xs),
               Align(
                 alignment: AlignmentDirectional.centerStart,
@@ -598,7 +608,7 @@ class _AnimeExpandableTextState extends State<AnimeExpandableText> {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: Text(copy.showMore),
+                  child: Text(_expanded ? copy.showLess : copy.showMore),
                 ),
               ),
             ],

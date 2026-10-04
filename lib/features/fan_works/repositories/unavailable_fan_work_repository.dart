@@ -25,6 +25,7 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
   }) async => _fail();
 
@@ -46,7 +47,29 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => _fail();
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async => _fail();
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) async => _fail();
 
   @override
   Future<Result<void>> like({

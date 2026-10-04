@@ -25,6 +25,10 @@ enum EditStatus {
   }
 }
 
+/// Axis 15 §15.16 — the three reel feeds. The server owns the ranking for
+/// each strategy; the client only declares which one it is asking for.
+enum FeedType { forYou, following, trending }
+
 final class EditCounters {
   const EditCounters({
     this.likes = 0,

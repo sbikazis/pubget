@@ -1035,6 +1035,22 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Axis 15 §15.8 — the audio library. Without these rules the client
+    // repository could not read a single audio document, which is why the
+    // whole audio surface looked dead.
+    match /reelAudios/{audioId} {
+      // Only server-processed audio is publicly listable; drafts and failed
+      // extractions stay invisible.
+      allow read: if signedIn() &&
+        resource.data.status == 'ready';
+      // Audio documents, usage counters, and ownership are server-owned.
+      allow create, update, delete: if false;
+      match /reelAudioUsage/{reelId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
+    }
+
     match /fanWorks/{workId} {
       function fanWorkData() {
         return get(/databases/$(database)/documents/fanWorks/$(workId)).data;
@@ -1059,6 +1075,17 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /ratings/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
+      // Reading progress is written by `saveFanWorkReadingProgress` /
+      // `markFanWorkAsRead` (Admin SDK, so they bypass these rules) and read
+      // back directly by the app to resume where the reader stopped.
+      //
+      // Self-read only, and never client-writable: how far someone got in a
+      // Fan Work is private to them, and it is also server-clamped, so a client
+      // forging a page number would gain nothing even if it could write.
+      match /readingProgress/{uid} {
         allow read: if self(uid);
         allow create, update, delete: if false;
       }

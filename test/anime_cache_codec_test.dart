@@ -10,7 +10,9 @@ void main() {
       const original = Anime(
         id: '52991',
         title: 'Frieren: Beyond Journey’s End',
-        alternativeTitles: <String>['Frieren', '葬送のフリーレン'],
+        titleArabic: 'فرييرين: ما بعد نهاية الرحلة',
+        titleJapanese: '葬送のフリーレン',
+        alternativeTitles: <String>['Frieren'],
         synopsis: 'An elf travels after the demon king falls.',
         type: 'TV',
         status: 'Finished Airing',
@@ -57,6 +59,11 @@ void main() {
 
       expect(restored.id, original.id);
       expect(restored.title, original.title);
+      // The original-language titles used to fall out of the cache entirely:
+      // nothing wrote them and nothing read them, so a title fetched once was
+      // quietly reduced to its English name on every later offline read.
+      expect(restored.titleArabic, original.titleArabic);
+      expect(restored.titleJapanese, original.titleJapanese);
       expect(restored.alternativeTitles, original.alternativeTitles);
       expect(restored.synopsis, original.synopsis);
       expect(restored.type, original.type);

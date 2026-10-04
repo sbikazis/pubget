@@ -1266,6 +1266,29 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("fanWorks/fw-public").update({
     ratingsAverage: 10,
   }));
+
+  // Reading progress is written by callables, never by a client, and a reader
+  // may read back only their own. Seed it through the Admin SDK, exactly as
+  // `saveFanWorkReadingProgress` would.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/bob").set({
+      page: 7, pageCount: 20, progress: 0.35, completed: false,
+    });
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/alice").set({
+      page: 2, pageCount: 20, progress: 0.1, completed: false,
+    });
+  });
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/readingProgress/bob").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/alice").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").set({
+    page: 40, completed: true,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").update({
+    page: 999,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").delete());
+  // Not even the work's own creator may read somebody else's progress.
+  await assertFails(db("alice").doc("fanWorks/fw-public/readingProgress/bob").get());
 });
 
 test("custom anime lists are readable per privacy and never client-writable", async () => {
@@ -1414,6 +1437,9 @@ test("anime hub aggregates are readable but never client-writable", async () => 
     const admin = context.firestore();
     await admin.doc("anime_stats/16498").set({
       animeId: "16498", averageScore: 8.5, ratingCount: 2, scoreSum: 17,
+      listedCount: 3,
+      scoreDistribution: { "8": 1, "9": 1 },
+      statusCounts: { watching: 1, completed: 2 },
     });
     await admin.doc("anime_stats/16498/reviews/alice").set({
       userId: "alice", overall: 8.5, comment: "Great",
@@ -1441,6 +1467,49 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   await assertFails(db("alice").doc("users/alice/animeHubRate/write").set({
     lastAt: new Date(),
   }));
+});
+
+test("a client cannot forge the score distribution or the five-state breakdown", async () => {
+  // The Anime Hub charts are required to read these server-side aggregates
+  // rather than inferring them, which only holds if a client cannot write a
+  // flattering number into them.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("anime_stats/16498").set({
+      animeId: "16498",
+      ratingCount: 2,
+      listedCount: 1,
+      scoreDistribution: { "9": 1 },
+      statusCounts: { completed: 1 },
+    });
+  });
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    ratingCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    listedCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").delete());
+  // A merge that only touches the aggregates is still a write.
+  await assertFails(db("alice").doc("anime_stats/16498").set(
+    { statusCounts: { completed: 5000 } },
+    { merge: true },
+  ));
+  // The legitimate view still works after all of those attempts.
+  const snap = await assertSucceeds(db("bob").doc("anime_stats/16498").get());
+  assert.equal(snap.data().scoreDistribution["9"], 1);
+  assert.equal(snap.data().statusCounts.completed, 1);
 });
 
 test("character discussions are readable by signed-in users and never client-writable", async () => {
@@ -1472,3 +1541,53 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
   }));
 });
 
+
+test("ready audio is readable by signed-in users; drafts and failures are not", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/ready1").set({ creatorId: "alice", status: "ready", usageCount: 3 });
+    await admin.doc("reelAudios/processing1").set({ creatorId: "alice", status: "processing" });
+    await admin.doc("reelAudios/failed1").set({ creatorId: "alice", status: "failed" });
+  });
+
+  await assertSucceeds(db("alice").doc("reelAudios/ready1").get());
+  await assertFails(db("alice").doc("reelAudios/processing1").get());
+  await assertFails(db("alice").doc("reelAudios/failed1").get());
+
+  // Guests cannot read audio even when it is ready.
+  const guest = env.unauthenticatedContext().firestore();
+  await assertFails(guest.doc("reelAudios/ready1").get());
+});
+
+test("a ready-audio list query cannot smuggle out non-ready audio", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/l1").set({ creatorId: "alice", status: "ready", usageCount: 1 });
+    await admin.doc("reelAudios/l2").set({ creatorId: "alice", status: "processing", usageCount: 9 });
+  });
+
+  // The rule is on resource.data, so Firestore rejects the query outright
+  // rather than silently filtering.
+  await assertFails(db("alice").collection("reelAudios").get());
+  await assertFails(db("alice").collection("reelAudios").orderBy("usageCount", "desc").get());
+});
+
+test("audio documents and usage counters are server-owned", async () => {
+  const alice = db("alice");
+  await assertFails(alice.doc("reelAudios/new1").set({ creatorId: "alice", status: "ready" }));
+  await assertFails(alice.doc("reelAudios/ready1").update({ usageCount: 9999 }));
+  await assertFails(alice.doc("reelAudios/ready1").delete());
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").set({ reelId: "r1" }),
+  );
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").update({ reelId: "r1" }),
+  );
+  await assertFails(alice.doc("reelAudios/ready1/reelAudioUsage/r1").delete());
+});
+
+test("a creator cannot promote their own audio by writing the status", async () => {
+  await assertFails(
+    db("alice").doc("reelAudios/processing1").update({ status: "ready", usageCount: 500 }),
+  );
+});
