@@ -803,7 +803,12 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     );
     _credit = TextEditingController(text: editor.draft.copyright.credit);
     Future<void>.microtask(() async {
-      await editor.start(workId: widget.workId);
+      if (widget.workId == null || widget.workId!.isEmpty) {
+        editor.reset();
+        await editor.start(workId: widget.workId);
+      } else {
+        await editor.start(workId: widget.workId);
+      }
       if (!mounted) return;
       _syncControllers(editor.draft);
     });
