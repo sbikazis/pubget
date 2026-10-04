@@ -38,6 +38,37 @@ const EDITS_CONFIG = Object.freeze({
   schemaVersion: 2,
 });
 
+/**
+ * §15.2 rendition ladder.
+ *
+ * `height` is the VERTICAL height of the 9:16 frame (1080x1920 -> 1920), which
+ * is what `buildRenditionEncodeArgs` turns into a width via the 9:16 ratio.
+ * Rungs are listed best-first; `selectRenditions` keeps that order and the
+ * first surviving rung owns the canonical `videoUrl`.
+ *
+ * The primary rung keeps the historic path/name
+ * (`edits-processed/{uid}/{editId}.mp4`) so existing players, cached rows and
+ * stored `videoUrl` stay valid. The extra rungs are additive suffixed siblings,
+ * which the `edits-processed/{userId}/{fileName}` Storage rule already matches.
+ *
+ * `blurPad: true` is required for every rung because the Instagram-style
+ * backdrop is a generated canvas, not source pixels — it must be re-rendered at
+ * each rung's dimensions rather than downscaled.
+ */
+const EDIT_RENDITIONS = Object.freeze([
+  Object.freeze({ key: 'master', label: '1080p', height: 1920, crf: 25, audioKbps: 128, preset: 'veryfast', blurPad: true }),
+  Object.freeze({ key: '720', label: '720p', height: 1280, crf: 26, audioKbps: 128, preset: 'veryfast', blurPad: true }),
+  Object.freeze({ key: '480', label: '480p', height: 854, crf: 28, audioKbps: 96, preset: 'veryfast', blurPad: true }),
+]);
+
+/** §15.2 upload quota — server is truth, so the cap lives here only. */
+const EDIT_UPLOAD_QUOTA = Object.freeze({
+  /** Successful `startUpload` reservations per creator per UTC day. */
+  dailyUploads: 20,
+  /** Reserved quota rows retained for forensics (reservations that became posts). */
+  retentionDays: 14,
+});
+
 /** §15.7 tag limits — validated server-side; the client only pre-cleans text. */
 const TAG_LIMITS = Object.freeze({
   hashtagsMax: 12,
@@ -46,4 +77,4 @@ const TAG_LIMITS = Object.freeze({
   characterIdMaxLength: 128,
 });
 
-module.exports = { EDITS_CONFIG, TAG_LIMITS, DAY };
+module.exports = { EDITS_CONFIG, TAG_LIMITS, EDIT_RENDITIONS, EDIT_UPLOAD_QUOTA, DAY };

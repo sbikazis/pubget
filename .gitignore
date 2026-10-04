@@ -49,3 +49,6 @@ app.*.map.json
 
 # Signing material must stay out of source control
 *.jks
+
+# Local toolchain (portable JDK for the rules emulator)
+.tooling/

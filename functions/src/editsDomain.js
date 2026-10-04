@@ -3,6 +3,12 @@
 const { moderateEditCopy } = require("./contentFilter");
 const { scoreEdit, scoreReelTrending } = require("./ranking");
 const { EDITS_CONFIG, TAG_LIMITS } = require("./editsConfig");
+const {
+  utcDayKey,
+  quotaDocId,
+  quotaVerdict,
+  quotaExceededMessage,
+} = require("./editUploadQuota");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -154,6 +160,7 @@ function createEditsDomain({
   bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
+  quotaCollectionName = "editUploadQuota",
   audioCollectionName = "reelAudios",
   storagePrefix = "edits",
   config = EDITS_CONFIG,
@@ -170,6 +177,62 @@ function createEditsDomain({
   function bump(changes, flatKey, nestedKey, amount) {
     changes[flatKey] = FieldValue.increment(amount);
     changes[`counters.${nestedKey}`] = FieldValue.increment(amount);
+  }
+
+  /**
+   * §15.2 quota reservation.
+   *
+   * Read-and-increment inside a transaction so two simultaneous uploads cannot
+   * both read `used === limit - 1` and both be admitted. The client pre-flight
+   * is advisory; this is the enforcement point.
+   *
+   * The verdict is returned rather than stashed on the domain instance: one
+   * domain object serves every request, so shared state would let concurrent
+   * uploads report each other's remaining count.
+   */
+  function quotaRef(creatorId, now = new Date()) {
+    return db
+      .collection(quotaCollectionName)
+      .doc(quotaDocId(creatorId, utcDayKey(now)));
+  }
+
+  async function reserveQuota(creatorId, now = new Date()) {
+    const ref = quotaRef(creatorId, now);
+    const verdict = await db.runTransaction(async (txn) => {
+      const snap = await txn.get(ref);
+      const current = quotaVerdict(snap.data()?.count ?? 0);
+      if (!current.allowed) return current;
+      txn.set(ref, {
+        creatorId,
+        day: utcDayKey(now),
+        count: current.used + 1,
+        limit: current.limit,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { ...current, used: current.used + 1, remaining: current.remaining - 1 };
+    });
+    if (!verdict.allowed) {
+      throw new HttpsError("resource-exhausted", quotaExceededMessage(verdict.limit));
+    }
+    return verdict;
+  }
+
+  async function releaseQuota(creatorId, now = new Date()) {
+    const ref = quotaRef(creatorId, now);
+    await db.runTransaction(async (txn) => {
+      const snap = await txn.get(ref);
+      const count = snap.data()?.count ?? 0;
+      // Never go negative: a double release must not hand out free slots.
+      txn.set(ref, {
+        count: Math.max(0, count - 1),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }).catch((error) => {
+      console.error("Upload quota release failed", {
+        creatorId,
+        error: error && error.message ? error.message : String(error),
+      });
+    });
   }
 
   async function startUpload(request) {
@@ -287,8 +350,16 @@ function createEditsDomain({
         creatorId, editId, createdAt: FieldValue.serverTimestamp(),
       }));
     }
-    await Promise.all(writes);
-    return { editId, videoPath };
+    // Quota is reserved only once the request is known to be valid, and released
+    // if the create itself fails so a rejected upload cannot silently burn a slot.
+    const reservation = await reserveQuota(creatorId);
+    try {
+      await Promise.all(writes);
+    } catch (error) {
+      await releaseQuota(creatorId);
+      throw error;
+    }
+    return { editId, videoPath, quotaRemaining: reservation.remaining };
   }
 
   async function repost(request) {

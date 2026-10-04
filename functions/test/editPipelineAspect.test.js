@@ -4,35 +4,90 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   decideAspectTreatment,
-  buildVideoFilters,
+  buildRenditionEncodeArgs,
   decideEditPublication,
   TARGET_RATIO,
 } = require("../src/editPipeline");
+const { EDIT_RENDITIONS } = require("../src/editsConfig");
+
+const MASTER = EDIT_RENDITIONS[0];
+
+function encodeArgs(treatment, rendition = MASTER) {
+  return buildRenditionEncodeArgs({
+    source: "source.mp4",
+    destination: "out.mp4",
+    treatment,
+    rendition,
+  });
+}
 
 test("near 9:16 stays passthrough (no blur/crop)", () => {
   const portrait = decideAspectTreatment(1080, 1920);
   assert.equal(portrait.mode, "passthrough");
   const near = decideAspectTreatment(1080, 1850);
   assert.equal(near.mode, "passthrough");
-  const filters = buildVideoFilters(portrait);
-  assert.equal(filters.filterComplex, null);
-  assert.match(filters.simpleVf, /force_original_aspect_ratio=decrease/);
+  const args = encodeArgs(portrait);
+  assert.equal(args.includes("-filter_complex"), false);
+  assert.match(args.join(" "), /force_original_aspect_ratio=decrease/);
 });
 
 test("landscape gets blur_pad treatment (Instagram-style)", () => {
   const landscape = decideAspectTreatment(1920, 1080);
   assert.equal(landscape.mode, "blur_pad");
   assert.ok(landscape.ratio > TARGET_RATIO);
-  const filters = buildVideoFilters(landscape);
-  assert.match(filters.filterComplex, /boxblur/);
-  assert.match(filters.filterComplex, /overlay/);
+  const complex = encodeArgs(landscape).join(" ");
+  assert.match(complex, /boxblur/);
+  assert.match(complex, /overlay/);
 });
 
 test("extreme tall gets center_crop", () => {
   const tall = decideAspectTreatment(720, 2400);
   assert.equal(tall.mode, "center_crop");
-  const filters = buildVideoFilters(tall);
-  assert.match(filters.simpleVf, /crop=1080:1920/);
+  assert.match(encodeArgs(tall).join(" "), /crop=1080:1920/);
+});
+
+// The ladder replaced a single fixed encode. `height` is the VERTICAL height of
+// the 9:16 frame, so every rung must resolve to the canonical 9:16 width.
+test("every ladder rung encodes to correct 9:16 dimensions", () => {
+  const expected = {
+    master: "1080:1920",
+    720: "720:1280",
+    480: "480:854",
+  };
+  for (const rendition of EDIT_RENDITIONS) {
+    const args = encodeArgs({ mode: "blur_pad" }, rendition).join(" ");
+    const dims = expected[rendition.key];
+    assert.ok(dims, `${rendition.key} has no expected dimensions`);
+    assert.ok(
+      args.includes(dims),
+      `${rendition.key} must encode at ${dims}, got: ${args}`,
+    );
+  }
+});
+
+test("each rung uses its own bitrate ladder settings", () => {
+  for (const rendition of EDIT_RENDITIONS) {
+    const args = encodeArgs({ mode: "passthrough" }, rendition);
+    const crf = args[args.indexOf("-crf") + 1];
+    const audio = args[args.indexOf("-b:a") + 1];
+    assert.equal(crf, String(rendition.crf));
+    assert.equal(audio, `${rendition.audioKbps}k`);
+    // Smaller rungs must be cheaper, never higher quality.
+    assert.ok(rendition.crf >= MASTER.crf, `${rendition.key} crf too aggressive`);
+  }
+});
+
+test("passthrough rungs never upscale the source", () => {
+  const args = encodeArgs({ mode: "passthrough" }).join(" ");
+  assert.match(args, /scale='min\(1080,iw\)'/);
+  assert.equal(args.includes("-filter_complex"), false);
+});
+
+test("duration cap is applied to every rung, not just the master", () => {
+  for (const rendition of EDIT_RENDITIONS) {
+    const args = encodeArgs({ mode: "passthrough" }, rendition);
+    assert.equal(args[args.indexOf("-t") + 1], "60");
+  }
 });
 
 test("watermark suspicion holds for needs_review instead of auto-publish", () => {
