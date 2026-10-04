@@ -1129,6 +1129,22 @@ final class AppStrings {
   String stepOf(int step, int total) =>
       pick('Step $step of $total', 'الخطوة $step من $total');
   String memberSince(String month) => pick('Since $month', 'منذ $month');
+
+  // Axis 15 — single source of truth for the Reels product surface.
+  // Every Reels/Edits label, route title, and share card must read the
+  // product name from here; nothing may hardcode it.
+  String get productReelsName => pick('Reels', 'ريلز');
+
+  String get audioNotFound => pick('Audio not found', 'الصوت غير موجود');
+  String get searchAudioHint => pick('Search audio…', 'ابحث عن صوت…');
+  String get useAudio => pick('Use audio', 'استخدام الصوت');
+  String get browseAudio => pick('Browse audio', 'تصفح الأصوات');
+  String get noAudioFound => pick('No audio found', 'لا يوجد صوت');
+  String get noAudioAvailable =>
+      pick('No audio available', 'لا توجد أصوات متاحة');
+  String get feedForYou => pick('For You', 'لك');
+  String get feedFollowing => pick('Following', 'متابَعين');
+  String get feedTrending => pick('Trending', 'رائج');
 }
 
 const Map<String, String> _mafiaPhasesEn = <String, String>{

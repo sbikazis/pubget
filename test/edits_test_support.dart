@@ -62,6 +62,7 @@ final class FakeEditsRepository implements EditsRepository {
   var lastLike = true;
   String? lastUploadStatus;
   String? lastIdempotencyKey;
+  String? lastUploadAudioId;
   final _editController = StreamController<Result<Edit>>.broadcast();
 
   @override
@@ -70,6 +71,9 @@ final class FakeEditsRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -80,6 +84,7 @@ final class FakeEditsRepository implements EditsRepository {
   }) async {
     uploadCalls += 1;
     lastIdempotencyKey = idempotencyKey;
+    lastUploadAudioId = audioId;
     onStarted?.call(resumeEditId ?? 'draft-1', resumeVideoPath ?? 'edits/u/draft-1.mp4');
     onProgress?.call(1);
     if (uploadFailure != null) return FailureResult(uploadFailure!);
@@ -104,8 +109,16 @@ final class FakeEditsRepository implements EditsRepository {
       Success(testEdit(id: editId, status: 'processing'));
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
-      Success(EditPage(feed, hasMore: false));
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async => Success(EditPage(feed, hasMore: false));
 
   @override
   Future<Result<List<Edit>>> getCreatorEdits(

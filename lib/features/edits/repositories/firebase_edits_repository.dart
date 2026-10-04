@@ -70,8 +70,29 @@ Failure _mapCode(String code, String? message) {
   );
 }
 
+/// Normalizes user-entered tag text into the canonical, de-duplicated,
+/// lower-cased form the server expects. Accepts `#tag`, `tag`, comma,
+/// whitespace, and the Arabic comma as separators.
+List<String> _parseTags(String? input, {required int max, int? maxLength}) {
+  if (input == null) return const <String>[];
+  final seen = <String>{};
+  final result = <String>[];
+  final parts = input
+      .split(RegExp(r'[\s,#،]+'))
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty);
+  for (final part in parts) {
+    final cleaned = part.startsWith('#') ? part.substring(1) : part;
+    final key = cleaned.toLowerCase();
+    if (maxLength != null && key.length > maxLength) continue;
+    if (seen.add(key)) result.add(key);
+    if (result.length >= max) break;
+  }
+  return result;
+}
+
 class FirebaseEditsRepository
-    implements EditsRepository, CharacterEditsRepository {
+    implements EditsRepository, AnimeEditsRepository, CharacterEditsRepository {
   FirebaseEditsRepository({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
@@ -121,6 +142,8 @@ class FirebaseEditsRepository
     String editId, {
     String? caption,
     String? animeTag,
+    String? hashtags,
+    String? characterTags,
   }) async {
     final snap = await _firestore.collection(_collection).doc(editId).get();
     if (!snap.exists || snap.data() == null) {
@@ -131,6 +154,8 @@ class FirebaseEditsRepository
         thumbnailUrl: '',
         caption: caption ?? '',
         animeTag: animeTag ?? '',
+        hashtags: _parseTags(hashtags, max: 12, maxLength: 64),
+        characterIds: _parseTags(characterTags, max: 8, maxLength: 128),
         likesCount: 0,
         commentsCount: 0,
         viewsCount: 0,
@@ -148,6 +173,9 @@ class FirebaseEditsRepository
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -171,6 +199,24 @@ class FirebaseEditsRepository
         'caption': caption,
         'animeTag': animeTag,
       };
+      // Tags are normalized client-side for a clean payload, but the server
+      // re-validates and owns the stored values.
+      final parsedHashtags = _parseTags(hashtags, max: 12, maxLength: 64);
+      if (parsedHashtags.isNotEmpty) {
+        startPayload['hashtags'] = parsedHashtags;
+      }
+      final parsedCharacters =
+          _parseTags(characterTags, max: 8, maxLength: 128);
+      if (parsedCharacters.isNotEmpty) {
+        startPayload['characterIds'] = parsedCharacters;
+      }
+      // Sound track is chosen at publish time, not at play time. Sending it
+      // here means the server validates the id against `reelAudios` before any
+      // byte is uploaded, so a bad id fails fast instead of after the upload.
+      final trimmedAudioId = audioId?.trim();
+      if (trimmedAudioId != null && trimmedAudioId.isNotEmpty) {
+        startPayload['audioId'] = trimmedAudioId;
+      }
       final key = idempotencyKey;
       if (key != null) startPayload['idempotencyKey'] = key;
       final start = await _functions
@@ -208,7 +254,13 @@ class FirebaseEditsRepository
       return finalized.valueOrNull!;
     }
     // Upload itself succeeded; surface server state even if finalize soft-fails.
-    return _readEdit(editId, caption: caption, animeTag: animeTag);
+    return _readEdit(
+      editId,
+      caption: caption,
+      animeTag: animeTag,
+      hashtags: hashtags,
+      characterTags: characterTags,
+    );
   });
 
   @override
@@ -245,12 +297,35 @@ class FirebaseEditsRepository
       _call(_callable('retryEditProcessing'), {'editId': editId});
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) =>
-      _guard(() async {
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) => _guard(() async {
+        final normalizedHashtag = hashtag?.trim().replaceAll('#', '').toLowerCase();
         try {
+          // The server owns both the scope and the ranking strategy. The
+          // client only declares what it is asking for.
+          final payload = <String, dynamic>{
+            'limit': limit,
+            'feedType': feedType.name,
+            if (after != null) 'afterId': after.id,
+          };
+          if (audioId != null) payload['audioId'] = audioId;
+          if (animeId != null) payload['animeId'] = animeId;
+          if (characterId != null) payload['characterId'] = characterId;
+          if (creatorId != null) payload['creatorId'] = creatorId;
+          if (normalizedHashtag != null && normalizedHashtag.isNotEmpty) {
+            payload['hashtag'] = normalizedHashtag;
+          }
           final result = await _functions
               .httpsCallable(_callable('getEditFeed'))
-              .call({'limit': limit, if (after != null) 'afterId': after.id});
+              .call(payload);
           final raw = result.data['items'];
           if (raw is List && raw.isNotEmpty) {
             final items = raw
@@ -270,22 +345,91 @@ class FirebaseEditsRepository
         } on Object {
           // Fall through to the published score query.
         }
-        var query = _firestore
-            .collection(_collection)
-            .where('status', isEqualTo: 'published')
-            .orderBy('score', descending: true)
-            .orderBy('createdAt', descending: true)
-            .orderBy(FieldPath.documentId, descending: true);
-        if (after != null) {
-          query = query.startAfter([after.score, after.createdAt, after.id]);
-        }
-        final snapshot = await query.limit(limit + 1).get();
-        final items = snapshot.docs
-            .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-            .toList();
-        final more = items.length > limit;
-        return EditPage(more ? items.sublist(0, limit) : items, hasMore: more);
+        // Fallback: keep the server's own score ordering and apply the
+        // requested scope in memory. This deliberately does NOT re-rank for
+        // feedType — a client-side "trending" guess would be a lie. It also
+        // avoids requiring a composite index per scope field.
+        return _scopedFallbackFeed(
+          limit: limit,
+          after: after,
+          audioId: audioId,
+          animeId: animeId,
+          characterId: characterId,
+          hashtag: normalizedHashtag,
+          creatorId: creatorId,
+        );
       });
+
+  static bool _scopeMatches(
+    Edit edit, {
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+  }) {
+    if (audioId != null && edit.audioId != audioId) return false;
+    if (animeId != null && edit.animeId != animeId) return false;
+    if (creatorId != null && edit.creatorId != creatorId) return false;
+    if (characterId != null && !edit.characterIds.contains(characterId)) {
+      return false;
+    }
+    if (hashtag != null && hashtag.isNotEmpty && !edit.hashtags.contains(hashtag)) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<EditPage> _scopedFallbackFeed({
+    required int limit,
+    Edit? after,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+  }) async {
+    var query = _firestore
+        .collection(_collection)
+        .where('status', isEqualTo: 'published')
+        .orderBy('score', descending: true)
+        .orderBy('createdAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true);
+    if (after != null) {
+      query = query.startAfter([after.score, after.createdAt, after.id]);
+    }
+    final batchSize = limit < 5 ? limit * 2 : 10;
+    final matches = <Edit>[];
+    var sourceExhausted = false;
+    for (var batch = 0; batch < 6 && !sourceExhausted; batch++) {
+      final snapshot = await query.limit(batchSize).get();
+      final docs = snapshot.docs;
+      if (docs.isEmpty) {
+        sourceExhausted = true;
+        break;
+      }
+      if (docs.length < batchSize) sourceExhausted = true;
+      for (final doc in docs) {
+        final edit = Edit.fromMap(doc.data(), id: doc.id);
+        if (_scopeMatches(
+          edit,
+          audioId: audioId,
+          animeId: animeId,
+          characterId: characterId,
+          hashtag: hashtag,
+          creatorId: creatorId,
+        )) {
+          matches.add(edit);
+        }
+      }
+      query = query.startAfterDocument(docs.last);
+    }
+    final page = matches.take(limit).toList(growable: false);
+    // Honest paging: if we filled the page and the source still had documents
+    // left to scan, there is likely more.
+    final hasMore = !sourceExhausted || matches.length > limit;
+    return EditPage(page, hasMore: hasMore);
+  }
 
   @override
   Future<Result<List<Edit>>> getCreatorEdits(
@@ -326,6 +470,7 @@ class FirebaseEditsRepository
         .toList(growable: false);
   });
 
+  @override
   Future<Result<List<Edit>>> getAnimeEdits(
     String animeId, {
     int limit = 12,

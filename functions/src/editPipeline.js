@@ -56,6 +56,32 @@ function ffmpegBinary() {
 }
 
 /**
+ * §15.2 duration verdict: 3–60s.
+ *
+ * Extracted as a pure predicate so the bound is unit-testable. The inline check
+ * it replaced sat behind a real ffmpeg probe, so it was effectively untested —
+ * which is how the 3s floor came to be missing while both the config and the
+ * copy claimed it existed.
+ */
+function classifyDuration(durationSeconds, config = EDITS_CONFIG) {
+  const seconds = Number(durationSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "invalid";
+  if (seconds < config.minDurationSeconds) return "tooShort";
+  if (seconds > config.maxDurationSeconds) return "tooLong";
+  return "ok";
+}
+
+function durationFailureReason(verdict, config = EDITS_CONFIG) {
+  if (verdict === "tooShort") {
+    return `Videos must be at least ${config.minDurationSeconds} seconds long.`;
+  }
+  if (verdict === "tooLong") {
+    return `Videos can be up to ${config.maxDurationSeconds} seconds long.`;
+  }
+  return "This video could not be read.";
+}
+
+/**
  * Decide how to fit any source into a 9:16 vertical frame.
  * Never rejects on aspect ratio — landscape gets blur-fill, extreme tall gets center-crop.
  */
@@ -343,13 +369,14 @@ function createEditPipeline({
       const ffmpeg = ffmpegBinary();
       const probed = await probe(ffmpeg, source);
       const durationSeconds = probed.durationSeconds;
-      if (durationSeconds <= 0 || durationSeconds > config.maxDurationSeconds) {
+      const verdict = classifyDuration(durationSeconds, config);
+      if (verdict !== "ok") {
         await ref.update({ status: "failed", failureReason: "duration" });
         await notifyCreator({
           creatorId,
           editId,
           kind: "failed",
-          reason: "Videos can be up to 3 minutes long.",
+          reason: durationFailureReason(verdict, config),
         });
         return null;
       }
@@ -497,6 +524,8 @@ function createEditPipeline({
 module.exports = {
   createEditPipeline,
   decideEditPublication,
+  classifyDuration,
+  durationFailureReason,
   decideAspectTreatment,
   buildVideoFilters,
   detectPlatformWatermark,

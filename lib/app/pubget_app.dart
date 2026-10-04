@@ -60,6 +60,11 @@ import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/reels/providers/audio_provider.dart';
+import '../features/reels/repositories/audio_repository.dart';
+import '../features/reels/repositories/firebase_audio_repository.dart';
+import '../features/reels/screens/audio_page.dart';
+import '../features/reels/screens/reels_feed_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
 import '../features/edits/widgets/global_edit_upload_bar.dart';
@@ -238,6 +243,24 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
+        // Axis 15 §15.8 — audio has its own repository so the 17-slot
+        // positional repository record above stays untouched.
+        provider.Provider<AudioRepository>(
+          create: (context) => firebaseState.isReady
+              ? FirebaseAudioRepository(
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableAudioRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
+        provider.ChangeNotifierProvider<AudioProvider>(
+          create: (context) =>
+              AudioProvider(repository: context.read<AudioRepository>()),
+        ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<AnimeRepository>(
@@ -966,6 +989,10 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
+        // Axis 15 §15.18 — canonical Reels paths. `/edits*` stay registered as
+        // legacy aliases so older share links keep resolving.
+        '/reels': const AppShell(),
+        '/reels/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
         '/private': const AppShell(),
@@ -989,6 +1016,32 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
+        // One Reel, focused. The id is part of the link so a share is specific.
+        '/reel': (parameters) => const ReelsFeedPage(),
+        // `/audio` is the library; `/audio/{audioId}` is one audio's page.
+        '/audio': (parameters) {
+          final audioId = (parameters['audioId'] ?? '').trim();
+          if (audioId.isEmpty) return const AudioLibraryPage();
+          return AudioDetailPage(audioId: audioId);
+        },
+        '/hashtag': (parameters) {
+          final tag = parameters['tag'] ?? '';
+          return ReelsFeedPage(
+            hashtag: tag,
+            title: tag.trim().isEmpty ? null : '#${tag.trim()}',
+          );
+        },
+        '/reels/anime': (parameters) => ReelsFeedPage(
+          animeId: parameters['animeId'] ?? '',
+          title: '#${(parameters['animeId'] ?? '').trim()}',
+        ),
+        '/reels/character': (parameters) => ReelsFeedPage(
+          characterId: parameters['characterId'] ?? '',
+          title: '#${(parameters['characterId'] ?? '').trim()}',
+        ),
+        '/reels/creator': (parameters) => ReelsFeedPage(
+          creatorId: parameters['creatorId'] ?? '',
+        ),
         '/groups/create': (parameters) {
           final raw = parameters['type'];
           final type = GroupType.values.cast<GroupType?>().firstWhere(

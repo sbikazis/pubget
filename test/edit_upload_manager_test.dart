@@ -99,10 +99,39 @@ void main() {
     manager.dispose();
     await repo.close();
   });
+  test('enqueue carries audioId to the repository and persists it', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final repo = _SlowUploadRepository();
+    final manager = EditUploadManager(repository: repo);
+    await manager.restore();
+
+    await manager.enqueue(
+      caption: 'hi',
+      animeTag: 'one_piece',
+      audioId: 'track1',
+      contentType: 'video/mp4',
+      fileName: 'clip.mp4',
+      localPath: '/tmp/clip.mp4',
+      sizeBytes: 1024,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(repo.seenAudioId, 'track1');
+
+    // Rehydrate a fresh manager from the same store: the sound track must
+    // survive a restart so a resumed upload keeps its audio binding.
+    final revived = EditUploadManager(repository: _SlowUploadRepository());
+    await revived.restore();
+    final job = revived.jobs.firstWhere((j) => j.audioId != null);
+    expect(job.audioId, 'track1');
+    repo.completeUpload();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  });
 }
 
 final class _SlowUploadRepository implements EditsRepository {
   void Function() onStart = () {};
+  String? seenAudioId;
   Completer<Result<Edit>>? _gate;
 
   void completeUpload() {
@@ -115,6 +144,9 @@ final class _SlowUploadRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -124,6 +156,7 @@ final class _SlowUploadRepository implements EditsRepository {
     UploadProgress? onProgress,
   }) async {
     onStart();
+    seenAudioId = audioId;
     onStarted?.call(
       resumeEditId ?? 'draft-1',
       resumeVideoPath ?? 'edits/u/draft-1.mp4',
@@ -149,7 +182,16 @@ final class _SlowUploadRepository implements EditsRepository {
       Success(testEdit(id: editId, status: 'processing'));
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async =>
       const Success(EditPage(<Edit>[], hasMore: false));
 
   @override

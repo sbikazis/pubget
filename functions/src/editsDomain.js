@@ -1,8 +1,8 @@
 "use strict";
 
 const { moderateEditCopy } = require("./contentFilter");
-const { scoreEdit } = require("./ranking");
-const { EDITS_CONFIG } = require("./editsConfig");
+const { scoreEdit, scoreReelTrending } = require("./ranking");
+const { EDITS_CONFIG, TAG_LIMITS } = require("./editsConfig");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -16,6 +16,101 @@ function boundedList(value, maxItems, maxItemLength) {
   const normalized = value.map((item) => string(item, maxItemLength));
   return normalized.every(Boolean) ? normalized : null;
 }
+
+/** §15.16 — client sends one of three strategies; unknown values are For You. */
+function normalizeFeedType(raw) {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "following" || value === "trending" || value === "foryou") {
+    return value;
+  }
+  return "forYou";
+}
+
+/** §15.16 — a scope is one of audio / anime / character / hashtag / creator. */
+function normalizeFeedScope(data) {
+  return {
+    audioId: string(data?.audioId || "", 128),
+    animeId: string(data?.animeId || "", 128),
+    characterId: string(data?.characterId || "", 128),
+    hashtag: (string(data?.hashtag || "", TAG_LIMITS.hashtagMaxLength) || "")
+      .replace(/^#+/, "")
+      .toLowerCase() || null,
+    creatorId: string(data?.creatorId || "", 128),
+  };
+}
+
+  function matchesScope(edit, scope) {
+    if (scope.audioId && String(edit.audioId || "") !== scope.audioId) return false;
+    if (scope.animeId && String(edit.animeId || "") !== scope.animeId) return false;
+    if (scope.creatorId && String(edit.creatorId || "") !== scope.creatorId) return false;
+    if (scope.characterId) {
+      const ids = Array.isArray(edit.characterIds) ? edit.characterIds : [];
+      if (!ids.includes(scope.characterId)) return false;
+    }
+    if (scope.hashtag) {
+      const tags = Array.isArray(edit.hashtags) ? edit.hashtags : [];
+      if (!tags.includes(scope.hashtag)) return false;
+    }
+    return true;
+  }
+
+// Firestore caps `in` at 30 values.
+const MAX_IN_VALUES = 30;
+
+/**
+ * Builds the candidate pool for a feed.
+ *
+ * The scope and the followed-creator set are applied *in the query*, not by
+ * filtering a global top-200 afterwards. Fetching the global top-200 and then
+ * filtering starved scoped and following feeds: a hashtag carried by 400 Reels
+ * returns empty whenever those Reels rank below position 200, and the viewer
+ * is shown "no results" for content that exists. §15.16 wants an empty
+ * Following feed only when the viewer genuinely follows nobody.
+ */
+async function loadFeedCandidates({ db, collectionName, feedType, scope, creatorIds }) {
+  let query = db.collection(collectionName).where("status", "==", "published");
+
+  if (scope.audioId) query = query.where("audioId", "==", scope.audioId);
+  if (scope.animeId) query = query.where("animeId", "==", scope.animeId);
+  if (scope.creatorId) query = query.where("creatorId", "==", scope.creatorId);
+  if (scope.hashtag) query = query.where("hashtags", "array-contains", scope.hashtag);
+  if (scope.characterId) query = query.where("characterIds", "array-contains", scope.characterId);
+
+  if (feedType === "following" && creatorIds.size > 0 && !scope.creatorId) {
+    // Query in chunks so a viewer who follows more than 30 creators still
+    // gets their full feed instead of a silent truncation.
+    const chunks = [];
+    const ids = [...creatorIds];
+    for (let i = 0; i < ids.length; i += MAX_IN_VALUES) {
+      chunks.push(ids.slice(i, i + MAX_IN_VALUES));
+    }
+    const snapshots = await Promise.all(
+      chunks.map((chunk) =>
+        applyFeedOrder(query.where("creatorId", "in", chunk), feedType).limit(200).get(),
+      ),
+    );
+    return { docs: snapshots.flatMap((snap) => snap.docs || []) };
+  }
+
+  return applyFeedOrder(query, feedType).limit(200).get();
+}
+
+/**
+ * Applies the ordering the ranking layer expects.
+ *
+ * For You and Following consume the stored `score`, so they read the
+ * highest-scored slice. Trending is re-scored by velocity in memory, so
+ * reading only the top-scored slice would pin trending to whatever For You
+ * happens to favour; it reads the newest published slice instead.
+ */
+function applyFeedOrder(query, feedType) {
+  const ordered =
+    feedType === "trending"
+      ? query.orderBy("createdAt", "desc")
+      : query.orderBy("score", "desc").orderBy("createdAt", "desc");
+  return ordered;
+}
+
 
 function emptyCounters() {
   return {
@@ -59,6 +154,7 @@ function createEditsDomain({
   bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
+  audioCollectionName = "reelAudios",
   storagePrefix = "edits",
   config = EDITS_CONFIG,
 }) {
@@ -80,8 +176,16 @@ function createEditsDomain({
     const creatorId = uid(request);
     const caption = string(request.data?.caption || "", config.captionMax);
     const animeTag = string(request.data?.animeTag || "", 128);
-    const hashtags = boundedList(request.data?.hashtags, 12, 64);
-    const characterIds = boundedList(request.data?.characterIds, 8, 128);
+    const hashtags = boundedList(
+      request.data?.hashtags,
+      TAG_LIMITS.hashtagsMax,
+      TAG_LIMITS.hashtagMaxLength,
+    );
+    const characterIds = boundedList(
+      request.data?.characterIds,
+      TAG_LIMITS.characterIdsMax,
+      TAG_LIMITS.characterIdMaxLength,
+    );
     const mentions = boundedList(request.data?.mentions, config.mentionMax, 128);
     const groupIds = boundedList(request.data?.groupIds, 8, 128);
     const animeId = string(request.data?.animeId || "", 128);
@@ -99,6 +203,24 @@ function createEditsDomain({
         groupIds === null || !Number.isInteger(coverFrameMs) ||
         coverFrameMs < 0 || coverFrameMs > 60000) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
+    }
+    // An Edit must never point at an audio that does not exist or is not
+    // playable. Checking here — before any byte is uploaded — turns a silent
+    // dead-video bug into a fast, actionable failure.
+    if (audioId) {
+      const audioSnap = await db.collection(audioCollectionName).doc(audioId).get();
+      if (!audioSnap.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "That sound track no longer exists.",
+        );
+      }
+      if (audioSnap.data()?.status !== "ready") {
+        throw new HttpsError(
+          "failed-precondition",
+          "That sound track is still processing. Try again shortly.",
+        );
+      }
     }
     const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
     if (idempotencyKey) {
@@ -571,20 +693,23 @@ function createEditsDomain({
     return { ok: true };
   }
 
+  /**
+   * §15.16 — one feed entry point for every Reels surface.
+   *
+   * Scope (audio / anime / character / hashtag / creator) narrows the
+   * candidate set; `feedType` picks the ranking strategy. Both are decided
+   * here, never on the client.
+   */
   async function getEditFeed(request) {
     const viewerId = uid(request);
     const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || config.feedPageSize));
     const afterId = string(request.data?.afterId || "", 128);
-    const [userSnap, respectsSnap, listsSnap, published] = await Promise.all([
+    const feedType = normalizeFeedType(request.data?.feedType);
+    const scope = normalizeFeedScope(request.data);
+    const [userSnap, respectsSnap, listsSnap] = await Promise.all([
       db.collection("users").doc(viewerId).get(),
       db.collection("respects").where("fromUserId", "==", viewerId).get().catch(() => ({ docs: [] })),
       db.collection("users").doc(viewerId).collection("animeList").get().catch(() => ({ docs: [] })),
-      db.collection(collectionName)
-        .where("status", "==", "published")
-        .orderBy("score", "desc")
-        .orderBy("createdAt", "desc")
-        .limit(80)
-        .get(),
     ]);
     const user = userSnap.data() || {};
     const creatorIds = new Set();
@@ -605,16 +730,50 @@ function createEditsDomain({
       creatorQuality: 0,
     };
     const now = new Date();
-    const ranked = (published.docs || [])
-      .map((doc) => {
-        const data = doc.data() || {};
-        return {
-          id: doc.id,
-          data,
-          rank: scoreEdit({ id: doc.id, ...data }, profile, now),
-        };
-      })
-      .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    const published = await loadFeedCandidates({
+      db,
+      collectionName,
+      feedType,
+      scope,
+      creatorIds,
+    });
+    // Defense in depth: the query already applied scope, but re-checking here
+    // keeps the guarantee that a scoped feed never leaks another context's rows
+    // even if a query clause is later dropped.
+    const candidates = (published.docs || [])
+      .map((doc) => ({ id: doc.id, data: doc.data() || {} }))
+      .filter((item) => matchesScope(item.data, scope));
+    let ranked;
+    if (feedType === "following") {
+      // §15.16 — Following is creators the viewer actually follows. When the
+      // viewer follows nobody the honest answer is an empty feed, not a
+      // silent fallback to For You.
+      ranked = candidates
+        .filter((item) => creatorIds.has(item.data.creatorId))
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreEdit({ id: item.id, ...item.data }, profile, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    } else if (feedType === "trending") {
+      // §15.16 — Trending is engagement velocity, independent of the viewer.
+      ranked = candidates
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreReelTrending({ id: item.id, ...item.data }, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    } else {
+      ranked = candidates
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreEdit({ id: item.id, ...item.data }, profile, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    }
     let start = 0;
     if (afterId) {
       const index = ranked.findIndex((item) => item.id === afterId);

@@ -33,7 +33,23 @@ import '../widgets/edit_comments_sheet.dart';
 import '../../reels/reels_brand.dart';
 
 class EditFeedPage extends StatefulWidget {
-  const EditFeedPage({super.key});
+  const EditFeedPage({
+    super.key,
+    this.title,
+    this.leading,
+    this.embedded = false,
+  });
+
+  /// Axis 15 §15.16 — scoped entry points (hashtag, anime, character, creator,
+  /// audio) reuse this exact viewer and only override the chrome.
+  final String? title;
+  final Widget? leading;
+
+  /// Renders only the playback body, with no [Scaffold], [AppBar], feed
+  /// selector, or FAB. Used when a screen that already owns its chrome (the
+  /// audio detail page) hosts the feed. Without this the feed nested a second
+  /// Scaffold and a second AppBar inside the host.
+  final bool embedded;
 
   @override
   State<EditFeedPage> createState() => _EditFeedPageState();
@@ -97,13 +113,24 @@ class _EditFeedPageState extends State<EditFeedPage>
   }
 
   void _readRouteHighlight() {
-    final delegate = Router.of(context).routerDelegate;
+    // `Router.maybeOf`, not `Router.of`: this page is also embedded by the audio
+    // detail screen, and `Router.of` throws outright outside a Router — which
+    // made the `is! AppRouterDelegate` guard below unreachable.
+    final delegate = Router.maybeOf(context)?.routerDelegate;
     if (delegate is! AppRouterDelegate) return;
     final config = delegate.currentConfiguration;
     if (config is! ParameterizedRoute) return;
-    if (config.path != ReelsBrand.route && config.path != '/edits') return;
-    final highlight = config.parameters['highlight'];
-    if (highlight == null || highlight.isEmpty) return;
+    // `/reels?highlight=` and `/edits?highlight=` focus inside the main feed;
+    // `/reel/{reelId}` is the canonical single-Reel link.
+    final isFeedRoute =
+        config.path == ReelsBrand.route ||
+        config.path == ReelsBrand.legacyRoute ||
+        config.path == '/reel';
+    if (!isFeedRoute) return;
+    final highlight = config.path == '/reel'
+        ? (config.parameters['reelId'] ?? '')
+        : (config.parameters['highlight'] ?? '');
+    if (highlight.isEmpty) return;
     if (_pendingHighlight == highlight) return;
     _pendingHighlight = highlight;
     unawaited(_focusHighlight());
@@ -176,21 +203,87 @@ class _EditFeedPageState extends State<EditFeedPage>
       });
     }
 
+    final body = _body(copy, provider, offline, feedVisible);
+
+    // The host owns the chrome, so hand back the bare playback body.
+    if (widget.embedded) return body;
+
     return Scaffold(
       backgroundColor: const Color(0xFF07060C),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        leading: const AppShellMenuButton(),
-        title: Text(copy.feedTitle),
+        leading: widget.leading ?? const AppShellMenuButton(),
+        title: Text(widget.title ?? copy.feedTitle),
         backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: Colors.white,
         elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: SegmentedButton<FeedType>(
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(
+                  value: FeedType.forYou,
+                  label: Text(copy.feedLabel(FeedType.forYou)),
+                  icon: const Icon(
+                    PhosphorIconsRegular.caretCircleRight,
+                    size: 18,
+                  ),
+                ),
+                ButtonSegment(
+                  value: FeedType.following,
+                  label: Text(copy.feedLabel(FeedType.following)),
+                  icon: const Icon(PhosphorIconsRegular.users, size: 18),
+                ),
+                ButtonSegment(
+                  value: FeedType.trending,
+                  label: Text(copy.feedLabel(FeedType.trending)),
+                  icon: const Icon(PhosphorIconsRegular.flame, size: 18),
+                ),
+              ],
+              selected: {provider.feedType},
+              onSelectionChanged: (Set<FeedType> selection) {
+                if (selection.isEmpty) return;
+                _activeIndex = 0;
+                _page.jumpToPage(0);
+                provider.setFeedType(selection.first);
+              },
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return AppColors.royalPurple.withValues(alpha: 0.3);
+                  }
+                  return Colors.transparent;
+                }),
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return AppColors.gold;
+                  }
+                  return Colors.white70;
+                }),
+                side: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return BorderSide.none;
+                  }
+                  return BorderSide(color: Colors.white.withValues(alpha: 0.2));
+                }),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       body: _body(copy, provider, offline, feedVisible),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.royalPurple,
         foregroundColor: Colors.white,
-        onPressed: () => AppNavigation.go(context, '/edits/upload'),
+        onPressed: () => AppNavigation.go(context, '/reels/upload'),
         child: const PhosphorIcon(PhosphorIconsRegular.plus, size: 26),
       ),
     );
@@ -212,7 +305,7 @@ class _EditFeedPageState extends State<EditFeedPage>
         message: copy.noEditsMessage,
         icon: PhosphorIconsRegular.filmStrip,
         action: PubgetPrimaryButton(
-          onPressed: () => AppNavigation.go(context, '/edits/upload'),
+          onPressed: () => AppNavigation.go(context, '/reels/upload'),
           semanticLabel: copy.uploadTitle,
           child: Text(copy.uploadTitle),
         ),
@@ -756,10 +849,17 @@ class _CreatorOverlay extends StatelessWidget {
               shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black45)],
             ),
           ),
-        if (edit.animeTag.isNotEmpty)
-          Text(
-            '#${edit.animeTag}',
-            style: const TextStyle(color: AppColors.goldLight, fontSize: 13),
+        if (edit.hashtags.isNotEmpty || edit.animeTag.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: <Widget>[
+                for (final tag in edit.hashtags) _HashTagChip(tag: tag),
+                if (edit.animeTag.isNotEmpty) _HashTagChip(tag: edit.animeTag),
+              ],
+            ),
           ),
         const SizedBox(height: AppSpacing.xs),
         Text(
@@ -771,6 +871,41 @@ class _CreatorOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Axis 15 §15.7 — a tag chip navigates into the hashtag feed, so a tag on a
+/// Reel is a real entry point rather than decoration.
+class _HashTagChip extends StatelessWidget {
+  const _HashTagChip({required this.tag});
+
+  final String tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final clean = tag.startsWith('#') ? tag.substring(1) : tag;
+    return GestureDetector(
+      onTap: () => AppNavigation.go(context, PubgetLinks.hashtagPath(clean)),
+      child: Container(
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: 8,
+          vertical: 3,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.royalDusk.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          '#$clean',
+          style: const TextStyle(
+            color: AppColors.goldLight,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -15,6 +15,9 @@ final class UnavailableEditsRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -37,7 +40,16 @@ final class UnavailableEditsRepository implements EditsRepository {
   Future<Result<Edit>> finalizeEditUpload(String editId) async => _failure();
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async =>
       _failure();
 
   @override

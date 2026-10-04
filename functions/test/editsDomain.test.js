@@ -214,3 +214,330 @@ test("finalizeUpload rejects non-owners", async () => {
     (error) => error.code === "permission-denied",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Feed candidate selection. The fake db below records every query it receives so
+// the tests can assert on the *clauses*, not just the returned rows. A prior
+// version fetched a global top-200 and filtered it in memory, which silently
+// starved scoped feeds; these tests fail if scope is not pushed into the query.
+// ---------------------------------------------------------------------------
+
+function createFeedDb(reels, extra = {}) {
+  const store = new Map(Object.entries(extra));
+  for (const reel of reels) store.set(`edits/${reel.id}`, reel);
+  const queries = [];
+  const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+  const apply = (rows, q) => {
+    let out = rows;
+    for (const f of q.filters) {
+      out = out.filter((row) => {
+        const value = row.data[f.field];
+        if (f.op === "==") return value === f.value;
+        if (f.op === "array-contains") return Array.isArray(value) && value.includes(f.value);
+        if (f.op === "in") return f.value.includes(value);
+        return false;
+      });
+    }
+    for (const o of q.orders) {
+      const sign = o.direction === "desc" ? -1 : 1;
+      out = [...out].sort((a, b) => sign * compare(a.data[o.field], b.data[o.field]));
+    }
+    return q.limit == null ? out : out.slice(0, q.limit);
+  };
+
+  const q = (state, collection = "edits") => {
+    const api = {
+      where(field, op, value) {
+        state.filters.push({ field, op, value });
+        return api;
+      },
+      orderBy(field, direction) {
+        state.orders.push({ field, direction });
+        return api;
+      },
+      limit(n) {
+        state.limit = n;
+        return api;
+      },
+      async get() {
+        queries.push({ filters: [...state.filters], orders: [...state.orders], limit: state.limit });
+        const prefix = `${collection}/`;
+        const rows = [...store.entries()]
+          .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
+          .map(([path, data]) => ({ id: path.slice(prefix.length), data }));
+        return { docs: apply(rows, state).map((r) => ({ id: r.id, data: () => r.data })) };
+      },
+    };
+    return api;
+  };
+
+  const db = {
+    store,
+    queries,
+    collection(name) {
+      return {
+        doc(id) {
+          const path = `${name}/${id}`;
+          return {
+            id,
+            path,
+            async get() {
+              const data = store.get(path);
+              return { id, exists: store.has(path), data: () => data };
+            },
+            collection(sub) {
+              const subCollection = db.collection(`${name}/${id}/${sub}`);
+              return {
+                ...subCollection,
+                async get() {
+                  const rows = [...store.entries()]
+                    .filter(([p]) => p.startsWith(`${name}/${id}/${sub}/`))
+                    .map(([p, data]) => ({ id: p.slice(`${name}/${id}/${sub}/`.length), data }));
+                  return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                where(field, op, value) {
+                  return q({ filters: [{ field, op, value }], orders: [], limit: null }, name);
+                },
+              };
+            },
+          };
+        },
+        where(field, op, value) {
+          return q({ filters: [{ field, op, value }], orders: [], limit: null }, name);
+        },
+      };
+    },
+  };
+  return db;
+}
+
+function reel(id, extra = {}) {
+  return {
+    id,
+    creatorId: "creator",
+    status: "published",
+    score: 10,
+    createdAt: new Date(Date.UTC(2026, 0, 10)),
+    ...extra,
+  };
+}
+
+function feedDomain(db) {
+  return createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+}
+
+test("hashtag feed filters by hashtag in the query, not by trimming a global top-200", async () => {
+  // 300 unrelated high-score Reels would previously fill the whole candidate
+  // window and hide the tagged Reel completely.
+  const reels = Array.from({ length: 300 }, (_, i) =>
+    reel(`noise-${i}`, { score: 1000 - i }),
+  );
+  reels.push(reel("tagged", { hashtags: ["onepiece"], score: 1 }));
+  const db = createFeedDb(reels);
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { hashtag: "#OnePiece", feedType: "trending" },
+  });
+
+  assert.ok(
+    page.items.some((item) => item.id === "tagged"),
+    "a Reel outside the global top-200 must still appear in its own hashtag feed",
+  );
+  const clause = db.queries.flatMap((q) => q.filters).find(
+    (f) => f.field === "hashtags" && f.op === "array-contains",
+  );
+  assert.ok(clause, "hashtag scope must reach Firestore");
+  assert.equal(clause.value, "onepiece", "hashtag is normalised to lower case without #");
+  assert.ok(page.items.every((item) => (item.hashtags || []).includes("onepiece")));
+});
+
+test("creator, anime, character and audio scopes each reach the query", async () => {
+  const scopes = [
+    { field: "creatorId", op: "==", value: "alice", data: { creatorId: "alice" } },
+    { field: "animeId", op: "==", value: "one_piece", data: { animeId: "one_piece" } },
+    { field: "characterIds", op: "array-contains", value: "luffy", data: { characterIds: ["luffy"] } },
+    { field: "audioId", op: "==", value: "a1", data: { audioId: "a1" } },
+  ];
+  for (const scope of scopes) {
+    const db = createFeedDb([reel("match", scope.data), reel("other", {})]);
+    const page = await feedDomain(db).getEditFeed({
+      auth: { uid: "alice" },
+      data: { [scope.field.replace("Ids", "Id").replace("audioId", "audioId")]: scope.value },
+    });
+    const clause = db.queries.flatMap((q) => q.filters).find((f) => f.field === scope.field);
+    assert.ok(clause, `${scope.field} scope must reach Firestore`);
+    assert.deepEqual([clause.op, clause.value], [scope.op, scope.value]);
+    assert.ok(page.items.every((item) => item.id === "match"));
+  }
+});
+
+test("Following queries followed creators instead of filtering the global feed", async () => {
+  const db = createFeedDb(
+    [
+      reel("popular-stranger", { creatorId: "stranger", score: 9999 }),
+      reel("followed", { creatorId: "friend", score: 1 }),
+    ],
+    {
+      "respects/r1": { fromUserId: "alice", toUserId: "friend", value: 10 },
+    },
+  );
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "following" },
+  });
+
+  assert.deepEqual(page.items.map((item) => item.id), ["followed"]);
+  const clause = db.queries.flatMap((q) => q.filters).find(
+    (f) => f.field === "creatorId" && f.op === "in",
+  );
+  assert.ok(clause, "Following must constrain creatorId in the query");
+  assert.deepEqual(clause.value, ["friend"]);
+});
+
+test("Following is genuinely empty when the viewer follows nobody", async () => {
+  const db = createFeedDb([reel("a", { creatorId: "stranger", score: 9999 })]);
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "following" },
+  });
+  assert.deepEqual(page.items, []);
+});
+
+test("Following splits creatorId 'in' queries into chunks of at most 30", async () => {
+  const followed = {};
+  const reels = [];
+  for (let i = 0; i < 65; i += 1) {
+    followed[`respects/r${i}`] = { fromUserId: "alice", toUserId: `c${i}`, value: 10 };
+    reels.push(reel(`r${i}`, { creatorId: `c${i}` }));
+  }
+  const db = createFeedDb(reels, followed);
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "following", limit: 12 },
+  });
+
+  const inClauses = db.queries.flatMap((q) => q.filters).filter((f) => f.op === "in");
+  assert.ok(inClauses.length >= 3, `expected chunked queries, got ${inClauses.length}`);
+  for (const clause of inClauses) {
+    assert.ok(clause.value.length <= 30, "Firestore caps 'in' at 30 values");
+  }
+  const ids = new Set(inClauses.flatMap((c) => c.value));
+  assert.equal(ids.size, 65, "every followed creator must be queried");
+  assert.equal(page.items.length, 12);
+});
+
+test("trending reads the newest published slice instead of the top-scored one", async () => {
+  const db = createFeedDb([
+    reel("old-hot", { score: 999, createdAt: new Date(Date.UTC(2020, 0, 1)), qualifiedViewsCount: 900 }),
+    reel("new-cool", { score: 1, createdAt: new Date(Date.UTC(2026, 0, 14)), qualifiedViewsCount: 40 }),
+  ]);
+
+  await feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: { feedType: "trending" } });
+
+  const trendingQuery = db.queries[db.queries.length - 1];
+  assert.deepEqual(
+    trendingQuery.orders.map((o) => o.field),
+    ["createdAt"],
+    "trending must not be pinned to the stored For You score",
+  );
+});
+
+test("an unknown feed type degrades to For You instead of throwing", async () => {
+  const db = createFeedDb([reel("a")]);
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "invented" },
+  });
+  assert.equal(page.items.length, 1);
+  const feedQuery = db.queries.find((q) => q.filters.some((f) => f.field === "status"));
+  assert.deepEqual(feedQuery.orders.map((o) => o.field), ["score", "createdAt"]);
+});
+
+test("startUpload refuses an Edit that points at a missing sound track", async () => {
+  const db = createAudioAwareDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: "Song", animeTag: "one_piece", audioId: "ghost" },
+    }),
+    (error) =>
+      error.code === "failed-precondition" &&
+      /no longer exists/.test(error.message),
+  );
+});
+
+test("startUpload refuses an Edit whose sound track is still processing", async () => {
+  const db = createAudioAwareDb({ audios: { pendingTrack: { status: "processing" } } });
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: "Song", animeTag: "one_piece", audioId: "pendingTrack" },
+    }),
+    (error) =>
+      error.code === "failed-precondition" &&
+      /still processing/.test(error.message),
+  );
+});
+
+test("startUpload stores a ready sound track id verbatim", async () => {
+  const db = createAudioAwareDb({ audios: { track1: { status: "ready" } } });
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  const started = await domain.startUpload({
+    auth: { uid: "alice" },
+    data: { caption: "Song", animeTag: "one_piece", audioId: "track1" },
+  });
+  const stored = db.store.get(`edits/${started.editId}`);
+  assert.equal(stored.audioId, "track1");
+});
+
+function createAudioAwareDb({ audios = {} } = {}) {
+  const store = new Map();
+  for (const [id, data] of Object.entries(audios)) {
+    store.set(`reelAudios/${id}`, { ...data, audioId: id });
+  }
+  let auto = 0;
+  return {
+    store,
+    collection(name) {
+      return {
+        doc(id) {
+          const resolvedId = id || `auto-${++auto}`;
+          const path = `${name}/${resolvedId}`;
+          return {
+            id: resolvedId,
+            path,
+            async create(data) {
+              store.set(path, { ...data });
+            },
+            async get() {
+              const found = store.get(path);
+              return { exists: found !== undefined, data: () => found };
+            },
+          };
+        },
+      };
+    },
+  };
+}
