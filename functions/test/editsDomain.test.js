@@ -3,11 +3,45 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createEditsDomain } = require("../src/editsDomain");
+const { utcDayKey } = require("../src/editUploadQuota");
+const { EDIT_UPLOAD_QUOTA } = require("../src/editsConfig");
+
+/**
+ * Teach a store-backed fake the Firestore transaction API.
+ *
+ * The upload-quota reservation is a read-and-increment transaction, so the
+ * double must actually SERIALIZE transactions. A fake that ran them
+ * concurrently let three simultaneous uploads all read `count = 0` and all be
+ * admitted — the quota race protection was silently untested. Chaining onto a
+ * single promise reproduces Firestore's commit-one-at-a-time behaviour.
+ */
+function withTransactions(db) {
+  let tail = Promise.resolve();
+  db.runTransaction = (updateFn) => {
+    const run = tail.then(() => updateFn({
+      async get(ref) {
+        const data = db.store.get(ref.path);
+        return { id: ref.id, exists: data !== undefined, data: () => data };
+      },
+      set(ref, data, options = {}) {
+        const current = options.merge ? (db.store.get(ref.path) || {}) : {};
+        db.store.set(ref.path, { ...current, ...data });
+      },
+      update(ref, data) {
+        db.store.set(ref.path, { ...(db.store.get(ref.path) || {}), ...data });
+      },
+    }));
+    // Keep the chain alive even if this transaction rejects.
+    tail = run.then(() => {}, () => {});
+    return run;
+  };
+  return db;
+}
 
 function createFakeDb() {
   const store = new Map();
   let auto = 0;
-  return {
+  return withTransactions({
     store,
     collection(name) {
       return {
@@ -24,7 +58,7 @@ function createFakeDb() {
         },
       };
     },
-  };
+  });
 }
 
 class TestHttpsError extends Error {
@@ -109,7 +143,7 @@ test("view and signal validation rejects client-controlled invalid values", asyn
 });
 function createMutableDb(seed = {}) {
   const store = new Map(Object.entries(seed));
-  return {
+  return withTransactions({
     store,
     collection(name) {
       return {
@@ -133,7 +167,7 @@ function createMutableDb(seed = {}) {
         },
       };
     },
-  };
+  });
 }
 
 test("finalizeUpload and retryProcessing recover stuck uploading/processing", async () => {
@@ -512,13 +546,121 @@ test("startUpload stores a ready sound track id verbatim", async () => {
   assert.equal(stored.audioId, "track1");
 });
 
+// §15.2 upload quota. Enforced server-side because the client pre-flight is
+// advisory and the callable is directly reachable.
+test("startUpload enforces the daily quota and reserves a slot per upload", async () => {
+  const db = createFakeDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  const today = new Date();
+  const quotaPath = `editUploadQuota/alice_${utcDayKey(today)}`;
+
+  const first = await domain.startUpload({
+    auth: { uid: "alice" },
+    data: { caption: "one", animeTag: "one_piece" },
+  });
+  assert.equal(db.store.get(quotaPath).count, 1);
+  assert.equal(first.quotaRemaining, EDIT_UPLOAD_QUOTA.dailyUploads - 1);
+
+  // Burn the rest of the allowance.
+  for (let i = 1; i < EDIT_UPLOAD_QUOTA.dailyUploads; i += 1) {
+    await domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: `fill ${i}`, animeTag: "one_piece" },
+    });
+  }
+  assert.equal(db.store.get(quotaPath).count, EDIT_UPLOAD_QUOTA.dailyUploads);
+
+  await assert.rejects(
+    domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: "one too many", animeTag: "one_piece" },
+    }),
+    (error) => error.code === "resource-exhausted" && /daily upload limit/i.test(error.message),
+  );
+  // A refused upload must not create an edit or consume a slot.
+  assert.equal(db.store.get(quotaPath).count, EDIT_UPLOAD_QUOTA.dailyUploads);
+});
+
+test("upload quota is per creator, not global", async () => {
+  const db = createFakeDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  for (let i = 0; i < EDIT_UPLOAD_QUOTA.dailyUploads; i += 1) {
+    await domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: `a${i}`, animeTag: "one_piece" },
+    });
+  }
+  // Alice is blocked, bob is untouched.
+  await assert.rejects(
+    domain.startUpload({ auth: { uid: "alice" }, data: { caption: "x", animeTag: "one_piece" } }),
+    (error) => error.code === "resource-exhausted",
+  );
+  const bob = await domain.startUpload({
+    auth: { uid: "bob" },
+    data: { caption: "bob", animeTag: "one_piece" },
+  });
+  assert.ok(bob.editId);
+});
+
+test("a rejected upload does not consume quota", async () => {
+  const db = createFakeDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  // Invalid payload is rejected before any reservation is taken.
+  await assert.rejects(
+    domain.startUpload({ auth: { uid: "alice" }, data: { caption: 5 } }),
+  );
+  assert.equal(db.store.size, 0);
+});
+
+// One domain object serves every request, so quota state must never be stashed
+// on the instance. This used to return a single shared `remaining` value.
+test("concurrent uploads each report their own remaining quota", async () => {
+  const db = createFakeDb();
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+  const results = await Promise.all(
+    [1, 2, 3].map((i) => domain.startUpload({
+      auth: { uid: "alice" },
+      data: { caption: `c${i}`, animeTag: "one_piece" },
+    })),
+  );
+  const remaining = results.map((result) => result.quotaRemaining).sort((a, b) => a - b);
+  assert.deepEqual(
+    remaining,
+    [
+      EDIT_UPLOAD_QUOTA.dailyUploads - 3,
+      EDIT_UPLOAD_QUOTA.dailyUploads - 2,
+      EDIT_UPLOAD_QUOTA.dailyUploads - 1,
+    ],
+    'each caller must get its own post-reservation remaining count',
+  );
+  // The transaction must serialize: three uploads consume exactly three slots.
+  const quotaPath = `editUploadQuota/alice_${utcDayKey(new Date())}`;
+  assert.equal(db.store.get(quotaPath).count, 3);
+});
+
 function createAudioAwareDb({ audios = {} } = {}) {
   const store = new Map();
   for (const [id, data] of Object.entries(audios)) {
     store.set(`reelAudios/${id}`, { ...data, audioId: id });
   }
   let auto = 0;
-  return {
+  return withTransactions({
     store,
     collection(name) {
       return {
@@ -539,5 +681,5 @@ function createAudioAwareDb({ audios = {} } = {}) {
         },
       };
     },
-  };
+  });
 }

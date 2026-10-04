@@ -53,6 +53,13 @@ Failure _mapCode(String code, String? message) {
       'Upload was blocked by storage security. Stay signed in and retry; if it keeps failing, rules may still be deploying.',
     );
   }
+  if (normalized == 'resource-exhausted' || normalized == 'quota-exceeded') {
+    // §15.2 daily upload quota. The server names the limit in the message;
+    // surfacing it beats a generic "something went wrong".
+    return RateLimitedError(
+      message ?? 'You have reached your daily upload limit. Try again tomorrow.',
+    );
+  }
   if (normalized == 'failed-precondition') {
     return ValidationError(
       message ??

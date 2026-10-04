@@ -457,11 +457,116 @@ kept. "Server is the truth" means none of these were papered over client-side.
   `SUPPORTED` / `NOT SUPPORTED`, so the skips are self-explaining and lift by
   themselves if the emulator gains support. Net: **these 9 security assertions
   remain unverified locally and are reported as such — they are not "passed".**
-- **`/tmp` 512MB vs spec 500MB** (see §5.5.1) — deferred to `15-kirari-upload-pipeline`.
+- **`/tmp` 512MB vs spec 500MB** (see §5.5.1) — **resolved by owner decision in
+  `15-kirari-upload-pipeline`**: stay on Cloud Functions, ceiling stays 100MB, the
+  500MB target is documented as unmet. See §9.
 
 ---
 
-*Phase 0 audit complete. Foundation fixes D1–D9 landed on `feature/15-kirari-restructure`.
-Next: open PR `15-kirari-foundation`. The 9 skipped storage-rules assertions stay
-reported as unverified until they run on a runtime with working cross-service
-evaluation.*
+## 9. `15-kirari-upload-pipeline` — record
+
+Branch: `feature/15-kirari-upload-pipeline`, based on the merged `15-kirari-foundation`.
+
+### Owner decision required by the operating prompt (RESOLVED)
+
+The prompt required owner approval of the renditions plan before this PR. The
+500MB spec ceiling does not fit Cloud Functions gen2 `/tmp`, so three options
+were put to the owner:
+
+| Option | Outcome |
+|---|---|
+| Stay on Cloud Functions + ffmpeg, ceiling 100MB | **CHOSEN** |
+| Move media processing to Cloud Run | rejected |
+| Adopt Firebase Transcoder API | rejected |
+
+`maxBytes` therefore stays **100MB** and the spec's 500MB remains **unmet and
+documented** (§5.5.1). Verified while deciding: Firebase's quotas page documents
+gen2 max memory **32GiB** (not increaseable) and caps **event-driven** functions at
+**540s**; `processEditVideo` runs at `memory 1GiB` / `timeout 300s`, inside both.
+The same page documents **no** `/tmp` row, so no developer-facing knob to grow it
+is advertised there — which is why the ceiling stays where it is rather than
+being raised optimistically.
+
+### Defects found and fixed in this slice
+
+| # | Defect | Where | Fix | Test that pins it |
+|---|---|---|---|---|
+| U1 | `coverFrameMs` was validated (0–60000) and persisted, then **ignored** — the pipeline seeked to a hardcoded `00:00:00.500`, so the cover the creator picked never appeared | `functions/src/editPipeline.js` | `resolveCoverSeekSeconds` clamps the requested frame into the real duration (and inside the last decodable frame); `toTimestampArg` formats `HH:MM:SS.mmm` | `functions/test/editPipelineCoverFrame.test.js` (4) |
+| U2 | Only **one** fixed 1080×1920 encode was produced — no rendition ladder | `functions/src/editPipeline.js` | `EDIT_RENDITIONS` (1080p/720p/480p) + `buildRenditionEncodeArgs`; per-rung CRF/audio; the primary rung keeps the legacy `edits-processed/{uid}/{editId}.mp4` so stored `videoUrl` still resolves | `functions/test/editPipelineRenditions.test.js` (11) + `editPipelineAspect.test.js` |
+| U3 | `publishedWorks` for achievements was computed from a query **capped at `limit(6)`** ⇒ every creator past six posts was counted as 6 | `functions/src/editPipeline.js` | aggregate `.count()` query | covered by the pipeline tests; the count is now an absolute value |
+| U4 | No upload quota at all — the callable was directly reachable and unbounded | `functions/src/editsDomain.js`, new `functions/src/editUploadQuota.js` | transactional read-and-increment per creator per **UTC** day (20/day), released if the edit create fails; server is truth | `functions/test/editUploadQuota.test.js` (9) + `editsDomain.test.js` (4) |
+| U5 | `resource-exhausted` fell through to `UnknownError`, so a user who hit the cap was told "something went wrong" | `firebase_edits_repository.dart` | maps to `RateLimitedError` carrying the server's message | `test/edits_pipeline_hardening_test.dart` (2) |
+| U6 | `buildVideoFilters` became dead code once the ladder replaced its only production caller | `functions/src/editPipeline.js` | removed; its aspect coverage migrated onto `buildRenditionEncodeArgs` | `functions/test/editPipelineAspect.test.js` |
+
+### Two bugs I introduced and caught before commit
+
+Recorded because both would have shipped silently:
+
+- **Empty ladder for low-resolution sources.** `selectRenditions` filtered out
+  every rung taller than the source, so a 480p clip produced **no** output — and
+  the pipeline then crashed taking a cover frame from a file that did not exist.
+  Now the smallest rung is always retained, and the primary rung owns the
+  canonical path, so a low-res source still yields exactly one playable file at
+  its own resolution.
+- **Wrong master dimensions.** The ladder rung was declared with `height: 1080`,
+  but a 1080×1920 frame has vertical height **1920**, so the master encoded at
+  607×1080. `height` is now the vertical frame height and is unit-tested per rung.
+
+### Honest limits of this slice
+
+- **The quota's shared-state hazard is fixed by construction, not by a
+  regression test.** An earlier revision stored the remaining count on the domain
+  instance (one instance serves every request), so concurrent uploads could
+  report each other's count. It now returns the verdict from `reserveQuota`.
+  A mutation that reinstates the shared variable **still passes** the suite:
+  the in-memory fake cannot reproduce Firestore's async commit window. The test
+  that *does* have teeth asserts the transactional property — removing the
+  serialization from the fake makes `concurrent uploads each report their own
+  remaining quota` fail, because three simultaneous uploads would otherwise all
+  read `count = 0`. Verified by mutation.
+- **Quota is reserved at `startUpload`, released only if the create fails.** An
+  upload that reserves a slot and then dies in processing keeps its slot for the
+  day. That is deliberate — it stops retry spam — but it means `retryProcessing`
+  does not refund.
+- **Client-side resumable upload is not in this PR.** `EditUploadManager` already
+  persists `localPath` / `resumeEditId` / `resumeVideoPath` and restores them, but
+  the transport is still a single non-resumable `put`; a true chunked
+  `putData`/resumable session is still outstanding.
+- The ladder writes 3 objects per Edit instead of 1, and the `blur_pad` mode
+  re-renders at each rung. Encode time and egress both rise; the per-rung CRF
+  ladder is the mitigation. Not load-tested.
+
+### Verification snapshot (this revision)
+
+| Gate | Command | Result |
+|---|---|---|
+| Functions tests | `npm --prefix functions test` | ✅ **469/469 pass** (was 451) |
+| Functions static | `npm --prefix functions run check` | ✅ exit 0 |
+| Firestore rules | `firebase emulators:exec --only firestore,storage …` (JDK 21) | ✅ **75 / 65 pass / 0 fail / 10 skipped** — unchanged; the 10 skips are the pre-existing capability gate, not a regression |
+| Client static | `dart analyze lib` | ✅ No issues found |
+| Client tests | `flutter test` (full) | ✅ **825/825 pass** (was 823) |
+| Android build | `flutter build apk --debug` | ✅ exit 0 |
+
+The portable JDK used for the rules emulator now lives at `.tooling/` inside the
+worktree (gitignored) rather than the OS temp directory, which was reaped between
+sessions and silently dropped the emulator back to the system JDK 17.
+
+### Still BLOCKED / unmet (not a code defect)
+
+- **Spec 500MB ceiling — UNMET by owner decision.** Stays 100MB.
+- **Client resumable upload — outstanding**, see honest limits above.
+- **The 9 cross-service Storage rules assertions remain unverified locally**
+  (emulator cannot evaluate `firestore.get()`/`firestore.exists()`); unchanged
+  and still reported, not "passed".
+- Unchanged from Foundation: `extractReelAudio` has no exported callable or UI
+  caller, legacy `reelsDomain`/`reelsConfig` wiring is unresolved, guest-read
+  policy is undecided, offline fallback does not reproduce Following/Trending,
+  compound scope indexes may need more composites, and region consolidation is
+  open.
+
+---
+
+*Foundation fixes D1–D9 and upload-pipeline fixes U1–U6 are recorded above.
+Next: open PR `15-kirari-viewer-interactions`. The 9 skipped storage-rules
+assertions stay reported as unverified until they run on a runtime with working
+cross-service evaluation.*
