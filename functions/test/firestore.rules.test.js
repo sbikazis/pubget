@@ -1541,3 +1541,53 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
   }));
 });
 
+
+test("ready audio is readable by signed-in users; drafts and failures are not", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/ready1").set({ creatorId: "alice", status: "ready", usageCount: 3 });
+    await admin.doc("reelAudios/processing1").set({ creatorId: "alice", status: "processing" });
+    await admin.doc("reelAudios/failed1").set({ creatorId: "alice", status: "failed" });
+  });
+
+  await assertSucceeds(db("alice").doc("reelAudios/ready1").get());
+  await assertFails(db("alice").doc("reelAudios/processing1").get());
+  await assertFails(db("alice").doc("reelAudios/failed1").get());
+
+  // Guests cannot read audio even when it is ready.
+  const guest = env.unauthenticatedContext().firestore();
+  await assertFails(guest.doc("reelAudios/ready1").get());
+});
+
+test("a ready-audio list query cannot smuggle out non-ready audio", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/l1").set({ creatorId: "alice", status: "ready", usageCount: 1 });
+    await admin.doc("reelAudios/l2").set({ creatorId: "alice", status: "processing", usageCount: 9 });
+  });
+
+  // The rule is on resource.data, so Firestore rejects the query outright
+  // rather than silently filtering.
+  await assertFails(db("alice").collection("reelAudios").get());
+  await assertFails(db("alice").collection("reelAudios").orderBy("usageCount", "desc").get());
+});
+
+test("audio documents and usage counters are server-owned", async () => {
+  const alice = db("alice");
+  await assertFails(alice.doc("reelAudios/new1").set({ creatorId: "alice", status: "ready" }));
+  await assertFails(alice.doc("reelAudios/ready1").update({ usageCount: 9999 }));
+  await assertFails(alice.doc("reelAudios/ready1").delete());
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").set({ reelId: "r1" }),
+  );
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").update({ reelId: "r1" }),
+  );
+  await assertFails(alice.doc("reelAudios/ready1/reelAudioUsage/r1").delete());
+});
+
+test("a creator cannot promote their own audio by writing the status", async () => {
+  await assertFails(
+    db("alice").doc("reelAudios/processing1").update({ status: "ready", usageCount: 500 }),
+  );
+});

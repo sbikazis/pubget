@@ -75,3 +75,38 @@ test("clean watermark scan still publishes", () => {
   assert.equal(published.publish, true);
   assert.equal(published.update.status, "published");
 });
+
+// §15.2 duration is 3-60s. The lower bound was declared in config and in the
+// user-facing copy but never enforced, so a 1-second clip published.
+test("duration verdict enforces both the 3s floor and the 60s ceiling", () => {
+  const { classifyDuration, durationFailureReason } = require("../src/editPipeline");
+
+  for (const seconds of [0.5, 1, 2, 2.9]) {
+    assert.equal(classifyDuration(seconds), "tooShort", `${seconds}s is below the floor`);
+  }
+  for (const seconds of [3, 4, 30, 59, 60]) {
+    assert.equal(classifyDuration(seconds), "ok", `${seconds}s is inside the range`);
+  }
+  for (const seconds of [60.1, 61, 180]) {
+    assert.equal(classifyDuration(seconds), "tooLong", `${seconds}s is above the ceiling`);
+  }
+  // Unreadable probe output must not slip through as valid.
+  for (const bad of [0, -1, NaN, undefined, null, "abc", {}]) {
+    const verdict = classifyDuration(bad);
+    assert.notEqual(verdict, "ok", `${String(bad)} must not be accepted`);
+    assert.equal(verdict, "invalid");
+  }
+});
+
+test("duration failure copy names the limit that was actually hit", () => {
+  const { classifyDuration, durationFailureReason } = require("../src/editPipeline");
+  const config = { minDurationSeconds: 3, maxDurationSeconds: 60 };
+
+  assert.match(durationFailureReason(classifyDuration(1, config), config), /at least 3 seconds/i);
+  assert.match(durationFailureReason(classifyDuration(90, config), config), /up to 60 seconds/i);
+  // The two verdicts must not produce the same message.
+  assert.notEqual(
+    durationFailureReason("tooShort", config),
+    durationFailureReason("tooLong", config),
+  );
+});

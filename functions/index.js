@@ -41,6 +41,7 @@ const { createRecommendationEngine } = require("./src/recommendationEngine");
 const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
+const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
@@ -377,6 +378,22 @@ exports.finalizeEditUpload = onCall(
   { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
+
+// Axis 15 §15.8 — audio is reachable from the client, not just defined.
+// The domain is built on the same collection the Edit domain uses, so audio
+// attaches to real Reels instead of an empty parallel `reels` collection.
+const audioDomain = createAudioDomain({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+  FieldValue,
+  HttpsError,
+  reelCollection: "edits",
+});
+exports.listReelAudios = onCall({ region: "us-central1" }, audioDomain.listAudios);
+exports.getReelAudio = onCall({ region: "us-central1" }, audioDomain.getAudio);
+exports.useReelAudio = onCall({ region: "us-central1" }, audioDomain.useAudio);
+exports.removeReelAudio = onCall({ region: "us-central1" }, audioDomain.removeAudio);
+exports.searchReelAudios = onCall({ region: "us-central1" }, audioDomain.searchAudios);
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
 // Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(

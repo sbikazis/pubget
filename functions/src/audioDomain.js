@@ -54,6 +54,13 @@ async function extractAudioSegment(ffmpeg, source, output, startMs, durationMs) 
   await run(ffmpeg, args);
 }
 
+/** §15.8 — the client sends a sort intent; unknown values fall back to trending. */
+function normalizeAudioSort(raw) {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "newest" || value === "popular") return value;
+  return "trending";
+}
+
 function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection = "reels" }) {
   function audioRef(audioId) {
     return db.collection(AUDIO_COLLECTION).doc(audioId);
@@ -65,6 +72,35 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
 
   function reelRef(reelId) {
     return db.collection(reelCollection).doc(reelId);
+  }
+
+  function reelCollectionQuery() {
+    return db.collection(reelCollection);
+  }
+
+  /**
+   * Resolves creator profiles for a page of results in one round trip.
+   * Reading users one-by-one inside a loop made every audio page cost
+   * 1 + N reads, which does not survive thousands of users.
+   */
+  async function creatorsById(creatorIds) {
+    const unique = [...new Set((creatorIds || []).filter(Boolean))];
+    const byId = new Map();
+    if (unique.length === 0) return byId;
+    if (typeof db.getAll === "function") {
+      const refs = unique.map((id) => db.collection("users").doc(id));
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((snap) => {
+        if (snap.exists) byId.set(snap.id, snap.data() || {});
+      });
+      return byId;
+    }
+    // Test doubles may not implement getAll.
+    for (const id of unique) {
+      const snap = await db.collection("users").doc(id).get();
+      if (snap.exists) byId.set(id, snap.data() || {});
+    }
+    return byId;
   }
 
   async function extractAudioFromReel(request) {
@@ -173,13 +209,19 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     const viewerId = uid(request);
     const limit = Math.max(1, Math.min(50, Number(request.data?.limit) || 20));
     const afterId = string(request.data?.afterId || "", 128);
-    const queryType = request.data?.type || "trending";
+    const sort = normalizeAudioSort(request.data?.type);
 
     let query = db.collection(AUDIO_COLLECTION)
-      .where("status", "==", "ready")
-      .orderBy("usageCount", "desc")
-      .orderBy("createdAt", "desc")
-      .limit(limit + 1);
+      .where("status", "==", "ready");
+    if (sort === "newest") {
+      query = query.orderBy("createdAt", "desc");
+    } else if (sort === "popular") {
+      query = query.orderBy("usageCount", "desc");
+    } else {
+      // trending: usage-weighted, newest first as the tie-break.
+      query = query.orderBy("usageCount", "desc").orderBy("createdAt", "desc");
+    }
+    query = query.limit(limit + 1);
 
     if (afterId) {
       const afterDoc = await audioRef(afterId).get();
@@ -189,22 +231,25 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     }
 
     const snapshot = await query.get();
-    const items = [];
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const creator = await db.collection("users").doc(data.creatorId).get();
-      items.push({
+    const docs = snapshot.docs || [];
+    const creators = await creatorsById(docs.map((doc) => doc.data()?.creatorId));
+    const items = docs.map((doc) => {
+      const data = doc.data() || {};
+      const creator = creators.get(data.creatorId) || {};
+      return {
         ...data,
-        creatorName: creator.data()?.username || data.creatorId,
-        creatorAvatar: creator.data()?.avatarUrl || "",
+        creatorName: creator.username || data.creatorId,
+        creatorAvatar: creator.avatarUrl || "",
         isOwner: data.creatorId === viewerId,
-      });
-    }
-
+      };
+    });
     return { items: items.slice(0, limit), hasMore: items.length > limit };
   }
 
   async function getAudio(request) {
+    // Auth first: without this an unauthenticated caller could read any audio
+    // document, its creator, and the reels using it.
+    const viewerId = uid(request);
     const audioId = string(request.data?.audioId, 128);
     if (!audioId) throw new HttpsError("invalid-argument", "audioId required.");
 
@@ -213,7 +258,7 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     const audio = audioDoc.data();
 
     const creator = await db.collection("users").doc(audio.creatorId).get();
-    const reelsSnap = await db.collection("reels")
+    const reelsSnap = await reelCollectionQuery()
       .where("audioId", "==", audioId)
       .where("status", "==", "published")
       .orderBy("createdAt", "desc")
@@ -246,23 +291,56 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
       throw new HttpsError("not-found", "Audio not available.");
     }
 
-    const reelDoc = await db.collection("reels").doc(reelId).get();
+    const reelDoc = await reelRef(reelId).get();
     if (!reelDoc.exists) throw new HttpsError("not-found", "Reel not found.");
     if (reelDoc.data().creatorId !== userId) {
       throw new HttpsError("permission-denied", "Only the reel creator can attach audio.");
     }
 
+    // usageCount is derived state, so it must follow what the reel actually
+    // has attached — read inside the transaction and only move the counter
+    // on a real change. Attaching the same audio twice, or swapping A for B,
+    // used to silently inflate or orphan counts.
     await db.runTransaction(async (tx) => {
-      tx.update(audioRef(audioId), {
-        usageCount: FieldValue.increment(1),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      tx.set(audioUsageRef(audioId, reelId), {
-        reelId,
-        userId,
-        attachedAt: FieldValue.serverTimestamp(),
-      });
-      tx.update(db.collection("reels").doc(reelId), {
+      const snap = await tx.get(reelRef(reelId));
+      const previousAudioId = snap.data()?.audioId || null;
+      const alreadyAttached = previousAudioId === audioId;
+
+      // Firestore requires every read before the first write.
+      const newUsageSnap = alreadyAttached
+        ? { exists: false }
+        : await tx.get(audioUsageRef(audioId, reelId));
+      const previousUsageSnap =
+        previousAudioId && !alreadyAttached
+          ? await tx.get(audioUsageRef(previousAudioId, reelId))
+          : { exists: false };
+
+      if (previousAudioId && !alreadyAttached) {
+        if (previousUsageSnap.exists) {
+          tx.update(audioRef(previousAudioId), {
+            usageCount: FieldValue.increment(-1),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          tx.delete(audioUsageRef(previousAudioId, reelId));
+        }
+        tx.update(reelRef(reelId), {
+          audioAttachedAt: FieldValue.delete(),
+        });
+      }
+
+      if (!alreadyAttached && !newUsageSnap.exists) {
+        tx.update(audioRef(audioId), {
+          usageCount: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        tx.set(audioUsageRef(audioId, reelId), {
+          reelId,
+          userId,
+          attachedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      tx.update(reelRef(reelId), {
         audioId,
         audioAttachedAt: FieldValue.serverTimestamp(),
       });
@@ -276,36 +354,39 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     const reelId = string(request.data?.reelId, 128);
     if (!reelId) throw new HttpsError("invalid-argument", "reelId required.");
 
-    const reelDoc = await db.collection("reels").doc(reelId).get();
+    const reelDoc = await reelRef(reelId).get();
     if (!reelDoc.exists) throw new HttpsError("not-found", "Reel not found.");
     if (reelDoc.data().creatorId !== userId) {
       throw new HttpsError("permission-denied", "Only the reel creator can remove audio.");
     }
 
-    const audioId = reelDoc.data().audioId;
-    if (audioId) {
-      await db.runTransaction(async (tx) => {
-        tx.update(audioRef(audioId), {
+    // Idempotent: detaching something that is not attached is a no-op, not a
+    // decrement.
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(reelRef(reelId));
+      const previousAudioId = snap.data()?.audioId || null;
+      if (!previousAudioId) return;
+      const usageSnap = await tx.get(audioUsageRef(previousAudioId, reelId));
+      if (usageSnap.exists) {
+        tx.update(audioRef(previousAudioId), {
           usageCount: FieldValue.increment(-1),
           updatedAt: FieldValue.serverTimestamp(),
         });
-        tx.delete(audioUsageRef(audioId, reelId));
-        tx.update(db.collection("reels").doc(reelId), {
-          audioId: FieldValue.delete(),
-          audioAttachedAt: FieldValue.delete(),
-        });
-      });
-    } else {
-      await db.collection("reels").doc(reelId).update({
+        tx.delete(audioUsageRef(previousAudioId, reelId));
+      }
+      tx.update(reelRef(reelId), {
         audioId: FieldValue.delete(),
         audioAttachedAt: FieldValue.delete(),
       });
-    }
+    });
 
     return { ok: true };
   }
 
   async function searchAudios(request) {
+    // Auth first: this query reaches into reelAudios, which the rules keep
+    // behind signedIn(). Leaving it open would bypass the rules via callable.
+    uid(request);
     const query = string(request.data?.query || "", 64);
     const limit = Math.max(1, Math.min(30, Number(request.data?.limit) || 15));
     if (!query) return { items: [] };
@@ -317,21 +398,23 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
       .get();
 
     const lowerQuery = query.toLowerCase();
-    const items = [];
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      if (data.name?.toLowerCase().includes(lowerQuery) ||
-          data.displayName?.toLowerCase().includes(lowerQuery) ||
-          data.creatorId?.toLowerCase().includes(lowerQuery)) {
-        const creator = await db.collection("users").doc(data.creatorId).get();
-        items.push({
-          ...data,
-          creatorName: creator.data()?.username || data.creatorId,
-          creatorAvatar: creator.data()?.avatarUrl || "",
-        });
-        if (items.length >= limit) break;
-      }
-    }
+    const matches = (snapshot.docs || []).filter((doc) => {
+      const data = doc.data() || {};
+      return data.name?.toLowerCase().includes(lowerQuery) ||
+        data.displayName?.toLowerCase().includes(lowerQuery) ||
+        data.creatorId?.toLowerCase().includes(lowerQuery);
+    });
+    const page = matches.slice(0, limit);
+    const creators = await creatorsById(page.map((doc) => doc.data()?.creatorId));
+    const items = page.map((doc) => {
+      const data = doc.data() || {};
+      const creator = creators.get(data.creatorId) || {};
+      return {
+        ...data,
+        creatorName: creator.username || data.creatorId,
+        creatorAvatar: creator.avatarUrl || "",
+      };
+    });
 
     return { items };
   }

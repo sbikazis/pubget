@@ -59,6 +59,60 @@ void main() {
     expect(EditValidation.mentionsIn('hi @luffy and @zoro'), ['luffy', 'zoro']);
   });
 
+  test('client validation enforces the 3s floor as well as the 60s ceiling', () {
+    // §15.2 is 3-60s. The floor was missing, so a 1-second clip was accepted.
+    for (final seconds in [1, 2]) {
+      expect(
+        EditValidation.reject(
+          fileName: 'clip.mp4',
+          contentType: 'video/mp4',
+          sizeBytes: 12,
+          duration: Duration(seconds: seconds),
+        ),
+        isA<ValidationError>(),
+        reason: 'a ${seconds}s clip is below the minimum',
+      );
+    }
+    // Exactly 3s is the boundary and must be allowed.
+    expect(
+      EditValidation.reject(
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 12,
+        duration: const Duration(seconds: Limits.editMinDurationSeconds),
+      ),
+      isNull,
+    );
+    // Exactly 60s is allowed; 61s is not.
+    expect(
+      EditValidation.reject(
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 12,
+        duration: const Duration(seconds: Limits.editMaxDurationSeconds),
+      ),
+      isNull,
+    );
+    expect(
+      EditValidation.reject(
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 12,
+        duration: const Duration(seconds: Limits.editMaxDurationSeconds + 1),
+      ),
+      isA<ValidationError>(),
+    );
+    // An unknown duration must stay permissive; the server is the real gate.
+    expect(
+      EditValidation.reject(
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 12,
+      ),
+      isNull,
+    );
+  });
+
   test('repost window uses the published timestamp and hides after 30 days', () {
     final now = DateTime(2026, 9, 7);
     final live = testEdit(publishedAt: DateTime(2026, 8, 20));

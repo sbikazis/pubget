@@ -10,6 +10,9 @@ abstract interface class EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -25,7 +28,20 @@ abstract interface class EditsRepository {
   Future<Result<void>> cancelUpload();
   Stream<Result<Edit>> watchEdit(String editId);
   Future<Result<void>> retryProcessing(String editId);
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5});
+
+  /// Axis 15 §15.16 — one entry point for every reel surface. Passing a
+  /// scope narrows the feed to one context; [feedType] selects the ranking
+  /// strategy. The server owns both; the client never ranks locally.
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  });
   Future<Result<List<Edit>>> getCreatorEdits(
     String creatorId, {
     int limit = 12,

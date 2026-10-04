@@ -10,7 +10,8 @@ final class EditCopy {
 
   static EditCopy of(BuildContext context) => EditCopy(AppStrings.of(context));
 
-  String get feedTitle => _s.pick('Reels', 'ريلز');
+  /// Axis 15 §15.18 — the product name lives in exactly one place.
+  String get feedTitle => _s.productReelsName;
   String get uploadTitle => _s.pick('Create Reel', 'إنشاء ريل');
   String get chooseVideo => _s.pick('Choose video', 'اختيار فيديو');
   String get recordVideo => _s.pick('Camera', 'الكاميرا');
@@ -123,6 +124,35 @@ final class EditCopy {
   String get pause => _s.pick('Pause', 'إيقاف');
   String views(int count) => _s.pick('$count views', '$count مشاهدة');
 
+  // Axis 15 §15.16 — feed strategy labels.
+  String feedLabel(FeedType type) => switch (type) {
+        FeedType.forYou => _s.feedForYou,
+        FeedType.following => _s.feedFollowing,
+        FeedType.trending => _s.feedTrending,
+      };
+
+  // Axis 15 §15.7 — tag inputs.
+  String get hashtags => _s.pick('Hashtags (optional)', 'الوسوم (اختياري)');
+  String get hashtagsHint => _s.pick(
+        'Add up to 12 tags, separated by spaces or commas',
+        'أضف حتى 12 وسمًا، مفصولة بمسافات أو فواصل',
+      );
+  String get characterTags =>
+      _s.pick('Characters (optional)', 'الشخصيات (اختياري)');
+  String get characterTagsHint => _s.pick(
+        'Tag up to 8 characters so fans can find this Reel',
+        'وسم حتى 8 شخصيات ليجدها المعجبون',
+      );
+  String get audio => _s.pick('Sound track (optional)', 'الصوت (اختياري)');
+  String get audioHint =>
+      _s.pick('Pick audio from the library', 'اختر صوتًا من المكتبة');
+  String get audioNone => _s.pick('None selected', 'لم يتم الاختيار');
+  String get audioClear => _s.pick('Remove sound track', 'إزالة الصوت');
+  String get audioOffline => _s.pick(
+        'Reconnect to pick a sound track',
+        'أعد الاتصال لاختيار صوت',
+      );
+
   String primaryActionLabel({
     required bool hasVideo,
     required String phase,
@@ -159,8 +189,8 @@ final class EditCopy {
           'هذا الفيديو ليس MP4 مدعومًا، أو حجمه كبير جدًا.',
         ),
       'duration' => _s.pick(
-          'Videos can be up to 3 minutes long.',
-          'مدة الفيديو يمكن أن تصل إلى 3 دقائق.',
+          'Reels can be up to 60 seconds long.',
+          'يمكن أن يصل طول الريل إلى 60 ثانية.',
         ),
       'aspect-unrecoverable' => _s.pick(
           'We could not prepare this video for full-screen display. Delete the draft or try another file.',

@@ -7,9 +7,27 @@ import '../models/edit_models.dart';
 import '../repositories/edits_repository.dart';
 
 final class EditsProvider extends ChangeNotifier {
-  EditsProvider({required EditsRepository repository})
-    : _repository = repository;
+  EditsProvider({
+    required EditsRepository repository,
+    this.audioId,
+    this.animeId,
+    this.characterId,
+    this.hashtag,
+    this.creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) : _repository = repository,
+       _feedType = feedType;
   final EditsRepository _repository;
+
+  /// Axis 15 §15.16 — an optional scope narrows the whole feed to one
+  /// context. At most one is expected to be set by a scoped entry point.
+  final String? audioId;
+  final String? animeId;
+  final String? characterId;
+  final String? hashtag;
+  final String? creatorId;
+
+  FeedType _feedType;
   final List<Edit> _items = <Edit>[];
   final Set<String> _liked = <String>{};
   final Set<String> _saved = <String>{};
@@ -33,6 +51,22 @@ final class EditsProvider extends ChangeNotifier {
   Failure? get lastActionFailure => _lastActionFailure;
   bool get hasMore => _hasMore;
   int get activeIndex => _activeIndex;
+  FeedType get feedType => _feedType;
+
+  /// Switch ranking strategy (For You / Following / Trending). Resets paging
+  /// and re-queries the server — the client never re-sorts a cached page.
+  void setFeedType(FeedType type) {
+    if (_feedType == type) return;
+    _feedType = type;
+    _items.clear();
+    _skippedIds.clear();
+    _hasMore = true;
+    _activeIndex = 0;
+    _state = LoadingState.initial;
+    _failure = null;
+    notifyListeners();
+    load(refresh: true);
+  }
 
   Edit displayOf(Edit edit) {
     return edit.copyWith(
@@ -64,14 +98,22 @@ final class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load({bool refresh = false, int limit = 5}) async {
+  Future<void> load({bool refresh = false, int limit = 5, String? audioId}) async {
     if (_state == LoadingState.loading || _loadingMore) return;
     if (!refresh && _items.isNotEmpty) return;
     _state = refresh ? LoadingState.refreshing : LoadingState.loading;
     _failure = null;
     if (refresh) _skippedIds.clear();
     notifyListeners();
-    final result = await _repository.getFeed(limit: limit);
+    final result = await _repository.getFeed(
+      limit: limit,
+      audioId: audioId ?? this.audioId,
+      animeId: animeId,
+      characterId: characterId,
+      hashtag: hashtag,
+      creatorId: creatorId,
+      feedType: _feedType,
+    );
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {
@@ -89,12 +131,20 @@ final class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadMore() async {
+  Future<void> loadMore({String? audioId}) async {
     if (!_hasMore || _loadingMore || _items.isEmpty) return;
     _loadingMore = true;
     _state = LoadingState.loadingMore;
     notifyListeners();
-    final result = await _repository.getFeed(after: _items.last);
+    final result = await _repository.getFeed(
+      after: _items.last,
+      audioId: audioId ?? this.audioId,
+      animeId: animeId,
+      characterId: characterId,
+      hashtag: hashtag,
+      creatorId: creatorId,
+      feedType: _feedType,
+    );
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {

@@ -139,6 +139,59 @@ function editEngagement(edit) {
   );
 }
 
+/**
+ * §15.16 "Trending" — engagement *velocity*, not freshness and not the
+ * For You score.
+ *
+ * A Reel that got 100 likes yesterday and one that got 40 likes in the last
+ * hour are not equally trending, and `scoreEdit` cannot tell them apart
+ * because it mixes lifetime engagement with personalization. This ranks on
+ * weighted engagement per hour of age, so the ordering reacts to what is
+ * happening now.
+ *
+ * The result is deliberately *unbounded*. It is only ever used to sort in
+ * memory, so it must stay strictly monotonic: an earlier version clamped to
+ * 0..100, which made every Reel above ~900 qualified views tie at exactly 100
+ * and left the ordering to an arbitrary tie-break.
+ */
+function scoreReelTrending(edit, now) {
+  const ageMs = Math.max(60 * 1000, now - toDate(edit.createdAt).getTime());
+  const ageHours = ageMs / (60 * 60 * 1000);
+  const qualified = Number(edit.qualifiedViewsCount) || 0;
+  const likes = Number(edit.likesCount) || 0;
+  const comments = Number(edit.commentsCount) || 0;
+  const saves = Number(edit.savesCount) || 0;
+  const shares = Number(edit.sharesCount) || 0;
+  const negativeFeedback = Number(edit.negativeFeedbackCount) || 0;
+  const weighted =
+    qualified * 0.2 +
+    likes * 1 +
+    comments * 3 +
+    saves * 2 +
+    shares * 3;
+
+  // No engagement evidence at all cannot be trending, whatever the metadata.
+  if (qualified <= 0 && weighted <= 0) return 0;
+
+  // Divide by age *before* compressing. log1p(weighted)/ageHours inverts real
+  // velocity: log1p flattens large counts while the small divisor inflates
+  // them, so a 1-like Reel an hour old outranked a 500-like Reel 12h old.
+  const engagementVelocity = Math.log1p(weighted / ageHours);
+  const viewVelocity = Math.log1p(qualified / ageHours);
+  // Log-compressed rather than capped, so 5k qualified views still outrank
+  // 500 instead of both saturating on the same evidence bonus.
+  const evidence = Math.log1p(qualified / 10);
+  const abuse = Math.min(200, negativeFeedback * 5);
+  const quality = editQuality(edit);
+  const score =
+    engagementVelocity * 55 +
+    viewVelocity * 30 +
+    evidence * 0.6 +
+    quality * 0.1 -
+    abuse;
+  return Number.isFinite(score) ? Math.max(0, score) : 0;
+}
+
 function scoreEdit(edit, profile, now) {
   const weights = WEIGHTS.edit;
   const tags = [edit.animeTag, edit.animeId].filter(Boolean);
@@ -366,6 +419,7 @@ module.exports = {
   freshnessScore,
   overlapScore,
   scoreEdit,
+  scoreReelTrending,
   scoreGroup,
   scorePerson,
   scoreFanWork,
