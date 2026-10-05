@@ -29,6 +29,10 @@ const EDITS_CONFIG = Object.freeze({
   viewabilityMs: 250,
   visibleFraction: 0.5,
   feedPageSize: 5,
+  // §15.9 exploration share of the Reels feed. Tunable, not hard text.
+  explorationShare: 0.2,
+  // Cap on how many watched Reels feed the repetition penalty.
+  seenHistoryLimit: 300,
   prefetchAhead: 1,
   captionMax: 1000,
   commentMax: 500,

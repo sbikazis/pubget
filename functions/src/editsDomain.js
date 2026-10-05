@@ -1,7 +1,12 @@
 "use strict";
 
 const { moderateEditCopy } = require("./contentFilter");
-const { scoreEdit, scoreReelTrending } = require("./ranking");
+const {
+  scoreEdit,
+  scoreReelTrending,
+  applyFeedDiversity,
+  mixExploration,
+} = require("./ranking");
 const { EDITS_CONFIG, TAG_LIMITS } = require("./editsConfig");
 const {
   utcDayKey,
@@ -636,6 +641,7 @@ function createEditsDomain({
       const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
       const watchCredit = increment;
       tx.set(viewerRef, {
+        viewerId,
         lastPercent: Math.max(previous.lastPercent || 0, verifiedPercent),
         lastQualifiedAt: qualified ? FieldValue.serverTimestamp() : previous.lastQualifiedAt || null,
         completed: previous.completed === true || completed,
@@ -909,6 +915,33 @@ function createEditsDomain({
     });
   }
 
+  /**
+   * §15.9 — which Reels this viewer has already been served.
+   *
+   * Reads the server-owned `viewers` subcollection rather than anything the
+   * client sends, so a viewer cannot clear their own history to farm repeats,
+   * and cannot invent history to suppress content.
+   *
+   * Bounded on purpose: this runs on every feed request, and an unbounded read
+   * would make the feed cost grow without limit for heavy viewers. Anything past
+   * the cap simply stops contributing a repetition penalty.
+   */
+  async function loadSeenEditIds(viewerId, cap = config.seenHistoryLimit) {
+    const snapshot = await db
+      .collectionGroup("viewers")
+      .where("viewerId", "==", viewerId)
+      .limit(cap)
+      .get()
+      .catch(() => ({ docs: [] }));
+    const ids = new Set();
+    (snapshot.docs || []).forEach((doc) => {
+      // The doc id is the viewer; the *parent* is the Reel that was watched.
+      const editId = doc.ref.parent.parent && doc.ref.parent.parent.id;
+      if (editId) ids.add(editId);
+    });
+    return ids;
+  }
+
   async function getEditFeed(request) {
     const viewerId = uid(request);
     const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || config.feedPageSize));
@@ -935,11 +968,16 @@ function createEditsDomain({
       ...((user.favoriteAnimeIds || []).filter(Boolean)),
       ...((listsSnap.docs || []).map((doc) => doc.id)),
     ];
+    // §15.9 already-watched Reels. `scoreEdit` penalises a repeat, but the
+    // profile handed an empty set, so that penalty could never fire and the
+    // viewer was re-served the same Reels. Read server-owned watch history:
+    // `edits/{id}/viewers/{viewerId}` already exists from `recordView`.
+    const seenIds = await loadSeenEditIds(viewerId);
     const profile = {
       userId: viewerId,
       animeIds,
       creatorIds,
-      seenIds: new Set(),
+      seenIds,
       creatorQuality: 0,
     };
     const now = new Date();
@@ -981,6 +1019,11 @@ function createEditsDomain({
           rank: scoreReelTrending({ id: item.id, ...item.data }, now),
         }))
         .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+      // §15.10 lists creator diversity ("تنوع الصنّاع") as part of Trending, so a
+      // single loud creator cannot own the "what's happening now" page. The caps
+      // depend only on the ranked order, never on the viewer, so two people
+      // opening Trending still see the same page.
+      ranked = applyFeedDiversity(ranked);
     } else {
       ranked = visible
         .map((item) => ({
@@ -989,6 +1032,12 @@ function createEditsDomain({
           rank: scoreEdit({ id: item.id, ...item.data }, profile, now),
         }))
         .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+      // §15.9 controlled diversity. The ranked order used to go straight out, so
+      // one hot creator could own the entire page.
+      ranked = applyFeedDiversity(ranked);
+      // §15.9 exploitation 70–90% / exploration 10–30%. Without this the tail was
+      // unreachable: every slot went to the top-ranked Reel.
+      ranked = mixExploration(ranked, config.explorationShare);
     }
     let start = 0;
     if (afterId) {
